@@ -9,4 +9,3 @@ coverage/
 data/.auth-secret
 data/
 uploads/
-api/index.mjs
