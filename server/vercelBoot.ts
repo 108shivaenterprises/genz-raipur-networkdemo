@@ -4,7 +4,7 @@
  *
  * Without DATABASE_URL the data lives per warm instance and starts again from the seeded demo data on a cold start.
  * v39: WITH DATABASE_URL (Supabase pooler) the data is kept in Postgres and shared by every instance — nothing resets
- * (server/sharedSync.ts). Uploaded files (photos, papers) still live in /tmp and are not kept.
+ * (server/sharedSync.ts). Uploaded files (photos, papers) are copied into the same database (server/fileSync.ts).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +33,6 @@ if (process.env.DATABASE_URL) {
   }
 }
 process.env.DIST_DIR ||= path.resolve(process.cwd(), 'dist');
-const work = '/tmp/genz';
+const work = process.env.GENZ_WORKDIR || '/tmp/genz';
 fs.mkdirSync(path.join(work, 'data'), { recursive: true });
 process.chdir(work);

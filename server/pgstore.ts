@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 const NS = (() => { const n = (process.env.DATABASE_SCHEMA || '').trim(); if (n && !/^[a-z_][a-z0-9_]{0,40}$/.test(n)) throw new Error('DATABASE_SCHEMA must be a plain lower-case name'); return n; })();
 const T_DOCS = NS ? `${NS}.genz_docs` : 'genz_docs';
 const T_META = NS ? `${NS}.genz_meta` : 'genz_meta';
+const T_FILES = NS ? `${NS}.genz_files` : 'genz_files';
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS ${T_DOCS} (
   collection  text        NOT NULL,
@@ -36,6 +37,13 @@ CREATE TABLE IF NOT EXISTS ${T_META} (
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE ${T_DOCS} ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS ${T_FILES} (
+  path        text PRIMARY KEY,
+  sha         text    NOT NULL,
+  data        bytea,
+  deleted     boolean NOT NULL DEFAULT false,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
 `;
 const LOCK_KEY = 7_420_261_001; // arbitrary app-wide advisory lock id
 const META_PREFIX = '__meta__';
@@ -264,6 +272,28 @@ export class PgStore {
   }
 
   async ping() { await this.pool.query('SELECT 1'); }
+
+  /** v42 — uploaded files (photos, papers) kept in the database so a serverless copy that restarts does not lose them (see server/fileSync.ts) */
+  async filesSignature(): Promise<string> {
+    const { rows } = await this.pool.query(`SELECT coalesce(md5(string_agg(path || ':' || sha || ':' || deleted::text, ',' ORDER BY path)), '') AS sig FROM ${T_FILES}`);
+    return rows[0].sig;
+  }
+  async filesList(): Promise<{ path: string; sha: string; deleted: boolean }[]> {
+    const { rows } = await this.pool.query(`SELECT path, sha, deleted FROM ${T_FILES}`);
+    return rows;
+  }
+  async fileGet(path: string): Promise<Buffer | null> {
+    const { rows } = await this.pool.query(`SELECT data FROM ${T_FILES} WHERE path=$1 AND NOT deleted`, [path]);
+    return rows.length ? rows[0].data : null;
+  }
+  async filePut(path: string, sha: string, data: Buffer) {
+    await this.pool.query(`INSERT INTO ${T_FILES}(path, sha, data, deleted) VALUES ($1,$2,$3,false) ON CONFLICT (path) DO UPDATE SET sha=$2, data=$3, deleted=false, updated_at=now()`, [path, sha, data]);
+  }
+  /** tests only: empty the file table */
+  async pool_query_clear() { await this.pool.query(`DELETE FROM ${T_FILES}`); }
+  async fileDel(path: string) {
+    await this.pool.query(`UPDATE ${T_FILES} SET deleted=true, data=NULL, sha='-', updated_at=now() WHERE path=$1`, [path]);
+  }
 
   async close() {
     await this.flush().catch(() => {});

@@ -1656,15 +1656,15 @@ var require_pg_connection_string = __commonJS({
       if (config2.sslnegotiation === "direct" && config2.ssl === void 0) {
         config2.ssl = true;
       }
-      const fs11 = config2.sslcert || config2.sslkey || config2.sslrootcert ? __require("fs") : null;
+      const fs12 = config2.sslcert || config2.sslkey || config2.sslrootcert ? __require("fs") : null;
       if (config2.sslcert) {
-        config2.ssl.cert = fs11.readFileSync(config2.sslcert).toString();
+        config2.ssl.cert = fs12.readFileSync(config2.sslcert).toString();
       }
       if (config2.sslkey) {
-        config2.ssl.key = fs11.readFileSync(config2.sslkey).toString();
+        config2.ssl.key = fs12.readFileSync(config2.sslkey).toString();
       }
       if (config2.sslrootcert) {
-        config2.ssl.ca = fs11.readFileSync(config2.sslrootcert).toString();
+        config2.ssl.ca = fs12.readFileSync(config2.sslrootcert).toString();
       }
       if (options.useLibpqCompat && config2.uselibpqcompat) {
         throw new Error("Both useLibpqCompat and uselibpqcompat are set. Please use only one of them.");
@@ -3492,7 +3492,7 @@ var require_split2 = __commonJS({
 var require_helper = __commonJS({
   "node_modules/pgpass/lib/helper.js"(exports, module) {
     "use strict";
-    var path12 = __require("path");
+    var path13 = __require("path");
     var Stream = __require("stream").Stream;
     var split = require_split2();
     var util = __require("util");
@@ -3531,7 +3531,7 @@ var require_helper = __commonJS({
     };
     module.exports.getFileName = function(rawEnv) {
       var env = rawEnv || process.env;
-      var file2 = env.PGPASSFILE || (isWin ? path12.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path12.join(env.HOME || "./", ".pgpass"));
+      var file2 = env.PGPASSFILE || (isWin ? path13.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path13.join(env.HOME || "./", ".pgpass"));
       return file2;
     };
     module.exports.usePgPass = function(stats2, fname) {
@@ -3663,16 +3663,16 @@ var require_helper = __commonJS({
 var require_lib = __commonJS({
   "node_modules/pgpass/lib/index.js"(exports, module) {
     "use strict";
-    var path12 = __require("path");
-    var fs11 = __require("fs");
+    var path13 = __require("path");
+    var fs12 = __require("fs");
     var helper = require_helper();
     module.exports = function(connInfo, cb) {
       var file2 = helper.getFileName();
-      fs11.stat(file2, function(err, stat) {
+      fs12.stat(file2, function(err, stat) {
         if (err || !helper.usePgPass(stat, file2)) {
           return cb(void 0);
         }
-        var st20 = fs11.createReadStream(file2);
+        var st20 = fs12.createReadStream(file2);
         helper.getPassword(connInfo, st20, cb);
       });
     };
@@ -5397,7 +5397,7 @@ function docId(collection, doc, i) {
 function setPgStore(s) {
   pgStore = s;
 }
-var NS, T_DOCS, T_META, SCHEMA, LOCK_KEY, META_PREFIX, REV_KEY, APPEND_ONLY, fp, yieldNow, SLICE_MS, warned, PgStore, pgStore;
+var NS, T_DOCS, T_META, T_FILES, SCHEMA, LOCK_KEY, META_PREFIX, REV_KEY, APPEND_ONLY, fp, yieldNow, SLICE_MS, warned, PgStore, pgStore;
 var init_pgstore = __esm({
   "server/pgstore.ts"() {
     init_esm();
@@ -5408,6 +5408,7 @@ var init_pgstore = __esm({
     })();
     T_DOCS = NS ? `${NS}.genz_docs` : "genz_docs";
     T_META = NS ? `${NS}.genz_meta` : "genz_meta";
+    T_FILES = NS ? `${NS}.genz_files` : "genz_files";
     SCHEMA = `
 CREATE TABLE IF NOT EXISTS ${T_DOCS} (
   collection  text        NOT NULL,
@@ -5423,6 +5424,13 @@ CREATE TABLE IF NOT EXISTS ${T_META} (
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE ${T_DOCS} ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS ${T_FILES} (
+  path        text PRIMARY KEY,
+  sha         text    NOT NULL,
+  data        bytea,
+  deleted     boolean NOT NULL DEFAULT false,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
 `;
     LOCK_KEY = 7420261001;
     META_PREFIX = "__meta__";
@@ -5671,6 +5679,29 @@ ALTER TABLE ${T_DOCS} ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
       }
       async ping() {
         await this.pool.query("SELECT 1");
+      }
+      /** v42 — uploaded files (photos, papers) kept in the database so a serverless copy that restarts does not lose them (see server/fileSync.ts) */
+      async filesSignature() {
+        const { rows } = await this.pool.query(`SELECT coalesce(md5(string_agg(path || ':' || sha || ':' || deleted::text, ',' ORDER BY path)), '') AS sig FROM ${T_FILES}`);
+        return rows[0].sig;
+      }
+      async filesList() {
+        const { rows } = await this.pool.query(`SELECT path, sha, deleted FROM ${T_FILES}`);
+        return rows;
+      }
+      async fileGet(path13) {
+        const { rows } = await this.pool.query(`SELECT data FROM ${T_FILES} WHERE path=$1 AND NOT deleted`, [path13]);
+        return rows.length ? rows[0].data : null;
+      }
+      async filePut(path13, sha5, data) {
+        await this.pool.query(`INSERT INTO ${T_FILES}(path, sha, data, deleted) VALUES ($1,$2,$3,false) ON CONFLICT (path) DO UPDATE SET sha=$2, data=$3, deleted=false, updated_at=now()`, [path13, sha5, data]);
+      }
+      /** tests only: empty the file table */
+      async pool_query_clear() {
+        await this.pool.query(`DELETE FROM ${T_FILES}`);
+      }
+      async fileDel(path13) {
+        await this.pool.query(`UPDATE ${T_FILES} SET deleted=true, data=NULL, sha='-', updated_at=now() WHERE path=$1`, [path13]);
       }
       async close() {
         await this.flush().catch(() => {
@@ -6993,8 +7024,8 @@ var require_node = __commonJS({
           }
           break;
         case "FILE":
-          var fs11 = __require("fs");
-          stream2 = new fs11.SyncWriteStream(fd2, { autoClose: false });
+          var fs12 = __require("fs");
+          stream2 = new fs12.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -19781,11 +19812,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path12) {
-      if (!path12 || typeof path12 !== "string") {
+    function lookup(path13) {
+      if (!path13 || typeof path13 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path12).toLowerCase().substr(1);
+      var extension2 = extname("x." + path13).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -21299,7 +21330,7 @@ var require_get_intrinsic = __commonJS({
     var $SyntaxError = require_syntax();
     var $TypeError = require_type();
     var $URIError = require_uri();
-    var abs = require_abs();
+    var abs2 = require_abs();
     var floor = require_floor();
     var max = require_max();
     var min = require_min();
@@ -21413,7 +21444,7 @@ var require_get_intrinsic = __commonJS({
       "%Function.prototype.apply%": $apply,
       "%Object.defineProperty%": $defineProperty,
       "%Object.getPrototypeOf%": $ObjectGPO,
-      "%Math.abs%": abs,
+      "%Math.abs%": abs2,
       "%Math.floor%": floor,
       "%Math.max%": max,
       "%Math.min%": min,
@@ -22586,8 +22617,8 @@ var require_parse = __commonJS({
       var leaf = valuesParsed ? val : parseArrayValue(val, options, currentArrayLength);
       for (var i = chain2.length - 1; i >= 0; --i) {
         var obj;
-        var root = chain2[i];
-        if (root === "[]" && options.parseArrays) {
+        var root2 = chain2[i];
+        if (root2 === "[]" && options.parseArrays) {
           if (utils.isOverflow(leaf)) {
             obj = leaf;
           } else {
@@ -22601,10 +22632,10 @@ var require_parse = __commonJS({
           }
         } else {
           obj = options.plainObjects ? { __proto__: null } : {};
-          var cleanRoot = root.charAt(0) === "[" && root.charAt(root.length - 1) === "]" ? root.slice(1, -1) : root;
+          var cleanRoot = root2.charAt(0) === "[" && root2.charAt(root2.length - 1) === "]" ? root2.slice(1, -1) : root2;
           var decodedRoot = options.decodeDotInKeys ? cleanRoot.replace(/%2E/g, ".") : cleanRoot;
           var index = parseInt(decodedRoot, 10);
-          var isValidArrayIndex = !isNaN(index) && root !== decodedRoot && String(index) === decodedRoot && index >= 0 && options.parseArrays;
+          var isValidArrayIndex = !isNaN(index) && root2 !== decodedRoot && String(index) === decodedRoot && index >= 0 && options.parseArrays;
           if (!options.parseArrays && decodedRoot === "") {
             obj = { 0: leaf };
           } else if (isValidArrayIndex && index < options.arrayLimit) {
@@ -23398,7 +23429,7 @@ var require_path_to_regexp = __commonJS({
   "node_modules/path-to-regexp/index.js"(exports, module) {
     module.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path12, keys, options) {
+    function pathToRegexp(path13, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -23412,8 +23443,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path12 instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path12.source)) {
+      if (path13 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path13.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -23421,18 +23452,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path12;
+        return path13;
       }
-      if (Array.isArray(path12)) {
-        path12 = path12.map(function(value) {
+      if (Array.isArray(path13)) {
+        path13 = path13.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path12.join("|"), flags);
+        return new RegExp(path13.join("|"), flags);
       }
-      if (typeof path12 !== "string") {
+      if (typeof path13 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path12 = path12.replace(
+      path13 = path13.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format, key, capture, star, optional2, offset) {
           if (match[0] === "\\") {
@@ -23449,7 +23480,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format) {
             backtrack = "";
           } else {
-            backtrack += path12.slice(pos, offset);
+            backtrack += path13.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -23479,7 +23510,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path12)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path13)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i === keys.length || keys[keysOffset + i].offset > m.index) {
           keys.splice(keysOffset + i, 0, {
@@ -23491,13 +23522,13 @@ var require_path_to_regexp = __commonJS({
         }
         i++;
       }
-      path12 += strict ? "" : path12[path12.length - 1] === "/" ? "?" : "/?";
+      path13 += strict ? "" : path13[path13.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path12 += "$";
-      } else if (path12[path12.length - 1] !== "/") {
-        path12 += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path13 += "$";
+      } else if (path13[path13.length - 1] !== "/") {
+        path13 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path12, flags);
+      return new RegExp("^" + path13, flags);
     }
   }
 });
@@ -23510,19 +23541,19 @@ var require_layer = __commonJS({
     var debug = require_src()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module.exports = Layer;
-    function Layer(path12, options, fn) {
+    function Layer(path13, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path12, options, fn);
+        return new Layer(path13, options, fn);
       }
-      debug("new %o", path12);
+      debug("new %o", path13);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path12, this.keys = [], opts);
-      this.regexp.fast_star = path12 === "*";
-      this.regexp.fast_slash = path12 === "/" && opts.end === false;
+      this.regexp = pathRegexp(path13, this.keys = [], opts);
+      this.regexp.fast_star = path13 === "*";
+      this.regexp.fast_slash = path13 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error62, req, res, next2) {
       var fn = this.handle;
@@ -23546,20 +23577,20 @@ var require_layer = __commonJS({
         next2(err);
       }
     };
-    Layer.prototype.match = function match(path12) {
+    Layer.prototype.match = function match(path13) {
       var match2;
-      if (path12 != null) {
+      if (path13 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path12) };
-          this.path = path12;
+          this.params = { "0": decode_param(path13) };
+          this.path = path13;
           return true;
         }
-        match2 = this.regexp.exec(path12);
+        match2 = this.regexp.exec(path13);
       }
       if (!match2) {
         this.params = void 0;
@@ -23652,10 +23683,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString = Object.prototype.toString;
     module.exports = Route;
-    function Route(path12) {
-      this.path = path12;
+    function Route(path13) {
+      this.path = path13;
       this.stack = [];
-      debug("new %o", path12);
+      debug("new %o", path13);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -23867,8 +23898,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next2, err);
         }
-        var path12 = getPathname(req);
-        if (path12 == null) {
+        var path13 = getPathname(req);
+        if (path13 == null) {
           return done(layerError);
         }
         var layer;
@@ -23876,7 +23907,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path12);
+          match = matchLayer(layer, path13);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -23914,18 +23945,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next2);
           } else {
-            trim_prefix(layer, layerError, layerPath, path12);
+            trim_prefix(layer, layerError, layerPath, path13);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path12) {
+      function trim_prefix(layer, layerError, layerPath, path13) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path12.slice(0, layerPath.length)) {
+          if (layerPath !== path13.slice(0, layerPath.length)) {
             next2(layerError);
             return;
           }
-          var c = path12[layerPath.length];
+          var c = path13[layerPath.length];
           if (c && c !== "/" && c !== ".") return next2(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -24003,7 +24034,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path12 = "/";
+      var path13 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -24011,7 +24042,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path12 = fn;
+          path13 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -24023,8 +24054,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path12, fn.name || "<anonymous>");
-        var layer = new Layer(path12, {
+        debug("use %o %s", path13, fn.name || "<anonymous>");
+        var layer = new Layer(path13, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -24034,9 +24065,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path12) {
-      var route2 = new Route(path12);
-      var layer = new Layer(path12, {
+    proto.route = function route(path13) {
+      var route2 = new Route(path13);
+      var layer = new Layer(path13, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -24046,8 +24077,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path12) {
-        var route = this.route(path12);
+      proto[method] = function(path13) {
+        var route = this.route(path13);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -24083,9 +24114,9 @@ var require_router = __commonJS({
       }
       return toString.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path12) {
+    function matchLayer(layer, path13) {
       try {
-        return layer.match(path12);
+        return layer.match(path13);
       } catch (err) {
         return err;
       }
@@ -24203,13 +24234,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports, module) {
     "use strict";
     var debug = require_src()("express:view");
-    var path12 = __require("path");
-    var fs11 = __require("fs");
-    var dirname = path12.dirname;
-    var basename = path12.basename;
-    var extname = path12.extname;
-    var join = path12.join;
-    var resolve = path12.resolve;
+    var path13 = __require("path");
+    var fs12 = __require("fs");
+    var dirname = path13.dirname;
+    var basename = path13.basename;
+    var extname = path13.extname;
+    var join = path13.join;
+    var resolve = path13.resolve;
     module.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -24238,17 +24269,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path13;
+      var path14;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i = 0; i < roots.length && !path13; i++) {
-        var root = roots[i];
-        var loc = resolve(root, name);
+      for (var i = 0; i < roots.length && !path14; i++) {
+        var root2 = roots[i];
+        var loc = resolve(root2, name);
         var dir = dirname(loc);
         var file2 = basename(loc);
-        path13 = this.resolve(dir, file2);
+        path14 = this.resolve(dir, file2);
       }
-      return path13;
+      return path14;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -24256,21 +24287,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file2) {
       var ext = this.ext;
-      var path13 = join(dir, file2);
-      var stat = tryStat(path13);
+      var path14 = join(dir, file2);
+      var stat = tryStat(path14);
       if (stat && stat.isFile()) {
-        return path13;
+        return path14;
       }
-      path13 = join(dir, basename(file2, ext), "index" + ext);
-      stat = tryStat(path13);
+      path14 = join(dir, basename(file2, ext), "index" + ext);
+      stat = tryStat(path14);
       if (stat && stat.isFile()) {
-        return path13;
+        return path14;
       }
     };
-    function tryStat(path13) {
-      debug('stat "%s"', path13);
+    function tryStat(path14) {
+      debug('stat "%s"', path14);
       try {
-        return fs11.statSync(path13);
+        return fs12.statSync(path14);
       } catch (e) {
         return void 0;
       }
@@ -24624,8 +24655,8 @@ var require_types = __commonJS({
 // node_modules/mime/mime.js
 var require_mime = __commonJS({
   "node_modules/mime/mime.js"(exports, module) {
-    var path12 = __require("path");
-    var fs11 = __require("fs");
+    var path13 = __require("path");
+    var fs12 = __require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
       this.extensions = /* @__PURE__ */ Object.create(null);
@@ -24646,7 +24677,7 @@ var require_mime = __commonJS({
     };
     Mime.prototype.load = function(file2) {
       this._loading = file2;
-      var map2 = {}, content = fs11.readFileSync(file2, "ascii"), lines = content.split(/[\r\n]+/);
+      var map2 = {}, content = fs12.readFileSync(file2, "ascii"), lines = content.split(/[\r\n]+/);
       lines.forEach(function(line) {
         var fields = line.replace(/\s*#.*|^\s*|\s*$/g, "").split(/\s+/);
         map2[fields.shift()] = fields;
@@ -24654,8 +24685,8 @@ var require_mime = __commonJS({
       this.define(map2);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path13, fallback) {
-      var ext = path13.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path14, fallback) {
+      var ext = path14.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -24884,33 +24915,33 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs11 = __require("fs");
+    var fs12 = __require("fs");
     var mime = require_mime();
     var ms = require_ms2();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path12 = __require("path");
+    var path13 = __require("path");
     var statuses = require_statuses();
     var Stream = __require("stream");
     var util = __require("util");
-    var extname = path12.extname;
-    var join = path12.join;
-    var normalize = path12.normalize;
-    var resolve = path12.resolve;
-    var sep = path12.sep;
+    var extname = path13.extname;
+    var join = path13.join;
+    var normalize = path13.normalize;
+    var resolve = path13.resolve;
+    var sep = path13.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module.exports = send;
     module.exports.mime = mime;
-    function send(req, path13, options) {
-      return new SendStream(req, path13, options);
+    function send(req, path14, options) {
+      return new SendStream(req, path14, options);
     }
-    function SendStream(req, path13, options) {
+    function SendStream(req, path14, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path13;
+      this.path = path14;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -24956,8 +24987,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root(path13) {
-      this._root = resolve(String(path13));
+    SendStream.prototype.root = function root2(path14) {
+      this._root = resolve(String(path14));
       debug("root %s", this._root);
       return this;
     };
@@ -25070,10 +25101,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path13) {
+    SendStream.prototype.redirect = function redirect(path14) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path13);
+        this.emit("directory", res, path14);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -25091,44 +25122,44 @@ var require_send = __commonJS({
       res.end(doc);
     };
     SendStream.prototype.pipe = function pipe2(res) {
-      var root = this._root;
+      var root2 = this._root;
       this.res = res;
-      var path13 = decode3(this.path);
-      if (path13 === -1) {
+      var path14 = decode3(this.path);
+      if (path14 === -1) {
         this.error(400);
         return res;
       }
-      if (~path13.indexOf("\0")) {
+      if (~path14.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
-      if (root !== null) {
-        if (path13) {
-          path13 = normalize("." + sep + path13);
+      if (root2 !== null) {
+        if (path14) {
+          path14 = normalize("." + sep + path14);
         }
-        if (UP_PATH_REGEXP.test(path13)) {
-          debug('malicious path "%s"', path13);
+        if (UP_PATH_REGEXP.test(path14)) {
+          debug('malicious path "%s"', path14);
           this.error(403);
           return res;
         }
-        parts = path13.split(sep);
-        path13 = normalize(join(root, path13));
+        parts = path14.split(sep);
+        path14 = normalize(join(root2, path14));
       } else {
-        if (UP_PATH_REGEXP.test(path13)) {
-          debug('malicious path "%s"', path13);
+        if (UP_PATH_REGEXP.test(path14)) {
+          debug('malicious path "%s"', path14);
           this.error(403);
           return res;
         }
-        parts = normalize(path13).split(sep);
-        path13 = resolve(path13);
+        parts = normalize(path14).split(sep);
+        path14 = resolve(path14);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path13);
+        debug('%s dotfile "%s"', access, path14);
         switch (access) {
           case "allow":
             break;
@@ -25142,13 +25173,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path13);
+        this.sendIndex(path14);
         return res;
       }
-      this.sendFile(path13);
+      this.sendFile(path14);
       return res;
     };
-    SendStream.prototype.send = function send2(path13, stat) {
+    SendStream.prototype.send = function send2(path14, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -25160,9 +25191,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path13);
-      this.setHeader(path13, stat);
-      this.type(path13);
+      debug('pipe "%s"', path14);
+      this.setHeader(path14, stat);
+      this.type(path14);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -25211,28 +25242,28 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path13, opts);
+      this.stream(path14, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path13) {
+    SendStream.prototype.sendFile = function sendFile(path14) {
       var i = 0;
       var self = this;
-      debug('stat "%s"', path13);
-      fs11.stat(path13, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path13) && path13[path13.length - 1] !== sep) {
+      debug('stat "%s"', path14);
+      fs12.stat(path14, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path14) && path14[path14.length - 1] !== sep) {
           return next2(err);
         }
         if (err) return self.onStatError(err);
-        if (stat.isDirectory()) return self.redirect(path13);
-        self.emit("file", path13, stat);
-        self.send(path13, stat);
+        if (stat.isDirectory()) return self.redirect(path14);
+        self.emit("file", path14, stat);
+        self.send(path14, stat);
       });
       function next2(err) {
         if (self._extensions.length <= i) {
           return err ? self.onStatError(err) : self.error(404);
         }
-        var p = path13 + "." + self._extensions[i++];
+        var p = path14 + "." + self._extensions[i++];
         debug('stat "%s"', p);
-        fs11.stat(p, function(err2, stat) {
+        fs12.stat(p, function(err2, stat) {
           if (err2) return next2(err2);
           if (stat.isDirectory()) return next2();
           self.emit("file", p, stat);
@@ -25240,7 +25271,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path13) {
+    SendStream.prototype.sendIndex = function sendIndex(path14) {
       var i = -1;
       var self = this;
       function next2(err) {
@@ -25248,9 +25279,9 @@ var require_send = __commonJS({
           if (err) return self.onStatError(err);
           return self.error(404);
         }
-        var p = join(path13, self._index[i]);
+        var p = join(path14, self._index[i]);
         debug('stat "%s"', p);
-        fs11.stat(p, function(err2, stat) {
+        fs12.stat(p, function(err2, stat) {
           if (err2) return next2(err2);
           if (stat.isDirectory()) return next2();
           self.emit("file", p, stat);
@@ -25259,10 +25290,10 @@ var require_send = __commonJS({
       }
       next2();
     };
-    SendStream.prototype.stream = function stream(path13, options) {
+    SendStream.prototype.stream = function stream(path14, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs11.createReadStream(path13, options);
+      var stream2 = fs12.createReadStream(path14, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -25277,10 +25308,10 @@ var require_send = __commonJS({
         self.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path13) {
+    SendStream.prototype.type = function type(path14) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path13);
+      var type2 = mime.lookup(path14);
       if (!type2) {
         debug("no content-type");
         return;
@@ -25289,9 +25320,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path13, stat) {
+    SendStream.prototype.setHeader = function setHeader(path14, stat) {
       var res = this.res;
-      this.emit("headers", res, path13, stat);
+      this.emit("headers", res, path14, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -25350,9 +25381,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode3(path13) {
+    function decode3(path14) {
       try {
-        return decodeURIComponent(path13);
+        return decodeURIComponent(path14);
       } catch (err) {
         return -1;
       }
@@ -25468,13 +25499,13 @@ var require_forwarded = __commonJS({
 var require_ipaddr = __commonJS({
   "node_modules/ipaddr.js/lib/ipaddr.js"(exports, module) {
     (function() {
-      var expandIPv6, ipaddr, ipv4Part, ipv4Regexes, ipv6Part, ipv6Regexes, matchCIDR, root, zoneIndex;
+      var expandIPv6, ipaddr, ipv4Part, ipv4Regexes, ipv6Part, ipv6Regexes, matchCIDR, root2, zoneIndex;
       ipaddr = {};
-      root = this;
+      root2 = this;
       if (typeof module !== "undefined" && module !== null && module.exports) {
         module.exports = ipaddr;
       } else {
-        root["ipaddr"] = ipaddr;
+        root2["ipaddr"] = ipaddr;
       }
       matchCIDR = function(first, second, partSize, cidrBits) {
         var part, shift;
@@ -26277,10 +26308,10 @@ var require_utils4 = __commonJS({
     var querystring = __require("querystring");
     exports.etag = createETagGenerator({ weak: false });
     exports.wetag = createETagGenerator({ weak: true });
-    exports.isAbsolute = function(path12) {
-      if ("/" === path12[0]) return true;
-      if (":" === path12[1] && ("\\" === path12[2] || "/" === path12[2])) return true;
-      if ("\\\\" === path12.substring(0, 2)) return true;
+    exports.isAbsolute = function(path13) {
+      if ("/" === path13[0]) return true;
+      if (":" === path13[1] && ("\\" === path13[2] || "/" === path13[2])) return true;
+      if ("\\\\" === path13.substring(0, 2)) return true;
     };
     exports.flatten = deprecate.function(
       flatten,
@@ -26492,7 +26523,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path12 = "/";
+      var path13 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -26500,7 +26531,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path12 = fn;
+          path13 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -26511,12 +26542,12 @@ var require_application = __commonJS({
       var router = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path12, fn2);
+          return router.use(path13, fn2);
         }
-        debug(".use app under %s", path12);
-        fn2.mountpath = path12;
+        debug(".use app under %s", path13);
+        fn2.mountpath = path13;
         fn2.parent = this;
-        router.use(path12, function mounted_app(req, res, next2) {
+        router.use(path13, function mounted_app(req, res, next2) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -26528,9 +26559,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path12) {
+    app2.route = function route(path13) {
       this.lazyrouter();
-      return this._router.route(path12);
+      return this._router.route(path13);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -26581,7 +26612,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path12() {
+    app2.path = function path13() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -26597,19 +26628,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path12) {
+      app2[method] = function(path13) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path12);
+          return this.set(path13);
         }
         this.lazyrouter();
-        var route = this._router.route(path12);
+        var route = this._router.route(path13);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path12) {
+    app2.all = function all(path13) {
       this.lazyrouter();
-      var route = this._router.route(path12);
+      var route = this._router.route(path13);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
         route[methods[i]].apply(route, args);
@@ -27368,7 +27399,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname3) ? hostname3.split(".").reverse() : [hostname3];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path12() {
+    defineGetter(req, "path", function path13() {
       return parse3(this).pathname;
     });
     defineGetter(req, "hostname", function hostname3() {
@@ -27690,7 +27721,7 @@ var require_response = __commonJS({
     var http = __require("http");
     var isAbsolute = require_utils4().isAbsolute;
     var onFinished = require_on_finished();
-    var path12 = __require("path");
+    var path13 = __require("path");
     var statuses = require_statuses();
     var merge2 = require_utils_merge();
     var sign2 = require_cookie_signature().sign;
@@ -27699,9 +27730,9 @@ var require_response = __commonJS({
     var setCharset = require_utils4().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path12.extname;
+    var extname = path13.extname;
     var mime = send.mime;
-    var resolve = path12.resolve;
+    var resolve = path13.resolve;
     var vary = require_vary();
     var res = Object.create(http.ServerResponse.prototype);
     module.exports = res;
@@ -27878,26 +27909,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path13, options, callback) {
+    res.sendFile = function sendFile(path14, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next2 = req.next;
       var opts = options || {};
-      if (!path13) {
+      if (!path14) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path13 !== "string") {
+      if (typeof path14 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path13)) {
+      if (!opts.root && !isAbsolute(path14)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path13);
+      var pathname = encodeURI(path14);
       var file2 = send(req, pathname, opts);
       sendfile(res2, file2, opts, function(err) {
         if (done) return done(err);
@@ -27907,7 +27938,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path13, options, callback) {
+    res.sendfile = function(path14, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -27917,7 +27948,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file2 = send(req, path13, opts);
+      var file2 = send(req, path14, opts);
       sendfile(res2, file2, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next2();
@@ -27930,7 +27961,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path13, filename, options, callback) {
+    res.download = function download(path14, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -27947,7 +27978,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path13)
+        "Content-Disposition": contentDisposition(name || path14)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -27960,7 +27991,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path13) : path13;
+      var fullPath = !opts.root ? resolve(path14) : path14;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -28231,11 +28262,11 @@ var require_serve_static = __commonJS({
     var url3 = __require("url");
     module.exports = serveStatic;
     module.exports.mime = send.mime;
-    function serveStatic(root, options) {
-      if (!root) {
+    function serveStatic(root2, options) {
+      if (!root2) {
         throw new TypeError("root path required");
       }
-      if (typeof root !== "string") {
+      if (typeof root2 !== "string") {
         throw new TypeError("root path must be a string");
       }
       var opts = Object.create(options || null);
@@ -28246,7 +28277,7 @@ var require_serve_static = __commonJS({
         throw new TypeError("option setHeaders must be function");
       }
       opts.maxage = opts.maxage || opts.maxAge || 0;
-      opts.root = resolve(root);
+      opts.root = resolve(root2);
       var onDirectory = redirect ? createRedirectDirectoryListener() : createNotFoundDirectoryListener();
       return function serveStatic2(req, res, next2) {
         if (req.method !== "GET" && req.method !== "HEAD") {
@@ -28261,11 +28292,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path12 = parseUrl(req).pathname;
-        if (path12 === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path12 = "";
+        var path13 = parseUrl(req).pathname;
+        if (path13 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path13 = "";
         }
-        var stream = send(req, path12, opts);
+        var stream = send(req, path13, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -29942,10 +29973,10 @@ var require_segments = __commonJS({
       const segs = getSegmentsFromString(data, Utils.isKanjiModeEnabled());
       const nodes = buildNodes(segs);
       const graph = buildGraph(nodes, version2);
-      const path12 = dijkstra.find_path(graph.map, "start", "end");
+      const path13 = dijkstra.find_path(graph.map, "start", "end");
       const optimizedSegs = [];
-      for (let i = 1; i < path12.length - 1; i++) {
-        optimizedSegs.push(graph.table[path12[i]].node);
+      for (let i = 1; i < path13.length - 1; i++) {
+        optimizedSegs.push(graph.table[path13[i]].node);
       }
       return exports.fromArray(mergeSegments(optimizedSegs));
     };
@@ -32381,7 +32412,7 @@ var require_utils6 = __commonJS({
 // node_modules/qrcode/lib/renderer/png.js
 var require_png2 = __commonJS({
   "node_modules/qrcode/lib/renderer/png.js"(exports) {
-    var fs11 = __require("fs");
+    var fs12 = __require("fs");
     var PNG = require_png().PNG;
     var Utils = require_utils6();
     exports.render = function render(qrData, options) {
@@ -32422,7 +32453,7 @@ var require_png2 = __commonJS({
       });
       png.pack();
     };
-    exports.renderToFile = function renderToFile(path12, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path13, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
@@ -32433,7 +32464,7 @@ var require_png2 = __commonJS({
         called = true;
         cb.apply(null, args);
       };
-      const stream = fs11.createWriteStream(path12);
+      const stream = fs12.createWriteStream(path13);
       stream.on("error", done);
       stream.on("close", done);
       exports.renderToFileStream(stream, qrData, options);
@@ -32495,14 +32526,14 @@ var require_utf8 = __commonJS({
       }
       return output2;
     };
-    exports.renderToFile = function renderToFile(path12, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path13, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
       }
-      const fs11 = __require("fs");
+      const fs12 = __require("fs");
       const utf8 = exports.render(qrData, options);
-      fs11.writeFile(path12, utf8, cb);
+      fs12.writeFile(path13, utf8, cb);
     };
   }
 });
@@ -32623,7 +32654,7 @@ var require_svg_tag = __commonJS({
       return str3;
     }
     function qrToPath(data, size, margin) {
-      let path12 = "";
+      let path13 = "";
       let moveBy = 0;
       let newRow = false;
       let lineLength = 0;
@@ -32634,19 +32665,19 @@ var require_svg_tag = __commonJS({
         if (data[i]) {
           lineLength++;
           if (!(i > 0 && col > 0 && data[i - 1])) {
-            path12 += newRow ? svgCmd("M", col + margin, 0.5 + row + margin) : svgCmd("m", moveBy, 0);
+            path13 += newRow ? svgCmd("M", col + margin, 0.5 + row + margin) : svgCmd("m", moveBy, 0);
             moveBy = 0;
             newRow = false;
           }
           if (!(col + 1 < size && data[i + 1])) {
-            path12 += svgCmd("h", lineLength);
+            path13 += svgCmd("h", lineLength);
             lineLength = 0;
           }
         } else {
           moveBy++;
         }
       }
-      return path12;
+      return path13;
     }
     exports.render = function render(qrData, options, cb) {
       const opts = Utils.getOptions(options);
@@ -32654,10 +32685,10 @@ var require_svg_tag = __commonJS({
       const data = qrData.modules.data;
       const qrcodesize = size + opts.margin * 2;
       const bg = !opts.color.light.a ? "" : "<path " + getColorAttrib(opts.color.light, "fill") + ' d="M0 0h' + qrcodesize + "v" + qrcodesize + 'H0z"/>';
-      const path12 = "<path " + getColorAttrib(opts.color.dark, "stroke") + ' d="' + qrToPath(data, size, opts.margin) + '"/>';
+      const path13 = "<path " + getColorAttrib(opts.color.dark, "stroke") + ' d="' + qrToPath(data, size, opts.margin) + '"/>';
       const viewBox = 'viewBox="0 0 ' + qrcodesize + " " + qrcodesize + '"';
       const width = !opts.width ? "" : 'width="' + opts.width + '" height="' + opts.width + '" ';
-      const svgTag = '<svg xmlns="http://www.w3.org/2000/svg" ' + width + viewBox + ' shape-rendering="crispEdges">' + bg + path12 + "</svg>\n";
+      const svgTag = '<svg xmlns="http://www.w3.org/2000/svg" ' + width + viewBox + ' shape-rendering="crispEdges">' + bg + path13 + "</svg>\n";
       if (typeof cb === "function") {
         cb(null, svgTag);
       }
@@ -32671,15 +32702,15 @@ var require_svg = __commonJS({
   "node_modules/qrcode/lib/renderer/svg.js"(exports) {
     var svgTagRenderer = require_svg_tag();
     exports.render = svgTagRenderer.render;
-    exports.renderToFile = function renderToFile(path12, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path13, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
       }
-      const fs11 = __require("fs");
+      const fs12 = __require("fs");
       const svgTag = exports.render(qrData, options);
       const xmlStr = '<?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">' + svgTag;
-      fs11.writeFile(path12, xmlStr, cb);
+      fs12.writeFile(path13, xmlStr, cb);
     };
   }
 });
@@ -32837,8 +32868,8 @@ var require_server = __commonJS({
         cb
       };
     }
-    function getTypeFromFilename(path12) {
-      return path12.slice((path12.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
+    function getTypeFromFilename(path13) {
+      return path13.slice((path13.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
     }
     function getRendererFromType(type) {
       switch (type) {
@@ -32902,17 +32933,17 @@ var require_server = __commonJS({
       const renderer = getRendererFromType(params.opts.type);
       return render(renderer.renderToBuffer, text, params);
     };
-    exports.toFile = function toFile(path12, text, opts, cb) {
-      if (typeof path12 !== "string" || !(typeof text === "string" || typeof text === "object")) {
+    exports.toFile = function toFile(path13, text, opts, cb) {
+      if (typeof path13 !== "string" || !(typeof text === "string" || typeof text === "object")) {
         throw new Error("Invalid argument");
       }
       if (arguments.length < 3 && !canPromise()) {
         throw new Error("Too few arguments provided");
       }
       const params = checkParams(text, opts, cb);
-      const type = params.opts.type || getTypeFromFilename(path12);
+      const type = params.opts.type || getTypeFromFilename(path13);
       const renderer = getRendererFromType(type);
-      const renderToFile = renderer.renderToFile.bind(null, path12);
+      const renderToFile = renderer.renderToFile.bind(null, path13);
       return render(renderToFile, text, params);
     };
     exports.toFileStream = function toFileStream(stream, text, opts) {
@@ -43143,7 +43174,7 @@ if (process.env.DATABASE_URL) {
   }
 }
 process.env.DIST_DIR ||= path.resolve(process.cwd(), "dist");
-var work = "/tmp/genz";
+var work = process.env.GENZ_WORKDIR || "/tmp/genz";
 fs.mkdirSync(path.join(work, "data"), { recursive: true });
 process.chdir(work);
 
@@ -43968,10 +43999,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path12) {
-  if (!path12)
+function getElementAtPath(obj, path13) {
+  if (!path13)
     return obj;
-  return path12.reduce((acc, key) => acc?.[key], obj);
+  return path13.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -44311,11 +44342,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path12, issues) {
+function prefixIssues(path13, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path12);
+    iss.path.unshift(path13);
     return iss;
   });
 }
@@ -44777,16 +44808,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path12 = []) => {
+  const processError = (error63, path13 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else {
-        const fullpath = [...path12, ...issue2.path];
+        const fullpath = [...path13, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -44825,17 +44856,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path12 = []) => {
+  const processError = (error63, path13 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else {
-        const fullpath = [...path12, ...issue2.path];
+        const fullpath = [...path13, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -44874,8 +44905,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path12 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path12) {
+  const path13 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path13) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -52505,9 +52536,9 @@ var capitalizeFirstCharacter = (text) => {
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
 function getUnitTypeFromNumber(number4) {
-  const abs = Math.abs(number4);
-  const last = abs % 10;
-  const last2 = abs % 100;
+  const abs2 = Math.abs(number4);
+  const last = abs2 % 10;
+  const last2 = abs2 % 100;
   if (last2 >= 11 && last2 <= 19 || last === 0)
     return "many";
   if (last === 1)
@@ -58867,8 +58898,8 @@ function encodeJSONPointerSegment(segment) {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 function extractDefs(ctx3, schema) {
-  const root = ctx3.seen.get(schema);
-  if (!root)
+  const root2 = ctx3.seen.get(schema);
+  if (!root2)
     throw new Error("Unprocessed schema. This is a bug in Zod.");
   if (ctx3.external && ctx3.sharedDefsExtractedFor === ctx3.external)
     return;
@@ -58897,7 +58928,7 @@ function extractDefs(ctx3, schema) {
     }
     const uriPrefix = `#`;
     const defUriPrefix = `${uriPrefix}/${defsSegment}/`;
-    if (entry[1] === root && !entry[1].schema.id) {
+    if (entry[1] === root2 && !entry[1].schema.id) {
       return { ref: uriPrefix };
     }
     const defId = entry[1].schema.id ?? `__schema${ctx3.counter++}`;
@@ -59068,8 +59099,8 @@ function foldIntersection(json2) {
   assignProps(json2, folded);
 }
 function finalize(ctx3, schema) {
-  const root = ctx3.seen.get(schema);
-  if (!root)
+  const root2 = ctx3.seen.get(schema);
+  if (!root2)
     throw new Error("Unprocessed schema. This is a bug in Zod.");
   const flattenRef = (zodSchema) => {
     const seen2 = ctx3.seen.get(zodSchema);
@@ -59180,7 +59211,7 @@ function finalize(ctx3, schema) {
       throw new Error("Schema is missing an `id` property");
     result.$id = ctx3.external.uri(id);
   }
-  assignProps(result, root.defId ? root.schema : root.def ?? root.schema);
+  assignProps(result, root2.defId ? root2.schema : root2.def ?? root2.schema);
   const rootMetaId = ctx3.metadataRegistry.get(schema)?.id;
   if (rootMetaId !== void 0 && result.id === rootMetaId)
     delete result.id;
@@ -62013,13 +62044,13 @@ function resolveRef(ref, ctx3) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path12 = ref.slice(1).split("/").filter(Boolean);
-  if (path12.length === 0) {
+  const path13 = ref.slice(1).split("/").filter(Boolean);
+  if (path13.length === 0) {
     return ctx3.rootSchema;
   }
   const defsKey = ctx3.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path12[0] === defsKey) {
-    const key = path12[1] === void 0 ? void 0 : decodeJSONPointerSegment(path12[1]);
+  if (path13[0] === defsKey) {
+    const key = path13[1] === void 0 ? void 0 : decodeJSONPointerSegment(path13[1]);
     if (!key || !ctx3.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -63907,9 +63938,9 @@ function buildConnectorDemo(existing = [], now = /* @__PURE__ */ new Date()) {
     const assigned = !["SUBMITTED", "DUPLICATE", "REJECTED"].includes(status);
     const events = [{ at: created, byId: p.id, byName: p.name, byRole: "GENZ_CONNECTOR", action: "SUBMITTED" }];
     if (assigned) events.push({ at: iso(59 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "ASSIGNED", note: `Assigned to ${worker.name}` });
-    const path12 = ["CONTACTED", "QUALIFIED", "IN_PROGRESS", "CLOSED_WON"];
+    const path13 = ["CONTACTED", "QUALIFIED", "IN_PROGRESS", "CLOSED_WON"];
     const upto = status === "CLOSED_WON" ? 4 : { CONTACTED: 1, QUALIFIED: 2, IN_PROGRESS: 3 }[status] ?? 0;
-    for (let k = 0; k < upto; k++) events.push({ at: iso(58 - i + k), byId: worker.id, byName: worker.name, byRole: worker.role, action: `STATUS:${path12[k]}` });
+    for (let k = 0; k < upto; k++) events.push({ at: iso(58 - i + k), byId: worker.id, byName: worker.name, byRole: worker.role, action: `STATUS:${path13[k]}` });
     if (status === "CLOSED_LOST") events.push({ at: iso(40 - i % 10), byId: worker.id, byName: worker.name, byRole: worker.role, action: "STATUS:CLOSED_LOST", note: "Customer postponed the decision" });
     if (status === "DUPLICATE") events.push({ at: iso(55 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "STATUS:DUPLICATE", note: "Already registered by another partner" });
     if (status === "REJECTED") events.push({ at: iso(55 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "STATUS:REJECTED", note: "Customer could not be reached / not interested" });
@@ -64692,8 +64723,8 @@ function seedDemoBulk(s, sharedPasswordHash) {
   const now = Date.now();
   const ago = (d, h = 0) => new Date(now - d * DAY - h * 36e5).toISOString();
   const ahead = (d, h = 0) => new Date(now + d * DAY + h * 36e5).toISOString();
-  const sha4 = (v) => crypto4.createHash("sha256").update(v).digest("hex");
-  const tok2 = (n2 = 12) => sha4(String(r())).slice(0, n2);
+  const sha5 = (v) => crypto4.createHash("sha256").update(v).digest("hex");
+  const tok2 = (n2 = 12) => sha5(String(r())).slice(0, n2);
   const pad3 = (n2, w = 3) => String(n2).padStart(w, "0");
   const lakh = (n2) => Math.round(n2 / 1e4) * 1e4;
   const S = s;
@@ -64867,7 +64898,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
       ownerPhone: owner.phone,
       listingStatus: i === 43 || i === 44 ? "pending_verification" : "active",
       verificationStatus: i === 43 || i === 44 ? "PENDING" : "VERIFIED",
-      duplicateHash: sha4(`dmo-${i}`),
+      duplicateHash: sha5(`dmo-${i}`),
       priceHistory: [{ price: Math.round(asking * 1.05), changedAt: ago(created), reason: "Initial listing" }, ...i % 4 === 0 ? [{ price: asking, changedAt: ago(Math.max(1, created - 10)), reason: "Owner revised the price" }] : []],
       images: IMGS.length ? [IMGS[i % IMGS.length], IMGS[(i + 3) % IMGS.length]] : [],
       documents: [],
@@ -64985,7 +65016,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
       ownerRemunerationConfirmed: six >= 2,
       ownerProtectionExpiresAt: ahead(i === 3 ? 4 : int2(12, 45)),
       siteVisitsCount: six >= 2 ? i % 2 + 1 : 0,
-      agreementHash: sha4(id),
+      agreementHash: sha5(id),
       dealValue: six >= 4 ? base.askingPrice : void 0,
       settlementStatus: stage === "Settled" ? "PAID" : stage === "Handover" ? "DUE" : stage === "Disputed" ? "DISPUTED" : six >= 4 ? "AGREED" : "PROPOSED",
       notes: `${base.title}: ${req.customerName} (${req.purpose}). Demo deal room.`,
@@ -65058,12 +65089,12 @@ function seedDemoBulk(s, sharedPasswordHash) {
       a.paymentTriggers = a.paymentTriggers.map((tr, j) => ({ ...tr, amount: Math.round(fee * tr.percentage / 100), isMet: j < met, confirmedAt: j < met ? ago(int2(1, 10)) : void 0 }));
       a.requiredApprovals = people.map((p, j) => {
         const signed = !pending || j === 1;
-        return signed ? { userId: p.id, userName: p.name, role: "BROKER", hasAccepted: true, acceptedAt: ago(int2(3, 12)), signatureAuditTrail: { signerName: p.name, signerEmail: p.email, ipAddress: "103.88.23.x (demo)", authMethod: "COMPLIANT_E_SIGN_PKEY", timestamp: ago(int2(3, 12)), cryptoHash: sha4(`${id}-${p.id}`) } } : { userId: p.id, userName: p.name, role: "BROKER", hasAccepted: false };
+        return signed ? { userId: p.id, userName: p.name, role: "BROKER", hasAccepted: true, acceptedAt: ago(int2(3, 12)), signatureAuditTrail: { signerName: p.name, signerEmail: p.email, ipAddress: "103.88.23.x (demo)", authMethod: "COMPLIANT_E_SIGN_PKEY", timestamp: ago(int2(3, 12)), cryptoHash: sha5(`${id}-${p.id}`) } } : { userId: p.id, userName: p.name, role: "BROKER", hasAccepted: false };
       });
       a.proposedBy = closing.id;
       a.proposedByName = closing.name;
       a.proposalReason = `Co-brokerage on ${base.title} (demo).`;
-      a.cryptoSealHash = sha4(a.id);
+      a.cryptoSealHash = sha5(a.id);
       a.createdAt = ago(int2(8, 14));
       a.updatedAt = ago(int2(0, 7));
       s.commissionAgreements.push(a);
@@ -65121,7 +65152,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
       agreedCommissionPct: basis === "PERCENTAGE" ? 2 : 0,
       ...basis === "FIXED_FEE" ? { fixedFeeAmount: Math.max(25e3, lakh(p.askingPrice * 0.015)) } : {},
       protectionPeriodDays: period,
-      agreementHash: sha4(`om-${i}`),
+      agreementHash: sha5(`om-${i}`),
       status,
       ownerSignedAt: ago(signed),
       ...status === "ACTIVE" || status === "WITHDRAWN" ? { brokerSignedAt: ago(signed, -2) } : {},
@@ -65350,7 +65381,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
       note: pick2(["Budget flexible, wants east facing.", "Wife ki pasand final hogi.", "Office ke paas chahiye.", ""]),
       phoneKey: hm2("cr-phone", phone),
       phoneLast4: phone.slice(-4),
-      tokenHash: sha4(`room-${i}-${tok2()}`),
+      tokenHash: sha5(`room-${i}-${tok2()}`),
       sessVersion: 1,
       status: i === 13 ? "CLOSED" : "ACTIVE",
       createdAt: ago(opened),
@@ -73733,9 +73764,9 @@ function createPropDocsRouter() {
     }
     log(d.id, u.id, dl ? "DOWNLOAD" : "VIEW", req.ip || "", a.via === "ADMIN" ? "GENZ admin" : void 0);
     db.save();
-    const safe = d.fileName.replace(/[^\w.\- ]+/g, "_");
+    const safe2 = d.fileName.replace(/[^\w.\- ]+/g, "_");
     res.setHeader("Content-Type", d.mime);
-    res.setHeader("Content-Disposition", `${dl ? "attachment" : "inline"}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(d.fileName)}`);
+    res.setHeader("Content-Disposition", `${dl ? "attachment" : "inline"}; filename="${safe2}"; filename*=UTF-8''${encodeURIComponent(d.fileName)}`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Content-Length", String(buf.length));
@@ -74809,9 +74840,9 @@ function createIdReviewRouter() {
       const who = d.subjectUserId ? nameOf2(s, d.subjectUserId) : `request ${d.applicationId}`;
       db.appendAuditEvent(u.id, u.role, "VERIFICATION", d.subjectUserId || d.applicationId || d.id, "IDDOC_VIEWED", `${u.name} opened the ${d.kind === "PAN" ? "PAN card" : "masked Aadhaar"} copy of ${who}`);
     }
-    const safe = d.fileName.replace(/[^\w.\- ]+/g, "_");
+    const safe2 = d.fileName.replace(/[^\w.\- ]+/g, "_");
     res.setHeader("Content-Type", d.mime);
-    res.setHeader("Content-Disposition", `inline; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(d.fileName)}`);
+    res.setHeader("Content-Disposition", `inline; filename="${safe2}"; filename*=UTF-8''${encodeURIComponent(d.fileName)}`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Content-Length", String(buf.length));
@@ -80274,29 +80305,29 @@ var ring = { serverErrors: [], slow: [], client: [] };
 var counts2 = { serverErrors: 0, slow: 0, client: 0, rejections: 0, requests: 0 };
 var startedAt = (/* @__PURE__ */ new Date()).toISOString();
 var SLOW_MS = Number(process.env.SLOW_REQUEST_MS || 1500);
-function push2(list, path12, detail2, ms) {
-  const hit2 = list.find((e) => e.path === path12 && e.detail === detail2);
+function push2(list, path13, detail2, ms) {
+  const hit2 = list.find((e) => e.path === path13 && e.detail === detail2);
   if (hit2) {
     hit2.n++;
     hit2.at = (/* @__PURE__ */ new Date()).toISOString();
     if (ms && (!hit2.ms || ms > hit2.ms)) hit2.ms = ms;
     return;
   }
-  list.unshift({ at: (/* @__PURE__ */ new Date()).toISOString(), path: path12, detail: detail2, ms, n: 1 });
+  list.unshift({ at: (/* @__PURE__ */ new Date()).toISOString(), path: path13, detail: detail2, ms, n: 1 });
   if (list.length > MAX) list.length = MAX;
 }
 var pathKey = (p) => p.replace(/\/[A-Z]{2,}[-_][A-Z0-9_-]+/g, "/:id").replace(/\/\d{3,}/g, "/:n").slice(0, 120);
-function noteRequest(path12, status, ms) {
+function noteRequest(path13, status, ms) {
   counts2.requests++;
   if (ms >= SLOW_MS) {
     counts2.slow++;
-    push2(ring.slow, pathKey(path12), `${status}`, ms);
+    push2(ring.slow, pathKey(path13), `${status}`, ms);
   }
 }
-function noteServerError(path12, err) {
+function noteServerError(path13, err) {
   counts2.serverErrors++;
   const msg = err instanceof Error ? err.message : String(err);
-  push2(ring.serverErrors, pathKey(path12), msg.replace(/\b\d{10,}\b/g, "[n]").slice(0, 300));
+  push2(ring.serverErrors, pathKey(path13), msg.replace(/\b\d{10,}\b/g, "[n]").slice(0, 300));
 }
 function noteRejection(err) {
   counts2.rejections++;
@@ -91659,6 +91690,114 @@ var server_default = app;
 
 // server/sharedSync.ts
 init_pgstore();
+
+// server/fileSync.ts
+init_pgstore();
+import fs11 from "node:fs";
+import path12 from "node:path";
+import { createHash as createHash2 } from "node:crypto";
+var MAX_FILE = 12 * 1024 * 1024;
+var root = () => path12.resolve(process.cwd(), "data");
+var sha4 = (b) => createHash2("sha256").update(b).digest("hex");
+function walk() {
+  const out = [];
+  const base = root();
+  let dirs = [];
+  try {
+    dirs = fs11.readdirSync(base, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  const rec2 = (dir, rel) => {
+    let ents = [];
+    try {
+      ents = fs11.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of ents) {
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) rec2(path12.join(dir, e.name), r);
+      else if (e.isFile() && !e.name.endsWith(".tmp")) out.push(r);
+    }
+  };
+  for (const d of dirs) if (d.isDirectory()) rec2(path12.join(base, d.name), d.name);
+  return out;
+}
+var abs = (rel) => path12.join(root(), ...rel.split("/"));
+var safe = (rel) => !!rel && !rel.split("/").some((p) => p === ".." || p === "" || p === ".") && !path12.isAbsolute(rel);
+function createFileSync() {
+  const known = /* @__PURE__ */ new Map();
+  let lastSig = null;
+  async function pullFiles2() {
+    const s = pgStore;
+    if (!s) return;
+    const sig = await s.filesSignature();
+    if (sig === lastSig) return;
+    const rows = await s.filesList();
+    const inDb = /* @__PURE__ */ new Set();
+    for (const r of rows) {
+      if (!safe(r.path)) continue;
+      if (r.deleted) {
+        if (known.has(r.path) || fs11.existsSync(abs(r.path))) {
+          try {
+            fs11.rmSync(abs(r.path), { force: true });
+          } catch {
+          }
+          known.delete(r.path);
+        }
+        continue;
+      }
+      inDb.add(r.path);
+      if (known.get(r.path)?.sha === r.sha && fs11.existsSync(abs(r.path))) continue;
+      const buf = await s.fileGet(r.path);
+      if (!buf) continue;
+      fs11.mkdirSync(path12.dirname(abs(r.path)), { recursive: true });
+      fs11.writeFileSync(abs(r.path), buf);
+      const st20 = fs11.statSync(abs(r.path));
+      known.set(r.path, { sha: r.sha, mtimeMs: st20.mtimeMs, size: st20.size });
+    }
+    lastSig = sig;
+  }
+  async function pushFiles2() {
+    const s = pgStore;
+    if (!s) return;
+    let changed = false;
+    const here = /* @__PURE__ */ new Set();
+    for (const rel of walk()) {
+      here.add(rel);
+      let st20;
+      try {
+        st20 = fs11.statSync(abs(rel));
+      } catch {
+        continue;
+      }
+      const k = known.get(rel);
+      if (k && k.mtimeMs === st20.mtimeMs && k.size === st20.size) continue;
+      if (st20.size > MAX_FILE) continue;
+      const buf = fs11.readFileSync(abs(rel));
+      const h = sha4(buf);
+      if (k?.sha !== h) {
+        await s.filePut(rel, h, buf);
+        changed = true;
+      }
+      known.set(rel, { sha: h, mtimeMs: st20.mtimeMs, size: st20.size });
+    }
+    for (const rel of [...known.keys()]) {
+      if (here.has(rel)) continue;
+      await s.fileDel(rel);
+      known.delete(rel);
+      changed = true;
+    }
+    if (changed) lastSig = null;
+  }
+  return { pullFiles: pullFiles2, pushFiles: pushFiles2 };
+}
+var main = createFileSync();
+var pullFiles = main.pullFiles;
+var pushFiles = main.pushFiles;
+
+// server/sharedSync.ts
 var sharedMode = () => !!pgStore?.shared;
 var chain = Promise.resolve();
 var MAX_MS = 6e4;
@@ -91670,9 +91809,10 @@ async function refresh2() {
   if (next2) db.replaceState(next2);
   s.rev = rev;
 }
-async function persist() {
+async function persist(writes) {
   const s = pgStore;
   if (s.isDirty) await s.commitShared(db.getState());
+  if (writes) await pushFiles();
 }
 function handleShared(req, res, app2) {
   const job = chain.then(() => new Promise((resolve) => {
@@ -91693,12 +91833,18 @@ function handleShared(req, res, app2) {
       } catch (e) {
         console.error("[SHARED] reload failed:", e?.message || e);
       }
+      try {
+        await pullFiles();
+      } catch (e) {
+        console.error("[SHARED] file pull failed:", e?.message || e);
+      }
+      const writes = !["GET", "HEAD", "OPTIONS"].includes(req.method || "GET");
       const end = res.end.bind(res);
       let held = false;
       res.end = (...args) => {
         if (held) return res;
         held = true;
-        persist().catch((e) => console.error("[SHARED] save failed:", e?.message || e)).finally(() => {
+        persist(writes).catch((e) => console.error("[SHARED] save failed:", e?.message || e)).finally(() => {
           end(...args);
         });
         return res;

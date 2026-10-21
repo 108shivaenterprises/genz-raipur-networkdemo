@@ -11,6 +11,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { db } from './db.js';
 import { pgStore } from './pgstore.js';
+import { pullFiles, pushFiles } from './fileSync.js';
 
 export const sharedMode = () => !!pgStore?.shared;
 
@@ -26,9 +27,10 @@ async function refresh() {
   s.rev = rev;
 }
 
-async function persist() {
+async function persist(writes: boolean) {
   const s = pgStore!;
   if (s.isDirty) await s.commitShared(db.getState() as any);
+  if (writes) await pushFiles();
 }
 
 export function handleShared(req: IncomingMessage, res: ServerResponse, app: (a: IncomingMessage, b: ServerResponse) => void): Promise<void> {
@@ -39,12 +41,14 @@ export function handleShared(req: IncomingMessage, res: ServerResponse, app: (a:
     res.on('finish', finish); res.on('close', finish);
     (async () => {
       try { await refresh(); } catch (e: any) { console.error('[SHARED] reload failed:', e?.message || e); }
+      try { await pullFiles(); } catch (e: any) { console.error('[SHARED] file pull failed:', e?.message || e); }
+      const writes = !['GET', 'HEAD', 'OPTIONS'].includes(req.method || 'GET');
       const end = res.end.bind(res) as (...a: any[]) => ServerResponse;
       let held = false;
       (res as any).end = (...args: any[]) => {
         if (held) return res;
         held = true;
-        persist()
+        persist(writes)
           .catch((e: any) => console.error('[SHARED] save failed:', e?.message || e))
           .finally(() => { end(...args); });
         return res;
