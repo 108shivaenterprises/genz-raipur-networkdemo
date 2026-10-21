@@ -310,6 +310,9 @@ export interface CollaborationOffer {
   receivingBrokerId: string;
   proposedIntroducingShare: number;
   proposedClosingShare: number;
+  /** v41 — SPLIT (default) or OWN_SIDE (each broker keeps his own client's fee) */
+  feeMode?: 'SPLIT' | 'OWN_SIDE';
+  proposerSide?: 'SELLER' | 'BUYER';
   terms: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED';
   createdAt: string;
@@ -343,10 +346,30 @@ export interface DealRoom {
   /** v21: true when the viewer is a GENZ admin and no dispute is open — the server then sends only the summary */
   summaryOnly?: boolean;
   disputeId?: string;
+  /** v41 — OWN_SIDE: each broker keeps his own client's fee. The server sends a broker only HIS side (see `side`). */
+  feeMode?: 'SPLIT' | 'OWN_SIDE';
+  side?: DealSideView;
   settlementStatus: 'PROPOSED' | 'AGREED' | 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'DISPUTED';
   notes: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** v41 — what one broker may know about an own-side deal (the other broker's fee and receipts are never in here) */
+export interface DealSideView {
+  mySide?: 'SELLER' | 'BUYER';
+  myFee?: number;
+  myFeeNote?: string;
+  myReceived: number;
+  myReceipts: { id: string; amount: number; ref: string; paidOn: string }[];
+  signedByMe: boolean;
+  signedByOther: boolean;
+  /** the other broker has written down his own fee / got it (true/false only — no amount) */
+  otherHasFee: boolean;
+  otherDone: boolean;
+  myDone: boolean;
+  ready: boolean;
+  undertaking: { en: string; hi: string };
 }
 
 export interface SiteVisit {

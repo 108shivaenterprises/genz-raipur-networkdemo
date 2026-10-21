@@ -62,6 +62,7 @@ import { PropertyMediaAsset, MediaShareGrant, DealMessage } from '../types/index
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { DealPipeline, StageStepper, NextSteps, MandatesBoard, DealCard } from './DealHub.js';
 import { ShareToRoom } from './ShareToRoom.js';
+import { SideFeePanel } from './SideFeePanel.js';
 import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature } from 'lucide-react';
 
 interface DealRoomsViewProps {
@@ -185,6 +186,18 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     notes: string;
   } | null>(null);
   const [isSubmittingCounter, setIsSubmittingCounter] = useState(false);
+  // v41: counter a % split with "apna-apna side" (each broker keeps his own client's fee)
+  const [ownCounter, setOwnCounter] = useState<{ offer: CollaborationOffer; side: 'SELLER' | 'BUYER' } | null>(null);
+  const sendOwnSideCounter = async () => {
+    if (!ownCounter) return;
+    setIsSubmittingCounter(true);
+    try {
+      const res = await api.respondOffer(ownCounter.offer.id, { decision: 'COUNTER', counterFeeMode: 'OWN_SIDE', mySide: ownCounter.side });
+      if (res.success) { alert(tx('Counter-proposal sent.', 'काउंटर-प्रस्ताव भेज दिया गया।')); setOwnCounter(null); onRefreshOffers?.(); }
+    } catch (err: any) {
+      alert(err.message || tx('Could not send the counter offer', 'काउंटर ऑफ़र भेजा नहीं जा सका'));
+    } finally { setIsSubmittingCounter(false); }
+  };
 
   // Filter offers for current user
   const incomingOffers = useMemo(() => {
@@ -966,7 +979,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           {participants?.introducingBroker?.brokerId || '—'}
                         </div>
                       </div>
-                      {!hideCommercials && (
+                      {!hideCommercials && activeDeal.feeMode !== 'OWN_SIDE' && (
                         <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-slate-100 flex items-center justify-between">
                           <span>{tx('Entitlement:', 'हिस्सा:')}</span>
                           <span>{activeDeal.introducingBrokerSharePct}%</span>
@@ -991,7 +1004,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           {participants?.closingBroker?.brokerId || '—'}
                         </div>
                       </div>
-                      {!hideCommercials && (
+                      {!hideCommercials && activeDeal.feeMode !== 'OWN_SIDE' && (
                         <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-slate-100 flex items-center justify-between">
                           <span>{tx('Entitlement:', 'हिस्सा:')}</span>
                           <span>{activeDeal.closingBrokerSharePct}%</span>
@@ -1957,7 +1970,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               )}
 
               {/* TAB 3: COMMISSION AGREEMENT (MODULE A2 & A3) */}
-              {activeSubTab === 'commission_agreement' && (
+              {activeSubTab === 'commission_agreement' && activeDeal?.feeMode === 'OWN_SIDE' && isDealBrokerViewer && (
+                <SideFeePanel dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />
+              )}
+              {activeSubTab === 'commission_agreement' && activeDeal?.feeMode !== 'OWN_SIDE' && (
                 <div className="space-y-5">
                   {/* Agreement Version Selector & Actions Toolbar */}
                   <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2547,7 +2563,20 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           )}
                         </div>
 
+                        {/* v41: apna-apna side — nothing is shared */}
+                        {offer.feeMode === 'OWN_SIDE' && (
+                          <div data-testid="offer-own-side" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 space-y-1">
+                            <div className="font-bold">{tx('Apna-apna side — no split', 'अपना-अपना साइड — कोई बँटवारा नहीं')}</div>
+                            <p>
+                              {tx('He acts for the', 'वह इस तरफ़ है')}: <b>{offer.proposerSide === 'SELLER' ? tx('Seller', 'विक्रेता') : tx('Buyer', 'खरीदार')}</b>
+                              {' · '}{tx('You act for the', 'आप इस तरफ़ होंगे')}: <b>{offer.proposerSide === 'SELLER' ? tx('Buyer', 'खरीदार') : tx('Seller', 'विक्रेता')}</b>
+                            </p>
+                            <p>{tx('Each of you takes brokerage only from your own client. Neither fee is shown to the other.', 'आप दोनों सिर्फ़ अपने-अपने क्लाइंट से ब्रोकरेज लेंगे। किसी की फ़ीस दूसरे को नहीं दिखेगी।')}</p>
+                          </div>
+                        )}
+
                         {/* Proposed Commission Split Display */}
+                        {offer.feeMode !== 'OWN_SIDE' && (
                         <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-semibold text-slate-700">{tx('Proposed Commission Split', 'प्रस्तावित कमीशन स्प्लिट')}</span>
@@ -2574,6 +2603,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             <span>{tx('Closing Broker', 'क्लोज़िंग ब्रोकर')} ({offer.proposedClosingShare}%)</span>
                           </div>
                         </div>
+                        )}
 
                         {/* Terms & Notes */}
                         {offer.terms && (
@@ -2619,8 +2649,19 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               disabled={respondingOfferId === offer.id}
                               className="py-2 px-3 rounded-lg border border-blue-300 bg-blue-50/70 hover:bg-blue-100 text-blue-800 font-semibold text-xs transition-colors"
                             >
-                              {tx('Counter Offer', 'काउंटर ऑफ़र')}
+                              {offer.feeMode === 'OWN_SIDE' ? tx('Counter with a % split', '% बँटवारे का काउंटर') : tx('Counter Offer', 'काउंटर ऑफ़र')}
                             </button>
+
+                            {offer.feeMode !== 'OWN_SIDE' && (
+                              <button
+                                data-testid="counter-own-side"
+                                onClick={() => setOwnCounter({ offer, side: 'SELLER' })}
+                                disabled={respondingOfferId === offer.id}
+                                className="py-2 px-3 rounded-lg border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-800 font-semibold text-xs transition-colors"
+                              >
+                                {tx('Apna-apna side', 'अपना-अपना साइड')}
+                              </button>
+                            )}
 
                             <button
                               onClick={() => handleRejectOffer(offer.id)}
@@ -2705,7 +2746,9 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         </div>
 
                         <div className="text-xs font-mono font-bold text-slate-800">
-                          {tx('Split', 'स्प्लिट')}: {offer.proposedIntroducingShare}% {tx('Introducer', 'इंट्रोड्यूसर')} / {offer.proposedClosingShare}% {tx('Closer', 'क्लोज़र')}
+                          {offer.feeMode === 'OWN_SIDE'
+                            ? tx('Apna-apna side — each keeps his own client\'s fee', 'अपना-अपना साइड — हर ब्रोकर अपने क्लाइंट की फ़ीस रखता है')
+                            : <>{tx('Split', 'स्प्लिट')}: {offer.proposedIntroducingShare}% {tx('Introducer', 'इंट्रोड्यूसर')} / {offer.proposedClosingShare}% {tx('Closer', 'क्लोज़र')}</>}
                         </div>
 
                         {offer.terms && (
@@ -3606,6 +3649,26 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: counter with "apna-apna side" (v41) */}
+      {ownCounter && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <div data-testid="own-counter-modal" className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl space-y-3">
+            <h3 className="text-base font-bold text-slate-900">{tx('Counter: apna-apna side', 'काउंटर: अपना-अपना साइड')}</h3>
+            <p className="text-xs text-slate-600">{tx('No split: you take brokerage from your own client, he from his. Which side are you on?', 'कोई बँटवारा नहीं: आप अपने क्लाइंट से लेंगे, वह अपने से। आप किस तरफ़ हैं?')}</p>
+            <div className="flex gap-2">
+              {([['SELLER', tx('Seller side', 'विक्रेता की तरफ़')], ['BUYER', tx('Buyer side', 'खरीदार की तरफ़')]] as const).map(([k, label]) => (
+                <button key={k} type="button" data-testid={`own-counter-${k}`} onClick={() => setOwnCounter({ ...ownCounter, side: k })}
+                  className={`flex-1 py-2 rounded-lg border text-xs font-bold ${ownCounter.side === k ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white border-slate-300 text-slate-700'}`}>{label}</button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setOwnCounter(null)} className="px-3 py-2 text-xs font-semibold text-slate-600">{tx('Cancel', 'रद्द')}</button>
+              <button data-testid="own-counter-send" onClick={sendOwnSideCounter} disabled={isSubmittingCounter} className="px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold disabled:opacity-50">{tx('Send counter', 'काउंटर भेजें')}</button>
+            </div>
           </div>
         </div>
       )}

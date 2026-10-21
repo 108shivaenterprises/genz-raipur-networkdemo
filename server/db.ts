@@ -710,6 +710,10 @@ export interface CollaborationOffer {
   receivingBrokerId: string;
   proposedIntroducingShare: number; // Percentage, e.g. 50%
   proposedClosingShare: number; // Percentage, e.g. 50%
+  /** v41 — SPLIT (default): one brokerage shared by %; OWN_SIDE: each broker keeps the fee of his own client (no sharing) */
+  feeMode?: 'SPLIT' | 'OWN_SIDE';
+  /** v41 — the side the PROPOSING broker acts for (OWN_SIDE only); the receiver is the other side */
+  proposerSide?: 'SELLER' | 'BUYER';
   terms: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED';
   /** who made the latest move; the *other* party must answer next */
@@ -741,6 +745,16 @@ export interface DealRoom {
   agreementHash?: string; // Cryptographic SHA-256 seal of deal terms
   /** v21: what the deal is worth — set from the signed commission agreement (the brokers type it); falls back to the asking price for sale listings */
   dealValue?: number;
+  /** v41 — OWN_SIDE: no shared brokerage; each broker keeps the fee of his own client. SPLIT / missing = the usual % split. */
+  feeMode?: 'SPLIT' | 'OWN_SIDE';
+  sellerBrokerId?: string;
+  buyerBrokerId?: string;
+  /** v41 — brokerId → his own-side fee. PRIVATE: the other broker never gets it (only a GENZ admin while a dispute is open). */
+  sideFees?: Record<string, { amount: number; note?: string; at: string }>;
+  /** v41 — brokerId → ISO time he signed the mutual "I deal only with my own client" undertaking */
+  sideUndertaking?: Record<string, string>;
+  /** v41 — brokerId → fee he wrote down as received from his own client (self-recorded) */
+  sideReceipts?: Record<string, { entries: { id: string; amount: number; ref: string; paidOn: string; at: string }[]; total: number }>;
   disputeId?: string;
   settlementStatus: 'PROPOSED' | 'AGREED' | 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'DISPUTED';
   notes: string;

@@ -13,6 +13,7 @@ import { db } from './db.js';
 import type { DealRoom, UserProfile, DatabaseState } from './db.js';
 import { ctx, needs } from './auth.js';
 import { canViewDeal, canSeeDealCommercials, dealDetailVia, isAdmin, isDealBroker, openDisputeDeals } from './access.js';
+import { feeFor, isOwnSide } from '../src/shared/sideFees.js';
 
 const DAY = 86400_000;
 const STAGES = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'] as const;
@@ -80,7 +81,15 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     add('TASKS_OVERDUE', mine.filter(t => t.assignmentAcceptance === 'ACCEPTED' && !isDone(t) && t.dueDate && Date.parse(t.dueDate) < now).length);
     add('TASKS_TO_VERIFY', ts.filter(t => t.reviewingParticipantId === u.id && t.taskStatus === 'COMPLETED' && (t.verificationStatus === 'UNVERIFIED' || t.verificationStatus === 'UNDER_REVIEW')).length);
 
-    if (broker || money) {
+    if (isOwnSide(d)) {
+      // v41: no shared agreement — the two brokers sign the "own client only" undertaking instead
+      if (broker) {
+        const signed = !!d.sideUndertaking?.[u.id];
+        const waiting = [d.introducingBrokerId, d.closingBrokerId].filter(id => !d.sideUndertaking?.[id]).length;
+        agreement = { version: 1, status: waiting === 0 ? 'ACTIVE' : 'SENT_TO_PARTICIPANTS', signedByMe: signed, waitingOn: waiting };
+        if (!signed) add(stageIdx >= 2 ? 'NO_AGREEMENT' : 'AGREEMENT_TO_SIGN', 1);
+      }
+    } else if (broker || money) {
       const ag = s.commissionAgreements.filter(a => a.dealId === d.id).sort((a, b) => b.version - a.version)[0];
       if (ag) {
         later(ag.updatedAt);
@@ -106,10 +115,11 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
   // money: the total fee and MY share (from the latest agreement's allocation when there is one)
   let fee: number | undefined, myShare: number | undefined, split: string | undefined, dealValue: number | undefined;
   if (money) {
-    fee = d.totalCommissionExpected || 0;
-    split = `${d.introducingBrokerSharePct}/${d.closingBrokerSharePct}`;
+    fee = feeFor(d, u.id);
+    split = isOwnSide(d) ? 'OWN_SIDE' : `${d.introducingBrokerSharePct}/${d.closingBrokerSharePct}`;
     dealValue = d.dealValue || (p && p.transactionType === 'Sale' ? p.askingPrice : undefined);
-    if (broker) {
+    if (broker && isOwnSide(d)) myShare = fee;
+    else if (broker) {
       const ag = s.commissionAgreements.filter(a => a.dealId === d.id).sort((a, b) => b.version - a.version)[0];
       const al = ag?.allocations?.find(a => a.participantId === u.id);
       myShare = al?.allocationAmount ?? Math.round(fee * ((myRole === 'INTRODUCING' ? d.introducingBrokerSharePct : d.closingBrokerSharePct) || 0) / 100);

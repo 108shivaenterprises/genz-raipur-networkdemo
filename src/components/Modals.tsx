@@ -986,6 +986,9 @@ export const CollaborationModal: React.FC<{
   const [introducingShare, setIntroducingShare] = useState(50);
   const [closingShare, setClosingShare] = useState(50);
   const [terms, setTerms] = useState('');
+  // v41: "apna-apna side" — each broker keeps the fee of his own client, nothing is shared
+  const [feeMode, setFeeMode] = useState<'SPLIT' | 'OWN_SIDE'>('SPLIT');
+  const [mySide, setMySide] = useState<'SELLER' | 'BUYER'>('BUYER');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const tx = useTx();
@@ -994,7 +997,7 @@ export const CollaborationModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (introducingShare + closingShare !== 100) {
+    if (feeMode === 'SPLIT' && introducingShare + closingShare !== 100) {
       setError(tx('Allocations must total exactly 100%', 'हिस्सेदारी का कुल ठीक 100% होना चाहिए'));
       return;
     }
@@ -1005,8 +1008,9 @@ export const CollaborationModal: React.FC<{
         propertyId: data.propertyId,
         requirementId: data.requirementId,
         receivingBrokerId: data.receivingBrokerId,
-        proposedIntroducingShare: Number(introducingShare),
-        proposedClosingShare: Number(closingShare),
+        ...(feeMode === 'OWN_SIDE'
+          ? { feeMode: 'OWN_SIDE', proposerSide: mySide }
+          : { proposedIntroducingShare: Number(introducingShare), proposedClosingShare: Number(closingShare) }),
         terms,
       });
       alert(tx('Collaboration offer sent! The partner broker can now accept it and open a Deal Room instantly.', 'सहयोग प्रस्ताव भेज दिया गया! पार्टनर ब्रोकर इसे स्वीकार करके तुरंत डील रूम खोल सकता है।'));
@@ -1049,7 +1053,33 @@ export const CollaborationModal: React.FC<{
             </div>
           </div>
 
+          <div data-testid="fee-mode" className="grid grid-cols-2 gap-2">
+            {([
+              ['SPLIT', tx('Share one brokerage (%)', 'एक ब्रोकरेज का बँटवारा (%)')],
+              ['OWN_SIDE', tx('Apna-apna side', 'अपना-अपना साइड')],
+            ] as const).map(([k, label]) => (
+              <button key={k} type="button" data-testid={`fee-mode-${k}`} onClick={() => setFeeMode(k)}
+                className={`py-2 px-2 text-[11px] font-bold rounded-lg border transition-colors ${feeMode === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {feeMode === 'OWN_SIDE' && (
+            <div data-testid="own-side-box" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[11px] text-emerald-900 space-y-2">
+              <p>{tx('No split. You take brokerage only from your own client and the other broker from his. Each fee stays private.', 'कोई बँटवारा नहीं। आप सिर्फ़ अपने क्लाइंट से ब्रोकरेज लेंगे और दूसरा ब्रोकर अपने क्लाइंट से। हर ब्रोकर की फ़ीस प्राइवेट रहती है।')}</p>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">{tx('I act for the', 'मैं किस तरफ़ हूँ')}:</span>
+                {([['BUYER', tx('Buyer', 'खरीदार')], ['SELLER', tx('Seller', 'विक्रेता')]] as const).map(([k, label]) => (
+                  <button key={k} type="button" data-testid={`my-side-${k}`} onClick={() => setMySide(k)}
+                    className={`px-2.5 py-1 rounded-md border font-bold ${mySide === k ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white border-emerald-300 text-emerald-800'}`}>{label}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Quick Split Presets */}
+          {feeMode === 'SPLIT' && (<>
           <div>
             <label className="text-xs font-semibold text-slate-700 block mb-1.5">
               {tx('Select Commission Split Ratio:', 'कमीशन बँटवारे का अनुपात चुनें:')}
@@ -1112,6 +1142,7 @@ export const CollaborationModal: React.FC<{
               />
             </div>
           </div>
+          </>)}
 
           <div>
             <label className="text-xs font-semibold text-slate-700">{tx('Collaboration Terms & Notes:', 'सहयोग की शर्तें और नोट्स:')}</label>

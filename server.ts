@@ -119,6 +119,8 @@ import { createProtectionRouter, checkDays, daysFor } from './server/protection.
 import { verifySigningPassword } from './server/signing.js';
 import { createProfilePhotoRouter } from './server/profilephoto.js';
 import { createDealHubRouter } from './server/dealhub.js';
+import { createSidesRouter, shapeSideDeal, stripSideData } from './server/sides.js';
+import { allSidesDone, checkProposerSide, feeFor, isOwnSide, otherSide, undertakingDone } from './src/shared/sideFees.js';
 import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } from './server/partywatch.js';
 import { createBuyerBondRouter, buyerBondBlock, makeBuyerBond } from './server/buyerbond.js';
 import { createConsentRouter, createOwnerConsentPageRouter, sweepConsents, findBlockingBond, blockedAnswer, consentForPublish, markPublished, listingKey, signatureSummary, draftForProperty } from './server/consent.js';
@@ -1909,6 +1911,15 @@ app.post('/api/collaborations', needs('collab:propose'), newAccountCap('collab',
     return res.status(409).json({ error: `An open offer (${dup.id}) already exists for this property and partner` });
   }
 
+  const ownSide = data.feeMode === 'OWN_SIDE';
+  if (ownSide) {
+    const bad = checkProposerSide(data.proposerSide!, currentUser.id, targetBrokerId, prop.listingBrokerId);
+    if (bad) return res.status(400).json({ error: bad, code: 'SIDE_MISMATCH' });
+  }
+  // OWN_SIDE keeps no split: each broker keeps 100% of his own client's fee
+  const introShare = ownSide ? 100 : data.proposedIntroducingShare!;
+  const closeShare = ownSide ? 100 : data.proposedClosingShare!;
+
   const offerId = `OFFER-${nextSeq(state.offers.map(o => o.id), /OFFER-(\d+)/, 100)}`;
   const now = new Date().toISOString();
 
@@ -1918,8 +1929,10 @@ app.post('/api/collaborations', needs('collab:propose'), newAccountCap('collab',
     requirementId: data.requirementId || '',
     proposingBrokerId: currentUser.id,
     receivingBrokerId: targetBrokerId,
-    proposedIntroducingShare: data.proposedIntroducingShare,
-    proposedClosingShare: data.proposedClosingShare,
+    proposedIntroducingShare: introShare,
+    proposedClosingShare: closeShare,
+    feeMode: data.feeMode,
+    ...(ownSide ? { proposerSide: data.proposerSide } : {}),
     terms: data.terms,
     status: 'PENDING' as const,
     lastActorId: currentUser.id,
@@ -1935,7 +1948,9 @@ app.post('/api/collaborations', needs('collab:propose'), newAccountCap('collab',
     'DEAL',
     offerId,
     'COLLABORATION_PROPOSED',
-    `Collaboration proposed by ${currentUser.name || currentUser.id} to ${targetBrokerId} for ${data.propertyId} with ${data.proposedIntroducingShare}/${data.proposedClosingShare} commission split`
+    ownSide
+      ? `Collaboration proposed by ${currentUser.name || currentUser.id} to ${targetBrokerId} for ${data.propertyId}: each broker keeps the brokerage of their own client (${data.proposerSide === 'SELLER' ? 'proposer acts for the seller' : 'proposer acts for the buyer'})`
+      : `Collaboration proposed by ${currentUser.name || currentUser.id} to ${targetBrokerId} for ${data.propertyId} with ${introShare}/${closeShare} commission split`
   );
 
   const propBroker = db.byId('users', newOffer.proposingBrokerId);
@@ -1986,9 +2001,11 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
     if (!prop || !PUBLIC_PROPERTY_STATUSES.includes(prop.listingStatus)) {
       return res.status(409).json({ error: 'The property is no longer open for collaboration' });
     }
-    if (Math.abs(offer.proposedIntroducingShare + offer.proposedClosingShare - 100) > 0.001) {
+    const ownSide = offer.feeMode === 'OWN_SIDE';
+    if (!ownSide && Math.abs(offer.proposedIntroducingShare + offer.proposedClosingShare - 100) > 0.001) {
       return res.status(409).json({ error: 'Offer shares do not add up to 100%' });
     }
+    if (ownSide && !offer.proposerSide) return res.status(409).json({ error: 'This offer does not say which side the proposer acts for' });
     offer.status = 'ACCEPTED';
     offer.respondedAt = now;
     offer.lastActorId = currentUser.id;
@@ -2007,15 +2024,24 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
       ownerId: prop.ownerId || '',
       customerId: reqRecord?.customerId || '',
       stage: 'Introduction' as const,
-      totalCommissionExpected: grossEstCommission,
-      introducingBrokerSharePct: offer.proposedIntroducingShare,
-      closingBrokerSharePct: offer.proposedClosingShare,
+      // OWN_SIDE: no shared brokerage — each broker writes his own fee later (private), so the shared total and the % stay 0
+      totalCommissionExpected: ownSide ? 0 : grossEstCommission,
+      introducingBrokerSharePct: ownSide ? 0 : offer.proposedIntroducingShare,
+      closingBrokerSharePct: ownSide ? 0 : offer.proposedClosingShare,
+      ...(ownSide ? {
+        feeMode: 'OWN_SIDE' as const,
+        sellerBrokerId: offer.proposerSide === 'SELLER' ? offer.proposingBrokerId : offer.receivingBrokerId,
+        buyerBrokerId: offer.proposerSide === 'BUYER' ? offer.proposingBrokerId : offer.receivingBrokerId,
+        sideFees: {}, sideUndertaking: {}, sideReceipts: {},
+      } : {}),
       ownerRemunerationConfirmed: mandateConfirmedFor(prop.id, state),
       ownerProtectionExpiresAt: new Date(Date.now() + daysFor() * 86400000).toISOString(),
       siteVisitsCount: 0,
       agreementHash: sha256(`${dealId}:${offer.propertyId}:${offer.proposedIntroducingShare}-${offer.proposedClosingShare}:${now}`),
       settlementStatus: 'AGREED' as const,
-      notes: String(notes || '').slice(0, 500) || `Created upon accepting collaboration offer ${offer.id}. Split agreed: ${offer.proposedIntroducingShare}% to introducer, ${offer.proposedClosingShare}% to closer.`,
+      notes: String(notes || '').slice(0, 500) || (ownSide
+        ? `Created upon accepting collaboration offer ${offer.id}. Each broker keeps the brokerage of their own client (no split).`
+        : `Created upon accepting collaboration offer ${offer.id}. Split agreed: ${offer.proposedIntroducingShare}% to introducer, ${offer.proposedClosingShare}% to closer.`),
       createdAt: now,
       updatedAt: now,
     };
@@ -2035,14 +2061,25 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
 
     return res.json({ success: true, offer, dealRoom: newDealRoom });
   } else if (decision === 'COUNTER') {
-    const a = Number(counterIntroducingShare);
-    const b = Number(counterClosingShare);
-    if (![a, b].every(n => Number.isFinite(n) && n >= 0 && n <= 100) || Math.abs(a + b - 100) > 0.001) {
+    // v41: a counter may switch the offer to "each keeps his own client's fee" (counterFeeMode OWN_SIDE; the sides stay as proposed) or back to a % split
+    const toOwn = req.body?.counterFeeMode === 'OWN_SIDE';
+    const a = toOwn ? 100 : Number(counterIntroducingShare);
+    const b = toOwn ? 100 : Number(counterClosingShare);
+    if (toOwn && !offer.proposerSide) {
+      // the offer was a % split: the one who counters says which side HE acts for
+      const mine = req.body?.mySide;
+      if (mine !== 'SELLER' && mine !== 'BUYER') return res.status(400).json({ error: 'Say which side you act for: seller or buyer' });
+      const bad = checkProposerSide(otherSide(mine), offer.proposingBrokerId, offer.receivingBrokerId, db.byId('properties', offer.propertyId)?.listingBrokerId);
+      if (bad) return res.status(400).json({ error: bad, code: 'SIDE_MISMATCH' });
+      offer.proposerSide = otherSide(mine);
+    }
+    if (!toOwn && ([a, b].some(n => !Number.isFinite(n) || n < 0 || n > 100) || Math.abs(a + b - 100) > 0.001)) {
       return res.status(400).json({ error: 'Counter shares must be numbers between 0 and 100 that add up to exactly 100%' });
     }
     offer.status = 'COUNTERED';
     offer.proposedIntroducingShare = a;
     offer.proposedClosingShare = b;
+    offer.feeMode = toOwn ? 'OWN_SIDE' : 'SPLIT';
     offer.terms = notes ? `${offer.terms} | Counter: ${String(notes).slice(0, 500)}` : offer.terms;
     offer.respondedAt = now;
     offer.lastActorId = currentUser.id;
@@ -2054,7 +2091,7 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
       'DEAL',
       offer.id,
       'OFFER_COUNTERED',
-      `Counter-offer made with split ${a}/${b}`
+      toOwn ? 'Counter-offer: each broker keeps the brokerage of their own client (no split)' : `Counter-offer made with split ${a}/${b}`
     );
 
     return res.json({ success: true, offer });
@@ -2141,10 +2178,11 @@ function shapeDealFor(deal: DealRoom, user: UserProfile, state: DatabaseState = 
   const dealValue = dealValueOf(deal);
   // Only the two brokers (and a GENZ admin while a dispute is open) may see the brokerage amount / split and the brokers' working notes.
   // The property owner and legal counsel see the deal, but never what the brokers agreed between themselves.
-  if (canSeeDealCommercials(user, deal, state, open)) return { ...deal, dealValue };
+  // v41: an own-side deal shows each broker only HIS side (a GENZ admin sees both only while a dispute is open)
+  if (canSeeDealCommercials(user, deal, state, open)) return isOwnSide(deal) ? shapeSideDeal(deal, user, dealValue) : { ...deal, dealValue };
   const summary = isAdmin(user) && dealDetailVia(user, deal, state, {}, open) === 'NONE';
   return {
-    ...deal, dealValue, teamMemberIds: undefined, totalCommissionExpected: 0, introducingBrokerSharePct: 0, closingBrokerSharePct: 0, agreementHash: undefined, notes: '', commercialsHidden: true,
+    ...stripSideData(deal), dealValue, teamMemberIds: undefined, totalCommissionExpected: 0, introducingBrokerSharePct: 0, closingBrokerSharePct: 0, agreementHash: undefined, notes: '', commercialsHidden: true,
     ...(summary ? { summaryOnly: true, customerId: initialsOf(deal.customerId) } : {}),
   };
 }
@@ -2262,13 +2300,18 @@ app.post('/api/deals/:id/stage', needs('deal:update_stage'), (req: Request, res:
     if (stage === 'Site Visit Done' && !hasVerifiedVisit && !bypass) {
       return res.status(409).json({ error: 'A site visit verified on location (OTP / QR) is required before "Site Visit Done"' });
     }
-    if (stage === 'Agreement' && !activeAgreement && !bypass) {
-      return res.status(409).json({ error: 'A fully-signed (ACTIVE) commission agreement is required before "Agreement"' });
+    const own = isOwnSide(deal);
+    if (stage === 'Agreement' && !(own ? undertakingDone(deal) : activeAgreement) && !bypass) {
+      return res.status(409).json(own
+        ? { error: 'Both brokers must sign the "own client only" undertaking before "Agreement"', code: 'SIDE_UNDERTAKING_NEEDED' }
+        : { error: 'A fully-signed (ACTIVE) commission agreement is required before "Agreement"' });
     }
     if (stage === 'Settled' && !bypass) {
-      const allPaid = !!activeAgreement && activeAgreement.allocations.every(a => a.entitlementStatus === 'PAID');
+      const allPaid = own ? allSidesDone(deal) : !!activeAgreement && activeAgreement.allocations.every(a => a.entitlementStatus === 'PAID');
       if (!allPaid) {
-        return res.status(409).json({ error: 'Settlement requires every commission allocation to be PAID (or an admin override with notes)' });
+        return res.status(409).json({ error: own
+          ? 'Settlement needs both brokers to have written down the full fee received from their own client (or an admin override with notes)'
+          : 'Settlement requires every commission allocation to be PAID (or an admin override with notes)' });
       }
     }
   }
@@ -2290,7 +2333,7 @@ app.post('/api/deals/:id/stage', needs('deal:update_stage'), (req: Request, res:
     `Deal stage transitioned to ${stage}`
   );
 
-  res.json({ success: true, deal });
+  res.json({ success: true, deal: shapeDealFor(deal, currentUser, state) });
 });
 
 // Server-side strict Commission Split Validation (pre-agreement quick split; once an agreement is ACTIVE use versioned amendments)
@@ -2316,6 +2359,9 @@ app.post('/api/deals/:id/commission', needs('deal:commission'), (req: Request, r
   }
   if (deal.settlementStatus === 'DISPUTED') {
     return res.status(409).json({ error: 'Commission is frozen while the deal is under dispute' });
+  }
+  if (isOwnSide(deal)) {
+    return res.status(409).json({ error: 'This deal room is "apna-apna side": there is no shared split. Each broker writes his own fee in the Own side panel.', code: 'OWN_SIDE_DEAL' });
   }
   if (state.commissionAgreements.some(a => a.dealId === deal.id && a.status === 'ACTIVE')) {
     return res.status(409).json({ error: 'A signed commission agreement is ACTIVE. Propose an amendment (new version) instead.' });
@@ -3743,7 +3789,7 @@ app.get('/api/admin/metrics', needs('metrics:own'), (_req: Request, res: Respons
   const adminTotals = isAdmin(currentUser) ? dealTotals(state) : undefined;
   const totalCommissionsEarned = adminTotals
     ? adminTotals.commissionAgreed
-    : myDeals.filter(d => canSeeDealCommercials(currentUser, d, state)).reduce((acc, d) => acc + d.totalCommissionExpected, 0);
+    : myDeals.filter(d => canSeeDealCommercials(currentUser, d, state)).reduce((acc, d) => acc + feeFor(d, currentUser.id), 0);
 
   const myLeads = state.constructionLeads.filter(l =>
     isAdmin(currentUser) ||
@@ -3840,7 +3886,7 @@ app.get('/api/activity-feed', needs('activity:read'), (_req: Request, res: Respo
       id: `act-deal-${d.id}`,
       type: d.stage === 'Settled' ? 'DEAL_STAGE_ADVANCED' : 'DEAL_ROOM_CREATED',
       title: d.stage === 'Settled' ? (showCommercials ? `Deal Room Closed & Commission Settled` : 'Deal Room Closed') : `Deal Room Active: Stage "${d.stage}"`,
-      description: `Deal ${d.id} for ${prop?.title || d.propertyId} between ${introBroker?.name || 'Introducer'} & ${closeBroker?.name || 'Closer'}.${showCommercials ? ` Expected Brokerage: ₹${d.totalCommissionExpected?.toLocaleString('en-IN')}.` : ''}`,
+      description: `Deal ${d.id} for ${prop?.title || d.propertyId} between ${introBroker?.name || 'Introducer'} & ${closeBroker?.name || 'Closer'}.${showCommercials ? ` Expected Brokerage: ₹${feeFor(d, currentUser.id)?.toLocaleString('en-IN')}.` : ''}`,
       timestamp: d.updatedAt || d.createdAt || '2026-10-11T10:00:00.000Z',
       actorName: closeBroker?.name || introBroker?.name || 'Broker Network',
       actorRole: 'BROKER',
@@ -3852,7 +3898,7 @@ app.get('/api/activity-feed', needs('activity:read'), (_req: Request, res: Respo
         dealId: d.id,
         propertyTitle: prop?.title,
         locality: prop?.locality,
-        commissionExpected: showCommercials ? d.totalCommissionExpected : undefined,
+        commissionExpected: showCommercials ? feeFor(d, currentUser.id) : undefined,
       },
     });
   });
@@ -4212,6 +4258,9 @@ app.post('/api/deals/:id/commission-agreements/propose', needs('agreement:propos
   const { state, deal } = loadDealFor(req, currentUser);
   if (!isDealBroker(currentUser, deal)) {
     return res.status(403).json({ error: 'Only the deal brokers can propose commission terms' });
+  }
+  if (isOwnSide(deal)) {
+    return res.status(409).json({ error: 'This deal room is "apna-apna side": there is no shared brokerage to put in an agreement. Use the Own side panel instead.', code: 'OWN_SIDE_DEAL' });
   }
 
   const b = req.body || {};
@@ -5275,6 +5324,7 @@ app.use('/api/buyer-bonds', createBuyerBondRouter());
 app.use('/api/party-watch', createPartyWatchRouter());
 app.use('/api/profile-photo', createProfilePhotoRouter());
 app.use('/api/deal-hub', createDealHubRouter());
+app.use('/api/deals', createSidesRouter());
 app.use('/api/push', createPushRouter());
 app.use('/api/broadcast', createBroadcastRouter());
 app.use('/api/reputation', createReputationRouter());

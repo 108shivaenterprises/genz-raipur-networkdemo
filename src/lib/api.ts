@@ -4,6 +4,7 @@ import {
   Property,
   BuyerRequirement,
   DealRoom,
+  DealSideView,
   SiteVisit,
   ConstructionLead,
   Dispute,
@@ -215,11 +216,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  respondOffer: (id: string, payload: { decision: string; counterIntroducingShare?: number; counterClosingShare?: number; notes?: string }) =>
+  respondOffer: (id: string, payload: { decision: string; counterIntroducingShare?: number; counterClosingShare?: number; counterFeeMode?: 'OWN_SIDE'; mySide?: 'SELLER' | 'BUYER'; notes?: string }) =>
     request<{ success: boolean; offer: CollaborationOffer; dealRoom?: DealRoom }>(`/api/collaborations/${id}/respond`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  // v41 — own-side brokerage (each broker keeps his own client's fee)
+  sidesGet: (dealId: string) => request<{ success: boolean; side: DealSideView }>(`/api/deals/${dealId}/sides`),
+  sidesSetFee: (dealId: string, amount: number, note?: string) =>
+    request<{ success: boolean; side: DealSideView }>(`/api/deals/${dealId}/sides/fee`, { method: 'PUT', body: JSON.stringify({ amount, note }) }),
+  sidesSign: (dealId: string) => request<{ success: boolean; side: DealSideView }>(`/api/deals/${dealId}/sides/undertaking`, { method: 'POST', body: '{}' }),
+  sidesReceived: (dealId: string, p: { amount: number; ref: string; paidOn: string }) =>
+    request<{ success: boolean; side: DealSideView; allDone: boolean }>(`/api/deals/${dealId}/sides/received`, { method: 'POST', body: JSON.stringify(p) }),
 
   // Deal Rooms
   getDeals: () => request<{ success: boolean; deals: DealRoom[] }>('/api/deals'),

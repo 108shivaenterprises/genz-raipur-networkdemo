@@ -7,6 +7,7 @@
  * OTHER side confirms it.
  */
 import { Router, type Request, type Response } from 'express';
+import { feeFor, isOwnSide } from '../src/shared/sideFees.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { db } from './db.js';
@@ -85,7 +86,7 @@ export function createTimelineRouter() {
     res.json({
       success: true, fingerprint, generatedAt: nowIso(), party,
       deal: { id: d.id, stage: d.stage, settlementStatus: d.settlementStatus, propertyId: d.propertyId, propertyTitle: p?.title, locality: p?.locality, city: p?.city, customer: commercial ? d.customerId : buyerShown(d.customerId, 'SUBMITTED'), propertyPurged: !!p?.purgedAt,
-        brokers: { introducing: intro?.name, closing: clos?.name }, ...(commercial ? { commissionExpected: d.totalCommissionExpected, introPct: d.introducingBrokerSharePct, closingPct: d.closingBrokerSharePct } : {}) },
+        brokers: { introducing: intro?.name, closing: clos?.name }, ...(commercial ? { commissionExpected: feeFor(d, u.id), introPct: d.introducingBrokerSharePct, closingPct: d.closingBrokerSharePct, ...(isOwnSide(d) ? { feeMode: 'OWN_SIDE' } : {}) } : {}) },
       events: ev,
       milestones: ms.map(m => ({ ...m, canConfirm: m.status === 'DONE' && !m.confirmedAt && party !== 'OTHER' && partyOf({ id: m.createdById }, d) !== party && (m.kind !== 'COMMISSION' || party !== 'OWNER') })),
       notes: s.brokerNotes.filter(n => n.dealRoomId === d.id && n.userId === u.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),

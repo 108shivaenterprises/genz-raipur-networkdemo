@@ -251,11 +251,18 @@ export const collaborationOfferSchema = z.object({
   propertyId: z.string(),
   requirementId: z.string().optional(),
   receivingBrokerId: z.string().optional().default(''),
-  proposedIntroducingShare: z.number().min(0).max(100),
-  proposedClosingShare: z.number().min(0).max(100),
+  proposedIntroducingShare: z.number().min(0).max(100).optional(),
+  proposedClosingShare: z.number().min(0).max(100).optional(),
+  /** v41 — OWN_SIDE: no split, each broker keeps the fee of his own client */
+  feeMode: z.enum(['SPLIT', 'OWN_SIDE']).optional().default('SPLIT'),
+  proposerSide: z.enum(['SELLER', 'BUYER']).optional(),
   terms: z.string().min(5, 'Terms and brokerage split notes required').max(2000),
-}).refine(data => Math.abs(data.proposedIntroducingShare + data.proposedClosingShare - 100) < 0.001, {
+}).refine(data => data.feeMode === 'OWN_SIDE'
+  || (data.proposedIntroducingShare !== undefined && data.proposedClosingShare !== undefined
+    && Math.abs(data.proposedIntroducingShare + data.proposedClosingShare - 100) < 0.001), {
   message: 'Proposed commission allocations must equal exactly 100%',
+}).refine(data => data.feeMode !== 'OWN_SIDE' || !!data.proposerSide, {
+  message: 'Say which side you act for: seller or buyer',
 });
 
 export const siteVisitCreateSchema = z.object({

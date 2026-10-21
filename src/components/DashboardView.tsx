@@ -678,9 +678,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {tx('Property Ref', 'प्रॉपर्टी संदर्भ')}: {deal.propertyId}
                       </h3>
                       <div className="mt-1 flex items-center gap-3 text-xs text-slate-600">
+                        {deal.feeMode === 'OWN_SIDE' ? (
+                          <span className="text-emerald-700 font-medium">{tx('Apna-apna side — your own client\'s fee', 'अपना-अपना साइड — आपके अपने क्लाइंट की फ़ीस')}{deal.totalCommissionExpected ? <>: <strong>{formatINR(deal.totalCommissionExpected)}</strong></> : null}</span>
+                        ) : (<>
                         <span>{tx('Expected Gross Commission', 'अपेक्षित कुल कमीशन')}: <strong>{formatINR(deal.totalCommissionExpected)}</strong></span>
                         <span aria-hidden="true">·</span>
                         <span className="text-emerald-700 font-medium">{tx('Split', 'बँटवारा')}: {deal.introducingBrokerSharePct}% {tx('Introducer', 'परिचय कराने वाला')} / {deal.closingBrokerSharePct}% {tx('Closer', 'डील पूरी करने वाला')}</span>
+                        </>)}
                       </div>
                     </div>
 
