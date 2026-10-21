@@ -7,7 +7,7 @@
  */
 import { PgStore, setPgStore } from './pgstore.js';
 
-export const PRELOADED: { state: Record<string, any> | null; usingPg: boolean } = { state: null, usingPg: false };
+export const PRELOADED: { state: Record<string, any> | null; usingPg: boolean; dbError?: string } = { state: null, usingPg: false };
 
 const url = process.env.DATABASE_URL;
 if (url) {
@@ -22,9 +22,16 @@ if (url) {
     try { await s.connect(); store = s; break; }
     catch (e: any) { lastErr = e; await s.close().catch(() => {}); if (!/tenant or user not found/i.test(String(e?.message))) break; }
   }
-  if (!store) throw lastErr;
-  PRELOADED.state = await store.load();
-  PRELOADED.usingPg = true;
-  setPgStore(store);
-  console.log(`[DB] PostgreSQL connected${shared ? ' (shared mode)' : ''} (${PRELOADED.state ? 'existing data loaded' : 'empty database — first boot'})`);
+  if (store) {
+    PRELOADED.state = await store.load();
+    PRELOADED.usingPg = true;
+    setPgStore(store);
+    console.log(`[DB] PostgreSQL connected${shared ? ' (shared mode)' : ''} (${PRELOADED.state ? 'existing data loaded' : 'empty database — first boot'})`);
+  } else if (process.env.VERCEL && process.env.ALLOW_FILE_DB === 'true') {
+    // v39.1 — the public demo stays up on its per-instance file data instead of failing every request; /api/health shows why
+    PRELOADED.dbError = String((lastErr as any)?.message || lastErr).replace(/postgres(ql)?:\/\/[^@\s]*@/gi, 'postgres://***@').slice(0, 200);
+    console.error('[DB] PostgreSQL connection failed — running on the file database for now:', PRELOADED.dbError);
+  } else {
+    throw lastErr;
+  }
 }

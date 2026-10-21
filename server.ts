@@ -5330,7 +5330,8 @@ app.get('/api/health', async (_req: Request, res: Response) => {
   try {
     const { pgStore } = await import('./server/pgstore.js');
     if (pgStore) await pgStore.ping();
-    res.json({ ok: true, storage: pgStore ? 'postgres' : 'file', uptime: Math.round(process.uptime()) });
+    const { PRELOADED } = await import('./server/bootstrap.js');
+    res.json({ ok: true, storage: pgStore ? 'postgres' : 'file', uptime: Math.round(process.uptime()), ...(PRELOADED.dbError ? { dbError: PRELOADED.dbError } : {}) });
   } catch {
     res.status(503).json({ ok: false });
   }

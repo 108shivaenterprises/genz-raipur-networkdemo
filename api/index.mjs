@@ -5687,6 +5687,52 @@ ALTER TABLE ${T_DOCS} ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
   }
 });
 
+// server/bootstrap.ts
+var bootstrap_exports = {};
+__export(bootstrap_exports, {
+  PRELOADED: () => PRELOADED
+});
+var PRELOADED, url;
+var init_bootstrap = __esm({
+  async "server/bootstrap.ts"() {
+    init_pgstore();
+    PRELOADED = { state: null, usingPg: false };
+    url = process.env.DATABASE_URL;
+    if (url) {
+      const shared = process.env.SHARED_DB === "true";
+      const candidates = [url];
+      if (/aws-0-[a-z0-9-]+\.pooler\.supabase\.com/.test(url)) candidates.push(url.replace("aws-0-", "aws-1-"));
+      else if (/aws-1-[a-z0-9-]+\.pooler\.supabase\.com/.test(url)) candidates.push(url.replace("aws-1-", "aws-0-"));
+      let store = null;
+      let lastErr;
+      for (const c of candidates) {
+        const s = new PgStore(c, { shared });
+        try {
+          await s.connect();
+          store = s;
+          break;
+        } catch (e) {
+          lastErr = e;
+          await s.close().catch(() => {
+          });
+          if (!/tenant or user not found/i.test(String(e?.message))) break;
+        }
+      }
+      if (store) {
+        PRELOADED.state = await store.load();
+        PRELOADED.usingPg = true;
+        setPgStore(store);
+        console.log(`[DB] PostgreSQL connected${shared ? " (shared mode)" : ""} (${PRELOADED.state ? "existing data loaded" : "empty database \u2014 first boot"})`);
+      } else if (process.env.VERCEL && process.env.ALLOW_FILE_DB === "true") {
+        PRELOADED.dbError = String(lastErr?.message || lastErr).replace(/postgres(ql)?:\/\/[^@\s]*@/gi, "postgres://***@").slice(0, 200);
+        console.error("[DB] PostgreSQL connection failed \u2014 running on the file database for now:", PRELOADED.dbError);
+      } else {
+        throw lastErr;
+      }
+    }
+  }
+});
+
 // node_modules/depd/index.js
 var require_depd = __commonJS({
   "node_modules/depd/index.js"(exports, module) {
@@ -43101,38 +43147,8 @@ var work = "/tmp/genz";
 fs.mkdirSync(path.join(work, "data"), { recursive: true });
 process.chdir(work);
 
-// server/bootstrap.ts
-init_pgstore();
-var PRELOADED = { state: null, usingPg: false };
-var url = process.env.DATABASE_URL;
-if (url) {
-  const shared = process.env.SHARED_DB === "true";
-  const candidates = [url];
-  if (/aws-0-[a-z0-9-]+\.pooler\.supabase\.com/.test(url)) candidates.push(url.replace("aws-0-", "aws-1-"));
-  else if (/aws-1-[a-z0-9-]+\.pooler\.supabase\.com/.test(url)) candidates.push(url.replace("aws-1-", "aws-0-"));
-  let store = null;
-  let lastErr;
-  for (const c of candidates) {
-    const s = new PgStore(c, { shared });
-    try {
-      await s.connect();
-      store = s;
-      break;
-    } catch (e) {
-      lastErr = e;
-      await s.close().catch(() => {
-      });
-      if (!/tenant or user not found/i.test(String(e?.message))) break;
-    }
-  }
-  if (!store) throw lastErr;
-  PRELOADED.state = await store.load();
-  PRELOADED.usingPg = true;
-  setPgStore(store);
-  console.log(`[DB] PostgreSQL connected${shared ? " (shared mode)" : ""} (${PRELOADED.state ? "existing data loaded" : "empty database \u2014 first boot"})`);
-}
-
 // server.ts
+await init_bootstrap();
 var import_express50 = __toESM(require_express2(), 1);
 
 // node_modules/zod/v4/classic/external.js
@@ -65395,6 +65411,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
 }
 
 // server/db.ts
+await init_bootstrap();
 init_pgstore();
 var CLIENT_STAGES = ["NEW", "CONTACTED", "SITE_VISIT", "NEGOTIATION", "DEAL", "LOST"];
 var DB_FILE = path3.resolve(process.cwd(), "data", "database.json");
@@ -91311,7 +91328,8 @@ app.get("/api/health", async (_req, res) => {
   try {
     const { pgStore: pgStore2 } = await Promise.resolve().then(() => (init_pgstore(), pgstore_exports));
     if (pgStore2) await pgStore2.ping();
-    res.json({ ok: true, storage: pgStore2 ? "postgres" : "file", uptime: Math.round(process.uptime()) });
+    const { PRELOADED: PRELOADED2 } = await init_bootstrap().then(() => bootstrap_exports);
+    res.json({ ok: true, storage: pgStore2 ? "postgres" : "file", uptime: Math.round(process.uptime()), ...PRELOADED2.dbError ? { dbError: PRELOADED2.dbError } : {} });
   } catch {
     res.status(503).json({ ok: false });
   }
