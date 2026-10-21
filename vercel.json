@@ -4,6 +4,6 @@
   "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist",
   "regions": ["bom1"],
-  "functions": { "api/index.mjs": { "includeFiles": "dist/**", "maxDuration": 30, "memory": 1024 } },
+  "functions": { "api/index.mjs": { "includeFiles": "dist/**", "maxDuration": 30 } },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index.mjs" }]
 }
