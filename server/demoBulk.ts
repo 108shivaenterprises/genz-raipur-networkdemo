@@ -443,7 +443,7 @@ export function seedDemoBulk(s: DatabaseState, sharedPasswordHash: string) {
         const unit = units.find(u => u.projectId === p.id && u.status === 'AVAILABLE');
         if (unit) {
           const bId = `CRM-B-DMO-${pad(bookings.length + 1)}`; const val = unit.price;
-          bookings.push({ ...JSON.parse(JSON.stringify(tplBooking)), id: bId, leadId: id, projectId: p.id, projectName: p.projectName, builderId: p.builderId, associateId: m.brokerId, mandateId: m.id, customerName: l.name, unitNo: unit.label, unitConfig: unit.config, agreementValue: val, tokenAmount: 100_000, status: stage === 'BOOKED' ? 'APPROVED' : 'REQUESTED', paymentSchedule: tplBooking.paymentSchedule.map((x: any, j: number) => ({ ...x, id: `PM-${bId}-${j + 1}`, amount: Math.round(val * x.pct / 100), paid: stage === 'BOOKED' && j === 0 })), brokeragePct: p.channelPartnerCommissionPct, brokerageAmount: Math.round(val * p.channelPartnerCommissionPct / 100), brokeragePaidAmount: 0, createdAt: ago(int(1, 6)), updatedAt: ago(int(0, 2)) } as CrmBooking);
+          bookings.push({ ...JSON.parse(JSON.stringify(tplBooking)), id: bId, leadId: id, projectId: p.id, projectName: p.projectName, builderId: p.builderId, associateId: m.brokerId, mandateId: m.id, customerName: l.name, unitNo: unit.label, unitConfig: unit.config, agreementValue: val, tokenAmount: 100_000, status: stage === 'BOOKED' ? 'APPROVED' : 'REQUESTED', ...(stage === 'BOOKED' ? { decidedAt: ago(int(2, 12)), decidedBy: p.builderId } : {}), paymentSchedule: tplBooking.paymentSchedule.map((x: any, j: number) => ({ ...x, id: `PM-${bId}-${j + 1}`, amount: Math.round(val * x.pct / 100), paid: stage === 'BOOKED' && j === 0 })), brokeragePct: p.channelPartnerCommissionPct, brokerageAmount: Math.round(val * p.channelPartnerCommissionPct / 100), brokeragePaidAmount: 0, createdAt: ago(int(1, 6)), updatedAt: ago(int(0, 2)) } as CrmBooking);
           unit.status = 'BOOKED'; unit.bookingId = bId; l.bookingId = bId;
         }
       }
@@ -453,7 +453,25 @@ export function seedDemoBulk(s: DatabaseState, sharedPasswordHash: string) {
   S.crmLeads.push(...crm);
   S.crmBookings.push(...bookings);
 
-  // ───────────── client rooms (Deals → Client Rooms) ─────────────
+  // ───────────── v38 target bonus on most projects: some partners already reached their target, others are on the way ─────────────
+  const withTarget = [...projs, ...s.builderProjects.filter(p => p.id === 'PROJ-RAI-01')].filter((_, i) => i % 3 !== 2);
+  withTarget.forEach((p, i) => {
+    p.targetBonus = {
+      enabled: true, periodDays: [60, 90, 120][i % 3], qualifyCollectionPct: 10,
+      hit: i % 2 ? { kind: 'LUMP_SUM', value: 50_000 } : { kind: 'EXTRA_PCT', value: 0.5 }, overPct: 0.25,
+      early: { kind: 'EXTRA_PCT', value: p.earlyBirdIncentiveBonusPct || 0.25, withinPct: 50 },
+      note: pick(['Diwali se Holi tak target push', 'Jaldi target poora karo, early-bird pao', 'Har extra unit par alag se bonus']), updatedAt: ago(4),
+    };
+    if (p.targetBonus.early && p.targetBonus.early.kind === 'EXTRA_PCT') p.earlyBirdIncentiveBonusPct = p.targetBonus.early.value;
+    const ms = s.associateMandates.filter(m => m.projectId === p.id && ['ACTIVE_ASSOCIATE', 'TOP_PERFORMER'].includes(m.status));
+    ms.forEach((m, j) => {
+      const sold = S.crmBookings.filter((b: CrmBooking) => b.mandateId === m.id && b.status === 'APPROVED').length;
+      m.targetUnitsQuota = sold > 0 && j % 2 === 0 ? sold : Math.max(sold + 1, [3, 4, 5, 6][(i + j) % 4]);
+      if (j === 1) m.targetBy = ahead(int(10, 40)).slice(0, 10);
+    });
+  });
+
+
   const hm = (tag: string, v: string) => crypto.createHmac('sha256', secret()).update(`${tag}|${v}`).digest('hex');
   const KINDS_R: ClientRoom['kind'][] = ['BUYER', 'BUYER', 'RENTER', 'TENANT', 'BUYER', 'OTHER'];
   const live = props.filter(p => p.listingStatus === 'active');

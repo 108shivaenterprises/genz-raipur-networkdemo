@@ -16,6 +16,7 @@ import { tier1Gate } from './tiers.js';
 import { tierOf } from '../src/shared/networkRules.js';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { z } from 'zod';
+import { lockTargetTerms } from './targetbonus.js';
 import { db } from './db.js';
 import type { UserProfile, SalesAssociateMandate, BuilderProject, ProjectShortlist } from './db.js';
 import { ctx, needs, rateLimit, isSafeUrl, digits } from './auth.js';
@@ -343,6 +344,7 @@ export function createPcontrolRouter() {
     if (!['ACTIVE_ASSOCIATE', 'TOP_PERFORMER', 'PAUSED'].includes(m.status)) return bad(res, 'Terms can be changed for appointed partners only', 409);
     const { commissionPct, quota, dailyLeadCap, validUntil, note } = req.body || {};
     if (!note || String(note).trim().length < 3) return bad(res, 'Add a short note — the partner will see why the terms changed');
+    lockTargetTerms(p); // v38: a partner who already reached his target bonus keeps the terms he earned it on
     const next = { commissionPct: m.agreedCommissionPct, quota: m.targetUnitsQuota, cap: m.dailyLeadCap, until: m.validUntil };
     if (commissionPct !== undefined) { if (!pctOk(Number(commissionPct))) return bad(res, 'Commission must be between 0.1% and 10%'); next.commissionPct = Number(commissionPct); }
     if (quota !== undefined) { const q = Number(quota); if (!Number.isInteger(q) || q < 1 || q > 1000) return bad(res, 'Target units must be 1–1000'); next.quota = q; }

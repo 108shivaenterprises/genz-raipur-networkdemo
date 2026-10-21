@@ -260,6 +260,8 @@ export interface BuilderProject {
   earlyBirdIncentiveBonusPct?: number;
   /** volume-bonus slabs (extra payout when an associate / the whole project sells more units) */
   bonusScheme?: BonusScheme;
+  /** v38: reward for a partner who reaches HIS target before HIS deadline (+ per unit above target, + early finish) */
+  targetBonus?: import('../src/shared/targetBonus.js').TargetBonusScheme;
   /** escalator commission slabs per associate (n-th approved booking) */
   cpSlabs?: CpSlab[];
   /** broker unit-hold window in hours (default 2) and minimum token to hold (default ₹21,000) */
@@ -422,6 +424,12 @@ export interface BonusPayout {
   paidAt: string;
 }
 
+/** v38 — a target-bonus payout the builder recorded (money moves outside GENZ) */
+export interface TargetBonusPayout {
+  id: string; projectId: string; mandateId: string; brokerId: string; amount: number; tdsPct: number; reference: string;
+  breakdown: { hit: number; over: number; early: number }; paidBy: string; paidAt: string;
+}
+
 export interface SalesAssociateMandate {
   id: string;
   projectId: string;
@@ -450,6 +458,10 @@ export interface SalesAssociateMandate {
   /** partnership ends automatically after this date */
   validUntil?: string;
   termsHistory?: { at: string; by: string; commissionPct: number; quota: number; dailyLeadCap?: number; validUntil?: string; note: string }[];
+  /** v38 target bonus: this partner's own deadline (ISO day; empty = start + the scheme's period) */
+  targetBy?: string;
+  /** v38: terms frozen once he reached the target or his period ended (later scheme changes do not touch him) */
+  targetLock?: import('../src/shared/targetBonus.js').TargetTermsLock;
 }
 
 export type TrustTier = 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE' | 'NEW';
@@ -1285,6 +1297,7 @@ export interface DatabaseState {
   crmLeads: CrmLead[];
   crmBookings: CrmBooking[];
   bonusPayouts: BonusPayout[];
+  targetBonusPayouts: TargetBonusPayout[];
   inventoryUnits: InventoryUnit[];
   /** v16.8 — an employer's "put these units in front of my team" posts */
   inventoryPosts: import('../src/shared/inventoryRules.js').TeamPost[];
@@ -2488,6 +2501,7 @@ function getInitialSeedData(): DatabaseState {
     crmLeads: [],
     crmBookings: [],
     bonusPayouts: [],
+    targetBonusPayouts: [],
     inventoryUnits: [],
     inventoryPosts: [],
     siteCheckins: [],
@@ -2616,6 +2630,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
     parsed.contractorRequests = parsed.contractorRequests.filter(r => r.status !== 'APPROVED' || parsed.constructionLeads.some(l => l.id === r.leadId && l.status === 'ASSIGNED' && l.assignedContractorId === r.contractorId));
   }
   parsed.bonusPayouts ||= [];
+  parsed.targetBonusPayouts ||= [];
   parsed.inventoryUnits ||= [];
   parsed.inventoryPosts ||= [];
   parsed.siteCheckins ||= [];

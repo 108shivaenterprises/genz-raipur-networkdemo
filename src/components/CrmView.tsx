@@ -7,6 +7,7 @@ import { useLabel } from '../lib/labels.js';
 import { CheckinModal } from './CheckinModal.js';
 import { InventoryPanel } from './InventoryPanel.js';
 import { BonusPanel } from './BonusPanel.js';
+import { TargetBonusPanel } from './TargetBonusPanel.js';
 import { LeadPassPanel } from './VisitsView.js';
 import { AlertsBar, FilterBar, EMPTY_FILTERS, TEMP_LABEL, LostSheet, WaMenu, FollowUpRow, LeadControls, BulkBar, ImportSheet, ExportButtons, btnLine, type CrmAlert, type Filters } from './CrmPlus.js';
 import { BookingMoney, PayoutSheet, TdsPanel } from './CrmMoney.js';
@@ -209,7 +210,18 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
       {tab === 'money' && <MoneyPanel flash={flash} bookingId={moneyBooking} onClearBooking={() => setMoneyBooking(null)} alertIds={idFilter?.kind.startsWith('MONEY_') ? idFilter.ids : null} onClearAlert={() => setIdFilter(null)} onChanged={load} refreshKey={alertKey} />}
       {tab === 'calls' && <CallQueuePanel onOpen={id => setSelected(id)} canFilter={can('team:manage')} />}
       {tab === 'inventory' && <InventoryPanel role={currentUser.role} leads={leads} />}
-      {tab === 'bonus' && <BonusPanel role={currentUser.role} canPay={can('crm:payout')} />}
+      {tab === 'bonus' && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="mb-2 text-sm font-bold text-slate-900">{tx('Target bonus', 'टारगेट बोनस')}</h2>
+            <TargetBonusPanel role={currentUser.role} canPay={can('crm:payout')} />
+          </div>
+          <div>
+            <h2 className="mb-2 text-sm font-bold text-slate-900">{tx('Volume bonus', 'वॉल्यूम बोनस')}</h2>
+            <BonusPanel role={currentUser.role} canPay={can('crm:payout')} />
+          </div>
+        </div>
+      )}
       {tab === 'reports' && <ReportsPanel />}
 
       {tab === 'brokerage' && (

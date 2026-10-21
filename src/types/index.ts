@@ -36,6 +36,8 @@ export interface BuilderProject {
   leadVerification?: 'AUTO' | 'MANUAL';
   registrationDays?: number;
   earlyBirdIncentiveBonusPct?: number;
+  /** v38 */
+  targetBonus?: import('../shared/targetBonus.js').TargetBonusScheme;
   bonusScheme?: import('../shared/bonus.js').BonusScheme;
   siteAddress: string;
   images: string[];
@@ -71,6 +73,9 @@ export interface SalesAssociateMandate {
   statusReason?: string;
   dailyLeadCap?: number;
   validUntil?: string;
+  /** v38 target bonus */
+  targetBy?: string;
+  targetLock?: import('../shared/targetBonus.js').TargetTermsLock;
 }
 
 export type TrustTier = 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE' | 'NEW';

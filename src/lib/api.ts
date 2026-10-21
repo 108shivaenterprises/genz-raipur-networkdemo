@@ -668,6 +668,14 @@ export const api = {
     request<{ success: boolean; scheme: any }>(`/api/crm/projects/${projectId}/bonus-scheme`, { method: 'PUT', body: JSON.stringify(scheme) }),
   crmPayBonus: (projectId: string, payload: { mandateId: string; amount: number; reference: string }) =>
     request<{ success: boolean; tds: number; net: number }>(`/api/crm/projects/${projectId}/bonus/pay`, { method: 'POST', body: JSON.stringify(payload) }),
+  // v38 — target bonus
+  crmTargetBonus: () => request<{ success: boolean; projects: any[]; canManage: boolean; now: string }>('/api/crm/target-bonus'),
+  crmSaveTargetScheme: (projectId: string, scheme: any) =>
+    request<{ success: boolean; scheme: any; frozen: number }>(`/api/crm/projects/${projectId}/target-bonus`, { method: 'PUT', body: JSON.stringify(scheme) }),
+  crmSaveTargetPartner: (projectId: string, mandateId: string, payload: { target: number; deadline: string; note?: string }) =>
+    request<{ success: boolean; row: any }>(`/api/crm/projects/${projectId}/target-bonus/partners/${mandateId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  crmPayTargetBonus: (projectId: string, payload: { mandateId: string; amount: number; reference: string }) =>
+    request<{ success: boolean; tds: number; net: number }>(`/api/crm/projects/${projectId}/target-bonus/pay`, { method: 'POST', body: JSON.stringify(payload) }),
   crmBookings: () => request<{ success: boolean; bookings: CrmBooking[] }>('/api/crm/bookings'),
   /** v16.9 — Money Trail: collector → partner → builder, with "who holds it" at every step */
   moneyTrails: (bookingId?: string) => request<{ success: boolean; rows: any[]; totals: Record<string, { count: number; amount: number }>; canCollect: boolean; canConfirm: boolean; readOnly: boolean }>(`/api/crm/money/trails${bookingId ? `?bookingId=${encodeURIComponent(bookingId)}` : ''}`),

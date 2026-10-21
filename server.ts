@@ -90,6 +90,7 @@ import {
   partnerCard,
 } from './server/access.js';
 import { createCrmRouter, applyAssociateSale } from './server/crm.js';
+import { createTargetBonusRouter, sweepTargetBonus } from './server/targetbonus.js';
 import { createCrmPlusRouter, sweepCrm } from './server/crm2.js';
 import { createCrmSalesRouter } from './server/crm3.js';
 import { createMoneyTrailRouter } from './server/crm4.js';
@@ -5228,6 +5229,7 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
 // ==========================================
 app.use('/api/crm/money', createMoneyTrailRouter());
 app.use('/api/admin/pulse', createPulseRouter());
+app.use('/api/crm', createTargetBonusRouter());
 app.use('/api/crm', createCrmSalesRouter());
 app.use('/api/crm', createCrmPlusRouter());
 app.use('/api/crm', createCrmRouter());
@@ -5396,10 +5398,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepVisitAcks(); sweepPartyWatch(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();
