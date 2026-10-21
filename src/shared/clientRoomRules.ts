@@ -1,0 +1,20 @@
+/** v31 — Client Room: a broker's private room with his own client. Rules shared by the server, the broker screen and the tests. */
+export const ROOM_KINDS = [
+  { id: 'BUYER', en: 'Buyer', hi: 'खरीदार' },
+  { id: 'RENTER', en: 'Renter', hi: 'किराए पर लेने वाला' },
+  { id: 'TENANT', en: 'Tenant', hi: 'किराएदार' },
+  { id: 'OTHER', en: 'Other client', hi: 'अन्य क्लाइंट' },
+] as const;
+export type RoomKind = (typeof ROOM_KINDS)[number]['id'];
+
+export const ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1000, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 30, purgeClosedDays: 90 } as const;
+
+/** a 10-digit Indian mobile (with or without +91 / 0 / spaces / dashes) typed anywhere in a message */
+export function containsPhone(text: string): boolean {
+  const flat = String(text || '').replace(/[\s\-().]/g, '');
+  return /(?:\+?91|0)?[6-9]\d{9}(?!\d)/.test(flat);
+}
+export const PHONE_IN_CHAT_MSG = {
+  en: 'Please do not type phone numbers in this chat. The owner\'s number is shared only after a verified visit, and your broker\'s number is already on this page.',
+  hi: 'कृपया इस चैट में फ़ोन नंबर न लिखें। मालिक का नंबर सिर्फ़ वेरिफ़ाइड विज़िट के बाद मिलता है, और आपके ब्रोकर का नंबर इसी पेज पर है।',
+};

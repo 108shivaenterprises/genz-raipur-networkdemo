@@ -1,0 +1,341 @@
+/**
+ * v31 — Deal Desk → Client Rooms. A private room for the broker's OWN client (buyer / renter / tenant): share properties, chat, see likes and
+ * visit requests. The client opens a link and confirms his mobile with a code — no app, no sign-up. Nobody else can read the chat.
+ * v37 — redesign: KPI tiles (each one a filter), search + kind chips, two panes on a big screen (rooms | open room), one pane with "back" on a
+ * phone, and inside a room: Chat (auto-scroll, quick replies) · Homes · Visits · Info.
+ */
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Send, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, ArrowLeft, Info, KeyRound, Heart, Inbox } from 'lucide-react';
+import { api } from '../lib/api.js';
+import { useTx, useI18n } from '../lib/i18n.js';
+import { formatINR } from '../lib/utils.js';
+import { ROOM_KINDS } from '../shared/clientRoomRules.js';
+
+const inp = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm';
+const dark = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-40';
+const light = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 disabled:opacity-40';
+const when = (iso?: string) => iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+const ago = (iso: string | undefined, hi: boolean) => {
+  if (!iso) return '';
+  const m = Math.floor((Date.now() - Date.parse(iso)) / 60000);
+  if (m < 1) return hi ? 'अभी' : 'now';
+  if (m < 60) return hi ? `${m} मि.` : `${m}m`;
+  const h = Math.floor(m / 60); if (h < 24) return hi ? `${h} घं.` : `${h}h`;
+  const d = Math.floor(h / 24); return hi ? `${d} दिन` : `${d}d`;
+};
+const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600' };
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+/** v37 — one-tap replies (the broker can still edit before sending); no phone numbers, as the room forbids them */
+const QUICK = [
+  { en: 'I have added new homes for you — please have a look.', hi: 'मैंने आपके लिए नई प्रॉपर्टी जोड़ी हैं — एक बार देख लीजिए।' },
+  { en: 'Can you come to see it tomorrow? Tell me a time that suits you.', hi: 'क्या आप कल देखने आ सकते हैं? अपना सुविधाजनक समय बताइए।' },
+  { en: 'Please confirm your budget and the areas you prefer.', hi: 'कृपया अपना बजट और पसंदीदा इलाके बता दीजिए।' },
+  { en: 'Your visit is confirmed — I will meet you at the site.', hi: 'आपकी विज़िट पक्की है — मैं आपसे साइट पर मिलूँगा।' },
+  { en: 'The owner has agreed to talk on price — shall we meet?', hi: 'मालिक कीमत पर बात करने को तैयार हैं — मिलें?' },
+];
+type RoomFilter = 'all' | 'unread' | 'visits' | 'code' | 'liked';
+
+export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
+  const tx = useTx();
+  const hi = useI18n().lang === 'hi';
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
+  const [open, setOpen] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('room') || ''; } catch { return ''; } });
+  const [creating, setCreating] = useState(false);
+  const [fresh, setFresh] = useState<{ link: string; name: string; phone: string } | null>(null);
+  const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all');
+  const load = () => api.crList().then(r => { setD(r); window.dispatchEvent(new Event('genz:rooms-changed')); }).catch(e => setErr(e.message));
+  useEffect(() => { load(); }, [tick]);
+  // a client waiting for his code → open that room so the broker can read the code out at once
+  // (v37) on a big screen the first room is open by default (two panes); on a phone the list comes first
+  useEffect(() => {
+    if (!d || open) return;
+    const w = d.rooms.find((r: any) => r.codeAsk) || (window.innerWidth >= 1024 ? d.rooms.find((r: any) => r.status === 'ACTIVE') : undefined);
+    if (w) setOpen(w.id);
+  }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
+  const active: any[] = useMemo(() => (d?.rooms || []).filter((r: any) => r.status === 'ACTIVE'), [d]);
+  const shown = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return active.filter(r => (kind === 'ALL' || r.kind === kind)
+      && (f === 'all' || (f === 'unread' && r.unread > 0) || (f === 'visits' && r.openVisits > 0) || (f === 'code' && r.codeAsk) || (f === 'liked' && r.liked > 0))
+      && (!s || r.clientName.toLowerCase().includes(s) || String(r.phoneLast4).includes(s)))
+      .sort((a, b) => (Number(!!b.codeAsk) - Number(!!a.codeAsk)) || (b.unread - a.unread) || String(b.lastMessage?.at || b.updatedAt).localeCompare(String(a.lastMessage?.at || a.updatedAt)));
+  }, [active, q, kind, f]);
+  if (err) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
+  if (!d) return <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />;
+  const closed = d.rooms.filter((r: any) => r.status !== 'ACTIVE');
+  const kindLabel = (k: string) => { const x = ROOM_KINDS.find(y => y.id === k); return x ? (hi ? x.hi : x.en) : k; };
+  const sum = (k: string) => active.reduce((n, r) => n + (Number(r[k]) || 0), 0);
+  const tiles: { id: RoomFilter; en: string; hi: string; v: number; icon: React.ElementType; tone: string }[] = [
+    { id: 'all', en: 'Open rooms', hi: 'खुले रूम', v: active.length, icon: Inbox, tone: 'text-slate-900' },
+    { id: 'unread', en: 'Unread messages', hi: 'नए संदेश', v: sum('unread'), icon: MessageCircle, tone: sum('unread') ? 'text-rose-700' : 'text-slate-900' },
+    { id: 'visits', en: 'Visit asks', hi: 'विज़िट अनुरोध', v: sum('openVisits'), icon: CalendarClock, tone: sum('openVisits') ? 'text-amber-700' : 'text-slate-900' },
+    { id: 'code', en: 'Waiting for code', hi: 'कोड का इंतज़ार', v: active.filter(r => r.codeAsk).length, icon: KeyRound, tone: active.some(r => r.codeAsk) ? 'text-amber-700' : 'text-slate-900' },
+    { id: 'liked', en: 'Homes liked', hi: 'पसंद की गई प्रॉपर्टी', v: sum('liked'), icon: Heart, tone: 'text-emerald-700' },
+  ];
+  const openRoom = active.find(r => r.id === open);
+
+  return (
+    <div className="space-y-4" data-testid="rooms-tab">
+      <details open={active.length === 0} className={`rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-950 ${openRoom ? 'hidden lg:block' : ''}`} data-testid="rooms-about">
+        <summary className="flex cursor-pointer list-none items-start gap-1.5 font-semibold"><Lock className="mt-0.5 h-4 w-4 shrink-0" />{tx('A private room for each of your own clients', 'आपके हर अपने क्लाइंट के लिए एक निजी रूम')}</summary>
+        <p className="mt-1">{tx('Share properties with your buyer / renter / tenant and chat in one place. He opens a link and confirms his mobile with a code — no app, no sign-up. Only you and he can read the chat; the listing broker, co-brokers, your team and GENZ staff cannot. He sees no exact address and no owner number — those come only after a verified visit.',
+          'अपने खरीदार / किराएदार को प्रॉपर्टी दिखाएँ और एक ही जगह चैट करें। वह लिंक खोलकर कोड से अपना मोबाइल पक्का करता है — न ऐप, न साइन-अप। चैट सिर्फ़ आप दोनों पढ़ सकते हैं; लिस्टिंग ब्रोकर, को-ब्रोकर, आपकी टीम और GENZ स्टाफ़ नहीं। उसे पूरा पता या मालिक का नंबर नहीं दिखता — वह वेरिफ़ाइड विज़िट के बाद ही मिलता है।')}</p>
+      </details>
+
+      {fresh && (
+        <div className="rounded-xl border-2 border-emerald-400 bg-emerald-50 p-3 text-sm" data-testid="room-link">
+          <p className="font-bold text-emerald-900">{tx(`Room ready for ${fresh.name}`, `${fresh.name} के लिए रूम तैयार`)}</p>
+          <p className="mt-1 break-all rounded bg-white p-2 font-mono text-xs">{window.location.origin}{fresh.link}</p>
+          <p className="mt-1 text-xs text-emerald-900">{tx('This link is shown now only. If you lose it, make a new link from the room.', 'यह लिंक अभी ही दिखता है। खो जाए तो रूम से नया लिंक बनाएँ।')}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button className={light} onClick={() => navigator.clipboard?.writeText(window.location.origin + fresh.link)}><Copy className="h-4 w-4" />{tx('Copy', 'कॉपी')}</button>
+            <a className={light} target="_blank" rel="noreferrer" href={`https://wa.me/91${fresh.phone}?text=${encodeURIComponent((hi ? `नमस्ते ${fresh.name}, आपके लिए प्रॉपर्टी का निजी रूम: ` : `Hello ${fresh.name}, your private property room: `) + window.location.origin + fresh.link)}`}><MessageCircle className="h-4 w-4" />WhatsApp</a>
+            <button className={light} onClick={() => setFresh(null)}><X className="h-4 w-4" />{tx('Done', 'हो गया')}</button>
+          </div>
+        </div>
+      )}
+
+      <div className={`grid grid-cols-2 gap-2 sm:grid-cols-5 ${openRoom ? 'hidden lg:grid' : ''}`}>
+        {tiles.map(t => { const Icon = t.icon; return (
+          <button key={t.id} type="button" onClick={() => setF(t.id)} className={`rounded-xl border p-2.5 text-left ${f === t.id ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={`room-kpi-${t.id}`}>
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500"><Icon className="h-3.5 w-3.5" />{tx(t.en, t.hi)}</div>
+            <div className={`mt-0.5 text-lg font-bold ${t.tone}`}>{t.v}</div>
+          </button>
+        ); })}
+      </div>
+
+      <div className={`flex-col gap-2 sm:flex-row sm:items-center ${openRoom ? 'hidden lg:flex' : 'flex'}`}>
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input className={inp + ' pl-8'} value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search client name or last 4 digits', 'क्लाइंट का नाम या आख़िरी 4 अंक खोजें')} data-testid="room-search" />
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto">
+          {[{ id: 'ALL', en: 'All', hi: 'सभी' }, ...ROOM_KINDS].map(k => <button key={k.id} type="button" onClick={() => setKind(k.id)} className={`min-h-9 shrink-0 rounded-full border px-3 text-[11px] font-semibold ${kind === k.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? k.hi : k.en}</button>)}
+        </div>
+        <button className={dark} onClick={() => setCreating(v => !v)} data-testid="room-new"><Plus className="h-4 w-4" />{tx('New room', 'नया रूम')}</button>
+      </div>
+      {creating && <NewRoom onDone={(link, name, phone, id) => { setCreating(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
+
+      {active.length === 0 && !creating ? (
+        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">{tx('No client room yet. Tap “New room” and add your client\'s name and mobile.', 'अभी कोई क्लाइंट रूम नहीं। “नया रूम” दबाएँ और अपने क्लाइंट का नाम और मोबाइल डालें।')}</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          {/* rooms list — hidden on a phone while a room is open */}
+          <div className={`space-y-2 lg:col-span-2 ${openRoom ? 'hidden lg:block' : ''}`}>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{tx(`My client rooms (${active.length})`, `मेरे क्लाइंट रूम (${active.length})`)}{shown.length !== active.length ? ` · ${tx(`${shown.length} shown`, `${shown.length} दिख रहे`)}` : ''}</h3>
+            {shown.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-500">{tx('No room in this filter.', 'इस फ़िल्टर में कोई रूम नहीं।')} <button type="button" className="font-semibold underline" onClick={() => { setF('all'); setKind('ALL'); setQ(''); }}>{tx('Show all', 'सभी दिखाएँ')}</button></p>}
+            <div className="space-y-2 lg:max-h-[75vh] lg:overflow-y-auto lg:pr-1">
+              {shown.map((r: any) => (
+                <button key={r.id} type="button" onClick={() => setOpen(r.id)} className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors ${open === r.id ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={`room-card-${r.id}`}>
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${KIND_TONE[r.kind] || KIND_TONE.OTHER}`}>{initials(r.clientName)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-semibold text-slate-900">{r.clientName}</span>
+                      <span className="shrink-0 text-[10px] text-slate-400">{ago(r.lastMessage?.at || r.updatedAt, hi)}</span>
+                    </span>
+                    <span className="block text-[11px] text-slate-500">{kindLabel(r.kind)} · ••{r.phoneLast4} · {tx(`${r.items} homes`, `${r.items} प्रॉपर्टी`)}{r.liked ? ` · 👍 ${r.liked}` : ''}</span>
+                    {r.lastMessage && <span className={`mt-0.5 block truncate text-xs ${r.unread > 0 ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>{r.lastMessage.from === 'CLIENT' ? '↩ ' : tx('You: ', 'आप: ')}{r.lastMessage.text}</span>}
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {r.codeAsk && <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-bold text-white" data-testid={`room-codeask-${r.id}`}>{tx('asking for code', 'कोड माँग रहा है')}</span>}
+                      {r.unread > 0 && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">{tx(`${r.unread} new`, `${r.unread} नए`)}</span>}
+                      {r.openVisits > 0 && <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">{tx(`${r.openVisits} visit ask`, `${r.openVisits} विज़िट अनुरोध`)}</span>}
+                      {!r.lastClientSeenAt && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{tx('not opened yet', 'अभी खोला नहीं')}</span>}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            {closed.length > 0 && <details className="text-xs text-slate-500"><summary className="cursor-pointer font-semibold">{tx(`Closed rooms (${closed.length}) — chats are erased 90 days after closing`, `बंद रूम (${closed.length}) — बंद होने के 90 दिन बाद चैट मिट जाती है`)}</summary>
+              <ul className="mt-1 space-y-0.5">{closed.map((r: any) => <li key={r.id}>{r.clientName} · ••{r.phoneLast4}</li>)}</ul></details>}
+          </div>
+
+          {/* open room */}
+          <div className={`lg:col-span-3 ${openRoom ? '' : 'hidden lg:block'}`}>
+            {openRoom
+              ? <div className="rounded-xl border border-slate-200 bg-white p-3 lg:sticky lg:top-4"><RoomDetail id={openRoom.id} onChange={load} onBack={() => setOpen('')} onLink={(link) => setFresh({ link, name: openRoom.clientName, phone: '' })} /></div>
+              : <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-400">{tx('Pick a room on the left.', 'बाईं ओर से कोई रूम चुनें।')}</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id: string) => void }> = ({ onDone }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [f, setF] = useState({ clientName: '', phone: '', kind: 'BUYER', note: '', consent: false });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const go = async () => {
+    setBusy(true); setErr('');
+    try { const r = await api.crCreate(f); onDone(r.link, f.clientName, f.phone.replace(/\D/g, '').slice(-10), r.room.id); } catch (e: any) { setErr(e?.code === 'PARTY_BLOCKED' ? tx(e.body?.error || e.message, e.body?.hi || e.message) : e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <input className={inp} placeholder={tx('Client name', 'क्लाइंट का नाम')} value={f.clientName} onChange={e => setF({ ...f, clientName: e.target.value })} data-testid="room-name" />
+        <input className={inp} inputMode="numeric" placeholder={tx('Client mobile (10 digits)', 'क्लाइंट का मोबाइल (10 अंक)')} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} data-testid="room-phone" />
+      </div>
+      <select className={inp} value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}>{ROOM_KINDS.map(k => <option key={k.id} value={k.id}>{hi ? k.hi : k.en}</option>)}</select>
+      <input className={inp} placeholder={tx('Private note for yourself (optional)', 'अपने लिए निजी नोट (वैकल्पिक)')} maxLength={300} value={f.note} onChange={e => setF({ ...f, note: e.target.value })} />
+      <label className="flex items-start gap-2 text-[11px] font-semibold"><input type="checkbox" className="mt-0.5 h-5 w-5" checked={f.consent} onChange={e => setF({ ...f, consent: e.target.checked })} data-testid="room-consent" />{tx('My client agreed to get properties from me and chat in this room. His mobile is kept only as a one-way hash plus its last 4 digits.', 'मेरे क्लाइंट ने मुझसे प्रॉपर्टी पाने और इस रूम में चैट करने की सहमति दी है। उसका मोबाइल सिर्फ़ एक-तरफ़ा हैश और आख़िरी 4 अंकों के रूप में रखा जाता है।')}</label>
+      {err && <p className="text-xs font-medium text-red-700" role="alert">{err}</p>}
+      <button className={dark + ' w-full'} disabled={busy || !f.consent || f.clientName.trim().length < 2 || f.phone.replace(/\D/g, '').length < 10} onClick={go} data-testid="room-create">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}{tx('Make the room & link', 'रूम और लिंक बनाएँ')}</button>
+    </div>
+  );
+};
+
+const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: string) => void; onBack?: () => void }> = ({ id, onChange, onLink, onBack }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [tab, setTab] = useState<'chat' | 'homes' | 'visits' | 'info'>('chat');
+  const chatRef = useRef<HTMLDivElement>(null);
+  const [r, setR] = useState<any>(null); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [about, setAbout] = useState('');
+  const [pq, setPq] = useState(''); const [props, setProps] = useState<any[]>([]); const [pick, setPick] = useState(''); const [pnote, setPnote] = useState('');
+  const load = () => api.crGet(id).then(x => { setR(x.room); if (x.room.unread) api.crRead(id).then(onChange).catch(() => undefined); }).catch(e => setErr(e.message));
+  useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) api.crGet(id).then(x => setR(x.room)).catch(() => undefined); }, 15000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const live = (x: any) => setProps(x.properties.filter((p: any) => ['active', 'under_negotiation'].includes(p.listingStatus)));
+      (pq.trim().length >= 2 ? api.getProperties({ q: pq.trim(), limit: 30 }) : api.getProperties({ scope: 'boot' })).then(live).catch(() => undefined);
+    }, pq ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [pq]);
+  const run = async (fn: () => Promise<any>, after?: (x: any) => void) => { setErr(''); try { const x = await fn(); if (x?.room) setR(x.room); after?.(x); onChange(); } catch (e: any) { setErr(e.message); } };
+  useEffect(() => { const el = chatRef.current; if (el) el.scrollTop = el.scrollHeight; }, [r?.messages?.length, tab]);
+  useEffect(() => { setTab('chat'); }, [id]);
+  if (!r) return <div className="py-4 text-center">{err ? <p className="text-xs text-red-700">{err}</p> : <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" />}</div>;
+  const shared = new Set(r.items.map((i: any) => i.propertyId));
+
+  const reqs = r.items.flatMap((i: any) => i.visitRequests.map((v: any) => ({ ...v, item: i })));
+  const openReqs = reqs.filter((v: any) => v.status === 'REQUESTED').length;
+  const kindLabel = (k: string) => { const x = ROOM_KINDS.find(y => y.id === k); return x ? (hi ? x.hi : x.en) : k; };
+  const tabs: [typeof tab, string, string, number | undefined][] = [
+    ['chat', 'Chat', 'चैट', r.messages.length], ['homes', 'Homes', 'प्रॉपर्टी', r.items.length], ['visits', 'Visits', 'विज़िट', openReqs || undefined], ['info', 'Info', 'जानकारी', undefined],
+  ];
+
+  return (
+    <div className="space-y-3" data-testid="room-detail">
+      {/* header: who, when last seen, actions */}
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {onBack && <button type="button" onClick={onBack} className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 px-2 lg:hidden" aria-label={tx('Back to rooms', 'रूम की सूची पर वापस')} data-testid="room-back"><ArrowLeft className="h-4 w-4" /></button>}
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${KIND_TONE[r.kind] || KIND_TONE.OTHER}`}>{initials(r.clientName)}</span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-slate-900">{r.clientName}</div>
+            <div className="text-[11px] text-slate-500">{kindLabel(r.kind)} · ••{r.phoneLast4} · {r.lastClientSeenAt ? `${tx('seen', 'देखा')} ${when(r.lastClientSeenAt)}` : tx('has not opened the link yet', 'अभी लिंक नहीं खोला')}</div>
+          </div>
+        </div>
+      <div className="flex flex-wrap gap-2">
+        <button className={light + ' min-h-9 px-2.5 text-xs'} onClick={() => { if (window.confirm(tx('Make a new link? The old link stops working and your client signs in again.', 'नया लिंक बनाएँ? पुराना लिंक बंद हो जाएगा और क्लाइंट को दोबारा कोड से खोलना होगा।'))) run(() => api.crLink(id), x => onLink(x.link)); }} data-testid="room-newlink"><Link2 className="h-4 w-4" />{tx('New link', 'नया लिंक')}</button>
+        <button className={light + ' min-h-9 px-2.5 text-xs'} onClick={() => { if (window.confirm(tx('Close this room? The link stops working and the chat is erased after 90 days.', 'यह रूम बंद करें? लिंक बंद हो जाएगा और चैट 90 दिन बाद मिट जाएगी।'))) run(() => api.crClose(id)); }}>{tx('Close room', 'रूम बंद करें')}</button>
+      </div>
+      </div>
+
+      {r.codeForClient && (
+        <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-center" data-testid="room-code">
+          <p className="text-xs font-semibold text-amber-900">{tx('Your client is opening the room. Tell him this code (valid 10 minutes):', 'आपका क्लाइंट रूम खोल रहा है। उसे यह कोड बताएँ (10 मिनट तक वैध):')}</p>
+          <p className="mt-1 font-mono text-3xl font-black tracking-[0.3em] text-amber-950">{r.codeForClient}</p>
+        </div>
+      )}
+      {!r.smsOn && <p className="text-[11px] text-slate-500">{tx('No SMS gateway is set, so the code appears here when your client asks for it — read it out to him by phone.', 'SMS गेटवे नहीं लगा है, इसलिए क्लाइंट के कोड माँगने पर वह यहाँ दिखेगा — उसे फ़ोन पर बता दें।')}</p>}
+
+      <div className="flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1" role="tablist">
+        {tabs.map(([id, en, hiT, n]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-9 flex-1 shrink-0 items-center justify-center gap-1 rounded-md px-3 text-xs font-semibold ${tab === id ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`} data-testid={`room-tab-${id}`}>
+            {tx(en, hiT)}{n !== undefined && <span className={`rounded-full px-1.5 text-[10px] ${id === 'visits' ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700'}`}>{n}</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'chat' && (
+      <section>
+        <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('Chat — only you and your client', 'चैट — सिर्फ़ आप और आपका क्लाइंट')}</h4>
+        <div ref={chatRef} className="h-[45vh] min-h-56 space-y-1.5 overflow-auto rounded-lg bg-slate-50 p-2 lg:h-[50vh]" data-testid="room-chat">
+          {r.messages.length === 0 && <p className="text-xs text-slate-400">{tx('No messages yet.', 'अभी कोई संदेश नहीं।')}</p>}
+          {r.messages.map((m: any) => (
+            <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl px-3 py-1.5 text-sm ${m.from === 'BROKER' ? 'ml-auto bg-emerald-100' : 'bg-white shadow-xs'}`}>
+              {m.text}{m.propertyId && <div className="text-[10px] text-slate-500">↳ {m.propertyId}</div>}
+              <div className="text-[10px] text-slate-400">{m.from === 'BROKER' ? tx('You', 'आप') : r.clientName} · {when(m.at)}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1" data-testid="room-quick">
+          {QUICK.map(q => <button key={q.en} type="button" onClick={() => setText(hi ? q.hi : q.en)} className="shrink-0 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:border-slate-500">{hi ? q.hi : q.en}</button>)}
+        </div>
+        <div className="mt-2 flex gap-2">
+          <input className={inp} value={text} maxLength={1000} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && text.trim()) run(() => api.crSend(id, text.trim(), about || undefined), () => setText('')); }} placeholder={tx('Write to your client — no phone numbers', 'क्लाइंट को लिखें — फ़ोन नंबर नहीं')} data-testid="room-msg-input" />
+          <button className={dark} disabled={!text.trim()} onClick={() => run(() => api.crSend(id, text.trim(), about || undefined), () => setText(''))} data-testid="room-send"><Send className="h-4 w-4" /></button>
+        </div>
+        {r.items.length > 0 && <select className={inp + ' mt-1'} value={about} onChange={e => setAbout(e.target.value)} aria-label={tx('About which property', 'किस प्रॉपर्टी के बारे में')}><option value="">{tx('About: (none)', 'विषय: (कोई नहीं)')}</option>{r.items.map((i: any) => <option key={i.id} value={i.propertyId}>{i.property?.title || i.propertyId}</option>)}</select>}
+        <p className="mt-1 text-[11px] text-slate-500">{tx('Phone numbers cannot be typed here — the owner\'s number goes only through a verified visit.', 'यहाँ फ़ोन नंबर नहीं लिखे जा सकते — मालिक का नंबर सिर्फ़ वेरिफ़ाइड विज़िट से मिलता है।')}</p>
+      </section>
+      )}
+
+      {tab === 'homes' && (
+      <section>
+        <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('Properties in this room', 'इस रूम की प्रॉपर्टी')} ({r.items.length})</h4>
+        <div className="space-y-2">
+          {r.items.map((i: any) => (
+            <div key={i.id} className="rounded-lg border border-slate-200 p-2.5 text-xs">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-semibold text-slate-900">{i.property?.title || i.propertyId} <span className="font-normal text-slate-400">· {i.propertyId}</span></div>
+                  <div className="text-slate-500">{i.property ? `${i.property.locality}, ${i.property.city} · ${formatINR(i.property.price)}` : ''}{i.property && !i.property.available ? ` · ${tx('no longer available', 'अब उपलब्ध नहीं')}` : ''}</div>
+                  {i.reaction && <div className={`mt-0.5 inline-flex items-center gap-1 font-semibold ${i.reaction === 'LIKE' ? 'text-emerald-700' : 'text-slate-500'}`}>{i.reaction === 'LIKE' ? <ThumbsUp className="h-3.5 w-3.5" /> : <ThumbsDown className="h-3.5 w-3.5" />}{i.reaction === 'LIKE' ? tx('Client liked it', 'क्लाइंट को पसंद आई') : tx('Client passed', 'क्लाइंट को नहीं जमी')}</div>}
+                </div>
+                <button className="rounded p-1.5 text-slate-400 hover:text-red-600" aria-label={tx('Take out', 'हटाएँ')} onClick={() => run(() => api.crDelItem(id, i.id))}><Trash2 className="h-4 w-4" /></button>
+              </div>
+              {i.visitRequests.map((v: any) => (
+                <div key={v.id} className={`mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded px-2 py-1.5 ${v.status === 'REQUESTED' ? 'bg-amber-50 text-amber-950' : 'bg-slate-50 text-slate-500'}`}>
+                  <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{tx('Wants to visit', 'देखने आना चाहता है')}: <b>{when(v.preferred)}</b>{v.note ? ` — ${v.note}` : ''}</span>
+                  {v.status === 'REQUESTED' ? <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, i.id, v.id))}>{tx('Done', 'हो गया')}</button> : <span>✔ {tx('handled', 'निपटा')}</span>}
+                </div>
+              ))}
+              {i.visitRequests.some((v: any) => v.status === 'REQUESTED') && <p className="mt-1 text-[11px] text-slate-500">{tx('Book the visit from Properties → Schedule Visit with his mobile — a verified visit also protects him as your buyer.', 'प्रॉपर्टी → Schedule Visit से उसके मोबाइल के साथ विज़िट बुक करें — वेरिफ़ाइड विज़िट उसे आपके खरीदार के रूप में सुरक्षित भी करती है।')}</p>}
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 space-y-1.5 rounded-lg bg-slate-50 p-2">
+          <input className={inp} value={pq} onChange={e => setPq(e.target.value)} placeholder={tx('Find a property to share — title, locality, city or ID', 'शेयर करने के लिए प्रॉपर्टी खोजें — नाम, इलाका, शहर या ID')} aria-label={tx('Find a property to share', 'शेयर करने के लिए प्रॉपर्टी खोजें')} />
+          <select className={inp} value={pick} onChange={e => setPick(e.target.value)} data-testid="room-pick"><option value="">{tx('Choose a property…', 'प्रॉपर्टी चुनें…')}</option>{props.filter(p => !shared.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.title} — {p.locality}, {p.city} · {formatINR(p.askingPrice)}</option>)}</select>
+          <input className={inp} maxLength={200} value={pnote} onChange={e => setPnote(e.target.value)} placeholder={tx('A line for your client (optional) — no phone numbers', 'क्लाइंट के लिए एक लाइन (वैकल्पिक) — फ़ोन नंबर नहीं')} />
+          <button className={dark} disabled={!pick} onClick={() => run(() => api.crAddItem(id, pick, pnote || undefined), () => { setPick(''); setPnote(''); })} data-testid="room-add-prop"><Home className="h-4 w-4" />{tx('Share with client', 'क्लाइंट को दिखाएँ')}</button>
+        </div>
+      </section>
+      )}
+
+      {tab === 'visits' && (
+        <section className="space-y-2" data-testid="room-visits">
+          {reqs.length === 0 && <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">{tx('Your client has not asked for a visit yet. He can ask from any home in his room.', 'आपके क्लाइंट ने अभी विज़िट नहीं माँगी। वह अपने रूम की किसी भी प्रॉपर्टी से माँग सकता है।')}</p>}
+          {reqs.map((v: any) => (
+            <div key={v.id} className={`rounded-lg border p-2.5 text-xs ${v.status === 'REQUESTED' ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+              <div className="font-semibold">{v.item.property?.title || v.item.propertyId}</div>
+              <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{tx('Wants to visit', 'देखने आना चाहता है')}: <b>{when(v.preferred)}</b>{v.note ? ` — ${v.note}` : ''}</span>
+                {v.status === 'REQUESTED' ? <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, v.item.id, v.id))}>{tx('Done', 'हो गया')}</button> : <span>✔ {tx('handled', 'हो गया')}</span>}
+              </div>
+            </div>
+          ))}
+          {openReqs > 0 && <p className="text-[11px] text-slate-500">{tx('Book the visit from Properties → Schedule Visit with his mobile — a verified visit also protects him as your buyer.', 'प्रॉपर्टी → विज़िट तय करें से उसके मोबाइल के साथ विज़िट बुक करें — वेरिफ़ाइड विज़िट से वह आपके खरीदार के रूप में सुरक्षित भी रहता है।')}</p>}
+        </section>
+      )}
+
+      {tab === 'info' && (
+        <section className="space-y-3 text-xs" data-testid="room-info">
+          <div className="rounded-lg bg-slate-50 p-3">
+            <div className="font-semibold text-slate-700">{tx('My private note', 'मेरा निजी नोट')}</div>
+            <p className="mt-0.5 whitespace-pre-wrap text-slate-600">{r.note || tx('No note.', 'कोई नोट नहीं।')}</p>
+            <p className="mt-2 text-[11px] text-slate-500">{tx('Room link valid till', 'रूम लिंक इस तारीख़ तक')}: {when(r.expiresAt)}</p>
+          </div>
+          <div>
+            <div className="mb-1 flex items-center gap-1 font-semibold text-slate-700"><Info className="h-3.5 w-3.5" />{tx('What happened in this room', 'इस रूम में क्या हुआ')}</div>
+            <ol className="space-y-1 border-l-2 border-slate-200 pl-3">
+              {(r.events || []).slice().reverse().map((e: any, k: number) => <li key={k} className="text-slate-600"><span className="text-slate-400">{when(e.at)}</span> — {e.text}</li>)}
+            </ol>
+          </div>
+        </section>
+      )}
+
+      {err && <p className="text-xs font-medium text-red-700" role="alert" data-testid="room-error">{err}</p>}
+    </div>
+  );
+};

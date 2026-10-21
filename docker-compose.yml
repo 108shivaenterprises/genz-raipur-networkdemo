@@ -1,0 +1,71 @@
+# Production stack: app + PostgreSQL + Caddy (automatic HTTPS).  Usage: see docs/DEPLOY_INDIA.md
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: genz
+      POSTGRES_USER: genz
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      TZ: Asia/Kolkata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genz -d genz"]
+      interval: 10s
+      retries: 6
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://genz:${DB_PASSWORD}@db:5432/genz
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      KYC_VAULT_KEY: ${KYC_VAULT_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PHONE: ${SEED_ADMIN_PHONE:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      DEMO_MODE: "false"
+      TRUST_PROXY: "true"
+      SMS_WEBHOOK_URL: ${SMS_WEBHOOK_URL:-}
+      SMS_WEBHOOK_TOKEN: ${SMS_WEBHOOK_TOKEN:-}
+      COMPANY_NAME: ${COMPANY_NAME:-GENZ BUILDCON INFRA PVT LTD}
+      COMPANY_ADDRESS: ${COMPANY_ADDRESS:-Raipur, Chhattisgarh, India}
+      GRIEVANCE_NAME: ${GRIEVANCE_NAME:-}
+      GRIEVANCE_EMAIL: ${GRIEVANCE_EMAIL:-}
+      GRIEVANCE_PHONE: ${GRIEVANCE_PHONE:-}
+      TZ: Asia/Kolkata
+    volumes:
+      - appdata:/app/data   # protected-document page images + auth secret live on disk, not in Postgres
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  appdata:
+  caddy_data:
+  caddy_config:

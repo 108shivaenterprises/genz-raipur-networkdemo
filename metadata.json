@@ -1,0 +1,6 @@
+{
+  "name": "GENZ BROKER NETWORK",
+  "description": "Trusted B2B Real Estate Broker Collaboration Platform powered by GENZ BUILDCON. Match engine, anti-bypass deal rooms, verified site visits, commission splits, and construction lead referrals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

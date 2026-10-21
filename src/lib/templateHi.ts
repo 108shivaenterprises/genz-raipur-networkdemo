@@ -1,0 +1,165 @@
+import { useI18n } from './i18n.js';
+
+/**
+ * The deal-room task list, the due-diligence checklist and the default payment milestones come from fixed server templates
+ * (server/dealTemplates.ts). They are stored in English, so the Hindi reading of each known line lives here, keyed by the exact
+ * English text. Anything not in this table (custom text a user typed, a new template line) is shown as written.
+ */
+const HI: Record<string, string> = {
+  // ---- responsibility matrix: 13 duties ----
+  'Buyer or Seller Introduction': 'खरीदार या विक्रेता का परिचय',
+  'Document initial parties, source of lead, introduction timestamp, and client consent for representation.': 'शुरुआती पक्ष, लीड का स्रोत, परिचय का समय और प्रतिनिधित्व के लिए ग्राहक की सहमति दर्ज करें।',
+  'Property Identification & Shortlisting': 'प्रॉपर्टी की पहचान और शॉर्टलिस्टिंग',
+  'Match requirements against verified inventory in the target city; prepare shortlist with verified pricing and documentation status.': 'ज़रूरत को शहर की वेरिफ़ाइड इन्वेंटरी से मिलाएँ; जाँची हुई कीमत और दस्तावेज़ों की स्थिति के साथ शॉर्टलिस्ट बनाएँ।',
+  'Owner Contact & Price Negotiation': 'मालिक से संपर्क और कीमत पर बातचीत',
+  'Facilitate price discussions within owner approved net price bounds without bypassing listing broker mandate.': 'लिस्टिंग ब्रोकर के मैंडेट को बायपास किए बिना, मालिक की मंज़ूर नेट कीमत की सीमा में कीमत की बातचीत कराएँ।',
+  'Buyer Qualification & Site Visits': 'खरीदार की योग्यता जाँच और साइट विज़िट',
+  'Schedule, execute, and verify physical site inspection using tamper-proof OTP/QR verification with customer feedback.': 'OTP/QR से पुष्ट साइट विज़िट तय करें, कराएँ और ग्राहक की प्रतिक्रिया के साथ दर्ज करें।',
+  'Document Collection & Preliminary Review': 'दस्तावेज़ जमा करना और शुरुआती समीक्षा',
+  'Collect registered sale deed, Khasra B1, P-II Khatauni, diversion certificate, tax receipts, and municipal approvals from seller.': 'विक्रेता से रजिस्टर्ड बैनामा, खसरा बी-1, पी-2 खतौनी, डायवर्सन प्रमाणपत्र, टैक्स रसीदें और नगर निगम की मंज़ूरियाँ लें।',
+  'Independent Legal Title Review': 'स्वतंत्र क़ानूनी टाइटल समीक्षा',
+  'Engage enrolled High Court / District Bar Advocate to conduct 30-year Sub-Registrar search, encumbrance check, and draft legal opinion.': 'हाई कोर्ट / ज़िला बार के पंजीकृत वकील से 30 साल की सब-रजिस्ट्रार सर्च, भार (encumbrance) जाँच और क़ानूनी राय तैयार करवाएँ।',
+  'Survey, Measurement & Boundary Verification': 'सर्वे, नाप और सीमा की जाँच',
+  'Conduct on-site demarcation survey, verify corner boundary pillars against revenue map (Nazul/Patwari), and check road access width.': 'मौके पर सीमांकन सर्वे करें, कोने के सीमा-खंभों को राजस्व नक़्शे (नज़ूल/पटवारी) से मिलाएँ और रास्ते की चौड़ाई जाँचें।',
+  'Loan & Bank Coordination': 'लोन और बैंक से तालमेल',
+  'Coordinate bank valuation, legal vetting by empaneled bank advocate, and home loan sanction letter issuance for buyer.': 'बैंक वैल्यूएशन, बैंक के पैनल वकील की क़ानूनी जाँच और खरीदार का होम लोन सैंक्शन लेटर करवाएँ।',
+  'Agreement Drafting & Legal Coordination': 'समझौते का ड्राफ़्ट और क़ानूनी तालमेल',
+  'Draft bilingual (English/Hindi) Agreement to Sell (Bayanama) including milestone schedules, default penalties, and vacant possession clause.': 'द्विभाषी (अंग्रेज़ी/हिंदी) बिक्री का क़रार (बयाना) तैयार करें — माइलस्टोन शेड्यूल, चूक पर जुर्माना और खाली क़ब्ज़े की शर्त सहित।',
+  'Stamp Duty & Registration Coordination': 'स्टाम्प ड्यूटी और रजिस्ट्रेशन का तालमेल',
+  'Calculate the stamp duty, municipal surcharge and registration fees applicable in the state where the property lies (rates differ by state, gender of buyer and property type); purchase e-stamp certificates.': 'प्रॉपर्टी जिस राज्य में है वहाँ की स्टाम्प ड्यूटी, नगर निगम सरचार्ज और रजिस्ट्रेशन फ़ीस निकालें (दरें राज्य, खरीदार के लिंग और प्रॉपर्टी के प्रकार से बदलती हैं); ई-स्टाम्प खरीदें।',
+  'Registry Appointment & Completion Coordination': 'रजिस्ट्री की अपॉइंटमेंट और पूर्णता का तालमेल',
+  'Book a slot at the jurisdictional Sub-Registrar office, verify Aadhaar biometrics readiness of seller/buyer/witnesses, and oversee deed execution.': 'संबंधित सब-रजिस्ट्रार दफ़्तर में स्लॉट बुक करें, विक्रेता/खरीदार/गवाहों के आधार बायोमेट्रिक की तैयारी जाँचें और डीड का निष्पादन देखें।',
+  'Payment Confirmation & Possession Handover': 'भुगतान की पुष्टि और क़ब्ज़े का हैंडओवर',
+  'Verify final demand draft / RTGS settlement, handover physical keys, execute possession receipt, and transfer utility accounts.': 'अंतिम डिमांड ड्राफ़्ट / RTGS भुगतान जाँचें, चाबियाँ सौंपें, क़ब्ज़े की रसीद बनाएँ और बिजली-पानी के खाते ट्रांसफ़र करें।',
+  'Construction, Renovation or Contractor Coordination': 'निर्माण, रेनोवेशन या ठेकेदार से तालमेल',
+  'Connect client with verified GENZ BUILDCON turnkey contractors for elevation, interior fitout, or expansion where applicable.': 'जहाँ ज़रूरी हो, एलिवेशन, इंटीरियर या विस्तार के लिए ग्राहक को वेरिफ़ाइड GENZ BUILDCON टर्नकी ठेकेदारों से जोड़ें।',
+
+  // ---- due-diligence checklist ----
+  'Owner Identity & Authority to Transact': 'मालिक की पहचान और बेचने का अधिकार',
+  'Verify seller Aadhaar, PAN card, Power of Attorney validity, and registered board resolution if corporate seller.': 'विक्रेता का आधार, पैन, पावर ऑफ़ अटॉर्नी की वैधता जाँचें; कंपनी विक्रेता हो तो रजिस्टर्ड बोर्ड रेज़ोल्यूशन भी।',
+  'Government Photo ID (Aadhaar / PAN) & Registered POA if applicable': 'सरकारी फ़ोटो ID (आधार / पैन) और लागू हो तो रजिस्टर्ड POA',
+  'Verified Aadhaar QR verification slip, PAN card copy with active NSDL validation status, and registered General Power of Attorney registered at Sub-Registrar office.': 'आधार QR वेरिफ़िकेशन पर्ची, NSDL से सक्रिय पाई गई पैन की कॉपी, और सब-रजिस्ट्रार दफ़्तर में रजिस्टर्ड जनरल पावर ऑफ़ अटॉर्नी।',
+  'Current Registered Title & 30-Year Prior Title Chain': 'मौजूदा रजिस्टर्ड टाइटल और पिछले 30 साल की टाइटल चेन',
+  'Verify current registered sale deed, mother deed, gift deeds, and trace chain of title transfers for preceding 30 years without gaps.': 'मौजूदा रजिस्टर्ड बैनामा, मूल दस्तावेज़ (मदर डीड), दान-पत्र जाँचें और पिछले 30 साल के टाइटल ट्रांसफ़र की चेन बिना किसी गैप के देखें।',
+  'Registered Sale Deed (Mool Dastavez) & Link Deeds for 30 years': 'रजिस्टर्ड बैनामा (मूल दस्तावेज़) और 30 साल की लिंक डीड',
+  'Certified copies of registered conveyance deeds from the jurisdictional Sub-Registrar records spanning 30 continuous years.': 'संबंधित सब-रजिस्ट्रार रिकॉर्ड से लगातार 30 साल की रजिस्टर्ड हस्तांतरण डीड की प्रमाणित नक़ल।',
+  'Succession, Inheritance, Co-Owner & Authorization Issues': 'उत्तराधिकार, विरासत, सह-मालिक और अधिकार के मुद्दे',
+  'Audit succession tree, legal heir certificates, mutation in revenue records, and obtain written NOC from all surviving co-owners.': 'वंशावली, वारिस प्रमाणपत्र और राजस्व रिकॉर्ड में नामांतरण जाँचें, और सभी जीवित सह-मालिकों से लिखित NOC लें।',
+  'Family Tree Affidavit (Varisan Pramanpatra) & Co-owner NOCs': 'वंशावली शपथ-पत्र (वारिसान प्रमाणपत्र) और सह-मालिकों की NOC',
+  'Notarized family pedigree chart, Tahsildar legal heir certificate, and signed irrevocable consent deeds from all legal heirs.': 'नोटरी से सत्यापित वंशावली, तहसीलदार का वारिस प्रमाणपत्र, और सभी वारिसों की हस्ताक्षरित अटल सहमति डीड।',
+  'Encumbrances, Mortgages, Lender Releases & Form 15/16': 'भार (Encumbrance), गिरवी, बैंक रिलीज़ और फ़ॉर्म 15/16',
+  'Search Sub-Registrar registry index and CERSAI portal to ensure no existing bank mortgage, equitable charge, or attachment orders.': 'सब-रजिस्ट्रार रजिस्ट्री इंडेक्स और CERSAI पोर्टल देखें कि कोई बैंक गिरवी, इक्विटेबल चार्ज या कुर्की आदेश न हो।',
+  'Non-Encumbrance Certificate (Bar-Mukt Pramanpatra / Form 15 & 16) & CERSAI Report': 'भार-मुक्त प्रमाणपत्र (फ़ॉर्म 15 और 16) और CERSAI रिपोर्ट',
+  'Sub-Registrar certified encumbrance certificate (Form 15/16 or the state equivalent) covering minimum 13-30 years, and bank No Objection Certificate (NOC) if loan was previously closed.': 'सब-रजिस्ट्रार का प्रमाणित भार प्रमाणपत्र (फ़ॉर्म 15/16 या राज्य का समकक्ष), कम से कम 13-30 साल का; पहले लोन बंद हुआ हो तो बैंक की NOC।',
+  'Litigation, Court Injunctions & Acquisition Notices': 'मुक़दमे, कोर्ट के स्टे और अधिग्रहण नोटिस',
+  'Search the e-Courts district portal, the relevant High Court records, revenue board, and National Highways/Railways acquisition notifications.': 'ई-कोर्ट्स ज़िला पोर्टल, संबंधित हाई कोर्ट रिकॉर्ड, राजस्व बोर्ड और नेशनल हाईवे/रेलवे के अधिग्रहण नोटिफ़िकेशन देखें।',
+  'Litigation Non-Involvement Affidavit & e-Courts Case Search Report': 'मुक़दमा-मुक्त शपथ-पत्र और ई-कोर्ट्स केस सर्च रिपोर्ट',
+  'Comprehensive search certificate from local advocate covering civil suits, partition suits, and revenue appeals concerning the property khasra.': 'स्थानीय वकील का सर्च प्रमाणपत्र — इस खसरे से जुड़े दीवानी, बँटवारे और राजस्व अपील के मामलों सहित।',
+  'Revenue, Municipal & Property-Tax Records': 'राजस्व, नगर निगम और प्रॉपर्टी-टैक्स रिकॉर्ड',
+  'Verify the land-record extract (Khasra/Khatauni, 7/12, Patta/Chitta, Bhulekh or the state equivalent) from the state land-records portal, and the latest municipal property-tax receipt.': 'राज्य के भू-अभिलेख पोर्टल से ज़मीन का रिकॉर्ड (खसरा/खतौनी, 7/12, पट्टा/चिट्ठा, भूलेख या राज्य का समकक्ष) और नगर निगम की ताज़ा प्रॉपर्टी-टैक्स रसीद जाँचें।',
+  'Computerised B-1 Khasra, P-II Khatauni & Nagar Nigam Tax Clearance Receipt': 'कंप्यूटराइज़्ड बी-1 खसरा, पी-2 खतौनी और नगर निगम टैक्स क्लियरेंस रसीद',
+  'Digitally signed land-record extract (Khasra/Khatauni, 7/12, RoR or state equivalent) from the state land-records portal dated within last 30 days and municipal assessment receipt showing zero outstanding dues.': 'राज्य के भू-अभिलेख पोर्टल से पिछले 30 दिन के भीतर का डिजिटल हस्ताक्षरित रिकॉर्ड (खसरा/खतौनी, 7/12, RoR या समकक्ष) और नगर निगम की रसीद जिसमें कोई बकाया न हो।',
+  'Possession, Occupancy, Boundaries & Physical Measurements': 'क़ब्ज़ा, रहने वाले, सीमाएँ और मौके की नाप',
+  'Conduct on-site physical demarcation, measure actual carpet/plot dimensions against deed, and check boundary walls and adjoining neighbors.': 'मौके पर सीमांकन करें, असली कारपेट/प्लॉट की नाप डीड से मिलाएँ और सीमा की दीवारें व पड़ोसियों की स्थिति देखें।',
+  'Site Demarcation Report (Simankan Prativedan) & GPS Geo-tagged Inspection Photos': 'साइट सीमांकन रिपोर्ट (सीमांकन प्रतिवेदन) और GPS जियो-टैग वाली निरीक्षण फ़ोटो',
+  'Revenue Patwari demarcation panchnama or licensed surveyor report with photographic proof of boundaries and undisturbed vacant possession.': 'राजस्व पटवारी का सीमांकन पंचनामा या लाइसेंसशुदा सर्वेयर की रिपोर्ट — सीमाओं की फ़ोटो और निर्विवाद खाली क़ब्ज़े के सबूत सहित।',
+  'Legal Access, Easements & Road Rights-of-Way': 'क़ानूनी रास्ता, सुखाधिकार और रोड का अधिकार',
+  'Verify uninterrupted motorable road access connecting property to public highway without passing through private un-notified lands.': 'जाँचें कि प्रॉपर्टी से मुख्य सड़क तक गाड़ी जाने लायक रास्ता है और वह किसी निजी अधिसूचित-रहित ज़मीन से होकर नहीं गुज़रता।',
+  'Approach Road Verification Certificate & Master Plan Access Alignment': 'पहुँच-मार्ग सत्यापन प्रमाणपत्र और मास्टर प्लान के अनुसार रास्ते की संरेखण',
+  'Municipal or PWD approved road width confirmation (minimum 20-30 ft) and absence of private easement disputes.': 'नगर निगम या PWD से मंज़ूर रोड की चौड़ाई की पुष्टि (कम से कम 20-30 फ़ीट) और निजी रास्ते के विवाद न होना।',
+  'Existing Leases, Tenants, Occupants & Third-Party Rights': 'मौजूदा लीज़, किराएदार, रहने वाले और तीसरे पक्ष के अधिकार',
+  'Verify absence of protected tenants, informal caretakers, or unexpired commercial leases; obtain tenant surrender deeds if tenanted.': 'जाँचें कि कोई संरक्षित किराएदार, अनौपचारिक केयरटेकर या चालू कमर्शियल लीज़ न हो; किराएदार हो तो उसकी सरेंडर डीड लें।',
+  'Tenant Surrender Deed or Vacant Physical Possession Undertaking': 'किराएदार की सरेंडर डीड या खाली क़ब्ज़ा देने का वचन-पत्र',
+  'Affidavit from seller confirming nil third-party tenant rights or registered deed of lease termination with full refund of security deposit.': 'विक्रेता का शपथ-पत्र कि तीसरे पक्ष का कोई अधिकार नहीं, या सिक्योरिटी डिपॉज़िट पूरा लौटाकर लीज़ खत्म करने की रजिस्टर्ड डीड।',
+  'Utilities & Outstanding Service Dues': 'बिजली-पानी आदि और बकाया बिल',
+  'Clear electricity-board bills, water-board connection charges, and society maintenance ledger statements.': 'बिजली बोर्ड के बिल, पानी के कनेक्शन शुल्क और सोसायटी मेंटेनेंस के बकाये चुकता कराएँ।',
+  'Latest CSPDCL Electricity Bill & Paid Receipt, Water Tax Clearance, Society NOC': 'ताज़ा बिजली बिल (CSPDCL) और भुगतान की रसीद, पानी टैक्स क्लियरेंस, सोसायटी NOC',
+  'Zero-balance bill receipts from power distribution company and formal NOC from apartment society management.': 'बिजली कंपनी की शून्य-बकाया रसीदें और अपार्टमेंट सोसायटी की औपचारिक NOC।',
+  'Material Defects & Seller Disclosures': 'ज़रूरी खामियाँ और विक्रेता का खुलासा',
+  'Document structural health, dampness, flood water logging history during monsoon, high-tension wire alignment, or pipeline right of user.': 'ढाँचे की हालत, सीलन, बरसात में जलभराव का इतिहास, हाई-टेंशन तार की दिशा या पाइपलाइन के अधिकार दर्ज करें।',
+  'Seller Disclosure Statement & Structural Fitness Certificate': 'विक्रेता का खुलासा-पत्र और ढाँचे की मज़बूती का प्रमाणपत्र',
+  'Signed disclosure form covering structural stability, overhead transmission lines, and environmental hazard disclosures.': 'हस्ताक्षरित खुलासा-फ़ॉर्म — ढाँचे की स्थिरता, ऊपर से गुज़रती बिजली लाइनें और पर्यावरणीय जोखिम सहित।',
+  'Local Planning, Land-Use & Statutory Restrictions': 'स्थानीय प्लानिंग, भूमि-उपयोग और वैधानिक पाबंदियाँ',
+  'Verify property compliance with the Master Plan / Development Plan, Town & Country Planning land zoning, and green-belt setbacks.': 'जाँचें कि प्रॉपर्टी मास्टर प्लान / डेवलपमेंट प्लान, नगर तथा ग्राम निवेश की ज़ोनिंग और ग्रीन-बेल्ट सेटबैक के अनुसार है।',
+  'Master Plan / Development Plan Zoning Certificate & Land Use Verification (local planning authority)': 'मास्टर प्लान / डेवलपमेंट प्लान ज़ोनिंग प्रमाणपत्र और भूमि-उपयोग सत्यापन (स्थानीय प्लानिंग प्राधिकरण)',
+  'Official extract from Town & Country Planning Directorate confirming permissible residential/commercial use.': 'नगर तथा ग्राम निवेश संचालनालय का आधिकारिक उद्धरण जो आवासीय/व्यावसायिक उपयोग की अनुमति पुष्ट करे।',
+  'Land Classification & Sec 172 Revenue Code Diversion': 'भूमि का वर्गीकरण और धारा 172 राजस्व संहिता के तहत डायवर्सन',
+  'Verify the agricultural-to-non-agricultural conversion / diversion order issued under the state Land Revenue Code by the competent revenue officer (SDO / Collector).': 'सक्षम राजस्व अधिकारी (SDO / कलेक्टर) द्वारा राज्य की भू-राजस्व संहिता के तहत जारी कृषि से अकृषि भूमि के रूपांतरण / डायवर्सन आदेश की जाँच करें।',
+  'SDO Diversion Order (Vyapvaran Aadesh) & Premium Challan Receipt': 'SDO का डायवर्सन आदेश (व्यपवर्तन आदेश) और प्रीमियम चालान रसीद',
+  'Official diversion sanad signed by Revenue Officer with non-agricultural assessment tax receipts.': 'राजस्व अधिकारी द्वारा हस्ताक्षरित डायवर्सन सनद और अकृषि लगान की रसीदें।',
+  'TNCP Approved Layout & Colonizer License Sanction': 'TNCP से मंज़ूर लेआउट और कॉलोनाइज़र लाइसेंस',
+  'Verify layout development approval from Director, Town & Country Planning and Municipal colonizer registration with open space relinquishment.': 'संचालक, नगर तथा ग्राम निवेश से लेआउट विकास की मंज़ूरी और खुली जगह छोड़ने के साथ नगर निगम का कॉलोनाइज़र पंजीयन जाँचें।',
+  'TNCP Approved Layout Map (Blueprint) & Colonizer Registration Certificate': 'TNCP से मंज़ूर लेआउट नक़्शा (ब्लूप्रिंट) और कॉलोनाइज़र पंजीयन प्रमाणपत्र',
+  'Original stamped layout blueprint highlighting sanctioned plot boundaries, park reservations, and public utility transfers.': 'मुहर लगा मूल लेआउट ब्लूप्रिंट — मंज़ूर प्लॉट सीमाएँ, पार्क के लिए आरक्षित जगह और सार्वजनिक सुविधाओं के हस्तांतरण दिखाते हुए।',
+  'Tribal / Restricted-Land Transfer Restrictions (State Land Revenue Code)': 'आदिवासी / प्रतिबंधित भूमि के हस्तांतरण की पाबंदियाँ (राज्य भू-राजस्व संहिता)',
+  'Audit the state land-revenue-law clauses that protect tribal / restricted lands (e.g. Sec 165 of the Chhattisgarh Land Revenue Code and its equivalents in other states) and check whether Collector permission is required for the transfer.': 'आदिवासी / प्रतिबंधित भूमि को बचाने वाले राज्य भू-राजस्व क़ानून के प्रावधान (जैसे छत्तीसगढ़ भू-राजस्व संहिता की धारा 165 और अन्य राज्यों के समकक्ष) जाँचें और देखें कि हस्तांतरण के लिए कलेक्टर की अनुमति चाहिए या नहीं।',
+  'Caste & Revenue Title Certificate / Collector Permission Order if applicable': 'जाति और राजस्व टाइटल प्रमाणपत्र / लागू हो तो कलेक्टर की अनुमति का आदेश',
+  'Affidavit and revenue verification that the land is not subject to alienation restrictions under the state land revenue law.': 'शपथ-पत्र और राजस्व सत्यापन कि ज़मीन पर राज्य के भू-राजस्व क़ानून के तहत बेचने की कोई रोक नहीं है।',
+  'State RERA Project Registration & Quarterly Audit Status': 'राज्य RERA प्रोजेक्ट पंजीयन और तिमाही ऑडिट की स्थिति',
+  'Verify valid registration on the state RERA portal, project end-date compliance, and bank escrow accounts.': 'राज्य RERA पोर्टल पर वैध पंजीयन, प्रोजेक्ट की समाप्ति-तिथि का पालन और बैंक एस्क्रो खाते जाँचें।',
+  'State RERA Registration Certificate & Portal Compliance Extract': 'राज्य RERA पंजीयन प्रमाणपत्र और पोर्टल का अनुपालन विवरण',
+  'Official state RERA registration order with verification of registered promoter details and approved project plans.': 'राज्य RERA का आधिकारिक पंजीयन आदेश — पंजीकृत प्रमोटर के विवरण और मंज़ूर प्रोजेक्ट प्लान के सत्यापन सहित।',
+  'Sanctioned Floor Plans, Material Deviations, CC & OC': 'मंज़ूर फ़्लोर प्लान, बड़े विचलन, CC और OC',
+  'Verify Municipal Corporation Completion Certificate (CC) and Occupancy Certificate (OC) or architect deviation report.': 'नगर निगम का कम्प्लीशन सर्टिफ़िकेट (CC) और ऑक्यूपेंसी सर्टिफ़िकेट (OC) या आर्किटेक्ट की विचलन रिपोर्ट जाँचें।',
+  'Municipal Completion Certificate (CC) & Occupancy Certificate (OC)': 'नगर निगम का कम्प्लीशन सर्टिफ़िकेट (CC) और ऑक्यूपेंसी सर्टिफ़िकेट (OC)',
+  'Clear Occupancy Certificate issued by the local municipal body confirming adherence to sanctioned building bye-laws.': 'स्थानीय निकाय का साफ़ ऑक्यूपेंसी सर्टिफ़िकेट जो मंज़ूर भवन उपविधियों का पालन पुष्ट करे।',
+  'Undivided Land Share (UDS), Society NOC & Parking Allocation': 'अविभाजित ज़मीन का हिस्सा (UDS), सोसायटी NOC और पार्किंग आवंटन',
+  'Verify exact Undivided Land Share (UDS) percentage in parent land, alloted covered/stilt car parking bay number, and association NOC.': 'मूल ज़मीन में UDS का सही प्रतिशत, आवंटित कवर्ड/स्टिल्ट पार्किंग का नंबर और एसोसिएशन की NOC जाँचें।',
+  'Deed of Declaration, Parking Allotment Letter & Society Transfer NOC': 'घोषणा-पत्र (Deed of Declaration), पार्किंग आवंटन पत्र और सोसायटी ट्रांसफ़र NOC',
+  'Registered Apartment Owners Association letter confirming exclusive parking allotment and nil transfer fee disputes.': 'पंजीकृत अपार्टमेंट ओनर्स एसोसिएशन का पत्र — विशेष पार्किंग आवंटन और ट्रांसफ़र फ़ीस का कोई विवाद न होने की पुष्टि।',
+  'Municipal Building Permission & Sanctioned Blueprints': 'नगर निगम की भवन अनुमति और मंज़ूर ब्लूप्रिंट',
+  'Verify the municipal building permission letter, sanctioned floor blueprints, and setback compliance (front, rear, side yards).': 'नगर निगम का भवन अनुमति पत्र, मंज़ूर फ़्लोर ब्लूप्रिंट और सेटबैक का पालन (आगे, पीछे, बगल) जाँचें।',
+  'Municipal Building Permission Order (Bhavan Anumati) & Sanctioned Architectural Drawings': 'नगर निगम का भवन अनुमति आदेश (भवन अनुज्ञा) और मंज़ूर आर्किटेक्चरल ड्रॉइंग',
+  'Stamped Nagar Nigam approval blueprint matching the built structure without unauthorized additional floors or encroachments.': 'नगर निगम की मुहर लगा मंज़ूर ब्लूप्रिंट जो बने ढाँचे से मेल खाए — बिना अवैध अतिरिक्त मंज़िल या अतिक्रमण के।',
+  'Unauthorized Construction & Setback Deviation Audit': 'अवैध निर्माण और सेटबैक विचलन की जाँच',
+  'Audit physical structure for excess FAR/FSI, unauthorized cantilever balconies over public roads, or illegal basement excavations.': 'ढाँचे में ज़्यादा FAR/FSI, सार्वजनिक सड़क पर अवैध बाहर निकली बालकनी या अवैध बेसमेंट खुदाई की जाँच करें।',
+  'Architect As-Built Survey & Non-Violation Certificate': 'आर्किटेक्ट का As-Built सर्वे और गैर-उल्लंघन प्रमाणपत्र',
+  'Signed report from registered architect or chartered engineer confirming deviations are within 5% compounding limits.': 'पंजीकृत आर्किटेक्ट या चार्टर्ड इंजीनियर की हस्ताक्षरित रिपोर्ट कि विचलन 5% की कम्पाउंडिंग सीमा के भीतर हैं।',
+  'Permitted Commercial Use, Fire NOC & Operating Clearances': 'अनुमत कमर्शियल उपयोग, फ़ायर NOC और संचालन की मंज़ूरियाँ',
+  'Verify Master Plan commercial strip classification, the state Fire & Emergency Services NOC, and high-rise safety clearances.': 'मास्टर प्लान में कमर्शियल पट्टी का वर्गीकरण, राज्य के फ़ायर एवं इमरजेंसी सर्विसेज़ की NOC और ऊँची इमारत की सुरक्षा मंज़ूरियाँ जाँचें।',
+  'Commercial Land-Use Sanad, Fire Department NOC & Structural Stability Certificate': 'कमर्शियल भूमि-उपयोग सनद, फ़ायर विभाग की NOC और ढाँचे की स्थिरता का प्रमाणपत्र',
+  'Valid Fire NOC issued by the state Fire & Emergency Services authority and the municipal trade / commercial assessment.': 'राज्य के फ़ायर एवं इमरजेंसी सर्विसेज़ की वैध NOC और नगर निगम का व्यापार / कमर्शियल आकलन।',
+  'Commercial Leases, Security Deposits & Power Sanction': 'कमर्शियल लीज़, सिक्योरिटी डिपॉज़िट और बिजली सैंक्शन',
+  'Verify existing registered lease agreements, security deposit escrow status, Lock-in period compliance, and 3-phase high-tension power sanction.': 'मौजूदा रजिस्टर्ड लीज़ एग्रीमेंट, सिक्योरिटी डिपॉज़िट की स्थिति, लॉक-इन अवधि का पालन और 3-फ़ेज़ हाई-टेंशन बिजली सैंक्शन जाँचें।',
+  'Registered Lease Agreement, Rent Roll Ledger & CSPDCL HT/LT Sanction Letter': 'रजिस्टर्ड लीज़ एग्रीमेंट, किराया बही और CSPDCL का HT/LT सैंक्शन पत्र',
+  'Certified copies of commercial tenant contracts and load demand sanction certificate from electricity board.': 'कमर्शियल किराएदारों के अनुबंधों की प्रमाणित नक़ल और बिजली बोर्ड का लोड सैंक्शन प्रमाणपत्र।',
+  'Land Ownership Records, Revenue Records & Ceiling Limits': 'भूमि स्वामित्व रिकॉर्ड, राजस्व रिकॉर्ड और सीलिंग सीमा',
+  'Verify the original land-ownership records (Kisan Rin Pustika / Pass Book / RoR), the seller holding against the state land-ceiling law, and check for surplus-land vesting notices.': 'मूल भूमि स्वामित्व रिकॉर्ड (किसान ऋण पुस्तिका / पासबुक / RoR), राज्य के भूमि-सीलिंग क़ानून के मुकाबले विक्रेता की जोत, और अतिरिक्त भूमि के निहित होने के नोटिस जाँचें।',
+  'Original Kisan Rin Pustika, 12-Year Revenue Record (Pahat) & Ceiling Non-Involvement Affidavit': 'मूल किसान ऋण पुस्तिका, 12 साल का राजस्व रिकॉर्ड (पहट) और सीलिंग में शामिल न होने का शपथ-पत्र',
+  'Current year computerized Patwari entries and SDO clearance certifying holding is within legal non-tribal ceiling limits.': 'चालू वर्ष की कंप्यूटराइज़्ड पटवारी प्रविष्टियाँ और SDO की मंज़ूरी कि जोत ग़ैर-आदिवासी क़ानूनी सीलिंग सीमा के भीतर है।',
+  'Tenancy Rights, Actual Physical Possession & Water Rights': 'बटाईदारी अधिकार, असली क़ब्ज़ा और पानी के अधिकार',
+  'Verify tube-well / borewell registration, irrigation canal water rights (Sinchan Vibhag), absence of protected shikmi tenants, and boundary beacons.': 'ट्यूबवेल / बोरवेल का पंजीयन, नहर के पानी के अधिकार (सिंचाई विभाग), संरक्षित शिकमी काश्तकारों का न होना और सीमा-चिह्न जाँचें।',
+  'Irrigation Department Clearance (Sinchan Parchi) & Tube-Well Electricity Bill': 'सिंचाई विभाग की मंज़ूरी (सिंचाई पर्ची) और ट्यूबवेल का बिजली बिल',
+  'Inspection panchnama signed by 5 adjoining farmers confirming peaceful cultivation and undisputed possession.': 'आसपास के 5 किसानों द्वारा हस्ताक्षरित निरीक्षण पंचनामा — शांतिपूर्ण खेती और निर्विवाद क़ब्ज़े की पुष्टि।',
+
+  // ---- default agreement clauses ----
+  'Co-brokerage mandate and 30-day anti-bypass rule (GENZ platform terms)': 'को-ब्रोकरेज मैंडेट और 30 दिन का एंटी-बायपास नियम (GENZ प्लेटफ़ॉर्म की शर्तें)',
+  'Co-brokerage mandate with the 30-day anti-bypass rule (GENZ platform terms)': 'को-ब्रोकरेज मैंडेट और 30 दिन का एंटी-बायपास नियम (GENZ प्लेटफ़ॉर्म की शर्तें)',
+  'Cancellation and refund terms are as agreed in writing between the parties. GENZ does not hold, refund or move any money.': 'रद्द करने और रिफ़ंड की शर्तें वही हैं जो पक्षों ने आपस में लिखित में तय की हैं। GENZ कोई पैसा न रखता है, न लौटाता है, न भेजता है।',
+  'A dispute on the platform is first reviewed by a GENZ admin under the platform rules. This does not replace any legal remedy available to the parties.': 'प्लेटफ़ॉर्म पर विवाद की पहले GENZ एडमिन प्लेटफ़ॉर्म नियमों के तहत समीक्षा करता है। इससे पक्षों के क़ानूनी उपाय खत्म नहीं होते।',
+
+  // ---- default payment milestones ----
+  'Token Execution': 'टोकन / बयाना',
+  'Title Clearance': 'टाइटल क्लियरेंस',
+  'Sub-Registrar Registry': 'सब-रजिस्ट्रार रजिस्ट्री',
+  'Earnest Money Token / Bayana Agreement Execution': 'अर्नेस्ट मनी टोकन / बयाना क़रार',
+  'Title Clearance & Bank Loan Sanction': 'टाइटल क्लियरेंस और बैंक लोन सैंक्शन',
+  'Sub-Registrar Registry Execution & Final Settlement': 'सब-रजिस्ट्रार रजिस्ट्री और अंतिम निपटारा',
+};
+
+/** `const th = useTemplateHi(); th(task.title)` → Hindi for a known template line when the app is in Hindi, else the text as stored. */
+export function useTemplateHi() {
+  const { lang } = useI18n();
+  return (text: string | undefined | null): string => {
+    const v = text ?? '';
+    if (lang !== 'hi') return v;
+    if (HI[v]) return HI[v];
+    // "<checklist title>: <required document>" (the readiness report's pending-documents lines)
+    const i = v.indexOf(': ');
+    if (i > 0 && HI[v.slice(0, i)]) return `${HI[v.slice(0, i)]}: ${HI[v.slice(i + 2)] ?? v.slice(i + 2)}`;
+    return v;
+  };
+}
+
+/** Exposed for tests: every known template line. */
+export const TEMPLATE_HI = HI;

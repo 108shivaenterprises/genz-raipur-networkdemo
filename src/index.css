@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Phone-first guard rails: form controls and pre-formatted blocks never push the page wider than the screen. */
+select, input, textarea { max-width: 100%; }
+main { min-width: 0; }
+main pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+
+/* v30 — "print this report" prints only the marked block, not the whole app screen */
+@media print {
+  body.printing-target * { visibility: hidden !important; }
+  body.printing-target .print-target, body.printing-target .print-target * { visibility: visible !important; }
+  body.printing-target .print-target { -webkit-print-color-adjust: exact; print-color-adjust: exact; position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border: 0 !important; }
+}
