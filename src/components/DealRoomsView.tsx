@@ -61,6 +61,7 @@ import {
 import { PropertyMediaAsset, MediaShareGrant, DealMessage } from '../types/index.js';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { DealPipeline, StageStepper, NextSteps, MandatesBoard, DealCard } from './DealHub.js';
+import { ShareToRoom } from './ShareToRoom.js';
 import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature } from 'lucide-react';
 
 interface DealRoomsViewProps {
@@ -1023,15 +1024,19 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           {tx('OTP-confirmed site visits (with location where GPS was shared)', 'OTP से पुष्ट साइट विज़िट (जहाँ GPS मिला वहाँ लोकेशन के साथ)')}
                         </p>
                       </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                      {perm('clientroom:use') && currentUser.role === 'BROKER' && activeDeal.stage !== 'Settled' && <ShareToRoom propertyId={activeDeal.propertyId} />}
                       {perm('sitevisit:create') && (
                       <button
                         onClick={() => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId)}
                         className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+                        data-testid="deal-schedule-visit"
                       >
                         <Clock className="h-3.5 w-3.5" />
                         <span>{tx('Schedule Visit', 'विज़िट तय करें')}</span>
                       </button>
                       )}
+                      </div>
                     </div>
 
                     {activeVisits.length === 0 ? (

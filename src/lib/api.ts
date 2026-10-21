@@ -255,6 +255,10 @@ export const api = {
     scheduledTime: string;
     notes?: string;
     scanAt?: string;
+    /** v40 — booked from a Client Room */
+    clientRoomId?: string;
+    clientRoomItemId?: string;
+    clientRoomRequestId?: string;
   }) =>
     request<{ success: boolean; siteVisit: SiteVisit; dealRoom?: DealRoom }>('/api/site-visits', {
       method: 'POST',
@@ -574,6 +578,9 @@ export const api = {
   crSend: (id: string, text: string, propertyId?: string) => request<any>(`/api/client-rooms/${id}/messages`, { method: 'POST', body: JSON.stringify({ text, propertyId }) }),
   crRead: (id: string) => request<any>(`/api/client-rooms/${id}/read`, { method: 'POST' }),
   crVisitHandled: (id: string, itemId: string, vid: string) => request<any>(`/api/client-rooms/${id}/visit/${itemId}/${vid}/handled`, { method: 'POST' }),
+  // v40 — photos & video shown to the client
+  crItemMedia: (id: string, itemId: string) => request<{ success: boolean; available: { photos: string[]; videos: { url: string; kind: 'YOUTUBE' | 'FILE' | 'LINK' }[] }; chosen: { photos: string[]; videos: string[] }; limits: { maxPhotos: number; maxVideos: number } }>(`/api/client-rooms/${id}/items/${itemId}/media`),
+  crSetMedia: (id: string, itemId: string, media: { photos: string[]; videos: string[] }) => request<any>(`/api/client-rooms/${id}/items/${itemId}/media`, { method: 'PUT', body: JSON.stringify(media) }),
   crLink: (id: string) => request<any>(`/api/client-rooms/${id}/link`, { method: 'POST' }),
   crClose: (id: string) => request<any>(`/api/client-rooms/${id}/close`, { method: 'POST' }),
   connectorShareSet: (id: string, pct: number, note?: string) => request<any>(`/api/connector/referrals/${id}/share`, { method: 'POST', body: JSON.stringify({ pct, note }) }),

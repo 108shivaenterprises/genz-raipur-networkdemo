@@ -1160,6 +1160,10 @@ export const ScheduleVisitModal: React.FC<{
   onClose: () => void;
   onSuccess: () => void;
   onOpenQrPass?: (visit: SiteVisit) => void;
+  /** v40 — filled in from the deal room's buyer or the client room (the broker can still change name / time) */
+  defaults?: { name?: string; phone?: string; when?: string; note?: string };
+  /** v40 — booked from a Client Room: the mobile must be the client's (the room keeps only its last 4 digits) */
+  clientRoom?: { id: string; itemId?: string; requestId?: string; phoneLast4: string; clientName: string };
 }> = ({
   isOpen,
   dealId = '',
@@ -1168,6 +1172,8 @@ export const ScheduleVisitModal: React.FC<{
   onClose,
   onSuccess,
   onOpenQrPass,
+  defaults,
+  clientRoom,
 }) => {
   const getInitialVisitTime = () => {
     const d = new Date();
@@ -1180,10 +1186,15 @@ export const ScheduleVisitModal: React.FC<{
   const tx = useTx();
   const { lang } = useI18n();
   const loc = lang === 'hi' ? 'hi-IN' : 'en-IN';
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [scheduledTime, setScheduledTime] = useState(getInitialVisitTime());
-  const [notes, setNotes] = useState('');
+  const toLocal = (iso?: string) => {
+    if (!iso || Number.isNaN(Date.parse(iso))) return '';
+    const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [customerName, setCustomerName] = useState(clientRoom?.clientName || defaults?.name || '');
+  const [customerPhone, setCustomerPhone] = useState(defaults?.phone || '');
+  const [scheduledTime, setScheduledTime] = useState((defaults?.when && Date.parse(defaults.when) > Date.now() ? toLocal(defaults.when) : '') || getInitialVisitTime());
+  const [notes, setNotes] = useState(defaults?.note || '');
   const [scanAt, setScanAt] = useState('PROPERTY');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1203,6 +1214,10 @@ export const ScheduleVisitModal: React.FC<{
     }
     if (!scheduledTime) {
       setError(tx('Please select a visit date and time.', 'कृपया विज़िट की तारीख़ और समय चुनें।'));
+      return;
+    }
+    if (clientRoom && !customerPhone.replace(/\D/g, '').endsWith(clientRoom.phoneLast4)) {
+      setError(tx(`Enter your client's full mobile — it ends with ${clientRoom.phoneLast4}.`, `क्लाइंट का पूरा मोबाइल नंबर लिखें — आख़िरी अंक ${clientRoom.phoneLast4} हैं।`));
       return;
     }
 
@@ -1225,6 +1240,7 @@ export const ScheduleVisitModal: React.FC<{
         scheduledTime: isoDate,
         notes: notes.trim() || undefined,
         scanAt,
+        ...(clientRoom ? { clientRoomId: clientRoom.id, clientRoomItemId: clientRoom.itemId, clientRoomRequestId: clientRoom.requestId } : {}),
       });
 
       if (res.success && res.siteVisit) {
@@ -1473,18 +1489,23 @@ export const ScheduleVisitModal: React.FC<{
                     placeholder={tx('e.g. Dr. Alok Pandey', 'जैसे: डॉ. आलोक पांडे')}
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 p-2 pl-8 text-xs text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                    readOnly={!!clientRoom}
+                    data-testid="visit-name"
+                    className={`w-full rounded-lg border border-slate-300 p-2 pl-8 text-xs text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 ${clientRoom ? 'bg-slate-50' : ''}`}
                   />
                   <User className="h-4 w-4 text-slate-400 absolute left-2.5 top-2.5" />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700">{tx('Client Phone (Optional)', 'क्लाइंट का फ़ोन (वैकल्पिक)')}</label>
+                <label className="text-xs font-semibold text-slate-700">{clientRoom ? tx(`Client's mobile * (ends with ${clientRoom.phoneLast4})`, `क्लाइंट का मोबाइल * (आख़िरी अंक ${clientRoom.phoneLast4})`) : tx('Client Phone (Optional)', 'क्लाइंट का फ़ोन (वैकल्पिक)')}</label>
                 <div className="relative mt-1">
                   <input
                     type="text"
-                    placeholder={tx('e.g. +91 98271 23456', 'जैसे: +91 98271 23456')}
+                    inputMode="tel"
+                    required={!!clientRoom}
+                    data-testid="visit-phone"
+                    placeholder={clientRoom ? `98XXXX${clientRoom.phoneLast4}` : tx('e.g. +91 98271 23456', 'जैसे: +91 98271 23456')}
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 p-2 pl-8 text-xs text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"

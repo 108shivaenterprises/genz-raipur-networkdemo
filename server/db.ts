@@ -1117,7 +1117,11 @@ export interface ClientRoom {
   otpHash?: string; otpExpires?: string; otpTries?: number; otpPlain?: string;
   lastClientSeenAt?: string; lastBrokerSeenAt?: string;
   items: { id: string; propertyId: string; sharedAt: string; note?: string; reaction?: 'LIKE' | 'PASS'; reactionAt?: string;
-    visitRequests: { id: string; at: string; preferred: string; note?: string; status: 'REQUESTED' | 'HANDLED' }[] }[];
+    visitRequests: { id: string; at: string; preferred: string; note?: string; status: 'REQUESTED' | 'HANDLED'; visitId?: string }[];
+    /** v40 — the photo / video links the broker chose to show his client (only what he may share; re-checked on every view) */
+    media?: { photos: string[]; videos: string[]; at: string };
+    /** v40 — site visits booked from this room for this home */
+    visits?: { visitId: string; when: string; at: string }[] }[];
   messages: { id: string; from: 'CLIENT' | 'BROKER'; text: string; at: string; propertyId?: string }[];
   events: { at: string; text: string }[];
 }

@@ -4,12 +4,16 @@
  * v37 — redesign: KPI tiles (each one a filter), search + kind chips, two panes on a big screen (rooms | open room), one pane with "back" on a
  * phone, and inside a room: Chat (auto-scroll, quick replies) · Homes · Visits · Info.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Send, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, ArrowLeft, Info, KeyRound, Heart, Inbox } from 'lucide-react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Send, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, ArrowLeft, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
 import { ROOM_KINDS } from '../shared/clientRoomRules.js';
+import { lazyView } from '../lib/lazyView.js';
+
+/** v40 — the same "Schedule Verified Site Visit" form as everywhere else, opened from a room (client + home already filled in) */
+const ScheduleVisitModal = lazyView(() => import('./Modals.js'), 'ScheduleVisitModal');
 
 const inp = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm';
 const dark = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-40';
@@ -190,6 +194,8 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
   const chatRef = useRef<HTMLDivElement>(null);
   const [r, setR] = useState<any>(null); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [about, setAbout] = useState('');
   const [pq, setPq] = useState(''); const [props, setProps] = useState<any[]>([]); const [pick, setPick] = useState(''); const [pnote, setPnote] = useState('');
+  const [book, setBook] = useState<null | { item: any; req?: any }>(null);   // v40 — visit booked from the room
+  const [mediaFor, setMediaFor] = useState('');                              // v40 — item whose photos / video are being chosen
   const load = () => api.crGet(id).then(x => { setR(x.room); if (x.room.unread) api.crRead(id).then(onChange).catch(() => undefined); }).catch(e => setErr(e.message));
   useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) api.crGet(id).then(x => setR(x.room)).catch(() => undefined); }, 15000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => {
@@ -284,13 +290,38 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
                 </div>
                 <button className="rounded p-1.5 text-slate-400 hover:text-red-600" aria-label={tx('Take out', 'हटाएँ')} onClick={() => run(() => api.crDelItem(id, i.id))}><Trash2 className="h-4 w-4" /></button>
               </div>
+              {(i.media?.photos?.length > 0 || i.media?.videos?.length > 0) && (
+                <div className="mt-1.5 flex items-center gap-1.5 overflow-x-auto" data-testid={`room-media-strip-${i.id}`}>
+                  {i.media.photos.slice(0, 5).map((u: string) => <img key={u} src={u} alt="" loading="lazy" className="h-12 w-16 shrink-0 rounded object-cover bg-slate-100" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />)}
+                  {i.media.photos.length > 5 && <span className="shrink-0 text-[10px] text-slate-500">+{i.media.photos.length - 5}</span>}
+                  {i.media.videos.length > 0 && <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white"><PlayCircle className="h-3 w-3" />{tx('video', 'वीडियो')}</span>}
+                </div>
+              )}
+              {(i.visits || []).map((v: any) => (
+                <div key={v.visitId} className="mt-1.5 flex items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-emerald-800"><Check className="h-3.5 w-3.5" />{tx('Visit booked', 'विज़िट तय')}: <b>{when(v.when)}</b> <span className="text-emerald-600">· {v.visitId}</span></div>
+              ))}
               {i.visitRequests.map((v: any) => (
                 <div key={v.id} className={`mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded px-2 py-1.5 ${v.status === 'REQUESTED' ? 'bg-amber-50 text-amber-950' : 'bg-slate-50 text-slate-500'}`}>
                   <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{tx('Wants to visit', 'देखने आना चाहता है')}: <b>{when(v.preferred)}</b>{v.note ? ` — ${v.note}` : ''}</span>
-                  {v.status === 'REQUESTED' ? <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, i.id, v.id))}>{tx('Done', 'हो गया')}</button> : <span>✔ {tx('handled', 'निपटा')}</span>}
+                  {v.status === 'REQUESTED'
+                    ? <span className="inline-flex gap-1">
+                        {i.property?.available && <button className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white" onClick={() => setBook({ item: i, req: v })} data-testid={`room-book-req-${v.id}`}>{tx('Book this visit', 'यह विज़िट तय करें')}</button>}
+                        <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, i.id, v.id))}>{tx('Done', 'हो गया')}</button>
+                      </span>
+                    : <span>✔ {v.visitId ? `${tx('booked', 'तय')} · ${v.visitId}` : tx('handled', 'निपटा')}</span>}
                 </div>
               ))}
-              {i.visitRequests.some((v: any) => v.status === 'REQUESTED') && <p className="mt-1 text-[11px] text-slate-500">{tx('Book the visit from Properties → Schedule Visit with his mobile — a verified visit also protects him as your buyer.', 'प्रॉपर्टी → Schedule Visit से उसके मोबाइल के साथ विज़िट बुक करें — वेरिफ़ाइड विज़िट उसे आपके खरीदार के रूप में सुरक्षित भी करती है।')}</p>}
+              {i.property?.available && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <button className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-900 px-2.5 text-[11px] font-semibold text-white" onClick={() => setBook({ item: i })} data-testid={`room-book-${i.id}`}><CalendarPlus className="h-3.5 w-3.5" />{tx('Book a visit', 'विज़िट तय करें')}</button>
+                  {(i.mediaAvailable?.photos > 0 || i.mediaAvailable?.videos > 0) && (
+                    <button className={`inline-flex min-h-8 items-center gap-1 rounded-lg border px-2.5 text-[11px] font-semibold ${mediaFor === i.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} onClick={() => setMediaFor(mediaFor === i.id ? '' : i.id)} data-testid={`room-media-${i.id}`}>
+                      <ImageIcon className="h-3.5 w-3.5" />{tx('Photos & video', 'फ़ोटो और वीडियो')} ({(i.media?.photos?.length || 0) + (i.media?.videos?.length || 0)}/{i.mediaAvailable.photos + i.mediaAvailable.videos})
+                    </button>
+                  )}
+                </div>
+              )}
+              {mediaFor === i.id && <MediaPicker roomId={id} item={i} onSaved={(room) => { setR(room); setMediaFor(''); onChange(); }} onClose={() => setMediaFor('')} />}
             </div>
           ))}
         </div>
@@ -299,6 +330,7 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
           <select className={inp} value={pick} onChange={e => setPick(e.target.value)} data-testid="room-pick"><option value="">{tx('Choose a property…', 'प्रॉपर्टी चुनें…')}</option>{props.filter(p => !shared.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.title} — {p.locality}, {p.city} · {formatINR(p.askingPrice)}</option>)}</select>
           <input className={inp} maxLength={200} value={pnote} onChange={e => setPnote(e.target.value)} placeholder={tx('A line for your client (optional) — no phone numbers', 'क्लाइंट के लिए एक लाइन (वैकल्पिक) — फ़ोन नंबर नहीं')} />
           <button className={dark} disabled={!pick} onClick={() => run(() => api.crAddItem(id, pick, pnote || undefined), () => { setPick(''); setPnote(''); })} data-testid="room-add-prop"><Home className="h-4 w-4" />{tx('Share with client', 'क्लाइंट को दिखाएँ')}</button>
+          <p className="text-[10px] text-slate-500">{tx('The listing\'s photos and video go with it — change them with "Photos & video".', 'लिस्टिंग की फ़ोटो और वीडियो साथ जाते हैं — "फ़ोटो और वीडियो" से बदलें।')}</p>
         </div>
       </section>
       )}
@@ -311,11 +343,19 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
               <div className="font-semibold">{v.item.property?.title || v.item.propertyId}</div>
               <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{tx('Wants to visit', 'देखने आना चाहता है')}: <b>{when(v.preferred)}</b>{v.note ? ` — ${v.note}` : ''}</span>
-                {v.status === 'REQUESTED' ? <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, v.item.id, v.id))}>{tx('Done', 'हो गया')}</button> : <span>✔ {tx('handled', 'हो गया')}</span>}
+                {v.status === 'REQUESTED'
+                  ? <span className="inline-flex gap-1">
+                      {v.item.property?.available && <button className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white" onClick={() => setBook({ item: v.item, req: v })} data-testid={`room-visits-book-${v.id}`}>{tx('Book this visit', 'यह विज़िट तय करें')}</button>}
+                      <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, v.item.id, v.id))}>{tx('Done', 'हो गया')}</button>
+                    </span>
+                  : <span>✔ {v.visitId ? `${tx('booked', 'तय')} · ${v.visitId}` : tx('handled', 'हो गया')}</span>}
               </div>
             </div>
           ))}
-          {openReqs > 0 && <p className="text-[11px] text-slate-500">{tx('Book the visit from Properties → Schedule Visit with his mobile — a verified visit also protects him as your buyer.', 'प्रॉपर्टी → विज़िट तय करें से उसके मोबाइल के साथ विज़िट बुक करें — वेरिफ़ाइड विज़िट से वह आपके खरीदार के रूप में सुरक्षित भी रहता है।')}</p>}
+          {r.items.flatMap((i: any) => (i.visits || []).map((v: any) => ({ ...v, item: i }))).sort((a: any, b: any) => a.when.localeCompare(b.when)).map((v: any) => (
+            <div key={v.visitId} className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-900"><Check className="h-3.5 w-3.5" /><b>{v.item.property?.title || v.item.propertyId}</b> · {tx('visit booked', 'विज़िट तय')} {when(v.when)} <span className="text-emerald-600">· {v.visitId}</span></div>
+          ))}
+          <p className="text-[11px] text-slate-500">{tx('"Book this visit" opens the verified-visit form with your client and the home filled in. Type his full mobile (it must match this room) — a verified visit also protects him as your buyer, and his room shows the visit time.', '"यह विज़िट तय करें" से वेरिफ़ाइड विज़िट का फ़ॉर्म क्लाइंट और प्रॉपर्टी भरकर खुलता है। उसका पूरा मोबाइल लिखें (इसी रूम वाला) — वेरिफ़ाइड विज़िट से वह आपके खरीदार के रूप में सुरक्षित रहता है, और उसके रूम में विज़िट का समय दिखता है।')}</p>
         </section>
       )}
 
@@ -336,6 +376,69 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
       )}
 
       {err && <p className="text-xs font-medium text-red-700" role="alert" data-testid="room-error">{err}</p>}
+      {book && (
+        <Suspense fallback={null}>
+          <ScheduleVisitModal
+            isOpen
+            dealId=""
+            propertyId={book.item.propertyId}
+            propertyTitle={book.item.property?.title}
+            defaults={{ when: book.req?.preferred, note: book.req?.note }}
+            clientRoom={{ id, itemId: book.item.id, requestId: book.req?.id, phoneLast4: r.phoneLast4, clientName: r.clientName }}
+            onClose={() => { setBook(null); load(); onChange(); }}
+            onSuccess={() => { load(); onChange(); }}
+          />
+        </Suspense>
+      )}
+    </div>
+  );
+};
+
+/** v40 — choose which photos / videos of a home the client sees (only this listing's own, and only what this broker may share) */
+const MediaPicker: React.FC<{ roomId: string; item: any; onSaved: (room: any) => void; onClose: () => void }> = ({ roomId, item, onSaved, onClose }) => {
+  const tx = useTx();
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const [ph, setPh] = useState<Set<string>>(new Set()); const [vi, setVi] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    api.crItemMedia(roomId, item.id).then(x => { setD(x); setPh(new Set(x.chosen.photos)); setVi(new Set(x.chosen.videos)); }).catch(e => setErr(e.message));
+  }, [roomId, item.id]);
+  const flip = (set: Set<string>, setter: (s: Set<string>) => void, u: string, max: number) => {
+    const n = new Set(set); if (n.has(u)) n.delete(u); else { if (n.size >= max) { setErr(tx(`At most ${max} here`, `यहाँ ज़्यादा से ज़्यादा ${max}`)); return; } n.add(u); }
+    setErr(''); setter(n);
+  };
+  if (!d) return <div className="mt-2 rounded-lg bg-slate-50 p-3 text-center">{err ? <p className="text-xs text-red-700">{err}</p> : <Loader2 className="mx-auto h-4 w-4 animate-spin text-slate-400" />}</div>;
+  const vkind = (k: string) => k === 'YOUTUBE' ? 'YouTube' : k === 'FILE' ? tx('video file', 'वीडियो फ़ाइल') : tx('link', 'लिंक');
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-slate-300 bg-slate-50 p-2.5" data-testid="room-media-picker">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <b className="text-slate-800">{tx('What your client sees', 'क्लाइंट क्या देखेगा')}</b>
+        <span className="flex gap-1">
+          <button className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px]" onClick={() => { setPh(new Set(d.available.photos.slice(0, d.limits.maxPhotos))); setVi(new Set(d.available.videos.slice(0, d.limits.maxVideos).map((v: any) => v.url))); }}>{tx('All', 'सब')}</button>
+          <button className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px]" onClick={() => { setPh(new Set()); setVi(new Set()); }}>{tx('None', 'कोई नहीं')}</button>
+        </span>
+      </div>
+      {d.available.photos.length > 0 && (
+        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+          {d.available.photos.map((u: string, k: number) => (
+            <button key={u} type="button" onClick={() => flip(ph, setPh, u, d.limits.maxPhotos)} className={`relative overflow-hidden rounded-md border-2 ${ph.has(u) ? 'border-emerald-500' : 'border-transparent opacity-60'}`} aria-pressed={ph.has(u)} aria-label={tx(`Photo ${k + 1}`, `फ़ोटो ${k + 1}`)} data-testid="room-media-photo">
+              <img src={u} alt="" loading="lazy" className="h-16 w-full bg-slate-200 object-cover" />
+              {ph.has(u) && <span className="absolute right-1 top-1 rounded-full bg-emerald-500 p-0.5 text-white"><Check className="h-3 w-3" /></span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {d.available.videos.map((v: any) => (
+        <label key={v.url} className="flex items-center gap-2 rounded bg-white px-2 py-1.5">
+          <input type="checkbox" checked={vi.has(v.url)} onChange={() => flip(vi, setVi, v.url, d.limits.maxVideos)} data-testid="room-media-video" />
+          <PlayCircle className="h-4 w-4 text-slate-500" /><span className="truncate">{tx('Walkthrough video', 'वॉकथ्रू वीडियो')} · {vkind(v.kind)}</span>
+        </label>
+      ))}
+      <p className="text-[10px] text-slate-500">{tx('Only this listing\'s photos and video — never papers. A photo the owner removes later disappears from the room by itself.', 'सिर्फ़ इसी लिस्टिंग की फ़ोटो और वीडियो — कागज़ कभी नहीं। मालिक बाद में कोई फ़ोटो हटाए तो वह रूम से अपने-आप हट जाएगी।')}</p>
+      {err && <p className="text-[11px] text-red-700">{err}</p>}
+      <div className="flex gap-2">
+        <button className={dark + ' min-h-9 text-xs'} disabled={busy} onClick={async () => { setBusy(true); setErr(''); try { const x = await api.crSetMedia(roomId, item.id, { photos: [...ph], videos: [...vi] }); onSaved(x.room); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }} data-testid="room-media-save">{tx(`Show ${ph.size} photo(s)${vi.size ? ' + video' : ''}`, `${ph.size} फ़ोटो${vi.size ? ' + वीडियो' : ''} दिखाएँ`)}</button>
+        <button className={light + ' min-h-9 text-xs'} onClick={onClose}>{tx('Cancel', 'रद्द')}</button>
+      </div>
     </div>
   );
 };

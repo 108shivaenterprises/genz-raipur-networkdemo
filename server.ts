@@ -137,7 +137,7 @@ import { createVisitRouter, createPublicVisitRouter, sweepVisitPasses } from './
 import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
-import { createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
+import { roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createLandRecordsRouter } from './server/landrecords.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
 import { findState, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
@@ -2426,8 +2426,15 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
     return res.status(400).json({ error: parseResult.error.issues[0]?.message || 'Validation error' });
   }
 
-  const { dealRoomId, propertyId, customerName, customerPhone, scheduledTime, notes, scanAt } = parseResult.data;
+  const { dealRoomId, propertyId, customerName, customerPhone, scheduledTime, notes, scanAt, clientRoomId, clientRoomItemId, clientRoomRequestId } = parseResult.data;
   const state = db.getState();
+  // v40 — booked from a Client Room: it must be the broker's own room, a home in it, and the client's own mobile
+  let roomLink: { room: any; item: any } | null = null;
+  if (clientRoomId) {
+    const r = roomForVisit(currentUser, { clientRoomId, clientRoomItemId, clientRoomRequestId, propertyId, customerPhone });
+    if ('error' in r) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
+    roomLink = r;
+  }
 
   const prop = db.byId('properties', propertyId);
   if (!prop || prop.verificationStatus !== 'VERIFIED' || !PUBLIC_PROPERTY_STATUSES.includes(prop.listingStatus)) {
@@ -2519,6 +2526,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   };
 
   state.siteVisits.unshift(newVisit);
+  if (roomLink) linkVisitToRoom(roomLink.room, roomLink.item, clientRoomRequestId, newVisit);
   // v33 — “no direct deal” acknowledgement from the buyer (tick + mobile code) before his QR / code is shown
   const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title });
 

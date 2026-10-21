@@ -67642,7 +67642,11 @@ var siteVisitCreateSchema = external_exports.object({
   customerPhone: external_exports.union([external_exports.literal(""), phoneSchema]).optional().default(""),
   scheduledTime: external_exports.string().min(1, "Visit time is required").refine((v) => !Number.isNaN(Date.parse(v)), "Invalid visit date/time"),
   notes: external_exports.string().max(1e3).optional().default(""),
-  scanAt: external_exports.enum(["PROPERTY", "MEET"]).optional()
+  scanAt: external_exports.enum(["PROPERTY", "MEET"]).optional(),
+  /** v40 — booked from a Client Room: the room, the home and (optionally) the client's visit request it answers */
+  clientRoomId: external_exports.string().max(40).optional(),
+  clientRoomItemId: external_exports.string().max(40).optional(),
+  clientRoomRequestId: external_exports.string().max(40).optional()
 });
 var ownerMandateCreateSchema = external_exports.object({
   propertyId: external_exports.string(),
@@ -85372,6 +85376,33 @@ var PHONE_IN_CHAT_MSG = {
   hi: "\u0915\u0943\u092A\u092F\u093E \u0907\u0938 \u091A\u0948\u091F \u092E\u0947\u0902 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u0915\u0947 \u092C\u093E\u0926 \u092E\u093F\u0932\u0924\u093E \u0939\u0948, \u0914\u0930 \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u0902\u092C\u0930 \u0907\u0938\u0940 \u092A\u0947\u091C \u092A\u0930 \u0939\u0948\u0964"
 };
 
+// src/shared/roomMedia.ts
+var ROOM_MEDIA = { maxPhotos: 12, maxVideos: 2 };
+var okMediaUrl = (u) => typeof u === "string" && u.length > 0 && u.length <= 500 && (/^https:\/\/[^\s"'<>]+$/i.test(u) || /^\/[^\s"'<>]*$/.test(u));
+function youtubeId(url3) {
+  try {
+    const u = new URL(url3);
+    const host = u.hostname.replace(/^www\.|^m\./, "");
+    let id = "";
+    if (host === "youtu.be") id = u.pathname.slice(1).split("/")[0];
+    else if (host === "youtube.com" || host === "youtube-nocookie.com") {
+      if (u.pathname === "/watch") id = u.searchParams.get("v") || "";
+      else {
+        const m = u.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/);
+        id = m ? m[1] : "";
+      }
+    }
+    return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+function videoKind(url3) {
+  if (youtubeId(url3)) return "YOUTUBE";
+  if (/\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(url3)) return "FILE";
+  return "LINK";
+}
+
 // server/clientroom.ts
 var st19 = () => db.getState();
 var nowIso32 = () => (/* @__PURE__ */ new Date()).toISOString();
@@ -85411,6 +85442,54 @@ function publicProperty(p) {
     status: live3(p) ? "available" : goneText(p)
   };
 }
+function shareableMedia(u, p) {
+  const s = st19();
+  const principal2 = p.listingBrokerId === u.id || p.ownerId === u.id;
+  const listed = live3(p);
+  const assets = (s.propertyMediaAssets || []).filter((a) => a.propertyId === p.id && a.status === "ACTIVE" && (principal2 || listed && a.sensitivity === "PUBLIC"));
+  const photos = [];
+  const videos = [];
+  const add = (arr, u2) => {
+    if (okMediaUrl(u2) && !arr.includes(u2)) arr.push(u2);
+  };
+  if (listed || principal2) {
+    (p.images || []).forEach((x) => add(photos, x));
+    add(videos, p.videoUrl);
+  }
+  assets.filter((a) => a.category === "PHOTOGRAPH").forEach((a) => add(photos, a.fileUrl));
+  assets.filter((a) => a.category === "WALKTHROUGH_VIDEO").forEach((a) => add(videos, a.fileUrl));
+  return { photos, videos };
+}
+function chosenMedia(room, item, p) {
+  if (!p || !item.media) return { photos: [], videos: [] };
+  const ok = shareableMedia({ id: room.brokerId }, p);
+  return { photos: item.media.photos.filter((x) => ok.photos.includes(x)), videos: item.media.videos.filter((x) => ok.videos.includes(x)) };
+}
+var allMedia = (u, p) => {
+  const m = shareableMedia(u, p);
+  return { photos: m.photos.slice(0, ROOM_MEDIA.maxPhotos), videos: m.videos.slice(0, ROOM_MEDIA.maxVideos), at: nowIso32() };
+};
+function roomForVisit(u, b) {
+  const room = st19().clientRooms.find((r) => r.id === b.clientRoomId && r.brokerId === u.id);
+  if (!room) return { error: "Client room not found", status: 404 };
+  if (room.status !== "ACTIVE") return { error: "This client room is closed", status: 409 };
+  const item = b.clientRoomItemId ? room.items.find((i) => i.id === b.clientRoomItemId) : room.items.find((i) => i.propertyId === b.propertyId);
+  if (!item || item.propertyId !== b.propertyId) return { error: "This home is not in the client room", status: 400 };
+  if (b.clientRoomRequestId && !item.visitRequests.some((v) => v.id === b.clientRoomRequestId)) return { error: "Visit request not found", status: 404 };
+  const phone = phone105(b.customerPhone);
+  if (!PHONE_RE5.test(phone)) return { error: `Enter your client's full mobile number (ends with ${room.phoneLast4})`, status: 400, code: "ROOM_PHONE_NEEDED" };
+  if (!safeEqual(hmac3("cr-phone", phone), room.phoneKey)) return { error: `This mobile does not match the client room \u2014 it must be the number that ends with ${room.phoneLast4}`, status: 400, code: "ROOM_PHONE_MISMATCH" };
+  return { room, item };
+}
+function linkVisitToRoom(room, item, requestId, visit2) {
+  (item.visits ||= []).push({ visitId: visit2.id, when: visit2.scheduledTime, at: nowIso32() });
+  const req = requestId ? item.visitRequests.find((v) => v.id === requestId) : item.visitRequests.find((v) => v.status === "REQUESTED");
+  if (req) {
+    req.status = "HANDLED";
+    req.visitId = visit2.id;
+  }
+  ev(room, `Visit booked for ${new Date(visit2.scheduledTime).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (${visit2.id})`);
+}
 var mine = (req) => st19().clientRooms.find((r) => r.id === req.params.id && r.brokerId === me21().id);
 var unread = (r) => r.messages.filter((m) => m.from === "CLIENT" && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 var openVisits = (r) => r.items.reduce((n2, i) => n2 + i.visitRequests.filter((v) => v.status === "REQUESTED").length, 0);
@@ -85444,7 +85523,8 @@ function detail(r) {
     events: r.events.slice(-30),
     items: r.items.map((i) => {
       const p = props.find((x) => x.id === i.propertyId);
-      return { ...i, property: p ? publicProperty(p) : null };
+      const avail = p ? shareableMedia({ id: r.brokerId }, p) : { photos: [], videos: [] };
+      return { ...i, property: p ? publicProperty(p) : null, media: chosenMedia(r, i, p), mediaAvailable: { photos: avail.photos.length, videos: avail.videos.length } };
     }),
     /** only when no SMS gateway is set: the code the client has just asked for — the broker reads it out to him */
     codeForClient: awaiting,
@@ -85512,10 +85592,40 @@ function createClientRoomRouter() {
     if (room.items.some((i) => i.propertyId === p.id)) return bad20(res, "Already shared in this room", 409);
     if (room.items.length >= ROOM_LIMITS.items) return bad20(res, `A room can hold ${ROOM_LIMITS.items} properties`);
     const note4 = stripPhones(String(req.body?.note || "").trim()).slice(0, 200) || void 0;
-    room.items.push({ id: rid2("CRI"), propertyId: p.id, sharedAt: nowIso32(), note: note4, visitRequests: [] });
-    ev(room, `Shared ${p.id}`);
+    const media = req.body?.withMedia === false ? void 0 : allMedia(me21(), p);
+    room.items.push({ id: rid2("CRI"), propertyId: p.id, sharedAt: nowIso32(), note: note4, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
+    ev(room, `Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
     db.save();
     void pushIfSeen(room);
+    res.json({ success: true, room: detail(room) });
+  });
+  r.get("/:id/items/:itemId/media", (req, res) => {
+    const room = mine(req);
+    if (!room) return bad20(res, "Room not found", 404);
+    const it = room.items.find((i) => i.id === req.params.itemId);
+    if (!it) return bad20(res, "Not found", 404);
+    const p = st19().properties.find((x) => x.id === it.propertyId);
+    if (!p) return bad20(res, "Property not found", 404);
+    const avail = shareableMedia(me21(), p);
+    res.json({ success: true, available: { photos: avail.photos, videos: avail.videos.map((url3) => ({ url: url3, kind: videoKind(url3) })) }, chosen: chosenMedia(room, it, p), limits: ROOM_MEDIA });
+  });
+  r.put("/:id/items/:itemId/media", rateLimit("cr-media", 120, 36e5), (req, res) => {
+    const room = mine(req);
+    if (!room) return bad20(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad20(res, "This room is closed", 409);
+    const it = room.items.find((i) => i.id === req.params.itemId);
+    if (!it) return bad20(res, "Not found", 404);
+    const p = st19().properties.find((x) => x.id === it.propertyId);
+    if (!p || !live3(p)) return bad20(res, "That property is not available to share", 404);
+    const photos = Array.isArray(req.body?.photos) ? req.body.photos.map(String) : [];
+    const videos = Array.isArray(req.body?.videos) ? req.body.videos.map(String) : [];
+    if (photos.length > ROOM_MEDIA.maxPhotos) return bad20(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
+    if (videos.length > ROOM_MEDIA.maxVideos) return bad20(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
+    const avail = shareableMedia(me21(), p);
+    if (!photos.every((x) => avail.photos.includes(x)) || !videos.every((x) => avail.videos.includes(x))) return bad20(res, "You can share only this listing's own photos and videos", 400, { code: "MEDIA_NOT_SHAREABLE" });
+    it.media = { photos: [...new Set(photos)], videos: [...new Set(videos)], at: nowIso32() };
+    ev(room, `Photos & video of ${p.id}: ${it.media.photos.length} photo(s)${it.media.videos.length ? `, ${it.media.videos.length} video(s)` : ""}`);
+    db.save();
     res.json({ success: true, room: detail(room) });
   });
   r.delete("/:id/items/:itemId", (req, res) => {
@@ -85621,11 +85731,11 @@ label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}input[type=
 button,.btn{display:inline-block;padding:11px 16px;border-radius:11px;border:0;font-size:15px;font-weight:700;background:#14213d;color:#fff;text-decoration:none;cursor:pointer}.g{background:#1fa855}.l{background:#eee;color:#222}
 .prop{display:flex;gap:10px}.prop img{width:96px;height:96px;object-fit:cover;border-radius:10px;flex:none;background:#eee}.price{font-weight:800;font-size:16px}.tag{display:inline-block;background:#eef1f7;border-radius:99px;padding:2px 8px;font-size:11px;margin:2px 3px 0 0}
 .chat{max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0}.m{max-width:85%;padding:8px 11px;border-radius:12px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}.mc{align-self:flex-end;background:#dff3e5}.mb{align-self:flex-start;background:#eef1f7}.m small{display:block;margin-top:3px}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}`;
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.gal{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scroll-snap-type:x mandatory}.gal img{width:150px;height:110px;object-fit:cover;border-radius:10px;flex:none;background:#eee;scroll-snap-align:start}.vid{position:relative;margin-top:10px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9}.vid iframe,.vid video{position:absolute;inset:0;width:100%;height:100%;border:0}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}`;
 function shell2(title, body, lang = "hi") {
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc10(title)}</title><style>${CSS2}</style></head><body><div class="w">${body}</div><script src="/r/cr.js" defer></script></body></html>`;
 }
-var CR_JS = `(function(){var im=document.querySelectorAll('.prop img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
+var CR_JS = `(function(){var im=document.querySelectorAll('.prop img,.gal img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
 var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}})();`;
 function createClientRoomPageRouter() {
@@ -85782,7 +85892,17 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
       const pub = publicProperty(p);
       const area = [pub.plotArea ? `\u092A\u094D\u0932\u0949\u091F ${pub.plotArea} sq ft` : "", pub.builtUp ? `\u092C\u093F\u0932\u094D\u091F-\u0905\u092A ${pub.builtUp} sq ft` : ""].filter(Boolean).join(" \xB7 ");
       const sent = i.visitRequests.some((v) => v.status === "REQUESTED");
+      const med = chosenMedia(room, i, p);
+      const gallery = med.photos.length > 1 || med.photos.length === 1 && med.photos[0] !== pub.image ? `<div class="gal">${med.photos.map((u, k) => `<a href="${esc10(u)}" target="_blank" rel="noopener noreferrer"><img src="${esc10(u)}" alt="photo ${k + 1}" loading="lazy"></a>`).join("")}</div><small>${med.photos.length} \u092B\u093C\u094B\u091F\u094B \u2014 \u092C\u0921\u093C\u093E \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u091B\u0941\u090F\u0901 / tap to open</small>` : "";
+      const vids = med.videos.map((u) => {
+        const yt = youtubeId(u);
+        const k = videoKind(u);
+        return k === "YOUTUBE" ? `<div class="vid"><iframe src="https://www.youtube-nocookie.com/embed/${esc10(yt)}" title="video" loading="lazy" allowfullscreen></iframe></div>` : k === "FILE" ? `<div class="vid"><video src="${esc10(u)}" controls preload="metadata" playsinline></video></div>` : `<div class="row"><a class="btn l" href="${esc10(u)}" target="_blank" rel="noopener noreferrer">\u25B6 \u0935\u0940\u0921\u093F\u092F\u094B \u0926\u0947\u0916\u0947\u0902 / Watch video</a></div>`;
+      }).join("");
+      const booked = (i.visits || []).filter((v) => Date.parse(v.when) > Date.now() - 6 * 36e5).sort((a, b2) => a.when.localeCompare(b2.when))[0];
       return `<div class="card ${pub.available ? "" : "sold"}" id="p-${esc10(i.id)}"><div class="prop">${pub.image ? `<img src="${esc10(pub.image)}" alt="" loading="lazy">` : ""}<div><b>${esc10(pub.title)}</b><br><small>${esc10(pub.locality)}, ${esc10(pub.city)} \xB7 ${esc10(pub.type)} \xB7 ${esc10(pub.deal)}</small><div class="price">${esc10(inr10(pub.price))}${pub.deal === "Rent" ? " / \u092E\u093E\u0939" : ""}</div>${area ? `<small>${esc10(area)}</small>` : ""}</div></div>
+${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">\u{1F5D3} <b>\u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F: ${esc10(new Date(booked.when).toLocaleString("hi-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }))}</b><br><small>Visit fixed \u2014 your broker will send the visit pass / code.</small></p></div>` : ""}
+${gallery}${vids}
 ${i.note ? `<p class="t"><b>\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u094B\u091F:</b> ${esc10(i.note)}</p>` : ""}${pub.tags.length ? `<div>${pub.tags.map((t) => `<span class="tag">${esc10(t)}</span>`).join("")}</div>` : ""}
 ${pub.description ? `<details><summary>\u092C\u094D\u092F\u094C\u0930\u093E / Details</summary><p class="t">${esc10(pub.description)}</p></details>` : ""}
 <p class="small">\u092A\u0942\u0930\u093E \u092A\u0924\u093E \u0914\u0930 \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u0902\u092C\u0930 \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u0915\u0947 \u092C\u093E\u0926 \u092E\u093F\u0932\u0924\u093E \u0939\u0948\u0964 / Exact address and owner's number are shared only after a verified visit.</p>
@@ -88505,8 +88625,14 @@ app.post("/api/site-visits", needs("sitevisit:create"), (req, res) => {
   if (!parseResult.success) {
     return res.status(400).json({ error: parseResult.error.issues[0]?.message || "Validation error" });
   }
-  const { dealRoomId, propertyId, customerName, customerPhone, scheduledTime, notes, scanAt } = parseResult.data;
+  const { dealRoomId, propertyId, customerName, customerPhone, scheduledTime, notes, scanAt, clientRoomId, clientRoomItemId, clientRoomRequestId } = parseResult.data;
   const state = db.getState();
+  let roomLink = null;
+  if (clientRoomId) {
+    const r = roomForVisit(currentUser2, { clientRoomId, clientRoomItemId, clientRoomRequestId, propertyId, customerPhone });
+    if ("error" in r) return res.status(r.status).json({ error: r.error, ...r.code ? { code: r.code } : {} });
+    roomLink = r;
+  }
   const prop = db.byId("properties", propertyId);
   if (!prop || prop.verificationStatus !== "VERIFIED" || !PUBLIC_PROPERTY_STATUSES.includes(prop.listingStatus)) {
     return res.status(404).json({ error: "Property not found or not open for visits" });
@@ -88587,6 +88713,7 @@ app.post("/api/site-visits", needs("sitevisit:create"), (req, res) => {
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   state.siteVisits.unshift(newVisit);
+  if (roomLink) linkVisitToRoom(roomLink.room, roomLink.item, clientRoomRequestId, newVisit);
   const visitAck = createAck({ kind: "VISIT", refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser2.id, subject: prop.title });
   if (deal) {
     deal.siteVisitsCount = (deal.siteVisitsCount || 0) + 1;

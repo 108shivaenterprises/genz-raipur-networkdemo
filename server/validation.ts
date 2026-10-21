@@ -266,6 +266,10 @@ export const siteVisitCreateSchema = z.object({
   scheduledTime: z.string().min(1, 'Visit time is required').refine(v => !Number.isNaN(Date.parse(v)), 'Invalid visit date/time'),
   notes: z.string().max(1000).optional().default(''),
   scanAt: z.enum(['PROPERTY', 'MEET']).optional(),
+  /** v40 — booked from a Client Room: the room, the home and (optionally) the client's visit request it answers */
+  clientRoomId: z.string().max(40).optional(),
+  clientRoomItemId: z.string().max(40).optional(),
+  clientRoomRequestId: z.string().max(40).optional(),
 });
 
 export const ownerMandateCreateSchema = z.object({

@@ -23,6 +23,7 @@ import { stripPhones } from '../src/shared/waParse.js';
 import { ROOM_KINDS, ROOM_LIMITS as L, containsPhone, PHONE_IN_CHAT_MSG } from '../src/shared/clientRoomRules.js';
 import { joinFooter } from './publicFooter.js';
 import { partyBlock, partyCaution } from './partywatch.js';
+import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId } from '../src/shared/roomMedia.js';
 
 const st = () => db.getState();
 const nowIso = () => new Date().toISOString();
@@ -53,6 +54,54 @@ function publicProperty(p: Property) {
   };
 }
 
+// ───────────────────────────── v40: photos & video ─────────────────────────────
+/**
+ * What this broker may show his client of a property: the listing's own photos and video link, the vault's PUBLIC photos / walkthrough
+ * videos, and — when he is the listing broker or the owner — the vault's other photos / videos too (his own listing, his choice).
+ * Never documents (title deed, tax receipt, plans…), never a vault item shared with him by someone else.
+ */
+export function shareableMedia(u: { id: string }, p: Property) {
+  const s = st();
+  const principal = p.listingBrokerId === u.id || p.ownerId === u.id;
+  const listed = live(p);
+  const assets = (s.propertyMediaAssets || []).filter((a: any) => a.propertyId === p.id && a.status === 'ACTIVE' && (principal || (listed && a.sensitivity === 'PUBLIC')));
+  const photos: string[] = []; const videos: string[] = [];
+  const add = (arr: string[], u2: unknown) => { if (okMediaUrl(u2) && !arr.includes(u2)) arr.push(u2); };
+  if (listed || principal) { (p.images || []).forEach(x => add(photos, x)); add(videos, (p as any).videoUrl); }
+  assets.filter((a: any) => a.category === 'PHOTOGRAPH').forEach((a: any) => add(photos, a.fileUrl));
+  assets.filter((a: any) => a.category === 'WALKTHROUGH_VIDEO').forEach((a: any) => add(videos, a.fileUrl));
+  return { photos, videos };
+}
+/** the chosen media that is STILL shareable right now (a photo the owner removed or made private disappears) */
+function chosenMedia(room: ClientRoom, item: ClientRoom['items'][number], p?: Property) {
+  if (!p || !item.media) return { photos: [] as string[], videos: [] as string[] };
+  const ok = shareableMedia({ id: room.brokerId }, p);
+  return { photos: item.media.photos.filter(x => ok.photos.includes(x)), videos: item.media.videos.filter(x => ok.videos.includes(x)) };
+}
+const allMedia = (u: { id: string }, p: Property) => { const m = shareableMedia(u, p); return { photos: m.photos.slice(0, ROOM_MEDIA.maxPhotos), videos: m.videos.slice(0, ROOM_MEDIA.maxVideos), at: nowIso() }; };
+
+// ───────────────────────────── v40: a visit booked from the room ─────────────────────────────
+/** called by POST /api/site-visits when the broker books from a Client Room: his room, the client's mobile, a home of the room */
+export function roomForVisit(u: UserProfile, b: { clientRoomId?: string; clientRoomItemId?: string; clientRoomRequestId?: string; propertyId: string; customerPhone?: string }):
+  { error: string; status: number; code?: string } | { room: ClientRoom; item: ClientRoom['items'][number] } {
+  const room = st().clientRooms.find(r => r.id === b.clientRoomId && r.brokerId === u.id);
+  if (!room) return { error: 'Client room not found', status: 404 };
+  if (room.status !== 'ACTIVE') return { error: 'This client room is closed', status: 409 };
+  const item = b.clientRoomItemId ? room.items.find(i => i.id === b.clientRoomItemId) : room.items.find(i => i.propertyId === b.propertyId);
+  if (!item || item.propertyId !== b.propertyId) return { error: 'This home is not in the client room', status: 400 };
+  if (b.clientRoomRequestId && !item.visitRequests.some(v => v.id === b.clientRoomRequestId)) return { error: 'Visit request not found', status: 404 };
+  const phone = phone10(b.customerPhone);
+  if (!PHONE_RE.test(phone)) return { error: `Enter your client's full mobile number (ends with ${room.phoneLast4})`, status: 400, code: 'ROOM_PHONE_NEEDED' };
+  if (!safeEqual(hmac('cr-phone', phone), room.phoneKey)) return { error: `This mobile does not match the client room — it must be the number that ends with ${room.phoneLast4}`, status: 400, code: 'ROOM_PHONE_MISMATCH' };
+  return { room, item };
+}
+export function linkVisitToRoom(room: ClientRoom, item: ClientRoom['items'][number], requestId: string | undefined, visit: { id: string; scheduledTime: string }) {
+  (item.visits ||= []).push({ visitId: visit.id, when: visit.scheduledTime, at: nowIso() });
+  const req = requestId ? item.visitRequests.find(v => v.id === requestId) : item.visitRequests.find(v => v.status === 'REQUESTED');
+  if (req) { req.status = 'HANDLED'; req.visitId = visit.id; }
+  ev(room, `Visit booked for ${new Date(visit.scheduledTime).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${visit.id})`);
+}
+
 // ───────────────────────────── broker API ─────────────────────────────
 const mine = (req: Request) => st().clientRooms.find(r => r.id === req.params.id && r.brokerId === me().id);
 const unread = (r: ClientRoom) => r.messages.filter(m => m.from === 'CLIENT' && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
@@ -71,7 +120,11 @@ function detail(r: ClientRoom) {
   const awaiting = r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
   return {
     ...summary(r), note: r.note, messages: r.messages, events: r.events.slice(-30),
-    items: r.items.map(i => { const p = props.find(x => x.id === i.propertyId); return { ...i, property: p ? publicProperty(p) : null }; }),
+    items: r.items.map(i => {
+      const p = props.find(x => x.id === i.propertyId);
+      const avail = p ? shareableMedia({ id: r.brokerId }, p) : { photos: [], videos: [] };
+      return { ...i, property: p ? publicProperty(p) : null, media: chosenMedia(r, i, p), mediaAvailable: { photos: avail.photos.length, videos: avail.videos.length } };
+    }),
     /** only when no SMS gateway is set: the code the client has just asked for — the broker reads it out to him */
     codeForClient: awaiting, smsOn: smsOn(),
   };
@@ -125,10 +178,36 @@ export function createClientRoomRouter() {
     if (room.items.some(i => i.propertyId === p.id)) return bad(res, 'Already shared in this room', 409);
     if (room.items.length >= L.items) return bad(res, `A room can hold ${L.items} properties`);
     const note = stripPhones(String(req.body?.note || '').trim()).slice(0, 200) || undefined;
-    room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note, visitRequests: [] });
-    ev(room, `Shared ${p.id}`);
+    const media = req.body?.withMedia === false ? undefined : allMedia(me(), p);
+    room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note, visitRequests: [], ...(media && (media.photos.length || media.videos.length) ? { media } : {}) });
+    ev(room, `Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? ' + video' : ''}` : ''}`);
     db.save();
     void pushIfSeen(room);
+    res.json({ success: true, room: detail(room) });
+  });
+
+  /** v40 — the photos / videos the broker may show for one home, and what he chose */
+  r.get('/:id/items/:itemId/media', (req: Request, res: Response) => {
+    const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    const it = room.items.find(i => i.id === req.params.itemId); if (!it) return bad(res, 'Not found', 404);
+    const p = st().properties.find(x => x.id === it.propertyId); if (!p) return bad(res, 'Property not found', 404);
+    const avail = shareableMedia(me(), p);
+    res.json({ success: true, available: { photos: avail.photos, videos: avail.videos.map(url => ({ url, kind: videoKind(url) })) }, chosen: chosenMedia(room, it, p), limits: ROOM_MEDIA });
+  });
+  r.put('/:id/items/:itemId/media', rateLimit('cr-media', 120, 3600_000), (req: Request, res: Response) => {
+    const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    if (room.status !== 'ACTIVE') return bad(res, 'This room is closed', 409);
+    const it = room.items.find(i => i.id === req.params.itemId); if (!it) return bad(res, 'Not found', 404);
+    const p = st().properties.find(x => x.id === it.propertyId); if (!p || !live(p)) return bad(res, 'That property is not available to share', 404);
+    const photos = Array.isArray(req.body?.photos) ? req.body.photos.map(String) : [];
+    const videos = Array.isArray(req.body?.videos) ? req.body.videos.map(String) : [];
+    if (photos.length > ROOM_MEDIA.maxPhotos) return bad(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
+    if (videos.length > ROOM_MEDIA.maxVideos) return bad(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
+    const avail = shareableMedia(me(), p);
+    if (!photos.every((x: string) => avail.photos.includes(x)) || !videos.every((x: string) => avail.videos.includes(x))) return bad(res, 'You can share only this listing\'s own photos and videos', 400, { code: 'MEDIA_NOT_SHAREABLE' });
+    it.media = { photos: [...new Set<string>(photos)], videos: [...new Set<string>(videos)], at: nowIso() };
+    ev(room, `Photos & video of ${p.id}: ${it.media.photos.length} photo(s)${it.media.videos.length ? `, ${it.media.videos.length} video(s)` : ''}`);
+    db.save();
     res.json({ success: true, room: detail(room) });
   });
 
@@ -217,12 +296,12 @@ label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}input[type=
 button,.btn{display:inline-block;padding:11px 16px;border-radius:11px;border:0;font-size:15px;font-weight:700;background:#14213d;color:#fff;text-decoration:none;cursor:pointer}.g{background:#1fa855}.l{background:#eee;color:#222}
 .prop{display:flex;gap:10px}.prop img{width:96px;height:96px;object-fit:cover;border-radius:10px;flex:none;background:#eee}.price{font-weight:800;font-size:16px}.tag{display:inline-block;background:#eef1f7;border-radius:99px;padding:2px 8px;font-size:11px;margin:2px 3px 0 0}
 .chat{max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0}.m{max-width:85%;padding:8px 11px;border-radius:12px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}.mc{align-self:flex-end;background:#dff3e5}.mb{align-self:flex-start;background:#eef1f7}.m small{display:block;margin-top:3px}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}`;
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.gal{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scroll-snap-type:x mandatory}.gal img{width:150px;height:110px;object-fit:cover;border-radius:10px;flex:none;background:#eee;scroll-snap-align:start}.vid{position:relative;margin-top:10px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9}.vid iframe,.vid video{position:absolute;inset:0;width:100%;height:100%;border:0}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}`;
 
 function shell(title: string, body: string, lang = 'hi') {
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div><script src="/r/cr.js" defer></script></body></html>`;
 }
-const CR_JS = `(function(){var im=document.querySelectorAll('.prop img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
+const CR_JS = `(function(){var im=document.querySelectorAll('.prop img,.gal img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
 var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}})();`;
 
@@ -351,7 +430,19 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       const pub = publicProperty(p);
       const area = [pub.plotArea ? `प्लॉट ${pub.plotArea} sq ft` : '', pub.builtUp ? `बिल्ट-अप ${pub.builtUp} sq ft` : ''].filter(Boolean).join(' · ');
       const sent = i.visitRequests.some(v => v.status === 'REQUESTED');
+      const med = chosenMedia(room, i, p);
+      const gallery = med.photos.length > 1 || (med.photos.length === 1 && med.photos[0] !== pub.image)
+        ? `<div class="gal">${med.photos.map((u, k) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer"><img src="${esc(u)}" alt="photo ${k + 1}" loading="lazy"></a>`).join('')}</div><small>${med.photos.length} फ़ोटो — बड़ा देखने के लिए छुएँ / tap to open</small>` : '';
+      const vids = med.videos.map(u => {
+        const yt = youtubeId(u); const k = videoKind(u);
+        return k === 'YOUTUBE' ? `<div class="vid"><iframe src="https://www.youtube-nocookie.com/embed/${esc(yt)}" title="video" loading="lazy" allowfullscreen></iframe></div>`
+          : k === 'FILE' ? `<div class="vid"><video src="${esc(u)}" controls preload="metadata" playsinline></video></div>`
+          : `<div class="row"><a class="btn l" href="${esc(u)}" target="_blank" rel="noopener noreferrer">▶ वीडियो देखें / Watch video</a></div>`;
+      }).join('');
+      const booked = (i.visits || []).filter(v => Date.parse(v.when) > Date.now() - 6 * 3600_000).sort((a, b) => a.when.localeCompare(b.when))[0];
       return `<div class="card ${pub.available ? '' : 'sold'}" id="p-${esc(i.id)}"><div class="prop">${pub.image ? `<img src="${esc(pub.image)}" alt="" loading="lazy">` : ''}<div><b>${esc(pub.title)}</b><br><small>${esc(pub.locality)}, ${esc(pub.city)} · ${esc(pub.type)} · ${esc(pub.deal)}</small><div class="price">${esc(inr(pub.price))}${pub.deal === 'Rent' ? ' / माह' : ''}</div>${area ? `<small>${esc(area)}</small>` : ''}</div></div>
+${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">🗓 <b>विज़िट तय: ${esc(new Date(booked.when).toLocaleString('hi-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }))}</b><br><small>Visit fixed — your broker will send the visit pass / code.</small></p></div>` : ''}
+${gallery}${vids}
 ${i.note ? `<p class="t"><b>ब्रोकर का नोट:</b> ${esc(i.note)}</p>` : ''}${pub.tags.length ? `<div>${pub.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
 ${pub.description ? `<details><summary>ब्यौरा / Details</summary><p class="t">${esc(pub.description)}</p></details>` : ''}
 <p class="small">पूरा पता और मालिक का नंबर वेरिफ़ाइड विज़िट के बाद मिलता है। / Exact address and owner\'s number are shared only after a verified visit.</p>

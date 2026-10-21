@@ -149,6 +149,8 @@ export default function App() {
     dealId?: string;
     propertyId: string;
     propertyTitle?: string;
+    /** v40 — the deal room's buyer, filled in (the broker can change it) */
+    defaults?: { name?: string; phone?: string };
   } | null>(null);
   const [verifyOtpVisit, setVerifyOtpVisit] = useState<SiteVisit | null>(null);
   const [qrPassVisit, setQrPassVisit] = useState<SiteVisit | null>(null);
@@ -497,11 +499,16 @@ export default function App() {
             onOpenBrokerSafetyModal={() => setShowBrokerSafetyModal(true)}
             onOpenScheduleVisit={(dealId, propertyId) => {
               const prop = properties.find((p) => p.id === propertyId);
+              // v40 — the buyer of this deal room is filled in when this broker can see him (his own requirement; a masked number is left out)
+              const deal = deals.find((d) => d.id === dealId);
+              const req = deal?.requirementId ? requirements.find((q) => q.id === deal.requirementId) : undefined;
+              const phone = req?.customerPhone && !/[x*•]/i.test(req.customerPhone) ? req.customerPhone : undefined;
               setScheduleVisitTarget({
                 open: true,
                 dealId,
                 propertyId,
                 propertyTitle: prop?.title,
+                defaults: req ? { name: req.customerName, phone } : undefined,
               });
             }}
             onOpenVerifyVisitOtp={(visit) => {
@@ -677,6 +684,7 @@ export default function App() {
           dealId={scheduleVisitTarget.dealId}
           propertyId={scheduleVisitTarget.propertyId}
           propertyTitle={scheduleVisitTarget.propertyTitle}
+          defaults={scheduleVisitTarget.defaults}
           onClose={() => setScheduleVisitTarget(null)}
           onSuccess={() => {
             loadData();
