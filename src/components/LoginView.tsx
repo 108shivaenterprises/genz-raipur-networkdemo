@@ -12,6 +12,11 @@ interface Props {
 
 type Cfg = Awaited<ReturnType<typeof api.authConfig>>;
 
+const ROLE_LABEL: Record<string, [string, string]> = {
+  SUPERADMIN: ['Super admin', 'सुपर एडमिन'], ADMIN: ['Admin', 'एडमिन'], DEVELOPER_BUILDER: ['Builder', 'बिल्डर'], BROKER: ['Broker', 'ब्रोकर'],
+  CONTRACTOR: ['Contractor', 'ठेकेदार'], LEGAL_COUNSEL: ['Legal', 'वकील'], PROPERTY_OWNER: ['Owner', 'मालिक'], BUYER_TENANT: ['Buyer', 'खरीदार'],
+  GENZ_CONNECTOR: ['Connector', 'कनेक्टर'], TEAM_MEMBER: ['Employee', 'कर्मचारी'],
+};
 const ORDER = ['SUPERADMIN', 'ADMIN', 'DEVELOPER_BUILDER', 'BROKER', 'CONTRACTOR', 'LEGAL_COUNSEL', 'PROPERTY_OWNER', 'BUYER_TENANT', 'GENZ_CONNECTOR', 'TEAM_MEMBER'];
 export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
   const { t } = useI18n();
@@ -20,6 +25,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [demoRole, setDemoRole] = useState('ALL');
   const [error, setError] = useState('');
   const [joining, setJoining] = useState(false);
   const refParam = (() => { try { return new URLSearchParams(window.location.search).get('ref') || ''; } catch { return ''; } })();
@@ -118,8 +124,22 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
           <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-6">
             <h2 className="flex items-center gap-2 text-sm font-bold text-amber-900"><KeyRound className="h-4 w-4" /> {tx('Demo accounts', 'डेमो अकाउंट')}</h2>
             <p className="mt-1 text-[11px] text-amber-800">{tx('DEMO_MODE is on (never enable in production). Password:', 'DEMO_MODE चालू है (प्रोडक्शन में कभी चालू न रखें)। पासवर्ड:')} <code className="font-mono">{cfg.demoPassword}</code></p>
+            {cfg.demoAccounts.length > 12 && (
+              <div className="mt-3 flex flex-wrap gap-1" data-testid="demo-role-chips">
+                {['ALL', ...ORDER.filter(r => cfg.demoAccounts.some(a => a.role === r))].map(r => {
+                  const n = r === 'ALL' ? cfg.demoAccounts.length : cfg.demoAccounts.filter(a => a.role === r).length;
+                  const on = demoRole === r;
+                  return (
+                    <button key={r} type="button" onClick={() => setDemoRole(r)} data-testid={`demo-role-${r}`}
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${on ? 'border-slate-900 bg-slate-900 text-white' : 'border-amber-200 bg-white text-slate-700 hover:border-slate-900'}`}>
+                      {r === 'ALL' ? tx('All', 'सभी') : tx(ROLE_LABEL[r]?.[0] || r, ROLE_LABEL[r]?.[1] || r)} · {n}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <ul className="mt-3 space-y-1.5 max-h-80 overflow-auto">
-              {[...cfg.demoAccounts].sort((x, y) => ORDER.indexOf(x.role) - ORDER.indexOf(y.role)).map((a) => (
+              {[...cfg.demoAccounts].filter(a => demoRole === 'ALL' || a.role === demoRole).sort((x, y) => ORDER.indexOf(x.role) - ORDER.indexOf(y.role)).map((a) => (
                 <li key={a.id}>
                   <button type="button" disabled={busy} onClick={() => submit(a.email, cfg.demoPassword || '')}
                     className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-900">

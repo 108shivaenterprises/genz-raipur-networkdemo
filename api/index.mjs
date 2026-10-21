@@ -315,9 +315,9 @@ var require_postgres_interval = __commonJS({
     var NUMBER = "([+-]?\\d+)";
     var YEAR = NUMBER + "\\s+years?";
     var MONTH = NUMBER + "\\s+mons?";
-    var DAY13 = NUMBER + "\\s+days?";
+    var DAY14 = NUMBER + "\\s+days?";
     var TIME = "([+-])?([\\d]*):(\\d\\d):(\\d\\d)\\.?(\\d{1,6})?";
-    var INTERVAL = new RegExp([YEAR, MONTH, DAY13, TIME].map(function(regexString) {
+    var INTERVAL = new RegExp([YEAR, MONTH, DAY14, TIME].map(function(regexString) {
       return "(" + regexString + ")?";
     }).join("\\s*"));
     var positions = {
@@ -1380,7 +1380,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports, module) {
     "use strict";
-    var crypto30 = require_utils2();
+    var crypto31 = require_utils2();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -1398,7 +1398,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto30.randomBytes(18).toString("base64");
+      const clientNonce = crypto31.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -1440,20 +1440,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto30.hashByName(hashName, peerCert);
+        const certHash = await crypto31.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto30.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto30.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto30.sha256(clientKey);
-      const clientSignature = await crypto30.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto31.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto31.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto31.sha256(clientKey);
+      const clientSignature = await crypto31.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto30.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto30.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto31.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto31.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -3692,7 +3692,7 @@ var require_client = __commonJS({
     var Query2 = require_query();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto30 = require_utils2();
+    var crypto31 = require_utils2();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -3947,7 +3947,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto30.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto31.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e) {
             this.emit("error", e);
@@ -24395,14 +24395,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto30 = __require("crypto");
+    var crypto31 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash3 = crypto30.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash3 = crypto31.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash3 + '"';
     }
@@ -27311,11 +27311,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto30 = __require("crypto");
+    var crypto31 = __require("crypto");
     exports.sign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret2) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto30.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto31.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -27324,7 +27324,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac3) == sha1(val) ? str2 : false;
     };
     function sha1(str2) {
-      return crypto30.createHash("sha1").update(str2).digest("hex");
+      return crypto31.createHash("sha1").update(str2).digest("hex");
     }
   }
 });
@@ -43013,7 +43013,7 @@ var init_emptyVite = __esm({
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-for (const k of ["DEMO_MODE", "PUBLIC_DEMO", "SEED_DEMO_DATA", "ALLOW_FILE_DB", "TRUST_PROXY"]) process.env[k] ||= "true";
+for (const k of ["DEMO_MODE", "PUBLIC_DEMO", "SEED_DEMO_DATA", "SEED_DEMO_BULK", "ALLOW_FILE_DB", "TRUST_PROXY"]) process.env[k] ||= "true";
 if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) {
   const seed = (process.env.VERCEL_PROJECT_ID || "") + (process.env.VERCEL_ORG_ID || "") + (process.env.VERCEL_GIT_REPO_ID || "");
   process.env.AUTH_SECRET = seed ? crypto.createHash("sha256").update("genz-demo:" + seed).digest("hex") : crypto.randomBytes(32).toString("hex");
@@ -62759,7 +62759,7 @@ function date4(params) {
 // server/db.ts
 import fs3 from "node:fs";
 import path3 from "node:path";
-import crypto4 from "node:crypto";
+import crypto5 from "node:crypto";
 
 // server/dealTemplates.ts
 var TASK_DEFINITIONS = [
@@ -63841,8 +63841,8 @@ function buildConnectorDemo(existing = [], now = /* @__PURE__ */ new Date()) {
   return { users, referrals };
 }
 
-// server/db.ts
-init_pgstore();
+// server/demoBulk.ts
+import crypto4 from "node:crypto";
 
 // server/auth.ts
 import crypto3 from "node:crypto";
@@ -64559,10 +64559,731 @@ function digits(s) {
   return String(s ?? "").replace(/\D/g, "").slice(-10);
 }
 
+// server/demoBulk.ts
+var DAY = 864e5;
+var MARK = "USR-BRK-005";
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = a + 1831565813 >>> 0;
+    let t = a;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function seedDemoBulk(s, sharedPasswordHash) {
+  if (s.users.some((u) => u.id === MARK)) return;
+  const r = rng(20261021);
+  const int2 = (a, b) => a + Math.floor(r() * (b - a + 1));
+  const pick2 = (a) => a[Math.floor(r() * a.length)];
+  const now = Date.now();
+  const ago = (d, h = 0) => new Date(now - d * DAY - h * 36e5).toISOString();
+  const ahead = (d, h = 0) => new Date(now + d * DAY + h * 36e5).toISOString();
+  const sha4 = (v) => crypto4.createHash("sha256").update(v).digest("hex");
+  const tok2 = (n2 = 12) => sha4(String(r())).slice(0, n2);
+  const pad3 = (n2, w = 3) => String(n2).padStart(w, "0");
+  const lakh = (n2) => Math.round(n2 / 1e4) * 1e4;
+  const S = s;
+  const mk = (id, name, role, phone, company, extra = {}) => {
+    const slug = name.toLowerCase().replace(/^(dr|er|ar|adv)\.\s*/, "").replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "");
+    const u = {
+      id,
+      name,
+      role,
+      phone,
+      email: `${slug}@demo.genz.example`,
+      city: "Raipur",
+      state: "Chhattisgarh",
+      companyName: company,
+      verificationStatus: "VERIFIED",
+      verificationNotes: "Demo account (fake data)",
+      createdAt: ago(int2(20, 120)),
+      sessionVersion: 1,
+      passwordHash: sharedPasswordHash,
+      ...extra
+    };
+    s.users.push(u);
+    return u;
+  };
+  const ph = (block, i) => `+91 9${block} ${String(1e4 + i).slice(-5)}`;
+  const brokerSeed = [
+    ["Rahul Sahu", "Sahu Properties", "Raipur"],
+    ["Sneha Tiwari", "Tiwari Realty Point", "Raipur"],
+    ["Manoj Dewangan", "Dewangan Estates", "Bhilai"],
+    ["Kavita Chandrakar", "Chandrakar Land Bank", "Raipur"],
+    ["Arvind Verma", "Verma Homes", "Durg"],
+    ["Nisha Agrawal", "Agrawal Property Hub", "Raipur"],
+    ["Deepak Sinha", "Sinha Realtors", "Bilaspur"],
+    ["Ritu Shrivastava", "Capital Nest Realty", "Raipur"],
+    ["Sandeep Jain", "Jain Commercial Spaces", "Raipur"],
+    ["Pankaj Yadav", "Yadav Plots & Farms", "Raipur"],
+    ["Shalini Mishra", "Mishra Rentals", "Raipur"]
+  ];
+  brokerSeed.forEach(([n2, c, city], i) => mk(`USR-BRK-${pad3(5 + i)}`, n2, "BROKER", ph(1001, i + 1), c, {
+    city,
+    brokerId: `GZ-BRK-4920${pad3(10 + i, 2)}`,
+    reraNumber: `CGRERA0102${pad3(24 + i, 2)}A00${pad3(10 + i, 2)}`,
+    firmSegment: i % 3 === 0 ? "BIG_FIRM" : "INDEPENDENT",
+    verificationStatus: i === 9 || i === 10 ? "PENDING" : "VERIFIED",
+    referralCode: `GZ-${n2.slice(0, 4).toUpperCase()}-${1010 + i}`
+  }));
+  const ownerSeed = ["Ramesh Agrawal", "Sushma Gupta", "Vinod Choubey", "Anita Sahu", "Prakash Jain", "Meera Tiwari", "Harish Lalwani", "Geeta Verma", "Mohan Dewangan", "Kiran Thakur"];
+  ownerSeed.forEach((n2, i) => mk(`USR-OWNER-${pad3(3 + i)}`, n2, "PROPERTY_OWNER", ph(1002, i + 1), "Individual", i === 8 ? { verificationStatus: "PENDING" } : {}));
+  const buyerSeed = ["Dr. Saurabh Mishra", "Priyanka Rao", "Ankit Tripathi", "Neha Bansal", "Rohit Kashyap", "Swati Pandey", "Vivek Singh", "Pooja Chandrakar", "Abhishek Soni", "Kritika Jain"];
+  buyerSeed.forEach((n2, i) => mk(`USR-BUYER-${pad3(3 + i)}`, n2, "BUYER_TENANT", ph(1003, i + 1), "Individual"));
+  const contractorSeed = [
+    ["Rajkumar Sahu", "Sahu Constructions"],
+    ["Ajay Nishad", "Nishad Interiors"],
+    ["Bhupendra Verma", "Verma Civil Contractors"],
+    ["Firoz Khan", "Khan Structural Works"],
+    ["Lalit Dewangan", "Dewangan Builders & Repairs"],
+    ["Satish Patel", "Patel Turnkey Homes"],
+    ["Manish Gupta", "Gupta Fitouts"],
+    ["Raju Yadav", "Yadav Earthmovers"],
+    ["Hemant Sinha", "Sinha Architects & Sanctions"]
+  ];
+  contractorSeed.forEach(([n2, c], i) => mk(`USR-CONTRACTOR-${pad3(3 + i)}`, n2, "CONTRACTOR", ph(1004, i + 1), c, { verificationNotes: "PWD class-B registration (demo)" }));
+  const builderSeed = [
+    ["Er. Vikas Goyal", "Goyal Infra Developers"],
+    ["Ar. Shweta Bhatia", "Bhatia Habitat"],
+    ["Er. Naveen Choudhary", "Choudhary Estates Pvt Ltd"],
+    ["Er. Rakesh Mittal", "Mittal Township"],
+    ["Ar. Payal Saluja", "Saluja Greens"],
+    ["Er. Arun Kedia", "Kedia Commercial Realty"],
+    ["Er. Sunil Bajaj", "Bajaj Heights"],
+    ["Er. Tarun Bothra", "Bothra Landmark"],
+    ["Er. Gaurav Daga", "Daga Plotted Developments"]
+  ];
+  builderSeed.forEach(([n2, c], i) => mk(`USR-BUILDER-${pad3(3 + i)}`, n2, "DEVELOPER_BUILDER", ph(1005, i + 1), c, { reraNumber: `CGRERAP1501${pad3(25 + i, 2)}B00${pad3(10 + i, 2)}`, verificationStatus: i === 8 ? "PENDING" : "VERIFIED" }));
+  const legalSeed = [
+    ["Adv. Sanjay Shukla", "Shukla Law Associates"],
+    ["Adv. Rashmi Tiwari", "Tiwari & Partners"],
+    ["Adv. Imran Qureshi", "Qureshi Legal"],
+    ["Adv. Pratibha Sahu", "Sahu Chambers"],
+    ["Adv. Ashish Dubey", "Dubey Property Law"],
+    ["Adv. Neelima Verma", "Verma Legal Desk"],
+    ["Adv. Rajiv Agrawal", "Agrawal & Co. Advocates"],
+    ["Adv. Mamta Jain", "Jain Title Services"]
+  ];
+  legalSeed.forEach(([n2, c], i) => mk(`USR-LEGAL-${pad3(3 + i)}`, n2, "LEGAL_COUNSEL", ph(1006, i + 1), c, { reraNumber: `CG/${2300 + i * 37}/20${10 + i}`, verificationNotes: "Enrolled advocate \u2014 title & registry work (demo)" }));
+  const byRole = (role) => s.users.filter((u) => u.role === role);
+  const brokers = byRole("BROKER").filter((u) => u.verificationStatus === "VERIFIED");
+  const owners = byRole("PROPERTY_OWNER");
+  const buyers = byRole("BUYER_TENANT");
+  const contractors = byRole("CONTRACTOR");
+  const builders = byRole("DEVELOPER_BUILDER");
+  const legals = byRole("LEGAL_COUNSEL");
+  const user = (id) => s.users.find((u) => u.id === id);
+  const digits2 = (p) => p.replace(/\D/g, "").slice(-10);
+  const LOC = [
+    ["Shankar Nagar", 21.2475, 81.66],
+    ["Telibandha", 21.238, 81.664],
+    ["Civil Lines", 21.242, 81.639],
+    ["VIP Road", 21.224, 81.688],
+    ["Avanti Vihar", 21.241, 81.67],
+    ["Pachpedi Naka", 21.219, 81.665],
+    ["Mowa", 21.269, 81.672],
+    ["Saddu", 21.282, 81.679],
+    ["Amlidih", 21.266, 81.688],
+    ["Kota", 21.248, 81.604],
+    ["Tatibandh", 21.259, 81.581],
+    ["Devendra Nagar", 21.256, 81.651],
+    ["Samta Colony", 21.242, 81.62],
+    ["Katora Talab", 21.237, 81.628],
+    ["Naya Raipur Sector 21", 21.168, 81.786],
+    ["Labhandih", 21.228, 81.695],
+    ["Daldal Seoni", 21.275, 81.695],
+    ["Fafadih", 21.253, 81.636],
+    ["Sundar Nagar", 21.23, 81.642],
+    ["Kachna", 21.272, 81.705]
+  ];
+  const KINDS = [
+    { type: "Residential Flat", tx: "Sale", title: "3 BHK Flat", built: [1350, 1850], price: [55, 115], tags: ["Lift", "Covered Parking", "Gated Community", "Ready to Move"] },
+    { type: "Residential Flat", tx: "Sale", title: "2 BHK Flat", built: [950, 1250], price: [32, 62], tags: ["Lift", "Power Backup", "Bank Loan Available"] },
+    { type: "Residential Flat", tx: "Rent", title: "2 BHK Flat for Rent", built: [950, 1300], price: [0.12, 0.26], tags: ["Semi-Furnished", "Covered Parking", "Near Market"] },
+    { type: "Independent House", tx: "Sale", title: "Independent House", built: [1800, 3200], plot: [1200, 2400], price: [78, 210], tags: ["East Facing", "Vastu Compliant", "Clear Title"] },
+    { type: "Residential Villa", tx: "Sale", title: "4 BHK Villa", built: [3200, 4600], plot: [2400, 3600], price: [190, 340], tags: ["Gated Community", "Clubhouse", "Garden / Park"] },
+    { type: "Builder Floor", tx: "Sale", title: "Builder Floor", built: [1400, 2e3], price: [52, 95], tags: ["North Facing", "Registry Ready"] },
+    { type: "Penthouse", tx: "Sale", title: "Duplex Penthouse", built: [3e3, 4200], price: [220, 360], tags: ["Lift", "Swimming Pool", "Gym"] },
+    { type: "Residential Plot", tx: "Sale", title: "Residential Plot", plot: [1e3, 3e3], price: [24, 92], tags: ["Corner Plot", "Approved Layout", "Converted / NA Land"] },
+    { type: "Commercial Shop", tx: "Sale", title: "Ground-floor Shop", built: [250, 800], price: [32, 120], tags: ["Main Road", "Mall / High Street"] },
+    { type: "Commercial Shop", tx: "Rent", title: "Shop on Rent", built: [300, 900], price: [0.25, 0.85], tags: ["Main Road", "Near Market"] },
+    { type: "Commercial Office", tx: "Rent", title: "Office Space", built: [800, 3e3], price: [0.45, 1.6], tags: ["Lift", "Power Backup", "Furnished"] },
+    { type: "Showroom", tx: "Lease", title: "Showroom on Lease", built: [1500, 4e3], price: [1.2, 3.5], tags: ["Highway Facing", "Main Road"] },
+    { type: "Warehouse / Godown", tx: "Rent", title: "Warehouse", built: [5e3, 2e4], price: [0.7, 2.6], tags: ["Warehouse Grade", "Near Highway"] },
+    { type: "Commercial Plot", tx: "Sale", title: "Commercial Plot", plot: [2e3, 6e3], price: [90, 320], tags: ["Main Road", "Corner Plot"] },
+    { type: "Agricultural Land", tx: "Sale", title: "Agricultural Land", plot: [43560, 217800], price: [40, 260], tags: ["Farm Land", "Clear Title"] },
+    { type: "Farm House", tx: "Sale", title: "Farm House", built: [1500, 2600], plot: [21780, 43560], price: [85, 190], tags: ["Farm Land", "Garden / Park"] }
+  ];
+  const IMGS = [.../* @__PURE__ */ new Set([...s.properties.flatMap((p) => p.images || []), ...s.builderProjects.flatMap((p) => p.images || [])])];
+  const props = [];
+  for (let i = 0; i < 45; i++) {
+    const k = KINDS[i % KINDS.length];
+    const [loc, lat, lng] = LOC[i * 7 % LOC.length];
+    const owner = owners[Math.floor(i / 3) % owners.length];
+    const brk = brokers[i * 5 % brokers.length];
+    const priceCr = k.price[0] + r() * (k.price[1] - k.price[0]);
+    const asking = k.tx === "Sale" ? lakh(priceCr * 1e5) : Math.round(priceCr * 1e5 / 500) * 500;
+    const created = int2(4, 70);
+    const built = k.built ? int2(k.built[0], k.built[1]) : void 0;
+    const plot = k.plot ? int2(k.plot[0], k.plot[1]) : void 0;
+    const p = {
+      id: `PROP-DMO-${pad3(i + 1)}`,
+      title: `${k.title} \u2014 ${loc}`,
+      propertyType: k.type,
+      transactionType: k.tx,
+      city: "Raipur",
+      state: "Chhattisgarh",
+      district: "Raipur",
+      locality: loc,
+      description: `${k.title} in ${loc}, Raipur. ${built ? `${built} sq.ft built-up` : `${plot} sq.ft`}${k.tx === "Sale" ? ", papers ready for registry" : ", available from next month"}. Demo listing (fake data).`,
+      tags: [...k.tags],
+      addressHidden: `House / Plot ${int2(4, 220)}, ${loc}, Raipur - 4920${pad3(int2(1, 20), 2)}`,
+      landmark: `Near ${pick2(["Main Chowk", "Shiv Mandir", "Government School", "Petrol Pump", "Gurudwara", "City Hospital"])}`,
+      pincode: `4920${pad3(int2(1, 20), 2)}`,
+      latitude: +(lat + (r() - 0.5) * 0.01).toFixed(5),
+      longitude: +(lng + (r() - 0.5) * 0.01).toFixed(5),
+      locationPrecision: "APPROXIMATE_LOCALITY",
+      plotAreaSqFt: plot,
+      builtUpAreaSqFt: built,
+      askingPrice: asking,
+      ownerApprovedNetPrice: Math.round(asking * 0.95),
+      listingBrokerId: brk.id,
+      ownerId: owner.id,
+      ownerName: owner.name,
+      ownerPhone: owner.phone,
+      listingStatus: i === 43 || i === 44 ? "pending_verification" : "active",
+      verificationStatus: i === 43 || i === 44 ? "PENDING" : "VERIFIED",
+      duplicateHash: sha4(`dmo-${i}`),
+      priceHistory: [{ price: Math.round(asking * 1.05), changedAt: ago(created), reason: "Initial listing" }, ...i % 4 === 0 ? [{ price: asking, changedAt: ago(Math.max(1, created - 10)), reason: "Owner revised the price" }] : []],
+      images: IMGS.length ? [IMGS[i % IMGS.length], IMGS[(i + 3) % IMGS.length]] : [],
+      documents: [],
+      confirmedAt: ago(int2(0, 9)),
+      createdAt: ago(created),
+      updatedAt: ago(int2(0, 6))
+    };
+    if (!p.plotAreaSqFt) delete p.plotAreaSqFt;
+    if (!p.builtUpAreaSqFt) delete p.builtUpAreaSqFt;
+    props.push(p);
+  }
+  s.properties.push(...props);
+  const reqs = [];
+  const baseIx = (i) => (i * 3 + Math.floor(i / 15)) % 45;
+  const PURPOSE = ["Self-use", "Investment", "Rental Yield", "Commercial Relocation"];
+  const URGENCY = ["Immediate (< 15 days)", "Moderate (1-3 months)", "Exploratory (3-6 months)"];
+  const extraNames = ["Sanjay Bhagat", "Rekha Sharma", "Aman Khanduja", "Divya Thakur", "Kunal Gupta", "Farhan Siddiqui", "Lata Netam", "Gopal Rao", "Tanvi Shah", "Harsh Vardhan", "Rupesh Sahu", "Isha Kaushik", "Manoj Lakra", "Snehal Patil", "Yash Chandrakar", "Bhavna Dixit", "Om Prakash", "Rani Sonkar"];
+  for (let i = 0; i < 30; i++) {
+    const base = props[baseIx(i)];
+    const buyer = i < buyers.length ? buyers[i] : void 0;
+    const name = buyer?.name || extraNames[(i - buyers.length) % extraNames.length];
+    const phone = buyer?.phone || ph(1007, i + 1);
+    let brk = brokers[(i * 7 + 3) % brokers.length];
+    if (brk.id === base.listingBrokerId) brk = brokers[(i * 7 + 4) % brokers.length];
+    const tight = i % 2 === 0;
+    const req = {
+      id: `REQ-DMO-${pad3(i + 1)}`,
+      customerId: `CUST-DMO-${pad3(i + 1)}`,
+      buyerId: buyer?.id,
+      customerName: name,
+      customerPhone: phone,
+      assignedBrokerId: brk.id,
+      budgetMin: Math.round(base.askingPrice * (tight ? 0.85 : 0.7)),
+      budgetMax: Math.round(base.askingPrice * (tight ? 1.12 : 1.3)),
+      city: "Raipur",
+      state: "Chhattisgarh",
+      preferredLocalities: [base.locality, LOC[(i * 5 + 1) % LOC.length][0]],
+      preferredTags: base.tags?.slice(0, 2) || [],
+      propertyType: base.propertyType,
+      transactionType: base.transactionType,
+      minAreaSqFt: base.builtUpAreaSqFt ? Math.round(base.builtUpAreaSqFt * 0.8) : base.plotAreaSqFt ? Math.round(base.plotAreaSqFt * 0.8) : void 0,
+      maxAreaSqFt: base.builtUpAreaSqFt ? Math.round(base.builtUpAreaSqFt * 1.3) : base.plotAreaSqFt ? Math.round(base.plotAreaSqFt * 1.3) : void 0,
+      purpose: base.transactionType === "Sale" ? pick2(PURPOSE.slice(0, 2)) : base.propertyType.startsWith("Commercial") || base.propertyType === "Showroom" || base.propertyType === "Warehouse / Godown" ? "Commercial Relocation" : "Self-use",
+      urgency: URGENCY[i % 3],
+      status: i % 3 === 0 ? "matching" : "active",
+      createdAt: ago(int2(2, 40)),
+      updatedAt: ago(int2(0, 5))
+    };
+    if (!req.buyerId) delete req.buyerId;
+    if (req.minAreaSqFt === void 0) {
+      delete req.minAreaSqFt;
+      delete req.maxAreaSqFt;
+    }
+    reqs.push(req);
+  }
+  s.requirements.push(...reqs);
+  const tplTasks = s.dealTasks.filter((t) => t.dealId === "DEAL-2026-001");
+  const tplAgr = s.commissionAgreements.find((a) => a.dealId === "DEAL-2026-001");
+  const STAGES2 = ["Lead", "Lead", "Introduction", "Introduction", "Site Visit Done", "Site Visit Done", "Site Visit Done", "Negotiation", "Negotiation", "Negotiation", "Agreement", "Agreement", "Handover", "Settled", "Settled", "Disputed"];
+  const DONE_BY = { Lead: 0, Introduction: 1, "Site Visit Done": 4, Negotiation: 5, Agreement: 9, Handover: 11, Settled: 13, Disputed: 5 };
+  const STAGE_IX = { Lead: 0, Introduction: 1, "Site Visit Done": 2, Negotiation: 3, Agreement: 4, Handover: 5, Settled: 6, Disputed: 3 };
+  const CHAT = [
+    ["Namaste ji, client ne listing dekhi hai \u2014 weekend par visit fix karte hain?", "Ji bilkul, Saturday 11 baje theek rahega. Owner ko inform kar deta hoon."],
+    ["Client loan pre-approval le aaye hain, papers share kar diye hain.", "Badiya. Title papers vault me daal diye hain, legal check ke liye bhej rahe hain."],
+    ["Owner thoda negotiable hain, final figure kal tak bata denge.", "Theek hai, client ko bhi same bata deta hoon."],
+    ["Registry ki date Sub-Registrar office se confirm ho gayi.", "Perfect. Stamp duty challan ready rakhte hain."],
+    ["Visit ke baad client ko floor plan chahiye tha, bhej diya.", "Thank you ji, owner ko feedback mil gaya."]
+  ];
+  const deals = [];
+  const visits = [];
+  const featured = ["USR-BRK-001", "USR-BRK-002", "USR-BRK-003", "USR-BRK-004"];
+  STAGES2.forEach((stage, i) => {
+    const req = reqs[i];
+    const base = props[baseIx(i)];
+    let closing = user(base.listingBrokerId);
+    let intro = user(req.assignedBrokerId);
+    if (i < 12) {
+      const f = user(featured[i % featured.length]);
+      if (i % 2 === 0 && f.id !== intro.id) {
+        closing = f;
+        base.listingBrokerId = f.id;
+      } else if (f.id !== closing.id) {
+        intro = f;
+        req.assignedBrokerId = f.id;
+      }
+    }
+    if (intro.id === closing.id) intro = brokers.find((b) => b.id !== closing.id);
+    req.status = stage === "Settled" ? "fulfilled" : "in_deal_room";
+    const id = `DEAL-DMO-${pad3(i + 1)}`;
+    const stalled = i === 5 || i === 8;
+    const createdD = stalled ? int2(30, 40) : int2(6, 35);
+    const fee = base.transactionType === "Sale" ? Math.round(base.askingPrice * 0.02) : base.askingPrice;
+    const introPct = i % 3 === 0 ? 60 : 50;
+    const six = STAGE_IX[stage];
+    if (stage === "Settled") {
+      base.listingStatus = base.transactionType === "Sale" ? "sold" : "rented";
+      base.soldAt = ago(int2(2, 8));
+      base.soldVia = "NETWORK";
+    } else if (six >= 3) base.listingStatus = "under_negotiation";
+    const legal = legals[i % legals.length];
+    const contractor = contractors[i % contractors.length];
+    const lastTouch = stalled ? int2(16, 24) : int2(0, 4);
+    const d = {
+      id,
+      propertyId: base.id,
+      requirementId: req.id,
+      introducingBrokerId: intro.id,
+      closingBrokerId: closing.id,
+      ownerId: base.ownerId,
+      customerId: req.customerId,
+      stage,
+      totalCommissionExpected: fee,
+      introducingBrokerSharePct: introPct,
+      closingBrokerSharePct: 100 - introPct,
+      ownerRemunerationConfirmed: six >= 2,
+      ownerProtectionExpiresAt: ahead(i === 3 ? 4 : int2(12, 45)),
+      siteVisitsCount: six >= 2 ? i % 2 + 1 : 0,
+      agreementHash: sha4(id),
+      dealValue: six >= 4 ? base.askingPrice : void 0,
+      settlementStatus: stage === "Settled" ? "PAID" : stage === "Handover" ? "DUE" : stage === "Disputed" ? "DISPUTED" : six >= 4 ? "AGREED" : "PROPOSED",
+      notes: `${base.title}: ${req.customerName} (${req.purpose}). Demo deal room.`,
+      createdAt: ago(createdD),
+      updatedAt: ago(lastTouch),
+      ...i % 4 === 0 && (intro.id === "USR-BRK-001" || closing.id === "USR-BRK-001") ? { teamMemberIds: ["USR-TEAM-001"] } : {}
+    };
+    if (d.dealValue === void 0) delete d.dealValue;
+    deals.push(d);
+    const map2 = (x) => x === "USR-BRK-002" ? intro.id : x === "USR-BRK-001" ? closing.id : x === "USR-LEGAL-001" ? legal.id : x === "USR-CONTRACTOR-001" ? contractor.id : x;
+    const done = DONE_BY[stage];
+    const tAt = (k) => stalled ? ago(createdD - k) : new Date(Math.min(Date.parse(d.createdAt) + (k + 1) * 1.5 * DAY, now - (14 - k) * 36e5)).toISOString();
+    tplTasks.forEach((t0, k) => {
+      const t = JSON.parse(JSON.stringify(t0));
+      t.id = `TSK-DMO-${pad3(i + 1)}-${pad3(k + 1, 2)}`;
+      t.dealId = id;
+      for (const f of ["assignedParticipantId", "responsibleParticipantId", "reviewingParticipantId", "acceptedBy", "verifiedBy"]) if (t[f]) t[f] = map2(t[f]);
+      t.supportingParticipantIds = (t.supportingParticipantIds || []).map(map2);
+      t.assignedParticipantName = user(t.assignedParticipantId)?.name || t.assignedParticipantName;
+      t.dueDate = new Date(Date.parse(d.createdAt) + (k + 2) * 3 * DAY).toISOString();
+      t.evidenceAttachments = [];
+      t.reassignmentHistory = [];
+      t.disputeHistory = [];
+      delete t.completionTimestamp;
+      delete t.completionNote;
+      delete t.verifiedBy;
+      delete t.verifiedAt;
+      delete t.verificationNotes;
+      t.acceptedAt = tAt(0);
+      if (k === 12 && stage === "Settled") {
+        t.taskStatus = "WAIVED";
+        t.verificationStatus = "VERIFIED";
+      } else if (k < done) {
+        t.taskStatus = "COMPLETED";
+        t.completionTimestamp = tAt(k + 1);
+        t.completionNote = "Done and logged on the platform (demo).";
+        if (k === done - 1 && stage !== "Settled" && i % 2 === 0) t.verificationStatus = "UNVERIFIED";
+        else {
+          t.verificationStatus = "VERIFIED";
+          t.verifiedBy = t.reviewingParticipantId;
+          t.verifiedAt = tAt(k + 1);
+        }
+      } else if (k < done + 2) {
+        t.taskStatus = "IN_PROGRESS";
+        t.verificationStatus = "UNVERIFIED";
+        if (i % 3 === 1) t.dueDate = ago(int2(1, 4));
+      } else {
+        t.taskStatus = "NOT_STARTED";
+        t.verificationStatus = "UNVERIFIED";
+        if (six <= 1 && k < done + 4) {
+          t.assignmentAcceptance = "PENDING_ACCEPTANCE";
+          delete t.acceptedAt;
+          delete t.acceptedBy;
+        }
+      }
+      s.dealTasks.push(t);
+    });
+    if (tplAgr && six >= 3) {
+      const a = JSON.parse(JSON.stringify(tplAgr));
+      const pending = stage === "Negotiation";
+      a.id = `AGR-${id}-V1`;
+      a.dealId = id;
+      a.status = pending ? "SENT_TO_PARTICIPANTS" : stage === "Settled" ? "COMPLETED" : stage === "Disputed" ? "DISPUTED" : "ACTIVE";
+      a.totalAgreedBrokerage = fee;
+      a.dealValue = base.askingPrice;
+      const people = [intro, closing];
+      const pcts = [introPct, 100 - introPct];
+      a.allocations = a.allocations.slice(0, 2).map((al, j) => ({ ...al, participantId: people[j].id, participantName: people[j].name, allocationPct: pcts[j], allocationAmount: Math.round(fee * pcts[j] / 100), paidAmount: stage === "Settled" ? Math.round(fee * pcts[j] / 100) : 0, entitlementStatus: stage === "Settled" ? "PAID" : stage === "Handover" ? "RECEIVABLE" : "AGREED" }));
+      const met = stage === "Settled" ? 3 : stage === "Handover" ? 2 : stage === "Agreement" ? 1 : 0;
+      a.paymentTriggers = a.paymentTriggers.map((tr, j) => ({ ...tr, amount: Math.round(fee * tr.percentage / 100), isMet: j < met, confirmedAt: j < met ? ago(int2(1, 10)) : void 0 }));
+      a.requiredApprovals = people.map((p, j) => {
+        const signed = !pending || j === 1;
+        return signed ? { userId: p.id, userName: p.name, role: "BROKER", hasAccepted: true, acceptedAt: ago(int2(3, 12)), signatureAuditTrail: { signerName: p.name, signerEmail: p.email, ipAddress: "103.88.23.x (demo)", authMethod: "COMPLIANT_E_SIGN_PKEY", timestamp: ago(int2(3, 12)), cryptoHash: sha4(`${id}-${p.id}`) } } : { userId: p.id, userName: p.name, role: "BROKER", hasAccepted: false };
+      });
+      a.proposedBy = closing.id;
+      a.proposedByName = closing.name;
+      a.proposalReason = `Co-brokerage on ${base.title} (demo).`;
+      a.cryptoSealHash = sha4(a.id);
+      a.createdAt = ago(int2(8, 14));
+      a.updatedAt = ago(int2(0, 7));
+      s.commissionAgreements.push(a);
+    }
+    const lines = CHAT[i % CHAT.length];
+    const msgAt = (k) => stalled ? ago(lastTouch + 2 - k) : ago(Math.max(0, lastTouch + 2 - k), int2(1, 9));
+    [closing, intro].forEach((p, k) => s.dealMessages.push({ id: `MSG-DMO-${pad3(i + 1)}-${k + 1}`, dealRoomId: id, senderId: p.id, senderName: p.name, senderRole: "BROKER", text: lines[k], timestamp: msgAt(k) }));
+    if (i % 3 === 0) s.dealMessages.push({ id: `MSG-DMO-${pad3(i + 1)}-3`, dealRoomId: id, senderId: intro.id, senderName: intro.name, senderRole: "BROKER", audience: "BROKERS", text: "Brokerage split wahi rakhte hain jo agreement me likha hai.", timestamp: msgAt(2) });
+    const vbase = { dealRoomId: id, propertyId: base.id, brokerId: intro.id, customerName: req.customerName, customerPhone: digits2(req.customerPhone) };
+    if (six >= 2) for (let k = 0; k < d.siteVisitsCount; k++) {
+      const m = k % 2 === 0 ? "OTP" : "QR";
+      visits.push({ ...vbase, id: `SV-DMO-${pad3(i + 1)}-${k + 1}`, scheduledTime: ago(createdD - 3 - k * 2), otpCode: String(int2(1e5, 999999)), qrToken: tok2(16), isVerified: true, verifiedAt: ago(createdD - 3 - k * 2, -1), verificationMethod: m, feedbackNotes: pick2(["Client liked the layout, asked for final price.", "Visited with family, wants to compare one more option.", "Ventilation and road width liked. Next: papers."]), createdAt: ago(createdD - 1) });
+    }
+    if (six <= 1) visits.push({ ...vbase, id: `SV-DMO-${pad3(i + 1)}-U`, scheduledTime: ahead(int2(1, 5), int2(2, 8)), otpCode: String(int2(1e5, 999999)), qrToken: tok2(16), isVerified: false, verificationMethod: "OTP", createdAt: ago(1) });
+    if (stage === "Site Visit Done" && i % 2 === 0) visits.push({ ...vbase, id: `SV-DMO-${pad3(i + 1)}-P`, scheduledTime: ago(1, 3), otpCode: String(int2(1e5, 999999)), qrToken: tok2(16), isVerified: false, verificationMethod: "OTP", createdAt: ago(3) });
+    S.offers.push({ id: `OFFER-DMO-${pad3(i + 1)}`, propertyId: base.id, requirementId: req.id, proposingBrokerId: intro.id, receivingBrokerId: closing.id, proposedIntroducingShare: introPct, proposedClosingShare: 100 - introPct, terms: `${introPct}/${100 - introPct} split of the total brokerage. Demo proposal.`, status: "ACCEPTED", lastActorId: closing.id, dealRoomId: id, createdAt: ago(createdD + 1), respondedAt: ago(createdD) });
+  });
+  s.dealRooms.push(...deals);
+  s.siteVisits.push(...visits);
+  const inDeal = new Set(deals.map((d) => d.propertyId));
+  const free = props.filter((p) => !inDeal.has(p.id) && p.listingStatus === "active");
+  for (let i = 0; i < 10; i++) {
+    const p = free[i * 2 % free.length];
+    const q = reqs[16 + i % 14];
+    const to = i < 4 ? user(featured[i]) : user(p.listingBrokerId);
+    if (to.id !== p.listingBrokerId) p.listingBrokerId = to.id;
+    let from = user(q.assignedBrokerId);
+    if (from.id === to.id) from = brokers.find((b) => b.id !== to.id);
+    const st20 = ["PENDING", "PENDING", "COUNTERED", "PENDING", "REJECTED"][i % 5];
+    S.offers.push({ id: `OFFER-DMO-P${pad3(i + 1, 2)}`, propertyId: p.id, requirementId: q.id, proposingBrokerId: from.id, receivingBrokerId: to.id, proposedIntroducingShare: 50, proposedClosingShare: 50, terms: st20 === "COUNTERED" ? "Counter: 40/60 because the listing broker handles registry. Demo." : "Mere paas verified buyer hai, 50/50 split par kaam karte hain. Demo.", status: st20, lastActorId: st20 === "COUNTERED" ? to.id : from.id, createdAt: ago(int2(1, 9)), ...st20 === "REJECTED" ? { respondedAt: ago(1) } : {} });
+  }
+  const disputed = deals.find((d) => d.stage === "Disputed");
+  const handover = deals.find((d) => d.stage === "Handover");
+  const disp = [
+    { id: "DISP-DMO-01", dealRoomId: disputed.id, complainantId: disputed.introducingBrokerId, complainantName: user(disputed.introducingBrokerId).name, complainantRole: "BROKER", counterpartyId: disputed.ownerId, counterpartyName: user(disputed.ownerId).name, reason: "BYPASS_ATTEMPT", description: "Owner contacted my buyer directly after the verified visit and offered a lower price outside the platform. (demo)", evidenceLinks: [], status: "OPEN", settlementHold: true, createdAt: ago(3), updatedAt: ago(1) },
+    { id: "DISP-DMO-02", dealRoomId: handover.id, complainantId: handover.closingBrokerId, complainantName: user(handover.closingBrokerId).name, complainantRole: "BROKER", counterpartyId: handover.introducingBrokerId, counterpartyName: user(handover.introducingBrokerId).name, reason: "COMMISSION_NON_PAYMENT", description: "Second milestone of the split is pending for 10 days after the registry. (demo)", evidenceLinks: [], status: "UNDER_REVIEW", settlementHold: false, createdAt: ago(6), updatedAt: ago(2) },
+    { id: "DISP-DMO-03", dealRoomId: deals[4].id, complainantId: deals[4].closingBrokerId, complainantName: user(deals[4].closingBrokerId).name, complainantRole: "BROKER", counterpartyId: deals[4].introducingBrokerId, counterpartyName: user(deals[4].introducingBrokerId).name, reason: "FALSE_REPRESENTATION", description: "Buyer budget was shown higher than actual. (demo)", evidenceLinks: [], status: "RESOLVED", resolutionNotes: "Both brokers agreed after a call with the GENZ desk.", settlementHold: false, createdAt: ago(20), updatedAt: ago(15) }
+  ];
+  disputed.disputeId = "DISP-DMO-01";
+  s.disputes.push(...disp);
+  const mand = [];
+  props.slice(0, 22).forEach((p, i) => {
+    const status = i % 9 === 4 ? "PENDING_BROKER" : i === 10 ? "WITHDRAWN" : i === 15 ? "REJECTED" : i === 19 ? "PENDING_BROKER" : "ACTIVE";
+    const basis = ["SURPLUS_ABOVE_NET", "PERCENTAGE", "FIXED_FEE"][i % 3];
+    const period = [30, 45, 60, 90][i % 4];
+    const signed = i % 5 === 0 ? period - int2(2, 6) : int2(3, 25);
+    mand.push({
+      id: `OM-DMO-${pad3(i + 1)}`,
+      propertyId: p.id,
+      ownerId: p.ownerId,
+      brokerId: p.listingBrokerId,
+      advertisedPrice: p.askingPrice,
+      approvedNetPrice: basis === "SURPLUS_ABOVE_NET" ? p.ownerApprovedNetPrice : 0,
+      remunerationBasis: basis,
+      agreedCommissionPct: basis === "PERCENTAGE" ? 2 : 0,
+      ...basis === "FIXED_FEE" ? { fixedFeeAmount: Math.max(25e3, lakh(p.askingPrice * 0.015)) } : {},
+      protectionPeriodDays: period,
+      agreementHash: sha4(`om-${i}`),
+      status,
+      ownerSignedAt: ago(signed),
+      ...status === "ACTIVE" || status === "WITHDRAWN" ? { brokerSignedAt: ago(signed, -2) } : {},
+      ...status === "ACTIVE" ? { isConfirmed: true, confirmedAt: ago(signed, -2) } : { isConfirmed: false },
+      ...status === "REJECTED" ? { decisionNote: "Net price too low for this locality." } : status === "WITHDRAWN" ? { decisionNote: "Owner sold privately to a relative." } : {},
+      createdAt: ago(signed + 1)
+    });
+  });
+  s.ownerMandates.push(...mand);
+  const CL_TYPES = ["Turnkey Residential", "Commercial Interior Fitout", "Renovation & Remodel", "Structural Expansion", "Architectural Sanction"];
+  const CL_ST = ["OPEN", "OPEN", "OPEN", "ASSIGNED", "IN_PROGRESS", "COMPLETED", "OPEN", "IN_PROGRESS", "OPEN", "ASSIGNED", "CANCELLED", "OPEN"];
+  const leads = CL_ST.map((st20, i) => {
+    const brk = brokers[i * 3 % brokers.length];
+    const t = CL_TYPES[i % CL_TYPES.length];
+    const loc = LOC[(i * 3 + 2) % LOC.length][0];
+    const budget = lakh(int2(8, 120) * 1e5);
+    const ctr = contractors[i % contractors.length];
+    const l = {
+      id: `CL-DMO-${500 + i + 1}`,
+      title: `${t} \u2014 ${loc}`,
+      projectType: t,
+      approximateLocation: `${loc}, Raipur`,
+      exactAddressHidden: `Plot ${int2(10, 300)}, ${loc}, Raipur`,
+      estimatedBudget: budget,
+      scopeDescription: pick2(["G+1 RCC house with standard finishing.", "Office interior for 25 seats with cabins.", "Kitchen and bathroom remodel, waterproofing.", "Second floor addition on existing house.", "Map sanction and structural drawings for G+2."]),
+      timeline: pick2(["3-4 months", "6-8 months", "10-12 months", "45 days"]),
+      referringBrokerId: brk.id,
+      referringBrokerName: brk.name,
+      referralCommissionPct: 1,
+      customerNameMasked: `${pick2(["Mahesh", "Sunita", "Rakesh", "Jyoti", "Anil", "Farida"])} ${pick2(["K.", "S.", "V.", "T."])} (Masked)`,
+      customerPhoneHidden: ph(1008, i + 1),
+      status: st20,
+      createdAt: ago(int2(2, 50))
+    };
+    if (st20 !== "OPEN" && st20 !== "CANCELLED") {
+      l.assignedContractorId = ctr.id;
+      l.finalContractValue = lakh(budget * 0.95);
+      l.referralCommissionDue = Math.round(l.finalContractValue * 0.01);
+      l.referralCommissionPaid = st20 === "COMPLETED";
+    }
+    return l;
+  });
+  s.constructionLeads.push(...leads);
+  leads.filter((l) => l.status === "OPEN").forEach((l, i) => {
+    [contractors[i % contractors.length], contractors[(i + 4) % contractors.length]].forEach((c, j) => {
+      const ok = j === 0 && i % 2 === 0;
+      S.contractorRequests.push({ id: `CAR-DMO-${pad3(i + 1)}-${j + 1}`, leadId: l.id, contractorId: c.id, contractorName: c.companyName || c.name, termsAccepted: true, termsAcceptedAt: ago(2), status: ok ? "APPROVED" : "REQUESTED", ...ok ? { disclosedContact: { customerName: l.customerNameMasked.replace(" (Masked)", ""), customerPhone: l.customerPhoneHidden, exactAddress: l.exactAddressHidden } } : {}, createdAt: ago(int2(1, 6)) });
+    });
+  });
+  const tplProj = s.builderProjects[0];
+  const tplMand = s.associateMandates[0];
+  const tplLead = s.crmLeads?.[0];
+  const PTYPES = ["Luxury High-Rise", "Gated Plotted Enclave", "Commercial Mall & Business Hub", "Ultra-Luxury Villas"];
+  const PSTAGE = ["Pre-Launch / Upcoming", "Under Construction", "Ready to Move"];
+  const NAMES = ["Green Valley Residency", "Royal Orchid Enclave", "Capital Square", "Sunrise Villas", "Lake View Towers", "Shree Ram Nagar Phase 2", "Metro Business Park", "Emerald Greens", "Silver Oak Plots", "Heritage Homes"];
+  const projBuilders = [...builders.filter((b) => !s.builderProjects.some((p) => p.builderId === b.id) && b.verificationStatus === "VERIFIED")];
+  const projs = [];
+  NAMES.forEach((nm, i) => {
+    const b = projBuilders[i % projBuilders.length];
+    if (!b || !tplProj) return;
+    const ptype = PTYPES[i % PTYPES.length];
+    const loc = LOC[(i * 2 + 1) % LOC.length][0];
+    const minP = ptype === "Gated Plotted Enclave" ? lakh(int2(18, 35) * 1e5) : ptype === "Commercial Mall & Business Hub" ? lakh(int2(30, 60) * 1e5) : ptype === "Ultra-Luxury Villas" ? lakh(int2(150, 220) * 1e5) : lakh(int2(45, 80) * 1e5);
+    const configs = ptype === "Gated Plotted Enclave" ? ["Plot 1,200 sq.ft", "Plot 1,800 sq.ft", "Corner Plot 2,400 sq.ft"] : ptype === "Commercial Mall & Business Hub" ? ["Shop 300 sq.ft", "Office 900 sq.ft", "Anchor Store 3,000 sq.ft"] : ptype === "Ultra-Luxury Villas" ? ["4 BHK Villa (3,600 sq.ft)", "5 BHK Villa (4,800 sq.ft)"] : ["2 BHK (1,150 sq.ft)", "3 BHK (1,650 sq.ft)", "4 BHK (2,300 sq.ft)"];
+    const total = int2(60, 220);
+    const avail = Math.round(total * (0.35 + r() * 0.5));
+    const p = {
+      ...JSON.parse(JSON.stringify(tplProj)),
+      id: `PROJ-DMO-${pad3(i + 1, 2)}`,
+      builderId: b.id,
+      builderName: b.companyName || b.name,
+      projectName: `${b.companyName?.split(" ")[0] || ""} ${nm}`.trim(),
+      tagline: pick2(["Spacious homes near the city centre", "Plots with wide roads and full amenities", "High-street shops and offices", "Private villas with gardens"]),
+      locality: loc,
+      city: "Raipur",
+      state: "Chhattisgarh",
+      reraNumber: `CGRERAP1501${pad3(30 + i, 2)}C00${pad3(i + 1, 2)}`,
+      projectType: ptype,
+      projectStage: PSTAGE[i % 3],
+      launchDate: ago(int2(30, 200)),
+      completionTarget: pick2(["March 2027", "December 2027", "June 2028", "Ready"]),
+      totalUnits: total,
+      availableUnits: avail,
+      priceStartingFrom: minP,
+      priceMax: Math.round(minP * (1.6 + r())),
+      channelPartnerCommissionPct: pick2([2, 2.5, 3, 3.5]),
+      siteAddress: `${loc} main road, Raipur`,
+      unitConfigurations: configs,
+      assignedAssociatesCount: 0,
+      totalBookingsGenerated: total - avail,
+      totalSalesVolumeDelivered: (total - avail) * minP,
+      status: i % 4 === 3 ? "PRE_BOOKING" : "ACTIVE_LAUNCH",
+      images: IMGS.length ? [IMGS[(i + 1) % IMGS.length], IMGS[(i + 5) % IMGS.length]] : [],
+      createdAt: ago(int2(30, 120)),
+      updatedAt: ago(int2(0, 10))
+    };
+    if (i % 2 === 1) delete p.bonusScheme;
+    projs.push(p);
+  });
+  s.builderProjects.push(...projs);
+  const units = [];
+  projs.forEach((p) => {
+    for (let k = 0; k < 10; k++) {
+      const cfg = p.unitConfigurations[k % p.unitConfigurations.length];
+      const st20 = k % 4 === 1 ? "BOOKED" : k === 6 ? "RESERVED" : "AVAILABLE";
+      const plotted = p.projectType === "Gated Plotted Enclave";
+      units.push({ id: `UNIT-${p.id}-${plotted ? "P" : "A"}-${100 + k + 1}`, projectId: p.id, builderId: p.builderId, group: plotted ? "Block A" : "Tower A", label: plotted ? `P-${k + 1}` : `A-${100 + k + 1}`, ...plotted ? {} : { floor: Math.floor(k / 2) + 1 }, config: cfg.split(" (")[0], areaSqft: Number((cfg.match(/[\d,]+(?= sq)/)?.[0] || "1200").replace(/,/g, "")), price: lakh(p.priceStartingFrom * (1 + k * 0.06)), status: st20, facing: pick2(["NORTH", "EAST", "WEST", "SOUTH"]), features: k % 3 === 0 ? ["PARK_FACING"] : ["COVERED_PARKING"], updatedAt: ago(int2(0, 15)) });
+    }
+  });
+  S.inventoryUnits.push(...units);
+  const mands = [];
+  const MST = ["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "ACTIVE_ASSOCIATE", "APPLIED", "INVITED"];
+  projs.forEach((p, i) => {
+    const team = [user(featured[i % 4]), brokers[(i * 3 + 5) % brokers.length], brokers[(i * 3 + 7) % brokers.length]].filter((b, j, a) => a.findIndex((x) => x.id === b.id) === j);
+    team.forEach((b, j) => {
+      if (!tplMand) return;
+      const st20 = MST[(i + j) % MST.length];
+      const sold = st20 === "TOP_PERFORMER" ? int2(4, 9) : st20 === "ACTIVE_ASSOCIATE" ? int2(0, 3) : 0;
+      mands.push({ ...JSON.parse(JSON.stringify(tplMand)), id: `MAND-DMO-${pad3(i + 1, 2)}-${j + 1}`, projectId: p.id, projectName: p.projectName, builderId: p.builderId, builderName: p.builderName, brokerId: b.id, brokerName: b.name, brokerCompany: b.companyName, brokerReraNumber: b.reraNumber, agreedCommissionPct: p.channelPartnerCommissionPct, targetUnitsQuota: int2(5, 12), unitsSold: sold, grossSalesDelivered: sold * p.priceStartingFrom, commissionEarned: Math.round(sold * p.priceStartingFrom * p.channelPartnerCommissionPct / 100), commissionPaid: sold > 0 && j === 0, status: st20, assignedAt: ago(int2(5, 60)), ...st20 === "APPLIED" ? { appliedNote: "Mere paas is area ke 20+ active buyers hain." } : {} });
+    });
+    p.assignedAssociatesCount = mands.filter((m) => m.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status)).length;
+  });
+  s.associateMandates.push(...mands);
+  const CRM_ST = ["NEW", "CONTACTED", "SITE_VISIT_SCHEDULED", "SITE_VISITED", "NEGOTIATION", "BOOKING_REQUESTED", "BOOKED", "LOST"];
+  const SRC = ["ASSOCIATE_REFERRAL", "WALK_IN", "DIGITAL_CAMPAIGN", "CLIENT_REFERRAL", "SOCIAL_MEDIA", "PROPERTY_PORTAL", "WHATSAPP_OR_SMS", "EXHIBITION"];
+  const crmNames = ["Amit Rathore", "Sonal Gupta", "Rajesh Netam", "Preeti Saxena", "Nikhil Chawla", "Arpita Das", "Sumit Bhardwaj", "Monika Sahu", "Tarun Patel", "Jaya Mishra", "Rakesh Kurre", "Aditi Verma"];
+  const crm = [];
+  const bookings = [];
+  const tplBooking = s.crmBookings?.[0];
+  if (tplLead) projs.forEach((p, i) => {
+    const partners = mands.filter((m) => m.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status));
+    if (!partners.length) return;
+    for (let k = 0; k < 4; k++) {
+      const m = partners[k % partners.length];
+      const stage = CRM_ST[(i + k * 3) % CRM_ST.length];
+      const n2 = crm.length + 1;
+      const phone = ph(1009, n2);
+      const id = `CRM-L-DMO-${pad3(n2)}`;
+      const l = {
+        ...JSON.parse(JSON.stringify(tplLead)),
+        id,
+        projectId: p.id,
+        projectName: p.projectName,
+        builderId: p.builderId,
+        associateId: m.brokerId,
+        associateName: m.brokerName,
+        mandateId: m.id,
+        name: crmNames[n2 % crmNames.length],
+        phone,
+        phoneKey: digits2(phone),
+        email: `${crmNames[n2 % crmNames.length].toLowerCase().replace(/\s+/g, ".")}@demo.genz.example`,
+        source: SRC[n2 % SRC.length],
+        unitInterest: p.unitConfigurations[k % p.unitConfigurations.length],
+        stage,
+        budgetMin: p.priceStartingFrom,
+        budgetMax: Math.round(p.priceStartingFrom * 1.3),
+        followUps: stage === "LOST" || stage === "BOOKED" ? [] : [{ id: `FU-${n2}`, dueAt: k % 2 ? ago(1) : ahead(int2(1, 4)), note: pick2(["Payment plan bhejna hai", "Site visit confirm karna", "Loan eligibility check", "Floor choice discuss karna"]), channel: pick2(["CALL", "WHATSAPP"]), done: false, createdBy: m.brokerId }],
+        activities: [{ id: `A-${n2}-1`, type: "CALL", note: "First call done, requirement noted.", byUserId: m.brokerId, byName: m.brokerName, at: ago(int2(6, 20)) }],
+        protectedUntil: ahead(int2(20, 60)),
+        createdAt: ago(int2(7, 25)),
+        updatedAt: ago(int2(0, 5))
+      };
+      delete l.assignedMemberId;
+      delete l.assignedMemberName;
+      delete l.bookingId;
+      delete l.lostReason;
+      l.nextFollowUpAt = l.followUps[0]?.dueAt;
+      if (!l.nextFollowUpAt) delete l.nextFollowUpAt;
+      if ((stage === "BOOKING_REQUESTED" || stage === "BOOKED") && tplBooking) {
+        const unit = units.find((u) => u.projectId === p.id && u.status === "AVAILABLE");
+        if (unit) {
+          const bId = `CRM-B-DMO-${pad3(bookings.length + 1)}`;
+          const val = unit.price;
+          bookings.push({ ...JSON.parse(JSON.stringify(tplBooking)), id: bId, leadId: id, projectId: p.id, projectName: p.projectName, builderId: p.builderId, associateId: m.brokerId, mandateId: m.id, customerName: l.name, unitNo: unit.label, unitConfig: unit.config, agreementValue: val, tokenAmount: 1e5, status: stage === "BOOKED" ? "APPROVED" : "REQUESTED", paymentSchedule: tplBooking.paymentSchedule.map((x, j) => ({ ...x, id: `PM-${bId}-${j + 1}`, amount: Math.round(val * x.pct / 100), paid: stage === "BOOKED" && j === 0 })), brokeragePct: p.channelPartnerCommissionPct, brokerageAmount: Math.round(val * p.channelPartnerCommissionPct / 100), brokeragePaidAmount: 0, createdAt: ago(int2(1, 6)), updatedAt: ago(int2(0, 2)) });
+          unit.status = "BOOKED";
+          unit.bookingId = bId;
+          l.bookingId = bId;
+        }
+      }
+      crm.push(l);
+    }
+  });
+  S.crmLeads.push(...crm);
+  S.crmBookings.push(...bookings);
+  const hm2 = (tag, v) => crypto4.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+  const KINDS_R = ["BUYER", "BUYER", "RENTER", "TENANT", "BUYER", "OTHER"];
+  const live4 = props.filter((p) => p.listingStatus === "active");
+  for (let i = 0; i < 14; i++) {
+    const b = i < 8 ? user(featured[i % 4]) : brokers[i * 3 % brokers.length];
+    const q = reqs[(i * 2 + 1) % reqs.length];
+    const phone = digits2(q.customerPhone);
+    const opened = int2(3, 30);
+    const items = [0, 1, 2].slice(0, 1 + i % 3).map((k) => {
+      const p = live4[(i * 3 + k * 5) % live4.length];
+      return { id: `CRI-DMO-${pad3(i + 1)}-${k + 1}`, propertyId: p.id, sharedAt: ago(opened - 1 - k), ...k === 0 && i % 2 === 0 ? { reaction: "LIKE", reactionAt: ago(opened - 2) } : k === 1 && i % 3 === 0 ? { reaction: "PASS", reactionAt: ago(opened - 2) } : {}, visitRequests: k === 0 && i % 3 === 1 ? [{ id: `VR-DMO-${i + 1}`, at: ago(1), preferred: "Sunday 11 am", status: "REQUESTED" }] : [] };
+    });
+    const msgs = [
+      { id: `CRM-M-${i + 1}-1`, from: "BROKER", text: "Namaste! Aapke budget ke hisaab se kuch options share kiye hain.", at: ago(opened - 1) },
+      { id: `CRM-M-${i + 1}-2`, from: "CLIENT", text: i % 2 ? "Pehla wala achha laga, visit kab ho sakti hai?" : "Thanks, dekh ke batata hoon.", at: ago(Math.max(0, opened - 3), int2(1, 6)), propertyId: items[0].propertyId }
+    ];
+    const room = {
+      id: `CRM-DMO${pad3(i + 1, 4)}`,
+      brokerId: b.id,
+      clientName: q.customerName,
+      kind: KINDS_R[i % KINDS_R.length],
+      note: pick2(["Budget flexible, wants east facing.", "Wife ki pasand final hogi.", "Office ke paas chahiye.", ""]),
+      phoneKey: hm2("cr-phone", phone),
+      phoneLast4: phone.slice(-4),
+      tokenHash: sha4(`room-${i}-${tok2()}`),
+      sessVersion: 1,
+      status: i === 13 ? "CLOSED" : "ACTIVE",
+      createdAt: ago(opened),
+      updatedAt: ago(int2(0, 3)),
+      expiresAt: ahead(60 - opened % 20),
+      ...i === 13 ? { closedAt: ago(1) } : {},
+      lastClientSeenAt: ago(0, 2),
+      lastBrokerSeenAt: i % 2 ? ago(opened - 2) : ago(0, 1),
+      items,
+      messages: msgs,
+      events: [{ at: ago(opened), text: "Room opened" }, { at: ago(opened - 1), text: `${items.length} home(s) shared` }]
+    };
+    if (!room.note) delete room.note;
+    S.clientRooms.push(room);
+  }
+  const LST = ["OPEN", "OPEN", "CLAIMED", "QUOTED", "ACCEPTED", "COMPLETED", "OPEN"];
+  const LTYPE = ["TITLE_CHECK", "AGREEMENT_DRAFT", "REGISTRATION", "LAND_RECORDS", "LOAN_DOCS", "TITLE_CHECK", "LEASE_RENT"];
+  deals.filter((d) => STAGE_IX[d.stage] >= 2).slice(0, LST.length).forEach((d, i) => {
+    const by = user(d.closingBrokerId);
+    const c = legals[[0, 3, 0, 2, 1, 0, 4][i] % legals.length];
+    const st20 = LST[i];
+    const p = s.properties.find((x) => x.id === d.propertyId);
+    S.legalRequests.push({
+      id: `LGL-DMO-${pad3(i + 1)}`,
+      dealRoomId: d.id,
+      propertyId: d.propertyId,
+      state: "Chhattisgarh",
+      city: "Raipur",
+      helpType: LTYPE[i],
+      description: `${p.title}: please check papers before token. Owner has registry copy and B1/P2. (demo)`,
+      detailsShared: [],
+      sharedDocIds: [],
+      requestedById: by.id,
+      requestedByName: by.name,
+      status: st20,
+      ...st20 !== "OPEN" ? { counsellorId: c.id, counsellorName: c.name, claimedAt: st20 === "CLAIMED" ? ago(0, 3) : ago(3) } : {},
+      ...["QUOTED", "ACCEPTED", "COMPLETED"].includes(st20) ? { quote: { amount: pick2([5e3, 7500, 11e3, 15e3]), days: pick2([3, 5, 7]), note: "Includes one site-office visit.", at: ago(2) } } : {},
+      ...["ACCEPTED", "COMPLETED"].includes(st20) ? { acceptedAt: ago(2) } : {},
+      ...st20 === "COMPLETED" ? { completedAt: ago(1) } : {},
+      passedBy: [],
+      messages: st20 === "OPEN" ? [] : [{ at: ago(2), by: c.id, role: "LEGAL_COUNSEL", text: "Papers ki list bhej di hai, kal tak opinion de dunga." }],
+      history: [{ at: ago(4), by: by.id, what: "Case opened" }],
+      createdAt: ago(4),
+      updatedAt: ago(1)
+    });
+  });
+  ["BROKER", "BROKER", "PROPERTY_OWNER", "DEVELOPER_BUILDER", "LEGAL_COUNSEL"].forEach((role, i) => S.invitations.push({
+    id: `INV-DMO-${i + 1}`,
+    code: `GZ-DEMO-${1e3 + i}`,
+    invitedEmail: `invite${i + 1}@demo.genz.example`,
+    invitedPhone: ph(1010, i + 1),
+    targetRole: role,
+    issuedBy: i % 2 ? "USR-ADMIN-1" : "USR-SUPERADMIN",
+    status: "PENDING",
+    expiresAt: ahead(10 + i),
+    createdAt: ago(i + 1)
+  }));
+}
+
 // server/db.ts
+init_pgstore();
 var CLIENT_STAGES = ["NEW", "CONTACTED", "SITE_VISIT", "NEGOTIATION", "DEAL", "LOST"];
 var DB_FILE = path3.resolve(process.cwd(), "data", "database.json");
 var SEED_DEMO = (process.env.SEED_DEMO_DATA ?? "false").toLowerCase() === "true";
+var SEED_DEMO_BULK = (process.env.SEED_DEMO_BULK ?? "false").toLowerCase() === "true";
 function productionSeed() {
   const seed = getInitialSeedData();
   const admin = { ...seed.users.find((u) => u.role === "SUPERADMIN") };
@@ -64578,7 +65299,7 @@ function productionSeed() {
   return empty;
 }
 function sha256(data) {
-  return crypto4.createHash("sha256").update(data).digest("hex");
+  return crypto5.createHash("sha256").update(data).digest("hex");
 }
 function getInitialSeedData() {
   const now = (/* @__PURE__ */ new Date("2026-10-10T10:00:00.000Z")).toISOString();
@@ -66057,7 +66778,7 @@ function migrateState(parsed, seed) {
     delete m.otpChallenge;
   }
   for (const v2 of parsed.siteVisits || []) {
-    if (!v2.qrToken) v2.qrToken = crypto4.randomBytes(12).toString("base64url");
+    if (!v2.qrToken) v2.qrToken = crypto5.randomBytes(12).toString("base64url");
   }
   for (const d of parsed.dealRooms || []) {
     const confirmed = (parsed.ownerMandates || []).some((m) => m.propertyId === d.propertyId && m.isConfirmed);
@@ -66191,6 +66912,9 @@ function migrateState(parsed, seed) {
         }
       }
     }
+  }
+  if (SEED_DEMO && SEED_DEMO_BULK && !parsed.users.some((u) => u.id === "USR-BRK-005")) {
+    seedDemoBulk(parsed, DEMO_MODE ? hashPassword(DEMO_PASSWORD) : unusablePasswordHash());
   }
 }
 var Database = class {
@@ -66535,7 +67259,7 @@ function calculatePropertyMatch(property, requirement) {
 }
 
 // server/validation.ts
-import crypto5 from "node:crypto";
+import crypto6 from "node:crypto";
 var FIELD_NAMES = {
   exactAddressHidden: "Exact address",
   addressHidden: "Exact address",
@@ -66858,7 +67582,7 @@ function maskPhoneNumber(phone) {
 }
 function generateMandateHash(data) {
   const payload = `${data.propertyId}:${data.ownerId}:${data.approvedNetPrice}:${data.agreedCommissionPct ?? 0}:${data.remunerationBasis ?? "SURPLUS_ABOVE_NET"}:${data.fixedFeeAmount ?? 0}:${data.timestamp}`;
-  return crypto5.createHash("sha256").update(payload).digest("hex");
+  return crypto6.createHash("sha256").update(payload).digest("hex");
 }
 
 // server/notify.ts
@@ -67367,7 +68091,7 @@ var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
 var me = () => ctx().user;
 var bad = (res, msg, code = 400, extra = {}) => res.status(code).json({ error: msg, ...extra });
 var inr2 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
-var DAY = 864e5;
+var DAY2 = 864e5;
 var nextId = (prefix, ids2, pad3) => `${prefix}${String(ids2.reduce((m, id) => Math.max(m, Number(id.slice(prefix.length)) || 0), 0) + 1).padStart(pad3, "0")}`;
 var isStaff = (u) => u.role === "ADMIN" || u.role === "SUPERADMIN";
 var audit = (id, action, details) => {
@@ -67497,7 +68221,7 @@ function gateBlock(u, key) {
   return `This is for GENZ members only${names.length ? ` (${names.join(" / ")})` : ""}. See Plans & Fees.`;
 }
 function overdue(userId, event, now = Date.now()) {
-  return st().billingLedger.some((e) => e.payerId === userId && e.kind === "CHARGE" && (!event || e.event === event) && (e.status === "DUE" || e.status === "REJECTED") && now - new Date(e.createdAt).getTime() > GRACE_DAYS * DAY);
+  return st().billingLedger.some((e) => e.payerId === userId && e.kind === "CHARGE" && (!event || e.event === event) && (e.status === "DUE" || e.status === "REJECTED") && now - new Date(e.createdAt).getTime() > GRACE_DAYS * DAY2);
 }
 function chargeEvent(i) {
   ensureBilling();
@@ -69535,12 +70259,12 @@ function holderTotals(trails) {
   }
   return out;
 }
-var DAY2 = 864e5;
-var trailAgeDays = (t, now = Date.now()) => Math.floor((now - Date.parse(t.updatedAt)) / DAY2);
+var DAY3 = 864e5;
+var trailAgeDays = (t, now = Date.now()) => Math.floor((now - Date.parse(t.updatedAt)) / DAY3);
 function trailFlags(trails, now = Date.now()) {
   return {
-    withTeam: trails.filter((t) => t.status === "WITH_COLLECTOR" && now - Date.parse(t.updatedAt) > TRAIL_WITH_TEAM_DAYS * DAY2),
-    awaitingBuilder: trails.filter((t) => t.status === "HANDED_OVER" && now - Date.parse(t.updatedAt) > TRAIL_AWAITING_BUILDER_DAYS * DAY2),
+    withTeam: trails.filter((t) => t.status === "WITH_COLLECTOR" && now - Date.parse(t.updatedAt) > TRAIL_WITH_TEAM_DAYS * DAY3),
+    awaitingBuilder: trails.filter((t) => t.status === "HANDED_OVER" && now - Date.parse(t.updatedAt) > TRAIL_AWAITING_BUILDER_DAYS * DAY3),
     stuck: trails.filter((t) => t.status === "DISPUTED" || t.status === "NOT_RECEIVED")
   };
 }
@@ -69559,7 +70283,7 @@ function cleanNewTrail(input2, now = Date.now()) {
   if (input2?.paidOn !== void 0 && input2.paidOn !== "" && input2.paidOn !== null) {
     const ms = Date.parse(String(input2.paidOn));
     if (Number.isNaN(ms)) return { error: "The payment date is not valid" };
-    if (ms > now + DAY2) return { error: "The payment date cannot be in the future" };
+    if (ms > now + DAY3) return { error: "The payment date cannot be in the future" };
     paidOn = new Date(ms).toISOString();
   }
   const note4 = String(input2?.note ?? "").trim().slice(0, 200);
@@ -69616,18 +70340,18 @@ var AUTO_FOLLOWUP = {
   NEGOTIATION: { days: 3, channel: "CALL", note: "Check on the negotiation / offer" }
 };
 var isOpenStage = (stage) => !["BOOKED", "LOST"].includes(stage);
-var DAY3 = 864e5;
+var DAY4 = 864e5;
 function lastActivityAt(l) {
   return l.activities.reduce((m, a) => a.at > m ? a.at : m, l.createdAt);
 }
 function isStale(l, now = Date.now()) {
-  return isOpenStage(l.stage) && now - Date.parse(lastActivityAt(l)) > STALE_DAYS * DAY3;
+  return isOpenStage(l.stage) && now - Date.parse(lastActivityAt(l)) > STALE_DAYS * DAY4;
 }
 function protectionDaysLeft(l, now = Date.now()) {
-  return Math.ceil((Date.parse(l.protectedUntil) - now) / DAY3);
+  return Math.ceil((Date.parse(l.protectedUntil) - now) / DAY4);
 }
 function hasRecentEngagement(l, now = Date.now()) {
-  return l.activities.some((a) => ["CALL", "WHATSAPP", "MEETING", "SITE_VISIT"].includes(a.type) && now - Date.parse(a.at) <= EXTEND_ACTIVITY_DAYS * DAY3);
+  return l.activities.some((a) => ["CALL", "WHATSAPP", "MEETING", "SITE_VISIT"].includes(a.type) && now - Date.parse(a.at) <= EXTEND_ACTIVITY_DAYS * DAY4);
 }
 function extendBlock(l, now = Date.now()) {
   if (!isOpenStage(l.stage) || l.stage === "BOOKING_REQUESTED") return "Only an open lead can be extended";
@@ -71068,7 +71792,7 @@ var CRM_STAGE_ORDER = [
 ];
 
 // server/crm2.ts
-var DAY4 = 864e5;
+var DAY5 = 864e5;
 var bad2 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
 var me2 = currentUser;
 var stateOf = () => db.getState();
@@ -71081,7 +71805,7 @@ function overdueMilestones(bks, now = Date.now()) {
     if (b.status !== "APPROVED") continue;
     for (const m of b.paymentSchedule) {
       const pending = m.amount - paidOf(m);
-      if (pending > 0 && Date.parse(m.dueDate) < now) out.push({ bookingId: b.id, customer: b.customerName, project: b.projectName, milestone: m.name, dueDate: m.dueDate, pending, days: Math.floor((now - Date.parse(m.dueDate)) / DAY4) });
+      if (pending > 0 && Date.parse(m.dueDate) < now) out.push({ bookingId: b.id, customer: b.customerName, project: b.projectName, milestone: m.name, dueDate: m.dueDate, pending, days: Math.floor((now - Date.parse(m.dueDate)) / DAY5) });
     }
   }
   return out.sort((a, b) => b.days - a.days);
@@ -71133,16 +71857,16 @@ function createCrmPlusRouter() {
       add("VERIFY_PENDING", "med", leads.filter((l) => l.verify === "PENDING").map((l) => l.id), "Associate leads awaiting your verification", "\u0906\u092A\u0915\u0947 \u0935\u0947\u0930\u093F\u092B\u093C\u093F\u0915\u0947\u0936\u0928 \u0915\u0940 \u092A\u094D\u0930\u0924\u0940\u0915\u094D\u0937\u093E \u092E\u0947\u0902 \u090F\u0938\u094B\u0938\u093F\u090F\u091F \u0932\u0940\u0921");
       const claims = bks.flatMap((b) => b.paymentSchedule.filter((m) => m.claim?.status === "OPEN").map((m) => ({ b, m })));
       add("CLAIM_OPEN", "high", claims.map((c) => c.b.id), "Payment claims awaiting your reply", "\u0906\u092A\u0915\u0947 \u091C\u0935\u093E\u092C \u0915\u0940 \u092A\u094D\u0930\u0924\u0940\u0915\u094D\u0937\u093E \u092E\u0947\u0902 \u092A\u0947\u092E\u0947\u0902\u091F \u0915\u094D\u0932\u0947\u092E");
-      add("CLAIM_ESCALATED", "high", claims.filter((c) => now - Date.parse(c.m.claim.at) > CLAIM_ESCALATE_DAYS * DAY4).map((c) => c.b.id), `Payment claims unanswered for ${CLAIM_ESCALATE_DAYS}+ days`, `${CLAIM_ESCALATE_DAYS}+ \u0926\u093F\u0928 \u0938\u0947 \u092C\u093F\u0928\u093E \u091C\u0935\u093E\u092C \u0915\u0947 \u092A\u0947\u092E\u0947\u0902\u091F \u0915\u094D\u0932\u0947\u092E`);
+      add("CLAIM_ESCALATED", "high", claims.filter((c) => now - Date.parse(c.m.claim.at) > CLAIM_ESCALATE_DAYS * DAY5).map((c) => c.b.id), `Payment claims unanswered for ${CLAIM_ESCALATE_DAYS}+ days`, `${CLAIM_ESCALATE_DAYS}+ \u0926\u093F\u0928 \u0938\u0947 \u092C\u093F\u0928\u093E \u091C\u0935\u093E\u092C \u0915\u0947 \u092A\u0947\u092E\u0947\u0902\u091F \u0915\u094D\u0932\u0947\u092E`);
       add("COLLECTION_OVERDUE", "med", [...new Set(overdueMilestones(bks).map((o) => o.bookingId))], "Bookings with overdue payment milestones", "\u0913\u0935\u0930\u0921\u094D\u092F\u0942 \u092A\u0947\u092E\u0947\u0902\u091F \u0915\u093F\u0938\u094D\u0924\u094B\u0902 \u0935\u093E\u0932\u0940 \u092C\u0941\u0915\u093F\u0902\u0917");
-      add("TOKEN_UNCONFIRMED", "high", bks.filter((b) => b.token?.status === "CLAIMED" && ["REQUESTED", "APPROVED"].includes(b.status) && now - Date.parse(b.token.claimedAt) > TOKEN_UNCONFIRMED_DAYS * DAY4).map((b) => b.id), `Booking amounts claimed but not confirmed for ${TOKEN_UNCONFIRMED_DAYS}+ days`, `${TOKEN_UNCONFIRMED_DAYS}+ \u0926\u093F\u0928 \u0938\u0947 \u092C\u093F\u0928\u093E \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0940 \u0917\u0908 \u092C\u0941\u0915\u093F\u0902\u0917 \u0930\u093E\u0936\u093F`);
+      add("TOKEN_UNCONFIRMED", "high", bks.filter((b) => b.token?.status === "CLAIMED" && ["REQUESTED", "APPROVED"].includes(b.status) && now - Date.parse(b.token.claimedAt) > TOKEN_UNCONFIRMED_DAYS * DAY5).map((b) => b.id), `Booking amounts claimed but not confirmed for ${TOKEN_UNCONFIRMED_DAYS}+ days`, `${TOKEN_UNCONFIRMED_DAYS}+ \u0926\u093F\u0928 \u0938\u0947 \u092C\u093F\u0928\u093E \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0940 \u0917\u0908 \u092C\u0941\u0915\u093F\u0902\u0917 \u0930\u093E\u0936\u093F`);
       add("CANCEL_REQUEST", "med", bks.filter((b) => b.cancelRequest?.status === "OPEN").map((b) => b.id), "Booking cancellation requests waiting for you", "\u0906\u092A\u0915\u0947 \u0907\u0902\u0924\u091C\u093C\u093E\u0930 \u092E\u0947\u0902 \u092C\u0941\u0915\u093F\u0902\u0917 \u0915\u0948\u0902\u0938\u093F\u0932 \u0905\u0928\u0941\u0930\u094B\u0927");
       add("PAYOUT_DISPUTED", "high", bks.filter((b) => (b.payouts || []).some((p) => p.status === "DISPUTED")).map((b) => b.id), "Payouts disputed by the associate", "\u090F\u0938\u094B\u0938\u093F\u090F\u091F \u0926\u094D\u0935\u093E\u0930\u093E \u0935\u093F\u0935\u093E\u0926\u093F\u0924 \u092A\u0947\u0906\u0909\u091F");
       add("CLAWBACK_DUE", "low", bks.filter((b) => b.settlement?.clawbackStatus === "DUE").map((b) => b.id), "Brokerage clawbacks still due", "\u092C\u093E\u0915\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0935\u093E\u092A\u0938\u0940");
     }
     if (u.role === "BROKER") {
-      add("PAYOUT_UNCONFIRMED", "med", bks.filter((b) => (b.payouts || []).some((p) => p.status === "RECORDED" && now - Date.parse(p.at) > PAYOUT_CONFIRM_DAYS * DAY4)).map((b) => b.id), `Payouts you have not confirmed (${PAYOUT_CONFIRM_DAYS}+ days)`, `${PAYOUT_CONFIRM_DAYS}+ \u0926\u093F\u0928 \u0938\u0947 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0928\u0939\u0940\u0902 \u0915\u093F\u090F \u092A\u0947\u0906\u0909\u091F`);
-      add("PAYOUT_NEW", "med", bks.filter((b) => (b.payouts || []).some((p) => p.status === "RECORDED" && now - Date.parse(p.at) <= PAYOUT_CONFIRM_DAYS * DAY4)).map((b) => b.id), "New payouts \u2014 confirm that you received them", "\u0928\u090F \u092A\u0947\u0906\u0909\u091F \u2014 \u092E\u093F\u0932\u0928\u0947 \u092A\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902");
+      add("PAYOUT_UNCONFIRMED", "med", bks.filter((b) => (b.payouts || []).some((p) => p.status === "RECORDED" && now - Date.parse(p.at) > PAYOUT_CONFIRM_DAYS * DAY5)).map((b) => b.id), `Payouts you have not confirmed (${PAYOUT_CONFIRM_DAYS}+ days)`, `${PAYOUT_CONFIRM_DAYS}+ \u0926\u093F\u0928 \u0938\u0947 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0928\u0939\u0940\u0902 \u0915\u093F\u090F \u092A\u0947\u0906\u0909\u091F`);
+      add("PAYOUT_NEW", "med", bks.filter((b) => (b.payouts || []).some((p) => p.status === "RECORDED" && now - Date.parse(p.at) <= PAYOUT_CONFIRM_DAYS * DAY5)).map((b) => b.id), "New payouts \u2014 confirm that you received them", "\u0928\u090F \u092A\u0947\u0906\u0909\u091F \u2014 \u092E\u093F\u0932\u0928\u0947 \u092A\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902");
       add("CLAWBACK_DUE", "high", bks.filter((b) => b.settlement?.clawbackStatus === "DUE").map((b) => b.id), "Brokerage clawback due on a cancelled booking", "\u0915\u0948\u0902\u0938\u093F\u0932 \u092C\u0941\u0915\u093F\u0902\u0917 \u092A\u0930 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0935\u093E\u092A\u0938\u0940 \u092C\u093E\u0915\u0940");
     }
     const live4 = trailsFor(u).filter(isOpenTrail);
@@ -71162,7 +71886,7 @@ function createCrmPlusRouter() {
     const why = extendBlock(lead);
     if (why) return bad2(res, why, 409, "EXTEND_BLOCKED");
     const base = Math.max(Date.parse(lead.protectedUntil), Date.now());
-    lead.protectedUntil = new Date(base + PROTECTION_EXTEND_DAYS * DAY4).toISOString();
+    lead.protectedUntil = new Date(base + PROTECTION_EXTEND_DAYS * DAY5).toISOString();
     lead.protectionExtensions = (lead.protectionExtensions || 0) + 1;
     activity(lead, "SYSTEM", `Registration protection extended by ${PROTECTION_EXTEND_DAYS} days (${lead.protectionExtensions}) \u2014 until ${lead.protectedUntil.slice(0, 10)}`);
     db.save();
@@ -71567,7 +72291,7 @@ function createCrmPlusRouter() {
   r.get("/reports", (req, res) => {
     const u = me2();
     const days3 = Math.min(365, Math.max(7, Number(req.query.days) || 90));
-    const since = Date.now() - days3 * DAY4;
+    const since = Date.now() - days3 * DAY5;
     const now = Date.now();
     const all = leadsForUser(u);
     const leads = all.filter((l) => Date.parse(l.createdAt) >= since);
@@ -71671,7 +72395,7 @@ function createCrmPlusRouter() {
     const lostReasons = [...lostBy.entries()].map(([code, count]) => ({ code, label: LOST_CODES.find((c) => c.id === code)?.en || code, count })).sort((a, b) => b.count - a.count);
     const activeAll = all.filter((l) => isOpenStage(l.stage));
     const bucket = (lo, hi) => activeAll.filter((l) => {
-      const d = (now - Date.parse(l.createdAt)) / DAY4;
+      const d = (now - Date.parse(l.createdAt)) / DAY5;
       return d >= lo && d < hi;
     }).length;
     const aging = [{ label: "0\u20137 days", count: bucket(0, 8) }, { label: "8\u201330 days", count: bucket(8, 31) }, { label: "31\u201360 days", count: bucket(31, 61) }, { label: "60+ days", count: bucket(61, 1e9) }];
@@ -71711,7 +72435,7 @@ function sweepCrm() {
   let n2 = 0;
   for (const l of st20.crmLeads) {
     if (l.erasedAt || l.stage !== "LOST" || l.bookingId) continue;
-    const age = (now - Date.parse(l.updatedAt)) / DAY4;
+    const age = (now - Date.parse(l.updatedAt)) / DAY5;
     if (!(l.optedOutAt && age >= OPTOUT_RETENTION_DAYS || age >= LOST_RETENTION_DAYS)) continue;
     l.name = `${(l.name.split(" ")[0] || "Customer").slice(0, 20)} (erased)`;
     l.phone = "";
@@ -71742,7 +72466,7 @@ var import_express6 = __toESM(require_express2(), 1);
 var bad3 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
 var me3 = currentUser;
 var rid = (p) => `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1e3)}`;
-var DAY5 = 864e5;
+var DAY6 = 864e5;
 function createCrmSalesRouter() {
   const r = (0, import_express6.Router)();
   r.use(needs("crm:read"));
@@ -71777,7 +72501,7 @@ function createCrmSalesRouter() {
       const t = Date.parse(String(b.when || ""));
       if (!Number.isFinite(t)) return bad3(res, oc.needsWhen === "VISIT" ? "Give the date and time the customer will visit" : "Give the date and time to call back");
       if (t < Date.now() - 5 * 6e4) return bad3(res, "That time has already passed");
-      if (t > Date.now() + 120 * DAY5) return bad3(res, "Pick a date within the next 120 days");
+      if (t > Date.now() + 120 * DAY6) return bad3(res, "Pick a date within the next 120 days");
       when = new Date(t).toISOString();
     }
     const ts = nowIso4();
@@ -71857,7 +72581,7 @@ function createCrmSalesRouter() {
         followUpNote = due.note;
       } else if (l.stage === "NEW" && cs.attempts === 0 && !l.activities.some((a) => ["WHATSAPP", "MEETING"].includes(a.type))) {
         reason = "NEW_UNCALLED";
-      } else if (due && Date.parse(due.dueAt) <= now + DAY5) {
+      } else if (due && Date.parse(due.dueAt) <= now + DAY6) {
         reason = "TODAY";
         dueAt = due.dueAt;
         followUpNote = due.note;
@@ -72342,7 +73066,7 @@ var import_express16 = __toESM(require_express2(), 1);
 // server/propdocs.ts
 var import_express8 = __toESM(require_express2(), 1);
 var import_express9 = __toESM(require_express2(), 1);
-import crypto6 from "node:crypto";
+import crypto7 from "node:crypto";
 import fs4 from "node:fs";
 import path4 from "node:path";
 
@@ -72407,7 +73131,7 @@ function docAccess(st20, u, d, now = Date.now()) {
 }
 var log = (docId2, userId, action, ip, note4) => {
   const st20 = db.getState();
-  st20.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto6.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso5(), ip, note: note4 });
+  st20.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto7.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso5(), ip, note: note4 });
   if (st20.propertyDocLogs.length > LOG_CAP) st20.propertyDocLogs.splice(0, st20.propertyDocLogs.length - LOG_CAP);
 };
 var nameOf = (st20, id) => db.byId("users", id)?.name || "\u2014";
@@ -72547,7 +73271,7 @@ function createPropDocsRouter() {
     const mime = sniffMime(buf);
     if (!mime) return bad4(res, "Only PDF, JPEG, PNG or WebP files are accepted.", 415);
     if (usedBytes(st20, u.id) + buf.length > PROP_DOC_MAX_USER_BYTES) return bad4(res, "Your storage is full. Delete old papers first.", 413);
-    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto6.randomInt(1e3, 9999)}`;
+    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto7.randomInt(1e3, 9999)}`;
     try {
       fs4.mkdirSync(DIR(), { recursive: true });
       const tmp = fileOf(id) + ".tmp";
@@ -72569,7 +73293,7 @@ function createPropDocsRouter() {
       fileName: b.data.fileName.replace(/[\\/\0\r\n]+/g, "_"),
       mime,
       size: buf.length,
-      sha256: crypto6.createHash("sha256").update(buf).digest("hex"),
+      sha256: crypto7.createHash("sha256").update(buf).digest("hex"),
       visibility: b.data.visibility,
       shares: [],
       ddItemId,
@@ -72725,7 +73449,7 @@ function createPropDocsRouter() {
 // server/idreview.ts
 var import_express12 = __toESM(require_express2(), 1);
 var import_express13 = __toESM(require_express2(), 1);
-import crypto9 from "node:crypto";
+import crypto10 from "node:crypto";
 import fs6 from "node:fs";
 import path6 from "node:path";
 
@@ -72828,7 +73552,7 @@ var import_express11 = __toESM(require_express2(), 1);
 
 // server/twofactor.ts
 var import_express10 = __toESM(require_express2(), 1);
-import crypto7 from "crypto";
+import crypto8 from "crypto";
 var B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(buf) {
   let bits = 0, value = 0, out = "";
@@ -72846,7 +73570,7 @@ function base32Encode(buf) {
 function hotp(key, counter, digits2 = 6) {
   const c = Buffer.alloc(8);
   c.writeBigUInt64BE(BigInt(counter));
-  const h = crypto7.createHmac("sha1", key).update(c).digest();
+  const h = crypto8.createHmac("sha1", key).update(c).digest();
   const o = h[h.length - 1] & 15;
   const bin = (h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3];
   return String(bin % 10 ** digits2).padStart(digits2, "0");
@@ -72859,20 +73583,20 @@ function checkTotp(key, code, ms = Date.now()) {
   for (const s of [now, now - 1, now + 1]) if (safeEqual(hotp(key, s), c)) return s;
   return -1;
 }
-var encKey = () => crypto7.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
+var encKey = () => crypto8.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
 function seal(b) {
-  const iv = crypto7.randomBytes(12);
-  const c = crypto7.createCipheriv("aes-256-gcm", encKey(), iv);
+  const iv = crypto8.randomBytes(12);
+  const c = crypto8.createCipheriv("aes-256-gcm", encKey(), iv);
   const ct = Buffer.concat([c.update(b), c.final()]);
   return `t1.${iv.toString("base64url")}.${c.getAuthTag().toString("base64url")}.${ct.toString("base64url")}`;
 }
 function unseal(s) {
   const [, iv, tag, ct] = s.split(".");
-  const d = crypto7.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
+  const d = crypto8.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
   d.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]);
 }
-var recHash = (userId, code) => crypto7.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
+var recHash = (userId, code) => crypto8.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
 var rec = (userId) => db.getState().twoFactor.find((x) => x.userId === userId);
 var twoFactorOn = (userId) => !!rec(userId)?.enabledAt;
 var twoFactorRecommended = (u) => u.role === "SUPERADMIN" || u.role === "ADMIN";
@@ -72900,13 +73624,13 @@ function verifySecondFactor(userId, code) {
 }
 function makeTicket(u) {
   const body = Buffer.from(JSON.stringify({ uid: u.id, sv: u.sessionVersion || 1, exp: Date.now() + 5 * 6e4 })).toString("base64url");
-  const sig = crypto7.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const sig = crypto8.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   return `${body}.${sig}`;
 }
 function readTicket(t) {
   const [body, sig] = String(t || "").split(".");
   if (!body || !sig) return null;
-  const want = crypto7.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const want = crypto8.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   if (!safeEqual(want, sig)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString());
@@ -72929,7 +73653,7 @@ function createTwoFactorRouter() {
     const s = db.getState();
     const x = rec(u.id);
     if (x?.enabledAt) return res.status(409).json({ error: "Two-step sign-in is already on. Turn it off first to move it to a new phone." });
-    const key = crypto7.randomBytes(20);
+    const key = crypto8.randomBytes(20);
     const row = { id: u.id, userId: u.id, secretEnc: seal(key), pendingSince: (/* @__PURE__ */ new Date()).toISOString(), recovery: [] };
     s.twoFactor = s.twoFactor.filter((t) => t.userId !== u.id);
     s.twoFactor.push(row);
@@ -72944,7 +73668,7 @@ function createTwoFactorRouter() {
     if (!x || x.enabledAt) return res.status(409).json({ error: "Start the setup first." });
     const step = checkTotp(unseal(x.secretEnc), String(req.body?.code || ""));
     if (step < 0) return res.status(400).json({ error: "The code is not correct. Check the time on your phone and try the newest code.", code: "BAD_CODE" });
-    const codes = Array.from({ length: 10 }, () => crypto7.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
+    const codes = Array.from({ length: 10 }, () => crypto8.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
     x.recovery = codes.map((c) => recHash(u.id, c));
     x.enabledAt = (/* @__PURE__ */ new Date()).toISOString();
     x.pendingSince = void 0;
@@ -72969,14 +73693,14 @@ function createTwoFactorRouter() {
 }
 
 // server/vaultCrypto.ts
-import crypto8 from "node:crypto";
+import crypto9 from "node:crypto";
 import fs5 from "node:fs";
 import path5 from "node:path";
 var keyCache;
 var keyProblem = "";
 var vaultKeyProblem = () => keyProblem;
 var keyFile = () => process.env.KYC_VAULT_KEY_FILE ? path5.resolve(process.env.KYC_VAULT_KEY_FILE) : path5.resolve(process.cwd(), "data", ".kyc-vault.key");
-var keyId = (k) => crypto8.createHash("sha256").update(k).digest("hex").slice(0, 8);
+var keyId = (k) => crypto9.createHash("sha256").update(k).digest("hex").slice(0, 8);
 function parseKey(raw) {
   const t = raw.trim();
   if (/^[0-9a-fA-F]{64}$/.test(t)) return Buffer.from(t, "hex");
@@ -73010,7 +73734,7 @@ function vaultKey() {
       return keyCache = { key: k2, id: keyId(k2), mode: "file" };
     }
     fs5.mkdirSync(path5.dirname(f), { recursive: true });
-    const k = crypto8.randomBytes(32);
+    const k = crypto9.randomBytes(32);
     fs5.writeFileSync(f, k.toString("hex") + "\n", { mode: 384, flag: "wx" });
     return keyCache = { key: k, id: keyId(k), mode: "file" };
   } catch (e) {
@@ -73027,8 +73751,8 @@ var b64u = (b) => b.toString("base64url");
 function seal2(plain, aad) {
   const k = vaultKey();
   if (!k) throw new Error("VAULT_NO_KEY");
-  const iv = crypto8.randomBytes(12);
-  const c = crypto8.createCipheriv("aes-256-gcm", k.key, iv);
+  const iv = crypto9.randomBytes(12);
+  const c = crypto9.createCipheriv("aes-256-gcm", k.key, iv);
   c.setAAD(Buffer.from(aad));
   const ct = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return `k1.${k.id}.${b64u(iv)}.${b64u(c.getAuthTag())}.${b64u(ct)}`;
@@ -73040,7 +73764,7 @@ function unseal2(sealed, aad) {
   if (v !== "k1" || !kid || !iv || !tag || !ct) throw new Error("VAULT_BAD_DATA");
   if (kid !== k.id) throw new Error("VAULT_WRONG_KEY");
   try {
-    const d = crypto8.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
+    const d = crypto9.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
     d.setAAD(Buffer.from(aad));
     d.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
@@ -73345,7 +74069,7 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
   if (buf.length > ID_DOC_MAX_BYTES) return { error: `The file is larger than ${ID_DOC_MAX_BYTES / 1024 / 1024} MB. Send a smaller photo.`, status: 413 };
   const mime = sniffMime(buf);
   if (!mime) return { error: "Only a PDF, JPEG, PNG or WebP file is accepted.", status: 415 };
-  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto9.randomInt(1e3, 9999)}`;
+  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto10.randomInt(1e3, 9999)}`;
   try {
     fs6.mkdirSync(DIR2(), { recursive: true });
     const tmp = fileOf2(id) + ".tmp";
@@ -73366,7 +74090,7 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
     fileName: fileName.replace(/[\\/\0\r\n]+/g, "_").slice(0, 160),
     mime,
     size: buf.length,
-    sha256: crypto9.createHash("sha256").update(buf).digest("hex"),
+    sha256: crypto10.createHash("sha256").update(buf).digest("hex"),
     createdAt: nowIso7()
   };
   s.idDocs.push(doc);
@@ -73432,7 +74156,7 @@ function openIdTask(userId, source, opts = {}) {
     if (opts.autoVerified) t.autoVerified = true;
     t.updatedAt = at;
   } else {
-    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto9.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
+    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto10.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
     push(t, by, source, opts.note);
     s.idReviewTasks.push(t);
   }
@@ -73863,26 +74587,26 @@ function createIdReviewRouter() {
 
 // server/profilephoto.ts
 var import_express15 = __toESM(require_express2(), 1);
-import crypto11 from "crypto";
+import crypto12 from "crypto";
 import fs8 from "fs";
 import path8 from "path";
 
 // server/webpush.ts
 var import_express14 = __toESM(require_express2(), 1);
-import crypto10 from "crypto";
+import crypto11 from "crypto";
 import fs7 from "fs";
 import path7 from "path";
 var b64u2 = (b) => Buffer.from(b).toString("base64url");
 var unb64u = (s) => Buffer.from(String(s).replace(/=+$/, ""), "base64url");
 var nowIso8 = () => (/* @__PURE__ */ new Date()).toISOString();
 function hkdf(salt, ikm, info, len) {
-  const prk = crypto10.createHmac("sha256", salt).update(ikm).digest();
+  const prk = crypto11.createHmac("sha256", salt).update(ikm).digest();
   const out = [];
   let prev = Buffer.alloc(0);
   let n2 = 0;
   while (Buffer.concat(out).length < len) {
     n2++;
-    prev = crypto10.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
+    prev = crypto11.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
     out.push(prev);
   }
   return Buffer.concat(out).subarray(0, len);
@@ -73892,20 +74616,20 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   const authSecret = unb64u(authSecretB64);
   if (uaPublic.length !== 65 || uaPublic[0] !== 4) throw new Error("PUSH_BAD_KEY");
   if (authSecret.length < 16) throw new Error("PUSH_BAD_AUTH");
-  const ecdh = crypto10.createECDH("prime256v1");
+  const ecdh = crypto11.createECDH("prime256v1");
   if (opts.asPrivate) ecdh.setPrivateKey(opts.asPrivate);
   else ecdh.generateKeys();
   const asPublic = ecdh.getPublicKey();
   const shared = ecdh.computeSecret(uaPublic);
   const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0"), uaPublic, asPublic]);
   const ikm = hkdf(authSecret, shared, keyInfo, 32);
-  const salt = opts.salt || crypto10.randomBytes(16);
+  const salt = opts.salt || crypto11.randomBytes(16);
   const cek = hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
   const nonce = hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12);
   const rs = opts.rs || 4096;
   const plain = Buffer.concat([payload, Buffer.from([2])]);
   if (plain.length + 16 > rs) throw new Error("PUSH_TOO_BIG");
-  const cipher = crypto10.createCipheriv("aes-128-gcm", cek, nonce);
+  const cipher = crypto11.createCipheriv("aes-128-gcm", cek, nonce);
   const ct = Buffer.concat([cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
   const header = Buffer.alloc(21);
   salt.copy(header, 0);
@@ -73914,19 +74638,19 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   return Buffer.concat([header, asPublic, ct]);
 }
 function generateVapidKeys() {
-  const e = crypto10.createECDH("prime256v1");
+  const e = crypto11.createECDH("prime256v1");
   e.generateKeys();
   return { publicKey: b64u2(e.getPublicKey()), privateKey: b64u2(e.getPrivateKey()) };
 }
 function privateKeyObject(k) {
   const pub = unb64u(k.publicKey);
-  return crypto10.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
+  return crypto11.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
 }
 function vapidAuth(endpoint, k, subject2, expSec = Math.floor(Date.now() / 1e3) + 12 * 3600) {
   const aud = new URL(endpoint).origin;
   const head = b64u2(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
   const body = b64u2(Buffer.from(JSON.stringify({ aud, exp: expSec, sub: subject2 })));
-  const sig = crypto10.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
+  const sig = crypto11.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
   return `vapid t=${head}.${body}.${b64u2(sig)}, k=${k.publicKey}`;
 }
 var cached2 = null;
@@ -74046,7 +74770,7 @@ function createPushRouter() {
     }
     const s = db.getState();
     const u = me21();
-    const id = crypto10.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
+    const id = crypto11.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
     const mine2 = s.pushSubs.filter((x) => x.userId === u.id);
     if (mine2.length >= 6) {
@@ -74143,7 +74867,7 @@ function createProfilePhotoRouter() {
     const s = st4();
     for (const old of s.profilePhotos.filter((p) => p.userId === u.id && p.status !== "APPROVED")) erase(old.id);
     s.profilePhotos = s.profilePhotos.filter((p) => p.userId !== u.id || p.status === "APPROVED");
-    const id = `PHO-${crypto11.randomBytes(5).toString("hex")}`;
+    const id = `PHO-${crypto12.randomBytes(5).toString("hex")}`;
     try {
       fs8.mkdirSync(DIR3(), { recursive: true });
       const tmp = fileOf3(id) + ".tmp";
@@ -74152,7 +74876,7 @@ function createProfilePhotoRouter() {
     } catch {
       return bad7(res, "The photo could not be saved. Please try again.", 500);
     }
-    s.profilePhotos.push({ id, userId: u.id, status: "PENDING", mime, size: buf.length, sha256: crypto11.createHash("sha256").update(buf).digest("hex"), consentAt: nowIso9(), createdAt: nowIso9() });
+    s.profilePhotos.push({ id, userId: u.id, status: "PENDING", mime, size: buf.length, sha256: crypto12.createHash("sha256").update(buf).digest("hex"), consentAt: nowIso9(), createdAt: nowIso9() });
     db.save();
     db.appendAuditEvent(u.id, u.role, "VERIFICATION", u.id, "PROFILE_PHOTO_UPLOADED", `${u.name} uploaded a profile photo ${id} for GENZ to check`);
     for (const a of s.users.filter((x) => x.role === "ADMIN" || x.role === "SUPERADMIN").slice(0, 20)) void pushTo(a.id, { kind: "deals", title: "A broker photo needs checking", body: `${u.name} \u2014 open Disputes \u2192 Photo check.`, url: "/?tab=disputes" });
@@ -74666,7 +75390,7 @@ function createTeamRouter() {
 
 // server/inventory2.ts
 var import_express18 = __toESM(require_express2(), 1);
-import crypto12 from "node:crypto";
+import crypto13 from "node:crypto";
 var nowIso11 = () => (/* @__PURE__ */ new Date()).toISOString();
 var uid = (p) => `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 var postSchema = external_exports.object({
@@ -74795,7 +75519,7 @@ function createInventoryDeskRouter() {
     if (st20.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return bad21(res, "Too many links \u2014 revoke old ones first", 409);
     const flags = capShareFlags({ showPrice: d.showPrice, showFeatures: d.showFeatures }, rs.canPrice, rs.canFeatures);
     const link = {
-      token: crypto12.randomBytes(8).toString("base64url"),
+      token: crypto13.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: "UNITS",
       refId: d.projectId,
@@ -75130,11 +75854,11 @@ function badgesFor(verifiedInvitees) {
 
 // server/growth.ts
 var import_express23 = __toESM(require_express2(), 1);
-import crypto16 from "node:crypto";
+import crypto17 from "node:crypto";
 
 // server/reputation.ts
 var import_express21 = __toESM(require_express2(), 1);
-import crypto13 from "crypto";
+import crypto14 from "crypto";
 
 // server/community.ts
 var import_express20 = __toESM(require_express2(), 1);
@@ -75460,7 +76184,7 @@ function createCommunityRouter() {
 }
 
 // server/homeinsights.ts
-var DAY6 = 864e5;
+var DAY7 = 864e5;
 var st5 = () => db.getState();
 var p10 = (v) => String(v ?? "").replace(/\D/g, "").slice(-10);
 function insightsFor(u) {
@@ -75484,7 +76208,7 @@ function insightsFor(u) {
             visits: visits.length,
             verifiedVisits: visits.filter((v) => v.isVerified).length,
             offers: s.propertyOffers.filter((o) => o.propertyId === p.id).length,
-            days: Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / DAY6)),
+            days: Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / DAY7)),
             canMarkSold: ["active", "under_negotiation"].includes(p.listingStatus)
           };
         })
@@ -75502,7 +76226,7 @@ function insightsFor(u) {
     case "LEGAL_COUNSEL": {
       const cases = s.legalRequests.filter((c) => c.counsellorId === u.id);
       const m = activeMembership(u.id);
-      const left = m?.validTo ? Math.ceil((Date.parse(m.validTo) - now) / DAY6) : null;
+      const left = m?.validTo ? Math.ceil((Date.parse(m.validTo) - now) / DAY7) : null;
       return {
         role: u.role,
         cases: { claimed: cases.filter((c) => c.status === "CLAIMED").length, quoted: cases.filter((c) => c.status === "QUOTED").length, accepted: cases.filter((c) => c.status === "ACCEPTED").length, completed: cases.filter((c) => c.status === "COMPLETED").length },
@@ -75511,8 +76235,8 @@ function insightsFor(u) {
       };
     }
     case "DEVELOPER_BUILDER": {
-      const week = now - 7 * DAY6;
-      const month = now - 30 * DAY6;
+      const week = now - 7 * DAY7;
+      const month = now - 30 * DAY7;
       const leads = s.crmLeads.filter((l) => l.builderId === u.id);
       const byBroker = /* @__PURE__ */ new Map();
       for (const l of leads) if (l.associateId && Date.parse(l.createdAt) >= month) {
@@ -75525,7 +76249,7 @@ function insightsFor(u) {
         role: u.role,
         week: {
           leads: leads.filter((l) => Date.parse(l.createdAt) >= week).length,
-          visits: leads.filter((l) => ["SITE_VISIT_SCHEDULED", "SITE_VISITED"].includes(l.stage) && Date.parse(l.createdAt) >= week - 7 * DAY6).length,
+          visits: leads.filter((l) => ["SITE_VISIT_SCHEDULED", "SITE_VISITED"].includes(l.stage) && Date.parse(l.createdAt) >= week - 7 * DAY7).length,
           bookings: s.crmBookings.filter((b) => b.builderId === u.id && Date.parse(b.createdAt) >= week).length
         },
         topBroker: top ? { name: top.name, leads: top.n } : null
@@ -75563,7 +76287,7 @@ function insightsFor(u) {
           { id: "listings", n: s.properties.filter((p) => p.verificationStatus === "PENDING").length, tab: "properties", en: "Listings waiting for verification", hi: "\u0935\u0947\u0930\u093F\u092B\u093C\u093F\u0915\u0947\u0936\u0928 \u0915\u0947 \u0907\u0902\u0924\u091C\u093C\u093E\u0930 \u092E\u0947\u0902 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917" },
           { id: "disputes", n: s.disputes.filter((d) => open2.includes(d.status)).length, tab: "disputes", en: "Open disputes", hi: "\u0916\u0941\u0932\u0947 \u0935\u093F\u0935\u093E\u0926" },
           { id: "utr", n: s.billingLedger.filter((e) => e.status === "MARKED_PAID").length + s.legalLedger.filter((e) => e.status === "MARKED_PAID").length, tab: "plans", en: "Payments to confirm (UTR)", hi: "\u092A\u0947\u092E\u0947\u0902\u091F \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0928\u0947 \u0939\u0948\u0902 (UTR)" },
-          { id: "consents", n: s.ownerConsents.filter((c) => c.status === "PAPER_REVIEW" || c.status === "PENDING" && now - Date.parse(c.createdAt || c.linkExpiresAt || new Date(now).toISOString()) > 3 * DAY6 || !!c.ownerReport).length, tab: "disputes", en: "Owner consents stuck or reported", hi: "\u0905\u091F\u0915\u0940 \u092F\u093E \u0936\u093F\u0915\u093E\u092F\u0924 \u0935\u093E\u0932\u0940 \u092E\u093E\u0932\u093F\u0915 \u0938\u0939\u092E\u0924\u093F" },
+          { id: "consents", n: s.ownerConsents.filter((c) => c.status === "PAPER_REVIEW" || c.status === "PENDING" && now - Date.parse(c.createdAt || c.linkExpiresAt || new Date(now).toISOString()) > 3 * DAY7 || !!c.ownerReport).length, tab: "disputes", en: "Owner consents stuck or reported", hi: "\u0905\u091F\u0915\u0940 \u092F\u093E \u0936\u093F\u0915\u093E\u092F\u0924 \u0935\u093E\u0932\u0940 \u092E\u093E\u0932\u093F\u0915 \u0938\u0939\u092E\u0924\u093F" },
           { id: "shares", n: s.connectorReferrals.filter((r) => r.share?.status === "NOT_RECEIVED").length, tab: "connector", en: "Connector shares \u201Cnot received\u201D", hi: "\u0915\u0928\u0947\u0915\u094D\u091F\u0930 \u0939\u093F\u0938\u094D\u0938\u093E \u201C\u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u201D" }
         ]
       };
@@ -75619,7 +76343,7 @@ function createReputationRouter() {
     const toId = String(req.body?.toId || "");
     const p = pendingFor(u).find((x) => x.refId === refId && x.toId === toId);
     if (!p) return res.status(404).json({ error: "Nothing to confirm here" });
-    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto13.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso14() };
+    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto14.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso14() };
     s.peerConfirms.push(c);
     awardPoints(toId, "PEER_CONFIRM", c.id, 10);
     db.save();
@@ -75698,7 +76422,7 @@ function shareCounts(s, uid3) {
 
 // server/share.ts
 var import_express22 = __toESM(require_express2(), 1);
-import crypto14 from "node:crypto";
+import crypto15 from "node:crypto";
 
 // server/publicFooter.ts
 var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -75825,7 +76549,7 @@ function createShareRouter() {
     const st20 = db.getState();
     if (st20.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return res.status(409).json({ error: "Too many links \u2014 revoke old ones first" });
     const link = {
-      token: crypto14.randomBytes(8).toString("base64url"),
+      token: crypto15.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: p.data.kind,
       refId: p.data.refId,
@@ -75969,7 +76693,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     }
     const ua = String(req.headers["user-agent"] || "");
     if (!BOT.test(ua)) {
-      const key = crypto14.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
+      const key = crypto15.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
       const prev = seen.get(key) || 0;
       if (Date.now() - prev > 2e4) {
         l.views += 1;
@@ -75997,7 +76721,7 @@ ${image ? `<div class="imgs"><img src="${esc3(image)}" alt="" loading="lazy"></d
 }
 
 // server/spam.ts
-import crypto15 from "node:crypto";
+import crypto16 from "node:crypto";
 
 // src/shared/spamRules.ts
 var NEW_ACCOUNT_DAYS = 7;
@@ -76012,9 +76736,9 @@ function filterMessage(u, text, now = Date.now(), demo = false) {
 }
 
 // server/spam.ts
-var sign = (body) => crypto15.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
+var sign = (body) => crypto16.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
 function makeChallenge(now = Date.now()) {
-  const a = crypto15.randomInt(3, 15), b = crypto15.randomInt(2, 10);
+  const a = crypto16.randomInt(3, 15), b = crypto16.randomInt(2, 10);
   const body = Buffer.from(JSON.stringify({ a, b, t: now })).toString("base64url");
   return { question: `${a} + ${b}`, token: `${body}.${sign(body)}` };
 }
@@ -76027,7 +76751,7 @@ function checkChallenge(token, answer, now = Date.now()) {
   const [body, sig] = String(token || "").split(".");
   if (!body || !sig) return "BAD";
   const good = sign(body);
-  if (sig.length !== good.length || !crypto15.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
+  if (sig.length !== good.length || !crypto16.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
   try {
     const { a, b, t } = JSON.parse(Buffer.from(body, "base64url").toString());
     if (now - t > 10 * 6e4) return "EXPIRED";
@@ -76043,7 +76767,7 @@ function checkChallenge(token, answer, now = Date.now()) {
 var isNewAccount2 = (u, now = Date.now()) => isNewAccount(u, now, DEMO_MODE);
 var filterMessage2 = (u, text) => filterMessage(u, text, Date.now(), DEMO_MODE);
 function isFlood(userId, text) {
-  const key = `flood:${userId}:${crypto15.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
+  const key = `flood:${userId}:${crypto16.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
   return hit(key, 2, 10 * 6e4) > 0;
 }
 function newAccountCap(kind, limit) {
@@ -76098,7 +76822,7 @@ function ensureReferralCode(u) {
   const taken = new Set(db.getState().users.map((x) => x.referralCode).filter(Boolean));
   let code = "";
   do {
-    code = `GZ-${letters}-${crypto16.randomInt(1e3, 1e4)}`;
+    code = `GZ-${letters}-${crypto17.randomInt(1e3, 1e4)}`;
   } while (taken.has(code));
   u.referralCode = code;
   db.save();
@@ -76532,8 +77256,8 @@ function approxPoint(city, locality, lat, lng) {
 }
 
 // src/shared/dailyRules.ts
-var DAY7 = 864e5;
-var days = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY7 : Infinity;
+var DAY8 = 864e5;
+var days = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY8 : Infinity;
 var STAGE_PTS = { NEW: 10, CONTACTED: 20, SITE_VISIT: 40, NEGOTIATION: 55, DEAL: 0, LOST: 0 };
 function leadScore(c, o) {
   const now = o.now ?? Date.now();
@@ -76579,7 +77303,7 @@ function rateCard(properties, now = Date.now()) {
     if (p.transactionType !== "Sale" || !["active", "under_negotiation", "sold"].includes(p.listingStatus)) continue;
     const area = p.builtUpAreaSqFt || p.plotAreaSqFt || 0;
     const t = new Date(p.createdAt).getTime();
-    if (!area || !p.askingPrice || now - t > 90 * DAY7) continue;
+    if (!area || !p.askingPrice || now - t > 90 * DAY8) continue;
     const k = `${normCity(p.city)}|${p.locality.trim().toLowerCase()}|${p.propertyType}`;
     const g = groups.get(k) || { city: normCity(p.city), locality: p.locality.trim(), type: p.propertyType, rates: [], oldest: t, newest: t };
     g.rates.push(p.askingPrice / area);
@@ -76626,8 +77350,8 @@ function parseLeadText(text) {
 
 // server/daily.ts
 var nowIso16 = () => (/* @__PURE__ */ new Date()).toISOString();
-var DAY8 = 864e5;
-var days2 = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY8 : Infinity;
+var DAY9 = 864e5;
+var days2 = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY9 : Infinity;
 var me10 = () => ctx().user;
 var pad2 = (n2) => String(n2).padStart(4, "0");
 var FRESH_DAYS = 30;
@@ -76658,7 +77382,7 @@ function browsable(st20, u, now = Date.now()) {
 function shareViews7d(st20, u, c, now = Date.now()) {
   const label = c.name.trim().toLowerCase();
   if (!label) return 0;
-  return st20.shareLinks.filter((l) => l.ownerId === u.id && !l.revoked && l.clientLabel.trim().toLowerCase() === label).reduce((a, l) => a + (l.viewLog || []).filter((t) => now - new Date(t).getTime() < 7 * DAY8).length, 0);
+  return st20.shareLinks.filter((l) => l.ownerId === u.id && !l.revoked && l.clientLabel.trim().toLowerCase() === label).reduce((a, l) => a + (l.viewLog || []).filter((t) => now - new Date(t).getTime() < 7 * DAY9).length, 0);
 }
 function matchCountFor(c, props) {
   const req = clientAsRequirement(c);
@@ -77092,7 +77816,7 @@ function createDailyRouter() {
 // server/pdocs.ts
 var import_express25 = __toESM(require_express2(), 1);
 var import_express26 = __toESM(require_express2(), 1);
-import crypto17 from "node:crypto";
+import crypto18 from "node:crypto";
 import fs9 from "node:fs";
 import path9 from "node:path";
 var me11 = () => ctx().user;
@@ -77123,7 +77847,7 @@ function accessState(doc, userId, now = Date.now(), ignoreLimit = false) {
 }
 var log2 = (docId2, userId, page, allowed, ip) => {
   const st20 = db.getState();
-  st20.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto17.randomInt(1e3, 9999)}`, docId: docId2, userId, page, at: nowIso17(), ip, allowed });
+  st20.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto18.randomInt(1e3, 9999)}`, docId: docId2, userId, page, at: nowIso17(), ip, allowed });
   if (st20.docAccessLogs.length > 3e3) st20.docAccessLogs.splice(0, st20.docAccessLogs.length - 3e3);
 };
 var summary2 = (d, u) => {
@@ -77177,7 +77901,7 @@ function createPdocsRouter() {
       bufs.push(buf);
       mimes.push(mime);
     }
-    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto17.randomInt(100, 999)}`;
+    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto18.randomInt(100, 999)}`;
     fs9.mkdirSync(DIR4(), { recursive: true });
     bufs.forEach((buf, i) => fs9.writeFileSync(pageFile(id, i), buf));
     const doc = { id, ownerId: u.id, title: b.data.title, propertyId: b.data.propertyId, pages: bufs.length, mime: mimes, viewers: [], createdAt: nowIso17() };
@@ -77260,7 +77984,7 @@ function createPdocsRouter() {
     const exp = Date.now() + 5 * 6e4;
     const list = [];
     for (let i = 0; i < d.pages; i++) {
-      const t = crypto17.randomBytes(18).toString("base64url");
+      const t = crypto18.randomBytes(18).toString("base64url");
       tokens.set(t, { docId: d.id, userId: u.id, page: i, exp });
       list.push(t);
     }
@@ -78148,7 +78872,7 @@ function createPcontrolRouter() {
 
 // server/timeline.ts
 var import_express28 = __toESM(require_express2(), 1);
-import crypto18 from "node:crypto";
+import crypto19 from "node:crypto";
 var nowIso19 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st7 = () => db.getState();
 var bad8 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
@@ -78216,7 +78940,7 @@ function createTimelineRouter() {
     }
     if (p?.soldAt && offers.some((o) => o.id === p.soldOfferId)) ev2.push({ at: p.soldAt, kind: "SOLD", title: `Property marked ${p.listingStatus} through this deal` });
     ev2.sort((a, b) => a.at.localeCompare(b.at));
-    const fingerprint = crypto18.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
+    const fingerprint = crypto19.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
     const intro = profile(d.introducingBrokerId);
     const clos = profile(d.closingBrokerId);
     res.json({
@@ -78256,7 +78980,7 @@ function createTimelineRouter() {
     if (m.plannedAt && Number.isNaN(Date.parse(m.plannedAt))) return bad8(res, "Invalid planned date");
     if (hit(`ms:${u.id}`, 60, 36e5)) return bad8(res, "Too many milestones \u2014 slow down", 429);
     const ts = nowIso19();
-    const x = { id: `MS-${Date.now().toString(36)}${crypto18.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
+    const x = { id: `MS-${Date.now().toString(36)}${crypto19.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
     st7().dealMilestones.push(x);
     db.save();
     db.appendAuditEvent(u.id, u.role, "DEAL", d.id, "MILESTONE_ADDED", `${u.name} added ${m.kind} milestone "${m.title}"`);
@@ -78335,7 +79059,7 @@ function createTimelineRouter() {
     if (text.length < 2 || text.length > 500) return bad8(res, "Note must be 2\u2013500 characters");
     if (remind && Number.isNaN(Date.parse(remind))) return bad8(res, "Invalid reminder date");
     if (st7().brokerNotes.filter((n3) => n3.userId === u.id && n3.dealRoomId === d.id).length >= 200) return bad8(res, "Too many notes on this deal", 429);
-    const n2 = { id: `BN-${Date.now().toString(36)}${crypto18.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso19() };
+    const n2 = { id: `BN-${Date.now().toString(36)}${crypto19.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso19() };
     st7().brokerNotes.push(n2);
     db.save();
     res.json({ success: true, note: n2 });
@@ -78353,7 +79077,7 @@ function createTimelineRouter() {
 
 // server/network.ts
 var import_express29 = __toESM(require_express2(), 1);
-import crypto19 from "node:crypto";
+import crypto20 from "node:crypto";
 var nowIso20 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st8 = () => db.getState();
 var me12 = () => ctx().user;
@@ -78948,7 +79672,7 @@ var proposeSchema = external_exports.object({
 });
 var brokerCard = (u) => u ? { id: u.id, name: u.name, company: u.companyName || "", city: u.city, tier: tierOf(u), tierLabel: tierOf(u) ? TIER_LABEL[tierOf(u)] : null } : null;
 function tieupHash(t) {
-  return crypto19.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
+  return crypto20.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
 }
 function createTieupsRouter() {
   const r = (0, import_express29.Router)();
@@ -79238,7 +79962,7 @@ var audit3 = (id, action, details) => {
 };
 var inr5 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
 var nextId3 = (prefix, ids2, pad3) => `${prefix}${String(ids2.reduce((m, id) => Math.max(m, Number(id.slice(prefix.length)) || 0), 0) + 1).padStart(pad3, "0")}`;
-var DAY9 = 864e5;
+var DAY10 = 864e5;
 var FEE_GRACE_DAYS = 30;
 var SHARE_DAYS = 60;
 var isStaff2 = (u) => u.role === "ADMIN" || u.role === "SUPERADMIN";
@@ -79564,7 +80288,7 @@ function createLegalRouter() {
     for (const id of row.sharedDocIds) {
       const d = db.byId("propertyDocs", id);
       if (!d || d.uploaderId !== u.id) continue;
-      d.shares.push({ userId: row.counsellorId, grantedBy: u.id, grantedAt: t, expiresAt: new Date(Date.now() + SHARE_DAYS * DAY9).toISOString() });
+      d.shares.push({ userId: row.counsellorId, grantedBy: u.id, grantedAt: t, expiresAt: new Date(Date.now() + SHARE_DAYS * DAY10).toISOString() });
     }
     const charge = chargeEvent({ event: "LEGAL_CASE", payerId: row.counsellorId, base: row.quote.amount, refId: row.id, refLabel: `Legal case ${row.id}`, state: row.state });
     const fee = charge.fee;
@@ -79774,7 +80498,7 @@ function createLegalRouter() {
 
 // server/revenue.ts
 var import_express32 = __toESM(require_express2(), 1);
-import crypto20 from "node:crypto";
+import crypto21 from "node:crypto";
 
 // src/shared/revenueRules.ts
 var r2 = (n2) => Math.round(n2);
@@ -79985,10 +80709,10 @@ function valueCsv(r) {
 }
 
 // src/shared/pilotRules.ts
-var DAY10 = 864e5;
+var DAY11 = 864e5;
 var istDay2 = (ms) => new Date(ms + 330 * 6e4).toISOString().slice(0, 10);
 function pilotFunnel(i, windowDays2 = 60, city = "") {
-  const since = i.now - windowDays2 * DAY10;
+  const since = i.now - windowDays2 * DAY11;
   const seenBy2 = /* @__PURE__ */ new Map();
   for (const d of i.days) for (const id of d.seen) {
     let s = seenBy2.get(id);
@@ -80002,17 +80726,17 @@ function pilotFunnel(i, windowDays2 = 60, city = "") {
   let listing = 0, client = 0, consent = 0, any2 = 0, d7Base = 0, d7 = 0;
   for (const b of cohort) {
     const t0 = Date.parse(b.verifiedAt || b.createdAt);
-    const within = (m) => m[b.id] !== void 0 && m[b.id] - t0 <= 7 * DAY10;
+    const within = (m) => m[b.id] !== void 0 && m[b.id] - t0 <= 7 * DAY11;
     const L = within(i.firstListingAt), C = within(i.firstClientAt), O = within(i.firstConsentAt);
     if (L) listing++;
     if (C) client++;
     if (O) consent++;
     if (L || C || O) any2++;
-    if (i.now - t0 >= 14 * DAY10) {
+    if (i.now - t0 >= 14 * DAY11) {
       d7Base++;
       const s = seenBy2.get(b.id);
       if (s) {
-        for (let k = 7; k <= 13; k++) if (s.has(istDay2(t0 + k * DAY10))) {
+        for (let k = 7; k <= 13; k++) if (s.has(istDay2(t0 + k * DAY11))) {
           d7++;
           break;
         }
@@ -80553,7 +81277,7 @@ function createRevenueRouter() {
     const p = external_exports.object({ city: external_exports.string().trim().max(80).optional().default(""), label: external_exports.string().trim().min(2).max(80), days: external_exports.number().int().min(1).max(90).optional().default(30) }).safeParse(req.body);
     if (!p.success) return bad11(res, p.error.issues[0]?.message || "Invalid link");
     const s = st10();
-    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto20.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso22(), createdBy: me14().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
+    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto21.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso22(), createdBy: me14().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
     s.strengthLinks.push(l);
     db.save();
     audit4("SYSTEM", l.id, "STRENGTH_LINK_CREATED", `Network-strength link for "${l.label}" (${l.city || "All India"}), ${p.data.days} days`);
@@ -80690,7 +81414,7 @@ function verifySigningPassword(user, password) {
 
 // server/dealhub.ts
 var import_express34 = __toESM(require_express2(), 1);
-var DAY11 = 864e5;
+var DAY12 = 864e5;
 var STAGES = ["Lead", "Introduction", "Site Visit Done", "Negotiation", "Agreement", "Handover", "Settled"];
 var LIVE_DISPUTE2 = /* @__PURE__ */ new Set(["OPEN", "UNDER_REVIEW", "MEDIATION"]);
 var STALLED_DAYS = 14;
@@ -80741,7 +81465,7 @@ function hubItem(d, u, s, open2, now = Date.now()) {
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
     openDispute: !!dispute,
-    protectionDaysLeft: d.ownerProtectionExpiresAt ? Math.ceil((Date.parse(d.ownerProtectionExpiresAt) - now) / DAY11) : void 0
+    protectionDaysLeft: d.ownerProtectionExpiresAt ? Math.ceil((Date.parse(d.ownerProtectionExpiresAt) - now) / DAY12) : void 0
   };
   let lastActivityAt2 = d.updatedAt;
   const later = (iso) => {
@@ -80794,7 +81518,7 @@ function hubItem(d, u, s, open2, now = Date.now()) {
       later(lm.timestamp);
     }
   }
-  const idleDays = Math.floor((now - Date.parse(lastActivityAt2)) / DAY11);
+  const idleDays = Math.floor((now - Date.parse(lastActivityAt2)) / DAY12);
   const stalled = d.stage !== "Settled" && idleDays >= STALLED_DAYS;
   if (stalled && inner) add("STALLED", 1);
   let fee, myShare, split, dealValue;
@@ -80859,7 +81583,7 @@ function createDealHubRouter() {
 
 // server/partywatch.ts
 var import_express35 = __toESM(require_express2(), 1);
-import crypto21 from "crypto";
+import crypto22 from "crypto";
 
 // src/shared/partyWatchRules.ts
 var WATCH_CATEGORIES = [
@@ -80902,15 +81626,15 @@ var me15 = () => ctx().user;
 var bad12 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone10 = (p) => digits(String(p ?? "")).slice(-10);
 var PHONE_RE2 = /^[6-9]\d{9}$/;
-var hm = (tag, v) => crypto21.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hm = (tag, v) => crypto22.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var keyOf = (p) => hm("pw-phone", phone10(p));
 var note = (a, text) => {
   a.events.push({ at: nowIso23(), text });
   a.updatedAt = nowIso23();
   if (a.events.length > 60) a.events.splice(0, a.events.length - 60);
 };
-var DAY12 = 864e5;
-var counts3 = (r, now) => r.status !== "DISMISSED" && now - Date.parse(r.at) <= WATCH_LIMITS.reportDays * DAY12;
+var DAY13 = 864e5;
+var counts3 = (r, now) => r.status !== "DISMISSED" && now - Date.parse(r.at) <= WATCH_LIMITS.reportDays * DAY13;
 function levelOf(a, now = Date.now()) {
   const d = a.decision;
   if (d?.action === "BLOCKED" && (!d.until || Date.parse(d.until) > now)) return "BLOCKED";
@@ -80976,7 +81700,7 @@ function proofFor(brokerId, phone, kind, refId) {
   }
   return { ok: false };
 }
-var dismissedIn = (brokerId, now = Date.now()) => st11().partyAlerts.reduce((n2, a) => n2 + a.reports.filter((r) => r.brokerId === brokerId && r.status === "DISMISSED" && now - Date.parse(r.review?.at || r.at) <= 365 * DAY12).length, 0);
+var dismissedIn = (brokerId, now = Date.now()) => st11().partyAlerts.reduce((n2, a) => n2 + a.reports.filter((r) => r.brokerId === brokerId && r.status === "DISMISSED" && now - Date.parse(r.review?.at || r.at) <= 365 * DAY13).length, 0);
 function sweepPartyWatch() {
   let n2 = 0;
   for (const a of st11().partyAlerts) {
@@ -81032,7 +81756,7 @@ function createPartyWatchRouter() {
     const name = String(req.body?.partyName ?? "").trim().slice(0, 80);
     if (name.length < 2) return bad12(res, "Enter the person's name", 400, { hi: "\u0935\u094D\u092F\u0915\u094D\u0924\u093F \u0915\u093E \u0928\u093E\u092E \u0932\u093F\u0916\u0947\u0902", code: "NAME" });
     if (dismissedIn(u.id) >= WATCH_LIMITS.falseLimit) return bad12(res, "Several of your earlier reports were found wrong, so you cannot report right now. Write to GENZ support if you think this is a mistake.", 403, { hi: "\u0906\u092A\u0915\u0940 \u092A\u0939\u0932\u0947 \u0915\u0940 \u0915\u0908 \u0930\u093F\u092A\u094B\u0930\u094D\u091F \u0917\u093C\u0932\u0924 \u092A\u093E\u0908 \u0917\u0908\u0902, \u0907\u0938\u0932\u093F\u090F \u0905\u092D\u0940 \u0906\u092A \u0930\u093F\u092A\u094B\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u0915\u0930 \u0938\u0915\u0924\u0947\u0964 \u0917\u093C\u0932\u0924\u0940 \u0932\u0917\u0947 \u0924\u094B GENZ \u0938\u092A\u094B\u0930\u094D\u091F \u0915\u094B \u0932\u093F\u0916\u0947\u0902\u0964", code: "REPORT_LOCKED" });
-    const today = st11().partyAlerts.reduce((n2, a2) => n2 + a2.reports.filter((x) => x.brokerId === u.id && Date.now() - Date.parse(x.at) < DAY12).length, 0);
+    const today = st11().partyAlerts.reduce((n2, a2) => n2 + a2.reports.filter((x) => x.brokerId === u.id && Date.now() - Date.parse(x.at) < DAY13).length, 0);
     if (today >= WATCH_LIMITS.perDay) return bad12(res, `You can send ${WATCH_LIMITS.perDay} reports a day`, 429, { code: "DAILY_LIMIT" });
     const ekind = WATCH_EVIDENCE.find((e) => e.id === req.body?.evidenceKind)?.id;
     let evidence = { kind: "NONE", verified: false };
@@ -81043,11 +81767,11 @@ function createPartyWatchRouter() {
     }
     let a = findAlert(phone);
     if (!a) {
-      a = { id: `PW-${crypto21.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso23(), updatedAt: nowIso23() };
+      a = { id: `PW-${crypto22.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso23(), updatedAt: nowIso23() };
       st11().partyAlerts.unshift(a);
     }
     if (a.reports.some((x) => x.brokerId === u.id && x.status === "OPEN")) return bad12(res, "You already have an open report for this mobile \u2014 GENZ is reviewing it.", 409, { code: "ALREADY_REPORTED" });
-    const rep = { id: `PR-${crypto21.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso23(), evidence, status: "OPEN" };
+    const rep = { id: `PR-${crypto22.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso23(), evidence, status: "OPEN" };
     a.reports.push(rep);
     const before = a.level;
     const after = refresh(a);
@@ -81073,7 +81797,7 @@ function createPartyWatchRouter() {
     const text = String(req.body?.note ?? "").trim().slice(0, 400);
     if (text.length < WATCH_LIMITS.noteMin) return bad12(res, `Write why this mark is wrong (at least ${WATCH_LIMITS.noteMin} characters)`, 400, { hi: `\u092F\u0939 \u0928\u093F\u0936\u093E\u0928 \u0917\u093C\u0932\u0924 \u0915\u094D\u092F\u094B\u0902 \u0939\u0948, \u0932\u093F\u0916\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E ${WATCH_LIMITS.noteMin} \u0905\u0915\u094D\u0937\u0930)`, code: "NOTE_SHORT" });
     if (a.appeals.some((x) => x.byId === u.id && x.status === "OPEN")) return bad12(res, "Your appeal is already with GENZ.", 409);
-    a.appeals.push({ id: `PA-${crypto21.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso23(), note: text, status: "OPEN" });
+    a.appeals.push({ id: `PA-${crypto22.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso23(), note: text, status: "OPEN" });
     note(a, `Appeal by ${u.name}`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", a.id, "PARTY_WATCH_APPEAL", `${u.name} appealed the mark on \u2026${a.last4}`);
@@ -81121,7 +81845,7 @@ function createPartyWatchRouter() {
     if (!action) return bad12(res, "Pick block or clear");
     if (why.length < 10) return bad12(res, "Write the reason (at least 10 characters)");
     if (action === "BLOCKED" && !al.reports.some((x) => x.status === "UPHELD")) return bad12(res, "Uphold at least one report before blocking.", 409, { code: "NO_UPHELD" });
-    al.decision = { action, byId: a.id, byName: a.name, at: nowIso23(), note: why, ...action === "BLOCKED" ? { until: new Date(Date.now() + WATCH_LIMITS.blockDays * DAY12).toISOString() } : {} };
+    al.decision = { action, byId: a.id, byName: a.name, at: nowIso23(), note: why, ...action === "BLOCKED" ? { until: new Date(Date.now() + WATCH_LIMITS.blockDays * DAY13).toISOString() } : {} };
     for (const x of al.appeals) if (x.status === "OPEN") {
       x.status = "DONE";
       x.answer = action === "CLEARED" ? "Cleared" : "Block stays";
@@ -81151,13 +81875,13 @@ function createPartyWatchRouter() {
 
 // server/buyerbond.ts
 var import_express36 = __toESM(require_express2(), 1);
-import crypto22 from "crypto";
+import crypto23 from "crypto";
 var nowIso24 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st12 = () => db.getState();
 var me16 = () => ctx().user;
 var bad13 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone102 = (p) => digits(String(p ?? "")).slice(-10);
-var buyerKeyOf = (p) => crypto22.createHmac("sha256", secret()).update(`bb-phone|${phone102(p)}`).digest("hex");
+var buyerKeyOf = (p) => crypto23.createHmac("sha256", secret()).update(`bb-phone|${phone102(p)}`).digest("hex");
 var isActive = (b, now = Date.now()) => b.status === "ACTIVE" && Date.parse(b.expiresAt) > now;
 var note2 = (b, text) => {
   b.events.push({ at: nowIso24(), text });
@@ -81192,7 +81916,7 @@ function makeBuyerBond(a) {
   const days3 = daysFor();
   const now = Date.now();
   const b = {
-    id: `BB-${now.toString(36).toUpperCase()}${crypto22.randomInt(100, 999)}`,
+    id: `BB-${now.toString(36).toUpperCase()}${crypto23.randomInt(100, 999)}`,
     propertyId: a.propertyId,
     brokerId: a.brokerId,
     buyerKey: buyerKeyOf(a.buyerPhone),
@@ -81276,7 +82000,7 @@ function createBuyerBondRouter() {
     if (b.brokerId === u.id) return bad13(res, "This is your own buyer bond", 400);
     if (b.asks.some((a) => a.fromId === u.id)) return bad13(res, "You already asked \u2014 the broker has your name and mobile.", 409, { code: "ALREADY_ASKED" });
     const text = String(req.body?.note ?? "").trim().slice(0, 300);
-    b.asks.push({ id: crypto22.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso24() });
+    b.asks.push({ id: crypto23.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso24() });
     note2(b, `Co-broke request from ${u.name}`);
     db.save();
     const p = db.byId("properties", b.propertyId);
@@ -81309,7 +82033,7 @@ function createBuyerBondRouter() {
 
 // server/consent.ts
 var import_express37 = __toESM(require_express2(), 1);
-import crypto23 from "crypto";
+import crypto24 from "crypto";
 import fs10 from "fs";
 import path10 from "path";
 
@@ -81718,8 +82442,8 @@ var st13 = () => db.getState();
 var me17 = () => ctx().user;
 var bad14 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var esc5 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac = (tag, v) => crypto23.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
-var sha2 = (v) => crypto23.createHash("sha256").update(v).digest("hex");
+var hmac = (tag, v) => crypto24.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha2 = (v) => crypto24.createHash("sha256").update(v).digest("hex");
 var PAPER_DIR = () => path10.resolve(process.cwd(), "data", "consent-papers");
 var PAPER_MAX = 4 * 1024 * 1024;
 var SIG_DIR = () => path10.resolve(process.cwd(), "data", "consent-signatures");
@@ -81897,7 +82621,7 @@ function signatureSummary(consentId) {
   return c?.ownerSignature ? { initials: c.ownerSignature.initials, drawn: c.ownerSignature.drawn, at: c.ownerSignature.at, name: c.ownerTypedName } : null;
 }
 function nextId5(prefix, list) {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto23.randomInt(100, 999)}${list.length % 10}`;
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto24.randomInt(100, 999)}${list.length % 10}`;
 }
 function myDraft(req, res) {
   const d = st13().listingDrafts.find((x) => x.id === req.params.id && x.brokerId === me17().id && x.status !== "DISCARDED");
@@ -82163,7 +82887,7 @@ function createConsentRouter() {
     const prep = prepare(req, res, d);
     if (!prep) return;
     const { c, f, s } = prep;
-    const token = crypto23.randomBytes(18).toString("base64url");
+    const token = crypto24.randomBytes(18).toString("base64url");
     c.tokenHash = sha2(token);
     c.linkExpiresAt = new Date(Date.now() + CONSENT_LINK_DAYS * 864e5).toISOString();
     const url3 = `${publicBase(req)}/oc/${token}`;
@@ -82209,7 +82933,7 @@ ${msgEn}`)}` } });
     } catch {
       return bad14(res, "The photo could not be saved. Please try again.", 500);
     }
-    c.paper = { mime, size: buf.length, sha256: crypto23.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso25() };
+    c.paper = { mime, size: buf.length, sha256: crypto24.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso25() };
     note3(c, `Signed form uploaded (${Math.round(buf.length / 1024)} KB) \u2014 waiting for a GENZ check`);
     s.ownerConsents.unshift(c);
     d.consentId = c.id;
@@ -82552,7 +83276,7 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
       try {
         fs10.mkdirSync(SIG_DIR(), { recursive: true });
         fs10.writeFileSync(path10.join(SIG_DIR(), `${c.id}.png`), sig.png);
-        c.ownerSignature.sha256 = crypto23.createHash("sha256").update(sig.png).digest("hex");
+        c.ownerSignature.sha256 = crypto24.createHash("sha256").update(sig.png).digest("hex");
         c.ownerSignature.size = sig.png.length;
       } catch {
         return render(req, res, c, "\u0938\u093E\u0907\u0928 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E, \u092B\u093F\u0930 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / The signature could not be saved \u2014 please try again.");
@@ -82589,7 +83313,7 @@ function sweepConsents() {
 
 // server/broadcast.ts
 var import_express38 = __toESM(require_express2(), 1);
-import crypto24 from "crypto";
+import crypto25 from "crypto";
 var nowIso26 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st14 = () => db.getState();
 var me18 = () => ctx().user;
@@ -82643,7 +83367,7 @@ function createBroadcastRouter() {
       }
     }
     const b = {
-      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto24.randomInt(100, 999)}`,
+      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto25.randomInt(100, 999)}`,
       brokerId: u.id,
       requirementId: rq.id,
       summary: summaryOf(rq),
@@ -83270,7 +83994,7 @@ function createOffersRouter() {
 
 // server/listings.ts
 var import_express41 = __toESM(require_express2(), 1);
-import crypto25 from "node:crypto";
+import crypto26 from "node:crypto";
 var nowIso28 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st16 = () => db.getState();
 var bad17 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
@@ -83288,7 +84012,7 @@ function purgeBlocked(p) {
 function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
   const s = st16();
   s.marketRecords.push({
-    id: `MR-${crypto25.randomBytes(4).toString("hex")}`,
+    id: `MR-${crypto26.randomBytes(4).toString("hex")}`,
     city: p.city,
     locality: p.locality,
     propertyType: p.propertyType,
@@ -83540,7 +84264,7 @@ function createListingsRouter() {
       listingStatus: "active",
       verificationStatus: "PENDING",
       priceHistory: [{ price: d.askingPrice, changedAt: ts, reason: `Relisted (resale of ${p.id})` }],
-      duplicateHash: crypto25.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
+      duplicateHash: crypto26.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
       soldAt: void 0,
       soldVia: void 0,
       soldPrice: void 0,
@@ -83571,7 +84295,7 @@ function createListingsRouter() {
     if (p.listingBrokerId !== u.id) return bad17(res, "Only the listing broker can make the site poster \u2014 it carries the broker's contact", 403);
     if (!PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad17(res, "Poster is available for verified, live listings", 409);
     if (!p.posterCode) {
-      p.posterCode = crypto25.randomBytes(5).toString("hex").toUpperCase();
+      p.posterCode = crypto26.randomBytes(5).toString("hex").toUpperCase();
       db.save();
       audit6(u, p, "POSTER_CREATED", `Site poster code created for ${p.id}`);
     }
@@ -83707,7 +84431,7 @@ ${broker ? `<div class="card"><b>${esc7(broker.name)}</b>${broker.companyName ? 
     if (req.body?.consent !== true) return bad17(res, "Please tick the consent box so the broker may contact you");
     if (hit(`penq:${digits(ph.data).slice(-10)}:${p.id}`, 2, 24 * 36e5)) return bad17(res, "You have already sent an enquiry for this property today", 429);
     if (hit(`penq-prop:${p.id}`, 60, 24 * 36e5)) return bad17(res, "Too many enquiries for this listing today", 429);
-    st16().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto25.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso28(), status: "NEW", createdAt: nowIso28() });
+    st16().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto26.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso28(), status: "NEW", createdAt: nowIso28() });
     db.save();
     db.appendAuditEvent("public", "SUPERADMIN", "PROPERTY", p.id, "POSTER_ENQUIRY", `Enquiry received via site poster for ${p.id} (consent recorded)`);
     res.json({ success: true });
@@ -83718,13 +84442,13 @@ ${broker ? `<div class="card"><b>${esc7(broker.name)}</b>${broker.companyName ? 
 // server/visitpass.ts
 var import_express44 = __toESM(require_express2(), 1);
 var import_qrcode2 = __toESM(require_lib5(), 1);
-import crypto27 from "node:crypto";
+import crypto28 from "node:crypto";
 
 // server/visitack.ts
 var import_express42 = __toESM(require_express2(), 1);
 var import_express43 = __toESM(require_express2(), 1);
 var import_qrcode = __toESM(require_lib5(), 1);
-import crypto26 from "crypto";
+import crypto27 from "crypto";
 
 // src/shared/visitAckRules.ts
 var ACK_VERSION = "v1";
@@ -83742,7 +84466,7 @@ var ACK_NOTE = {
 var st17 = () => db.getState();
 var nowIso29 = () => (/* @__PURE__ */ new Date()).toISOString();
 var esc8 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac2 = (tag, v) => crypto26.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hmac2 = (tag, v) => crypto27.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone104 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE4 = /^[6-9]\d{9}$/;
 var smsOn2 = () => !!process.env.SMS_WEBHOOK_URL;
@@ -83767,7 +84491,7 @@ function createAck(a) {
   if (old) return old;
   const broker = db.byId("users", a.brokerId);
   const ack = {
-    id: `VAK-${crypto26.randomBytes(5).toString("hex")}`,
+    id: `VAK-${crypto27.randomBytes(5).toString("hex")}`,
     kind: a.kind,
     refId: a.refId,
     phoneKey: hmac2("va-phone", phone),
@@ -84037,11 +84761,11 @@ function createVisitRouter() {
     for (const o of st18().visitPasses) if (o.leadId === lead.id && o.status === "ACTIVE") o.status = "SUPERSEDED";
     let code = "";
     do {
-      code = makeCode((n2) => crypto27.randomInt(n2));
+      code = makeCode((n2) => crypto28.randomInt(n2));
     } while (st18().visitPasses.some((p) => p.code === code));
     const ts = nowIso30();
     const pass = {
-      id: `VP-${Date.now().toString(36)}${crypto27.randomInt(1296).toString(36)}`,
+      id: `VP-${Date.now().toString(36)}${crypto28.randomInt(1296).toString(36)}`,
       code,
       leadId: lead.id,
       projectId: project.id,
@@ -84264,7 +84988,7 @@ function createPublicVisitRouter() {
 // server/clientroom.ts
 var import_express45 = __toESM(require_express2(), 1);
 var import_express46 = __toESM(require_express2(), 1);
-import crypto28 from "crypto";
+import crypto29 from "crypto";
 
 // src/shared/clientRoomRules.ts
 var ROOM_KINDS = [
@@ -84288,11 +85012,11 @@ var st19 = () => db.getState();
 var nowIso31 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me20 = () => ctx().user;
 var esc10 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha3 = (v) => crypto28.createHash("sha256").update(v).digest("hex");
-var hmac3 = (tag, v) => crypto28.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha3 = (v) => crypto29.createHash("sha256").update(v).digest("hex");
+var hmac3 = (tag, v) => crypto29.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone105 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE5 = /^[6-9]\d{9}$/;
-var newToken = () => crypto28.randomBytes(18).toString("base64url");
+var newToken = () => crypto29.randomBytes(18).toString("base64url");
 var smsOn3 = () => !!process.env.SMS_WEBHOOK_URL;
 var inr9 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad20 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
@@ -84300,7 +85024,7 @@ var ev = (r, text) => {
   r.events.push({ at: nowIso31(), text });
   r.updatedAt = nowIso31();
 };
-var rid2 = (p) => `${p}-${crypto28.randomBytes(5).toString("hex")}`;
+var rid2 = (p) => `${p}-${crypto29.randomBytes(5).toString("hex")}`;
 var live3 = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
 var goneText = (p) => !p ? "removed" : p.listingStatus === "sold" ? "sold" : p.listingStatus === "rented" ? "rented" : "not available now";
 function publicProperty(p) {
@@ -84492,7 +85216,7 @@ function createClientRoomRouter() {
     if (!room) return bad20(res, "Room not found", 404);
     room.status = "CLOSED";
     room.closedAt = nowIso31();
-    room.tokenHash = sha3(crypto28.randomBytes(8).toString("hex"));
+    room.tokenHash = sha3(crypto29.randomBytes(8).toString("hex"));
     room.sessVersion += 1;
     room.otpHash = void 0;
     room.otpPlain = void 0;
@@ -84901,7 +85625,7 @@ function createLandRecordsRouter() {
 
 // server/connector.ts
 var import_express48 = __toESM(require_express2(), 1);
-import crypto29 from "crypto";
+import crypto30 from "crypto";
 var DUP_WINDOW_DAYS = 60;
 var MAX_REWARD = 1e5;
 var upiRegex = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
@@ -85230,7 +85954,7 @@ function createConnectorRouter() {
   };
   const maxPct = () => db.getState().settings.connectorMaxSharePct ?? DEFAULT_MAX_SHARE_PCT;
   const shareStep = (sh, side, action, pct2, note4) => {
-    sh.history.push({ id: "SS-" + crypto29.randomBytes(4).toString("hex"), at: nowIso32(), side, action, pct: pct2, note: note4 ? note4.slice(0, 200) : void 0 });
+    sh.history.push({ id: "SS-" + crypto30.randomBytes(4).toString("hex"), at: nowIso32(), side, action, pct: pct2, note: note4 ? note4.slice(0, 200) : void 0 });
     sh.updatedAt = nowIso32();
   };
   const ping = (x, toSide, title, body) => {
@@ -85262,7 +85986,7 @@ function createConnectorRouter() {
     let sh = x.share;
     if (sh && ["AGREED", "PAID", "CONFIRMED", "NOT_RECEIVED"].includes(sh.status)) return res.status(409).json({ error: "The share is already agreed and locked" });
     if (!sh || sh.status === "DECLINED") {
-      sh = x.share = { id: "SH-" + crypto29.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso32() };
+      sh = x.share = { id: "SH-" + crypto30.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso32() };
       shareStep(sh, side, "PROPOSED", pct2, note4);
     } else {
       const counter = sh.proposedBy !== side;

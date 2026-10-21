@@ -8,7 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 // This repo is the public demo: demo logins, fake seed data, file DB in /tmp — unless the project sets these itself.
-for (const k of ['DEMO_MODE', 'PUBLIC_DEMO', 'SEED_DEMO_DATA', 'ALLOW_FILE_DB', 'TRUST_PROXY']) process.env[k] ||= 'true';
+for (const k of ['DEMO_MODE', 'PUBLIC_DEMO', 'SEED_DEMO_DATA', 'SEED_DEMO_BULK', 'ALLOW_FILE_DB', 'TRUST_PROXY']) process.env[k] ||= 'true';
 // Session-cookie secret: the project's own AUTH_SECRET if set; otherwise one derived from this Vercel project's private ids,
 // so every instance of the demo agrees (a cookie from one still works on another) and nothing secret sits in the public repo.
 if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) {

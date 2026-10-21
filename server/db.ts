@@ -25,6 +25,7 @@ import type { CpSlab } from '../src/shared/slabs.js';
 import type { LandRecordFields } from '../src/shared/redflags.js';
 import { DEFAULT_REWARDS } from '../src/shared/connector.js';
 import { buildConnectorDemo } from './connectorSeed.js';
+import { seedDemoBulk } from './demoBulk.js';
 import { PRELOADED } from './bootstrap.js';
 import { pgStore } from './pgstore.js';
 import { DEMO_MODE, DEMO_PASSWORD, IS_PROD, hashPassword, unusablePasswordHash, randomPassword } from './auth.js';
@@ -1360,6 +1361,8 @@ export interface DatabaseState {
 const DB_FILE = path.resolve(process.cwd(), 'data', 'database.json');
 /** Demo data (fake brokers/properties) only when SEED_DEMO_DATA=true. Default: a clean database with a single SUPERADMIN. */
 const SEED_DEMO = (process.env.SEED_DEMO_DATA ?? 'false').toLowerCase() === 'true';
+/** SEED_DEMO_BULK=true (with SEED_DEMO_DATA) adds the large demo set — the public Vercel demo turns it on */
+const SEED_DEMO_BULK = (process.env.SEED_DEMO_BULK ?? 'false').toLowerCase() === 'true';
 
 function productionSeed(): DatabaseState {
   const seed = getInitialSeedData();
@@ -2875,6 +2878,11 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
         }
       }
     }
+  }
+
+  // ── demo only, opt-in: 10–15 accounts for every role and a full set of records (server/demoBulk.ts) ──
+  if (SEED_DEMO && SEED_DEMO_BULK && !parsed.users.some(u => u.id === 'USR-BRK-005')) {
+    seedDemoBulk(parsed, DEMO_MODE ? hashPassword(DEMO_PASSWORD) : unusablePasswordHash());
   }
 }
 
