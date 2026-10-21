@@ -6,6 +6,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// This repo is the public demo: demo logins, fake seed data, file DB in /tmp — unless the project sets these itself.
+for (const k of ['DEMO_MODE', 'PUBLIC_DEMO', 'SEED_DEMO_DATA', 'ALLOW_FILE_DB', 'TRUST_PROXY']) process.env[k] ||= 'true';
 process.env.DIST_DIR ||= path.resolve(process.cwd(), 'dist');
 const work = '/tmp/genz';
 fs.mkdirSync(path.join(work, 'data'), { recursive: true });

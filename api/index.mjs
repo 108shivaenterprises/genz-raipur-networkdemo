@@ -43012,6 +43012,7 @@ var init_emptyVite = __esm({
 // server/vercelBoot.ts
 import fs from "node:fs";
 import path from "node:path";
+for (const k of ["DEMO_MODE", "PUBLIC_DEMO", "SEED_DEMO_DATA", "ALLOW_FILE_DB", "TRUST_PROXY"]) process.env[k] ||= "true";
 process.env.DIST_DIR ||= path.resolve(process.cwd(), "dist");
 var work = "/tmp/genz";
 fs.mkdirSync(path.join(work, "data"), { recursive: true });
