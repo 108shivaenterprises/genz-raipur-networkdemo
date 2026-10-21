@@ -5397,12 +5397,19 @@ function docId(collection, doc, i) {
 function setPgStore(s) {
   pgStore = s;
 }
-var SCHEMA, LOCK_KEY, META_PREFIX, APPEND_ONLY, fp, yieldNow, SLICE_MS, warned, PgStore, pgStore;
+var NS, T_DOCS, T_META, SCHEMA, LOCK_KEY, META_PREFIX, REV_KEY, APPEND_ONLY, fp, yieldNow, SLICE_MS, warned, PgStore, pgStore;
 var init_pgstore = __esm({
   "server/pgstore.ts"() {
     init_esm();
+    NS = (() => {
+      const n2 = (process.env.DATABASE_SCHEMA || "").trim();
+      if (n2 && !/^[a-z_][a-z0-9_]{0,40}$/.test(n2)) throw new Error("DATABASE_SCHEMA must be a plain lower-case name");
+      return n2;
+    })();
+    T_DOCS = NS ? `${NS}.genz_docs` : "genz_docs";
+    T_META = NS ? `${NS}.genz_meta` : "genz_meta";
     SCHEMA = `
-CREATE TABLE IF NOT EXISTS genz_docs (
+CREATE TABLE IF NOT EXISTS ${T_DOCS} (
   collection  text        NOT NULL,
   id          text        NOT NULL,
   data        jsonb       NOT NULL,
@@ -5410,22 +5417,23 @@ CREATE TABLE IF NOT EXISTS genz_docs (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (collection, id)
 );
-CREATE TABLE IF NOT EXISTS genz_meta (
+CREATE TABLE IF NOT EXISTS ${T_META} (
   key         text PRIMARY KEY,
   value       jsonb NOT NULL,
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
-ALTER TABLE genz_docs ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
+ALTER TABLE ${T_DOCS} ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
 `;
     LOCK_KEY = 7420261001;
     META_PREFIX = "__meta__";
+    REV_KEY = "__rev";
     APPEND_ONLY = /* @__PURE__ */ new Set(["auditEvents"]);
     fp = (ord, json2) => ord + ":" + createHash("sha1").update(json2).digest("base64");
     yieldNow = () => new Promise((r) => setImmediate(r));
     SLICE_MS = 8;
     warned = /* @__PURE__ */ new Set();
     PgStore = class {
-      constructor(connectionString) {
+      constructor(connectionString, opts = {}) {
         this.lockClient = null;
         this.flushed = /* @__PURE__ */ new Map();
         // "collection/id" -> ord + hash of the last written JSON
@@ -5438,23 +5446,48 @@ ALTER TABLE genz_docs ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
         this.running = null;
         this.latest = null;
         this.failures = 0;
-        const ssl = process.env.PGSSLMODE === "require" || /sslmode=require/.test(connectionString) ? { rejectUnauthorized: false } : void 0;
-        this.pool = new Pool({ connectionString, max: 5, ssl });
+        /** the revision this instance's memory matches (-1 = stale, reload on the next request) */
+        this.rev = 0;
+        this.shared = !!opts.shared;
+        let conn = connectionString;
+        let wantSsl = process.env.PGSSLMODE === "require";
+        try {
+          const u = new URL(connectionString);
+          const m = u.searchParams.get("sslmode");
+          if (m) {
+            wantSsl ||= m !== "disable";
+            u.searchParams.delete("sslmode");
+            conn = u.toString();
+          }
+          if (/\.supabase\.(co|com)$/.test(u.hostname)) wantSsl = true;
+        } catch {
+        }
+        const ssl = wantSsl ? { rejectUnauthorized: false } : void 0;
+        this.pool = new Pool({ connectionString: conn, max: this.shared ? 2 : 5, ssl });
         this.pool.on("error", (e) => console.error("[PG] idle client error", e.message));
       }
       async connect() {
         await this.pool.query(SCHEMA);
+        if (this.shared) return;
         this.lockClient = await this.pool.connect();
         const { rows } = await this.lockClient.query("SELECT pg_try_advisory_lock($1) AS ok", [LOCK_KEY]);
         if (!rows[0].ok) throw new Error("Another GENZ instance already holds the database lock (single-writer). Stop it first.");
       }
       /** Returns null when the database is empty (first boot). */
       async load() {
-        const { rows } = await this.pool.query("SELECT collection, id, data, ord FROM genz_docs ORDER BY collection, ord, id");
-        const meta3 = await this.pool.query("SELECT key, value FROM genz_meta");
+        this.flushed.clear();
+        this.appended.clear();
+        const { rows } = await this.pool.query(`SELECT collection, id, data, ord FROM ${T_DOCS} ORDER BY collection, ord, id`);
+        const meta3 = await this.pool.query(`SELECT key, value FROM ${T_META}`);
         if (rows.length === 0 && meta3.rows.length === 0) return null;
         const state = {};
-        for (const m of meta3.rows) state[m.key] = m.value;
+        for (const m of meta3.rows) {
+          if (m.key === REV_KEY) {
+            this.rev = Number(m.value) || 0;
+            continue;
+          }
+          state[m.key] = m.value;
+        }
         for (const r of rows) {
           (state[r.collection] ||= []).push(r.data);
           if (!APPEND_ONLY.has(r.collection)) this.flushed.set(`${r.collection}/${r.id}`, fp(r.ord, JSON.stringify(r.data)));
@@ -5471,7 +5504,27 @@ ALTER TABLE genz_docs ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
       schedule(state) {
         this.latest = state;
         this.dirty = true;
+        if (this.shared) return;
         if (!this.running) this.running = this.drain();
+      }
+      get isDirty() {
+        return this.dirty;
+      }
+      /** shared mode: the revision in the database right now */
+      async revNow() {
+        const { rows } = await this.pool.query(`SELECT value FROM ${T_META} WHERE key=$1`, [REV_KEY]);
+        return rows.length ? Number(rows[0].value) || 0 : 0;
+      }
+      /** shared mode: write what changed (one transaction) and move the revision on. */
+      async commitShared(state) {
+        if (!this.dirty) return;
+        this.dirty = false;
+        try {
+          await this.flushOnce(state, true);
+        } catch (e) {
+          this.dirty = true;
+          throw e;
+        }
       }
       async drain() {
         try {
@@ -5499,7 +5552,7 @@ ALTER TABLE genz_docs ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
         }
         this.running = null;
       }
-      async flushOnce(state) {
+      async flushOnce(state, bumpRev = false) {
         const upserts = [];
         const fps = [];
         const seen2 = /* @__PURE__ */ new Set();
@@ -5563,16 +5616,16 @@ ALTER TABLE genz_docs ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
         const c = await this.pool.connect();
         try {
           await c.query("BEGIN");
-          for (const k of rewrite) await c.query("DELETE FROM genz_docs WHERE collection=$1", [k]);
+          for (const k of rewrite) await c.query(`DELETE FROM ${T_DOCS} WHERE collection=$1`, [k]);
           const metas = upserts.filter((u) => u[0] === META_PREFIX);
           for (const [, id, json2] of metas) {
-            await c.query("INSERT INTO genz_meta(key, value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()", [id, json2]);
+            await c.query(`INSERT INTO ${T_META}(key, value) VALUES ($1,$2::jsonb) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`, [id, json2]);
           }
           const docs = upserts.filter((u) => u[0] !== META_PREFIX);
           for (let i = 0; i < docs.length; i += 500) {
             const part = docs.slice(i, i + 500);
             await c.query(
-              `INSERT INTO genz_docs(collection, id, data, ord)
+              `INSERT INTO ${T_DOCS}(collection, id, data, ord)
            SELECT * FROM unnest($1::text[], $2::text[], $3::jsonb[], $4::int[])
            ON CONFLICT (collection, id) DO UPDATE SET data=EXCLUDED.data, ord=EXCLUDED.ord, updated_at=now()`,
               [part.map((p) => p[0]), part.map((p) => p[1]), part.map((p) => p[2]), part.map((p) => p[3])]
@@ -5584,9 +5637,19 @@ ALTER TABLE genz_docs ADD COLUMN IF NOT EXISTS ord integer NOT NULL DEFAULT 0;
               const [col, ...rest] = k.split("/");
               return [col, rest.join("/")];
             });
-            await c.query("DELETE FROM genz_docs WHERE (collection, id) IN (SELECT * FROM unnest($1::text[], $2::text[]))", [part.map((p) => p[0]), part.map((p) => p[1])]);
+            await c.query(`DELETE FROM ${T_DOCS} WHERE (collection, id) IN (SELECT * FROM unnest($1::text[], $2::text[]))`, [part.map((p) => p[0]), part.map((p) => p[1])]);
           }
-          for (const k of deletes.filter((k2) => k2.startsWith(META_PREFIX + "/"))) await c.query("DELETE FROM genz_meta WHERE key=$1", [k.slice(META_PREFIX.length + 1)]);
+          for (const k of deletes.filter((k2) => k2.startsWith(META_PREFIX + "/"))) await c.query(`DELETE FROM ${T_META} WHERE key=$1`, [k.slice(META_PREFIX.length + 1)]);
+          if (bumpRev) {
+            const { rows } = await c.query(
+              `INSERT INTO ${T_META}(key, value) VALUES ($1, '1'::jsonb)
+           ON CONFLICT (key) DO UPDATE SET value = to_jsonb(COALESCE((${T_META}.value #>> '{}')::bigint, 0) + 1), updated_at = now()
+           RETURNING (value #>> '{}')::bigint AS rev`,
+              [REV_KEY]
+            );
+            const next2 = Number(rows[0].rev);
+            this.rev = next2 === this.rev + 1 ? next2 : -1;
+          }
           await c.query("COMMIT");
         } catch (e) {
           await c.query("ROLLBACK").catch(() => {
@@ -22468,16 +22531,16 @@ var require_parse = __commonJS({
       }
       return obj;
     };
-    var parseObject = function(chain, val, options, valuesParsed) {
+    var parseObject = function(chain2, val, options, valuesParsed) {
       var currentArrayLength = 0;
-      if (chain.length > 0 && chain[chain.length - 1] === "[]") {
-        var parentKey = chain.slice(0, -1).join("");
+      if (chain2.length > 0 && chain2[chain2.length - 1] === "[]") {
+        var parentKey = chain2.slice(0, -1).join("");
         currentArrayLength = Array.isArray(val) && val[parentKey] ? val[parentKey].length : 0;
       }
       var leaf = valuesParsed ? val : parseArrayValue(val, options, currentArrayLength);
-      for (var i = chain.length - 1; i >= 0; --i) {
+      for (var i = chain2.length - 1; i >= 0; --i) {
         var obj;
-        var root = chain[i];
+        var root = chain2[i];
         if (root === "[]" && options.parseArrays) {
           if (utils.isOverflow(leaf)) {
             obj = leaf;
@@ -43014,9 +43077,24 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 for (const k of ["DEMO_MODE", "PUBLIC_DEMO", "SEED_DEMO_DATA", "SEED_DEMO_BULK", "ALLOW_FILE_DB", "TRUST_PROXY"]) process.env[k] ||= "true";
+var seed = process.env.DATABASE_URL || (process.env.VERCEL_PROJECT_ID || "") + (process.env.VERCEL_ORG_ID || "") + (process.env.VERCEL_GIT_REPO_ID || "");
+var derive = (label) => seed ? crypto.createHash("sha256").update(`genz-demo:${label}:${seed}`).digest() : crypto.randomBytes(32);
 if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) {
-  const seed = (process.env.VERCEL_PROJECT_ID || "") + (process.env.VERCEL_ORG_ID || "") + (process.env.VERCEL_GIT_REPO_ID || "");
-  process.env.AUTH_SECRET = seed ? crypto.createHash("sha256").update("genz-demo:" + seed).digest("hex") : crypto.randomBytes(32).toString("hex");
+  process.env.AUTH_SECRET = process.env.DATABASE_URL ? derive("auth").toString("hex") : seed ? crypto.createHash("sha256").update("genz-demo:" + seed).digest("hex") : crypto.randomBytes(32).toString("hex");
+}
+if (process.env.DATABASE_URL) {
+  process.env.SHARED_DB ||= "true";
+  process.env.DATABASE_SCHEMA ||= "genz";
+  process.env.KYC_VAULT_KEY ||= derive("kyc-vault").toString("hex");
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    try {
+      const ec = crypto.createECDH("prime256v1");
+      ec.setPrivateKey(derive("vapid"));
+      process.env.VAPID_PUBLIC_KEY = ec.getPublicKey("base64url");
+      process.env.VAPID_PRIVATE_KEY = ec.getPrivateKey("base64url");
+    } catch {
+    }
+  }
 }
 process.env.DIST_DIR ||= path.resolve(process.cwd(), "dist");
 var work = "/tmp/genz";
@@ -43028,12 +43106,30 @@ init_pgstore();
 var PRELOADED = { state: null, usingPg: false };
 var url = process.env.DATABASE_URL;
 if (url) {
-  const store = new PgStore(url);
-  await store.connect();
+  const shared = process.env.SHARED_DB === "true";
+  const candidates = [url];
+  if (/aws-0-[a-z0-9-]+\.pooler\.supabase\.com/.test(url)) candidates.push(url.replace("aws-0-", "aws-1-"));
+  else if (/aws-1-[a-z0-9-]+\.pooler\.supabase\.com/.test(url)) candidates.push(url.replace("aws-1-", "aws-0-"));
+  let store = null;
+  let lastErr;
+  for (const c of candidates) {
+    const s = new PgStore(c, { shared });
+    try {
+      await s.connect();
+      store = s;
+      break;
+    } catch (e) {
+      lastErr = e;
+      await s.close().catch(() => {
+      });
+      if (!/tenant or user not found/i.test(String(e?.message))) break;
+    }
+  }
+  if (!store) throw lastErr;
   PRELOADED.state = await store.load();
   PRELOADED.usingPg = true;
   setPgStore(store);
-  console.log(`[DB] PostgreSQL connected (${PRELOADED.state ? "existing data loaded" : "empty database \u2014 first boot"})`);
+  console.log(`[DB] PostgreSQL connected${shared ? " (shared mode)" : ""} (${PRELOADED.state ? "existing data loaded" : "empty database \u2014 first boot"})`);
 }
 
 // server.ts
@@ -62542,7 +62638,7 @@ function visit(schema, fnOrHandlers) {
     return h ? h(node2, rewritten) : node2;
   };
   const cache = /* @__PURE__ */ new Map();
-  function run(s) {
+  function run2(s) {
     const cached3 = cache.get(s);
     if (cached3 === RESOLVING) {
       return new $ZodLazy({
@@ -62568,21 +62664,21 @@ function visit(schema, fnOrHandlers) {
         let changed = false;
         const newShape = {};
         for (const k of keys) {
-          const mapped = run(oldShape[k]);
+          const mapped = run2(oldShape[k]);
           if (mapped !== oldShape[k])
             changed = true;
           newShape[k] = mapped;
         }
         let newCatchall = def.catchall;
         if (def.catchall) {
-          newCatchall = run(def.catchall);
+          newCatchall = run2(def.catchall);
           if (newCatchall !== def.catchall)
             changed = true;
         }
         return changed ? clone(s, { ...def, shape: newShape, catchall: newCatchall }) : s;
       }
       case "array": {
-        const mapped = run(def.element);
+        const mapped = run2(def.element);
         return mapped === def.element ? s : clone(s, { ...def, element: mapped });
       }
       case "tuple": {
@@ -62590,14 +62686,14 @@ function visit(schema, fnOrHandlers) {
         let changed = false;
         const newItems = [];
         for (const item of oldItems) {
-          const mapped = run(item);
+          const mapped = run2(item);
           if (mapped !== item)
             changed = true;
           newItems.push(mapped);
         }
         let newRest = def.rest;
         if (def.rest) {
-          newRest = run(def.rest);
+          newRest = run2(def.rest);
           if (newRest !== def.rest)
             changed = true;
         }
@@ -62605,12 +62701,12 @@ function visit(schema, fnOrHandlers) {
       }
       case "record":
       case "map": {
-        const newKey = run(def.keyType);
-        const newVal = run(def.valueType);
+        const newKey = run2(def.keyType);
+        const newVal = run2(def.valueType);
         return newKey === def.keyType && newVal === def.valueType ? s : clone(s, { ...def, keyType: newKey, valueType: newVal });
       }
       case "set": {
-        const newVal = run(def.valueType);
+        const newVal = run2(def.valueType);
         return newVal === def.valueType ? s : clone(s, { ...def, valueType: newVal });
       }
       case "union": {
@@ -62618,7 +62714,7 @@ function visit(schema, fnOrHandlers) {
         let changed = false;
         const newOptions = [];
         for (const opt of oldOptions) {
-          const mapped = run(opt);
+          const mapped = run2(opt);
           if (mapped !== opt)
             changed = true;
           newOptions.push(mapped);
@@ -62626,8 +62722,8 @@ function visit(schema, fnOrHandlers) {
         return changed ? clone(s, { ...def, options: newOptions }) : s;
       }
       case "intersection": {
-        const newLeft = run(def.left);
-        const newRight = run(def.right);
+        const newLeft = run2(def.left);
+        const newRight = run2(def.right);
         return newLeft === def.left && newRight === def.right ? s : clone(s, { ...def, left: newLeft, right: newRight });
       }
       case "optional":
@@ -62639,23 +62735,23 @@ function visit(schema, fnOrHandlers) {
       case "nonoptional":
       case "promise":
       case "success": {
-        const newInner = run(def.innerType);
+        const newInner = run2(def.innerType);
         return newInner === def.innerType ? s : clone(s, { ...def, innerType: newInner });
       }
       case "pipe": {
-        const newIn = run(def.in);
-        const newOut = run(def.out);
+        const newIn = run2(def.in);
+        const newOut = run2(def.out);
         return newIn === def.in && newOut === def.out ? s : clone(s, { ...def, in: newIn, out: newOut });
       }
       case "function": {
-        const newInput = run(def.input);
-        const newOutput = run(def.output);
+        const newInput = run2(def.input);
+        const newOutput = run2(def.output);
         return newInput === def.input && newOutput === def.output ? s : clone(s, { ...def, input: newInput, output: newOutput });
       }
       case "lazy": {
         const original = def.getter;
         const { _cachedInner, ...rest } = def;
-        return clone(s, { ...rest, getter: () => run(original()) });
+        return clone(s, { ...rest, getter: () => run2(original()) });
       }
       // A leaf by choice: `parts` are regex fragments, not data positions.
       case "template_literal":
@@ -62686,7 +62782,7 @@ function visit(schema, fnOrHandlers) {
       }
     }
   }
-  return run(schema);
+  return run2(schema);
 }
 
 // node_modules/zod/v4/classic/deep-partial.js
@@ -64562,8 +64658,8 @@ function digits(s) {
 // server/demoBulk.ts
 var DAY = 864e5;
 var MARK = "USR-BRK-005";
-function rng(seed) {
-  let a = seed >>> 0;
+function rng(seed2) {
+  let a = seed2 >>> 0;
   return () => {
     a = a + 1831565813 >>> 0;
     let t = a;
@@ -65305,16 +65401,16 @@ var DB_FILE = path3.resolve(process.cwd(), "data", "database.json");
 var SEED_DEMO = (process.env.SEED_DEMO_DATA ?? "false").toLowerCase() === "true";
 var SEED_DEMO_BULK = (process.env.SEED_DEMO_BULK ?? "false").toLowerCase() === "true";
 function productionSeed() {
-  const seed = getInitialSeedData();
-  const admin = { ...seed.users.find((u) => u.role === "SUPERADMIN") };
+  const seed2 = getInitialSeedData();
+  const admin = { ...seed2.users.find((u) => u.role === "SUPERADMIN") };
   admin.name = process.env.SEED_ADMIN_NAME || "Platform Administrator";
   admin.email = (process.env.SEED_ADMIN_EMAIL || "admin@example.com").toLowerCase();
   if (process.env.SEED_ADMIN_PHONE) admin.phone = process.env.SEED_ADMIN_PHONE;
   admin.companyName = process.env.SEED_ADMIN_COMPANY || process.env.COMPANY_NAME || "GENZ BUILDCON";
   admin.city = process.env.SEED_ADMIN_CITY || "";
   admin.verificationNotes = "Initial platform administrator";
-  const empty = { ...seed };
-  for (const [k, v] of Object.entries(seed)) if (Array.isArray(v)) empty[k] = [];
+  const empty = { ...seed2 };
+  for (const [k, v] of Object.entries(seed2)) if (Array.isArray(v)) empty[k] = [];
   empty.users = [admin];
   return empty;
 }
@@ -66624,7 +66720,7 @@ function seedCrmDemo(state) {
     updatedAt: iso(-1)
   }];
 }
-function migrateState(parsed, seed) {
+function migrateState(parsed, seed2) {
   parsed.crmLeads ||= [];
   parsed.crmBookings ||= [];
   for (const r of parsed.requirements || []) if (r.id === "REQ-RAI-201" && !r.buyerId && parsed.users.some((u) => u.id === "USR-BUYER-001" && u.role === "BUYER_TENANT")) r.buyerId = "USR-BUYER-001";
@@ -66992,44 +67088,44 @@ var Database = class {
       if (fs3.existsSync(DB_FILE)) {
         const data = fs3.readFileSync(DB_FILE, "utf-8");
         const parsed = JSON.parse(data);
-        const seed2 = SEED_DEMO ? getInitialSeedData() : productionSeed();
+        const seed3 = SEED_DEMO ? getInitialSeedData() : productionSeed();
         if (!parsed.builderProjects || parsed.builderProjects.length === 0) {
-          parsed.builderProjects = seed2.builderProjects;
+          parsed.builderProjects = seed3.builderProjects;
         }
         if (!parsed.associateMandates || parsed.associateMandates.length === 0) {
-          parsed.associateMandates = seed2.associateMandates;
+          parsed.associateMandates = seed3.associateMandates;
         }
         if (!parsed.dealTasks || parsed.dealTasks.length === 0) {
-          parsed.dealTasks = seed2.dealTasks;
+          parsed.dealTasks = seed3.dealTasks;
         }
         if (!parsed.commissionAgreements || parsed.commissionAgreements.length === 0) {
-          parsed.commissionAgreements = seed2.commissionAgreements;
+          parsed.commissionAgreements = seed3.commissionAgreements;
         }
         if (!parsed.dueDiligenceItems || parsed.dueDiligenceItems.length === 0) {
-          parsed.dueDiligenceItems = seed2.dueDiligenceItems;
+          parsed.dueDiligenceItems = seed3.dueDiligenceItems;
         }
         if (!parsed.dueDiligenceIssues || parsed.dueDiligenceIssues.length === 0) {
-          parsed.dueDiligenceIssues = seed2.dueDiligenceIssues;
+          parsed.dueDiligenceIssues = seed3.dueDiligenceIssues;
         }
         if (!parsed.readinessReports) {
-          parsed.readinessReports = seed2.readinessReports;
+          parsed.readinessReports = seed3.readinessReports;
         }
         if (!parsed.propertyMediaAssets || parsed.propertyMediaAssets.length === 0) {
-          parsed.propertyMediaAssets = seed2.propertyMediaAssets;
+          parsed.propertyMediaAssets = seed3.propertyMediaAssets;
         }
         if (!parsed.mediaShareGrants || parsed.mediaShareGrants.length === 0) {
-          parsed.mediaShareGrants = seed2.mediaShareGrants;
+          parsed.mediaShareGrants = seed3.mediaShareGrants;
         }
         if (!parsed.dealMessages || parsed.dealMessages.length === 0) {
-          parsed.dealMessages = seed2.dealMessages;
+          parsed.dealMessages = seed3.dealMessages;
         }
-        migrateState(parsed, seed2);
+        migrateState(parsed, seed3);
         if (!parsed.users.some((u) => u.id === "USR-BUILDER-001")) {
-          const builderUser = seed2.users.find((u) => u.id === "USR-BUILDER-001");
+          const builderUser = seed3.users.find((u) => u.id === "USR-BUILDER-001");
           if (builderUser) parsed.users.push(builderUser);
         }
         if (!parsed.users.some((u) => u.id === "USR-LEGAL-001")) {
-          const legalUser = seed2.users.find((u) => u.id === "USR-LEGAL-001");
+          const legalUser = seed3.users.find((u) => u.id === "USR-LEGAL-001");
           if (legalUser) parsed.users.push(legalUser);
         }
         this.saveStateDirect(parsed);
@@ -67038,10 +67134,10 @@ var Database = class {
     } catch (err) {
       console.error("[DB] Failed to parse existing db file, initializing seed:", err);
     }
-    const seed = SEED_DEMO ? getInitialSeedData() : productionSeed();
-    migrateState(seed, seed);
-    this.saveStateDirect(seed);
-    return seed;
+    const seed2 = SEED_DEMO ? getInitialSeedData() : productionSeed();
+    migrateState(seed2, seed2);
+    this.saveStateDirect(seed2);
+    return seed2;
   }
   /** Atomic write (tmp file + rename) so a crash mid-write can never leave a truncated database.json. */
   saveStateDirect(state) {
@@ -67074,6 +67170,13 @@ var Database = class {
     return slow;
   }
   bump() {
+    this.version++;
+  }
+  /** v39 shared mode: another instance changed the database — take its copy (server/sharedSync.ts). */
+  replaceState(next2) {
+    migrateState(next2, SEED_DEMO ? getInitialSeedData() : productionSeed());
+    this.state = next2;
+    this.idIdx.clear();
     this.version++;
   }
   save() {
@@ -91196,10 +91299,76 @@ async function startServer() {
 var ready = startServer();
 var server_default = app;
 
+// server/sharedSync.ts
+init_pgstore();
+var sharedMode = () => !!pgStore?.shared;
+var chain = Promise.resolve();
+var MAX_MS = 6e4;
+async function refresh2() {
+  const s = pgStore;
+  const rev = await s.revNow();
+  if (rev === s.rev) return;
+  const next2 = await s.load();
+  if (next2) db.replaceState(next2);
+  s.rev = rev;
+}
+async function persist() {
+  const s = pgStore;
+  if (s.isDirty) await s.commitShared(db.getState());
+}
+function handleShared(req, res, app2) {
+  const job = chain.then(() => new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        clearTimeout(t);
+        resolve();
+      }
+    };
+    const t = setTimeout(finish, MAX_MS);
+    res.on("finish", finish);
+    res.on("close", finish);
+    (async () => {
+      try {
+        await refresh2();
+      } catch (e) {
+        console.error("[SHARED] reload failed:", e?.message || e);
+      }
+      const end = res.end.bind(res);
+      let held = false;
+      res.end = (...args) => {
+        if (held) return res;
+        held = true;
+        persist().catch((e) => console.error("[SHARED] save failed:", e?.message || e)).finally(() => {
+          end(...args);
+        });
+        return res;
+      };
+      app2(req, res);
+    })().catch((e) => {
+      console.error("[SHARED] request failed:", e);
+      try {
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.end('{"error":"Internal server error"}');
+        }
+      } catch {
+      }
+      finish();
+    });
+  }));
+  chain = job.catch(() => {
+  });
+  return job;
+}
+
 // api/_entry.ts
+var run = server_default;
 async function handler(req, res) {
   await ready;
-  server_default(req, res);
+  if (sharedMode()) return handleShared(req, res, run);
+  run(req, res);
 }
 export {
   handler as default

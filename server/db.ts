@@ -3035,6 +3035,12 @@ class Database {
     return slow;
   }
   public bump() { this.version++; }
+  /** v39 shared mode: another instance changed the database — take its copy (server/sharedSync.ts). */
+  public replaceState(next: DatabaseState) {
+    // same normalising as a cold start: empty collections have no rows in Postgres, so they come back missing
+    migrateState(next, SEED_DEMO ? getInitialSeedData() : productionSeed());
+    this.state = next; this.idIdx.clear(); this.version++;
+  }
 
   private lastWriteMs = 0;
   private warnedBig = false;
