@@ -1380,7 +1380,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports, module) {
     "use strict";
-    var crypto29 = require_utils2();
+    var crypto30 = require_utils2();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -1398,7 +1398,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto29.randomBytes(18).toString("base64");
+      const clientNonce = crypto30.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -1440,20 +1440,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto29.hashByName(hashName, peerCert);
+        const certHash = await crypto30.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto29.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto29.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto29.sha256(clientKey);
-      const clientSignature = await crypto29.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto30.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto30.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto30.sha256(clientKey);
+      const clientSignature = await crypto30.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto29.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto29.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto30.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto30.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -3692,7 +3692,7 @@ var require_client = __commonJS({
     var Query2 = require_query();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto29 = require_utils2();
+    var crypto30 = require_utils2();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -3947,7 +3947,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto29.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto30.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e) {
             this.emit("error", e);
@@ -24395,14 +24395,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto29 = __require("crypto");
+    var crypto30 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash3 = crypto29.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash3 = crypto30.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash3 + '"';
     }
@@ -27311,11 +27311,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto29 = __require("crypto");
+    var crypto30 = __require("crypto");
     exports.sign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret2) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto29.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto30.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -27324,7 +27324,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac3) == sha1(val) ? str2 : false;
     };
     function sha1(str2) {
-      return crypto29.createHash("sha1").update(str2).digest("hex");
+      return crypto30.createHash("sha1").update(str2).digest("hex");
     }
   }
 });
@@ -43012,7 +43012,12 @@ var init_emptyVite = __esm({
 // server/vercelBoot.ts
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 for (const k of ["DEMO_MODE", "PUBLIC_DEMO", "SEED_DEMO_DATA", "ALLOW_FILE_DB", "TRUST_PROXY"]) process.env[k] ||= "true";
+if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) {
+  const seed = (process.env.VERCEL_PROJECT_ID || "") + (process.env.VERCEL_ORG_ID || "") + (process.env.VERCEL_GIT_REPO_ID || "");
+  process.env.AUTH_SECRET = seed ? crypto.createHash("sha256").update("genz-demo:" + seed).digest("hex") : crypto.randomBytes(32).toString("hex");
+}
 process.env.DIST_DIR ||= path.resolve(process.cwd(), "dist");
 var work = "/tmp/genz";
 fs.mkdirSync(path.join(work, "data"), { recursive: true });
@@ -62754,7 +62759,7 @@ function date4(params) {
 // server/db.ts
 import fs3 from "node:fs";
 import path3 from "node:path";
-import crypto3 from "node:crypto";
+import crypto4 from "node:crypto";
 
 // server/dealTemplates.ts
 var TASK_DEFINITIONS = [
@@ -63714,8 +63719,8 @@ var STATUS_FLOW = {
 };
 
 // server/connectorSeed.ts
-import crypto from "node:crypto";
-var sha = (v) => crypto.createHash("sha256").update(v).digest("hex");
+import crypto2 from "node:crypto";
+var sha = (v) => crypto2.createHash("sha256").update(v).digest("hex");
 var PARTNERS = [
   { id: "USR-CON-001", name: "Ramesh Gupta", shop: "Gupta Paan Corner", type: "PAAN_SHOP", city: "Raipur", state: "Chhattisgarh", locality: "Shankar Nagar", phone: "+91 90000 20001", upi: "ramesh.gupta@okaxis" },
   { id: "USR-CON-002", name: "Sunita Yadav", shop: "Sunita Chai Adda", type: "TEA_STALL", city: "Bhopal", state: "Madhya Pradesh", locality: "MP Nagar", phone: "+91 90000 20002", upi: "sunita.chai@ybl" },
@@ -63840,7 +63845,7 @@ function buildConnectorDemo(existing = [], now = /* @__PURE__ */ new Date()) {
 init_pgstore();
 
 // server/auth.ts
-import crypto2 from "node:crypto";
+import crypto3 from "node:crypto";
 import fs2 from "node:fs";
 import path2 from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -64350,8 +64355,8 @@ var DEMO_MODE = (process.env.DEMO_MODE ?? "false").toLowerCase() === "true";
 var DEMO_PASSWORD = process.env.DEMO_PASSWORD || "Genz@2026";
 var SCRYPT_N = 16384;
 function hashPassword(password) {
-  const salt = crypto2.randomBytes(16);
-  const hash3 = crypto2.scryptSync(password, salt, 64, { N: SCRYPT_N, r: 8, p: 1 });
+  const salt = crypto3.randomBytes(16);
+  const hash3 = crypto3.scryptSync(password, salt, 64, { N: SCRYPT_N, r: 8, p: 1 });
   return `scrypt$${SCRYPT_N}$${salt.toString("base64")}$${hash3.toString("base64")}`;
 }
 function verifyPassword(password, stored) {
@@ -64360,18 +64365,18 @@ function verifyPassword(password, stored) {
   if (scheme !== "scrypt" || !saltB64 || !hashB64) return false;
   try {
     const expected = Buffer.from(hashB64, "base64");
-    const actual = crypto2.scryptSync(password, Buffer.from(saltB64, "base64"), expected.length, {
+    const actual = crypto3.scryptSync(password, Buffer.from(saltB64, "base64"), expected.length, {
       N: Number(n2),
       r: 8,
       p: 1
     });
-    return crypto2.timingSafeEqual(actual, expected);
+    return crypto3.timingSafeEqual(actual, expected);
   } catch {
     return false;
   }
 }
 function unusablePasswordHash() {
-  return hashPassword(crypto2.randomBytes(24).toString("hex"));
+  return hashPassword(crypto3.randomBytes(24).toString("hex"));
 }
 function passwordPolicyError(pw) {
   if (typeof pw !== "string") return "Password is required";
@@ -64383,7 +64388,7 @@ function passwordPolicyError(pw) {
   return null;
 }
 function randomPassword() {
-  return `Gz${crypto2.randomBytes(6).toString("base64url")}${crypto2.randomInt(10, 99)}x`;
+  return `Gz${crypto3.randomBytes(6).toString("base64url")}${crypto3.randomInt(10, 99)}x`;
 }
 var SECRET = null;
 function secret() {
@@ -64400,7 +64405,7 @@ function secret() {
     }
   } catch {
   }
-  SECRET = crypto2.randomBytes(48);
+  SECRET = crypto3.randomBytes(48);
   try {
     fs2.mkdirSync(path2.dirname(file2), { recursive: true });
     fs2.writeFileSync(file2, SECRET.toString("hex"), { mode: 384 });
@@ -64422,17 +64427,17 @@ function signSession(uid3, sv, opts = {}) {
     ...opts.imp ? { imp: opts.imp } : {}
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = crypto2.createHmac("sha256", secret()).update(body).digest("base64url");
+  const sig = crypto3.createHmac("sha256", secret()).update(body).digest("base64url");
   return `${body}.${sig}`;
 }
 function verifySession(token) {
   if (!token || token.length > 2048) return null;
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
-  const expected = crypto2.createHmac("sha256", secret()).update(body).digest("base64url");
+  const expected = crypto3.createHmac("sha256", secret()).update(body).digest("base64url");
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto2.timingSafeEqual(a, b)) return null;
+  if (a.length !== b.length || !crypto3.timingSafeEqual(a, b)) return null;
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf-8"));
     if (!payload.uid || typeof payload.exp !== "number" || payload.exp < Date.now()) return null;
@@ -64532,13 +64537,13 @@ function rateLimit(name, limit, windowMs) {
 function safeEqual(a, b) {
   const ab = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
-  return ab.length === bb.length && crypto2.timingSafeEqual(ab, bb);
+  return ab.length === bb.length && crypto3.timingSafeEqual(ab, bb);
 }
 function secureCode(bytes = 9) {
-  return crypto2.randomBytes(bytes).toString("base64url").replace(/[-_]/g, "x").toUpperCase();
+  return crypto3.randomBytes(bytes).toString("base64url").replace(/[-_]/g, "x").toUpperCase();
 }
 function secureOtp() {
-  return String(crypto2.randomInt(1e5, 1e6));
+  return String(crypto3.randomInt(1e5, 1e6));
 }
 function isSafeUrl(url3) {
   if (typeof url3 !== "string" || url3.length === 0 || url3.length > 2048) return false;
@@ -64573,7 +64578,7 @@ function productionSeed() {
   return empty;
 }
 function sha256(data) {
-  return crypto3.createHash("sha256").update(data).digest("hex");
+  return crypto4.createHash("sha256").update(data).digest("hex");
 }
 function getInitialSeedData() {
   const now = (/* @__PURE__ */ new Date("2026-10-10T10:00:00.000Z")).toISOString();
@@ -66052,7 +66057,7 @@ function migrateState(parsed, seed) {
     delete m.otpChallenge;
   }
   for (const v2 of parsed.siteVisits || []) {
-    if (!v2.qrToken) v2.qrToken = crypto3.randomBytes(12).toString("base64url");
+    if (!v2.qrToken) v2.qrToken = crypto4.randomBytes(12).toString("base64url");
   }
   for (const d of parsed.dealRooms || []) {
     const confirmed = (parsed.ownerMandates || []).some((m) => m.propertyId === d.propertyId && m.isConfirmed);
@@ -66530,7 +66535,7 @@ function calculatePropertyMatch(property, requirement) {
 }
 
 // server/validation.ts
-import crypto4 from "node:crypto";
+import crypto5 from "node:crypto";
 var FIELD_NAMES = {
   exactAddressHidden: "Exact address",
   addressHidden: "Exact address",
@@ -66853,7 +66858,7 @@ function maskPhoneNumber(phone) {
 }
 function generateMandateHash(data) {
   const payload = `${data.propertyId}:${data.ownerId}:${data.approvedNetPrice}:${data.agreedCommissionPct ?? 0}:${data.remunerationBasis ?? "SURPLUS_ABOVE_NET"}:${data.fixedFeeAmount ?? 0}:${data.timestamp}`;
-  return crypto4.createHash("sha256").update(payload).digest("hex");
+  return crypto5.createHash("sha256").update(payload).digest("hex");
 }
 
 // server/notify.ts
@@ -72337,7 +72342,7 @@ var import_express16 = __toESM(require_express2(), 1);
 // server/propdocs.ts
 var import_express8 = __toESM(require_express2(), 1);
 var import_express9 = __toESM(require_express2(), 1);
-import crypto5 from "node:crypto";
+import crypto6 from "node:crypto";
 import fs4 from "node:fs";
 import path4 from "node:path";
 
@@ -72402,7 +72407,7 @@ function docAccess(st20, u, d, now = Date.now()) {
 }
 var log = (docId2, userId, action, ip, note4) => {
   const st20 = db.getState();
-  st20.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto5.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso5(), ip, note: note4 });
+  st20.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto6.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso5(), ip, note: note4 });
   if (st20.propertyDocLogs.length > LOG_CAP) st20.propertyDocLogs.splice(0, st20.propertyDocLogs.length - LOG_CAP);
 };
 var nameOf = (st20, id) => db.byId("users", id)?.name || "\u2014";
@@ -72542,7 +72547,7 @@ function createPropDocsRouter() {
     const mime = sniffMime(buf);
     if (!mime) return bad4(res, "Only PDF, JPEG, PNG or WebP files are accepted.", 415);
     if (usedBytes(st20, u.id) + buf.length > PROP_DOC_MAX_USER_BYTES) return bad4(res, "Your storage is full. Delete old papers first.", 413);
-    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto5.randomInt(1e3, 9999)}`;
+    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto6.randomInt(1e3, 9999)}`;
     try {
       fs4.mkdirSync(DIR(), { recursive: true });
       const tmp = fileOf(id) + ".tmp";
@@ -72564,7 +72569,7 @@ function createPropDocsRouter() {
       fileName: b.data.fileName.replace(/[\\/\0\r\n]+/g, "_"),
       mime,
       size: buf.length,
-      sha256: crypto5.createHash("sha256").update(buf).digest("hex"),
+      sha256: crypto6.createHash("sha256").update(buf).digest("hex"),
       visibility: b.data.visibility,
       shares: [],
       ddItemId,
@@ -72720,7 +72725,7 @@ function createPropDocsRouter() {
 // server/idreview.ts
 var import_express12 = __toESM(require_express2(), 1);
 var import_express13 = __toESM(require_express2(), 1);
-import crypto8 from "node:crypto";
+import crypto9 from "node:crypto";
 import fs6 from "node:fs";
 import path6 from "node:path";
 
@@ -72823,7 +72828,7 @@ var import_express11 = __toESM(require_express2(), 1);
 
 // server/twofactor.ts
 var import_express10 = __toESM(require_express2(), 1);
-import crypto6 from "crypto";
+import crypto7 from "crypto";
 var B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(buf) {
   let bits = 0, value = 0, out = "";
@@ -72841,7 +72846,7 @@ function base32Encode(buf) {
 function hotp(key, counter, digits2 = 6) {
   const c = Buffer.alloc(8);
   c.writeBigUInt64BE(BigInt(counter));
-  const h = crypto6.createHmac("sha1", key).update(c).digest();
+  const h = crypto7.createHmac("sha1", key).update(c).digest();
   const o = h[h.length - 1] & 15;
   const bin = (h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3];
   return String(bin % 10 ** digits2).padStart(digits2, "0");
@@ -72854,20 +72859,20 @@ function checkTotp(key, code, ms = Date.now()) {
   for (const s of [now, now - 1, now + 1]) if (safeEqual(hotp(key, s), c)) return s;
   return -1;
 }
-var encKey = () => crypto6.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
+var encKey = () => crypto7.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
 function seal(b) {
-  const iv = crypto6.randomBytes(12);
-  const c = crypto6.createCipheriv("aes-256-gcm", encKey(), iv);
+  const iv = crypto7.randomBytes(12);
+  const c = crypto7.createCipheriv("aes-256-gcm", encKey(), iv);
   const ct = Buffer.concat([c.update(b), c.final()]);
   return `t1.${iv.toString("base64url")}.${c.getAuthTag().toString("base64url")}.${ct.toString("base64url")}`;
 }
 function unseal(s) {
   const [, iv, tag, ct] = s.split(".");
-  const d = crypto6.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
+  const d = crypto7.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
   d.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]);
 }
-var recHash = (userId, code) => crypto6.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
+var recHash = (userId, code) => crypto7.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
 var rec = (userId) => db.getState().twoFactor.find((x) => x.userId === userId);
 var twoFactorOn = (userId) => !!rec(userId)?.enabledAt;
 var twoFactorRecommended = (u) => u.role === "SUPERADMIN" || u.role === "ADMIN";
@@ -72895,13 +72900,13 @@ function verifySecondFactor(userId, code) {
 }
 function makeTicket(u) {
   const body = Buffer.from(JSON.stringify({ uid: u.id, sv: u.sessionVersion || 1, exp: Date.now() + 5 * 6e4 })).toString("base64url");
-  const sig = crypto6.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const sig = crypto7.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   return `${body}.${sig}`;
 }
 function readTicket(t) {
   const [body, sig] = String(t || "").split(".");
   if (!body || !sig) return null;
-  const want = crypto6.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const want = crypto7.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   if (!safeEqual(want, sig)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString());
@@ -72924,7 +72929,7 @@ function createTwoFactorRouter() {
     const s = db.getState();
     const x = rec(u.id);
     if (x?.enabledAt) return res.status(409).json({ error: "Two-step sign-in is already on. Turn it off first to move it to a new phone." });
-    const key = crypto6.randomBytes(20);
+    const key = crypto7.randomBytes(20);
     const row = { id: u.id, userId: u.id, secretEnc: seal(key), pendingSince: (/* @__PURE__ */ new Date()).toISOString(), recovery: [] };
     s.twoFactor = s.twoFactor.filter((t) => t.userId !== u.id);
     s.twoFactor.push(row);
@@ -72939,7 +72944,7 @@ function createTwoFactorRouter() {
     if (!x || x.enabledAt) return res.status(409).json({ error: "Start the setup first." });
     const step = checkTotp(unseal(x.secretEnc), String(req.body?.code || ""));
     if (step < 0) return res.status(400).json({ error: "The code is not correct. Check the time on your phone and try the newest code.", code: "BAD_CODE" });
-    const codes = Array.from({ length: 10 }, () => crypto6.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
+    const codes = Array.from({ length: 10 }, () => crypto7.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
     x.recovery = codes.map((c) => recHash(u.id, c));
     x.enabledAt = (/* @__PURE__ */ new Date()).toISOString();
     x.pendingSince = void 0;
@@ -72964,14 +72969,14 @@ function createTwoFactorRouter() {
 }
 
 // server/vaultCrypto.ts
-import crypto7 from "node:crypto";
+import crypto8 from "node:crypto";
 import fs5 from "node:fs";
 import path5 from "node:path";
 var keyCache;
 var keyProblem = "";
 var vaultKeyProblem = () => keyProblem;
 var keyFile = () => process.env.KYC_VAULT_KEY_FILE ? path5.resolve(process.env.KYC_VAULT_KEY_FILE) : path5.resolve(process.cwd(), "data", ".kyc-vault.key");
-var keyId = (k) => crypto7.createHash("sha256").update(k).digest("hex").slice(0, 8);
+var keyId = (k) => crypto8.createHash("sha256").update(k).digest("hex").slice(0, 8);
 function parseKey(raw) {
   const t = raw.trim();
   if (/^[0-9a-fA-F]{64}$/.test(t)) return Buffer.from(t, "hex");
@@ -73005,7 +73010,7 @@ function vaultKey() {
       return keyCache = { key: k2, id: keyId(k2), mode: "file" };
     }
     fs5.mkdirSync(path5.dirname(f), { recursive: true });
-    const k = crypto7.randomBytes(32);
+    const k = crypto8.randomBytes(32);
     fs5.writeFileSync(f, k.toString("hex") + "\n", { mode: 384, flag: "wx" });
     return keyCache = { key: k, id: keyId(k), mode: "file" };
   } catch (e) {
@@ -73022,8 +73027,8 @@ var b64u = (b) => b.toString("base64url");
 function seal2(plain, aad) {
   const k = vaultKey();
   if (!k) throw new Error("VAULT_NO_KEY");
-  const iv = crypto7.randomBytes(12);
-  const c = crypto7.createCipheriv("aes-256-gcm", k.key, iv);
+  const iv = crypto8.randomBytes(12);
+  const c = crypto8.createCipheriv("aes-256-gcm", k.key, iv);
   c.setAAD(Buffer.from(aad));
   const ct = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return `k1.${k.id}.${b64u(iv)}.${b64u(c.getAuthTag())}.${b64u(ct)}`;
@@ -73035,7 +73040,7 @@ function unseal2(sealed, aad) {
   if (v !== "k1" || !kid || !iv || !tag || !ct) throw new Error("VAULT_BAD_DATA");
   if (kid !== k.id) throw new Error("VAULT_WRONG_KEY");
   try {
-    const d = crypto7.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
+    const d = crypto8.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
     d.setAAD(Buffer.from(aad));
     d.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
@@ -73340,7 +73345,7 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
   if (buf.length > ID_DOC_MAX_BYTES) return { error: `The file is larger than ${ID_DOC_MAX_BYTES / 1024 / 1024} MB. Send a smaller photo.`, status: 413 };
   const mime = sniffMime(buf);
   if (!mime) return { error: "Only a PDF, JPEG, PNG or WebP file is accepted.", status: 415 };
-  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto8.randomInt(1e3, 9999)}`;
+  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto9.randomInt(1e3, 9999)}`;
   try {
     fs6.mkdirSync(DIR2(), { recursive: true });
     const tmp = fileOf2(id) + ".tmp";
@@ -73361,7 +73366,7 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
     fileName: fileName.replace(/[\\/\0\r\n]+/g, "_").slice(0, 160),
     mime,
     size: buf.length,
-    sha256: crypto8.createHash("sha256").update(buf).digest("hex"),
+    sha256: crypto9.createHash("sha256").update(buf).digest("hex"),
     createdAt: nowIso7()
   };
   s.idDocs.push(doc);
@@ -73427,7 +73432,7 @@ function openIdTask(userId, source, opts = {}) {
     if (opts.autoVerified) t.autoVerified = true;
     t.updatedAt = at;
   } else {
-    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto8.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
+    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto9.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
     push(t, by, source, opts.note);
     s.idReviewTasks.push(t);
   }
@@ -73858,26 +73863,26 @@ function createIdReviewRouter() {
 
 // server/profilephoto.ts
 var import_express15 = __toESM(require_express2(), 1);
-import crypto10 from "crypto";
+import crypto11 from "crypto";
 import fs8 from "fs";
 import path8 from "path";
 
 // server/webpush.ts
 var import_express14 = __toESM(require_express2(), 1);
-import crypto9 from "crypto";
+import crypto10 from "crypto";
 import fs7 from "fs";
 import path7 from "path";
 var b64u2 = (b) => Buffer.from(b).toString("base64url");
 var unb64u = (s) => Buffer.from(String(s).replace(/=+$/, ""), "base64url");
 var nowIso8 = () => (/* @__PURE__ */ new Date()).toISOString();
 function hkdf(salt, ikm, info, len) {
-  const prk = crypto9.createHmac("sha256", salt).update(ikm).digest();
+  const prk = crypto10.createHmac("sha256", salt).update(ikm).digest();
   const out = [];
   let prev = Buffer.alloc(0);
   let n2 = 0;
   while (Buffer.concat(out).length < len) {
     n2++;
-    prev = crypto9.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
+    prev = crypto10.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
     out.push(prev);
   }
   return Buffer.concat(out).subarray(0, len);
@@ -73887,20 +73892,20 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   const authSecret = unb64u(authSecretB64);
   if (uaPublic.length !== 65 || uaPublic[0] !== 4) throw new Error("PUSH_BAD_KEY");
   if (authSecret.length < 16) throw new Error("PUSH_BAD_AUTH");
-  const ecdh = crypto9.createECDH("prime256v1");
+  const ecdh = crypto10.createECDH("prime256v1");
   if (opts.asPrivate) ecdh.setPrivateKey(opts.asPrivate);
   else ecdh.generateKeys();
   const asPublic = ecdh.getPublicKey();
   const shared = ecdh.computeSecret(uaPublic);
   const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0"), uaPublic, asPublic]);
   const ikm = hkdf(authSecret, shared, keyInfo, 32);
-  const salt = opts.salt || crypto9.randomBytes(16);
+  const salt = opts.salt || crypto10.randomBytes(16);
   const cek = hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
   const nonce = hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12);
   const rs = opts.rs || 4096;
   const plain = Buffer.concat([payload, Buffer.from([2])]);
   if (plain.length + 16 > rs) throw new Error("PUSH_TOO_BIG");
-  const cipher = crypto9.createCipheriv("aes-128-gcm", cek, nonce);
+  const cipher = crypto10.createCipheriv("aes-128-gcm", cek, nonce);
   const ct = Buffer.concat([cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
   const header = Buffer.alloc(21);
   salt.copy(header, 0);
@@ -73909,19 +73914,19 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   return Buffer.concat([header, asPublic, ct]);
 }
 function generateVapidKeys() {
-  const e = crypto9.createECDH("prime256v1");
+  const e = crypto10.createECDH("prime256v1");
   e.generateKeys();
   return { publicKey: b64u2(e.getPublicKey()), privateKey: b64u2(e.getPrivateKey()) };
 }
 function privateKeyObject(k) {
   const pub = unb64u(k.publicKey);
-  return crypto9.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
+  return crypto10.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
 }
 function vapidAuth(endpoint, k, subject2, expSec = Math.floor(Date.now() / 1e3) + 12 * 3600) {
   const aud = new URL(endpoint).origin;
   const head = b64u2(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
   const body = b64u2(Buffer.from(JSON.stringify({ aud, exp: expSec, sub: subject2 })));
-  const sig = crypto9.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
+  const sig = crypto10.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
   return `vapid t=${head}.${body}.${b64u2(sig)}, k=${k.publicKey}`;
 }
 var cached2 = null;
@@ -74041,7 +74046,7 @@ function createPushRouter() {
     }
     const s = db.getState();
     const u = me21();
-    const id = crypto9.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
+    const id = crypto10.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
     const mine2 = s.pushSubs.filter((x) => x.userId === u.id);
     if (mine2.length >= 6) {
@@ -74138,7 +74143,7 @@ function createProfilePhotoRouter() {
     const s = st4();
     for (const old of s.profilePhotos.filter((p) => p.userId === u.id && p.status !== "APPROVED")) erase(old.id);
     s.profilePhotos = s.profilePhotos.filter((p) => p.userId !== u.id || p.status === "APPROVED");
-    const id = `PHO-${crypto10.randomBytes(5).toString("hex")}`;
+    const id = `PHO-${crypto11.randomBytes(5).toString("hex")}`;
     try {
       fs8.mkdirSync(DIR3(), { recursive: true });
       const tmp = fileOf3(id) + ".tmp";
@@ -74147,7 +74152,7 @@ function createProfilePhotoRouter() {
     } catch {
       return bad7(res, "The photo could not be saved. Please try again.", 500);
     }
-    s.profilePhotos.push({ id, userId: u.id, status: "PENDING", mime, size: buf.length, sha256: crypto10.createHash("sha256").update(buf).digest("hex"), consentAt: nowIso9(), createdAt: nowIso9() });
+    s.profilePhotos.push({ id, userId: u.id, status: "PENDING", mime, size: buf.length, sha256: crypto11.createHash("sha256").update(buf).digest("hex"), consentAt: nowIso9(), createdAt: nowIso9() });
     db.save();
     db.appendAuditEvent(u.id, u.role, "VERIFICATION", u.id, "PROFILE_PHOTO_UPLOADED", `${u.name} uploaded a profile photo ${id} for GENZ to check`);
     for (const a of s.users.filter((x) => x.role === "ADMIN" || x.role === "SUPERADMIN").slice(0, 20)) void pushTo(a.id, { kind: "deals", title: "A broker photo needs checking", body: `${u.name} \u2014 open Disputes \u2192 Photo check.`, url: "/?tab=disputes" });
@@ -74661,7 +74666,7 @@ function createTeamRouter() {
 
 // server/inventory2.ts
 var import_express18 = __toESM(require_express2(), 1);
-import crypto11 from "node:crypto";
+import crypto12 from "node:crypto";
 var nowIso11 = () => (/* @__PURE__ */ new Date()).toISOString();
 var uid = (p) => `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 var postSchema = external_exports.object({
@@ -74790,7 +74795,7 @@ function createInventoryDeskRouter() {
     if (st20.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return bad21(res, "Too many links \u2014 revoke old ones first", 409);
     const flags = capShareFlags({ showPrice: d.showPrice, showFeatures: d.showFeatures }, rs.canPrice, rs.canFeatures);
     const link = {
-      token: crypto11.randomBytes(8).toString("base64url"),
+      token: crypto12.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: "UNITS",
       refId: d.projectId,
@@ -75125,11 +75130,11 @@ function badgesFor(verifiedInvitees) {
 
 // server/growth.ts
 var import_express23 = __toESM(require_express2(), 1);
-import crypto15 from "node:crypto";
+import crypto16 from "node:crypto";
 
 // server/reputation.ts
 var import_express21 = __toESM(require_express2(), 1);
-import crypto12 from "crypto";
+import crypto13 from "crypto";
 
 // server/community.ts
 var import_express20 = __toESM(require_express2(), 1);
@@ -75614,7 +75619,7 @@ function createReputationRouter() {
     const toId = String(req.body?.toId || "");
     const p = pendingFor(u).find((x) => x.refId === refId && x.toId === toId);
     if (!p) return res.status(404).json({ error: "Nothing to confirm here" });
-    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto12.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso14() };
+    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto13.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso14() };
     s.peerConfirms.push(c);
     awardPoints(toId, "PEER_CONFIRM", c.id, 10);
     db.save();
@@ -75693,7 +75698,7 @@ function shareCounts(s, uid3) {
 
 // server/share.ts
 var import_express22 = __toESM(require_express2(), 1);
-import crypto13 from "node:crypto";
+import crypto14 from "node:crypto";
 
 // server/publicFooter.ts
 var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -75820,7 +75825,7 @@ function createShareRouter() {
     const st20 = db.getState();
     if (st20.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return res.status(409).json({ error: "Too many links \u2014 revoke old ones first" });
     const link = {
-      token: crypto13.randomBytes(8).toString("base64url"),
+      token: crypto14.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: p.data.kind,
       refId: p.data.refId,
@@ -75964,7 +75969,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     }
     const ua = String(req.headers["user-agent"] || "");
     if (!BOT.test(ua)) {
-      const key = crypto13.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
+      const key = crypto14.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
       const prev = seen.get(key) || 0;
       if (Date.now() - prev > 2e4) {
         l.views += 1;
@@ -75992,7 +75997,7 @@ ${image ? `<div class="imgs"><img src="${esc3(image)}" alt="" loading="lazy"></d
 }
 
 // server/spam.ts
-import crypto14 from "node:crypto";
+import crypto15 from "node:crypto";
 
 // src/shared/spamRules.ts
 var NEW_ACCOUNT_DAYS = 7;
@@ -76007,9 +76012,9 @@ function filterMessage(u, text, now = Date.now(), demo = false) {
 }
 
 // server/spam.ts
-var sign = (body) => crypto14.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
+var sign = (body) => crypto15.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
 function makeChallenge(now = Date.now()) {
-  const a = crypto14.randomInt(3, 15), b = crypto14.randomInt(2, 10);
+  const a = crypto15.randomInt(3, 15), b = crypto15.randomInt(2, 10);
   const body = Buffer.from(JSON.stringify({ a, b, t: now })).toString("base64url");
   return { question: `${a} + ${b}`, token: `${body}.${sign(body)}` };
 }
@@ -76022,7 +76027,7 @@ function checkChallenge(token, answer, now = Date.now()) {
   const [body, sig] = String(token || "").split(".");
   if (!body || !sig) return "BAD";
   const good = sign(body);
-  if (sig.length !== good.length || !crypto14.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
+  if (sig.length !== good.length || !crypto15.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
   try {
     const { a, b, t } = JSON.parse(Buffer.from(body, "base64url").toString());
     if (now - t > 10 * 6e4) return "EXPIRED";
@@ -76038,7 +76043,7 @@ function checkChallenge(token, answer, now = Date.now()) {
 var isNewAccount2 = (u, now = Date.now()) => isNewAccount(u, now, DEMO_MODE);
 var filterMessage2 = (u, text) => filterMessage(u, text, Date.now(), DEMO_MODE);
 function isFlood(userId, text) {
-  const key = `flood:${userId}:${crypto14.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
+  const key = `flood:${userId}:${crypto15.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
   return hit(key, 2, 10 * 6e4) > 0;
 }
 function newAccountCap(kind, limit) {
@@ -76093,7 +76098,7 @@ function ensureReferralCode(u) {
   const taken = new Set(db.getState().users.map((x) => x.referralCode).filter(Boolean));
   let code = "";
   do {
-    code = `GZ-${letters}-${crypto15.randomInt(1e3, 1e4)}`;
+    code = `GZ-${letters}-${crypto16.randomInt(1e3, 1e4)}`;
   } while (taken.has(code));
   u.referralCode = code;
   db.save();
@@ -77087,7 +77092,7 @@ function createDailyRouter() {
 // server/pdocs.ts
 var import_express25 = __toESM(require_express2(), 1);
 var import_express26 = __toESM(require_express2(), 1);
-import crypto16 from "node:crypto";
+import crypto17 from "node:crypto";
 import fs9 from "node:fs";
 import path9 from "node:path";
 var me11 = () => ctx().user;
@@ -77118,7 +77123,7 @@ function accessState(doc, userId, now = Date.now(), ignoreLimit = false) {
 }
 var log2 = (docId2, userId, page, allowed, ip) => {
   const st20 = db.getState();
-  st20.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto16.randomInt(1e3, 9999)}`, docId: docId2, userId, page, at: nowIso17(), ip, allowed });
+  st20.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto17.randomInt(1e3, 9999)}`, docId: docId2, userId, page, at: nowIso17(), ip, allowed });
   if (st20.docAccessLogs.length > 3e3) st20.docAccessLogs.splice(0, st20.docAccessLogs.length - 3e3);
 };
 var summary2 = (d, u) => {
@@ -77172,7 +77177,7 @@ function createPdocsRouter() {
       bufs.push(buf);
       mimes.push(mime);
     }
-    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto16.randomInt(100, 999)}`;
+    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto17.randomInt(100, 999)}`;
     fs9.mkdirSync(DIR4(), { recursive: true });
     bufs.forEach((buf, i) => fs9.writeFileSync(pageFile(id, i), buf));
     const doc = { id, ownerId: u.id, title: b.data.title, propertyId: b.data.propertyId, pages: bufs.length, mime: mimes, viewers: [], createdAt: nowIso17() };
@@ -77255,7 +77260,7 @@ function createPdocsRouter() {
     const exp = Date.now() + 5 * 6e4;
     const list = [];
     for (let i = 0; i < d.pages; i++) {
-      const t = crypto16.randomBytes(18).toString("base64url");
+      const t = crypto17.randomBytes(18).toString("base64url");
       tokens.set(t, { docId: d.id, userId: u.id, page: i, exp });
       list.push(t);
     }
@@ -78143,7 +78148,7 @@ function createPcontrolRouter() {
 
 // server/timeline.ts
 var import_express28 = __toESM(require_express2(), 1);
-import crypto17 from "node:crypto";
+import crypto18 from "node:crypto";
 var nowIso19 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st7 = () => db.getState();
 var bad8 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
@@ -78211,7 +78216,7 @@ function createTimelineRouter() {
     }
     if (p?.soldAt && offers.some((o) => o.id === p.soldOfferId)) ev2.push({ at: p.soldAt, kind: "SOLD", title: `Property marked ${p.listingStatus} through this deal` });
     ev2.sort((a, b) => a.at.localeCompare(b.at));
-    const fingerprint = crypto17.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
+    const fingerprint = crypto18.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
     const intro = profile(d.introducingBrokerId);
     const clos = profile(d.closingBrokerId);
     res.json({
@@ -78251,7 +78256,7 @@ function createTimelineRouter() {
     if (m.plannedAt && Number.isNaN(Date.parse(m.plannedAt))) return bad8(res, "Invalid planned date");
     if (hit(`ms:${u.id}`, 60, 36e5)) return bad8(res, "Too many milestones \u2014 slow down", 429);
     const ts = nowIso19();
-    const x = { id: `MS-${Date.now().toString(36)}${crypto17.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
+    const x = { id: `MS-${Date.now().toString(36)}${crypto18.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
     st7().dealMilestones.push(x);
     db.save();
     db.appendAuditEvent(u.id, u.role, "DEAL", d.id, "MILESTONE_ADDED", `${u.name} added ${m.kind} milestone "${m.title}"`);
@@ -78330,7 +78335,7 @@ function createTimelineRouter() {
     if (text.length < 2 || text.length > 500) return bad8(res, "Note must be 2\u2013500 characters");
     if (remind && Number.isNaN(Date.parse(remind))) return bad8(res, "Invalid reminder date");
     if (st7().brokerNotes.filter((n3) => n3.userId === u.id && n3.dealRoomId === d.id).length >= 200) return bad8(res, "Too many notes on this deal", 429);
-    const n2 = { id: `BN-${Date.now().toString(36)}${crypto17.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso19() };
+    const n2 = { id: `BN-${Date.now().toString(36)}${crypto18.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso19() };
     st7().brokerNotes.push(n2);
     db.save();
     res.json({ success: true, note: n2 });
@@ -78348,7 +78353,7 @@ function createTimelineRouter() {
 
 // server/network.ts
 var import_express29 = __toESM(require_express2(), 1);
-import crypto18 from "node:crypto";
+import crypto19 from "node:crypto";
 var nowIso20 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st8 = () => db.getState();
 var me12 = () => ctx().user;
@@ -78943,7 +78948,7 @@ var proposeSchema = external_exports.object({
 });
 var brokerCard = (u) => u ? { id: u.id, name: u.name, company: u.companyName || "", city: u.city, tier: tierOf(u), tierLabel: tierOf(u) ? TIER_LABEL[tierOf(u)] : null } : null;
 function tieupHash(t) {
-  return crypto18.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
+  return crypto19.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
 }
 function createTieupsRouter() {
   const r = (0, import_express29.Router)();
@@ -79769,7 +79774,7 @@ function createLegalRouter() {
 
 // server/revenue.ts
 var import_express32 = __toESM(require_express2(), 1);
-import crypto19 from "node:crypto";
+import crypto20 from "node:crypto";
 
 // src/shared/revenueRules.ts
 var r2 = (n2) => Math.round(n2);
@@ -80548,7 +80553,7 @@ function createRevenueRouter() {
     const p = external_exports.object({ city: external_exports.string().trim().max(80).optional().default(""), label: external_exports.string().trim().min(2).max(80), days: external_exports.number().int().min(1).max(90).optional().default(30) }).safeParse(req.body);
     if (!p.success) return bad11(res, p.error.issues[0]?.message || "Invalid link");
     const s = st10();
-    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto19.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso22(), createdBy: me14().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
+    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto20.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso22(), createdBy: me14().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
     s.strengthLinks.push(l);
     db.save();
     audit4("SYSTEM", l.id, "STRENGTH_LINK_CREATED", `Network-strength link for "${l.label}" (${l.city || "All India"}), ${p.data.days} days`);
@@ -80854,7 +80859,7 @@ function createDealHubRouter() {
 
 // server/partywatch.ts
 var import_express35 = __toESM(require_express2(), 1);
-import crypto20 from "crypto";
+import crypto21 from "crypto";
 
 // src/shared/partyWatchRules.ts
 var WATCH_CATEGORIES = [
@@ -80897,7 +80902,7 @@ var me15 = () => ctx().user;
 var bad12 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone10 = (p) => digits(String(p ?? "")).slice(-10);
 var PHONE_RE2 = /^[6-9]\d{9}$/;
-var hm = (tag, v) => crypto20.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hm = (tag, v) => crypto21.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var keyOf = (p) => hm("pw-phone", phone10(p));
 var note = (a, text) => {
   a.events.push({ at: nowIso23(), text });
@@ -81038,11 +81043,11 @@ function createPartyWatchRouter() {
     }
     let a = findAlert(phone);
     if (!a) {
-      a = { id: `PW-${crypto20.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso23(), updatedAt: nowIso23() };
+      a = { id: `PW-${crypto21.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso23(), updatedAt: nowIso23() };
       st11().partyAlerts.unshift(a);
     }
     if (a.reports.some((x) => x.brokerId === u.id && x.status === "OPEN")) return bad12(res, "You already have an open report for this mobile \u2014 GENZ is reviewing it.", 409, { code: "ALREADY_REPORTED" });
-    const rep = { id: `PR-${crypto20.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso23(), evidence, status: "OPEN" };
+    const rep = { id: `PR-${crypto21.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso23(), evidence, status: "OPEN" };
     a.reports.push(rep);
     const before = a.level;
     const after = refresh(a);
@@ -81068,7 +81073,7 @@ function createPartyWatchRouter() {
     const text = String(req.body?.note ?? "").trim().slice(0, 400);
     if (text.length < WATCH_LIMITS.noteMin) return bad12(res, `Write why this mark is wrong (at least ${WATCH_LIMITS.noteMin} characters)`, 400, { hi: `\u092F\u0939 \u0928\u093F\u0936\u093E\u0928 \u0917\u093C\u0932\u0924 \u0915\u094D\u092F\u094B\u0902 \u0939\u0948, \u0932\u093F\u0916\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E ${WATCH_LIMITS.noteMin} \u0905\u0915\u094D\u0937\u0930)`, code: "NOTE_SHORT" });
     if (a.appeals.some((x) => x.byId === u.id && x.status === "OPEN")) return bad12(res, "Your appeal is already with GENZ.", 409);
-    a.appeals.push({ id: `PA-${crypto20.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso23(), note: text, status: "OPEN" });
+    a.appeals.push({ id: `PA-${crypto21.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso23(), note: text, status: "OPEN" });
     note(a, `Appeal by ${u.name}`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", a.id, "PARTY_WATCH_APPEAL", `${u.name} appealed the mark on \u2026${a.last4}`);
@@ -81146,13 +81151,13 @@ function createPartyWatchRouter() {
 
 // server/buyerbond.ts
 var import_express36 = __toESM(require_express2(), 1);
-import crypto21 from "crypto";
+import crypto22 from "crypto";
 var nowIso24 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st12 = () => db.getState();
 var me16 = () => ctx().user;
 var bad13 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone102 = (p) => digits(String(p ?? "")).slice(-10);
-var buyerKeyOf = (p) => crypto21.createHmac("sha256", secret()).update(`bb-phone|${phone102(p)}`).digest("hex");
+var buyerKeyOf = (p) => crypto22.createHmac("sha256", secret()).update(`bb-phone|${phone102(p)}`).digest("hex");
 var isActive = (b, now = Date.now()) => b.status === "ACTIVE" && Date.parse(b.expiresAt) > now;
 var note2 = (b, text) => {
   b.events.push({ at: nowIso24(), text });
@@ -81187,7 +81192,7 @@ function makeBuyerBond(a) {
   const days3 = daysFor();
   const now = Date.now();
   const b = {
-    id: `BB-${now.toString(36).toUpperCase()}${crypto21.randomInt(100, 999)}`,
+    id: `BB-${now.toString(36).toUpperCase()}${crypto22.randomInt(100, 999)}`,
     propertyId: a.propertyId,
     brokerId: a.brokerId,
     buyerKey: buyerKeyOf(a.buyerPhone),
@@ -81271,7 +81276,7 @@ function createBuyerBondRouter() {
     if (b.brokerId === u.id) return bad13(res, "This is your own buyer bond", 400);
     if (b.asks.some((a) => a.fromId === u.id)) return bad13(res, "You already asked \u2014 the broker has your name and mobile.", 409, { code: "ALREADY_ASKED" });
     const text = String(req.body?.note ?? "").trim().slice(0, 300);
-    b.asks.push({ id: crypto21.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso24() });
+    b.asks.push({ id: crypto22.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso24() });
     note2(b, `Co-broke request from ${u.name}`);
     db.save();
     const p = db.byId("properties", b.propertyId);
@@ -81304,7 +81309,7 @@ function createBuyerBondRouter() {
 
 // server/consent.ts
 var import_express37 = __toESM(require_express2(), 1);
-import crypto22 from "crypto";
+import crypto23 from "crypto";
 import fs10 from "fs";
 import path10 from "path";
 
@@ -81713,8 +81718,8 @@ var st13 = () => db.getState();
 var me17 = () => ctx().user;
 var bad14 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var esc5 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac = (tag, v) => crypto22.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
-var sha2 = (v) => crypto22.createHash("sha256").update(v).digest("hex");
+var hmac = (tag, v) => crypto23.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha2 = (v) => crypto23.createHash("sha256").update(v).digest("hex");
 var PAPER_DIR = () => path10.resolve(process.cwd(), "data", "consent-papers");
 var PAPER_MAX = 4 * 1024 * 1024;
 var SIG_DIR = () => path10.resolve(process.cwd(), "data", "consent-signatures");
@@ -81892,7 +81897,7 @@ function signatureSummary(consentId) {
   return c?.ownerSignature ? { initials: c.ownerSignature.initials, drawn: c.ownerSignature.drawn, at: c.ownerSignature.at, name: c.ownerTypedName } : null;
 }
 function nextId5(prefix, list) {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto22.randomInt(100, 999)}${list.length % 10}`;
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto23.randomInt(100, 999)}${list.length % 10}`;
 }
 function myDraft(req, res) {
   const d = st13().listingDrafts.find((x) => x.id === req.params.id && x.brokerId === me17().id && x.status !== "DISCARDED");
@@ -82158,7 +82163,7 @@ function createConsentRouter() {
     const prep = prepare(req, res, d);
     if (!prep) return;
     const { c, f, s } = prep;
-    const token = crypto22.randomBytes(18).toString("base64url");
+    const token = crypto23.randomBytes(18).toString("base64url");
     c.tokenHash = sha2(token);
     c.linkExpiresAt = new Date(Date.now() + CONSENT_LINK_DAYS * 864e5).toISOString();
     const url3 = `${publicBase(req)}/oc/${token}`;
@@ -82204,7 +82209,7 @@ ${msgEn}`)}` } });
     } catch {
       return bad14(res, "The photo could not be saved. Please try again.", 500);
     }
-    c.paper = { mime, size: buf.length, sha256: crypto22.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso25() };
+    c.paper = { mime, size: buf.length, sha256: crypto23.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso25() };
     note3(c, `Signed form uploaded (${Math.round(buf.length / 1024)} KB) \u2014 waiting for a GENZ check`);
     s.ownerConsents.unshift(c);
     d.consentId = c.id;
@@ -82547,7 +82552,7 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
       try {
         fs10.mkdirSync(SIG_DIR(), { recursive: true });
         fs10.writeFileSync(path10.join(SIG_DIR(), `${c.id}.png`), sig.png);
-        c.ownerSignature.sha256 = crypto22.createHash("sha256").update(sig.png).digest("hex");
+        c.ownerSignature.sha256 = crypto23.createHash("sha256").update(sig.png).digest("hex");
         c.ownerSignature.size = sig.png.length;
       } catch {
         return render(req, res, c, "\u0938\u093E\u0907\u0928 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E, \u092B\u093F\u0930 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / The signature could not be saved \u2014 please try again.");
@@ -82584,7 +82589,7 @@ function sweepConsents() {
 
 // server/broadcast.ts
 var import_express38 = __toESM(require_express2(), 1);
-import crypto23 from "crypto";
+import crypto24 from "crypto";
 var nowIso26 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st14 = () => db.getState();
 var me18 = () => ctx().user;
@@ -82638,7 +82643,7 @@ function createBroadcastRouter() {
       }
     }
     const b = {
-      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto23.randomInt(100, 999)}`,
+      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto24.randomInt(100, 999)}`,
       brokerId: u.id,
       requirementId: rq.id,
       summary: summaryOf(rq),
@@ -83265,7 +83270,7 @@ function createOffersRouter() {
 
 // server/listings.ts
 var import_express41 = __toESM(require_express2(), 1);
-import crypto24 from "node:crypto";
+import crypto25 from "node:crypto";
 var nowIso28 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st16 = () => db.getState();
 var bad17 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
@@ -83283,7 +83288,7 @@ function purgeBlocked(p) {
 function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
   const s = st16();
   s.marketRecords.push({
-    id: `MR-${crypto24.randomBytes(4).toString("hex")}`,
+    id: `MR-${crypto25.randomBytes(4).toString("hex")}`,
     city: p.city,
     locality: p.locality,
     propertyType: p.propertyType,
@@ -83535,7 +83540,7 @@ function createListingsRouter() {
       listingStatus: "active",
       verificationStatus: "PENDING",
       priceHistory: [{ price: d.askingPrice, changedAt: ts, reason: `Relisted (resale of ${p.id})` }],
-      duplicateHash: crypto24.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
+      duplicateHash: crypto25.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
       soldAt: void 0,
       soldVia: void 0,
       soldPrice: void 0,
@@ -83566,7 +83571,7 @@ function createListingsRouter() {
     if (p.listingBrokerId !== u.id) return bad17(res, "Only the listing broker can make the site poster \u2014 it carries the broker's contact", 403);
     if (!PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad17(res, "Poster is available for verified, live listings", 409);
     if (!p.posterCode) {
-      p.posterCode = crypto24.randomBytes(5).toString("hex").toUpperCase();
+      p.posterCode = crypto25.randomBytes(5).toString("hex").toUpperCase();
       db.save();
       audit6(u, p, "POSTER_CREATED", `Site poster code created for ${p.id}`);
     }
@@ -83702,7 +83707,7 @@ ${broker ? `<div class="card"><b>${esc7(broker.name)}</b>${broker.companyName ? 
     if (req.body?.consent !== true) return bad17(res, "Please tick the consent box so the broker may contact you");
     if (hit(`penq:${digits(ph.data).slice(-10)}:${p.id}`, 2, 24 * 36e5)) return bad17(res, "You have already sent an enquiry for this property today", 429);
     if (hit(`penq-prop:${p.id}`, 60, 24 * 36e5)) return bad17(res, "Too many enquiries for this listing today", 429);
-    st16().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto24.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso28(), status: "NEW", createdAt: nowIso28() });
+    st16().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto25.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso28(), status: "NEW", createdAt: nowIso28() });
     db.save();
     db.appendAuditEvent("public", "SUPERADMIN", "PROPERTY", p.id, "POSTER_ENQUIRY", `Enquiry received via site poster for ${p.id} (consent recorded)`);
     res.json({ success: true });
@@ -83713,13 +83718,13 @@ ${broker ? `<div class="card"><b>${esc7(broker.name)}</b>${broker.companyName ? 
 // server/visitpass.ts
 var import_express44 = __toESM(require_express2(), 1);
 var import_qrcode2 = __toESM(require_lib5(), 1);
-import crypto26 from "node:crypto";
+import crypto27 from "node:crypto";
 
 // server/visitack.ts
 var import_express42 = __toESM(require_express2(), 1);
 var import_express43 = __toESM(require_express2(), 1);
 var import_qrcode = __toESM(require_lib5(), 1);
-import crypto25 from "crypto";
+import crypto26 from "crypto";
 
 // src/shared/visitAckRules.ts
 var ACK_VERSION = "v1";
@@ -83737,7 +83742,7 @@ var ACK_NOTE = {
 var st17 = () => db.getState();
 var nowIso29 = () => (/* @__PURE__ */ new Date()).toISOString();
 var esc8 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac2 = (tag, v) => crypto25.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hmac2 = (tag, v) => crypto26.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone104 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE4 = /^[6-9]\d{9}$/;
 var smsOn2 = () => !!process.env.SMS_WEBHOOK_URL;
@@ -83762,7 +83767,7 @@ function createAck(a) {
   if (old) return old;
   const broker = db.byId("users", a.brokerId);
   const ack = {
-    id: `VAK-${crypto25.randomBytes(5).toString("hex")}`,
+    id: `VAK-${crypto26.randomBytes(5).toString("hex")}`,
     kind: a.kind,
     refId: a.refId,
     phoneKey: hmac2("va-phone", phone),
@@ -84032,11 +84037,11 @@ function createVisitRouter() {
     for (const o of st18().visitPasses) if (o.leadId === lead.id && o.status === "ACTIVE") o.status = "SUPERSEDED";
     let code = "";
     do {
-      code = makeCode((n2) => crypto26.randomInt(n2));
+      code = makeCode((n2) => crypto27.randomInt(n2));
     } while (st18().visitPasses.some((p) => p.code === code));
     const ts = nowIso30();
     const pass = {
-      id: `VP-${Date.now().toString(36)}${crypto26.randomInt(1296).toString(36)}`,
+      id: `VP-${Date.now().toString(36)}${crypto27.randomInt(1296).toString(36)}`,
       code,
       leadId: lead.id,
       projectId: project.id,
@@ -84259,7 +84264,7 @@ function createPublicVisitRouter() {
 // server/clientroom.ts
 var import_express45 = __toESM(require_express2(), 1);
 var import_express46 = __toESM(require_express2(), 1);
-import crypto27 from "crypto";
+import crypto28 from "crypto";
 
 // src/shared/clientRoomRules.ts
 var ROOM_KINDS = [
@@ -84283,11 +84288,11 @@ var st19 = () => db.getState();
 var nowIso31 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me20 = () => ctx().user;
 var esc10 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha3 = (v) => crypto27.createHash("sha256").update(v).digest("hex");
-var hmac3 = (tag, v) => crypto27.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha3 = (v) => crypto28.createHash("sha256").update(v).digest("hex");
+var hmac3 = (tag, v) => crypto28.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone105 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE5 = /^[6-9]\d{9}$/;
-var newToken = () => crypto27.randomBytes(18).toString("base64url");
+var newToken = () => crypto28.randomBytes(18).toString("base64url");
 var smsOn3 = () => !!process.env.SMS_WEBHOOK_URL;
 var inr9 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad20 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
@@ -84295,7 +84300,7 @@ var ev = (r, text) => {
   r.events.push({ at: nowIso31(), text });
   r.updatedAt = nowIso31();
 };
-var rid2 = (p) => `${p}-${crypto27.randomBytes(5).toString("hex")}`;
+var rid2 = (p) => `${p}-${crypto28.randomBytes(5).toString("hex")}`;
 var live3 = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
 var goneText = (p) => !p ? "removed" : p.listingStatus === "sold" ? "sold" : p.listingStatus === "rented" ? "rented" : "not available now";
 function publicProperty(p) {
@@ -84487,7 +84492,7 @@ function createClientRoomRouter() {
     if (!room) return bad20(res, "Room not found", 404);
     room.status = "CLOSED";
     room.closedAt = nowIso31();
-    room.tokenHash = sha3(crypto27.randomBytes(8).toString("hex"));
+    room.tokenHash = sha3(crypto28.randomBytes(8).toString("hex"));
     room.sessVersion += 1;
     room.otpHash = void 0;
     room.otpPlain = void 0;
@@ -84896,7 +84901,7 @@ function createLandRecordsRouter() {
 
 // server/connector.ts
 var import_express48 = __toESM(require_express2(), 1);
-import crypto28 from "crypto";
+import crypto29 from "crypto";
 var DUP_WINDOW_DAYS = 60;
 var MAX_REWARD = 1e5;
 var upiRegex = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
@@ -85225,7 +85230,7 @@ function createConnectorRouter() {
   };
   const maxPct = () => db.getState().settings.connectorMaxSharePct ?? DEFAULT_MAX_SHARE_PCT;
   const shareStep = (sh, side, action, pct2, note4) => {
-    sh.history.push({ id: "SS-" + crypto28.randomBytes(4).toString("hex"), at: nowIso32(), side, action, pct: pct2, note: note4 ? note4.slice(0, 200) : void 0 });
+    sh.history.push({ id: "SS-" + crypto29.randomBytes(4).toString("hex"), at: nowIso32(), side, action, pct: pct2, note: note4 ? note4.slice(0, 200) : void 0 });
     sh.updatedAt = nowIso32();
   };
   const ping = (x, toSide, title, body) => {
@@ -85257,7 +85262,7 @@ function createConnectorRouter() {
     let sh = x.share;
     if (sh && ["AGREED", "PAID", "CONFIRMED", "NOT_RECEIVED"].includes(sh.status)) return res.status(409).json({ error: "The share is already agreed and locked" });
     if (!sh || sh.status === "DECLINED") {
-      sh = x.share = { id: "SH-" + crypto28.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso32() };
+      sh = x.share = { id: "SH-" + crypto29.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso32() };
       shareStep(sh, side, "PROPOSED", pct2, note4);
     } else {
       const counter = sh.proposedBy !== side;
