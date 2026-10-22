@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, LayoutGrid, List as ListIcon, AlertTriangle, Clock, Wallet, Briefcase, Scale, CheckCircle2, ChevronRight, CalendarCheck,
-  FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound,
+  FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
@@ -36,10 +36,12 @@ const short = (n?: number) => {
 
 // ───────────── next steps ─────────────
 const NEXT_ICON: Record<string, React.ElementType> = {
+  CLOSE_TO_ANSWER: AlertTriangle, OFFLINE_VISIT_TO_CONFIRM: CalendarCheck,
   DISPUTE_OPEN: Scale, AGREEMENT_TO_SIGN: FileSignature, TASKS_TO_ACCEPT: ListTodo, VISITS_TO_VERIFY: CalendarCheck, TASKS_OVERDUE: AlertTriangle,
   TASKS_TO_VERIFY: CheckCircle2, PAYMENTS_TO_CONFIRM: IndianRupee, NO_AGREEMENT: FileSignature, TASKS_TO_DO: ListTodo, STALLED: Hourglass,
 };
 const NEXT_TONE: Record<string, string> = {
+  CLOSE_TO_ANSWER: 'border-amber-300 bg-amber-50 text-amber-900', OFFLINE_VISIT_TO_CONFIRM: 'border-sky-300 bg-sky-50 text-sky-900',
   DISPUTE_OPEN: 'border-red-300 bg-red-50 text-red-800', AGREEMENT_TO_SIGN: 'border-amber-300 bg-amber-50 text-amber-900', TASKS_TO_ACCEPT: 'border-amber-300 bg-amber-50 text-amber-900',
   VISITS_TO_VERIFY: 'border-sky-300 bg-sky-50 text-sky-900', TASKS_OVERDUE: 'border-red-300 bg-red-50 text-red-800', TASKS_TO_VERIFY: 'border-sky-300 bg-sky-50 text-sky-900',
   PAYMENTS_TO_CONFIRM: 'border-emerald-300 bg-emerald-50 text-emerald-900', NO_AGREEMENT: 'border-slate-300 bg-slate-50 text-slate-800', TASKS_TO_DO: 'border-slate-300 bg-slate-50 text-slate-800',
@@ -48,6 +50,8 @@ const NEXT_TONE: Record<string, string> = {
 export function nextText(n: { kind: string; n: number }, idleDays: number, tx: (a: string, b: string) => string) {
   const k = n.n;
   switch (n.kind) {
+    case 'CLOSE_TO_ANSWER': return tx('The other broker wants to close this deal — answer', 'दूसरा ब्रोकर यह डील बंद करना चाहता है — जवाब दें');
+    case 'OFFLINE_VISIT_TO_CONFIRM': return tx('Confirm a visit that happened outside the app', 'ऐप के बाहर हुई विज़िट की पुष्टि करें');
     case 'DISPUTE_OPEN': return tx('A dispute is open — see the holds', 'विवाद खुला है — होल्ड देखें');
     case 'AGREEMENT_TO_SIGN': return tx('Approve the commission agreement', 'कमीशन समझौता मंज़ूर करें');
     case 'TASKS_TO_ACCEPT': return tx(`${k} dut${k > 1 ? 'ies wait' : 'y waits'} for your yes`, `${k} ज़िम्मेदारी आपकी हाँ का इंतज़ार कर रही`);
@@ -153,6 +157,8 @@ export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kin
         </div>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-1">
+        {d.closed && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{tx('Closed — did not happen', 'बंद — डील नहीं हुई')}</span>}
+        {!d.closed && d.closing && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">{tx('Close asked', 'बंद करने को कहा')}</span>}
         {d.openDispute && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-800">{tx('Dispute', 'विवाद')}</span>}
         {first && first.kind !== 'STALLED' && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${selected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-900'}`}>{nextText(first, d.idleDays, tx).slice(0, 48)}</span>}
         {d.stalled && <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${selected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'}`}><Hourglass className="h-3 w-3" />{tx(`${d.idleDays}d idle`, `${d.idleDays} दिन रुका`)}</span>}
@@ -162,7 +168,7 @@ export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kin
   );
 };
 
-type Filter = 'live' | 'needs' | 'stalled' | 'disputes' | 'settled' | 'all';
+type Filter = 'live' | 'needs' | 'stalled' | 'disputes' | 'settled' | 'closed' | 'all';
 export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: string, kind?: string) => void; showRoles: boolean }> = ({ hub, onOpen, showRoles }) => {
   const tx = useTx(); const label = useLabel();
   // a phone starts in the list (one column reads better); the choice is remembered once the broker picks one
@@ -175,8 +181,10 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
     return items.filter(d => {
-      if (filter === 'live' && d.stage === 'Settled') return false;
+      if (filter === 'live' && (d.stage === 'Settled' || d.closed)) return false;
       if (filter === 'settled' && d.stage !== 'Settled') return false;
+      if (filter === 'closed' && !d.closed) return false;
+      if (filter !== 'closed' && filter !== 'all' && d.closed) return false;
       if (filter === 'needs' && !d.needsMe) return false;
       if (filter === 'stalled' && !d.stalled) return false;
       if (filter === 'disputes' && !d.openDispute) return false;
@@ -194,13 +202,14 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
     { id: 'stalled', en: `Idle ${hub.stalledDays}+ days`, hi: `${hub.stalledDays}+ दिन रुकी`, v: k.stalled, icon: Hourglass, tone: k.stalled ? 'text-slate-700' : 'text-slate-900' },
     { id: 'disputes', en: 'Disputes', hi: 'विवाद', v: k.disputes, icon: Scale, tone: k.disputes ? 'text-red-700' : 'text-slate-900' },
     { id: 'settled', en: 'Settled', hi: 'निपटी', v: k.settled, icon: CheckCircle2, tone: 'text-emerald-700' },
+    ...(k.closed ? [{ id: 'closed' as Filter, en: 'Closed (did not happen)', hi: 'बंद (डील नहीं हुई)', v: k.closed, icon: XCircle, tone: 'text-slate-600' }] : []),
   ];
   const wide = typeof window === 'undefined' || window.innerWidth >= 1024;
   const cols = [...STAGES, ...(shown.some(d => d.stage === 'Disputed') ? ['Disputed'] : [])].filter(s => filter !== 'live' || s !== 'Settled').filter(s => filter !== 'settled' || s === 'Settled')
     .filter(s => wide || shown.some(d => d.stage === s)); // on a small screen empty stages only take space
   return (
     <div className="space-y-4" data-testid="deal-pipeline">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
         {tiles.map((t, i) => {
           const Icon = t.icon; const on = filter === t.id && !(i > 0 && t.id === 'live');
           return (
@@ -267,7 +276,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
                       <div className="truncate text-[11px] text-slate-500"><span className="font-mono">{d.id}</span> · {[d.locality, d.city].filter(Boolean).join(', ')}{d.counterpartName ? ` · ${d.counterpartName}` : ''}</div>
                     </div>
                     <div className="sm:col-span-3">
-                      <div className="mb-1 text-[11px] font-semibold text-slate-700">{label('dealStage', d.stage) || d.stage}</div>
+                      <div className="mb-1 text-[11px] font-semibold text-slate-700">{label('dealStage', d.stage) || d.stage}{d.closed ? <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-700">{tx('Closed', 'बंद')}</span> : null}</div>
                       <Progress i={d.stageIndex} />
                     </div>
                     <div className="text-[11px] sm:col-span-3">

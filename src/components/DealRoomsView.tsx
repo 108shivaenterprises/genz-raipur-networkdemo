@@ -63,6 +63,8 @@ import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { DealPipeline, StageStepper, NextSteps, MandatesBoard, DealCard } from './DealHub.js';
 import { ShareToRoom } from './ShareToRoom.js';
 import { SideFeePanel } from './SideFeePanel.js';
+import { DealStatusPanel } from './DealStatusPanel.js';
+import { isClosed } from '../shared/dealClose.js';
 import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare } from 'lucide-react';
 import { lazyView } from '../lib/lazyView.js';
 // v45 — the broker's client rooms sit next to his deal rooms (same Deals screen)
@@ -900,8 +902,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                   })()}
                 </div>
 
-                <StageStepper stage={activeDeal.stage} canEdit={currentUser.role !== 'TEAM_MEMBER' && perm('deal:update_stage') && !summaryOnly} onChange={handleStageChange} />
+                <StageStepper stage={activeDeal.stage} canEdit={currentUser.role !== 'TEAM_MEMBER' && perm('deal:update_stage') && !summaryOnly && !isClosed(dealDetail?.deal || activeDeal)} onChange={handleStageChange} />
                 {!summaryOnly && <NextSteps item={hubItemOf(activeDeal.id)} onGo={(t, k) => { setActiveSubTab(tabAllowed(t) ? t : 'overview'); setTaskFilter(filterFor(k)); }} />}
+                {/* v47 — close a deal that did not happen / reopen; a visit that happened outside the app */}
+                {!summaryOnly && <DealStatusPanel deal={dealDetail?.deal || activeDeal} me={currentUser} verifiedVisits={hubItemOf(activeDeal.id)?.visits?.verified ?? 0}
+                  onChanged={() => { onRefreshDeals(); loadHub(); loadDetail(activeDeal.id); }} />}
 
                 {/* Sub-Navigation Tabs */}
                 <div className="-mx-1 flex items-center gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-1 text-xs" data-testid="deal-subtabs">

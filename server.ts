@@ -141,6 +141,8 @@ import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
 import { roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners } from './server/shopPartners.js';
+import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
+import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
 import { createLandRecordsRouter } from './server/landrecords.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
 import { findState, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
@@ -259,6 +261,8 @@ app.use(
 
 // v17: a tiny "who was around today" record (user-id + Indian date only) — the superadmin's Network Pulse counts from it.
 app.use('/api', activityMiddleware);
+// v47 — a close request nobody answered for 7 days closes by itself; settled lazily before the deal lists are read (no timers on Vercel)
+app.use(['/api/deals', '/api/deal-hub'], (req: Request, _res: Response, next: NextFunction) => { if (req.method === 'GET') { try { sweepDealClosures(); } catch (e) { console.error('[DEALS] close sweep', e); } } next(); });
 
 /**
  * v20 — trust numbers per broker in ONE pass over deals / mandates / visits, cached until the data changes.
@@ -2282,11 +2286,15 @@ app.post('/api/deals/:id/stage', needs('deal:update_stage'), (req: Request, res:
   if (!admin && deal.settlementStatus === 'DISPUTED') {
     return res.status(409).json({ error: 'Deal is under dispute: settlement hold is active until an admin resolves it' });
   }
+  if (isClosed(deal)) {
+    return res.status(409).json({ error: 'This deal room is closed (the deal did not happen). Reopen it first.', code: 'DEAL_CLOSED' });
+  }
 
   const from = STAGE_ORDER.indexOf(deal.stage);
   const to = STAGE_ORDER.indexOf(stage);
   const activeAgreement = state.commissionAgreements.find(a => a.dealId === deal.id && a.status === 'ACTIVE');
-  const hasVerifiedVisit = state.siteVisits.some(v => v.dealRoomId === deal.id && v.isVerified);
+  // v47 — or a visit outside the app that the other side confirmed (shown as unverified; no buyer protection)
+  const hasVerifiedVisit = state.siteVisits.some(v => v.dealRoomId === deal.id && v.isVerified) || offlineVisitConfirmed(deal);
 
   if (!admin) {
     if (deal.stage === 'Settled' || deal.stage === 'Disputed') {
@@ -2299,7 +2307,7 @@ app.post('/api/deals/:id/stage', needs('deal:update_stage'), (req: Request, res:
   if (to > from) {
     const bypass = admin && String(notes || '').trim().length >= 5;
     if (stage === 'Site Visit Done' && !hasVerifiedVisit && !bypass) {
-      return res.status(409).json({ error: 'A site visit verified on location (OTP / QR) is required before "Site Visit Done"' });
+      return res.status(409).json({ error: 'A site visit verified on location (OTP / QR) is required before "Site Visit Done". If the visit already happened outside the app, record it under “Visit outside the app” and let the other broker confirm it.', code: 'VISIT_NEEDED' });
     }
     const own = isOwnSide(deal);
     if (stage === 'Agreement' && !(own ? undertakingDone(deal) : activeAgreement) && !bypass) {
@@ -2499,6 +2507,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
     if (!isDealBroker(currentUser, deal) && !isSuper(currentUser)) {
       return res.status(403).json({ error: 'You are not a broker of this deal room' });
     }
+    if (isClosed(deal)) return res.status(409).json({ error: 'This deal room is closed — reopen it before booking a visit', code: 'DEAL_CLOSED' });
   }
 
   // If no dealRoomId provided, try to find an existing deal room for this property involving currentUser
@@ -5330,6 +5339,7 @@ app.use('/api/party-watch', createPartyWatchRouter());
 app.use('/api/profile-photo', createProfilePhotoRouter());
 app.use('/api/deal-hub', createDealHubRouter());
 app.use('/api/deals', createSidesRouter());
+app.use('/api/deals', createDealCloseRouter());
 app.use('/api/push', createPushRouter());
 app.use('/api/broadcast', createBroadcastRouter());
 app.use('/api/reputation', createReputationRouter());
@@ -5463,10 +5473,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

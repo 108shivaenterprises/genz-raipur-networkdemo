@@ -756,6 +756,10 @@ export interface DealRoom {
   /** v41 — brokerId → fee he wrote down as received from his own client (self-recorded) */
   sideReceipts?: Record<string, { entries: { id: string; amount: number; ref: string; paidOn: string; at: string }[]; total: number }>;
   disputeId?: string;
+  /** v47 — the deal did not happen: asked by one broker, agreed by the other (or no reply in 7 days) → CLOSED; can be reopened */
+  closure?: import('../src/shared/dealClose.js').DealClosure;
+  /** v47 — a visit that happened outside the app, confirmed by the other side (unverified: no OTP / QR, no buyer protection) */
+  offlineVisit?: import('../src/shared/dealClose.js').OfflineVisit;
   settlementStatus: 'PROPOSED' | 'AGREED' | 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'DISPUTED';
   notes: string;
   createdAt: string;

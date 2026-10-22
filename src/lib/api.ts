@@ -222,6 +222,13 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  // v47 — close a deal room that did not happen; a visit outside the app
+  dealClose: (id: string, reason: string, note?: string) => request<any>(`/api/deals/${id}/close`, { method: 'POST', body: JSON.stringify({ reason, note }) }),
+  dealCloseAnswer: (id: string, agree: boolean, note?: string) => request<any>(`/api/deals/${id}/close/answer`, { method: 'POST', body: JSON.stringify({ agree, note }) }),
+  dealCloseWithdraw: (id: string) => request<any>(`/api/deals/${id}/close/withdraw`, { method: 'POST', body: '{}' }),
+  dealReopen: (id: string, note: string) => request<any>(`/api/deals/${id}/reopen`, { method: 'POST', body: JSON.stringify({ note }) }),
+  offlineVisit: (id: string, visitedOn: string, note: string) => request<any>(`/api/deals/${id}/offline-visit`, { method: 'POST', body: JSON.stringify({ visitedOn, note }) }),
+  offlineVisitAct: (id: string, what: 'confirm' | 'decline' | 'withdraw', note?: string) => request<any>(`/api/deals/${id}/offline-visit/${what}`, { method: 'POST', body: JSON.stringify({ note }) }),
   // v41 — own-side brokerage (each broker keeps his own client's fee)
   sidesGet: (dealId: string) => request<{ success: boolean; side: DealSideView }>(`/api/deals/${dealId}/sides`),
   sidesSetFee: (dealId: string, amount: number, note?: string) =>

@@ -72,7 +72,10 @@ export const MandateModal: React.FC<Props> = ({ property, mandates, currentUser,
   const brokerAtAsking = basis === 'PERCENTAGE' ? Math.round((adv * (pctN || 0)) / 100) : basis === 'FIXED_FEE' ? (feeN || 0) : Math.max(0, adv - (netN || 0));
   const ownerGets = Math.max(0, adv - brokerAtAsking);
   const surplusPct = adv > 0 ? (brokerAtAsking / adv) * 100 : 0;
-  const brokerName = brokers.find((b) => b.id === property.listingBrokerId)?.name || property.listingBrokerId;
+  // the broker list is empty on some screens (Owners board): fall back to the name the server sends with the mandate, never a bare ID
+  const brokerName = brokers.find((b) => b.id === property.listingBrokerId)?.name
+    || mandates.find((m) => m.propertyId === property.id && m.brokerName)?.brokerName
+    || (property.listingBrokerId === currentUser.id ? currentUser.name : (hi ? 'लिस्टिंग ब्रोकर' : 'Listing broker'));
 
   const run = async (fn: () => Promise<unknown>, okMsg: string) => {
     setBusy(true); setError(''); setDone('');
@@ -190,6 +193,11 @@ export const MandateModal: React.FC<Props> = ({ property, mandates, currentUser,
                   </span>
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  {/* v47 — whose agreement this is: the owner's and the listing broker's names (they were missing) */}
+                  <dt className="text-slate-500">{hi ? 'मालिक' : 'Owner'}</dt>
+                  <dd className="text-right font-semibold text-slate-900" data-testid="mandate-owner-name">{m!.ownerName || m!.offPlatformOwner?.name || (m!.ownerId === currentUser.id ? currentUser.name : '—')}{m!.offPlatformOwner?.phoneLast4 ? ` (••${m!.offPlatformOwner.phoneLast4})` : ''}</dd>
+                  <dt className="text-slate-500">{hi ? 'लिस्टिंग ब्रोकर' : 'Listing broker'}</dt>
+                  <dd className="text-right font-semibold text-slate-900" data-testid="mandate-broker-name">{m!.brokerName || (m!.brokerId === currentUser.id ? currentUser.name : brokerName)}</dd>
                   <dt className="text-slate-500">{hi ? 'विज्ञापित कीमत' : 'Advertised price'}</dt>
                   <dd className="text-right font-semibold">{formatINR(m!.advertisedPrice)}</dd>
                   <dt className="text-slate-500">{hi ? 'ब्रोकरेज का प्रकार' : 'Brokerage type'}</dt>

@@ -370,7 +370,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const recent = [...deals].sort((x, y) => String(y.updatedAt || '').localeCompare(String(x.updatedAt || ''))).slice(0, 3);
     const stats = [
       { icon: Building2, en: 'My listings', hi: 'मेरी लिस्टिंग', big: String(myProperties.length), small: formatINR(userInventoryVal), go: () => onNavigate('properties'), testId: 'lite-listings' },
-      { icon: Briefcase, en: 'Live deals', hi: 'चालू डील', big: String(deals.length), small: incomingPendingOffers.length ? tx(`${incomingPendingOffers.length} offer(s) waiting`, `${incomingPendingOffers.length} ऑफ़र बाकी`) : tx('Open pipeline', 'पाइपलाइन खोलें'), go: () => onNavigate('deals'), testId: 'lite-deals' },
+      { icon: Briefcase, en: 'Live deals', hi: 'चालू डील', big: String(deals.filter((d) => d.stage !== 'Settled' && d.closure?.status !== 'CLOSED').length), small: incomingPendingOffers.length ? tx(`${incomingPendingOffers.length} offer(s) waiting`, `${incomingPendingOffers.length} ऑफ़र बाकी`) : tx('Open pipeline', 'पाइपलाइन खोलें'), go: () => onNavigate('deals'), testId: 'lite-deals' },
       { icon: TrendingUp, en: 'Brokerage in my deals', hi: 'मेरी डील में ब्रोकरेज', big: formatINR(totalCommissionVolume), small: tx('expected, not yet received', 'अपेक्षित, अभी मिली नहीं'), go: () => onNavigate('deals'), testId: 'lite-brokerage' },
       { icon: HardHat, en: 'Construction leads', hi: 'कंस्ट्रक्शन लीड', big: String(constructionLeads.length), small: tx('1% referral fee', '1% रेफ़रल फ़ीस'), go: () => onNavigate('construction'), testId: 'lite-construction' },
     ];

@@ -349,6 +349,9 @@ export interface DealRoom {
   /** v41 — OWN_SIDE: each broker keeps his own client's fee. The server sends a broker only HIS side (see `side`). */
   feeMode?: 'SPLIT' | 'OWN_SIDE';
   side?: DealSideView;
+  /** v47 */
+  closure?: import('../shared/dealClose.js').DealClosure | null;
+  offlineVisit?: import('../shared/dealClose.js').OfflineVisit | null;
   settlementStatus: 'PROPOSED' | 'AGREED' | 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'DISPUTED';
   notes: string;
   createdAt: string;

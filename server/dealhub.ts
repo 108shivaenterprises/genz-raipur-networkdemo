@@ -14,15 +14,17 @@ import type { DealRoom, UserProfile, DatabaseState } from './db.js';
 import { ctx, needs } from './auth.js';
 import { canViewDeal, canSeeDealCommercials, dealDetailVia, isAdmin, isDealBroker, openDisputeDeals } from './access.js';
 import { feeFor, isOwnSide } from '../src/shared/sideFees.js';
+import { isClosed } from '../src/shared/dealClose.js';
 
 const DAY = 86400_000;
 const STAGES = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'] as const;
 const LIVE_DISPUTE = new Set(['OPEN', 'UNDER_REVIEW', 'MEDIATION']);
 export const STALLED_DAYS = 14;
 
-export type NextKind = 'DISPUTE_OPEN' | 'AGREEMENT_TO_SIGN' | 'TASKS_TO_ACCEPT' | 'VISITS_TO_VERIFY' | 'TASKS_OVERDUE' | 'TASKS_TO_VERIFY' | 'PAYMENTS_TO_CONFIRM' | 'NO_AGREEMENT' | 'TASKS_TO_DO' | 'STALLED';
+export type NextKind = 'CLOSE_TO_ANSWER' | 'OFFLINE_VISIT_TO_CONFIRM' | 'DISPUTE_OPEN' | 'AGREEMENT_TO_SIGN' | 'TASKS_TO_ACCEPT' | 'VISITS_TO_VERIFY' | 'TASKS_OVERDUE' | 'TASKS_TO_VERIFY' | 'PAYMENTS_TO_CONFIRM' | 'NO_AGREEMENT' | 'TASKS_TO_DO' | 'STALLED';
 /** which deal-room section answers each next step */
 const TAB_OF: Record<NextKind, string> = {
+  CLOSE_TO_ANSWER: 'overview', OFFLINE_VISIT_TO_CONFIRM: 'overview',
   DISPUTE_OPEN: 'disputes_holds', AGREEMENT_TO_SIGN: 'commission_agreement', TASKS_TO_ACCEPT: 'responsibilities', VISITS_TO_VERIFY: 'overview',
   TASKS_OVERDUE: 'responsibilities', TASKS_TO_VERIFY: 'responsibilities', PAYMENTS_TO_CONFIRM: 'commission_agreement', NO_AGREEMENT: 'commission_agreement',
   TASKS_TO_DO: 'responsibilities', STALLED: 'chat_call',
@@ -53,6 +55,9 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     propertyId: d.propertyId, propertyTitle: p?.title || d.propertyId, locality: p?.locality || '', city: p?.city || '', propertyType: p?.propertyType || '',
     transactionType: p?.transactionType, myRole, counterpartName: counterpart?.name, counterpartCompany: counterpart?.companyName,
     createdAt: d.createdAt, updatedAt: d.updatedAt, openDispute: !!dispute,
+    // v47 — a deal that did not happen (closed) / a close request waiting
+    closed: isClosed(d), closing: d.closure?.status === 'ASKED' ? { byMe: d.closure.byId === u.id, autoAt: d.closure.autoAt } : undefined,
+    offlineVisit: d.offlineVisit ? { confirmed: !!d.offlineVisit.confirmedAt, byMe: d.offlineVisit.byId === u.id } : undefined,
     protectionDaysLeft: d.ownerProtectionExpiresAt ? Math.ceil((Date.parse(d.ownerProtectionExpiresAt) - now) / DAY) : undefined,
   };
   let lastActivityAt = d.updatedAt;
@@ -65,6 +70,9 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
   const add = (kind: NextKind, n: number) => { if (n > 0) next.push({ kind, n, tab: TAB_OF[kind] }); };
 
   if (dispute) add('DISPUTE_OPEN', 1);
+  if (d.closure?.status === 'ASKED' && broker && d.closure.byId !== u.id) add('CLOSE_TO_ANSWER', 1);
+  if (d.offlineVisit && !d.offlineVisit.confirmedAt && d.offlineVisit.byId !== u.id
+    && (d.introducingBrokerId === d.closingBrokerId ? d.ownerId === u.id : broker)) add('OFFLINE_VISIT_TO_CONFIRM', 1);
   if (inner) {
     const vs = s.siteVisits.filter(v => v.dealRoomId === d.id);
     visits = { total: vs.length, verified: vs.filter(v => v.isVerified).length, upcoming: vs.filter(v => !v.isVerified && Date.parse(v.scheduledTime) > now).length };
@@ -109,7 +117,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     if (lm) { lastMessage = { at: lm.timestamp, from: lm.senderId === u.id ? 'ME' : 'OTHER' }; later(lm.timestamp); }
   }
   const idleDays = Math.floor((now - Date.parse(lastActivityAt)) / DAY);
-  const stalled = d.stage !== 'Settled' && idleDays >= STALLED_DAYS;
+  const stalled = d.stage !== 'Settled' && !isClosed(d) && idleDays >= STALLED_DAYS;
   if (stalled && inner) add('STALLED', 1);
 
   // money: the total fee and MY share (from the latest agreement's allocation when there is one)
@@ -127,11 +135,12 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
   }
   return {
     ...base, lastActivityAt, idleDays, stalled, visits: inner ? visits : undefined, tasks: inner ? tasks : undefined, agreement, lastMessage,
-    next: next.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)), needsMe: next.some(x => x.kind !== 'STALLED' && x.kind !== 'TASKS_TO_DO'),
+    // a closed room nags nobody (its next steps come back when it is reopened)
+    next: isClosed(d) ? [] : next.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)), needsMe: !isClosed(d) && next.some(x => x.kind !== 'STALLED' && x.kind !== 'TASKS_TO_DO'),
     money: money ? { fee, myShare, split, dealValue } : undefined, summaryOnly: !inner,
   };
 }
-const ORDER: NextKind[] = ['DISPUTE_OPEN', 'AGREEMENT_TO_SIGN', 'TASKS_TO_ACCEPT', 'VISITS_TO_VERIFY', 'TASKS_OVERDUE', 'TASKS_TO_VERIFY', 'PAYMENTS_TO_CONFIRM', 'NO_AGREEMENT', 'TASKS_TO_DO', 'STALLED'];
+const ORDER: NextKind[] = ['CLOSE_TO_ANSWER', 'OFFLINE_VISIT_TO_CONFIRM', 'DISPUTE_OPEN', 'AGREEMENT_TO_SIGN', 'TASKS_TO_ACCEPT', 'VISITS_TO_VERIFY', 'TASKS_OVERDUE', 'TASKS_TO_VERIFY', 'PAYMENTS_TO_CONFIRM', 'NO_AGREEMENT', 'TASKS_TO_DO', 'STALLED'];
 
 export function createDealHubRouter() {
   const r = Router();
@@ -141,13 +150,13 @@ export function createDealHubRouter() {
     const open = openDisputeDeals(s);
     const now = Date.now();
     const items = s.dealRooms.filter(d => canViewDeal(u, d, { allowLegal: true })).map(d => hubItem(d, u, s, open, now));
-    const live = items.filter(i => i.stage !== 'Settled');
+    const live = items.filter(i => i.stage !== 'Settled' && !i.closed);
     const byStage: Record<string, number> = {};
     for (const i of items) byStage[i.stage] = (byStage[i.stage] || 0) + 1;
     res.json({
       success: true, stages: STAGES, stalledDays: STALLED_DAYS, deals: items,
       kpis: {
-        total: items.length, live: live.length, settled: items.length - live.length, byStage,
+        total: items.length, live: live.length, settled: items.filter(i => i.stage === 'Settled').length, closed: items.filter(i => i.closed).length, byStage,
         needsMe: items.filter(i => i.needsMe).length, stalled: items.filter(i => i.stalled).length, disputes: items.filter(i => i.openDispute).length,
         myPipeline: live.reduce((n, i) => n + (i.money?.myShare || 0), 0),
         mySettled: items.filter(i => i.stage === 'Settled').reduce((n, i) => n + (i.money?.myShare || 0), 0),
