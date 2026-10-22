@@ -5,7 +5,8 @@
  * phone, and inside a room: Chat (auto-scroll, quick replies) · Homes · Visits · Info.
  */
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Send, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, ArrowLeft, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check } from 'lucide-react';
+import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check, MoreVertical } from 'lucide-react';
+import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -86,7 +87,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
           'अपने खरीदार / किराएदार को प्रॉपर्टी दिखाएँ और एक ही जगह चैट करें। वह लिंक खोलकर कोड से अपना मोबाइल पक्का करता है — न ऐप, न साइन-अप। चैट सिर्फ़ आप दोनों पढ़ सकते हैं; लिस्टिंग ब्रोकर, को-ब्रोकर, आपकी टीम और GENZ स्टाफ़ नहीं। उसे पूरा पता या मालिक का नंबर नहीं दिखता — वह वेरिफ़ाइड विज़िट के बाद ही मिलता है।')}</p>
       </details>
 
-      {fresh && (
+      {fresh && !openRoom && (
         <div className="rounded-xl border-2 border-emerald-400 bg-emerald-50 p-3 text-sm" data-testid="room-link">
           <p className="font-bold text-emerald-900">{tx(`Room ready for ${fresh.name}`, `${fresh.name} के लिए रूम तैयार`)}</p>
           <p className="mt-1 break-all rounded bg-white p-2 font-mono text-xs">{window.location.origin}{fresh.link}</p>
@@ -156,7 +157,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
           {/* open room */}
           <div className={`lg:col-span-3 ${openRoom ? '' : 'hidden lg:block'}`}>
             {openRoom
-              ? <div className="rounded-xl border border-slate-200 bg-white p-3 lg:sticky lg:top-4"><RoomDetail id={openRoom.id} onChange={load} onBack={() => setOpen('')} onLink={(link) => setFresh({ link, name: openRoom.clientName, phone: '' })} /></div>
+              ? <div className="lg:sticky lg:top-4"><RoomDetail id={openRoom.id} onChange={load} onBack={() => setOpen('')} fresh={fresh} onFreshDone={() => setFresh(null)} onLink={(link) => setFresh({ link, name: openRoom.clientName, phone: '' })} /></div>
               : <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-400">{tx('Pick a room on the left.', 'बाईं ओर से कोई रूम चुनें।')}</div>}
           </div>
         </div>
@@ -188,14 +189,15 @@ const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id
   );
 };
 
-const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: string) => void; onBack?: () => void }> = ({ id, onChange, onLink, onBack }) => {
+export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: string) => void; onBack?: () => void; fresh?: { link: string; phone: string; name: string } | null; onFreshDone?: () => void }> = ({ id, onChange, onLink, onBack, fresh, onFreshDone }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [tab, setTab] = useState<'chat' | 'homes' | 'visits' | 'info'>('chat');
-  const chatRef = useRef<HTMLDivElement>(null);
   const [r, setR] = useState<any>(null); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [about, setAbout] = useState('');
   const [pq, setPq] = useState(''); const [props, setProps] = useState<any[]>([]); const [pick, setPick] = useState(''); const [pnote, setPnote] = useState('');
   const [book, setBook] = useState<null | { item: any; req?: any }>(null);   // v40 — visit booked from the room
   const [mediaFor, setMediaFor] = useState('');                              // v40 — item whose photos / video are being chosen
+  const [menu, setMenu] = useState(false);                                   // v50 — the ⋮ menu (new link, close room)
+  const [aboutOpen, setAboutOpen] = useState(false);                         // v50 — the "about which property" picker under the message box
   const load = () => api.crGet(id).then(x => { setR(x.room); if (x.room.unread) api.crRead(id).then(onChange).catch(() => undefined); }).catch(e => setErr(e.message));
   useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) api.crGet(id).then(x => setR(x.room)).catch(() => undefined); }, 15000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => {
@@ -206,76 +208,100 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
     return () => clearTimeout(t);
   }, [pq]);
   const run = async (fn: () => Promise<any>, after?: (x: any) => void) => { setErr(''); try { const x = await fn(); if (x?.room) setR(x.room); after?.(x); onChange(); } catch (e: any) { setErr(e.message); } };
-  useEffect(() => { const el = chatRef.current; if (el) el.scrollTop = el.scrollHeight; }, [r?.messages?.length, tab]);
   useEffect(() => { setTab('chat'); }, [id]);
-  if (!r) return <div className="py-4 text-center">{err ? <p className="text-xs text-red-700">{err}</p> : <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" />}</div>;
+  const noop = () => undefined;
+  if (!r) return (
+    <ChatShell onBack={onBack || noop} backId="room-back" testId="room-detail" avatar={<span className="h-10 w-10 shrink-0 rounded-full bg-slate-200" />} title="…">
+      <div className="py-10 text-center">{err ? <p className="text-xs text-red-700">{err}</p> : <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" />}</div>
+    </ChatShell>
+  );
   const shared = new Set(r.items.map((i: any) => i.propertyId));
 
   const reqs = r.items.flatMap((i: any) => i.visitRequests.map((v: any) => ({ ...v, item: i })));
   const openReqs = reqs.filter((v: any) => v.status === 'REQUESTED').length;
   const kindLabel = (k: string) => { const x = ROOM_KINDS.find(y => y.id === k); return x ? (hi ? x.hi : x.en) : k; };
   const tabs: [typeof tab, string, string, number | undefined][] = [
-    ['chat', 'Chat', 'चैट', r.messages.length], ['homes', 'Homes', 'प्रॉपर्टी', r.items.length], ['visits', 'Visits', 'विज़िट', openReqs || undefined], ['info', 'Info', 'जानकारी', undefined],
+    ['chat', 'Chat', 'चैट', undefined], ['homes', 'Homes', 'प्रॉपर्टी', r.items.length], ['visits', 'Visits', 'विज़िट', openReqs || undefined], ['info', 'Info', 'जानकारी', undefined],
   ];
+  const msgs: ThreadMsg[] = r.messages.map((m: any) => ({ id: m.id, mine: m.from === 'BROKER', who: r.clientName, text: m.text, at: m.at, ref: m.propertyId }));
+  const sendMsg = async (text: string) => {
+    setErr('');
+    try { const x = await api.crSend(id, text, about || undefined); if (x?.room) setR(x.room); onChange(); return true; } catch (e: any) { setErr(e.message); return false; }
+  };
+  const newLink = () => { setMenu(false); if (window.confirm(tx('Make a new link? The old link stops working and your client signs in again.', 'नया लिंक बनाएँ? पुराना लिंक बंद हो जाएगा और क्लाइंट को दोबारा कोड से खोलना होगा।'))) run(() => api.crLink(id), x => onLink(x.link)); };
+  const closeRoom = () => { setMenu(false); if (window.confirm(tx('Close this room? The link stops working and the chat is erased after 90 days.', 'यह रूम बंद करें? लिंक बंद हो जाएगा और चैट 90 दिन बाद मिट जाएगी।'))) run(() => api.crClose(id)); };
 
   return (
-    <div className="space-y-3" data-testid="room-detail">
-      {/* header: who, when last seen, actions */}
-      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          {onBack && <button type="button" onClick={onBack} className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 px-2 lg:hidden" aria-label={tx('Back to rooms', 'रूम की सूची पर वापस')} data-testid="room-back"><ArrowLeft className="h-4 w-4" /></button>}
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${KIND_TONE[r.kind] || KIND_TONE.OTHER}`}>{initials(r.clientName)}</span>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-slate-900">{r.clientName}</div>
-            <div className="text-[11px] text-slate-500">{kindLabel(r.kind)} · ••{r.phoneLast4} · {r.lastClientSeenAt ? `${tx('seen', 'देखा')} ${when(r.lastClientSeenAt)}` : tx('has not opened the link yet', 'अभी लिंक नहीं खोला')}</div>
-          </div>
-        </div>
-      <div className="flex flex-wrap gap-2">
-        <button className={light + ' min-h-9 px-2.5 text-xs'} onClick={() => { if (window.confirm(tx('Make a new link? The old link stops working and your client signs in again.', 'नया लिंक बनाएँ? पुराना लिंक बंद हो जाएगा और क्लाइंट को दोबारा कोड से खोलना होगा।'))) run(() => api.crLink(id), x => onLink(x.link)); }} data-testid="room-newlink"><Link2 className="h-4 w-4" />{tx('New link', 'नया लिंक')}</button>
-        <button className={light + ' min-h-9 px-2.5 text-xs'} onClick={() => { if (window.confirm(tx('Close this room? The link stops working and the chat is erased after 90 days.', 'यह रूम बंद करें? लिंक बंद हो जाएगा और चैट 90 दिन बाद मिट जाएगी।'))) run(() => api.crClose(id)); }}>{tx('Close room', 'रूम बंद करें')}</button>
-      </div>
-      </div>
-
-      {r.codeForClient && (
-        <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-center" data-testid="room-code">
-          <p className="text-xs font-semibold text-amber-900">{tx('Your client is opening the room. Tell him this code (valid 10 minutes):', 'आपका क्लाइंट रूम खोल रहा है। उसे यह कोड बताएँ (10 मिनट तक वैध):')}</p>
-          <p className="mt-1 font-mono text-3xl font-black tracking-[0.3em] text-amber-950">{r.codeForClient}</p>
+    <ChatShell
+      testId="room-detail" backId="room-back" onBack={onBack || noop}
+      avatar={<span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${KIND_TONE[r.kind] || KIND_TONE.OTHER}`}>{initials(r.clientName)}</span>}
+      title={r.clientName}
+      subtitle={`${kindLabel(r.kind)} · ••${r.phoneLast4} · ${r.lastClientSeenAt ? `${tx('seen', 'देखा')} ${when(r.lastClientSeenAt)}` : tx('has not opened the link yet', 'अभी लिंक नहीं खोला')}`}
+      actions={(
+        <div className="relative shrink-0">
+          <button type="button" onClick={() => setMenu(m => !m)} aria-label={tx('More', 'और')} aria-expanded={menu} className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100" data-testid="room-menu"><MoreVertical className="h-5 w-5" /></button>
+          {menu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenu(false)} />
+              <div className="absolute right-0 top-12 z-20 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={newLink} data-testid="room-newlink"><Link2 className="h-4 w-4" />{tx('New link', 'नया लिंक')}</button>
+                <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50" onClick={closeRoom} data-testid="room-close"><X className="h-4 w-4" />{tx('Close room', 'रूम बंद करें')}</button>
+              </div>
+            </>
+          )}
         </div>
       )}
-      {!r.smsOn && <p className="text-[11px] text-slate-500">{tx('No SMS gateway is set, so the code appears here when your client asks for it — read it out to him by phone.', 'SMS गेटवे नहीं लगा है, इसलिए क्लाइंट के कोड माँगने पर वह यहाँ दिखेगा — उसे फ़ोन पर बता दें।')}</p>}
-
-      <div className="flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1" role="tablist">
-        {tabs.map(([id, en, hiT, n]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-9 flex-1 shrink-0 items-center justify-center gap-1 rounded-md px-3 text-xs font-semibold ${tab === id ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`} data-testid={`room-tab-${id}`}>
-            {tx(en, hiT)}{n !== undefined && <span className={`rounded-full px-1.5 text-[10px] ${id === 'visits' ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700'}`}>{n}</span>}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'chat' && (
-      <section>
-        <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('Chat — only you and your client', 'चैट — सिर्फ़ आप और आपका क्लाइंट')}</h4>
-        <div ref={chatRef} className="h-[45vh] min-h-56 space-y-1.5 overflow-auto rounded-lg bg-slate-50 p-2 lg:h-[50vh]" data-testid="room-chat">
-          {r.messages.length === 0 && <p className="text-xs text-slate-400">{tx('No messages yet.', 'अभी कोई संदेश नहीं।')}</p>}
-          {r.messages.map((m: any) => (
-            <div key={m.id} className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl px-3 py-1.5 text-sm ${m.from === 'BROKER' ? 'ml-auto bg-emerald-100' : 'bg-white shadow-xs'}`}>
-              {m.text}{m.propertyId && <div className="text-[10px] text-slate-500">↳ {m.propertyId}</div>}
-              <div className="text-[10px] text-slate-400">{m.from === 'BROKER' ? tx('You', 'आप') : r.clientName} · {when(m.at)}</div>
+      below={(
+        <>
+          {fresh && (
+            <div className="shrink-0 border-b border-emerald-300 bg-emerald-50 p-3 text-sm" data-testid="room-link">
+              <p className="font-bold text-emerald-900">{tx(`Room ready for ${fresh.name}`, `${fresh.name} के लिए रूम तैयार`)}</p>
+              <p className="mt-1 break-all rounded bg-white p-2 font-mono text-xs">{window.location.origin}{fresh.link}</p>
+              <p className="mt-1 text-xs text-emerald-900">{tx('This link is shown now only. If you lose it, make a new link from the ⋮ menu.', 'यह लिंक अभी ही दिखता है। खो जाए तो ⋮ मेन्यू से नया लिंक बनाएँ।')}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button className={light} onClick={() => navigator.clipboard?.writeText(window.location.origin + fresh.link)}><Copy className="h-4 w-4" />{tx('Copy', 'कॉपी')}</button>
+                {fresh.phone && <a className={light} target="_blank" rel="noreferrer" href={`https://wa.me/91${fresh.phone}?text=${encodeURIComponent((hi ? `नमस्ते ${fresh.name}, आपके लिए प्रॉपर्टी का निजी रूम: ` : `Hello ${fresh.name}, your private property room: `) + window.location.origin + fresh.link)}`}><MessageCircle className="h-4 w-4" />WhatsApp</a>}
+                <button className={light} onClick={() => onFreshDone?.()}><X className="h-4 w-4" />{tx('Done', 'हो गया')}</button>
+              </div>
             </div>
-          ))}
-        </div>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1" data-testid="room-quick">
-          {QUICK.map(q => <button key={q.en} type="button" onClick={() => setText(hi ? q.hi : q.en)} className="shrink-0 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:border-slate-500">{hi ? q.hi : q.en}</button>)}
-        </div>
-        <div className="mt-2 flex gap-2">
-          <input className={inp} value={text} maxLength={1000} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && text.trim()) run(() => api.crSend(id, text.trim(), about || undefined), () => setText('')); }} placeholder={tx('Write to your client — no phone numbers', 'क्लाइंट को लिखें — फ़ोन नंबर नहीं')} data-testid="room-msg-input" />
-          <button className={dark} disabled={!text.trim()} onClick={() => run(() => api.crSend(id, text.trim(), about || undefined), () => setText(''))} data-testid="room-send"><Send className="h-4 w-4" /></button>
-        </div>
-        {r.items.length > 0 && <select className={inp + ' mt-1'} value={about} onChange={e => setAbout(e.target.value)} aria-label={tx('About which property', 'किस प्रॉपर्टी के बारे में')}><option value="">{tx('About: (none)', 'विषय: (कोई नहीं)')}</option>{r.items.map((i: any) => <option key={i.id} value={i.propertyId}>{i.property?.title || i.propertyId}</option>)}</select>}
-        <p className="mt-1 text-[11px] text-slate-500">{tx('Phone numbers cannot be typed here — the owner\'s number goes only through a verified visit.', 'यहाँ फ़ोन नंबर नहीं लिखे जा सकते — मालिक का नंबर सिर्फ़ वेरिफ़ाइड विज़िट से मिलता है।')}</p>
-      </section>
+          )}
+          {r.codeForClient && (
+            <div className="shrink-0 border-b border-amber-400 bg-amber-50 p-3 text-center" data-testid="room-code">
+              <p className="text-xs font-semibold text-amber-900">{tx('Your client is opening the room. Tell him this code (valid 10 minutes):', 'आपका क्लाइंट रूम खोल रहा है। उसे यह कोड बताएँ (10 मिनट तक वैध):')}</p>
+              <p className="mt-1 font-mono text-3xl font-black tracking-[0.3em] text-amber-950">{r.codeForClient}</p>
+            </div>
+          )}
+          <div className="flex shrink-0 gap-1 border-b border-slate-200 bg-white px-2 py-1.5" role="tablist">
+            {tabs.map(([tid, en, hiT, n]) => (
+              <button key={tid} type="button" role="tab" aria-selected={tab === tid} onClick={() => setTab(tid)} className={`inline-flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg px-2 text-sm font-semibold ${tab === tid ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid={`room-tab-${tid}`}>
+                {tx(en, hiT)}{n !== undefined && <span className={`rounded-full px-1.5 text-xs ${tid === 'visits' ? 'bg-amber-500 text-white' : tab === tid ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-700'}`}>{n}</span>}
+              </button>
+            ))}
+          </div>
+        </>
       )}
-
+    >
+      {tab === 'chat' ? (
+        <ChatThread
+          msgs={msgs} onSend={sendMsg} error={err}
+          placeholder={tx('Write to your client — no phone numbers', 'क्लाइंट को लिखें — फ़ोन नंबर नहीं')}
+          emptyHint={tx('No messages yet. Say hello — or tap ⚡ for a ready reply.', 'अभी कोई संदेश नहीं। नमस्ते लिखें — या ⚡ से तैयार जवाब लें।')}
+          quick={QUICK}
+          leading={r.items.length > 0 ? (
+            <button type="button" onClick={() => setAboutOpen(o => !o)} aria-pressed={aboutOpen || !!about} aria-label={tx('About which property', 'किस प्रॉपर्टी के बारे में')}
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${about ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : aboutOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-600'}`} data-testid="room-about"><Home className="h-5 w-5" /></button>
+          ) : undefined}
+          composerTop={r.items.length > 0 && (aboutOpen || about) ? (
+            <label className="mb-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+              <select className="min-h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs" value={about} onChange={e => setAbout(e.target.value)} aria-label={tx('About which property', 'किस प्रॉपर्टी के बारे में')}>
+                <option value="">{tx('About: (none)', 'विषय: (कोई नहीं)')}</option>{r.items.map((i: any) => <option key={i.id} value={i.propertyId}>{i.property?.title || i.propertyId}</option>)}
+              </select>
+            </label>
+          ) : undefined}
+          ids={{ root: 'room-chat-root', chat: 'room-chat', input: 'room-msg-input', send: 'room-send', quick: 'room-quick' }}
+        />
+      ) : (
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
       {tab === 'homes' && (
       <section>
         <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('Properties in this room', 'इस रूम की प्रॉपर्टी')} ({r.items.length})</h4>
@@ -361,6 +387,7 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
 
       {tab === 'info' && (
         <section className="space-y-3 text-xs" data-testid="room-info">
+          {!r.smsOn && <p className="rounded-lg bg-amber-50 p-3 text-slate-700">{tx('The code is not sent by SMS — it appears here when your client asks for it. Read it out to him by phone.', 'कोड SMS से नहीं जाता — क्लाइंट के माँगने पर वह यहाँ दिखता है। उसे फ़ोन पर बता दें।')}</p>}
           <div className="rounded-lg bg-slate-50 p-3">
             <div className="font-semibold text-slate-700">{tx('My private note', 'मेरा निजी नोट')}</div>
             <p className="mt-0.5 whitespace-pre-wrap text-slate-600">{r.note || tx('No note.', 'कोई नोट नहीं।')}</p>
@@ -391,6 +418,8 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
       )}
 
       {err && <p className="text-xs font-medium text-red-700" role="alert" data-testid="room-error">{err}</p>}
+      </div>
+      )}
       {book && (
         <Suspense fallback={null}>
           <ScheduleVisitModal
@@ -405,7 +434,7 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
           />
         </Suspense>
       )}
-    </div>
+    </ChatShell>
   );
 };
 

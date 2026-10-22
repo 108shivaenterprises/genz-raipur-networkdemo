@@ -19,6 +19,7 @@ import { LoginView, ChangePasswordView, PendingApprovalView } from './components
 import { PrivacyCenter, PrivacyQueue } from './components/PrivacyCenter.js';
 import { Navbar } from './components/Navbar.js';
 import { NavigationTabs, TabType } from './components/NavigationTabs.js';
+import { useChatBadge } from './lib/useChatBadge.js';
 import { GrowthNudge } from './components/GrowthNudge.js';
 import { Loader2, ShieldCheck, MapPin, Building2, Eye } from 'lucide-react';
 import { lazyView, prefetch } from './lib/lazyView.js';
@@ -42,6 +43,7 @@ const PartyWatchBroker = lazyView(() => import('./components/PartyWatch.js'), 'P
 const PartyWatchAdmin = lazyView(() => import('./components/PartyWatch.js'), 'PartyWatchAdmin');
 const PhotoCheckAdmin = lazyView(() => import('./components/VerifiedPhoto.js'), 'PhotoCheckAdmin');
 const ClientRoomsTab = lazyView(() => import('./components/ClientRooms.js'), 'ClientRoomsTab');
+const ChatsView = lazyView(() => import('./components/ChatsView.js'), 'ChatsView');
 const ShopPartnersView = lazyView(() => import('./components/ShopPartners.js'), 'ShopPartnersView');
 const VisitsView = lazyView(() => import('./components/VisitsView.js'), 'VisitsView');
 const QuickScan = lazyView(() => import('./components/QuickScan.js'), 'QuickScan');
@@ -82,7 +84,7 @@ const FileDisputeModal = lazyView(() => import('./components/Modals.js'), 'FileD
 const AddConstructionLeadModal = lazyView(() => import('./components/Modals.js'), 'AddConstructionLeadModal');
 
 const TAB_KEY = 'genz.tab';
-const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners'];
+const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'chats'];
 
 export default function App() {
   const tx = useTx();
@@ -117,6 +119,7 @@ export default function App() {
     return 'dashboard';
   });
   const setActiveTab = (t: TabType) => { setActiveTabRaw(t); try { sessionStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ } };
+  const chatBadge = useChatBadge(permissions, activeTab);
   // v23: a screen can ask to open another tab ("Open Plans & Fees")
   useEffect(() => {
     const go = (e: Event) => { const t = (e as CustomEvent).detail as TabType; if (ALL_TABS.includes(t)) setActiveTab(t); };
@@ -358,6 +361,8 @@ export default function App() {
         onOpenBrokerQrModal={currentUser.role === 'BROKER' ? () => setShowQrMenu(true) : undefined}
         onOpenScan={currentUser.role !== 'BROKER' && hasPerm(permissions, 'sitevisit:verify', 'visit:scan') ? () => setShowQuickScan(true) : undefined}
         onOpenBrokerSafetyModal={() => setShowBrokerSafetyModal(true)}
+        onOpenChats={hasPerm(permissions, 'deal:chat', 'clientroom:use') ? () => setActiveTab('chats') : undefined}
+        chatCount={chatBadge}
       />
 
       {/* Segmented Navigation Tabs */}
@@ -366,6 +371,7 @@ export default function App() {
         onChangeTab={setActiveTab}
         currentUser={currentUser}
         permissions={permissions}
+        chatBadge={chatBadge}
         unreadCount={{
           deals: pendingIncomingOffers.length > 0 ? pendingIncomingOffers.length : deals.length,
           leads: constructionLeads.filter((l) => l.status === 'OPEN').length,
@@ -599,6 +605,7 @@ export default function App() {
         {activeTab === 'desk' && hasPerm(permissions, 'offer:make', 'offer:decide', 'listing:lifecycle') && <DealDesk currentUser={currentUser} permissions={permissions} />}
 
         {activeTab === 'clientroom' && hasPerm(permissions, 'clientroom:use') && <ClientRoomsTab />}
+        {activeTab === 'chats' && hasPerm(permissions, 'deal:chat', 'clientroom:use') && <ChatsView meId={currentUser.id} permissions={permissions} />}
 
         {activeTab === 'partners' && hasPerm(permissions, 'partner:manage', 'partner:oversee') && <ShopPartnersView currentUser={currentUser} canManage={hasPerm(permissions, 'partner:manage')} canOversee={hasPerm(permissions, 'partner:oversee')} />}
         {activeTab === 'visits' && hasPerm(permissions, 'visit:pass', 'visit:scan') && <VisitsView currentUser={currentUser} />}

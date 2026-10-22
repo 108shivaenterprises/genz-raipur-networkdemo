@@ -889,6 +889,10 @@ export const api = {
   draftSavedNeed: (id: string, requirementId: string) => request<any>(`/api/consent/drafts/${encodeURIComponent(id)}/saved-need`, { method: 'POST', body: JSON.stringify({ requirementId }) }),
   // v37 — Deal Hub (pipeline, KPIs, next steps)
   dealHub: () => request<any>('/api/deal-hub'),
+  /** v50 — the Chats inbox: deal-room chats (last message + unread), the header dot, and "I have read it" */
+  chatDeals: () => request<any>('/api/chats/deals'),
+  chatSummary: () => request<any>('/api/chats/summary'),
+  chatRead: (dealId: string) => request<any>(`/api/chats/deals/${dealId}/read`, { method: 'POST' }),
   // v36 — Verified Photo
   photoMine: () => request<any>('/api/profile-photo/mine'),
   photoUpload: (data: string, consent: boolean) => request<any>('/api/profile-photo/mine', { method: 'POST', body: JSON.stringify({ data, consent }) }),

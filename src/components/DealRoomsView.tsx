@@ -67,6 +67,7 @@ import { DealStatusPanel } from './DealStatusPanel.js';
 import { PaymentRequestsPanel } from './PaymentRequestsPanel.js';
 import { isClosed } from '../shared/dealClose.js';
 import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare } from 'lucide-react';
+import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { lazyView } from '../lib/lazyView.js';
 // v45 — the broker's client rooms sit next to his deal rooms (same Deals screen)
 const ClientRoomsTab = lazyView(() => import('./ClientRooms.js'), 'ClientRoomsTab');
@@ -167,7 +168,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const [selectedDealId, setSelectedDealId] = useState<string>(urlQ.get('deal') || deals[0]?.id || '');
   const [dealDetail, setDealDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
-  const [activeSubTab, setActiveSubTab] = useState<DealSubTab>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<DealSubTab>(urlQ.get('sub') === 'chat_call' ? 'chat_call' : 'overview');
   const [selectedVisitForQrPass, setSelectedVisitForQrPass] = useState<SiteVisit | null>(null);
 
   // Top-Level Mode: Deal Rooms vs Collaboration Proposals
@@ -440,8 +441,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
   // Chat & Call state
   const [messages, setMessages] = useState<DealMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatErr, setChatErr] = useState('');
 
   // Property Media Vault & Selective Sharing state
   const [vaultAssets, setVaultAssets] = useState<PropertyMediaAsset[]>([]);
@@ -507,20 +507,30 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || !selectedDealId) return;
-    setIsSendingMessage(true);
+  // v50 — send from the chat screen (the text stays in the box when it is refused)
+  const sendChat = async (text: string) => {
+    if (!selectedDealId) return false;
+    setChatErr('');
     try {
-      const res = await api.sendDealMessage(selectedDealId, { text: chatInput });
+      const res = await api.sendDealMessage(selectedDealId, { text });
       setMessages(prev => [...prev, res.message]);
-      setChatInput('');
+      window.dispatchEvent(new Event('genz:chats-changed'));
+      return true;
     } catch (err: any) {
-      alert(err.message || tx('Could not send the message', 'संदेश भेजा नहीं जा सका'));
-    } finally {
-      setIsSendingMessage(false);
+      setChatErr(err.message || tx('Could not send the message', 'संदेश भेजा नहीं जा सका'));
+      return false;
     }
   };
+  // v50 — while the chat is open: tell the server how far I have read, and look for new messages every 12 seconds
+  const chatOpen = activeSubTab === 'chat_call' && mainMode === 'DEAL_ROOMS';
+  useEffect(() => {
+    if (!chatOpen || !selectedDealId) return;
+    const id = selectedDealId;
+    const seen = () => api.chatRead(id).then(() => window.dispatchEvent(new Event('genz:chats-changed'))).catch(() => undefined);
+    seen();
+    const t = setInterval(() => { if (!document.hidden) loadMessages(id).then(seen); }, 12000);
+    return () => clearInterval(t);
+  }, [chatOpen, selectedDealId, messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedDealId && deals.length > 0) {
@@ -1363,137 +1373,30 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 </div>
               )}
 
-              {/* TAB: BROKER CHAT & CALL (DIRECT INTER-BROKER COMMUNICATION) */}
-              {activeSubTab === 'chat_call' && (
-                <div className="space-y-4">
-                  {/* Call Initiation Banner & Participants Status */}
-                  <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm border border-emerald-500/30">
-                        <PhoneCall className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">{tx('Direct Broker-to-Broker Channel', 'ब्रोकर-से-ब्रोकर सीधा चैनल')}</div>
-                        <h4 className="text-sm font-bold text-white flex flex-wrap items-center gap-2 mt-0.5">
-                          <span className="flex items-center gap-1.5">
-                            <span>{participants?.introducingBroker?.name || tx('Introducing broker', 'इंट्रोड्यूस करने वाला ब्रोकर')}</span>
-                            {participants?.introducingBroker && (
-                              <TrustScoreBadge user={participants.introducingBroker} variant="minimal" />
-                            )}
-                          </span>
-                          <span className="text-slate-400 text-xs">↔</span>
-                          <span className="flex items-center gap-1.5">
-                            <span>{participants?.closingBroker?.name || tx('Listing broker', 'लिस्टिंग ब्रोकर')}</span>
-                            {participants?.closingBroker && (
-                              <TrustScoreBadge user={participants.closingBroker} variant="minimal" />
-                            )}
-                          </span>
-                        </h4>
-                        <div className="text-[11px] text-slate-300">
-                          {tx('Chat between the two brokers on this deal. Messages are saved in the deal record.', 'दोनों ब्रोकर की डील से जुड़ी चैट। संदेश डील के रिकॉर्ड में सेव रहते हैं।')}
-                        </div>
-                      </div>
-                    </div>
-
-                    {(() => {
-                      const otherBroker: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : participants?.introducingBroker;
-                      const phone = typeof otherBroker?.phone === 'string' ? otherBroker.phone : '';
-                      return phone ? (
-                        <a
-                          href={`tel:${phone.replace(/\s+/g, '')}`}
-                          className="self-stretch sm:self-auto px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-                        >
-                          <Phone className="h-3.5 w-3.5" />
-                          <span>{tx('Call', 'कॉल करें')}</span>
-                        </a>
-                      ) : (
-                        <p className="text-[11px] text-slate-300 max-w-[240px]">
-                          {tx('Phone numbers are not shared on GENZ — talk to your co-broker here in chat.', 'GENZ पर फ़ोन नंबर साझा नहीं होते — को-ब्रोकर से यहीं चैट में बात करें।')}
-                        </p>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Message Thread Box */}
-                  <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col h-[520px]">
-                    <div className="p-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 text-slate-600" />
-                        <span className="text-xs font-bold text-slate-900">{tx('Deal Room chat', 'डील रूम चैट')}</span>
-                        <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono">
-                          {messages.length} {tx('messages', 'संदेश')}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                        <Shield className="h-3 w-3 text-emerald-600" /> {tx('Saved in deal record', 'डील रिकॉर्ड में सेव')}
-                      </span>
-                    </div>
-
-                    {/* Messages Scroll Area */}
-                    <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50">
-                      {messages.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 text-xs">
-                          <MessageSquare className="h-8 w-8 text-slate-300 mb-2" />
-                          <p>{tx('No messages exchanged yet in this deal room.', 'इस डील रूम में अभी कोई संदेश नहीं।')}</p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">{tx('Start direct negotiation and coordinating site visits with your co-broker below.', 'नीचे से को-ब्रोकर से बातचीत और साइट विज़िट का तालमेल शुरू करें।')}</p>
-                        </div>
-                      ) : (
-                        messages.map((m) => {
-                          const isMe = m.senderId === currentUser.id;
-                          return (
-                            <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                              <div className="text-[10px] text-slate-500 mb-0.5 px-1 font-medium">
-                                {m.senderName} ({label('role', m.senderRole)}) · {formatDateTime(m.timestamp)}
-                              </div>
-                              <div
-                                className={`max-w-[80%] rounded-xl px-4 py-2.5 text-xs shadow-xs ${
-                                  isMe
-                                    ? 'bg-slate-900 text-white rounded-br-xs'
-                                    : 'bg-white border border-slate-200 text-slate-900 rounded-bl-xs'
-                                }`}
-                              >
-                                <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
-                                {m.mediaUrl && (
-                                  <div className="mt-2 pt-2 border-t border-slate-200/20 text-[11px]">
-                                    <a
-                                      href={m.mediaUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline flex items-center gap-1 font-semibold"
-                                    >
-                                      <ExternalLink className="h-3 w-3" />
-                                      <span>{tx('Attached File / Media', 'संलग्न फ़ाइल / मीडिया')}</span>
-                                    </a>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    {/* Chat Input Bar */}
-                    <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-200 bg-white flex gap-2">
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder={tx('Type a secure message to co-broker (e.g. site visit status, token advance, registry dates)...', 'को-ब्रोकर को संदेश लिखें (जैसे साइट विज़िट की स्थिति, टोकन, रजिस्ट्री की तारीख़)...')}
-                        className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                      />
-                      <button
-                        type="submit"
-                        disabled={isSendingMessage || !chatInput.trim()}
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
-                      >
-                        {isSendingMessage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                        <span>{tx('Send', 'भेजें')}</span>
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              )}
+              {/* TAB: BROKER CHAT — v50: the whole screen on a phone (message box pinned at the bottom, ← back to the deal), a plain card on a big screen */}
+              {activeSubTab === 'chat_call' && (() => {
+                const otherBroker: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : participants?.introducingBroker;
+                const phone = typeof otherBroker?.phone === 'string' ? otherBroker.phone : '';
+                const names = [...new Set([participants?.introducingBroker, participants?.closingBroker, participants?.owner].filter((p: any) => p && p.id !== currentUser.id).map((p: any) => p.name as string))];
+                const thread: ThreadMsg[] = messages.map(m => ({ id: m.id, mine: m.senderId === currentUser.id, who: m.senderName, text: m.text, at: m.timestamp, link: m.mediaUrl }));
+                const others = new Set(messages.filter(m => m.senderId !== currentUser.id).map(m => m.senderId));
+                return (
+                  <ChatShell
+                    onBack={() => setActiveSubTab('overview')} testId="deal-room-chat"
+                    avatar={<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white"><MessageSquare className="h-5 w-5" aria-hidden /></span>}
+                    title={names.join(' · ') || tx('Deal chat', 'डील चैट')}
+                    subtitle={`${activeProperty?.title || activeDeal.propertyId} · ${tx('saved in the deal record', 'डील रिकॉर्ड में सेव')}`}
+                    actions={phone ? <a href={`tel:${phone.replace(/\s+/g, '')}`} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 text-sm font-semibold text-white" aria-label={tx('Call', 'कॉल करें')} data-testid="deal-chat-call"><Phone className="h-4 w-4" aria-hidden /><span className="hidden sm:inline">{tx('Call', 'कॉल')}</span></a> : undefined}
+                  >
+                    <ChatThread
+                      msgs={thread} onSend={sendChat} error={chatErr} showWho={others.size > 1}
+                      placeholder={tx('Message…', 'संदेश लिखें…')}
+                      emptyHint={tx('No messages yet. Talk about the visit, token, registry dates here.', 'अभी कोई संदेश नहीं। यहाँ विज़िट, टोकन, रजिस्ट्री की तारीख़ की बात करें।')}
+                      ids={{ root: 'deal-chat-root', chat: 'deal-chat-messages', input: 'deal-chat-input', send: 'deal-chat-send' }}
+                    />
+                  </ChatShell>
+                );
+              })()}
 
               {/* TAB: MEDIA VAULT, LOCATION & SELECTIVE SHARING */}
               {activeSubTab === 'media_vault' && (

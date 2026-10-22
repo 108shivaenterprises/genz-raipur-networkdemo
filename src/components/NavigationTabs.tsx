@@ -31,6 +31,7 @@ import {
   Scale as ScaleIcon,
   BadgeIndianRupee,
   MessagesSquare,
+  MessageCircle,
   Store,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -72,7 +73,8 @@ export type TabType =
   | 'desk'
   | 'network'
   | 'launchdesk'
-  | 'partners';
+  | 'partners'
+  | 'chats';
 
 interface NavigationTabsProps {
   activeTab: TabType;
@@ -85,6 +87,8 @@ interface NavigationTabsProps {
     disputes?: number;
     leads?: number;
   };
+  /** v50: unread chat messages (client rooms + deal rooms) */
+  chatBadge?: number;
 }
 
 export const NavigationTabs: React.FC<NavigationTabsProps> = ({
@@ -93,6 +97,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   currentUser,
   permissions = [],
   unreadCount = {},
+  chatBadge = 0,
 }) => {
   const { t } = useI18n();
   const has = (...p: string[]) => p.some((x) => permissions.includes(x));
@@ -152,6 +157,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const tabs = [
     { id: 'dashboard', label: isMember ? t('nav.myWork', 'My Work') : isConnector ? t('nav.myReferrals', 'My Referrals') : t('nav.dashboard', 'Dashboard'), icon: LayoutDashboard },
     ...(has('legal:desk') && !has('legal:manage') ? [{ id: 'legal', label: t('nav.legal', 'Legal Desk'), icon: ScaleIcon, badge: legalBadge }] : []),
+    ...(has('deal:chat', 'clientroom:use') ? [{ id: 'chats', label: t('nav.chats', 'Chats'), icon: MessageCircle, badge: chatBadge }] : []),
     ...(has('daily:use') ? [{ id: 'daily', label: t('nav.daily', 'Today & Clients'), icon: CalendarCheck }] : []),
     ...(has('pcontrol:manage', 'pcontrol:oversee') ? [{ id: 'pcontrol', label: t('nav.pcontrol', 'Project Control'), icon: SlidersHorizontal }] : has('pcontrol:partner') ? [{ id: 'pcontrol', label: t('nav.myprojects', 'My Projects'), icon: Layers }] : []),
     ...(has('offer:make', 'offer:decide', 'listing:lifecycle') ? [{ id: 'desk', label: t('nav.desk', 'Deal Desk'), icon: Handshake }] : []),
@@ -216,7 +222,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
   // v31 — a broker's ~23 tabs in 6 groups, each in priority order (the order of `ids` is the order shown; a group opens on its first tab). Every tab is still reachable: a group lists the tabs below, and anything not named lands in “Other”.
   const GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
-    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'daily', 'visits'] },
+    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'chats', 'daily', 'visits'] },
     { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'share', 'propdocs', 'pdocs', 'landrecords'] },
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
     { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'legal', 'due_diligence', 'disputes', 'audit'] },
