@@ -378,10 +378,15 @@ export default function App() {
         )}
 
         {activeTab === 'dashboard' && currentUser.role === 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && (
-          <BrokerHome name={currentUser.name} onNavigate={setActiveTab} onOpenAddRequirement={() => setShowAddRequirement(true)} />
+          <BrokerHome name={currentUser.name} user={currentUser} onNavigate={setActiveTab} onOpenAddRequirement={() => setShowAddRequirement(true)}
+            offersWaiting={pendingIncomingOffers.length}
+            onOpenAddProperty={hasPerm(permissions, 'property:create') ? () => setShowAddProperty(true) : undefined}
+            onOpenAddLead={hasPerm(permissions, 'lead:create') ? () => setShowAddLead(true) : undefined}
+            canGrow={hasPerm(permissions, 'growth:nominate')} />
         )}
 
-        {activeTab === 'dashboard' && currentUser.verificationStatus === 'VERIFIED' && hasPerm(permissions, 'growth:nominate') && <GrowthNudge onOpen={() => setActiveTab('grow')} />}
+        {/* v43: a verified broker sees the setup bar inside his home (after his first steps), not twice */}
+        {activeTab === 'dashboard' && currentUser.verificationStatus === 'VERIFIED' && currentUser.role !== 'BROKER' && hasPerm(permissions, 'growth:nominate') && <GrowthNudge onOpen={() => setActiveTab('grow')} />}
 
         {activeTab === 'dashboard' && ['ADMIN', 'SUPERADMIN'].includes(currentUser.role) && <HomeInsights role={currentUser.role} onNavigate={setActiveTab} />}
 

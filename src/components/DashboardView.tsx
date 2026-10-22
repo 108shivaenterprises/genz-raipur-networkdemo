@@ -24,6 +24,7 @@ import { RoleHome, ROLE_HOME_ROLES } from './RoleHome.js';
 import { hasPerm } from '../lib/permissions.js';
 import { ContractorDashboard } from './ContractorDashboard.js';
 import { lazyView } from '../lib/lazyView.js';
+import { goto } from '../lib/goto.js';
 // v20: the chart library (~350 KB) downloads after the numbers are already on screen
 const DealStageChart = lazyView(() => import('./DashboardCharts.js'), 'DealStageChart');
 const CommissionPie = lazyView(() => import('./DashboardCharts.js'), 'CommissionPie');
@@ -104,6 +105,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [initialActivities, properties.length, deals.length]);
   const [chartView, setChartView] = useState<'deals' | 'inventory'>('deals');
+  const [feedOpen, setFeedOpen] = useState(false);
+  const [chartsOpen, setChartsOpen] = useState(false);
   const [inventoryScope, setInventoryScope] = useState<'personal' | 'network'>(() => {
     return (currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN') ? 'network' : 'personal';
   });
@@ -257,6 +260,179 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
     return null;
   };
+
+  const chartsBlock = (
+      <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="font-semibold text-slate-900">{tx('Charts', 'चार्ट')}</span>
+            </div>
+            <h2 className="text-base font-bold text-slate-900 mt-0.5">
+              {tx('Deal Pipeline, Commission Status & Inventory Analytics', 'डील पाइपलाइन, कमीशन की स्थिति और इन्वेंटरी विश्लेषण')}
+            </h2>
+          </div>
+
+          {/* Segmented Controls for Chart Switching */}
+          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs">
+            <button
+              onClick={() => setChartView('deals')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+                chartView === 'deals'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <BarChart3 className="h-3.5 w-3.5 text-amber-500" />
+              <span>{tx('Deals & Commission Pipeline', 'डील और कमीशन पाइपलाइन')}</span>
+            </button>
+            <button
+              onClick={() => setChartView('inventory')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+                chartView === 'inventory'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <PieChartIcon className="h-3.5 w-3.5 text-blue-500" />
+              <span>{tx('Locality Inventory Valuation', 'इलाके की इन्वेंटरी का मूल्य')}</span>
+            </button>
+          </div>
+        </div>
+
+        {chartView === 'deals' ? (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Left 2 Cols: Deal Stage Progression & Volume */}
+            <div className="lg:col-span-2 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-800">
+                  {isAdmin ? tx('Deal Progression Funnel & Deal Value (₹)', 'डील प्रगति फ़नल और डील वैल्यू (₹)') : tx('Deal Progression Funnel & Brokerage Volume (₹)', 'डील प्रगति फ़नल और ब्रोकरेज वॉल्यूम (₹)')}
+                </span>
+                <span className="text-slate-500">{tx(`${deals.length} active deals monitored`, `${deals.length} चालू डील पर नज़र`)}</span>
+              </div>
+              <div className="h-72 w-full pt-2">
+                <Suspense fallback={<ChartSkeleton />}>
+                  <DealStageChart data={dealStageData} tooltip={<CustomBarTooltip />} volumeName={isAdmin ? tx('Deal value (₹)', 'डील वैल्यू (₹)') : tx('Brokerage Volume (₹)', 'ब्रोकरेज वॉल्यूम (₹)')} countName={tx('Deals Count', 'डील की संख्या')} />
+                </Suspense>
+              </div>
+            </div>
+
+            {/* Right 1 Col: Commission Status Donut Breakdown */}
+            <div className="space-y-2 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-6">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-800">{tx('Commission Status Breakdown', 'कमीशन स्थिति का ब्यौरा')}</span>
+                <span className="text-emerald-700 font-medium">{tx('100% Ratified', '100% मंज़ूर')}</span>
+              </div>
+              <div className="h-56 w-full">
+                <Suspense fallback={<ChartSkeleton />}>
+                  <CommissionPie data={commissionStatusData} tooltip={<CustomPieTooltip />} />
+                </Suspense>
+              </div>
+
+              {/* Legend Summary */}
+              <div className="space-y-1.5 pt-1 text-xs">
+                {commissionStatusData.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-slate-600 truncate max-w-[140px]">{item.name}</span>
+                    </div>
+                    <span className="font-bold text-slate-900">{formatINR(item.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Locality Inventory Breakdown */
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-800">
+                {tx('Locality Inventory Valuation & Supply Concentrations', 'इलाके की इन्वेंटरी का मूल्य और सप्लाई का केंद्रीकरण')}
+              </span>
+              <span className="text-slate-500">{properties.length} active property clusters</span>
+            </div>
+            <div className="h-72 w-full pt-2">
+              <Suspense fallback={<ChartSkeleton />}>
+                <LocalityChart data={localityInventoryData} tooltip={<CustomBarTooltip />} valueName={tx('Combined Valuation (₹)', 'कुल मूल्य (₹)')} countName={tx('Property Count', 'प्रॉपर्टी की संख्या')} />
+              </Suspense>
+            </div>
+          </div>
+        )}
+      </div>
+  );
+
+  // v43 — a verified broker already has his simple home above (BrokerHome): here only a short "my work" strip,
+  // his latest deals, and the network feed / charts folded away until he opens them.
+  const lite = isBroker && currentUser.verificationStatus === 'VERIFIED';
+  if (lite) {
+    const propOf = (id: string) => properties.find((p) => p.id === id);
+    const recent = [...deals].sort((x, y) => String(y.updatedAt || '').localeCompare(String(x.updatedAt || ''))).slice(0, 3);
+    const stats = [
+      { icon: Building2, en: 'My listings', hi: 'मेरी लिस्टिंग', big: String(myProperties.length), small: formatINR(userInventoryVal), go: () => onNavigate('properties'), testId: 'lite-listings' },
+      { icon: Briefcase, en: 'Live deals', hi: 'चालू डील', big: String(deals.length), small: incomingPendingOffers.length ? tx(`${incomingPendingOffers.length} offer(s) waiting`, `${incomingPendingOffers.length} ऑफ़र बाकी`) : tx('Open pipeline', 'पाइपलाइन खोलें'), go: () => onNavigate('deals'), testId: 'lite-deals' },
+      { icon: TrendingUp, en: 'Brokerage in my deals', hi: 'मेरी डील में ब्रोकरेज', big: formatINR(totalCommissionVolume), small: tx('expected, not yet received', 'अपेक्षित, अभी मिली नहीं'), go: () => onNavigate('deals'), testId: 'lite-brokerage' },
+      { icon: HardHat, en: 'Construction leads', hi: 'कंस्ट्रक्शन लीड', big: String(constructionLeads.length), small: tx('1% referral fee', '1% रेफ़रल फ़ीस'), go: () => onNavigate('construction'), testId: 'lite-construction' },
+    ];
+    return (
+      <div className="space-y-3" data-testid="broker-dash-lite">
+        <h3 className="pt-1 text-sm font-bold text-slate-900">{tx('My work at a glance', 'मेरा काम एक नज़र में')}</h3>
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {stats.map((x) => (
+            <button key={x.testId} onClick={x.go} data-testid={x.testId} className="flex flex-col items-start rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-slate-900">
+              <span className="flex w-full items-center justify-between text-[11px] font-semibold text-slate-500">{tx(x.en, x.hi)}<x.icon className="h-4 w-4 text-slate-400" /></span>
+              <span className="mt-1 text-lg font-bold text-slate-900">{x.big}</span>
+              <span className="text-[11px] text-slate-500">{x.small}</span>
+            </button>
+          ))}
+        </div>
+
+        {recent.length > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white p-3" data-testid="lite-recent-deals">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-slate-900">{tx('My latest deals', 'मेरी ताज़ा डील')}</p>
+              <button onClick={() => onNavigate('deals')} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900">{tx('All deals', 'सारी डील')} <ArrowRight className="h-3.5 w-3.5" /></button>
+            </div>
+            <ul className="mt-2 divide-y divide-slate-100">
+              {recent.map((d) => {
+                const p = propOf(d.propertyId);
+                return (
+                  <li key={d.id}>
+                    <button onClick={() => goto('deals', { deal: d.id }, onNavigate)} className="flex w-full items-center gap-3 py-2 text-left" data-testid="lite-deal">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-900">{p ? p.title : d.propertyId}</span>
+                        <span className="block truncate text-[11px] text-slate-500">{p?.locality ? `${p.locality} · ` : ''}{label('dealStage', d.stage)}</span>
+                      </span>
+                      {d.totalCommissionExpected > 0 && <span className="shrink-0 text-xs font-bold text-emerald-700">{formatINR(d.totalCommissionExpected)}</span>}
+                      <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        <details className="group rounded-xl border border-slate-200 bg-white" onToggle={(e) => setFeedOpen((e.target as HTMLDetailsElement).open)} data-testid="lite-feed">
+          <summary className="flex cursor-pointer list-none items-center justify-between p-3 text-sm font-bold text-slate-900">
+            {tx('What is happening on the network', 'नेटवर्क पर क्या चल रहा है')}
+            <span className="text-xs font-semibold text-slate-500 group-open:hidden">{tx('Show', 'दिखाएँ')} ▾</span>
+            <span className="hidden text-xs font-semibold text-slate-500 group-open:inline">{tx('Hide', 'छुपाएँ')} ▴</span>
+          </summary>
+          {feedOpen && <div className="border-t border-slate-100 p-2"><ActivityFeed activities={activities} currentUser={currentUser} isLoading={loadingActivities} onRefresh={fetchActivities} onNavigate={onNavigate} maxItems={5} /></div>}
+        </details>
+
+        <details className="group rounded-xl border border-slate-200 bg-white" onToggle={(e) => setChartsOpen((e.target as HTMLDetailsElement).open)} data-testid="lite-charts">
+          <summary className="flex cursor-pointer list-none items-center justify-between p-3 text-sm font-bold text-slate-900">
+            {tx('Charts: deals by stage, listings by area', 'चार्ट: स्टेज के हिसाब से डील, इलाके के हिसाब से लिस्टिंग')}
+            <span className="text-xs font-semibold text-slate-500 group-open:hidden">{tx('Show', 'दिखाएँ')} ▾</span>
+            <span className="hidden text-xs font-semibold text-slate-500 group-open:inline">{tx('Hide', 'छुपाएँ')} ▴</span>
+          </summary>
+          {chartsOpen && <div className="border-t border-slate-100 [&>div]:rounded-none [&>div]:border-0 [&>div]:p-3 [&>div]:shadow-none">{chartsBlock}</div>}
+        </details>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -531,107 +707,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* Visual Analytics & Oversight Section with Recharts */}
-      <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-100">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-semibold text-slate-900">{tx('Executive Administrative Oversight', 'कार्यकारी प्रशासनिक निगरानी')}</span>
-              <span aria-hidden="true">·</span>
-              <span>{tx('Visual metrics powered by Recharts', 'चार्ट के साथ आँकड़े')}</span>
-            </div>
-            <h2 className="text-base font-bold text-slate-900 mt-0.5">
-              {tx('Deal Pipeline, Commission Status & Inventory Analytics', 'डील पाइपलाइन, कमीशन की स्थिति और इन्वेंटरी विश्लेषण')}
-            </h2>
-          </div>
-
-          {/* Segmented Controls for Chart Switching */}
-          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs">
-            <button
-              onClick={() => setChartView('deals')}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
-                chartView === 'deals'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <BarChart3 className="h-3.5 w-3.5 text-amber-500" />
-              <span>{tx('Deals & Commission Pipeline', 'डील और कमीशन पाइपलाइन')}</span>
-            </button>
-            <button
-              onClick={() => setChartView('inventory')}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
-                chartView === 'inventory'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <PieChartIcon className="h-3.5 w-3.5 text-blue-500" />
-              <span>{tx('Locality Inventory Valuation', 'इलाके की इन्वेंटरी का मूल्य')}</span>
-            </button>
-          </div>
-        </div>
-
-        {chartView === 'deals' ? (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Left 2 Cols: Deal Stage Progression & Volume */}
-            <div className="lg:col-span-2 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-800">
-                  {isAdmin ? tx('Deal Progression Funnel & Deal Value (₹)', 'डील प्रगति फ़नल और डील वैल्यू (₹)') : tx('Deal Progression Funnel & Brokerage Volume (₹)', 'डील प्रगति फ़नल और ब्रोकरेज वॉल्यूम (₹)')}
-                </span>
-                <span className="text-slate-500">{tx(`${deals.length} active deals monitored`, `${deals.length} चालू डील पर नज़र`)}</span>
-              </div>
-              <div className="h-72 w-full pt-2">
-                <Suspense fallback={<ChartSkeleton />}>
-                  <DealStageChart data={dealStageData} tooltip={<CustomBarTooltip />} volumeName={isAdmin ? tx('Deal value (₹)', 'डील वैल्यू (₹)') : tx('Brokerage Volume (₹)', 'ब्रोकरेज वॉल्यूम (₹)')} countName={tx('Deals Count', 'डील की संख्या')} />
-                </Suspense>
-              </div>
-            </div>
-
-            {/* Right 1 Col: Commission Status Donut Breakdown */}
-            <div className="space-y-2 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-6">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-800">{tx('Commission Status Breakdown', 'कमीशन स्थिति का ब्यौरा')}</span>
-                <span className="text-emerald-700 font-medium">{tx('100% Ratified', '100% मंज़ूर')}</span>
-              </div>
-              <div className="h-56 w-full">
-                <Suspense fallback={<ChartSkeleton />}>
-                  <CommissionPie data={commissionStatusData} tooltip={<CustomPieTooltip />} />
-                </Suspense>
-              </div>
-
-              {/* Legend Summary */}
-              <div className="space-y-1.5 pt-1 text-xs">
-                {commissionStatusData.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-[11px]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="text-slate-600 truncate max-w-[140px]">{item.name}</span>
-                    </div>
-                    <span className="font-bold text-slate-900">{formatINR(item.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Locality Inventory Breakdown */
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-800">
-                {tx('Locality Inventory Valuation & Supply Concentrations', 'इलाके की इन्वेंटरी का मूल्य और सप्लाई का केंद्रीकरण')}
-              </span>
-              <span className="text-slate-500">{properties.length} active property clusters</span>
-            </div>
-            <div className="h-72 w-full pt-2">
-              <Suspense fallback={<ChartSkeleton />}>
-                <LocalityChart data={localityInventoryData} tooltip={<CustomBarTooltip />} valueName={tx('Combined Valuation (₹)', 'कुल मूल्य (₹)')} countName={tx('Property Count', 'प्रॉपर्टी की संख्या')} />
-              </Suspense>
-            </div>
-          </div>
-        )}
-      </div>
+      {chartsBlock}
 
       {/* Main Content 2-Column Section */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

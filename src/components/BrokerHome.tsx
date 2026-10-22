@@ -1,9 +1,12 @@
 /**
+ * v43 — one home, no repeats: the trust badge sits next to the greeting, a co-broking offer waiting is the first tile, the
+ * "setup %" bar shows only after the 3 first steps are done, and the phone-alert card opens only from its step.
+ *
  * v26 — the simple broker home: three first steps for a new broker, then only what needs him today (every tile opens its screen),
  * GENZ's own projects, this month's rank, his chapter's next meet, and the city report to share on WhatsApp.
  */
 import React, { useEffect, useState } from 'react';
-import { MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, ShieldCheck, Inbox, Clock, Handshake, Loader2, Lock } from 'lucide-react';
+import { MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, ShieldCheck, Inbox, Clock, Handshake, Loader2, Lock, Plus, HardHat } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -11,9 +14,25 @@ import type { TabType } from './NavigationTabs.js';
 import { AlertsCard } from './AlertsCard.js';
 import { pushState } from '../lib/push.js';
 import { goto } from '../lib/goto.js';
+import { GrowthNudge } from './GrowthNudge.js';
+import { TrustScoreBadge } from './TrustScoreBadge.js';
+import type { UserProfile } from '../types/index.js';
 
-export const BrokerHome: React.FC<{ name: string; onNavigate: (t: TabType) => void; onOpenAddRequirement: () => void }> = ({ name, onNavigate, onOpenAddRequirement }) => {
+interface Props {
+  name: string;
+  onNavigate: (t: TabType) => void;
+  onOpenAddRequirement: () => void;
+  /** v43 */
+  user?: UserProfile;
+  offersWaiting?: number;
+  onOpenAddProperty?: () => void;
+  onOpenAddLead?: () => void;
+  canGrow?: boolean;
+}
+
+export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequirement, user, offersWaiting = 0, onOpenAddProperty, onOpenAddLead, canGrow }) => {
   const tx = useTx();
+  const [showAlerts, setShowAlerts] = useState(false);
   const [h, setH] = useState<any>(null);
   const [alertsOn, setAlertsOn] = useState<boolean | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
@@ -33,10 +52,11 @@ export const BrokerHome: React.FC<{ name: string; onNavigate: (t: TabType) => vo
   const steps = [
     { done: h.firstRun.listing, icon: MessageCircle, en: 'Put your first listing — paste it from WhatsApp', hi: 'पहली लिस्टिंग डालें — WhatsApp से पेस्ट करें', go: () => goto('properties', { drafts: '1' }, onNavigate), testId: 'step-listing' },
     { done: h.firstRun.client, icon: UserPlus, en: 'Add a client’s need — GENZ finds matches for you', hi: 'किसी क्लाइंट की ज़रूरत जोड़ें — GENZ मैच ढूँढेगा', go: onOpenAddRequirement, testId: 'step-client' },
-    { done: !!alertsOn, icon: Bell, en: 'Turn on phone alerts', hi: 'फ़ोन अलर्ट चालू करें', go: () => document.getElementById('home-alerts')?.scrollIntoView({ behavior: 'smooth' }), testId: 'step-alerts' },
+    { done: !!alertsOn, icon: Bell, en: 'Turn on phone alerts', hi: 'फ़ोन अलर्ट चालू करें', go: () => { setShowAlerts(true); window.setTimeout(() => document.getElementById('home-alerts')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }, testId: 'step-alerts' },
   ];
   const left = steps.filter(s => !s.done).length;
   const tiles = [
+    { n: offersWaiting, icon: Handshake, en: 'A broker sent you a co-broking offer — answer it', hi: 'किसी ब्रोकर ने को-ब्रोकिंग ऑफ़र भेजा है — जवाब दें', go: () => goto('deals', { view: 'proposals' }, onNavigate), tone: 'amber', testId: 'tile-offers' },
     { n: c.roomCodes || 0, icon: Lock, en: 'A client is asking for his room code — read it out', hi: 'क्लाइंट रूम का कोड माँग रहा है — उसे बताएँ', go: () => onNavigate('clientroom'), tone: 'amber', testId: 'tile-room-codes' },
     { n: c.roomMsgs || 0, icon: MessageCircle, en: 'New messages from your clients', hi: 'आपके क्लाइंट के नए संदेश', go: () => onNavigate('clientroom'), tone: 'indigo', testId: 'tile-room-msgs' },
     { n: c.roomVisits || 0, icon: Clock, en: 'Clients asking to visit a property', hi: 'क्लाइंट प्रॉपर्टी देखने आना चाहते हैं', go: () => onNavigate('clientroom'), tone: 'amber', testId: 'tile-room-visits' },
@@ -58,7 +78,10 @@ export const BrokerHome: React.FC<{ name: string; onNavigate: (t: TabType) => vo
 
   return (
     <section className="mb-6 space-y-3" data-testid="broker-home">
-      <h2 className="text-lg font-bold text-slate-900">{tx(`Namaste, ${name.split(' ')[0]} 👋`, `नमस्ते, ${name.split(' ')[0]} 👋`)}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-bold text-slate-900">{tx(`Namaste, ${name.split(' ')[0]} 👋`, `नमस्ते, ${name.split(' ')[0]} 👋`)}</h2>
+        {user && <span className="md:hidden"><TrustScoreBadge user={user} variant="pill" /></span>}
+      </div>
 
       {left > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="first-steps">
@@ -78,12 +101,22 @@ export const BrokerHome: React.FC<{ name: string; onNavigate: (t: TabType) => vo
         </div>
       )}
 
+      {left === 0 && canGrow && <GrowthNudge onOpen={() => onNavigate('grow')} className="" />}
+
+      {showAlerts && <div id="home-alerts"><AlertsCard onState={s => setAlertsOn(s === 'on')} /></div>}
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button onClick={() => goto('properties', { drafts: '1' }, onNavigate)} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-emerald-600 p-3 text-left text-white" data-testid="home-wa"><MessageCircle className="h-5 w-5" /><span className="text-sm font-bold">{tx('From WhatsApp — listing or buyer need', 'WhatsApp से — लिस्टिंग या खरीदार की ज़रूरत')}</span></button>
         <button onClick={onOpenAddRequirement} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-slate-900 p-3 text-left text-white"><UserPlus className="h-5 w-5 text-amber-400" /><span className="text-sm font-bold">{tx('Client’s need', 'क्लाइंट की ज़रूरत')}</span></button>
         <button onClick={() => onNavigate('daily')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900"><Clock className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('Today & clients', 'आज और क्लाइंट')}</span></button>
         <button onClick={() => onNavigate('matches')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900"><Handshake className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('Matches', 'मैच')}</span></button>
       </div>
+      {(onOpenAddProperty || onOpenAddLead) && (
+        <div className="flex flex-wrap gap-2" data-testid="home-more-adds">
+          {onOpenAddProperty && <button onClick={onOpenAddProperty} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-slate-900"><Plus className="h-3.5 w-3.5" />{tx('Property (full form)', 'प्रॉपर्टी (पूरा फ़ॉर्म)')}</button>}
+          {onOpenAddLead && <button onClick={onOpenAddLead} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-slate-900"><HardHat className="h-3.5 w-3.5 text-orange-500" />{tx('Construction lead', 'कंस्ट्रक्शन लीड')}</button>}
+        </div>
+      )}
 
       {tiles.length > 0 && (
         <div className="grid gap-2 sm:grid-cols-2" data-testid="home-tiles">
@@ -127,8 +160,6 @@ export const BrokerHome: React.FC<{ name: string; onNavigate: (t: TabType) => vo
           <Share2 className="h-5 w-5 text-emerald-600" /><span className="text-xs text-slate-700">{tx(`Share the ${h.city || 'city'} property report on WhatsApp`, `${h.city || 'शहर'} की प्रॉपर्टी रिपोर्ट WhatsApp पर भेजें`)}</span>
         </a>
       </div>
-
-      <div id="home-alerts"><AlertsCard onState={s => setAlertsOn(s === 'on')} /></div>
     </section>
   );
 };
