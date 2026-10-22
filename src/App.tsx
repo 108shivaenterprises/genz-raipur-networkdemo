@@ -82,7 +82,7 @@ const FileDisputeModal = lazyView(() => import('./components/Modals.js'), 'FileD
 const AddConstructionLeadModal = lazyView(() => import('./components/Modals.js'), 'AddConstructionLeadModal');
 
 const TAB_KEY = 'genz.tab';
-const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans'];
+const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners'];
 
 export default function App() {
   const tx = useTx();
