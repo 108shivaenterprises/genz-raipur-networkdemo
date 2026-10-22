@@ -149,6 +149,8 @@ export const PERMISSION_CATALOG = {
   'partywatch:report': 'Network Watch: check a buyer / owner mobile and report one who refuses commission or goes direct',
   'partywatch:review': 'Network Watch: GENZ staff review reports, block or clear a mobile, answer appeals',
   'clientroom:use': 'Client Rooms: a private room (link + mobile OTP) to share properties and chat with your own client',
+  'partner:manage': 'Shop QR partners: put your QR at a shop / society gate, agree the shopkeeper’s share, and get the leads customers send by scanning it',
+  'partner:oversee': 'Shop QR partners — GENZ desk: see partner shares marked “not received” and leads worked after being marked lost',
   'landrecord:manage': 'Record land / khasra details and run the title red-flag scanner',
   'team:manage': 'Add / suspend own team members and allot CRM leads & deal rooms to them',
   'growth:nominate': 'Invite-only growth: nominate peers, own invite code, public visiting card, activation checklist',
@@ -237,7 +239,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'pcontrol:oversee',
     'inventory:read', 'landrecord:manage', 'launch:manage',
     'report:manage', 'chapter:read', 'chapter:manage', 'loan:manage', 'academy:read', 'propdoc:use',
-    'legal:manage', 'billing:manage',
+    'legal:manage', 'billing:manage', 'partner:oversee',
   ],
 
   // Verified RERA broker — the core network participant.
@@ -262,7 +264,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'tier2:vouch', 'tieup:manage', 'network:use',
     'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm',
     'connector:work', 'connector:sponsor', 'team:manage', 'growth:nominate',
-    'inventory:read', 'inventory:hold', 'inventory:share', 'launch:read', 'team:checkin', 'share:use', 'clientroom:use', 'partywatch:report', 'landrecord:manage',
+    'inventory:read', 'inventory:hold', 'inventory:share', 'launch:read', 'team:checkin', 'share:use', 'clientroom:use', 'partner:manage', 'partywatch:report', 'landrecord:manage',
     'daily:use', 'pdoc:use', 'propdoc:use', 'report:create', 'chapter:read', 'loan:submit', 'academy:read',
     'legal:request', 'billing:self',
   ],

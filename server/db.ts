@@ -1130,6 +1130,10 @@ export interface ClientRoom {
   /** a pending sign-in code (HMAC) and, when no SMS gateway is set, the plain code the BROKER reads out to his client */
   otpHash?: string; otpExpires?: string; otpTries?: number; otpPlain?: string;
   lastClientSeenAt?: string; lastBrokerSeenAt?: string;
+  /** v46 — the client's phones signed in to this room (at most ROOM_LIMITS.devices); the broker can remove one */
+  devices?: { id: string; label: string; firstAt: string; lastAt: string }[];
+  /** v46 — when the current link was made (the link's maximum life counts from here) */
+  linkAt?: string;
   items: { id: string; propertyId: string; sharedAt: string; note?: string; reaction?: 'LIKE' | 'PASS'; reactionAt?: string;
     visitRequests: { id: string; at: string; preferred: string; note?: string; status: 'REQUESTED' | 'HANDLED'; visitId?: string }[];
     /** v40 — the photo / video links the broker chose to show his client (only what he may share; re-checked on every view) */
@@ -1138,6 +1142,47 @@ export interface ClientRoom {
     visits?: { visitId: string; when: string; at: string }[] }[];
   messages: { id: string; from: 'CLIENT' | 'BROKER'; text: string; at: string; propertyId?: string }[];
   events: { at: string; text: string }[];
+}
+/** v46 — a broker's shop / guard partner who keeps his QR at the counter (see src/shared/shopPartner.ts) */
+export interface ShopPartner {
+  id: string;                      // SHP-xxxxxxxxxx
+  brokerId: string;
+  shopName: string; personName: string; area: string; city: string;
+  /** partner's mobile: HMAC + last 4 (he types it on his page link to get a code) */
+  phoneKey: string; phoneLast4: string;
+  qrCode: string;                  // public code for /q/:code (the customer's form)
+  tokenHash: string; sessVersion: number; linkAt: string; // the partner's own page /sp/:token
+  /** the page link itself, so the broker can send it again (opening it still needs the partner's mobile + a code) */
+  token?: string;
+  status: 'PENDING' | 'ACTIVE' | 'PAUSED' | 'ENDED';
+  terms: import('../src/shared/shopPartner.js').PartnerTerms;
+  termsVersion: number;
+  /** a change the broker proposed — applies once the partner accepts (only to leads after that) */
+  pending?: { terms: import('../src/shared/shopPartner.js').PartnerTerms; at: string; note?: string };
+  otpHash?: string; otpExpires?: string; otpTries?: number; otpPlain?: string;
+  devices?: { id: string; label: string; firstAt: string; lastAt: string }[];
+  scans: number; lastScanAt?: string; lastPartnerSeenAt?: string;
+  history: { at: string; by: 'BROKER' | 'PARTNER' | 'CUSTOMER' | 'SYSTEM'; text: string }[];
+  createdAt: string; updatedAt: string; acceptedAt?: string; endedAt?: string;
+}
+/** v46 — a customer who scanned a partner's QR. The full mobile is for the broker only; the partner sees the last 4. */
+export interface PartnerLead {
+  id: string;                      // PLD-xxxxxxxxxx
+  partnerId: string; brokerId: string;
+  kind: import('../src/shared/shopPartner.js').LeadKind;
+  name: string; phone: string; phoneLast4: string;
+  locality: string; budget?: string; propertyType?: string; note?: string;
+  consentAt: string;
+  /** the terms in force when the customer scanned (a later change never touches this lead) */
+  termsVersion: number; terms: import('../src/shared/shopPartner.js').PartnerTerms;
+  lockUntil: string;
+  status: import('../src/shared/shopPartner.js').LeadStatus;
+  lostAt?: string; lostReason?: string;
+  won?: { at: string; brokerage: number; amount: number; side: 'SALE' | 'RENT' };
+  payout?: { status: import('../src/shared/shopPartner.js').PayoutStatus; paidAt?: string; ref?: string; partnerAt?: string; partnerNote?: string };
+  clientCardId?: string;
+  history: { at: string; by: 'BROKER' | 'PARTNER' | 'CUSTOMER' | 'SYSTEM'; text: string }[];
+  createdAt: string; updatedAt: string;
 }
 /** v33 — a buyer's "no direct deal" acknowledgement for one visit (builder pass or broker-to-broker site visit): tick + mobile OTP before the QR works */
 export interface VisitAck {
@@ -1366,6 +1411,8 @@ export interface DatabaseState {
   partyAlerts: PartyAlert[];
   profilePhotos: ProfilePhoto[];
   clientRooms: ClientRoom[];
+  shopPartners: ShopPartner[];
+  partnerLeads: PartnerLead[];
   visitAcks: VisitAck[];
   twoFactor: TwoFactor[];
   /** v20 — GENZ's master-CP agreements with builders and the commission book (money moves outside the app) */
@@ -2529,7 +2576,7 @@ function getInitialSeedData(): DatabaseState {
     resetRequests: [],
     privacyRequests: [],
     connectorReferrals: [],
-    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], shopPartners: [], partnerLeads: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
   };
 }
 
@@ -2658,7 +2705,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
+  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'shopPartners', 'partnerLeads', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
   (parsed as any).legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...((parsed as any).legalSettings || {}) };
   // v11: listings created before freshness tracking start their 30-day clock now (nothing expires on upgrade)
   for (const p of parsed.properties) p.confirmedAt ||= new Date().toISOString();

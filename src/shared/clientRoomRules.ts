@@ -7,7 +7,9 @@ export const ROOM_KINDS = [
 ] as const;
 export type RoomKind = (typeof ROOM_KINDS)[number]['id'];
 
-export const ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1000, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 30, purgeClosedDays: 90 } as const;
+/** v46: a client who opens his room at least once in `sessionDays` never types a code again (sliding), on at most `devices` phones;
+ *  the link itself also slides with use, up to `maxLifeDays` from when the room was made (then the broker makes a new link). */
+export const ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1000, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 60, purgeClosedDays: 90, devices: 2, maxLifeDays: 365 } as const;
 
 /** a 10-digit Indian mobile (with or without +91 / 0 / spaces / dashes) typed anywhere in a message */
 export function containsPhone(text: string): boolean {

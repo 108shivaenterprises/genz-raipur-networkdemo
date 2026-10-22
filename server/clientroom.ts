@@ -127,6 +127,8 @@ function detail(r: ClientRoom) {
     }),
     /** only when no SMS gateway is set: the code the client has just asked for — the broker reads it out to him */
     codeForClient: awaiting, smsOn: smsOn(),
+    /** v46 — the phones signed in to this room (labels only: "Android · Chrome") */
+    devices: (r.devices || []).map(d => ({ id: d.id, label: d.label, firstAt: d.firstAt, lastAt: d.lastAt })), maxDevices: L.devices,
   };
 }
 
@@ -253,15 +255,26 @@ export function createClientRoomRouter() {
     if (room.status !== 'ACTIVE') return bad(res, 'This room is closed', 409);
     const token = newToken();
     room.tokenHash = sha(token); room.sessVersion += 1; room.otpHash = undefined; room.otpPlain = undefined; room.otpExpires = undefined;
+    room.devices = []; room.linkAt = nowIso();
     room.expiresAt = new Date(Date.now() + L.linkDays * 86400_000).toISOString();
     ev(room, 'New link made — the old link stopped working'); db.save();
     db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_LINK_RENEWED', 'Client room link renewed');
     res.json({ success: true, link: `/r/${token}`, room: detail(room) });
   });
 
+  /** v46 — remove one of the client's phones: it is signed out at once and the slot is free for another phone */
+  r.delete('/:id/devices/:dev', (req: Request, res: Response) => {
+    const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    const d = (room.devices || []).find(x => x.id === req.params.dev); if (!d) return bad(res, 'That phone is not signed in to this room', 404);
+    room.devices = (room.devices || []).filter(x => x.id !== d.id);
+    ev(room, `Broker removed a phone from the room (${d.label})`); db.save();
+    db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_DEVICE_REMOVED', `Client room phone removed (${d.label})`);
+    res.json({ success: true, room: detail(room) });
+  });
+
   r.post('/:id/close', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
-    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.otpHash = undefined; room.otpPlain = undefined;
+    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPlain = undefined;
     ev(room, 'Room closed'); db.save();
     db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_CLOSED', 'Client room closed');
     res.json({ success: true, room: detail(room) });
@@ -276,17 +289,52 @@ const pingBroker = (room: ClientRoom, title: string, body: string) => void pushT
 
 // ───────────────────────────── the client's page (no login: link + mobile OTP) ─────────────────────────────
 const SESS_COOKIE = 'genz_cr';
-const sessSig = (r: ClientRoom, exp: number) => hmac('cr-sess', `${r.id}|${r.sessVersion}|${exp}`);
-const sessionFor = (req: Request, r: ClientRoom) => {
-  const raw = parseCookies(req.headers.cookie)[`${SESS_COOKIE}_${r.id}`]; if (!raw) return false;
-  const [exp, sig] = raw.split('.'); const e = Number(exp);
-  return Number.isFinite(e) && e > Date.now() && !!sig && safeEqual(sig, sessSig(r, e));
+/**
+ * v46 — one cookie per room per phone: `<deviceId>.<exp>.<sig>`. The signature covers the room, its link version, the device and the
+ * expiry. It lives for the room's whole life (Max-Age), but the session inside it is good only till `exp` (60 days, renewed on every
+ * visit) — so a phone whose session lapsed still keeps its device slot and does not count as a new phone.
+ * A device the broker removed, a new link (sessVersion) or a closed room → the cookie stops working.
+ */
+const sessSig = (r: ClientRoom, dev: string, exp: number) => hmac('cr-sess', `${r.id}|${r.sessVersion}|${dev}|${exp}`);
+const cookieOf = (req: Request, r: ClientRoom): { dev: string; exp: number } | null => {
+  const raw = parseCookies(req.headers.cookie)[`${SESS_COOKIE}_${r.id}`]; if (!raw) return null;
+  const [dev, exp, sig] = raw.split('.'); const e = Number(exp);
+  if (!dev || !/^[a-f0-9]{12}$/.test(dev) || !Number.isFinite(e) || !sig || !safeEqual(sig, sessSig(r, dev, e))) return null;
+  return { dev, exp: e };
 };
-function setSession(req: Request, res: Response, r: ClientRoom) {
-  const exp = Date.now() + L.sessionDays * 86400_000;
+/** the device id of a still-valid session on this phone (null = must sign in) */
+const sessionFor = (req: Request, r: ClientRoom): string | null => {
+  const c = cookieOf(req, r);
+  if (!c || c.exp <= Date.now()) return null;
+  return (r.devices || []).some(d => d.id === c.dev) ? c.dev : null;
+};
+/** a phone that signed in before (its slot is still there), even if its session has lapsed */
+const knownDevice = (req: Request, r: ClientRoom): string | null => {
+  const c = cookieOf(req, r);
+  return c && (r.devices || []).some(d => d.id === c.dev) ? c.dev : null;
+};
+const deviceLabel = (ua: unknown) => {
+  const u = String(ua || '');
+  const os = /iPhone|iPad/i.test(u) ? 'iPhone' : /Android/i.test(u) ? 'Android' : /Windows/i.test(u) ? 'Windows' : /Mac OS/i.test(u) ? 'Mac' : 'Phone';
+  const br = /SamsungBrowser/i.test(u) ? 'Samsung Internet' : /CriOS|Chrome/i.test(u) ? 'Chrome' : /FxiOS|Firefox/i.test(u) ? 'Firefox' : /Safari/i.test(u) ? 'Safari' : 'browser';
+  return `${os} · ${br}`;
+};
+const lifeEnd = (r: ClientRoom) => Date.parse(r.linkAt || r.createdAt) + L.maxLifeDays * 86400_000;
+function setSession(req: Request, res: Response, r: ClientRoom, dev: string) {
+  const exp = Math.min(Date.now() + L.sessionDays * 86400_000, lifeEnd(r));
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production';
-  res.append('Set-Cookie', `${SESS_COOKIE}_${r.id}=${exp}.${sessSig(r, exp)}; Path=/r; HttpOnly; SameSite=Lax; Max-Age=${L.sessionDays * 86400}${secure ? '; Secure' : ''}`);
+  const maxAge = Math.max(60, Math.round((lifeEnd(r) - Date.now()) / 1000));
+  res.append('Set-Cookie', `${SESS_COOKIE}_${r.id}=${dev}.${exp}.${sessSig(r, dev, exp)}; Path=/r; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`);
 }
+/** every visit: the session and the link slide forward (never past the room's maximum life) */
+function slide(req: Request, res: Response, r: ClientRoom, dev: string) {
+  const c = cookieOf(req, r);
+  if (!c || c.exp - Date.now() < (L.sessionDays - 1) * 86400_000) setSession(req, res, r, dev);
+  const d = (r.devices || []).find(x => x.id === dev); if (d) d.lastAt = nowIso();
+  const want = Math.min(Date.now() + L.linkDays * 86400_000, lifeEnd(r));
+  if (want > Date.parse(r.expiresAt)) r.expiresAt = new Date(want).toISOString();
+}
+const FULL_DEVICES = 'इस रूम में पहले से 2 फ़ोन जुड़े हैं। नए फ़ोन के लिए अपने ब्रोकर से पुराना फ़ोन हटवाएँ। / This room is already open on 2 phones. Ask your broker to remove one first.';
 
 const CSS = `*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f2;color:#1b1b1b}.w{max-width:620px;margin:0 auto;padding:14px}
 .top{background:#14213d;color:#fff;border-radius:16px;padding:16px}.top h1{margin:0 0 4px;font-size:18px}.top p{margin:0;opacity:.85;font-size:13px}
@@ -296,7 +344,8 @@ label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}input[type=
 button,.btn{display:inline-block;padding:11px 16px;border-radius:11px;border:0;font-size:15px;font-weight:700;background:#14213d;color:#fff;text-decoration:none;cursor:pointer}.g{background:#1fa855}.l{background:#eee;color:#222}
 .prop{display:flex;gap:10px}.prop img{width:96px;height:96px;object-fit:cover;border-radius:10px;flex:none;background:#eee}.price{font-weight:800;font-size:16px}.tag{display:inline-block;background:#eef1f7;border-radius:99px;padding:2px 8px;font-size:11px;margin:2px 3px 0 0}
 .chat{max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0}.m{max-width:85%;padding:8px 11px;border-radius:12px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}.mc{align-self:flex-end;background:#dff3e5}.mb{align-self:flex-start;background:#eef1f7}.m small{display:block;margin-top:3px}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.gal{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scroll-snap-type:x mandatory}.gal img{width:150px;height:110px;object-fit:cover;border-radius:10px;flex:none;background:#eee;scroll-snap-align:start}.vid{position:relative;margin-top:10px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9}.vid iframe,.vid video{position:absolute;inset:0;width:100%;height:100%;border:0}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}`;
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.gal{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scroll-snap-type:x mandatory}.gal img{width:150px;height:110px;object-fit:cover;border-radius:10px;flex:none;background:#eee;scroll-snap-align:start}.vid{position:relative;margin-top:10px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9}.vid iframe,.vid video{position:absolute;inset:0;width:100%;height:100%;border:0}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}
+.wm{position:fixed;inset:-20%;pointer-events:none;z-index:50;display:flex;flex-wrap:wrap;gap:60px 40px;align-content:space-around;justify-content:space-around;transform:rotate(-24deg);opacity:.07;font-size:15px;font-weight:800;color:#000;user-select:none}`;
 
 function shell(title: string, body: string, lang = 'hi') {
   return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div><script src="/r/cr.js" defer></script></body></html>`;
@@ -339,7 +388,9 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   r.get('/:token', rateLimit('cr-view', 120, 60_000), (req: Request, res: Response) => {
     headers(res);
     const room = find(req.params.token); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
-    if (!sessionFor(req, room)) return gate(res, room, req.params.token);
+    const dev = sessionFor(req, room);
+    if (!dev) return gate(res, room, req.params.token);
+    slide(req, res, room, dev);
     render(req, res, room);
   });
 
@@ -351,6 +402,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     if (!phone) return gate(res, room, req.params.token, 'अपना मोबाइल नंबर डालें। / Enter your mobile number.');
     if (hit(`cr-phone:${room.id}`, 8, 3600_000, 3600_000) > 0) return gate(res, room, req.params.token, 'बहुत बार कोशिश हो चुकी। एक घंटे बाद फिर करें। / Too many tries — please wait an hour.', 'phone', 429);
     if (!safeEqual(hmac('cr-phone', phone), room.phoneKey)) return gate(res, room, req.params.token, 'यह नंबर इस रूम से मेल नहीं खाता। उसी नंबर से कोशिश करें जो आपने अपने ब्रोकर को दिया था। / This number does not match this room — use the number you gave your broker.');
+    if (!knownDevice(req, room) && (room.devices || []).length >= L.devices) return gate(res, room, req.params.token, FULL_DEVICES, 'phone', 403);
     const otp = secureOtp();
     room.otpHash = hmac('cr-otp', `${room.id}|${otp}`); room.otpExpires = new Date(Date.now() + L.otpMinutes * 60_000).toISOString(); room.otpTries = 0;
     room.otpPlain = smsOn() ? undefined : otp;
@@ -372,11 +424,24 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       room.otpTries = (room.otpTries || 0) + 1; db.save();
       return gate(res, room, req.params.token, 'कोड सही नहीं है। / The code is not correct.', 'code');
     }
+    // v46 — this phone's slot: the same phone again reuses its slot; a new phone takes one of the 2 (or is refused)
+    let dev = knownDevice(req, room);
+    const devices = room.devices || (room.devices = []);
+    let fresh = false;
+    if (!dev) {
+      if (devices.length >= L.devices) { room.otpHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, FULL_DEVICES, 'phone', 403); }
+      dev = crypto.randomBytes(6).toString('hex');
+      devices.push({ id: dev, label: deviceLabel(req.headers['user-agent']), firstAt: nowIso(), lastAt: nowIso() });
+      fresh = true;
+    }
     room.otpHash = undefined; room.otpPlain = undefined; room.otpExpires = undefined; room.otpTries = 0;
-    room.lastClientSeenAt = nowIso(); ev(room, 'Client opened the room (mobile verified)');
+    room.lastClientSeenAt = nowIso();
+    const label = devices.find(d => d.id === dev)!.label;
+    ev(room, fresh ? `Client opened the room on a new phone (${label}) — mobile verified` : `Client signed in again on the same phone (${label})`);
+    slide(req, res, room, dev);
     db.save();
-    setSession(req, res, room);
-    pingBroker(room, 'Your client is in the room', `${room.clientName} opened the room.`);
+    pingBroker(room, fresh && devices.length > 1 ? 'Your client room opened on a second phone' : 'Your client is in the room',
+      fresh && devices.length > 1 ? `${room.clientName}'s room is now open on ${devices.length} phones (${label}). If that is not your client, remove it in Client Rooms → Info.` : `${room.clientName} opened the room.`);
     res.redirect(303, `/r/${req.params.token}`);
   });
 
@@ -384,7 +449,9 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   const authed = (req: Request, res: Response) => {
     headers(res);
     const room = find(req.params.token); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) { gone(res); return null; }
-    if (!sessionFor(req, room)) { res.redirect(303, `/r/${req.params.token}`); return null; }
+    const dev = sessionFor(req, room);
+    if (!dev) { res.redirect(303, `/r/${req.params.token}`); return null; }
+    slide(req, res, room, dev);
     return room;
   };
   r.post('/:token/react', rateLimit('cr-react', 200, 3600_000), form, (req: Request, res: Response) => {
@@ -452,9 +519,13 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
     }).join('');
     const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text)}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : esc(b?.name || 'Broker')} · ${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
     db.save();
-    res.send(shell('Your private room', `<div class="top"><h1>नमस्ते ${esc(room.clientName.split(' ')[0])} 🙏</h1><p>${esc(b?.name || 'आपके ब्रोकर')} ने आपके लिए ये प्रॉपर्टी चुनी हैं · Properties picked for you</p></div>
+    // v46 — the client's own name over the page: a screenshot forwarded to someone else still shows whose room it was
+    const mark = esc(`${room.clientName} ••${room.phoneLast4} · ${b?.name || 'GENZ'}`);
+    const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join('')}</div>`;
+    res.send(shell('Your private room', `${wm}<div class="top"><h1>नमस्ते ${esc(room.clientName.split(' ')[0])} 🙏</h1><p>${esc(b?.name || 'आपके ब्रोकर')} ने आपके लिए ये प्रॉपर्टी चुनी हैं · Properties picked for you</p></div>
 ${req.query.sent === '1' ? '<div class="card ok"><p class="t">आपका विज़िट अनुरोध ब्रोकर को भेज दिया गया। / Your visit request has been sent.</p></div>' : ''}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 ${brokerCard(b)}
+<p class="small" style="margin:10px 4px">📌 इस पेज को बुकमार्क / होम स्क्रीन पर रख लें — इसी फ़ोन पर अगली बार बिना कोड के खुलेगा (${L.sessionDays} दिन में एक बार खोलते रहें)। यह पेज सिर्फ़ आपके लिए है, इसका लिंक या स्क्रीनशॉट आगे न भेजें।<br>Bookmark this page or add it to your home screen — on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
 <h2>आपके लिए प्रॉपर्टी / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">अभी कोई प्रॉपर्टी नहीं भेजी गई। / Nothing shared yet — your broker will add some.</p></div>'}
 <h2 id="chat">ब्रोकर से बात / Chat with your broker</h2>
 <div class="card"><p class="small">यह चैट सिर्फ़ आप और आपके ब्रोकर देख सकते हैं। फ़ोन नंबर चैट में न लिखें। / Only you and your broker can read this chat. Please do not type phone numbers.</p>

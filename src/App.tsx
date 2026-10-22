@@ -42,6 +42,7 @@ const PartyWatchBroker = lazyView(() => import('./components/PartyWatch.js'), 'P
 const PartyWatchAdmin = lazyView(() => import('./components/PartyWatch.js'), 'PartyWatchAdmin');
 const PhotoCheckAdmin = lazyView(() => import('./components/VerifiedPhoto.js'), 'PhotoCheckAdmin');
 const ClientRoomsTab = lazyView(() => import('./components/ClientRooms.js'), 'ClientRoomsTab');
+const ShopPartnersView = lazyView(() => import('./components/ShopPartners.js'), 'ShopPartnersView');
 const VisitsView = lazyView(() => import('./components/VisitsView.js'), 'VisitsView');
 const QuickScan = lazyView(() => import('./components/QuickScan.js'), 'QuickScan');
 const QrMenu = lazyView(() => import('./components/QuickScan.js'), 'QrMenu');
@@ -597,6 +598,8 @@ export default function App() {
         {activeTab === 'desk' && hasPerm(permissions, 'offer:make', 'offer:decide', 'listing:lifecycle') && <DealDesk currentUser={currentUser} permissions={permissions} />}
 
         {activeTab === 'clientroom' && hasPerm(permissions, 'clientroom:use') && <ClientRoomsTab />}
+
+        {activeTab === 'partners' && hasPerm(permissions, 'partner:manage', 'partner:oversee') && <ShopPartnersView currentUser={currentUser} canManage={hasPerm(permissions, 'partner:manage')} canOversee={hasPerm(permissions, 'partner:oversee')} />}
         {activeTab === 'visits' && hasPerm(permissions, 'visit:pass', 'visit:scan') && <VisitsView currentUser={currentUser} />}
 
         {activeTab === 'pcontrol' && hasPerm(permissions, 'pcontrol:manage', 'pcontrol:oversee') && <ProjectControlView currentUser={currentUser} />}

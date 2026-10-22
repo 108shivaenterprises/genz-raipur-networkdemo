@@ -140,6 +140,7 @@ import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
 import { roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
+import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners } from './server/shopPartners.js';
 import { createLandRecordsRouter } from './server/landrecords.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
 import { findState, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
@@ -5300,6 +5301,10 @@ app.use('/api/land-records', createLandRecordsRouter());
 app.use('/s', createPublicShareRouter());
 app.use('/api/client-rooms', createClientRoomRouter());
 app.use('/r', createClientRoomPageRouter());
+// v46 — shop QR partners: broker API, the customer's scan form + poster, the shopkeeper's own page
+app.use('/api/shop-partners', createShopPartnerRouter());
+app.use('/q', createPartnerQrRouter());
+app.use('/sp', createPartnerPageRouter());
 app.use('/api/visit-acks', createVisitAckRouter());
 app.use('/a', createVisitAckPageRouter());
 app.use('/c', createPublicCardRouter());
@@ -5402,6 +5407,7 @@ function assertProductionConfig() {
 
 async function startServer() {
   assertProductionConfig();
+  try { seedDemoPartners(); } catch (e) { console.error('[DEMO] shop partners seed failed', e); }
   // Unknown API paths must not fall through to the SPA shell.
   app.use('/api', (_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 

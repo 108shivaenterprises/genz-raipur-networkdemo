@@ -30,6 +30,7 @@ import {
   Scale as ScaleIcon,
   BadgeIndianRupee,
   MessagesSquare,
+  Store,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -69,7 +70,8 @@ export type TabType =
   | 'clientroom'
   | 'desk'
   | 'network'
-  | 'launchdesk';
+  | 'launchdesk'
+  | 'partners';
 
 interface NavigationTabsProps {
   activeTab: TabType;
@@ -156,6 +158,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('clientroom:use') ? [{ id: 'clientroom', label: t('nav.clientroom', 'Client Rooms'), icon: MessagesSquare, badge: roomBadge }] : []),
     ...(has('visit:pass', 'visit:scan') ? [{ id: 'visits', label: t('nav.visits', 'Visit QR'), icon: QrCode }] : []),
     ...(has('connector:manage', 'connector:work', 'connector:desk') ? [{ id: 'connector', label: t('nav.connector', 'Connector Desk'), icon: Handshake }] : []),
+    ...(has('partner:manage', 'partner:oversee') ? [{ id: 'partners', label: t('nav.partners', 'Shop QR Partners'), icon: Store }] : []),
     ...(has('team:manage') ? [{ id: 'team', label: t('nav.team', 'My Team'), icon: Users }] : []),
     ...(has('share:use') ? [{ id: 'share', label: t('nav.share', 'Share Kit'), icon: Share2 }] : []),
     ...(has('propdoc:use') ? [{ id: 'propdocs', label: t('nav.propdocs', 'Property Papers'), icon: FolderOpen }] : []),
@@ -210,7 +213,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'share', 'propdocs', 'pdocs', 'landrecords'] },
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
     { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'legal', 'due_diligence', 'disputes', 'audit'] },
-    { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },
+    { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'partners', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },
     { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['network', 'community', 'grow', 'plans', 'launchdesk', 'citylaunch'] },
   ];
   const groups = (() => {

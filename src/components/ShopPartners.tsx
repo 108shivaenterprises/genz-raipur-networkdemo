@@ -1,0 +1,300 @@
+/**
+ * v46 — Shop QR partners (broker) + the GENZ desk list (admin).
+ * A broker puts his QR at a shop / society gate, agrees the shopkeeper's share (sale / rent, % of his brokerage or fixed ₹),
+ * and gets the leads customers send by scanning it. The shopkeeper accepts the terms and follows his leads on his own page
+ * (link + mobile code). Later work on a lead's mobile number by the same broker is linked automatically.
+ */
+import React, { useEffect, useMemo, useState } from 'react';
+import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck } from 'lucide-react';
+import { api } from '../lib/api.js';
+import { useI18n, useTx } from '../lib/i18n.js';
+import { formatINR } from '../lib/utils.js';
+import { LEAD_KINDS, LEAD_STATUSES, PAYOUT_LABEL, DEFAULT_TERMS, PARTNER_LIMITS, partnerAmount, sideOfKind, termsText, cutText, checkTerms, type PartnerTerms, type Cut } from '../shared/shopPartner.js';
+import type { UserProfile } from '../types/index.js';
+
+const inp = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm';
+const dark = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-40';
+const light = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 disabled:opacity-40';
+const when = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '');
+const abs = (path: string) => `${window.location.origin}${path}`;
+
+const CutInput: React.FC<{ label: string; value: Cut; onChange: (c: Cut) => void; testId: string }> = ({ label, value, onChange, testId }) => {
+  const tx = useTx();
+  return (
+    <div>
+      <label className="text-xs font-semibold text-slate-700">{label}</label>
+      <div className="mt-1 flex gap-2">
+        <select className={inp + ' !w-28'} value={value.mode} onChange={(e) => onChange({ mode: e.target.value as Cut['mode'], value: e.target.value === 'PCT' ? 20 : 2000 })} data-testid={`${testId}-mode`}>
+          <option value="PCT">{tx('% of my brokerage', 'मेरी ब्रोकरेज का %')}</option>
+          <option value="FIXED">{tx('Fixed ₹ per deal', 'हर डील पर ₹')}</option>
+        </select>
+        <input className={inp} type="number" inputMode="decimal" min={0} step={value.mode === 'PCT' ? 0.5 : 100} value={value.value || ''} onChange={(e) => onChange({ ...value, value: Number(e.target.value) })} data-testid={`${testId}-value`} />
+      </div>
+    </div>
+  );
+};
+
+const TermsEditor: React.FC<{ value: PartnerTerms; onChange: (t: PartnerTerms) => void }> = ({ value, onChange }) => {
+  const tx = useTx();
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      <CutInput label={tx('Share on a SALE', 'बिक्री पर हिस्सा')} value={value.sale} onChange={(c) => onChange({ ...value, sale: c })} testId="sp-sale" />
+      <CutInput label={tx('Share on a RENT', 'किराये पर हिस्सा')} value={value.rent} onChange={(c) => onChange({ ...value, rent: c })} testId="sp-rent" />
+      <div>
+        <label className="text-xs font-semibold text-slate-700">{tx('A lead stays the shop’s for (days)', 'लीड कितने दिन दुकान की रहे')}</label>
+        <input className={inp + ' mt-1'} type="number" min={PARTNER_LIMITS.minLockDays} max={PARTNER_LIMITS.maxLockDays} value={value.lockDays} onChange={(e) => onChange({ ...value, lockDays: Number(e.target.value) })} data-testid="sp-lock" />
+      </div>
+    </div>
+  );
+};
+
+const AddPartner: React.FC<{ city: string; onDone: (x: { partner: any; link: string }) => void; onCancel: () => void }> = ({ city, onDone, onCancel }) => {
+  const tx = useTx();
+  const [f, setF] = useState({ shopName: '', personName: '', phone: '', area: '', city, consent: false });
+  const [terms, setTerms] = useState<PartnerTerms>(DEFAULT_TERMS);
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const tErr = checkTerms(terms);
+  const go = async () => {
+    setBusy(true); setErr('');
+    try { const r = await api.spCreate({ ...f, terms }); onDone(r); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="sp-add">
+      <p className="text-sm font-bold text-slate-900">{tx('New shop partner', 'नया दुकान पार्टनर')}</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input className={inp} placeholder={tx('Shop / place name (e.g. Gupta Kirana)', 'दुकान / जगह का नाम (जैसे गुप्ता किराना)')} value={f.shopName} onChange={(e) => setF({ ...f, shopName: e.target.value })} data-testid="sp-shop" />
+        <input className={inp} placeholder={tx('Shopkeeper’s name', 'दुकानदार का नाम')} value={f.personName} onChange={(e) => setF({ ...f, personName: e.target.value })} data-testid="sp-person" />
+        <input className={inp} inputMode="numeric" maxLength={14} placeholder={tx('Shopkeeper’s mobile', 'दुकानदार का मोबाइल')} value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} data-testid="sp-phone" />
+        <input className={inp} placeholder={tx('Area / locality of the shop', 'दुकान का इलाका')} value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} data-testid="sp-area" />
+      </div>
+      <TermsEditor value={terms} onChange={setTerms} />
+      <p className="text-[11px] text-slate-500">{termsText(terms)} · {tx('You pay the shop yourself; GENZ only records it. Call it a “referral fee” — check with your CA / lawyer once.', 'हिस्सा आप ख़ुद दुकान को देंगे; GENZ सिर्फ़ रिकॉर्ड रखता है। इसे “रेफ़रल फ़ीस” कहें — एक बार CA / वकील से पूछ लें।')}</p>
+      <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={f.consent} onChange={(e) => setF({ ...f, consent: e.target.checked })} data-testid="sp-consent" />
+        <span>{tx('The shopkeeper agreed to keep my QR and to be contacted on this mobile. He will accept these terms on his own phone before the QR starts.', 'दुकानदार मेरा QR रखने और इस मोबाइल पर संपर्क के लिए सहमत है। QR चालू होने से पहले वह अपने फ़ोन पर ये शर्तें मंज़ूर करेगा।')}</span></label>
+      {(err || (tErr && f.shopName)) && <p className="text-xs font-semibold text-red-700" role="alert">{err || tErr}</p>}
+      <div className="flex gap-2">
+        <button className={dark} disabled={busy || !f.consent || !!tErr || f.shopName.trim().length < 2 || f.personName.trim().length < 2 || f.phone.replace(/\D/g, '').length < 10 || f.area.trim().length < 2} onClick={go} data-testid="sp-create">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{tx('Add & send terms', 'जोड़ें और शर्तें भेजें')}</button>
+        <button className={light} onClick={onCancel}>{tx('Cancel', 'रद्द')}</button>
+      </div>
+    </div>
+  );
+};
+
+const waText = (p: any, link: string, hi = true) => (hi
+  ? `नमस्ते ${p.personName} जी, GENZ पर हमारी QR पार्टनरशिप — आपका हिस्सा: ${termsText(p.terms, true)}। यह लिंक खोलें, अपना मोबाइल (••${p.phoneLast4}) डालें और "मंज़ूर" दबाएँ: ${abs(link)}`
+  : `Namaste ${p.personName} ji, our QR partnership on GENZ — your share: ${termsText(p.terms)}. Open this link, enter your mobile (••${p.phoneLast4}) and tap Accept: ${abs(link)}`);
+
+const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [edit, setEdit] = useState(false); const [terms, setTerms] = useState<PartnerTerms>(p.pending?.terms || p.terms); const [note, setNote] = useState('');
+  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const tone = p.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : p.status === 'PENDING' ? 'bg-amber-100 text-amber-900' : p.status === 'PAUSED' ? 'bg-slate-200 text-slate-700' : 'bg-red-100 text-red-700';
+  const statusText = { ACTIVE: tx('QR live', 'QR चालू'), PENDING: tx('Waiting for his “Accept”', 'उनकी “मंज़ूरी” बाकी'), PAUSED: tx('Paused', 'रुका'), ENDED: tx('Ended', 'ख़त्म') }[p.status as 'ACTIVE'];
+  return (
+    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid={`sp-partner-${p.id}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div><p className="flex items-center gap-1.5 text-sm font-bold text-slate-900"><Store className="h-4 w-4 text-slate-500" />{p.shopName}</p>
+          <p className="text-xs text-slate-500">{p.personName} · ••{p.phoneLast4} · {p.area}</p></div>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${tone}`}>{statusText}</span>
+      </div>
+      {p.codeForPartner && (
+        <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-2 text-center" data-testid="sp-code">
+          <p className="text-[11px] font-semibold text-amber-900">{tx('He is opening his page — read him this code', 'वे अपना पेज खोल रहे हैं — यह कोड बताएँ')}</p>
+          <p className="font-mono text-2xl font-extrabold tracking-widest text-slate-900">{p.codeForPartner}</p>
+        </div>
+      )}
+      <p className="text-xs text-slate-700">{termsText(p.terms, hi)} <span className="text-slate-400">(v{p.termsVersion})</span></p>
+      {p.pending && <p className="rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-900">{tx('Change waiting for his yes', 'बदलाव — उनकी हाँ बाकी')}: {termsText(p.pending.terms, hi)}</p>}
+      <div className="grid grid-cols-4 gap-1 text-center text-[11px]">
+        {[[tx('Scans', 'स्कैन'), p.scans], [tx('Leads', 'लीड'), p.counts.leads], [tx('Deals', 'डील'), p.counts.won], [tx('Due', 'बाकी'), formatINR(p.counts.due)]].map(([k, v]) => (
+          <div key={String(k)} className="rounded-md bg-slate-50 py-1"><b className="block text-sm text-slate-900">{v}</b>{k}</div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {p.pageUrl && p.status !== 'ENDED' && <a className={light + ' !min-h-9 !text-xs'} href={`https://wa.me/?text=${encodeURIComponent(waText(p, p.pageUrl, hi))}`} target="_blank" rel="noopener noreferrer" data-testid="sp-wa"><Send className="h-3.5 w-3.5" />{tx('Send his page link', 'उनका पेज लिंक भेजें')}</a>}
+        {p.status !== 'ENDED' && <a className={light + ' !min-h-9 !text-xs'} href={p.posterUrl} target="_blank" rel="noopener noreferrer" data-testid="sp-poster"><Printer className="h-3.5 w-3.5" />{tx('QR poster', 'QR पोस्टर')}</a>}
+        {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs'} onClick={() => setEdit(!edit)} data-testid="sp-edit-terms">{tx('Change share', 'हिस्सा बदलें')}</button>}
+        {p.status === 'ACTIVE' && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spAction(p.id, 'pause'))}><Pause className="h-3.5 w-3.5" />{tx('Pause', 'रोकें')}</button>}
+        {p.status === 'PAUSED' && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spAction(p.id, 'resume'))}><Play className="h-3.5 w-3.5" />{tx('Resume', 'फिर चालू')}</button>}
+        {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => { if (window.confirm(tx('Make a new page link? The old link stops and he signs in again.', 'नया पेज लिंक बनाएँ? पुराना बंद होगा, उन्हें दोबारा कोड डालना होगा।'))) run(() => api.spAction(p.id, 'link')); }}><Link2 className="h-3.5 w-3.5" />{tx('New link', 'नया लिंक')}</button>}
+        {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs !text-red-700'} disabled={busy} onClick={() => { if (window.confirm(tx('End this partnership? The QR stops. Leads already in keep their share.', 'साझेदारी ख़त्म करें? QR बंद होगा। पहले आई लीड का हिस्सा वैसा ही रहेगा।'))) run(() => api.spAction(p.id, 'end')); }}><XCircle className="h-3.5 w-3.5" />{tx('End', 'ख़त्म')}</button>}
+      </div>
+      {edit && (
+        <div className="space-y-2 rounded-lg bg-slate-50 p-2">
+          <TermsEditor value={terms} onChange={setTerms} />
+          <input className={inp} placeholder={tx('Note for him (optional)', 'उनके लिए नोट (ज़रूरी नहीं)')} value={note} onChange={(e) => setNote(e.target.value)} />
+          <p className="text-[11px] text-slate-500">{p.status === 'PENDING' ? tx('He has not accepted yet, so this simply corrects the proposal.', 'उन्होंने अभी मंज़ूर नहीं किया, इसलिए यह प्रस्ताव ही सुधरेगा।') : tx('The current share stays until he accepts on his page. A change applies only to leads after that.', 'उनकी मंज़ूरी तक पुराना हिस्सा चलेगा। बदलाव सिर्फ़ आगे की लीड पर लगेगा।')}</p>
+          <div className="flex gap-2">
+            <button className={dark + ' !min-h-9 !text-xs'} disabled={busy || !!checkTerms(terms)} onClick={() => run(() => api.spTerms(p.id, terms, note)).then(() => setEdit(false))} data-testid="sp-terms-send">{tx('Propose', 'प्रस्ताव भेजें')}</button>
+            {p.pending && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spAction(p.id, 'terms/withdraw'))}>{tx('Withdraw change', 'बदलाव वापस लें')}</button>}
+          </div>
+        </div>
+      )}
+      {(p.devices || []).length > 0 && (
+        <p className="text-[11px] text-slate-500">{tx('His page is open on', 'उनका पेज खुला है')}: {p.devices.map((d: any) => (
+          <span key={d.id} className="mr-2">{d.label} <button className="text-red-700 underline" onClick={() => run(() => api.spDelDevice(p.id, d.id))}>{tx('remove', 'हटाएँ')}</button></span>
+        ))}</p>
+      )}
+      {err && <p className="text-xs font-semibold text-red-700" role="alert">{err}</p>}
+    </div>
+  );
+};
+
+const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid'>(''); const [val, setVal] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const kind = LEAD_KINDS.find((k) => k.id === l.kind)!; const side = sideOfKind(l.kind); const cut: Cut = side === 'SALE' ? l.terms.sale : l.terms.rent;
+  const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); setMode(''); setVal(''); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const pay = l.payout ? PAYOUT_LABEL[l.payout.status as keyof typeof PAYOUT_LABEL] : null;
+  return (
+    <div className={`space-y-1.5 rounded-xl border bg-white p-3 ${l.flags.length ? 'border-red-300' : 'border-slate-200'}`} data-testid={`sp-lead-${l.id}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-bold text-slate-900">{l.name} <span className="ml-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-800">{hi ? kind.hi : kind.en}</span></p>
+        <span className="text-[11px] text-slate-500">{tx('via', 'से')} <b>{l.shopName}</b> · {when(l.createdAt)}</span>
+      </div>
+      <p className="text-xs text-slate-600">{l.locality}{l.budget ? ` · ${l.budget}` : ''}{l.propertyType ? ` · ${l.propertyType}` : ''}{l.note ? ` · “${l.note}”` : ''}</p>
+      <div className="flex flex-wrap gap-1.5">
+        <a className={light + ' !min-h-9 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
+        <a className={light + ' !min-h-9 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
+      </div>
+      {l.links.length > 0 && <div className="flex flex-wrap gap-1">{l.links.map((x: any, i: number) => <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{hi ? x.hi : x.en} · {when(x.at)}</span>)}</div>}
+      {l.flags.map((f: any) => <p key={f.code} className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800" data-testid="sp-flag"><AlertTriangle className="h-3.5 w-3.5" />{hi ? f.hi : f.en}</p>)}
+      <p className="text-[11px] text-slate-500"><ShieldCheck className="mr-0.5 inline h-3 w-3" />{l.locked ? tx(`The shop’s lead till ${when(l.lockUntil)} · their share: ${cutText(cut)}`, `${when(l.lockUntil)} तक दुकान की लीड · हिस्सा: ${cutText(cut, true)}`) : tx('Protection over', 'सुरक्षा का समय पूरा')}</p>
+      {l.status !== 'WON' ? (
+        <div className="flex flex-wrap items-center gap-1">
+          {LEAD_STATUSES.filter((s) => !['WON', 'LOST'].includes(s.id)).map((s) => (
+            <button key={s.id} disabled={busy} onClick={() => run(() => api.spLeadStatus(l.id, s.id))} className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${l.status === s.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? s.hi : s.en}</button>
+          ))}
+          <button onClick={() => setMode(mode === 'won' ? '' : 'won')} className="rounded-full border border-emerald-500 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800" data-testid="sp-won">{tx('Deal done', 'डील हुई')}</button>
+          <button onClick={() => setMode(mode === 'lost' ? '' : 'lost')} className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${l.status === 'LOST' ? 'border-red-600 bg-red-600 text-white' : 'border-red-300 text-red-700'}`}>{tx('Not going ahead', 'आगे नहीं बढ़ी')}</button>
+        </div>
+      ) : (
+        <div className="rounded-lg bg-emerald-50 p-2 text-xs text-emerald-900">
+          <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />{tx('Deal done', 'डील हुई')} · {tx('your brokerage', 'आपकी ब्रोकरेज')} {formatINR(l.won.brokerage)} · <b>{tx('shop’s share', 'दुकान का हिस्सा')} {formatINR(l.won.amount)}</b>
+          {pay && <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${l.payout.status === 'RECEIVED' ? 'bg-emerald-200' : l.payout.status === 'NOT_RECEIVED' ? 'bg-red-200 text-red-900' : 'bg-amber-200 text-amber-900'}`}>{hi ? pay.hi : pay.en}</span>}
+          {l.payout?.partnerNote && <p className="mt-1 text-red-800">“{l.payout.partnerNote}”</p>}
+          {['DUE', 'NOT_RECEIVED'].includes(l.payout?.status) && <button className="ml-2 underline" onClick={() => setMode('paid')} data-testid="sp-paid">{tx('I have paid', 'मैंने चुका दिया')}</button>}
+        </div>
+      )}
+      {l.status === 'LOST' && l.lostReason && <p className="text-[11px] text-slate-500">{tx('Reason', 'कारण')}: {l.lostReason}</p>}
+      {mode === 'won' && (
+        <div className="space-y-1 rounded-lg bg-slate-50 p-2">
+          <label className="text-[11px] font-semibold text-slate-700">{tx('Your own brokerage on this deal (₹)', 'इस डील पर आपकी ब्रोकरेज (₹)')}</label>
+          <input className={inp} type="number" inputMode="numeric" value={val} onChange={(e) => setVal(e.target.value)} data-testid="sp-brokerage" />
+          {Number(val) > 0 && <p className="text-[11px] text-slate-600">{tx('Shop’s share', 'दुकान का हिस्सा')}: <b>{formatINR(partnerAmount(cut, Number(val)))}</b> ({cutText(cut, hi)})</p>}
+          <button className={dark + ' !min-h-9 !text-xs'} disabled={busy || !(Number(val) > 0)} onClick={() => run(() => api.spLeadWon(l.id, Math.round(Number(val))))} data-testid="sp-won-save">{tx('Save', 'सेव करें')}</button>
+        </div>
+      )}
+      {mode === 'lost' && (
+        <div className="space-y-1 rounded-lg bg-slate-50 p-2">
+          <input className={inp} placeholder={tx('Why? (the shop sees this)', 'क्यों? (दुकान वाले को दिखेगा)')} value={val} onChange={(e) => setVal(e.target.value)} />
+          <p className="text-[11px] text-slate-500">{tx('If you work this number later, it still shows to the shop and to GENZ.', 'अगर बाद में इस नंबर पर काम हुआ तो वह दुकान और GENZ को दिखेगा।')}</p>
+          <button className={dark + ' !min-h-9 !text-xs'} disabled={busy || val.trim().length < 3} onClick={() => run(() => api.spLeadStatus(l.id, 'LOST', val))}>{tx('Save', 'सेव करें')}</button>
+        </div>
+      )}
+      {mode === 'paid' && (
+        <div className="space-y-1 rounded-lg bg-slate-50 p-2">
+          <input className={inp} placeholder={tx('UPI / bank ref (optional)', 'UPI / बैंक रेफ़ (ज़रूरी नहीं)')} value={val} onChange={(e) => setVal(e.target.value)} />
+          <button className={dark + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spLeadPaid(l.id, val))} data-testid="sp-paid-save">{tx('Mark paid — he confirms on his page', 'चुकाया दर्ज करें — वे अपने पेज पर पुष्टि करेंगे')}</button>
+        </div>
+      )}
+      {err && <p className="text-xs font-semibold text-red-700" role="alert">{err}</p>}
+    </div>
+  );
+};
+
+const Desk: React.FC = () => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [items, setItems] = useState<any[] | null>(null); const [err, setErr] = useState('');
+  useEffect(() => { api.spAdmin().then((r) => setItems(r.items)).catch((e) => setErr(e.message)); }, []);
+  if (err) return <p className="text-sm text-red-700">{err}</p>;
+  if (!items) return <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />;
+  return (
+    <div className="space-y-2" data-testid="sp-desk">
+      <p className="text-xs text-slate-600">{tx('Shares marked “not received” by a shop, and leads worked on after being marked lost or that look like a deal without a share. Call both sides; open a dispute if needed.', 'दुकान ने “नहीं मिला” बताया, या “lost” बताकर भी काम हुआ, या डील लगती है पर हिस्सा दर्ज नहीं। दोनों से बात करें; ज़रूरत हो तो विवाद खोलें।')}</p>
+      {items.length === 0 && <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">{tx('Nothing to look at.', 'देखने को कुछ नहीं।')}</p>}
+      {items.map((x) => (
+        <div key={x.id} className="rounded-xl border border-red-200 bg-white p-3 text-xs">
+          <p className="font-bold text-slate-900">{x.brokerName} ⇄ {x.shopName} (••{x.partnerLast4})</p>
+          <p className="text-slate-600">{x.locality} · {tx('customer', 'ग्राहक')} ••{x.phoneLast4} · {when(x.createdAt)} · {x.status}</p>
+          {x.won && <p>{tx('Share', 'हिस्सा')} {formatINR(x.won.amount)} · {x.payout?.status}{x.payout?.partnerNote ? ` — “${x.payout.partnerNote}”` : ''}</p>}
+          {x.flags.map((f: any) => <p key={f.code} className="font-semibold text-red-800">⚠ {hi ? f.hi : f.en}</p>)}
+          <p className="text-slate-500">{x.links.map((l: any) => `${l.en} (${when(l.at)})`).join(' · ')}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: boolean; canOversee: boolean }> = ({ currentUser, canManage, canOversee }) => {
+  const tx = useTx();
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
+  const [tab, setTab] = useState<'leads' | 'partners' | 'desk'>(canManage ? 'leads' : 'desk');
+  const [adding, setAdding] = useState(false); const [fresh, setFresh] = useState<{ partner: any; link: string } | null>(null);
+  const [filter, setFilter] = useState<'all' | 'new' | 'open' | 'won' | 'due' | 'flag'>('all');
+  const load = () => { if (canManage) api.spList().then(setD).catch((e) => setErr(e.message)); };
+  useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) load(); }, 20000); return () => clearInterval(t); /* eslint-disable-next-line */ }, []);
+  const leads = useMemo(() => (d?.leads || []).filter((l: any) => filter === 'all' || (filter === 'new' && l.status === 'NEW') || (filter === 'open' && !['WON', 'LOST'].includes(l.status))
+    || (filter === 'won' && l.status === 'WON') || (filter === 'due' && l.payout && ['DUE', 'NOT_RECEIVED'].includes(l.payout.status)) || (filter === 'flag' && l.flags.length > 0)), [d, filter]);
+  const count = (f: typeof filter) => (d?.leads || []).filter((l: any) => f === 'new' ? l.status === 'NEW' : f === 'due' ? l.payout && ['DUE', 'NOT_RECEIVED'].includes(l.payout.status) : f === 'flag' ? l.flags.length > 0 : false).length;
+
+  return (
+    <div className="space-y-4" data-testid="shop-partners">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">{tx('Shop QR partners', 'दुकान QR पार्टनर')}</h2>
+          <p className="text-xs text-slate-600">{tx('Put your QR at a shop or society gate instead of pamphlets. Customers scan and send their need; the lead is yours, the shop gets the share you both agreed.', 'पैम्फ़लेट की जगह अपना QR दुकान या सोसाइटी गेट पर लगाएँ। ग्राहक स्कैन करके ज़रूरत भेजता है; लीड आपकी, दुकान को तय हिस्सा।')}</p>
+        </div>
+        {canManage && !adding && <button className={dark} onClick={() => { setAdding(true); setFresh(null); }} data-testid="sp-new"><Plus className="h-4 w-4" />{tx('New partner', 'नया पार्टनर')}</button>}
+      </div>
+
+      {canManage && d && d.partners.length === 0 && !adding && (
+        <ol className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 sm:grid-cols-3">
+          <li><b>1.</b> {tx('Add the shop and agree the share (sale / rent).', 'दुकान जोड़ें, हिस्सा तय करें (बिक्री / किराया)।')}</li>
+          <li><b>2.</b> {tx('Send him his page link on WhatsApp — he accepts on his phone.', 'WhatsApp पर उनका पेज लिंक भेजें — वे अपने फ़ोन पर मंज़ूर करें।')}</li>
+          <li><b>3.</b> {tx('Print the QR poster and put it up. Leads come here; he sees their progress.', 'QR पोस्टर प्रिंट करके लगाएँ। लीड यहाँ आएँगी; उन्हें प्रगति दिखेगी।')}</li>
+        </ol>
+      )}
+      {adding && <AddPartner city={currentUser.city || ''} onCancel={() => setAdding(false)} onDone={(x) => { setFresh(x); setAdding(false); load(); }} />}
+      {fresh && (
+        <div className="space-y-2 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-3 text-sm" data-testid="sp-fresh">
+          <p className="font-bold text-emerald-900">{tx(`${fresh.partner.shopName} added. Now:`, `${fresh.partner.shopName} जुड़ गए। अब:`)}</p>
+          <div className="flex flex-wrap gap-2">
+            <a className={dark} href={`https://wa.me/91${(fresh as any).phone || ''}?text=${encodeURIComponent(waText(fresh.partner, fresh.link))}`} target="_blank" rel="noopener noreferrer"><Send className="h-4 w-4" />{tx('1. Send terms on WhatsApp', '1. WhatsApp पर शर्तें भेजें')}</a>
+            <a className={light} href={fresh.partner.posterUrl} target="_blank" rel="noopener noreferrer"><Printer className="h-4 w-4" />{tx('2. Print the QR poster', '2. QR पोस्टर प्रिंट करें')}</a>
+          </div>
+          <p className="text-[11px] text-emerald-900">{tx('The QR starts working once he taps “Accept” on his page. If there is no SMS, his code shows on his card here — read it out to him.', 'उनके पेज पर “मंज़ूर” दबाते ही QR चालू होगा। SMS न हो तो उनका कोड यहीं उनके कार्ड पर दिखेगा — उन्हें बता दें।')}</p>
+        </div>
+      )}
+
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist">
+        {canManage && ([['leads', tx('Leads', 'लीड'), d?.leads.length], ['partners', tx('Partners', 'पार्टनर'), d?.partners.length]] as const).map(([id, label, n]) => (
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${tab === id ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid={`sp-tab-${id}`}>{label}{n !== undefined && <span className="rounded-full bg-white/20 px-1.5 text-[10px]">{n}</span>}</button>
+        ))}
+        {canOversee && <button role="tab" aria-selected={tab === 'desk'} onClick={() => setTab('desk')} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${tab === 'desk' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{tx('GENZ desk', 'GENZ डेस्क')}</button>}
+      </div>
+
+      {err && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>}
+      {tab === 'desk' && canOversee && <Desk />}
+      {canManage && !d && !err && tab !== 'desk' && <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />}
+      {canManage && d && tab === 'partners' && (
+        <div className="grid gap-3 md:grid-cols-2">
+          {d.partners.length === 0 && <p className="text-sm text-slate-500">{tx('No partners yet.', 'अभी कोई पार्टनर नहीं।')}</p>}
+          {d.partners.map((p: any) => <PartnerCard key={p.id + p.termsVersion + p.status + (p.pending ? 1 : 0)} p={p} onChange={load} />)}
+        </div>
+      )}
+      {canManage && d && tab === 'leads' && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-1.5">
+            {([['all', tx('All', 'सभी')], ['new', tx('New', 'नई')], ['open', tx('Open', 'चालू')], ['won', tx('Deals', 'डील')], ['due', tx('Share to pay', 'हिस्सा देना है')], ['flag', tx('⚠ Check', '⚠ देखें')]] as const).map(([id, label]) => (
+              <button key={id} onClick={() => setFilter(id)} className={`rounded-full border px-3 py-1 text-xs font-semibold ${filter === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{label}{['new', 'due', 'flag'].includes(id) && count(id) > 0 ? ` (${count(id)})` : ''}</button>
+            ))}
+          </div>
+          {leads.length === 0 && <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">{d.partners.length ? tx('No leads here yet.', 'यहाँ अभी कोई लीड नहीं।') : tx('Add your first shop partner to start getting leads.', 'लीड पाने के लिए पहला दुकान पार्टनर जोड़ें।')}</p>}
+          <div className="grid gap-3 md:grid-cols-2">{leads.map((l: any) => <LeadCard key={l.id + l.status + (l.payout?.status || '')} l={l} onChange={load} />)}</div>
+        </div>
+      )}
+    </div>
+  );
+};

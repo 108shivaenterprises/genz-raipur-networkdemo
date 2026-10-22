@@ -364,7 +364,22 @@ const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: strin
           <div className="rounded-lg bg-slate-50 p-3">
             <div className="font-semibold text-slate-700">{tx('My private note', 'मेरा निजी नोट')}</div>
             <p className="mt-0.5 whitespace-pre-wrap text-slate-600">{r.note || tx('No note.', 'कोई नोट नहीं।')}</p>
-            <p className="mt-2 text-[11px] text-slate-500">{tx('Room link valid till', 'रूम लिंक इस तारीख़ तक')}: {when(r.expiresAt)}</p>
+            <p className="mt-2 text-[11px] text-slate-500">{tx('Room link valid till', 'रूम लिंक इस तारीख़ तक')}: {when(r.expiresAt)} · {tx('it moves forward each time your client opens it', 'क्लाइंट जब भी खोलता है, यह आगे बढ़ जाती है')}</p>
+          </div>
+          {/* v46 — the client's phones: at most 2; remove one that is not your client's */}
+          <div className="rounded-lg border border-slate-200 p-3" data-testid="room-devices">
+            <div className="font-semibold text-slate-700">{tx(`Client's phones (${(r.devices || []).length} of ${r.maxDevices || 2})`, `क्लाइंट के फ़ोन (${(r.devices || []).length} / ${r.maxDevices || 2})`)}</div>
+            <p className="mt-0.5 text-[11px] text-slate-500">{tx('Once he types the code on a phone, that phone opens the room without a code (as long as he opens it at least once in 60 days). A third phone is refused until you remove one.', 'किसी फ़ोन पर एक बार कोड डालने के बाद वह फ़ोन बिना कोड के खुलता है (60 दिन में एक बार खोलता रहे)। तीसरा फ़ोन तब तक नहीं जुड़ेगा जब तक आप एक हटाएँ नहीं।')}</p>
+            {(r.devices || []).length === 0 && <p className="mt-1 text-slate-500">{tx('Not opened on any phone yet.', 'अभी किसी फ़ोन पर नहीं खोला।')}</p>}
+            <ul className="mt-1 space-y-1">
+              {(r.devices || []).map((d: any) => (
+                <li key={d.id} className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1.5">
+                  <span><b>{d.label}</b> <span className="text-slate-500">· {tx('since', 'से')} {when(d.firstAt)} · {tx('last seen', 'आख़िरी बार')} {when(d.lastAt)}</span></span>
+                  <button className="rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50" data-testid="room-device-remove"
+                    onClick={() => { if (window.confirm(tx('Remove this phone? It is signed out at once.', 'यह फ़ोन हटाएँ? यह तुरंत लॉग-आउट हो जाएगा।'))) run(() => api.crDelDevice(id, d.id)); }}>{tx('Remove', 'हटाएँ')}</button>
+                </li>
+              ))}
+            </ul>
           </div>
           <div>
             <div className="mb-1 flex items-center gap-1 font-semibold text-slate-700"><Info className="h-3.5 w-3.5" />{tx('What happened in this room', 'इस रूम में क्या हुआ')}</div>
