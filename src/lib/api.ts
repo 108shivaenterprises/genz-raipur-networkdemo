@@ -222,6 +222,10 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  // v48 — brokerage bills to the owner / buyer
+  prList: (dealId: string) => request<any>(`/api/deals/${dealId}/payment-requests`),
+  prCreate: (dealId: string, payload: any) => request<any>(`/api/deals/${dealId}/payment-requests`, { method: 'POST', body: JSON.stringify(payload) }),
+  prAct: (id: string, what: 'remind' | 'received' | 'cancel', ref?: string) => request<any>(`/api/payment-requests/${id}/${what}`, { method: 'POST', body: JSON.stringify({ ref }) }),
   // v47 — close a deal room that did not happen; a visit outside the app
   dealClose: (id: string, reason: string, note?: string) => request<any>(`/api/deals/${id}/close`, { method: 'POST', body: JSON.stringify({ reason, note }) }),
   dealCloseAnswer: (id: string, agree: boolean, note?: string) => request<any>(`/api/deals/${id}/close/answer`, { method: 'POST', body: JSON.stringify({ agree, note }) }),

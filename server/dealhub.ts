@@ -15,16 +15,17 @@ import { ctx, needs } from './auth.js';
 import { canViewDeal, canSeeDealCommercials, dealDetailVia, isAdmin, isDealBroker, openDisputeDeals } from './access.js';
 import { feeFor, isOwnSide } from '../src/shared/sideFees.js';
 import { isClosed } from '../src/shared/dealClose.js';
+import { overdueBillsOnDeal } from './payreq.js';
 
 const DAY = 86400_000;
 const STAGES = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'] as const;
 const LIVE_DISPUTE = new Set(['OPEN', 'UNDER_REVIEW', 'MEDIATION']);
 export const STALLED_DAYS = 14;
 
-export type NextKind = 'CLOSE_TO_ANSWER' | 'OFFLINE_VISIT_TO_CONFIRM' | 'DISPUTE_OPEN' | 'AGREEMENT_TO_SIGN' | 'TASKS_TO_ACCEPT' | 'VISITS_TO_VERIFY' | 'TASKS_OVERDUE' | 'TASKS_TO_VERIFY' | 'PAYMENTS_TO_CONFIRM' | 'NO_AGREEMENT' | 'TASKS_TO_DO' | 'STALLED';
+export type NextKind = 'CLIENT_PAYMENT' | 'CLOSE_TO_ANSWER' | 'OFFLINE_VISIT_TO_CONFIRM' | 'DISPUTE_OPEN' | 'AGREEMENT_TO_SIGN' | 'TASKS_TO_ACCEPT' | 'VISITS_TO_VERIFY' | 'TASKS_OVERDUE' | 'TASKS_TO_VERIFY' | 'PAYMENTS_TO_CONFIRM' | 'NO_AGREEMENT' | 'TASKS_TO_DO' | 'STALLED';
 /** which deal-room section answers each next step */
 const TAB_OF: Record<NextKind, string> = {
-  CLOSE_TO_ANSWER: 'overview', OFFLINE_VISIT_TO_CONFIRM: 'overview',
+  CLOSE_TO_ANSWER: 'overview', OFFLINE_VISIT_TO_CONFIRM: 'overview', CLIENT_PAYMENT: 'overview',
   DISPUTE_OPEN: 'disputes_holds', AGREEMENT_TO_SIGN: 'commission_agreement', TASKS_TO_ACCEPT: 'responsibilities', VISITS_TO_VERIFY: 'overview',
   TASKS_OVERDUE: 'responsibilities', TASKS_TO_VERIFY: 'responsibilities', PAYMENTS_TO_CONFIRM: 'commission_agreement', NO_AGREEMENT: 'commission_agreement',
   TASKS_TO_DO: 'responsibilities', STALLED: 'chat_call',
@@ -71,6 +72,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
 
   if (dispute) add('DISPUTE_OPEN', 1);
   if (d.closure?.status === 'ASKED' && broker && d.closure.byId !== u.id) add('CLOSE_TO_ANSWER', 1);
+  if (broker) add('CLIENT_PAYMENT', overdueBillsOnDeal(d.id, u.id));
   if (d.offlineVisit && !d.offlineVisit.confirmedAt && d.offlineVisit.byId !== u.id
     && (d.introducingBrokerId === d.closingBrokerId ? d.ownerId === u.id : broker)) add('OFFLINE_VISIT_TO_CONFIRM', 1);
   if (inner) {
@@ -140,7 +142,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     money: money ? { fee, myShare, split, dealValue } : undefined, summaryOnly: !inner,
   };
 }
-const ORDER: NextKind[] = ['CLOSE_TO_ANSWER', 'OFFLINE_VISIT_TO_CONFIRM', 'DISPUTE_OPEN', 'AGREEMENT_TO_SIGN', 'TASKS_TO_ACCEPT', 'VISITS_TO_VERIFY', 'TASKS_OVERDUE', 'TASKS_TO_VERIFY', 'PAYMENTS_TO_CONFIRM', 'NO_AGREEMENT', 'TASKS_TO_DO', 'STALLED'];
+const ORDER: NextKind[] = ['CLOSE_TO_ANSWER', 'CLIENT_PAYMENT', 'OFFLINE_VISIT_TO_CONFIRM', 'DISPUTE_OPEN', 'AGREEMENT_TO_SIGN', 'TASKS_TO_ACCEPT', 'VISITS_TO_VERIFY', 'TASKS_OVERDUE', 'TASKS_TO_VERIFY', 'PAYMENTS_TO_CONFIRM', 'NO_AGREEMENT', 'TASKS_TO_DO', 'STALLED'];
 
 export function createDealHubRouter() {
   const r = Router();

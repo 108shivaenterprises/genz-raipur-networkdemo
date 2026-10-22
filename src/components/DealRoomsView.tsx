@@ -64,6 +64,7 @@ import { DealPipeline, StageStepper, NextSteps, MandatesBoard, DealCard } from '
 import { ShareToRoom } from './ShareToRoom.js';
 import { SideFeePanel } from './SideFeePanel.js';
 import { DealStatusPanel } from './DealStatusPanel.js';
+import { PaymentRequestsPanel } from './PaymentRequestsPanel.js';
 import { isClosed } from '../shared/dealClose.js';
 import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare } from 'lucide-react';
 import { lazyView } from '../lib/lazyView.js';
@@ -907,6 +908,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 {/* v47 — close a deal that did not happen / reopen; a visit that happened outside the app */}
                 {!summaryOnly && <DealStatusPanel deal={dealDetail?.deal || activeDeal} me={currentUser} verifiedVisits={hubItemOf(activeDeal.id)?.visits?.verified ?? 0}
                   onChanged={() => { onRefreshDeals(); loadHub(); loadDetail(activeDeal.id); }} />}
+                {/* v48 — brokerage bills to the owner / buyer (Agreement stage on) */}
+                {!summaryOnly && currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) && (
+                  <PaymentRequestsPanel dealId={activeDeal.id} me={currentUser} stage={activeDeal.stage} />
+                )}
 
                 {/* Sub-Navigation Tabs */}
                 <div className="-mx-1 flex items-center gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-1 text-xs" data-testid="deal-subtabs">

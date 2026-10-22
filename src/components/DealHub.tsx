@@ -36,12 +36,12 @@ const short = (n?: number) => {
 
 // ───────────── next steps ─────────────
 const NEXT_ICON: Record<string, React.ElementType> = {
-  CLOSE_TO_ANSWER: AlertTriangle, OFFLINE_VISIT_TO_CONFIRM: CalendarCheck,
+  CLOSE_TO_ANSWER: AlertTriangle, OFFLINE_VISIT_TO_CONFIRM: CalendarCheck, CLIENT_PAYMENT: IndianRupee,
   DISPUTE_OPEN: Scale, AGREEMENT_TO_SIGN: FileSignature, TASKS_TO_ACCEPT: ListTodo, VISITS_TO_VERIFY: CalendarCheck, TASKS_OVERDUE: AlertTriangle,
   TASKS_TO_VERIFY: CheckCircle2, PAYMENTS_TO_CONFIRM: IndianRupee, NO_AGREEMENT: FileSignature, TASKS_TO_DO: ListTodo, STALLED: Hourglass,
 };
 const NEXT_TONE: Record<string, string> = {
-  CLOSE_TO_ANSWER: 'border-amber-300 bg-amber-50 text-amber-900', OFFLINE_VISIT_TO_CONFIRM: 'border-sky-300 bg-sky-50 text-sky-900',
+  CLOSE_TO_ANSWER: 'border-amber-300 bg-amber-50 text-amber-900', OFFLINE_VISIT_TO_CONFIRM: 'border-sky-300 bg-sky-50 text-sky-900', CLIENT_PAYMENT: 'border-emerald-300 bg-emerald-50 text-emerald-900',
   DISPUTE_OPEN: 'border-red-300 bg-red-50 text-red-800', AGREEMENT_TO_SIGN: 'border-amber-300 bg-amber-50 text-amber-900', TASKS_TO_ACCEPT: 'border-amber-300 bg-amber-50 text-amber-900',
   VISITS_TO_VERIFY: 'border-sky-300 bg-sky-50 text-sky-900', TASKS_OVERDUE: 'border-red-300 bg-red-50 text-red-800', TASKS_TO_VERIFY: 'border-sky-300 bg-sky-50 text-sky-900',
   PAYMENTS_TO_CONFIRM: 'border-emerald-300 bg-emerald-50 text-emerald-900', NO_AGREEMENT: 'border-slate-300 bg-slate-50 text-slate-800', TASKS_TO_DO: 'border-slate-300 bg-slate-50 text-slate-800',
@@ -50,6 +50,7 @@ const NEXT_TONE: Record<string, string> = {
 export function nextText(n: { kind: string; n: number }, idleDays: number, tx: (a: string, b: string) => string) {
   const k = n.n;
   switch (n.kind) {
+    case 'CLIENT_PAYMENT': return tx(`${k} brokerage bill${k > 1 ? 's' : ''} past due / to confirm — remind or mark received`, `${k} ब्रोकरेज बिल की तारीख़ निकली / पुष्टि बाकी — रिमाइंडर भेजें या “मिल गया” करें`);
     case 'CLOSE_TO_ANSWER': return tx('The other broker wants to close this deal — answer', 'दूसरा ब्रोकर यह डील बंद करना चाहता है — जवाब दें');
     case 'OFFLINE_VISIT_TO_CONFIRM': return tx('Confirm a visit that happened outside the app', 'ऐप के बाहर हुई विज़िट की पुष्टि करें');
     case 'DISPUTE_OPEN': return tx('A dispute is open — see the holds', 'विवाद खुला है — होल्ड देखें');

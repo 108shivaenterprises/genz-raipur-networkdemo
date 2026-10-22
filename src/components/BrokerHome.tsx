@@ -57,6 +57,8 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
   const left = steps.filter(s => !s.done).length;
   const tiles = [
     { n: offersWaiting, icon: Handshake, en: 'A broker sent you a co-broking offer — answer it', hi: 'किसी ब्रोकर ने को-ब्रोकिंग ऑफ़र भेजा है — जवाब दें', go: () => goto('deals', { view: 'proposals' }, onNavigate), tone: 'amber', testId: 'tile-offers' },
+    { n: c.billsToConfirm || 0, icon: CheckCircle2, en: 'A client says the brokerage is paid — check & confirm', hi: 'क्लाइंट ने ब्रोकरेज चुकाया बताया — जाँचें और पुष्टि करें', go: () => goto('deals', {}, onNavigate), tone: 'emerald', testId: 'tile-bills-confirm' },
+    { n: c.billsOverdue || 0, icon: Clock, en: 'Brokerage bills past due — send a reminder', hi: 'ब्रोकरेज बिल की तारीख़ निकल गई — रिमाइंडर भेजें', go: () => goto('deals', {}, onNavigate), tone: 'amber', testId: 'tile-bills-overdue' },
     { n: c.partnerCodes || 0, icon: Lock, en: 'A shop partner is waiting for his code — read it out', hi: 'दुकान पार्टनर कोड माँग रहे हैं — उन्हें बताएँ', go: () => goto('partners', { }, onNavigate), tone: 'amber', testId: 'tile-sp-codes' },
     { n: c.partnerNew || 0, icon: Store, en: 'New leads from your shop QR — call them', hi: 'दुकान QR से नई लीड — कॉल करें', go: () => onNavigate('partners'), tone: 'emerald', testId: 'tile-sp-new' },
     { n: c.partnerDue || 0, icon: Store, en: 'Shop partner’s share to pay', hi: 'दुकान पार्टनर का हिस्सा देना है', go: () => onNavigate('partners'), tone: 'amber', testId: 'tile-sp-due' },

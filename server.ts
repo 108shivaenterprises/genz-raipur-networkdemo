@@ -142,6 +142,7 @@ import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as vi
 import { roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
+import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
 import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
 import { createLandRecordsRouter } from './server/landrecords.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
@@ -5340,6 +5341,9 @@ app.use('/api/profile-photo', createProfilePhotoRouter());
 app.use('/api/deal-hub', createDealHubRouter());
 app.use('/api/deals', createSidesRouter());
 app.use('/api/deals', createDealCloseRouter());
+// v48 — brokerage bills to the owner / buyer (+ the party's page /pay/:token)
+app.use('/api', createPaymentRequestRouter());
+app.use('/pay', createPaymentPageRouter());
 app.use('/api/push', createPushRouter());
 app.use('/api/broadcast', createBroadcastRouter());
 app.use('/api/reputation', createReputationRouter());
