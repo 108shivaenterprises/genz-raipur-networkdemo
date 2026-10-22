@@ -1027,7 +1027,7 @@ export const CollaborationModal: React.FC<{
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-2xl">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <h3 className="text-base font-bold text-slate-900">{tx('Propose Co-Broking Split', 'को-ब्रोकिंग बँटवारा प्रस्तावित करें')}</h3>
+          <h3 className="text-base font-bold text-slate-900">{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
             <X className="h-5 w-5" />
           </button>

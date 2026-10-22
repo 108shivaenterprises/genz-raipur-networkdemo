@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Loader2, Sun, Users, Map as MapIcon, ShieldCheck, BarChart3, Award, BellOff, Bell, Share2, Handshake, ThumbsDown, Star, HelpCircle, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
+import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { ClientsView } from './ClientsView.js';
 // Leaflet is ~150 KB: only downloaded when a broker opens the Map tab (keeps first load light on slow networks)
@@ -46,6 +47,7 @@ export const DailyView: React.FC<{ currentUser: UserProfile; onNavigate: (t: any
 // ───────── F1 digest ─────────
 const Digest: React.FC<{ onGoClients: () => void }> = ({ onGoClients }) => {
   const tx = useTx();
+  const label = useLabel();
   const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   const load = useCallback(() => api.dailyDigest().then(setD).catch(e => setErr(e.message)), []);
@@ -85,7 +87,7 @@ const Digest: React.FC<{ onGoClients: () => void }> = ({ onGoClients }) => {
             {m.property.image && <img src={m.property.image} alt="" loading="lazy" className="h-32 w-full object-cover" />}
             <div className="p-3.5">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-900">{m.property.title}</div><div className="truncate text-xs text-slate-500">{m.property.locality}, {m.property.city} · {m.property.propertyType}</div></div>
+                <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-900">{m.property.title}</div><div className="truncate text-xs text-slate-500">{m.property.locality}, {m.property.city} · {label('propertyType', m.property.propertyType)}</div></div>
                 <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">{m.score}%</span>
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs"><b>{formatINR(m.property.askingPrice)}</b><span className="text-slate-500">{tx('for', 'के लिए')} {m.clientName}</span>{m.isNew && <span className="rounded bg-blue-100 px-1.5 text-[10px] font-bold text-blue-800">{tx('NEW', 'नया')}</span>}</div>
@@ -150,6 +152,7 @@ const Listings: React.FC = () => {
 // ───────── F17 rate card ─────────
 const Rates: React.FC<{ city: string }> = ({ city }) => {
   const tx = useTx();
+  const label = useLabel();
   const [r, setR] = useState<any>(null);
   useEffect(() => { api.rateCard(city).then(setR).catch(() => setR({ cards: [], minSample: 10 })); }, [city]);
   if (!r) return <Loader2 className="h-5 w-5 animate-spin text-slate-400" />;
@@ -158,7 +161,7 @@ const Rates: React.FC<{ city: string }> = ({ city }) => {
       <p className="text-xs text-slate-500">{tx(`Median ₹ per sq.ft from GENZ listings of the last 90 days. A locality appears only after ${r.minSample} listings, so one odd price cannot mislead you.`, `पिछले 90 दिनों की GENZ लिस्टिंग का मीडियन ₹ प्रति वर्ग फुट। किसी इलाके की दर तभी दिखती है जब कम से कम ${r.minSample} लिस्टिंग हों।`)}</p>
       {r.cards.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">{tx('Not enough listings yet to show a fair rate. This fills up as more brokers list.', 'अभी ठीक दर दिखाने लायक लिस्टिंग नहीं हैं। जैसे-जैसे ब्रोकर लिस्ट करेंगे, यह भरता जाएगा।')}</p> : (
         <div className="grid gap-2 sm:grid-cols-2">{r.cards.map((c: any) => (
-          <div key={c.city + c.locality + c.propertyType} className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-sm font-bold text-slate-900">{c.locality}, {c.city}</div><div className="text-xs text-slate-500">{c.propertyType}</div><div className="mt-1 text-xl font-extrabold text-slate-900">₹{c.medianPerSqFt.toLocaleString('en-IN')}<span className="text-xs font-medium text-slate-500"> /sq.ft</span></div><div className="text-[11px] text-slate-500">{tx(`${c.sample} listings · ${c.from} to ${c.to}`, `${c.sample} लिस्टिंग · ${c.from} से ${c.to}`)}</div></div>))}</div>
+          <div key={c.city + c.locality + c.propertyType} className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-sm font-bold text-slate-900">{c.locality}, {c.city}</div><div className="text-xs text-slate-500">{label('propertyType', c.propertyType)}</div><div className="mt-1 text-xl font-extrabold text-slate-900">₹{c.medianPerSqFt.toLocaleString('en-IN')}<span className="text-xs font-medium text-slate-500"> /sq.ft</span></div><div className="text-[11px] text-slate-500">{tx(`${c.sample} listings · ${c.from} to ${c.to}`, `${c.sample} लिस्टिंग · ${c.from} से ${c.to}`)}</div></div>))}</div>
       )}
       <p className="text-[11px] text-slate-400">{tx('Indicative only — asking prices, not registered sale values.', 'सिर्फ़ संकेत के लिए — माँगी गई कीमतें हैं, रजिस्टर्ड बिक्री मूल्य नहीं।')}</p>
     </div>

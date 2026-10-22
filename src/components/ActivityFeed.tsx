@@ -134,7 +134,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">{tx('Exchange Activity Feed', 'एक्सचेंज गतिविधि फ़ीड')}</h2>
+              <h2 className="text-base font-bold text-slate-900">{tx('Network activity', 'नेटवर्क की गतिविधि')}</h2>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 {tx('Live Network', 'लाइव नेटवर्क')}
@@ -288,13 +288,13 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       {/* Footer count indicator */}
       {displayedActivities.length > 0 && (
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>{tx(`Showing ${displayedActivities.length} of ${filteredActivities.length} platform events`, `${filteredActivities.length} में से ${displayedActivities.length} प्लेटफ़ॉर्म इवेंट दिख रहे हैं`)}</span>
+          <span>{tx(`Showing ${displayedActivities.length} of ${filteredActivities.length}`, `${filteredActivities.length} में से ${displayedActivities.length} दिख रहे हैं`)}</span>
           {onNavigate && (
             <button
               onClick={() => onNavigate('audit')}
               className="font-semibold text-slate-900 hover:text-amber-700 hover:underline"
             >
-              {tx('View full cryptographic audit chain →', 'पूरी क्रिप्टोग्राफ़िक ऑडिट चेन देखें →')}
+              {tx('Full activity record →', 'पूरा गतिविधि रिकॉर्ड →')}
             </button>
           )}
         </div>

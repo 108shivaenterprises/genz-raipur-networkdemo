@@ -110,12 +110,19 @@ const HI = {
 
 export type LabelKind = keyof typeof HI;
 
+/** v44: roles in plain English (the enum read "BUYER TENANT", "DEVELOPER BUILDER") */
+const ROLE_EN: Record<string, string> = {
+  SUPERADMIN: 'Super admin', ADMIN: 'Admin', BROKER: 'Broker', PROPERTY_OWNER: 'Property owner', BUYER_TENANT: 'Buyer / Tenant', CONTRACTOR: 'Contractor',
+  DEVELOPER_BUILDER: 'Builder', LEGAL_COUNSEL: 'Legal counsel', GENZ_CONNECTOR: 'GENZ connector', TEAM_MEMBER: 'Team member',
+};
+
 /** `const label = useLabel(); label('propertyType', p.propertyType)` → Hindi when the app is in Hindi, else the stored value. */
 export function useLabel() {
   const { lang } = useI18n();
   return (kind: LabelKind, value: string | undefined | null): string => {
     const v = value ?? '';
-    if ((kind === 'role' || kind === 'status') && lang !== 'hi') return v.replace(/_/g, ' ');
+    if (kind === 'role' && lang !== 'hi') return ROLE_EN[v] ?? v.replace(/_/g, ' ');
+    if (kind === 'status' && lang !== 'hi') return v.replace(/_/g, ' ');
     if (kind === 'activityType' && lang !== 'hi') return ({ STAGE_CHANGE: 'Stage change', SYSTEM: 'System' } as Record<string, string>)[v] ?? v;
     return lang === 'hi' ? ((HI[kind] as Record<string, string>)[v] ?? v) : v;
   };

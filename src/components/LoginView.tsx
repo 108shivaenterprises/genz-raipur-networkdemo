@@ -93,7 +93,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
             </div>
             <LangToggle className="ml-auto" />
           </div>
-          {notice && <p className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">{notice}</p>}
+          {notice && <p className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">{notice === 'SESSION_ENDED' ? tx('Your session ended. Please sign in again.', 'आपका सेशन ख़त्म हो गया। कृपया फिर से साइन इन करें।') : notice}</p>}
           <label className="block text-xs font-semibold text-slate-700 mb-1">{t('login.email', 'Email or mobile number')}</label>
           <input type="text" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)}
             className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none" />

@@ -441,11 +441,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span>{tx('India Real Estate Exchange', 'भारत रियल एस्टेट एक्सचेंज')}</span>
-              <span aria-hidden="true">·</span>
-              <span>{tx('Signed in', 'लॉगिन')}: {currentUser.name}</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-semibold text-slate-700">{currentUser.role.replace('_', ' ')}</span>
+              <span className="font-semibold text-slate-700">{label('role', currentUser.role)}</span>
             </div>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
               {currentUser.role === 'DEVELOPER_BUILDER'
@@ -534,10 +530,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
-                  ⚡ Action Required: Co-Broking Split Proposals
+                  ⚡ {tx('A broker sent you a co-broking offer', 'किसी ब्रोकर ने को-ब्रोकिंग ऑफ़र भेजा है')}
                 </span>
                 <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                  {incomingPendingOffers.length} New
+                  {incomingPendingOffers.length} {tx('new', 'नया')}
                 </span>
               </div>
               <p className="text-xs text-slate-700 mt-0.5">

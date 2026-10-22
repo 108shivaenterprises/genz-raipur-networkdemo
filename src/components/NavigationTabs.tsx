@@ -164,21 +164,21 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('growth:nominate') ? [{ id: 'grow', label: t('nav.grow', 'Grow Network'), icon: Users }] : []),
     ...(has('launch:manage') ? [{ id: 'launchdesk', label: t('nav.launchdesk', 'Launch Desk'), icon: Rocket }] : []),
     ...(has('growth:manage') ? [{ id: 'citylaunch', label: t('nav.citylaunch', 'City Launch'), icon: Rocket }] : []),
-    ...(has('landrecord:manage') ? [{ id: 'landrecords', label: t('nav.landrecords', 'Land Records & Red Flags'), icon: Landmark }] : []),
+    ...(has('landrecord:manage') ? [{ id: 'landrecords', label: t('nav.landrecords', 'Land Records'), icon: Landmark }] : []),
     ...(has('builder:associates_read') ? [{ id: 'builder', label: t('nav.builder', 'Builder Launchpad'), icon: Layers }] : []),
     ...(has('crm:read') ? [{ id: 'crm', label: t('nav.crm', 'Associates CRM'), icon: Contact }] : []),
     ...(has('property:read')
-      ? [{ id: 'properties', label: isOwner ? t('nav.myProperties', 'My Properties & Vault') : t('nav.properties', 'Property Inventory'), icon: Building }]
+      ? [{ id: 'properties', label: isOwner ? t('nav.myProperties', 'My Properties') : t('nav.properties', 'Properties'), icon: Building }]
       : []),
     ...(has('requirement:read') ? [{ id: 'requirements', label: t('nav.requirements', 'Buyer Needs'), icon: UserCheck }] : []),
-    ...(has('matching:run') ? [{ id: 'matches', label: t('nav.matches', 'Match Center'), icon: Sparkles, badge: unreadCount.matches }] : []),
+    ...(has('matching:run') ? [{ id: 'matches', label: t('nav.matches', 'Matches'), icon: Sparkles, badge: unreadCount.matches }] : []),
     ...(has('deal:read')
-      ? [{ id: 'deals', label: isOwner ? t('nav.myDeals', 'My Property Deals') : t('nav.deals', 'Deal Rooms & Splits'), icon: Briefcase, badge: unreadCount.deals }]
+      ? [{ id: 'deals', label: isOwner ? t('nav.myDeals', 'My Property Deals') : t('nav.deals', 'My Deals'), icon: Briefcase, badge: unreadCount.deals }]
       : []),
-    ...(has('dd:read') ? [{ id: 'due_diligence', label: t('nav.dd', 'Due Diligence & Title Audit'), icon: ShieldCheck }] : []),
+    ...(has('dd:read') ? [{ id: 'due_diligence', label: t('nav.dd', 'Title Check'), icon: ShieldCheck }] : []),
     ...(has('lead:read') ? [{ id: 'construction', label: t('nav.construction', 'Construction Leads'), icon: HardHat, badge: unreadCount.leads }] : []),
-    ...(has('dispute:read') ? [{ id: 'disputes', label: t('nav.disputes', 'Disputes & Blacklist'), icon: Scale, badge: unreadCount.disputes }] : []),
-    ...(has('audit:read_all', 'audit:read_own') ? [{ id: 'audit', label: t('nav.audit', 'Audit Trail (SHA-256)'), icon: History }] : []),
+    ...(has('dispute:read') ? [{ id: 'disputes', label: t('nav.disputes', 'Disputes'), icon: Scale, badge: unreadCount.disputes }] : []),
+    ...(has('audit:read_all', 'audit:read_own') ? [{ id: 'audit', label: t('nav.audit', 'Activity Record'), icon: History }] : []),
     ...(has('users:invite', 'users:review') ? [{ id: 'onboarding', label: t('nav.onboarding', 'Invite & KYC'), icon: KeyRound }] : []),
     ...(has('users:review') ? [{ id: 'idreview', label: t('nav.idreview', 'ID Review'), icon: FileSearch, badge: idBadge }] : []),
     ...(has('billing:manage') ? [{ id: 'plans', label: t('nav.plansAdmin', 'Plans & Fees'), icon: BadgeIndianRupee, badge: billing.count }] : has('billing:self') && (billing.relevant || activeTab === 'plans') ? [{ id: 'plans', label: t('nav.plans', 'GENZ Membership'), icon: BadgeIndianRupee, badge: billing.count }] : []),
@@ -194,7 +194,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   // v26 — on a phone a broker gets 5 big buttons at the bottom instead of ~20 tabs; “More” opens the full list
   const simple = currentUser?.role === 'BROKER';
   const [more, setMore] = useState(false);
-  const pick = (ids: string[]) => tabs.find(x => ids.includes(x.id));
+  // v44: the first id that exists wins (so “Deals” opens the deal pipeline; Deal Desk stays one tap away in More)
+  const pick = (ids: string[]) => ids.map(id => tabs.find(x => x.id === id)).find(Boolean);
   const bottom = simple ? [
     { tab: pick(['dashboard']), label: t('nav.home', 'Home') },
     { tab: pick(['properties']), label: t('nav.propShort', 'Property') },

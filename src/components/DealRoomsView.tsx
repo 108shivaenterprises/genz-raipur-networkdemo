@@ -755,14 +755,14 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
             {mainMode === 'PIPELINE' ? tx('Deal pipeline', 'डील पाइपलाइन')
               : mainMode === 'MANDATES' ? tx('Owner mandates', 'मालिक के मैंडेट')
-              : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Co-broking split proposals & negotiation', 'को-ब्रोकिंग स्प्लिट प्रस्ताव और बातचीत')
+              : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Co-broking offers', 'को-ब्रोकिंग ऑफ़र')
               : tx('Deal room', 'डील रूम')}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             {mainMode === 'PIPELINE' ? tx('Every deal by stage — what needs you first. Tap a card to open its deal room.', 'हर डील स्टेज के हिसाब से — पहले वो जिसमें आपका काम बाकी है। डील रूम खोलने के लिए कार्ड दबाएँ।')
               : mainMode === 'MANDATES' ? tx('Brokerage mandates signed by owners — status, terms and protection days left.', 'मालिकों के साइन किए ब्रोकरेज मैंडेट — स्थिति, शर्तें और सुरक्षा के बचे दिन।')
-              : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Review co-broking split proposals on your listings or track the ones you sent. Accepting a proposal creates a Deal Room.', 'अपनी लिस्टिंग पर आए को-ब्रोकिंग प्रस्ताव देखें या अपने भेजे प्रस्ताव ट्रैक करें। प्रस्ताव मंज़ूर होते ही डील रूम बनता है।')
-              : tx('Responsibility matrix, versioned commission agreements, due diligence and registry readiness — all in one place.', 'ज़िम्मेदारी तालिका, कमीशन समझौते, due diligence और रजिस्ट्री की तैयारी — सब एक जगह।')}
+              : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Offers other brokers sent on your listings, and the ones you sent. Accepting one opens a deal room.', 'आपकी लिस्टिंग पर दूसरे ब्रोकरों के ऑफ़र, और आपके भेजे ऑफ़र। मंज़ूर करते ही डील रूम खुलता है।')
+              : tx('Who does what, the brokerage agreement, title check and registry — all for this deal in one place.', 'कौन क्या करेगा, ब्रोकरेज समझौता, टाइटल जाँच और रजिस्ट्री — इस डील का सब एक जगह।')}
           </p>
         </div>
       </div>
@@ -770,7 +770,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
         {([
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
           ['DEAL_ROOMS', Briefcase, selectedDealId && mainMode === 'DEAL_ROOMS' ? `${tx('Deal room', 'डील रूम')} · ${selectedDealId}` : tx('Deal room', 'डील रूम'), undefined, false],
-          ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Collab proposals', 'कोलैबोरेशन प्रस्ताव'), (offers || []).length, pendingIncomingCount > 0]] : []),
+          ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Offers', 'ऑफ़र'), (offers || []).length, pendingIncomingCount > 0]] : []),
           ...(perm('mandate:read') ? [['MANDATES', FileSignature, tx('Mandates', 'मैंडेट'), undefined, false]] : []),
         ] as [typeof mainMode, React.ElementType, string, number | undefined, boolean][]).map(([id, Icon, text, n, dot]) => (
           <button key={id} type="button" role="tab" aria-selected={mainMode === id}
@@ -2699,8 +2699,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 <div className="text-sm font-semibold text-slate-700">{tx('No Sent Proposals Yet', 'अभी कोई प्रस्ताव नहीं भेजा')}</div>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
                   {tx(
-                    "You haven't sent any co-broking proposal yet. Open Property Inventory and use \"Propose Split\" on a listing.",
-                    'आपने अभी कोई को-ब्रोकिंग प्रस्ताव नहीं भेजा। प्रॉपर्टी इन्वेंटरी खोलें और किसी लिस्टिंग पर "स्प्लिट प्रस्तावित करें" दबाएँ।',
+                    "You haven't sent any co-broking offer yet. Open Properties and tap \"Co-broking offer\" on a listing.",
+                    'आपने अभी कोई को-ब्रोकिंग ऑफ़र नहीं भेजा। प्रॉपर्टी खोलें और किसी लिस्टिंग पर "को-ब्रोकिंग ऑफ़र" दबाएँ।',
                   )}
                 </p>
               </div>

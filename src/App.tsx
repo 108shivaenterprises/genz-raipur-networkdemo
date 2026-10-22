@@ -87,6 +87,9 @@ export default function App() {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [authState, setAuthState] = useState<'checking' | 'anon' | 'ready'>('checking');
   const bootRetry = useRef(0);
+  // v44: "session ended" only for someone who WAS signed in (a first-time visitor just sees the sign-in page)
+  const wasSignedIn = useRef(false);
+  useEffect(() => { if (currentUser) wasSignedIn.current = true; }, [currentUser]);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [impersonatedBy, setImpersonatedBy] = useState<{ id: string; name: string } | null>(null);
   const [sessionNotice, setSessionNotice] = useState('');
@@ -230,7 +233,7 @@ export default function App() {
     setUnauthorizedHandler(() => {
       setCurrentUser(null);
       setAuthState('anon');
-      setSessionNotice('Your session ended. Please sign in again.');
+      if (wasSignedIn.current) setSessionNotice('SESSION_ENDED');
     });
     loadData();
     return () => setUnauthorizedHandler(null);
