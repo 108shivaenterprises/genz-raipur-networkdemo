@@ -1294,6 +1294,10 @@ export interface PropertyDoc {
   /** the uploader confirmed they are the owner / authorised by the owner to keep this paper here (DPDP) */
   attestedAt: string;
   createdAt: string; updatedAt: string;
+  /** v49 — view-only: everyone except the uploader sees it only in the viewer, with their own name stamped on every page; no download */
+  protect?: boolean; protectedAt?: string;
+  /** v49 — pages the viewer shows (1 for a photo; the page photos of a scanned PDF) */
+  pages?: number;
 }
 export interface PropertyDocLog { id: string; docId: string; userId: string; action: 'VIEW' | 'DOWNLOAD' | 'DENIED' | 'SHARE' | 'REVOKE'; at: string; ip: string; note?: string }
 export interface DocAccessLog { id: string; docId: string; userId: string; page: number; at: string; ip: string; allowed: boolean }

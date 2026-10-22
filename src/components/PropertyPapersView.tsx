@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, FileText, Image as ImageIcon, Upload, Search, Share2, Trash2, X, Download, Eye, ShieldCheck, History, Pencil, Lock, Users, Globe2, CheckCircle2, AlertTriangle, FolderOpen } from 'lucide-react';
+import { Loader2, FileText, Image as ImageIcon, Upload, Search, Share2, Trash2, X, Download, Eye, ShieldCheck, History, Pencil, Lock, Users, Globe2, CheckCircle2, AlertTriangle, FolderOpen, FileLock2, Unlock } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { PROP_DOC_TYPES, propDocTypeLabel } from '../shared/propDocs.js';
 import { preparePaper, titleFromFile, guessType, fmtSize, PREFILL_KEY } from '../lib/paperFile.js';
 import { ScanToPdf } from './ScanToPdf.js';
 import { PROP_DOC_MAX_BYTES } from '../shared/propDocs.js';
+import { WatermarkViewer, type ViewSession } from './WatermarkViewer.js';
+import { ProtectedDocsView } from './ProtectedDocsView.js';
+
+const paperPage = (t: string) => `/api/property-docs/view/${t}`;
+/** the server's Hindi line when it sent one */
+const errText = (e: any, hi: boolean) => (hi && e?.body?.hi) || e?.message || 'Error';
 
 const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base focus:border-slate-900 focus:outline-none';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold';
@@ -21,10 +27,16 @@ const VisBadge: React.FC<{ v: Vis }> = ({ v }) => {
   return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${m.cls}`}>{m.icon}{m.text}</span>;
 };
 
-export const PropertyPapersView: React.FC = () => {
+/** v49 — `withProtected`: the person also has Protected Docs; they now live here as a second section (the old tab opens this one). */
+export const PropertyPapersView: React.FC<{ withProtected?: boolean }> = ({ withProtected = false }) => {
   const tx = useTx();
   const { lang } = useI18n();
   const hi = lang === 'hi';
+  const [section, setSection] = useState<'papers' | 'protected'>(() => {
+    try { return withProtected && new URLSearchParams(window.location.search).get('sub') === 'protected' ? 'protected' : 'papers'; } catch { return 'papers'; }
+  });
+  const [viewing, setViewing] = useState<(ViewSession & { id: string; canDownload: boolean; fileName?: string }) | null>(null);
+  const [busyId, setBusyId] = useState('');
   const [meta, setMeta] = useState<any>(null);
   const [docs, setDocs] = useState<any[] | null>(null);
   const [err, setErr] = useState('');
@@ -43,6 +55,30 @@ export const PropertyPapersView: React.FC = () => {
     api.propDocsMeta().then(setMeta).catch(e => setErr(e.message));
     try { const pre = sessionStorage.getItem(PREFILL_KEY); if (pre) { setPropertyId(pre); sessionStorage.removeItem(PREFILL_KEY); } } catch { /* ignore */ }
   }, []);
+
+  /** v49 — open a paper in the stamped viewer: the opener's own name · ••mobile · time on every page */
+  const openViewer = useCallback(async (id: string) => {
+    setBusyId(id); setErr('');
+    try { const s = await api.propDocView(id); setViewing({ ...s, id }); }
+    catch (e: any) { setErr(errText(e, hi)); }
+    finally { setBusyId(''); }
+  }, [hi]);
+  const closeViewer = useCallback(() => setViewing(null), []);
+  // a link to a protected paper (?view=PD-…) opens it here
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href); const id = u.searchParams.get('view');
+      if (id && /^PD-[A-Z0-9]+$/i.test(id)) { u.searchParams.delete('view'); window.history.replaceState(null, '', u.toString()); openViewer(id); }
+      if (u.searchParams.get('sub')) { u.searchParams.delete('sub'); window.history.replaceState(null, '', u.toString()); }
+    } catch { /* old browser */ }
+  }, [openViewer]);
+  const setProtect = async (d: any, on: boolean) => {
+    if (!on && !window.confirm(tx('Remove protection? Everyone this paper is shared with can then open the original file and download it.', 'सुरक्षा हटाएँ? फिर जिनके साथ यह कागज़ शेयर है वे असली फ़ाइल खोल और डाउनलोड कर सकेंगे।'))) return;
+    setBusyId(d.id); setErr('');
+    try { await api.propDocEdit(d.id, { protect: on }); flash(on ? tx('Protected — others can only view it, with their name stamped on it', 'सुरक्षित — बाकी लोग सिर्फ़ देख सकेंगे, उन पर उनका नाम छपेगा') : tx('Protection removed', 'सुरक्षा हटा दी')); load(); }
+    catch (e: any) { setErr(errText(e, hi)); }
+    finally { setBusyId(''); }
+  };
 
   const load = useCallback(() => {
     const my = ++seq.current;
@@ -70,8 +106,19 @@ export const PropertyPapersView: React.FC = () => {
   const canUpload = (meta?.properties || []).length > 0;
   const pct = meta ? Math.min(100, Math.round((meta.usedBytes / meta.maxBytes) * 100)) : 0;
 
+  const switcher = withProtected && (
+    <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" data-testid="papers-sections">
+      {([['papers', <FolderOpen key="f" className="h-4 w-4" aria-hidden />, tx('Property papers', 'प्रॉपर्टी पेपर्स')], ['protected', <FileLock2 key="l" className="h-4 w-4" aria-hidden />, tx('Other protected docs', 'अन्य सुरक्षित दस्तावेज़')]] as const).map(([id, icon, label]) => (
+        <button key={id} role="tab" aria-selected={section === id} onClick={() => setSection(id)} data-testid={`papers-section-${id}`}
+          className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold ${section === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}>{icon}{label}</button>
+      ))}
+    </div>
+  );
+  if (section === 'protected') return <div className="space-y-4">{switcher}<ProtectedDocsView /></div>;
+
   return (
     <div className="space-y-4">
+      {switcher}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><FolderOpen className="h-5 w-5 text-amber-600" aria-hidden />{tx('Property Papers', 'प्रॉपर्टी पेपर्स')}</h2>
@@ -87,6 +134,7 @@ export const PropertyPapersView: React.FC = () => {
         <ShieldCheck className="mr-1 inline h-4 w-4 text-emerald-600" aria-hidden />
         {tx('Papers are private by default: only you, this property’s owner and listing broker, and GENZ admins (for compliance) can open them. Everyone else needs your share. Every open is logged and you can read the log. Do not upload Aadhaar / PAN copies — if a paper has them, hide the numbers first.',
           'कागज़ डिफ़ॉल्ट रूप से निजी हैं: सिर्फ़ आप, इस प्रॉपर्टी का मालिक व लिस्टिंग ब्रोकर और GENZ एडमिन (कंप्लायंस के लिए) खोल सकते हैं। बाकी को आपका शेयर चाहिए। हर बार खोलने का लॉग बनता है जिसे आप देख सकते हैं। आधार / PAN की कॉपी अपलोड न करें — अगर किसी कागज़ में हैं तो पहले नंबर ढक दें।')}
+        <span className="mt-1 block font-medium text-slate-800" data-testid="protect-help"><FileLock2 className="mr-1 inline h-3.5 w-3.5 text-rose-700" aria-hidden />{tx('🔒 Protect a paper and the people you share it with can only VIEW it here — with their own name and mobile stamped across every page. They cannot download or forward the file.', '🔒 कागज़ को “सुरक्षित” करें — जिनके साथ शेयर करेंगे वे इसे सिर्फ़ यहीं देख पाएँगे, हर पेज पर उनका अपना नाम और मोबाइल छपा होगा। फ़ाइल डाउनलोड या फ़ॉरवर्ड नहीं कर पाएँगे।')}</span>
         {meta && <span className="ml-1 text-slate-500">· {tx('Storage used', 'स्टोरेज')}: {fmtSize(meta.usedBytes)} / {fmtSize(meta.maxBytes)} ({pct}%)</span>}
       </div>
 
@@ -137,6 +185,7 @@ export const PropertyPapersView: React.FC = () => {
                     <p className="text-xs text-slate-500">{d.propertyTitle}{d.locality ? ` — ${d.locality}` : ''}{d.city ? `, ${d.city}` : ''}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <VisBadge v={d.visibility} />
+                      {d.protect && <span className="inline-flex items-center gap-1 rounded-full bg-rose-700 px-2 py-0.5 text-[10px] font-semibold text-white" data-testid="paper-protected"><FileLock2 className="h-3 w-3" aria-hidden />{tx('Protected · view only', 'सुरक्षित · सिर्फ़ देखने के लिए')}</span>}
                       {d.ddItemId && <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-800">{tx('Due-diligence evidence', 'ड्यू डिलिजेंस का सबूत')}</span>}
                       {d.tags.map((t: string) => <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">#{t}</span>)}
                     </div>
@@ -148,8 +197,14 @@ export const PropertyPapersView: React.FC = () => {
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <a href={`/api/property-docs/${d.id}/file`} target="_blank" rel="noopener noreferrer" className={`${btn} border border-slate-300 text-slate-800`}><Eye className="h-4 w-4" aria-hidden />{tx('Open', 'खोलें')}</a>
-                  <a href={`/api/property-docs/${d.id}/file?dl=1`} className={`${btn} border border-slate-300 text-slate-800`}><Download className="h-4 w-4" aria-hidden />{tx('Download', 'डाउनलोड')}</a>
+                  {/* v49 — photos and protected papers open in the stamped viewer; an unprotected PDF opens as before */}
+                  {d.protect || d.mime !== 'application/pdf'
+                    ? <button type="button" onClick={() => openViewer(d.id)} disabled={busyId === d.id} className={`${btn} border border-slate-300 text-slate-800`} data-testid="paper-open">{busyId === d.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}{tx('Open', 'खोलें')}</button>
+                    : <a href={`/api/property-docs/${d.id}/file`} target="_blank" rel="noopener noreferrer" className={`${btn} border border-slate-300 text-slate-800`} data-testid="paper-open"><Eye className="h-4 w-4" aria-hidden />{tx('Open', 'खोलें')}</a>}
+                  {d.canDownload && <a href={`/api/property-docs/${d.id}/file?dl=1`} className={`${btn} border border-slate-300 text-slate-800`}><Download className="h-4 w-4" aria-hidden />{tx('Download', 'डाउनलोड')}</a>}
+                  {d.canManage && (d.protect
+                    ? <button type="button" onClick={() => setProtect(d, false)} disabled={busyId === d.id} className={`${btn} border border-rose-300 text-rose-800`} data-testid="paper-unprotect"><Unlock className="h-4 w-4" aria-hidden />{tx('Unprotect', 'सुरक्षा हटाएँ')}</button>
+                    : <button type="button" onClick={() => setProtect(d, true)} disabled={busyId === d.id} className={`${btn} border border-rose-300 bg-rose-50 text-rose-800`} data-testid="paper-protect"><FileLock2 className="h-4 w-4" aria-hidden />{tx('Protect', 'सुरक्षित करें')}</button>)}
                   {d.canManage && <>
                     <button onClick={() => setShare(d)} className={`${btn} bg-slate-900 text-white`}><Share2 className="h-4 w-4" aria-hidden />{tx('Share', 'शेयर')}</button>
                     <button onClick={() => setEdit(d)} className={`${btn} border border-slate-300 text-slate-800`}><Pencil className="h-4 w-4" aria-hidden />{tx('Edit', 'बदलें')}</button>
@@ -166,6 +221,8 @@ export const PropertyPapersView: React.FC = () => {
       {share && <ShareSheet doc={share} onClose={() => { setShare(null); load(); }} />}
       {logFor && <LogSheet doc={logFor} onClose={() => setLogFor(null)} />}
       {edit && <EditSheet doc={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
+      {viewing && <WatermarkViewer session={viewing} pageUrl={paperPage} onClose={closeViewer}
+        downloads={viewing.canDownload ? [{ label: tx('Original', 'मूल फ़ाइल'), href: `/api/property-docs/${viewing.id}/file?dl=1` }] : undefined} />}
     </div>
   );
 };
@@ -198,6 +255,7 @@ const UploadSheet: React.FC<{ meta: any; presetProperty: string; onClose: () => 
   const [tags, setTags] = useState('');
   const [note, setNote] = useState('');
   const [attest, setAttest] = useState(false);
+  const [protect, setProtect] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const pick = useRef<HTMLInputElement>(null);
@@ -227,10 +285,10 @@ const UploadSheet: React.FC<{ meta: any; presetProperty: string; onClose: () => 
         await api.propDocUpload({
           propertyId, type: rows[i].type, title: rows[i].title.trim(), refNo: rows[i].refNo.trim() || undefined,
           tags: tags.split(',').map(t => t.trim()).filter(Boolean), note: note.trim() || undefined,
-          fileName: p.fileName, data: p.data, visibility, attest: true,
+          fileName: p.fileName, data: p.data, visibility, attest: true, ...(protect ? { protect: true } : {}),
         });
         patch(i, { state: 'done' }); ok++;
-      } catch (e: any) { patch(i, { state: 'error', msg: e.message }); failed++; }
+      } catch (e: any) { patch(i, { state: 'error', msg: (lang === 'hi' && e?.body?.hi) || e.message }); failed++; }
     }
     setBusy(false);
     if (!failed) setTimeout(() => onDone(ok), 300);
@@ -297,6 +355,12 @@ const UploadSheet: React.FC<{ meta: any; presetProperty: string; onClose: () => 
             </label>
           ))}
         </fieldset>
+
+        <label className={`flex min-h-11 items-start gap-2 rounded-lg border p-3 text-xs ${protect ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-slate-200 text-slate-700'}`} data-testid="upload-protect">
+          <input type="checkbox" checked={protect} onChange={e => setProtect(e.target.checked)} className="mt-0.5 h-4 w-4" />
+          <span><b className="flex items-center gap-1"><FileLock2 className="h-3.5 w-3.5" aria-hidden />{tx('Protect these papers (view only)', 'इन कागज़ों को सुरक्षित करें (सिर्फ़ देखने के लिए)')}</b>
+            {tx('People you share with see them only inside GENZ, with their own name and mobile stamped on every page — no download, no forward. You, the owner and the listing broker keep the original. Works for photos and scanned PDFs (not PDFs typed on a computer).', 'जिनके साथ शेयर करेंगे वे इन्हें सिर्फ़ GENZ के अंदर देख पाएँगे, हर पेज पर उनका अपना नाम और मोबाइल छपा होगा — न डाउनलोड, न फ़ॉरवर्ड। असली फ़ाइल आपके, मालिक और लिस्टिंग ब्रोकर के पास रहती है। फ़ोटो और स्कैन किए PDF पर चलता है (कंप्यूटर पर टाइप किए PDF पर नहीं)।')}</span>
+        </label>
 
         <input value={tags} onChange={e => setTags(e.target.value)} placeholder={tx('Tags, comma separated (optional) — e.g. plot14, original', 'टैग, कॉमा से अलग (वैकल्पिक) — जैसे plot14, original')} aria-label={tx('Tags', 'टैग')} className={field} />
         <input value={note} onChange={e => setNote(e.target.value)} maxLength={400} placeholder={tx('Note (optional)', 'नोट (वैकल्पिक)')} aria-label={tx('Note', 'नोट')} className={field} />

@@ -428,6 +428,15 @@ export interface OwnerMandate {
   consentId?: string;
   offPlatformOwner?: { name: string; phoneLast4: string };
   ownerSignature?: { initials?: string; drawn: boolean; at: string; name?: string } | null;
+  /** v49 — for the owner, the listing broker and admins: the owner's full mobile; otherwise only the last 4 digits */
+  ownerPhone?: string;
+  ownerPhoneLast4?: string;
+  /** v49 — the name the owner typed when he signed on the consent link, when it differs from the listing's owner name */
+  ownerSignedAs?: string;
+  brokerCode?: string;
+  brokerCompany?: string;
+  brokerRera?: string;
+  brokerPhone?: string;
 }
 
 export interface ConstructionLead {

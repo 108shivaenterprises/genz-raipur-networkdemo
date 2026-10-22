@@ -59,6 +59,8 @@ const PAPER_MAX = 4 * 1024 * 1024;
 const SIG_DIR = () => path.resolve(process.cwd(), 'data', 'consent-signatures');
 const PHONE_RE = /^[6-9]\d{9}$/;
 
+/** v49 — "+91 98261 55667" for printing / showing to the parties; '' when there is no 10-digit number */
+const fullPhone = (raw: unknown) => { const d = phone10(raw); return d.length === 10 ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : ''; };
 export const keyOf = (p: { ownerPhone: string; city: string; locality: string; propertyType: string }) => hmac('oc-key', looseKeyText(p));
 const ipOf = (req: Request) => hmac('oc-ip', String(req.ip || req.socket.remoteAddress || ''));
 const uaOf = (req: Request) => hmac('oc-ua', String(req.headers['user-agent'] || ''));
@@ -398,8 +400,10 @@ export function createConsentRouter() {
     res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Owner consent form — GENZ</title>
 <style>@page{size:A4;margin:16mm}body{font-family:system-ui,"Noto Sans Devanagari","Mangal","Nirmala UI",sans-serif;max-width:760px;margin:24px auto;padding:0 18px;color:#111;line-height:1.55}h1{font-size:20px;margin:6px 0}p{font-size:14px}.box{border:1px solid #999;border-radius:8px;padding:12px 16px;margin:12px 0}.sig{display:flex;gap:24px;margin-top:44px}.sig div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px}.w{margin-top:30px;font-size:13px}.w span{display:inline-block;border-bottom:1px solid #333;min-width:170px;margin:0 10px 0 4px}small{color:#555}button{margin-bottom:8px}@media print{button{display:none}body{margin:0 auto}.box,.sig,p{break-inside:avoid}}</style></head>
 <body><button onclick="window.print()">Print</button><h1>Owner consent to list a property — GENZ Broker Network<br><span style="font-size:15px;font-weight:600">मालिक की सहमति — प्रॉपर्टी GENZ ब्रोकर नेटवर्क पर डालने के लिए</span></h1><small>Form ${CONSENT_FORM_VERSION} · Draft ${esc(d.id)}</small>
-<div class="box"><p><b>Property / प्रॉपर्टी:</b> ${esc(f.title)}<br><b>Place / जगह:</b> ${esc(f.locality)}, ${esc(f.city)}${f.state ? `, ${esc(f.state)}` : ''}${addr ? `<br><b>Address / पता:</b> ${esc(addr)}` : ''}<br><b>Price / क़ीमत:</b> ${esc(priceLabel(Number(f.askingPrice) || 0, f.transactionType === 'Rent'))}<br><b>Owner / मालिक:</b> ${esc(f.ownerName)} · mobile ending ${esc(phone10(f.ownerPhone).slice(-4))}<br><b>Broker / ब्रोकर:</b> ${esc(u.name)}${u.companyName ? `, ${esc(u.companyName)}` : ''}${u.reraNumber ? ` · RERA ${esc(u.reraNumber)}` : ''}<br><b>Protection / सुरक्षा:</b> ${esc(shownDays)} days from the date of signing / साइन की तारीख़ से ${esc(shownDays)} दिन</p></div>
+<div class="box"><p><b>Property / प्रॉपर्टी:</b> ${esc(f.title)}<br><b>Place / जगह:</b> ${esc(f.locality)}, ${esc(f.city)}${f.state ? `, ${esc(f.state)}` : ''}${addr ? `<br><b>Address / पता:</b> ${esc(addr)}` : ''}<br><b>Price / क़ीमत:</b> ${esc(priceLabel(Number(f.askingPrice) || 0, f.transactionType === 'Rent'))}<br><b>Owner / मालिक:</b> ${esc(f.ownerName)} · <b>Mobile / मोबाइल:</b> ${esc(fullPhone(f.ownerPhone) || '__________________')}<br><b>Broker / ब्रोकर:</b> ${esc(u.name)}${u.companyName ? `, ${esc(u.companyName)}` : ''}${u.reraNumber ? ` · RERA ${esc(u.reraNumber)}` : ''}${fullPhone(u.phone) ? ` · <b>Mobile / मोबाइल:</b> ${esc(fullPhone(u.phone))}` : ''}<br><b>Protection / सुरक्षा:</b> ${esc(shownDays)} days from the date of signing / साइन की तारीख़ से ${esc(shownDays)} दिन</p></div>
 <p>${esc(words.en)}</p><p>${esc(words.hi)}</p>
+<p class="w">Owner's name (in own hand) / मालिक का नाम (अपने हाथ से): <span></span></p>
+<p class="w">Owner's mobile / मालिक का मोबाइल: <span></span></p>
 <p class="w">Date / तारीख़: <span></span> Place / स्थान: <span></span></p>
 <div class="sig"><div>Owner's signature or thumb impression<br>मालिक के हस्ताक्षर / अंगूठा, और नाम</div><div>Broker's signature<br>ब्रोकर के हस्ताक्षर</div></div>
 <div class="sig"><div>Witness name and signature (if thumb impression)<br>गवाह का नाम और हस्ताक्षर (अंगूठे की स्थिति में)</div><div>Witness mobile / गवाह का मोबाइल</div></div></body></html>`);
@@ -602,7 +606,8 @@ export function createOwnerConsentPageRouter() {
     const tl = c.terms ? termsLine(c.terms) : null;
     const head = `<div class="top"><h1>प्रॉपर्टी लिस्ट करने की सहमति</h1><p>Consent to list your property · GENZ Broker Network</p></div>
 <div class="card"><div class="row"><span>प्रॉपर्टी / Property</span><b>${esc(c.snapshot.title)}</b></div><div class="row"><span>जगह / Place</span><b>${esc(c.snapshot.locality)}, ${esc(c.snapshot.city)}</b></div>
-<div class="row"><span>कीमत / Price</span><b>${esc(priceLabel(c.snapshot.price, c.snapshot.transactionType === 'Rent'))}</b></div><div class="row"><span>ब्रोकर / Broker</span><b>${esc(broker?.name || '')}${broker?.companyName ? `<br><small>${esc(broker.companyName)}</small>` : ''}${broker?.reraNumber ? `<br><small>RERA ${esc(broker.reraNumber)}</small>` : ''}</b></div>
+<div class="row"><span>मालिक / Owner</span><b>${esc(c.ownerName)}<br><small>मोबाइल जो ${esc(c.ownerPhoneLast4)} पर ख़त्म होता है / mobile ending ${esc(c.ownerPhoneLast4)}</small></b></div>
+<div class="row"><span>कीमत / Price</span><b>${esc(priceLabel(c.snapshot.price, c.snapshot.transactionType === 'Rent'))}</b></div><div class="row"><span>ब्रोकर / Broker</span><b>${esc(broker?.name || '')}${broker?.companyName ? `<br><small>${esc(broker.companyName)}</small>` : ''}${broker?.reraNumber ? `<br><small>RERA ${esc(broker.reraNumber)}</small>` : ''}${fullPhone(broker?.phone) ? `<br><small>📞 ${esc(fullPhone(broker?.phone))}</small>` : ''}</b></div>
 <div class="row"><span>सुरक्षा / Protection</span><b>${esc(daysLabel(c.protectionDays, true))}</b></div>${tl ? `<div class="row"><span>ब्रोकरेज / Brokerage</span><b>${esc(tl.kind.hi)}<br><small>${esc(tl.kind.en)}</small><br><small>${esc(tl.atAsking.hi)}</small></b></div>` : ''}</div>`;
     const tok = esc(req.params.token);
     if (c.status === 'ACCEPTED') {

@@ -820,6 +820,8 @@ export const api = {
   propDocShare: (id: string, b: { userIds: string[]; expiresInDays?: number }) => request<any>(`/api/property-docs/${id}/share`, { method: 'POST', body: JSON.stringify(b) }),
   propDocRevoke: (id: string, userId: string) => request<any>(`/api/property-docs/${id}/revoke`, { method: 'POST', body: JSON.stringify({ userId }) }),
   propDocLog: (id: string) => request<any>(`/api/property-docs/${id}/log`),
+  /** v49 — the stamped viewer: signed page tokens + the viewer's own stamp */
+  propDocView: (id: string) => request<any>(`/api/property-docs/${id}/view`, { method: 'POST', body: '{}' }),
   propDocDelete: (id: string) => request<any>(`/api/property-docs/${id}`, { method: 'DELETE' }),
   pdocs: () => request<any>('/api/pdocs'),
   pdocPeople: () => request<any>('/api/pdocs/people'),

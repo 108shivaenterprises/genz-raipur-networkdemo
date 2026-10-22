@@ -231,9 +231,9 @@ var require_postgres_date = __commonJS({
       if (type === "Z") {
         return 0;
       }
-      var sign2 = type === "-" ? -1 : 1;
+      var sign3 = type === "-" ? -1 : 1;
       var offset = parseInt(zone[2], 10) * 3600 + parseInt(zone[3] || 0, 10) * 60 + parseInt(zone[4] || 0, 10);
-      return offset * sign2 * 1e3;
+      return offset * sign3 * 1e3;
     }
     function bcYearToNegativeYear(year) {
       return -(year - 1);
@@ -598,11 +598,11 @@ var require_pg_int8 = __commonJS({
     function readInt8(buffer) {
       var high = buffer.readInt32BE(0);
       var low = buffer.readUInt32BE(4);
-      var sign2 = "";
+      var sign3 = "";
       if (high < 0) {
         high = ~high + (low === 0);
         low = ~low + 1 >>> 0;
-        sign2 = "-";
+        sign3 = "-";
       }
       var result = "";
       var carry;
@@ -618,7 +618,7 @@ var require_pg_int8 = __commonJS({
         low = t / BASE >>> 0;
         digits2 = "" + (t - BASE * low);
         if (low === 0 && high === 0) {
-          return sign2 + digits2 + result;
+          return sign3 + digits2 + result;
         }
         pad3 = "";
         l = 6 - digits2.length;
@@ -634,7 +634,7 @@ var require_pg_int8 = __commonJS({
         low = t / BASE >>> 0;
         digits2 = "" + (t - BASE * low);
         if (low === 0 && high === 0) {
-          return sign2 + digits2 + result;
+          return sign3 + digits2 + result;
         }
         pad3 = "";
         l = 6 - digits2.length;
@@ -650,7 +650,7 @@ var require_pg_int8 = __commonJS({
         low = t / BASE >>> 0;
         digits2 = "" + (t - BASE * low);
         if (low === 0 && high === 0) {
-          return sign2 + digits2 + result;
+          return sign3 + digits2 + result;
         }
         pad3 = "";
         l = 6 - digits2.length;
@@ -663,7 +663,7 @@ var require_pg_int8 = __commonJS({
         carry = high % BASE;
         t = 4294967296 * carry + low;
         digits2 = "" + t % BASE;
-        return sign2 + digits2 + result;
+        return sign3 + digits2 + result;
       }
     }
     module.exports = readInt8;
@@ -712,7 +712,7 @@ var require_binaryParsers = __commonJS({
     };
     var parseFloatFromBits = function(data, precisionBits, exponentBits) {
       var bias = Math.pow(2, exponentBits - 1) - 1;
-      var sign2 = parseBits(data, 1);
+      var sign3 = parseBits(data, 1);
       var exponent = parseBits(data, exponentBits, 1);
       if (exponent === 0) {
         return 0;
@@ -733,11 +733,11 @@ var require_binaryParsers = __commonJS({
       var mantissa = parseBits(data, precisionBits, exponentBits + 1, false, parsePrecisionBits);
       if (exponent == Math.pow(2, exponentBits + 1) - 1) {
         if (mantissa === 0) {
-          return sign2 === 0 ? Infinity : -Infinity;
+          return sign3 === 0 ? Infinity : -Infinity;
         }
         return NaN;
       }
-      return (sign2 === 0 ? 1 : -1) * Math.pow(2, exponent - bias) * mantissa;
+      return (sign3 === 0 ? 1 : -1) * Math.pow(2, exponent - bias) * mantissa;
     };
     var parseInt16 = function(value) {
       if (parseBits(value, 1) == 1) {
@@ -758,8 +758,8 @@ var require_binaryParsers = __commonJS({
       return parseFloatFromBits(value, 52, 11);
     };
     var parseNumeric = function(value) {
-      var sign2 = parseBits(value, 16, 32);
-      if (sign2 == 49152) {
+      var sign3 = parseBits(value, 16, 32);
+      if (sign3 == 49152) {
         return NaN;
       }
       var weight = Math.pow(1e4, parseBits(value, 16, 16));
@@ -771,12 +771,12 @@ var require_binaryParsers = __commonJS({
         weight /= 1e4;
       }
       var scale = Math.pow(10, parseBits(value, 16, 48));
-      return (sign2 === 0 ? 1 : -1) * Math.round(result * scale) / scale;
+      return (sign3 === 0 ? 1 : -1) * Math.round(result * scale) / scale;
     };
     var parseDate = function(isUTC, value) {
-      var sign2 = parseBits(value, 1);
+      var sign3 = parseBits(value, 1);
       var rawValue = parseBits(value, 63, 1);
-      var result = new Date((sign2 === 0 ? 1 : -1) * rawValue / 1e3 + 9466848e5);
+      var result = new Date((sign3 === 0 ? 1 : -1) * rawValue / 1e3 + 9466848e5);
       if (!isUTC) {
         result.setTime(result.getTime() + result.getTimezoneOffset() * 6e4);
       }
@@ -797,9 +797,9 @@ var require_binaryParsers = __commonJS({
       var flags = parseBits(value, 32, 32);
       var elementType = parseBits(value, 32, 64);
       var offset = 96;
-      var dims = [];
+      var dims2 = [];
       for (var i = 0; i < dim; i++) {
-        dims[i] = parseBits(value, 32, offset);
+        dims2[i] = parseBits(value, 32, offset);
         offset += 32;
         offset += 32;
       }
@@ -837,7 +837,7 @@ var require_binaryParsers = __commonJS({
         }
         return array2;
       };
-      return parse3(dims, elementType);
+      return parse3(dims2, elementType);
     };
     var parseText = function(value) {
       return value.toString("utf8");
@@ -1380,7 +1380,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports, module) {
     "use strict";
-    var crypto33 = require_utils2();
+    var crypto34 = require_utils2();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -1398,7 +1398,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto33.randomBytes(18).toString("base64");
+      const clientNonce = crypto34.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -1440,20 +1440,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto33.hashByName(hashName, peerCert);
+        const certHash = await crypto34.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto33.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto33.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto33.sha256(clientKey);
-      const clientSignature = await crypto33.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto34.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto34.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto34.sha256(clientKey);
+      const clientSignature = await crypto34.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto33.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto33.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto34.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto34.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -3692,7 +3692,7 @@ var require_client = __commonJS({
     var Query2 = require_query();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto33 = require_utils2();
+    var crypto34 = require_utils2();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -3947,7 +3947,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto33.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto34.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e) {
             this.emit("error", e);
@@ -10984,7 +10984,7 @@ var require_read = __commonJS({
     var iconv = require_lib3();
     var onFinished = require_on_finished();
     var unpipe = require_unpipe();
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     module.exports = read;
     function read(req, res, next2, parse3, debug, options) {
       var length;
@@ -11056,12 +11056,12 @@ var require_read = __commonJS({
         next2();
       });
     }
-    function contentstream(req, debug, inflate) {
+    function contentstream(req, debug, inflate2) {
       var encoding = (req.headers["content-encoding"] || "identity").toLowerCase();
       var length = req.headers["content-length"];
       var stream;
       debug('content-encoding "%s"', encoding);
-      if (inflate === false && encoding !== "identity") {
+      if (inflate2 === false && encoding !== "identity") {
         throw createError(415, "content encoding unsupported", {
           encoding,
           type: "encoding.unsupported"
@@ -11069,12 +11069,12 @@ var require_read = __commonJS({
       }
       switch (encoding) {
         case "deflate":
-          stream = zlib.createInflate();
+          stream = zlib2.createInflate();
           debug("inflate body");
           req.pipe(stream);
           break;
         case "gzip":
-          stream = zlib.createGunzip();
+          stream = zlib2.createGunzip();
           debug("gunzip body");
           req.pipe(stream);
           break;
@@ -19969,7 +19969,7 @@ var require_json = __commonJS({
     function json2(options) {
       var opts = options || {};
       var limit = typeof opts.limit === "undefined" || opts.limit === null ? 102400 : bytes.parse(opts.limit);
-      var inflate = opts.inflate !== false;
+      var inflate2 = opts.inflate !== false;
       var reviver = opts.reviver;
       var strict = opts.strict !== false;
       var type = opts.type || "application/json";
@@ -20031,7 +20031,7 @@ var require_json = __commonJS({
         }
         read(req, res, next2, parse3, debug, {
           encoding: charset,
-          inflate,
+          inflate: inflate2,
           limit,
           verify
         });
@@ -20097,7 +20097,7 @@ var require_raw = __commonJS({
     module.exports = raw;
     function raw(options) {
       var opts = options || {};
-      var inflate = opts.inflate !== false;
+      var inflate2 = opts.inflate !== false;
       var limit = typeof opts.limit === "undefined" || opts.limit === null ? 102400 : bytes.parse(opts.limit);
       var type = opts.type || "application/octet-stream";
       var verify = opts.verify || false;
@@ -20131,7 +20131,7 @@ var require_raw = __commonJS({
         }
         read(req, res, next2, parse3, debug, {
           encoding: null,
-          inflate,
+          inflate: inflate2,
           limit,
           verify
         });
@@ -20158,7 +20158,7 @@ var require_text = __commonJS({
     function text(options) {
       var opts = options || {};
       var defaultCharset = opts.defaultCharset || "utf-8";
-      var inflate = opts.inflate !== false;
+      var inflate2 = opts.inflate !== false;
       var limit = typeof opts.limit === "undefined" || opts.limit === null ? 102400 : bytes.parse(opts.limit);
       var type = opts.type || "text/plain";
       var verify = opts.verify || false;
@@ -20193,7 +20193,7 @@ var require_text = __commonJS({
         var charset = getCharset(req) || defaultCharset;
         read(req, res, next2, parse3, debug, {
           encoding: charset,
-          inflate,
+          inflate: inflate2,
           limit,
           verify
         });
@@ -20972,7 +20972,7 @@ var require_sign = __commonJS({
   "node_modules/math-intrinsics/sign.js"(exports, module) {
     "use strict";
     var $isNaN = require_isNaN();
-    module.exports = function sign2(number4) {
+    module.exports = function sign3(number4) {
       if ($isNaN(number4) || number4 === 0) {
         return number4;
       }
@@ -21336,7 +21336,7 @@ var require_get_intrinsic = __commonJS({
     var min = require_min();
     var pow = require_pow();
     var round2 = require_round();
-    var sign2 = require_sign();
+    var sign3 = require_sign();
     var $Function = Function;
     var getEvalledConstructor = function(expressionSyntax) {
       try {
@@ -21450,7 +21450,7 @@ var require_get_intrinsic = __commonJS({
       "%Math.min%": min,
       "%Math.pow%": pow,
       "%Math.round%": round2,
-      "%Math.sign%": sign2,
+      "%Math.sign%": sign3,
       "%Reflect.getPrototypeOf%": $ReflectGPO
     };
     if (getProto) {
@@ -22096,7 +22096,7 @@ var require_utils3 = __commonJS({
     };
     var compact = function compact2(value) {
       var queue = [{ obj: { o: value }, prop: "o" }];
-      var refs = getSideChannel();
+      var refs2 = getSideChannel();
       for (var i = 0; i < queue.length; ++i) {
         var item = queue[i];
         var obj = item.obj[item.prop];
@@ -22104,9 +22104,9 @@ var require_utils3 = __commonJS({
         for (var j = 0; j < keys.length; ++j) {
           var key = keys[j];
           var val = obj[key];
-          if (typeof val === "object" && val !== null && !refs.has(val)) {
+          if (typeof val === "object" && val !== null && !refs2.has(val)) {
             queue[queue.length] = { obj, prop: key };
-            refs.set(val, true);
+            refs2.set(val, true);
           }
         }
       }
@@ -22831,7 +22831,7 @@ var require_urlencoded = __commonJS({
         deprecate("undefined extended: provide extended option");
       }
       var extended2 = opts.extended !== false;
-      var inflate = opts.inflate !== false;
+      var inflate2 = opts.inflate !== false;
       var limit = typeof opts.limit === "undefined" || opts.limit === null ? 102400 : bytes.parse(opts.limit);
       var type = opts.type || "application/x-www-form-urlencoded";
       var verify = opts.verify || false;
@@ -22876,7 +22876,7 @@ var require_urlencoded = __commonJS({
         read(req, res, next2, parse3, debug, {
           debug,
           encoding: charset,
-          inflate,
+          inflate: inflate2,
           limit,
           verify
         });
@@ -24535,14 +24535,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto33 = __require("crypto");
+    var crypto34 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash3 = crypto33.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash3 = crypto34.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash3 + '"';
     }
@@ -27451,11 +27451,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto33 = __require("crypto");
+    var crypto34 = __require("crypto");
     exports.sign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret2) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto33.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto34.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -27464,7 +27464,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac3) == sha1(val) ? str6 : false;
     };
     function sha1(str6) {
-      return crypto33.createHash("sha1").update(str6).digest("hex");
+      return crypto34.createHash("sha1").update(str6).digest("hex");
     }
   }
 });
@@ -27724,7 +27724,7 @@ var require_response = __commonJS({
     var path13 = __require("path");
     var statuses = require_statuses();
     var merge2 = require_utils_merge();
-    var sign2 = require_cookie_signature().sign;
+    var sign3 = require_cookie_signature().sign;
     var normalizeType = require_utils4().normalizeType;
     var normalizeTypes = require_utils4().normalizeTypes;
     var setCharset = require_utils4().setCharset;
@@ -28079,7 +28079,7 @@ var require_response = __commonJS({
       }
       var val = typeof value === "object" ? "j:" + JSON.stringify(value) : String(value);
       if (signed) {
-        val = "s:" + sign2(val, secret2);
+        val = "s:" + sign3(val, secret2);
       }
       if (opts.maxAge != null) {
         var maxAge = opts.maxAge - 0;
@@ -31287,7 +31287,7 @@ var require_parser_async = __commonJS({
   "node_modules/pngjs/lib/parser-async.js"(exports, module) {
     "use strict";
     var util = __require("util");
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var ChunkStream = require_chunkstream();
     var FilterAsync = require_filter_parse_async();
     var Parser = require_parser2();
@@ -31329,15 +31329,15 @@ var require_parser_async = __commonJS({
     ParserAsync.prototype._inflateData = function(data) {
       if (!this._inflate) {
         if (this._bitmapInfo.interlace) {
-          this._inflate = zlib.createInflate();
+          this._inflate = zlib2.createInflate();
           this._inflate.on("error", this.emit.bind(this, "error"));
           this._filter.on("complete", this._complete.bind(this));
           this._inflate.pipe(this._filter);
         } else {
           let rowSize = (this._bitmapInfo.width * this._bitmapInfo.bpp * this._bitmapInfo.depth + 7 >> 3) + 1;
           let imageSize = rowSize * this._bitmapInfo.height;
-          let chunkSize = Math.max(imageSize, zlib.Z_MIN_CHUNK);
-          this._inflate = zlib.createInflate({ chunkSize });
+          let chunkSize = Math.max(imageSize, zlib2.Z_MIN_CHUNK);
+          this._inflate = zlib2.createInflate({ chunkSize });
           let leftToInflate = imageSize;
           let emitError = this.emit.bind(this, "error");
           this._inflate.on("error", function(err) {
@@ -31647,7 +31647,7 @@ var require_filter_pack = __commonJS({
       }
       return sum;
     }
-    var filters = {
+    var filters2 = {
       0: filterNone,
       1: filterSub,
       2: filterUp,
@@ -31691,7 +31691,7 @@ var require_filter_pack = __commonJS({
         }
         rawData[rawPos] = sel;
         rawPos++;
-        filters[sel](pxData, pxPos, byteWidth, rawData, rawPos, bpp);
+        filters2[sel](pxData, pxPos, byteWidth, rawData, rawPos, bpp);
         rawPos += byteWidth;
         pxPos += byteWidth;
       }
@@ -31708,14 +31708,14 @@ var require_packer = __commonJS({
     var CrcStream = require_crc();
     var bitPacker = require_bitpacker();
     var filter = require_filter_pack();
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var Packer = module.exports = function(options) {
       this._options = options;
       options.deflateChunkSize = options.deflateChunkSize || 32 * 1024;
       options.deflateLevel = options.deflateLevel != null ? options.deflateLevel : 9;
       options.deflateStrategy = options.deflateStrategy != null ? options.deflateStrategy : 3;
       options.inputHasAlpha = options.inputHasAlpha != null ? options.inputHasAlpha : true;
-      options.deflateFactory = options.deflateFactory || zlib.createDeflate;
+      options.deflateFactory = options.deflateFactory || zlib2.createDeflate;
       options.bitDepth = options.bitDepth || 8;
       options.colorType = typeof options.colorType === "number" ? options.colorType : constants.COLORTYPE_COLOR_ALPHA;
       options.inputColorType = typeof options.inputColorType === "number" ? options.inputColorType : constants.COLORTYPE_COLOR_ALPHA;
@@ -31847,17 +31847,17 @@ var require_sync_inflate = __commonJS({
   "node_modules/pngjs/lib/sync-inflate.js"(exports, module) {
     "use strict";
     var assert2 = __require("assert").ok;
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var util = __require("util");
     var kMaxLength = __require("buffer").kMaxLength;
     function Inflate(opts) {
       if (!(this instanceof Inflate)) {
         return new Inflate(opts);
       }
-      if (opts && opts.chunkSize < zlib.Z_MIN_CHUNK) {
-        opts.chunkSize = zlib.Z_MIN_CHUNK;
+      if (opts && opts.chunkSize < zlib2.Z_MIN_CHUNK) {
+        opts.chunkSize = zlib2.Z_MIN_CHUNK;
       }
-      zlib.Inflate.call(this, opts);
+      zlib2.Inflate.call(this, opts);
       this._offset = this._offset === void 0 ? this._outOffset : this._offset;
       this._buffer = this._buffer || this._outBuffer;
       if (opts && opts.maxLength != null) {
@@ -31879,7 +31879,7 @@ var require_sync_inflate = __commonJS({
     }
     Inflate.prototype._processChunk = function(chunk, flushFlag, asyncCb) {
       if (typeof asyncCb === "function") {
-        return zlib.Inflate._processChunk.call(this, chunk, flushFlag, asyncCb);
+        return zlib2.Inflate._processChunk.call(this, chunk, flushFlag, asyncCb);
       }
       let self = this;
       let availInBefore = chunk && chunk.length;
@@ -31955,7 +31955,7 @@ var require_sync_inflate = __commonJS({
       _close(this);
       return buf;
     };
-    util.inherits(Inflate, zlib.Inflate);
+    util.inherits(Inflate, zlib2.Inflate);
     function zlibBufferSync(engine, buffer) {
       if (typeof buffer === "string") {
         buffer = Buffer.from(buffer);
@@ -31965,7 +31965,7 @@ var require_sync_inflate = __commonJS({
       }
       let flushFlag = engine._finishFlushFlag;
       if (flushFlag == null) {
-        flushFlag = zlib.Z_FINISH;
+        flushFlag = zlib2.Z_FINISH;
       }
       return engine._processChunk(buffer, flushFlag);
     }
@@ -32046,9 +32046,9 @@ var require_parser_sync = __commonJS({
   "node_modules/pngjs/lib/parser-sync.js"(exports, module) {
     "use strict";
     var hasSyncZlib = true;
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var inflateSync = require_sync_inflate();
-    if (!zlib.deflateSync) {
+    if (!zlib2.deflateSync) {
       hasSyncZlib = false;
     }
     var SyncReader = require_sync_reader();
@@ -32107,7 +32107,7 @@ var require_parser_sync = __commonJS({
       inflateDataList.length = 0;
       let inflatedData;
       if (metaData.interlace) {
-        inflatedData = zlib.inflateSync(inflateData);
+        inflatedData = zlib2.inflateSync(inflateData);
       } else {
         let rowSize = (metaData.width * metaData.bpp * metaData.depth + 7 >> 3) + 1;
         let imageSize = rowSize * metaData.height;
@@ -32137,8 +32137,8 @@ var require_packer_sync = __commonJS({
   "node_modules/pngjs/lib/packer-sync.js"(exports, module) {
     "use strict";
     var hasSyncZlib = true;
-    var zlib = __require("zlib");
-    if (!zlib.deflateSync) {
+    var zlib2 = __require("zlib");
+    if (!zlib2.deflateSync) {
       hasSyncZlib = false;
     }
     var constants = require_constants();
@@ -32162,7 +32162,7 @@ var require_packer_sync = __commonJS({
         metaData.width,
         metaData.height
       );
-      let compressedData = zlib.deflateSync(
+      let compressedData = zlib2.deflateSync(
         filteredData,
         packer.getDeflateOptions()
       );
@@ -42965,10 +42965,10 @@ var require_compression = __commonJS({
     var destroy = require_destroy();
     var onHeaders = require_on_headers();
     var vary = require_vary();
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     module.exports = compression2;
     module.exports.filter = shouldCompress;
-    var hasBrotliSupport = "createBrotliCompress" in zlib;
+    var hasBrotliSupport = "createBrotliCompress" in zlib2;
     var cacheControlNoTransformRegExp = /(?:^|,)\s*?no-transform\s*?(?:,|$)/i;
     var SUPPORTED_ENCODING = hasBrotliSupport ? ["br", "gzip", "deflate", "identity"] : ["gzip", "deflate", "identity"];
     var PREFERRED_ENCODING = hasBrotliSupport ? ["br", "gzip"] : ["gzip"];
@@ -42979,7 +42979,7 @@ var require_compression = __commonJS({
       if (hasBrotliSupport) {
         Object.assign(optsBrotli, opts.brotli);
         var brotliParams = {};
-        brotliParams[zlib.constants.BROTLI_PARAM_QUALITY] = 4;
+        brotliParams[zlib2.constants.BROTLI_PARAM_QUALITY] = 4;
         optsBrotli.params = Object.assign(brotliParams, optsBrotli.params);
       }
       var filter = opts.filter || shouldCompress;
@@ -43079,7 +43079,7 @@ var require_compression = __commonJS({
             return;
           }
           debug("%s compression", method);
-          stream = method === "gzip" ? zlib.createGzip(opts) : method === "br" ? zlib.createBrotliCompress(optsBrotli) : zlib.createDeflate(opts);
+          stream = method === "gzip" ? zlib2.createGzip(opts) : method === "br" ? zlib2.createBrotliCompress(optsBrotli) : zlib2.createDeflate(opts);
           if (closed) {
             destroy(stream);
             stream = null;
@@ -44797,11 +44797,11 @@ function node(obj, key, make) {
 function flattenError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = {};
   const formErrors = [];
-  for (const sub of error62.issues) {
-    if (sub.path.length > 0) {
-      node(fieldErrors, sub.path[0], () => []).push(mapper(sub));
+  for (const sub2 of error62.issues) {
+    if (sub2.path.length > 0) {
+      node(fieldErrors, sub2.path[0], () => []).push(mapper(sub2));
     } else {
-      formErrors.push(mapper(sub));
+      formErrors.push(mapper(sub2));
     }
   }
   return { formErrors, fieldErrors };
@@ -62176,12 +62176,12 @@ function containsRef(value) {
     return value.some(containsRef);
   if (typeof value.$ref === "string")
     return true;
-  return Object.entries(value).some(([key, sub]) => {
+  return Object.entries(value).some(([key, sub2]) => {
     if (SCHEMA_KEYWORDS.has(key))
-      return containsRef(sub);
-    if (!SCHEMA_MAP_KEYWORDS.has(key) || typeof sub !== "object" || sub === null)
+      return containsRef(sub2);
+    if (!SCHEMA_MAP_KEYWORDS.has(key) || typeof sub2 !== "object" || sub2 === null)
       return false;
-    return Object.values(sub).some(containsRef);
+    return Object.values(sub2).some(containsRef);
   });
 }
 function plural(n2) {
@@ -63789,12 +63789,12 @@ var PHONE_RE = /(?:\+?\s*91[\s\-.]*)?(?:\(?0?\)?[\s\-.]*)?\b[6-9](?:[\s\-.]*\d){
 var LONG_DIGITS_RE = /\b\d{10,}\b/g;
 function maskPhones(text) {
   let masked = false;
-  const sub = (m) => {
+  const sub2 = (m) => {
     masked = true;
     return "\u2022\u2022\u2022 (number hidden \u2014 shared after the fee is accepted)";
   };
-  let out = String(text || "").replace(PHONE_RE, sub);
-  out = out.replace(LONG_DIGITS_RE, sub);
+  let out = String(text || "").replace(PHONE_RE, sub2);
+  out = out.replace(LONG_DIGITS_RE, sub2);
   return { text: out, masked };
 }
 var DEFAULT_LEGAL_SETTINGS = {
@@ -73494,9 +73494,285 @@ var import_express17 = __toESM(require_express2(), 1);
 // server/propdocs.ts
 var import_express9 = __toESM(require_express2(), 1);
 var import_express10 = __toESM(require_express2(), 1);
-import crypto7 from "node:crypto";
+import crypto8 from "node:crypto";
 import fs4 from "node:fs";
 import path4 from "node:path";
+
+// server/pdfPages.ts
+import zlib from "node:zlib";
+var MAX_PAGES = 40;
+function inflate(b) {
+  try {
+    return zlib.inflateSync(b);
+  } catch {
+    try {
+      return zlib.inflateRawSync(b);
+    } catch {
+      return null;
+    }
+  }
+}
+function readObjects(buf) {
+  const s = buf.toString("latin1");
+  if (/\/Encrypt\s/.test(s.slice(-4096)) || /\/Encrypt\s+\d+\s+\d+\s+R/.test(s)) return null;
+  const objs = /* @__PURE__ */ new Map();
+  const re = /(\d+)\s+(\d+)\s+obj\b/g;
+  let m;
+  const heads = [];
+  while (m = re.exec(s)) heads.push({ num: Number(m[1]), at: m.index + m[0].length });
+  const lengthOf = (dict) => {
+    const direct = /\/Length\s+(\d+)(?!\s+\d+\s+R)/.exec(dict);
+    if (direct) return Number(direct[1]);
+    const ref = /\/Length\s+(\d+)\s+\d+\s+R/.exec(dict);
+    if (!ref) return null;
+    const h = heads.find((x) => x.num === Number(ref[1]));
+    if (!h) return null;
+    const n2 = /^\s*(\d+)/.exec(s.slice(h.at, h.at + 40));
+    return n2 ? Number(n2[1]) : null;
+  };
+  let skipUntil = 0;
+  for (let i = 0; i < heads.length; i++) {
+    const { num: num2, at } = heads[i];
+    if (at < skipUntil) continue;
+    let j = i + 1;
+    while (j < heads.length && heads[j].at < skipUntil) j++;
+    const end = j < heads.length ? heads[j].at : s.length;
+    const chunk = s.slice(at, end);
+    const st22 = /\bstream\r?\n/.exec(chunk);
+    if (!st22) {
+      const e = chunk.indexOf("endobj");
+      objs.set(num2, { dict: e >= 0 ? chunk.slice(0, e) : chunk });
+      continue;
+    }
+    const dict = chunk.slice(0, st22.index);
+    const start = at + st22.index + st22[0].length;
+    let len = lengthOf(dict);
+    if (len == null || start + len > buf.length) {
+      const e = s.indexOf("endstream", start);
+      if (e < 0) continue;
+      len = e - start;
+    }
+    objs.set(num2, { dict, data: buf.subarray(start, start + len) });
+    skipUntil = start + len;
+  }
+  for (const [, o] of [...objs]) {
+    if (!o.data || !/\/Type\s*\/ObjStm/.test(o.dict) || !/\/FlateDecode/.test(o.dict)) continue;
+    const raw = inflate(o.data);
+    if (!raw) continue;
+    const n2 = Number(/\/N\s+(\d+)/.exec(o.dict)?.[1] || 0), first = Number(/\/First\s+(\d+)/.exec(o.dict)?.[1] || 0);
+    const txt2 = raw.toString("latin1");
+    const nums = txt2.slice(0, first).trim().split(/\s+/).map(Number);
+    for (let k = 0; k < n2 && 2 * k + 1 < nums.length; k++) {
+      const objNum = nums[2 * k], off = nums[2 * k + 1], next2 = k + 1 < n2 ? nums[2 * k + 3] : txt2.length - first;
+      if (!objs.has(objNum)) objs.set(objNum, { dict: txt2.slice(first + off, first + next2) });
+    }
+  }
+  return objs;
+}
+var refs = (txt2) => [...txt2.matchAll(/(\d+)\s+\d+\s+R/g)].map((x) => Number(x[1]));
+function sub(objs, dict, key) {
+  const i = dict.search(new RegExp(`/${key}\\b`));
+  if (i < 0) return null;
+  const rest = dict.slice(i + key.length + 1).trimStart();
+  const ref = /^(\d+)\s+\d+\s+R/.exec(rest);
+  if (ref) return objs.get(Number(ref[1]))?.dict ?? null;
+  if (!rest.startsWith("<<")) return null;
+  let depth = 0;
+  for (let j = 0; j < rest.length; j++) {
+    if (rest.startsWith("<<", j)) {
+      depth++;
+      j++;
+    } else if (rest.startsWith(">>", j)) {
+      depth--;
+      j++;
+      if (depth === 0) return rest.slice(0, j + 1);
+    }
+  }
+  return null;
+}
+var isPage = (d) => /\/Type\s*\/Page(?![a-zA-Z])/.test(d);
+function pageList(objs, buf) {
+  const s = buf.toString("latin1");
+  const rootRefs = [...s.matchAll(/\/Root\s+(\d+)\s+\d+\s+R/g)].map((x) => Number(x[1]));
+  for (const root2 of rootRefs.reverse()) {
+    const cat = objs.get(root2)?.dict;
+    if (!cat) continue;
+    const pagesRef = /\/Pages\s+(\d+)\s+\d+\s+R/.exec(cat);
+    if (!pagesRef) continue;
+    const out = [];
+    const seen2 = /* @__PURE__ */ new Set();
+    const walk2 = (n2, depth) => {
+      if (seen2.has(n2) || depth > 30 || out.length > MAX_PAGES) return;
+      seen2.add(n2);
+      const d = objs.get(n2)?.dict;
+      if (!d) return;
+      if (isPage(d)) {
+        out.push(n2);
+        return;
+      }
+      const kids = /\/Kids\s*\[([^\]]*)\]/.exec(d);
+      if (kids) for (const k of refs(kids[1])) walk2(k, depth + 1);
+    };
+    walk2(Number(pagesRef[1]), 0);
+    if (out.length) return out;
+  }
+  return [...objs.entries()].filter(([, o]) => isPage(o.dict)).map(([n2]) => n2);
+}
+function resourcesOf(objs, pageNum) {
+  let n2 = pageNum;
+  for (let i = 0; n2 != null && i < 30; i++) {
+    const d = objs.get(n2)?.dict;
+    if (!d) return null;
+    const r = sub(objs, d, "Resources");
+    if (r) return r;
+    const p = /\/Parent\s+(\d+)\s+\d+\s+R/.exec(d);
+    n2 = p ? Number(p[1]) : void 0;
+  }
+  return null;
+}
+var dims = (d) => ({ w: Number(/\/Width\s+(\d+)/.exec(d)?.[1] || 0), h: Number(/\/Height\s+(\d+)/.exec(d)?.[1] || 0) });
+function ascii85(b) {
+  const s = b.toString("latin1").replace(/\s+/g, "").replace(/^<~/, "");
+  const end = s.indexOf("~>");
+  const t = end >= 0 ? s.slice(0, end) : s;
+  const out = [];
+  let group = [];
+  for (const ch of t) {
+    if (ch === "z" && group.length === 0) {
+      out.push(0, 0, 0, 0);
+      continue;
+    }
+    const c = ch.charCodeAt(0) - 33;
+    if (c < 0 || c > 84) return null;
+    group.push(c);
+    if (group.length === 5) {
+      let v = 0;
+      for (const g of group) v = v * 85 + g;
+      out.push(v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255);
+      group = [];
+    }
+  }
+  if (group.length) {
+    const n2 = group.length;
+    while (group.length < 5) group.push(84);
+    let v = 0;
+    for (const g of group) v = v * 85 + g;
+    const bytes = [v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255];
+    out.push(...bytes.slice(0, n2 - 1));
+  }
+  return Buffer.from(out);
+}
+var asciiHex = (b) => {
+  const t = b.toString("latin1").replace(/[\s>]/g, "");
+  return /^[0-9a-fA-F]*$/.test(t) ? Buffer.from(t.length % 2 ? t + "0" : t, "hex") : null;
+};
+var filters = (dict) => {
+  const f = /\/Filter\s*(\[[^\]]*\]|\/\w+)/.exec(dict);
+  return f ? [...f[1].matchAll(/\/(\w+)/g)].map((x) => x[1]) : [];
+};
+function undo(chain2, data) {
+  let b = data;
+  for (const name of chain2) {
+    if (!b) return null;
+    if (name === "FlateDecode") b = inflate(b);
+    else if (name === "ASCII85Decode") b = ascii85(b);
+    else if (name === "ASCIIHexDecode") b = asciiHex(b);
+    else return null;
+  }
+  return b;
+}
+function jpegOf(dict, data) {
+  const chain2 = filters(dict);
+  if (chain2[chain2.length - 1] !== "DCTDecode") return null;
+  const b = undo(chain2.slice(0, -1), data);
+  return b && b[0] === 255 && b[1] === 216 ? b : null;
+}
+function pagePicture(objs, res, depth = 0) {
+  if (!res || depth > 2) return null;
+  const xo = sub(objs, res, "XObject");
+  if (!xo) return null;
+  let best2 = null;
+  for (const n2 of refs(xo)) {
+    const o = objs.get(n2);
+    if (!o) continue;
+    let cand = null;
+    if (/\/Subtype\s*\/Image/.test(o.dict) && o.data) {
+      const jpg = jpegOf(o.dict, o.data);
+      const { w, h } = dims(o.dict);
+      if (jpg) cand = { data: jpg, area: w * h };
+    } else if (/\/Subtype\s*\/Form/.test(o.dict)) cand = pagePicture(objs, sub(objs, o.dict, "Resources"), depth + 1);
+    if (cand && (!best2 || cand.area > best2.area)) best2 = cand;
+  }
+  return best2;
+}
+function hasVisibleText(objs, pageDict) {
+  const c = /\/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)/.exec(pageDict);
+  if (!c) return false;
+  let text = "";
+  for (const n2 of refs(c[1])) {
+    const o = objs.get(n2);
+    if (!o?.data) continue;
+    const raw = undo(filters(o.dict), o.data);
+    if (!raw) return true;
+    text += raw.toString("latin1") + "\n";
+  }
+  if (!/\b(Tj|TJ)\b/.test(text) || !/\bBT\b/.test(text)) return false;
+  const blocks = text.split(/\bBT\b/).slice(1);
+  return blocks.some((b) => /\b(Tj|TJ)\b/.test(b.split(/\bET\b/)[0]) && !/\b3\s+Tr\b/.test(b.split(/\bET\b/)[0]));
+}
+function scannedPages(buf, opts = {}) {
+  if (buf.subarray(0, 5).toString("latin1") !== "%PDF-") return null;
+  const objs = readObjects(buf);
+  if (!objs) return null;
+  const pages = pageList(objs, buf);
+  if (!pages.length || pages.length > MAX_PAGES) return null;
+  const min = opts.minSide ?? 300;
+  const out = [];
+  for (const p of pages) {
+    const d = objs.get(p).dict;
+    if (hasVisibleText(objs, d)) return null;
+    const pic = pagePicture(objs, resourcesOf(objs, p));
+    if (!pic || pic.area < min * min) return null;
+    const jpg = pic.data;
+    if (!(jpg[0] === 255 && jpg[1] === 216)) return null;
+    out.push(Buffer.from(jpg));
+  }
+  return out;
+}
+
+// server/viewToken.ts
+import crypto7 from "node:crypto";
+var TTL_MS = 5 * 6e4;
+var used = /* @__PURE__ */ new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, exp] of used) if (exp < now) used.delete(k);
+}, 6e4).unref();
+var sign = (body) => crypto7.createHmac("sha256", secret()).update(`view-token|${body}`).digest("base64url");
+function makeViewToken(kind, docId2, userId, page2, ttlMs = TTL_MS) {
+  const claim2 = { k: kind, d: docId2, u: userId, p: page2, e: Date.now() + ttlMs, n: crypto7.randomBytes(6).toString("base64url") };
+  const body = Buffer.from(JSON.stringify(claim2)).toString("base64url");
+  return `${body}.${sign(body)}`;
+}
+function useViewToken(token, kind, userId) {
+  const [body, sig] = String(token || "").split(".");
+  if (!body || !sig || !safeEqual(sig, sign(body))) return null;
+  let c;
+  try {
+    c = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+  if (!c || c.k !== kind || c.u !== userId || typeof c.e !== "number" || c.e < Date.now() || !Number.isInteger(c.p) || c.p < 0) return null;
+  if (used.has(sig)) return null;
+  used.set(sig, c.e);
+  return c;
+}
+function stampFor(name, phoneDigits) {
+  const stamp = (/* @__PURE__ */ new Date()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "short", timeStyle: "short" });
+  const last42 = String(phoneDigits || "").replace(/\D/g, "").slice(-4);
+  return `${name} \xB7 ${last42 ? `\u2022\u2022${last42}` : "\u2022\u2022\u2022\u2022"} \xB7 ${stamp}`;
+}
 
 // src/shared/propDocs.ts
 var PROP_DOC_TYPES = [
@@ -73544,6 +73820,30 @@ var DIR = () => path4.resolve(process.cwd(), "data", "propdocs");
 var fileOf = (id) => path4.join(DIR(), `${id}.bin`);
 var bad4 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
 var LOG_CAP = 5e3;
+var pageCache = /* @__PURE__ */ new Map();
+function viewerPages(d, buf) {
+  const hit2 = pageCache.get(d.sha256);
+  if (hit2) return hit2;
+  let b = buf;
+  if (!b) {
+    try {
+      b = fs4.readFileSync(fileOf(d.id));
+    } catch {
+      return null;
+    }
+  }
+  const pages = d.mime === "application/pdf" ? scannedPages(b) : [b];
+  if (!pages || !pages.length) return null;
+  pageCache.set(d.sha256, pages);
+  if (pageCache.size > 12) pageCache.delete(pageCache.keys().next().value);
+  return pages;
+}
+var NOT_SCANNED = {
+  code: "PDF_NOT_SCANNED",
+  error: "This PDF cannot be protected: it has no page photos (it was typed on a computer, or saved in a way GENZ cannot read). Add photos of its pages, or use \u201CMake one PDF from page photos\u201D, or keep it unprotected.",
+  hi: "\u092F\u0939 PDF \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0928\u0939\u0940\u0902 \u0939\u094B \u0938\u0915\u0924\u093E: \u0907\u0938\u092E\u0947\u0902 \u092A\u0947\u091C \u0915\u0940 \u092B\u093C\u094B\u091F\u094B \u0928\u0939\u0940\u0902 \u0939\u0948\u0902 (\u0915\u0902\u092A\u094D\u092F\u0942\u091F\u0930 \u092A\u0930 \u091F\u093E\u0907\u092A \u0939\u0941\u0906 \u0939\u0948, \u092F\u093E \u0910\u0938\u0947 \u0938\u0947\u0935 \u0939\u0948 \u091C\u094B GENZ \u092A\u0922\u093C \u0928\u0939\u0940\u0902 \u092A\u093E\u0924\u093E)\u0964 \u0907\u0938\u0915\u0947 \u092A\u0947\u091C \u0915\u0940 \u092B\u093C\u094B\u091F\u094B \u0921\u093E\u0932\u0947\u0902, \u092F\u093E \u201C\u092A\u0947\u091C \u0915\u0940 \u092B\u093C\u094B\u091F\u094B \u0938\u0947 \u090F\u0915 PDF \u092C\u0928\u093E\u090F\u0901\u201D \u0938\u0947 \u092C\u0928\u093E\u090F\u0901, \u092F\u093E \u092C\u093F\u0928\u093E \u0938\u0941\u0930\u0915\u094D\u0937\u093E \u0930\u0916\u0947\u0902\u0964"
+};
+var mayHaveFile = (d, a) => !d.protect || a.via === "UPLOADER" || a.via === "PRINCIPAL";
 var activeShare = (d, userId, now = Date.now()) => d.shares.find((s) => s.userId === userId && !s.revoked && (!s.expiresAt || new Date(s.expiresAt).getTime() > now));
 function docAccess(st22, u, d, now = Date.now()) {
   const prop = db.byId("properties", d.propertyId);
@@ -73559,7 +73859,7 @@ function docAccess(st22, u, d, now = Date.now()) {
 }
 var log = (docId2, userId, action, ip, note5) => {
   const st22 = db.getState();
-  st22.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto7.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso6(), ip, note: note5 });
+  st22.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto8.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso6(), ip, note: note5 });
   if (st22.propertyDocLogs.length > LOG_CAP) st22.propertyDocLogs.splice(0, st22.propertyDocLogs.length - LOG_CAP);
 };
 var nameOf = (st22, id) => db.byId("users", id)?.name || "\u2014";
@@ -73592,6 +73892,10 @@ function summary(st22, d, u, a) {
     access: a.level,
     via: a.via,
     canManage: manage,
+    protect: !!d.protect,
+    pages: d.pages || 1,
+    canDownload: mayHaveFile(d, a),
+    missing: !fs4.existsSync(fileOf(d.id)),
     shares: manage ? d.shares.filter((s) => !s.revoked).map((s) => ({ userId: s.userId, name: nameOf(st22, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now() })) : void 0
   };
 }
@@ -73675,6 +73979,7 @@ function createPropDocsRouter() {
       data: external_exports.string().min(8),
       visibility: external_exports.enum(PROP_DOC_VISIBILITY).default("PRIVATE"),
       ddItemId: external_exports.string().max(80).optional(),
+      protect: external_exports.boolean().optional(),
       attest: external_exports.literal(true, { message: "Please confirm you are the owner or authorised by the owner to keep this paper here." })
     }).safeParse(req.body);
     if (!b.success) return bad4(res, b.error.issues[0]?.message || "Please fill the form properly.");
@@ -73699,7 +74004,13 @@ function createPropDocsRouter() {
     const mime = sniffMime(buf);
     if (!mime) return bad4(res, "Only PDF, JPEG, PNG or WebP files are accepted.", 415);
     if (usedBytes(st22, u.id) + buf.length > PROP_DOC_MAX_USER_BYTES) return bad4(res, "Your storage is full. Delete old papers first.", 413);
-    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto7.randomInt(1e3, 9999)}`;
+    let pages = 1;
+    if (b.data.protect && mime === "application/pdf") {
+      const pp = scannedPages(buf);
+      if (!pp) return res.status(400).json(NOT_SCANNED);
+      pages = pp.length;
+    }
+    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto8.randomInt(1e3, 9999)}`;
     try {
       fs4.mkdirSync(DIR(), { recursive: true });
       const tmp = fileOf(id) + ".tmp";
@@ -73721,17 +74032,18 @@ function createPropDocsRouter() {
       fileName: b.data.fileName.replace(/[\\/\0\r\n]+/g, "_"),
       mime,
       size: buf.length,
-      sha256: crypto7.createHash("sha256").update(buf).digest("hex"),
+      sha256: crypto8.createHash("sha256").update(buf).digest("hex"),
       visibility: b.data.visibility,
       shares: [],
       ddItemId,
       attestedAt: ts,
       createdAt: ts,
-      updatedAt: ts
+      updatedAt: ts,
+      ...b.data.protect ? { protect: true, protectedAt: ts, pages } : {}
     };
     st22.propertyDocs.push(doc);
     db.save();
-    db.appendAuditEvent(u.id, u.role, "SYSTEM", id, "PROPDOC_UPLOADED", `Paper \u201C${doc.title}\u201D (${doc.type}, ${(doc.size / 1024).toFixed(0)} KB, SHA-256 ${doc.sha256.slice(0, 16)}\u2026) added to ${prop.id}${ddItemId ? ` as evidence for ${ddItemId}` : ""}`);
+    db.appendAuditEvent(u.id, u.role, "SYSTEM", id, "PROPDOC_UPLOADED", `Paper \u201C${doc.title}\u201D (${doc.type}, ${(doc.size / 1024).toFixed(0)} KB, SHA-256 ${doc.sha256.slice(0, 16)}\u2026) added to ${prop.id}${ddItemId ? ` as evidence for ${ddItemId}` : ""}${doc.protect ? " \u2014 protected (view-only, watermarked)" : ""}`);
     res.json({ success: true, doc: summary(st22, doc, u, docAccess(st22, u, doc)) });
   });
   const load2 = (req, res) => {
@@ -73758,11 +74070,57 @@ function createPropDocsRouter() {
     }
     return x;
   };
+  r.post("/:id/view", need, rateLimit("propdocview", 300, 60 * 6e4), (req, res) => {
+    const x = load2(req, res);
+    if (!x) return;
+    const { u, d, a } = x;
+    const pages = viewerPages(d);
+    if (!pages) return fs4.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
+    log(d.id, u.id, "VIEW", req.ip || "", `${d.protect ? "view-only viewer" : "viewer"}, stamped${a.via === "ADMIN" ? " \u2014 GENZ admin" : ""}`);
+    db.save();
+    res.json({
+      success: true,
+      id: d.id,
+      title: d.title,
+      pages: pages.length,
+      protect: !!d.protect,
+      tokens: pages.map((_, i) => makeViewToken("PROPDOC", d.id, u.id, i)),
+      watermark: stampFor(u.name, digits(u.phone)),
+      canDownload: mayHaveFile(d, a)
+    });
+  });
+  r.get("/view/:token", need, (req, res) => {
+    const u = me5();
+    const c = useViewToken(req.params.token, "PROPDOC", u.id);
+    if (!c) return res.status(403).end();
+    if (String(req.headers["sec-fetch-dest"] || "image") !== "image") {
+      log(c.d, u.id, "DENIED", req.ip || "", "page opened outside the viewer");
+      db.save();
+      return res.status(403).end();
+    }
+    const st22 = db.getState();
+    const d = st22.propertyDocs.find((v) => v.id === c.d);
+    if (!d || !docAccess(st22, u, d).ok) return res.status(403).end();
+    const pages = viewerPages(d);
+    const page2 = pages?.[c.p];
+    if (!page2) return res.status(404).end();
+    res.setHeader("Content-Type", d.mime === "application/pdf" ? "image/jpeg" : d.mime);
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Content-Disposition", "inline");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(page2);
+  });
   r.get("/:id/file", need, rateLimit("propdocopen", 300, 60 * 6e4), (req, res) => {
     const x = load2(req, res);
     if (!x) return;
     const { u, d, a } = x;
     const dl = req.query.dl === "1";
+    if (!mayHaveFile(d, a)) {
+      log(d.id, u.id, "DENIED", req.ip || "", "protected \u2014 file refused, viewer only");
+      db.save();
+      if (String(req.headers["sec-fetch-dest"] || "") === "document") return res.redirect(303, `/?tab=propdocs&view=${encodeURIComponent(d.id)}`);
+      return res.status(403).json({ code: "PROTECTED", error: "This paper is protected \u2014 open it in the app to view it (your name is stamped on it). It cannot be downloaded.", hi: "\u092F\u0939 \u0915\u093E\u0917\u091C\u093C \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0939\u0948 \u2014 \u0910\u092A \u092E\u0947\u0902 \u0916\u094B\u0932\u0915\u0930 \u0926\u0947\u0916\u0947\u0902 (\u0906\u092A\u0915\u093E \u0928\u093E\u092E \u0909\u0938 \u092A\u0930 \u091B\u092A\u0947\u0917\u093E)\u0964 \u0921\u093E\u0909\u0928\u0932\u094B\u0921 \u0928\u0939\u0940\u0902 \u0939\u094B \u0938\u0915\u0924\u093E\u0964" });
+    }
     let buf;
     try {
       buf = fs4.readFileSync(fileOf(d.id));
@@ -73790,9 +74148,21 @@ function createPropDocsRouter() {
       refNo: external_exports.string().trim().max(60).optional(),
       tags: external_exports.array(external_exports.string()).max(20).optional(),
       note: external_exports.string().trim().max(400).optional(),
-      visibility: external_exports.enum(PROP_DOC_VISIBILITY).optional()
+      visibility: external_exports.enum(PROP_DOC_VISIBILITY).optional(),
+      protect: external_exports.boolean().optional()
     }).safeParse(req.body);
     if (!b.success) return bad4(res, b.error.issues[0]?.message || "Please check the details.");
+    if (b.data.protect === true && !d.protect) {
+      const pp = viewerPages(d);
+      if (!pp) return fs4.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
+      d.protect = true;
+      d.protectedAt = nowIso6();
+      d.pages = pp.length;
+      db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_PROTECT", `\u201C${d.title}\u201D protected: view-only, every viewer's name stamped, no download (except the uploader)`);
+    } else if (b.data.protect === false && d.protect) {
+      d.protect = false;
+      db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_UNPROTECT", `Protection removed from \u201C${d.title}\u201D \u2014 people it is shared with can open and download it again`);
+    }
     if (b.data.type) d.type = b.data.type;
     if (b.data.title) d.title = b.data.title;
     if (b.data.refNo !== void 0) d.refNo = b.data.refNo || void 0;
@@ -73877,7 +74247,7 @@ function createPropDocsRouter() {
 // server/idreview.ts
 var import_express13 = __toESM(require_express2(), 1);
 var import_express14 = __toESM(require_express2(), 1);
-import crypto10 from "node:crypto";
+import crypto11 from "node:crypto";
 import fs6 from "node:fs";
 import path6 from "node:path";
 
@@ -73980,7 +74350,7 @@ var import_express12 = __toESM(require_express2(), 1);
 
 // server/twofactor.ts
 var import_express11 = __toESM(require_express2(), 1);
-import crypto8 from "crypto";
+import crypto9 from "crypto";
 var B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(buf) {
   let bits = 0, value = 0, out = "";
@@ -73998,7 +74368,7 @@ function base32Encode(buf) {
 function hotp(key, counter, digits2 = 6) {
   const c = Buffer.alloc(8);
   c.writeBigUInt64BE(BigInt(counter));
-  const h = crypto8.createHmac("sha1", key).update(c).digest();
+  const h = crypto9.createHmac("sha1", key).update(c).digest();
   const o = h[h.length - 1] & 15;
   const bin = (h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3];
   return String(bin % 10 ** digits2).padStart(digits2, "0");
@@ -74011,20 +74381,20 @@ function checkTotp(key, code, ms = Date.now()) {
   for (const s of [now, now - 1, now + 1]) if (safeEqual(hotp(key, s), c)) return s;
   return -1;
 }
-var encKey = () => crypto8.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
+var encKey = () => crypto9.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
 function seal(b) {
-  const iv = crypto8.randomBytes(12);
-  const c = crypto8.createCipheriv("aes-256-gcm", encKey(), iv);
+  const iv = crypto9.randomBytes(12);
+  const c = crypto9.createCipheriv("aes-256-gcm", encKey(), iv);
   const ct = Buffer.concat([c.update(b), c.final()]);
   return `t1.${iv.toString("base64url")}.${c.getAuthTag().toString("base64url")}.${ct.toString("base64url")}`;
 }
 function unseal(s) {
   const [, iv, tag, ct] = s.split(".");
-  const d = crypto8.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
+  const d = crypto9.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
   d.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]);
 }
-var recHash = (userId, code) => crypto8.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
+var recHash = (userId, code) => crypto9.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
 var rec = (userId) => db.getState().twoFactor.find((x) => x.userId === userId);
 var twoFactorOn = (userId) => !!rec(userId)?.enabledAt;
 var twoFactorRecommended = (u) => u.role === "SUPERADMIN" || u.role === "ADMIN";
@@ -74052,13 +74422,13 @@ function verifySecondFactor(userId, code) {
 }
 function makeTicket(u) {
   const body = Buffer.from(JSON.stringify({ uid: u.id, sv: u.sessionVersion || 1, exp: Date.now() + 5 * 6e4 })).toString("base64url");
-  const sig = crypto8.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const sig = crypto9.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   return `${body}.${sig}`;
 }
 function readTicket(t) {
   const [body, sig] = String(t || "").split(".");
   if (!body || !sig) return null;
-  const want = crypto8.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const want = crypto9.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   if (!safeEqual(want, sig)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString());
@@ -74081,7 +74451,7 @@ function createTwoFactorRouter() {
     const s = db.getState();
     const x = rec(u.id);
     if (x?.enabledAt) return res.status(409).json({ error: "Two-step sign-in is already on. Turn it off first to move it to a new phone." });
-    const key = crypto8.randomBytes(20);
+    const key = crypto9.randomBytes(20);
     const row = { id: u.id, userId: u.id, secretEnc: seal(key), pendingSince: (/* @__PURE__ */ new Date()).toISOString(), recovery: [] };
     s.twoFactor = s.twoFactor.filter((t) => t.userId !== u.id);
     s.twoFactor.push(row);
@@ -74096,7 +74466,7 @@ function createTwoFactorRouter() {
     if (!x || x.enabledAt) return res.status(409).json({ error: "Start the setup first." });
     const step = checkTotp(unseal(x.secretEnc), String(req.body?.code || ""));
     if (step < 0) return res.status(400).json({ error: "The code is not correct. Check the time on your phone and try the newest code.", code: "BAD_CODE" });
-    const codes = Array.from({ length: 10 }, () => crypto8.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
+    const codes = Array.from({ length: 10 }, () => crypto9.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
     x.recovery = codes.map((c) => recHash(u.id, c));
     x.enabledAt = (/* @__PURE__ */ new Date()).toISOString();
     x.pendingSince = void 0;
@@ -74121,14 +74491,14 @@ function createTwoFactorRouter() {
 }
 
 // server/vaultCrypto.ts
-import crypto9 from "node:crypto";
+import crypto10 from "node:crypto";
 import fs5 from "node:fs";
 import path5 from "node:path";
 var keyCache;
 var keyProblem = "";
 var vaultKeyProblem = () => keyProblem;
 var keyFile = () => process.env.KYC_VAULT_KEY_FILE ? path5.resolve(process.env.KYC_VAULT_KEY_FILE) : path5.resolve(process.cwd(), "data", ".kyc-vault.key");
-var keyId = (k) => crypto9.createHash("sha256").update(k).digest("hex").slice(0, 8);
+var keyId = (k) => crypto10.createHash("sha256").update(k).digest("hex").slice(0, 8);
 function parseKey(raw) {
   const t = raw.trim();
   if (/^[0-9a-fA-F]{64}$/.test(t)) return Buffer.from(t, "hex");
@@ -74162,7 +74532,7 @@ function vaultKey() {
       return keyCache = { key: k2, id: keyId(k2), mode: "file" };
     }
     fs5.mkdirSync(path5.dirname(f), { recursive: true });
-    const k = crypto9.randomBytes(32);
+    const k = crypto10.randomBytes(32);
     fs5.writeFileSync(f, k.toString("hex") + "\n", { mode: 384, flag: "wx" });
     return keyCache = { key: k, id: keyId(k), mode: "file" };
   } catch (e) {
@@ -74179,8 +74549,8 @@ var b64u = (b) => b.toString("base64url");
 function seal2(plain, aad) {
   const k = vaultKey();
   if (!k) throw new Error("VAULT_NO_KEY");
-  const iv = crypto9.randomBytes(12);
-  const c = crypto9.createCipheriv("aes-256-gcm", k.key, iv);
+  const iv = crypto10.randomBytes(12);
+  const c = crypto10.createCipheriv("aes-256-gcm", k.key, iv);
   c.setAAD(Buffer.from(aad));
   const ct = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return `k1.${k.id}.${b64u(iv)}.${b64u(c.getAuthTag())}.${b64u(ct)}`;
@@ -74192,7 +74562,7 @@ function unseal2(sealed, aad) {
   if (v !== "k1" || !kid || !iv || !tag || !ct) throw new Error("VAULT_BAD_DATA");
   if (kid !== k.id) throw new Error("VAULT_WRONG_KEY");
   try {
-    const d = crypto9.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
+    const d = crypto10.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
     d.setAAD(Buffer.from(aad));
     d.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
@@ -74497,7 +74867,7 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
   if (buf.length > ID_DOC_MAX_BYTES) return { error: `The file is larger than ${ID_DOC_MAX_BYTES / 1024 / 1024} MB. Send a smaller photo.`, status: 413 };
   const mime = sniffMime(buf);
   if (!mime) return { error: "Only a PDF, JPEG, PNG or WebP file is accepted.", status: 415 };
-  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto10.randomInt(1e3, 9999)}`;
+  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto11.randomInt(1e3, 9999)}`;
   try {
     fs6.mkdirSync(DIR2(), { recursive: true });
     const tmp = fileOf2(id) + ".tmp";
@@ -74518,7 +74888,7 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
     fileName: fileName.replace(/[\\/\0\r\n]+/g, "_").slice(0, 160),
     mime,
     size: buf.length,
-    sha256: crypto10.createHash("sha256").update(buf).digest("hex"),
+    sha256: crypto11.createHash("sha256").update(buf).digest("hex"),
     createdAt: nowIso8()
   };
   s.idDocs.push(doc);
@@ -74584,7 +74954,7 @@ function openIdTask(userId, source, opts = {}) {
     if (opts.autoVerified) t.autoVerified = true;
     t.updatedAt = at;
   } else {
-    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto10.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
+    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto11.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
     push(t, by, source, opts.note);
     s.idReviewTasks.push(t);
   }
@@ -75015,26 +75385,26 @@ function createIdReviewRouter() {
 
 // server/profilephoto.ts
 var import_express16 = __toESM(require_express2(), 1);
-import crypto12 from "crypto";
+import crypto13 from "crypto";
 import fs8 from "fs";
 import path8 from "path";
 
 // server/webpush.ts
 var import_express15 = __toESM(require_express2(), 1);
-import crypto11 from "crypto";
+import crypto12 from "crypto";
 import fs7 from "fs";
 import path7 from "path";
 var b64u2 = (b) => Buffer.from(b).toString("base64url");
 var unb64u = (s) => Buffer.from(String(s).replace(/=+$/, ""), "base64url");
 var nowIso9 = () => (/* @__PURE__ */ new Date()).toISOString();
 function hkdf(salt, ikm, info, len) {
-  const prk = crypto11.createHmac("sha256", salt).update(ikm).digest();
+  const prk = crypto12.createHmac("sha256", salt).update(ikm).digest();
   const out = [];
   let prev = Buffer.alloc(0);
   let n2 = 0;
   while (Buffer.concat(out).length < len) {
     n2++;
-    prev = crypto11.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
+    prev = crypto12.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
     out.push(prev);
   }
   return Buffer.concat(out).subarray(0, len);
@@ -75044,20 +75414,20 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   const authSecret = unb64u(authSecretB64);
   if (uaPublic.length !== 65 || uaPublic[0] !== 4) throw new Error("PUSH_BAD_KEY");
   if (authSecret.length < 16) throw new Error("PUSH_BAD_AUTH");
-  const ecdh = crypto11.createECDH("prime256v1");
+  const ecdh = crypto12.createECDH("prime256v1");
   if (opts.asPrivate) ecdh.setPrivateKey(opts.asPrivate);
   else ecdh.generateKeys();
   const asPublic = ecdh.getPublicKey();
   const shared = ecdh.computeSecret(uaPublic);
   const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0"), uaPublic, asPublic]);
   const ikm = hkdf(authSecret, shared, keyInfo, 32);
-  const salt = opts.salt || crypto11.randomBytes(16);
+  const salt = opts.salt || crypto12.randomBytes(16);
   const cek = hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
   const nonce = hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12);
   const rs = opts.rs || 4096;
   const plain = Buffer.concat([payload, Buffer.from([2])]);
   if (plain.length + 16 > rs) throw new Error("PUSH_TOO_BIG");
-  const cipher = crypto11.createCipheriv("aes-128-gcm", cek, nonce);
+  const cipher = crypto12.createCipheriv("aes-128-gcm", cek, nonce);
   const ct = Buffer.concat([cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
   const header = Buffer.alloc(21);
   salt.copy(header, 0);
@@ -75066,19 +75436,19 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   return Buffer.concat([header, asPublic, ct]);
 }
 function generateVapidKeys() {
-  const e = crypto11.createECDH("prime256v1");
+  const e = crypto12.createECDH("prime256v1");
   e.generateKeys();
   return { publicKey: b64u2(e.getPublicKey()), privateKey: b64u2(e.getPrivateKey()) };
 }
 function privateKeyObject(k) {
   const pub = unb64u(k.publicKey);
-  return crypto11.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
+  return crypto12.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
 }
 function vapidAuth(endpoint, k, subject2, expSec = Math.floor(Date.now() / 1e3) + 12 * 3600) {
   const aud = new URL(endpoint).origin;
   const head = b64u2(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
   const body = b64u2(Buffer.from(JSON.stringify({ aud, exp: expSec, sub: subject2 })));
-  const sig = crypto11.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
+  const sig = crypto12.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
   return `vapid t=${head}.${body}.${b64u2(sig)}, k=${k.publicKey}`;
 }
 var cached2 = null;
@@ -75151,24 +75521,24 @@ async function pushTo(userId, msg) {
     if (!keys || !subs.length) return 0;
     const payload = Buffer.from(JSON.stringify({ t: msg.title.slice(0, 80), b: msg.body.slice(0, 180), u: msg.url && msg.url.startsWith("/") ? msg.url : "/", g: msg.tag || msg.kind }));
     let ok = 0;
-    await Promise.all(subs.map(async (sub) => {
-      if (!allowedEndpoint(sub.endpoint)) return;
+    await Promise.all(subs.map(async (sub2) => {
+      if (!allowedEndpoint(sub2.endpoint)) return;
       try {
-        const body = encryptPayload(payload, sub.p256dh, sub.auth);
-        const r = await fetchImpl(sub.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: msg.kind === "consent" ? "high" : "normal", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: vapidAuth(sub.endpoint, keys, subject()) }, body, signal: AbortSignal.timeout(8e3) });
+        const body = encryptPayload(payload, sub2.p256dh, sub2.auth);
+        const r = await fetchImpl(sub2.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: msg.kind === "consent" ? "high" : "normal", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: vapidAuth(sub2.endpoint, keys, subject()) }, body, signal: AbortSignal.timeout(8e3) });
         if (r.status === 404 || r.status === 410) {
-          s.pushSubs = s.pushSubs.filter((x) => x.id !== sub.id);
+          s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
           return;
         }
         if (r.ok) {
           ok++;
-          sub.lastOkAt = nowIso9();
-          sub.fails = 0;
-        } else sub.fails = (sub.fails || 0) + 1;
+          sub2.lastOkAt = nowIso9();
+          sub2.fails = 0;
+        } else sub2.fails = (sub2.fails || 0) + 1;
       } catch {
-        sub.fails = (sub.fails || 0) + 1;
+        sub2.fails = (sub2.fails || 0) + 1;
       }
-      if (sub.fails >= 8) s.pushSubs = s.pushSubs.filter((x) => x.id !== sub.id);
+      if (sub2.fails >= 8) s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
     }));
     db.save();
     return ok;
@@ -75198,7 +75568,7 @@ function createPushRouter() {
     }
     const s = db.getState();
     const u = me25();
-    const id = crypto11.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
+    const id = crypto12.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
     const mine2 = s.pushSubs.filter((x) => x.userId === u.id);
     if (mine2.length >= 6) {
@@ -75295,7 +75665,7 @@ function createProfilePhotoRouter() {
     const s = st4();
     for (const old of s.profilePhotos.filter((p) => p.userId === u.id && p.status !== "APPROVED")) erase(old.id);
     s.profilePhotos = s.profilePhotos.filter((p) => p.userId !== u.id || p.status === "APPROVED");
-    const id = `PHO-${crypto12.randomBytes(5).toString("hex")}`;
+    const id = `PHO-${crypto13.randomBytes(5).toString("hex")}`;
     try {
       fs8.mkdirSync(DIR3(), { recursive: true });
       const tmp = fileOf3(id) + ".tmp";
@@ -75304,7 +75674,7 @@ function createProfilePhotoRouter() {
     } catch {
       return bad7(res, "The photo could not be saved. Please try again.", 500);
     }
-    s.profilePhotos.push({ id, userId: u.id, status: "PENDING", mime, size: buf.length, sha256: crypto12.createHash("sha256").update(buf).digest("hex"), consentAt: nowIso10(), createdAt: nowIso10() });
+    s.profilePhotos.push({ id, userId: u.id, status: "PENDING", mime, size: buf.length, sha256: crypto13.createHash("sha256").update(buf).digest("hex"), consentAt: nowIso10(), createdAt: nowIso10() });
     db.save();
     db.appendAuditEvent(u.id, u.role, "VERIFICATION", u.id, "PROFILE_PHOTO_UPLOADED", `${u.name} uploaded a profile photo ${id} for GENZ to check`);
     for (const a of s.users.filter((x) => x.role === "ADMIN" || x.role === "SUPERADMIN").slice(0, 20)) void pushTo(a.id, { kind: "deals", title: "A broker photo needs checking", body: `${u.name} \u2014 open Disputes \u2192 Photo check.`, url: "/?tab=disputes" });
@@ -75818,7 +76188,7 @@ function createTeamRouter() {
 
 // server/inventory2.ts
 var import_express19 = __toESM(require_express2(), 1);
-import crypto13 from "node:crypto";
+import crypto14 from "node:crypto";
 var nowIso12 = () => (/* @__PURE__ */ new Date()).toISOString();
 var uid = (p) => `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 var postSchema = external_exports.object({
@@ -75947,7 +76317,7 @@ function createInventoryDeskRouter() {
     if (st22.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return bad24(res, "Too many links \u2014 revoke old ones first", 409);
     const flags = capShareFlags({ showPrice: d.showPrice, showFeatures: d.showFeatures }, rs.canPrice, rs.canFeatures);
     const link = {
-      token: crypto13.randomBytes(8).toString("base64url"),
+      token: crypto14.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: "UNITS",
       refId: d.projectId,
@@ -76282,11 +76652,11 @@ function badgesFor(verifiedInvitees) {
 
 // server/growth.ts
 var import_express29 = __toESM(require_express2(), 1);
-import crypto20 from "node:crypto";
+import crypto21 from "node:crypto";
 
 // server/reputation.ts
 var import_express27 = __toESM(require_express2(), 1);
-import crypto17 from "crypto";
+import crypto18 from "crypto";
 
 // server/community.ts
 var import_express21 = __toESM(require_express2(), 1);
@@ -76729,11 +77099,11 @@ function insightsFor(u) {
 var import_express23 = __toESM(require_express2(), 1);
 var import_express24 = __toESM(require_express2(), 1);
 var import_qrcode = __toESM(require_lib5(), 1);
-import crypto15 from "crypto";
+import crypto16 from "crypto";
 
 // server/partywatch.ts
 var import_express22 = __toESM(require_express2(), 1);
-import crypto14 from "crypto";
+import crypto15 from "crypto";
 
 // src/shared/partyWatchRules.ts
 var WATCH_CATEGORIES = [
@@ -76776,7 +77146,7 @@ var me10 = () => ctx().user;
 var bad8 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone10 = (p) => digits(String(p ?? "")).slice(-10);
 var PHONE_RE2 = /^[6-9]\d{9}$/;
-var hm = (tag, v) => crypto14.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hm = (tag, v) => crypto15.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var keyOf = (p) => hm("pw-phone", phone10(p));
 var note = (a, text) => {
   a.events.push({ at: nowIso15(), text });
@@ -76917,11 +77287,11 @@ function createPartyWatchRouter() {
     }
     let a = findAlert(phone);
     if (!a) {
-      a = { id: `PW-${crypto14.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso15(), updatedAt: nowIso15() };
+      a = { id: `PW-${crypto15.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso15(), updatedAt: nowIso15() };
       st6().partyAlerts.unshift(a);
     }
     if (a.reports.some((x) => x.brokerId === u.id && x.status === "OPEN")) return bad8(res, "You already have an open report for this mobile \u2014 GENZ is reviewing it.", 409, { code: "ALREADY_REPORTED" });
-    const rep = { id: `PR-${crypto14.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso15(), evidence, status: "OPEN" };
+    const rep = { id: `PR-${crypto15.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso15(), evidence, status: "OPEN" };
     a.reports.push(rep);
     const before = a.level;
     const after = refresh(a);
@@ -76947,7 +77317,7 @@ function createPartyWatchRouter() {
     const text = String(req.body?.note ?? "").trim().slice(0, 400);
     if (text.length < WATCH_LIMITS.noteMin) return bad8(res, `Write why this mark is wrong (at least ${WATCH_LIMITS.noteMin} characters)`, 400, { hi: `\u092F\u0939 \u0928\u093F\u0936\u093E\u0928 \u0917\u093C\u0932\u0924 \u0915\u094D\u092F\u094B\u0902 \u0939\u0948, \u0932\u093F\u0916\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E ${WATCH_LIMITS.noteMin} \u0905\u0915\u094D\u0937\u0930)`, code: "NOTE_SHORT" });
     if (a.appeals.some((x) => x.byId === u.id && x.status === "OPEN")) return bad8(res, "Your appeal is already with GENZ.", 409);
-    a.appeals.push({ id: `PA-${crypto14.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso15(), note: text, status: "OPEN" });
+    a.appeals.push({ id: `PA-${crypto15.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso15(), note: text, status: "OPEN" });
     note(a, `Appeal by ${u.name}`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", a.id, "PARTY_WATCH_APPEAL", `${u.name} appealed the mark on \u2026${a.last4}`);
@@ -77092,14 +77462,14 @@ var st7 = () => db.getState();
 var nowIso16 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me11 = () => ctx().user;
 var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha2 = (v) => crypto15.createHash("sha256").update(v).digest("hex");
-var hmac = (tag, v) => crypto15.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha2 = (v) => crypto16.createHash("sha256").update(v).digest("hex");
+var hmac = (tag, v) => crypto16.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone102 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE3 = /^[6-9]\d{9}$/;
-var newToken = () => crypto15.randomBytes(18).toString("base64url");
+var newToken = () => crypto16.randomBytes(18).toString("base64url");
 var QR_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-var newQrCode = () => Array.from(crypto15.randomBytes(8), (b) => QR_ALPHA[b % QR_ALPHA.length]).join("");
-var rid2 = (p) => `${p}-${crypto15.randomBytes(5).toString("hex")}`;
+var newQrCode = () => Array.from(crypto16.randomBytes(8), (b) => QR_ALPHA[b % QR_ALPHA.length]).join("");
+var rid2 = (p) => `${p}-${crypto16.randomBytes(5).toString("hex")}`;
 var smsOn = () => !!process.env.SMS_WEBHOOK_URL;
 var inr5 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad9 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
@@ -77736,7 +78106,7 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
     const devices = p.devices || (p.devices = []);
     if (!dev) {
       if (devices.length >= PARTNER_LIMITS.devices) return gate(res, p, req.params.token, "\u092F\u0939 \u092A\u0947\u091C \u092A\u0939\u0932\u0947 \u0938\u0947 2 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0916\u0941\u0932\u093E \u0939\u0948\u0964 / Already open on 2 phones.", "phone", 403);
-      dev = crypto15.randomBytes(6).toString("hex");
+      dev = crypto16.randomBytes(6).toString("hex");
       devices.push({ id: dev, label: devLabel(req.headers["user-agent"]), firstAt: nowIso16(), lastAt: nowIso16() });
       hist(p, "PARTNER", `Opened the partner page on a phone (${devices[devices.length - 1].label})`);
     }
@@ -77926,7 +78296,7 @@ function seedDemoPartners() {
 var import_express25 = __toESM(require_express2(), 1);
 var import_express26 = __toESM(require_express2(), 1);
 var import_qrcode2 = __toESM(require_lib5(), 1);
-import crypto16 from "crypto";
+import crypto17 from "crypto";
 
 // src/shared/dealClose.ts
 var CLOSE_AUTO_DAYS = 7;
@@ -77949,7 +78319,7 @@ var st8 = () => db.getState();
 var nowIso17 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me12 = () => ctx().user;
 var esc3 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha3 = (v) => crypto16.createHash("sha256").update(v).digest("hex");
+var sha3 = (v) => crypto17.createHash("sha256").update(v).digest("hex");
 var phone103 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE4 = /^[6-9]\d{9}$/;
 var UPI_RE = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
@@ -77966,9 +78336,9 @@ var fy = (d = /* @__PURE__ */ new Date()) => {
   return `${y}-${String((y + 1) % 100).padStart(2, "0")}`;
 };
 var totals = (items, gstPct) => {
-  const sub = items.reduce((n2, i) => n2 + i.amount, 0);
-  const gst = Math.round(sub * gstPct / 100);
-  return { sub, gst, total: sub + gst };
+  const sub2 = items.reduce((n2, i) => n2 + i.amount, 0);
+  const gst = Math.round(sub2 * gstPct / 100);
+  return { sub: sub2, gst, total: sub2 + gst };
 };
 var overdue2 = (r) => r.status === "SENT" && Date.parse(`${r.dueOn}T23:59:59+05:30`) < Date.now();
 var view2 = (r) => {
@@ -78053,10 +78423,10 @@ function createPaymentRequestRouter() {
     if (s.paymentRequests.some((x) => x.dealId === d.id && x.brokerId === u.id && x.party === party && ["SENT", "PARTY_SAYS_PAID"].includes(x.status))) return bad10(res, `You already have an open bill to the ${party === "OWNER" ? "owner" : "buyer"} on this deal \u2014 cancel it or mark it received first`, 409);
     const p = s.properties.find((x) => x.id === d.propertyId);
     const seq2 = s.paymentRequests.filter((x) => x.brokerId === u.id && x.number.includes(`/${fy()}/`)).length + 1;
-    const token = crypto16.randomBytes(18).toString("base64url");
+    const token = crypto17.randomBytes(18).toString("base64url");
     const now = nowIso17();
     const pr = {
-      id: `PRQ-${crypto16.randomBytes(5).toString("hex")}`,
+      id: `PRQ-${crypto17.randomBytes(5).toString("hex")}`,
       number: `${(u.brokerId || u.id).replace(/[^A-Za-z0-9-]/g, "").slice(-16)}/${fy()}/${String(seq2).padStart(4, "0")}`,
       dealId: d.id,
       brokerId: u.id,
@@ -78256,7 +78626,7 @@ function createReputationRouter() {
     const toId = String(req.body?.toId || "");
     const p = pendingFor(u).find((x) => x.refId === refId && x.toId === toId);
     if (!p) return res.status(404).json({ error: "Nothing to confirm here" });
-    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto17.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso18() };
+    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto18.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso18() };
     s.peerConfirms.push(c);
     awardPoints(toId, "PEER_CONFIRM", c.id, 10);
     db.save();
@@ -78337,7 +78707,7 @@ function shareCounts(s, uid3) {
 
 // server/share.ts
 var import_express28 = __toESM(require_express2(), 1);
-import crypto18 from "node:crypto";
+import crypto19 from "node:crypto";
 
 // server/publicFooter.ts
 var esc4 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -78464,7 +78834,7 @@ function createShareRouter() {
     const st22 = db.getState();
     if (st22.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return res.status(409).json({ error: "Too many links \u2014 revoke old ones first" });
     const link = {
-      token: crypto18.randomBytes(8).toString("base64url"),
+      token: crypto19.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: p.data.kind,
       refId: p.data.refId,
@@ -78549,7 +78919,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       card = emp;
     }
     let title = "";
-    let sub = "";
+    let sub2 = "";
     let image;
     let overview = "";
     let plans = "";
@@ -78559,7 +78929,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       if (!a || a.project.status === "ARCHIVED") return gone();
       const p = a.project;
       title = p.projectName;
-      sub = p.tagline || `${p.locality}, ${p.city}`;
+      sub2 = p.tagline || `${p.locality}, ${p.city}`;
       image = p.images?.find((i) => /^https:\/\//.test(i));
       const hi = lang === "hi";
       let off = 0;
@@ -78591,7 +78961,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       const p = db.byId("builderProjects", l.refId);
       if (!p || p.status === "ARCHIVED") return gone();
       title = p.projectName;
-      sub = p.tagline || `${p.locality}, ${p.city}`;
+      sub2 = p.tagline || `${p.locality}, ${p.city}`;
       image = p.images?.find((i) => /^https:\/\//.test(i));
       overview = `<div class="row"><span>${t.type}</span><b>${esc5(p.projectType)}</b></div><div class="row"><span>${t.stage}</span><b>${esc5(p.projectStage)}</b></div><div class="row"><span>${t.possession}</span><b>${esc5(p.completionTarget)}</b></div>${p.reraNumber ? `<div class="row"><span>${t.rera}</span><b>${esc5(p.reraNumber)}</b></div>` : ""}`;
       plans = `<div class="row"><span>${t.from}</span><b>${inr7(p.priceStartingFrom)}</b></div><div class="row"><span>${t.price}</span><b>${inr7(p.priceStartingFrom)} \u2013 ${inr7(p.priceMax)}</b></div><div class="tags">${(p.unitConfigurations || []).map((c) => `<span>${esc5(c)}</span>`).join("")}</div>`;
@@ -78600,7 +78970,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       const p = db.byId("properties", l.refId);
       if (!p || p.verificationStatus !== "VERIFIED" || !["active", "under_negotiation"].includes(p.listingStatus) || p.listingBrokerId !== owner.id) return gone();
       title = p.title;
-      sub = `${p.locality}, ${p.city}`;
+      sub2 = `${p.locality}, ${p.city}`;
       image = p.images?.find((i) => /^https:\/\//.test(i));
       overview = `<p style="font-size:14px;line-height:1.5;margin:0">${esc5(p.description)}</p><div class="row"><span>${t.type}</span><b>${esc5(p.propertyType)} \xB7 ${esc5(p.transactionType)}</b></div>`;
       plans = `<div class="row"><span>${t.price}</span><b>${inr7(p.askingPrice)}</b></div>${p.plotAreaSqFt ? `<div class="row"><span>${t.area}</span><b>${p.plotAreaSqFt} sq ft</b></div>` : ""}${p.builtUpAreaSqFt ? `<div class="row"><span>Built-up</span><b>${p.builtUpAreaSqFt} sq ft</b></div>` : ""}`;
@@ -78608,7 +78978,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     }
     const ua = String(req.headers["user-agent"] || "");
     if (!BOT.test(ua)) {
-      const key = crypto18.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
+      const key = crypto19.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
       const prev = seen.get(key) || 0;
       if (Date.now() - prev > 2e4) {
         l.views += 1;
@@ -78622,7 +78992,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     }
     const b = brandOf(card);
     const wa = `https://wa.me/91${b.phone}?text=${encodeURIComponent(`Hello ${b.displayName}, I saw ${title}. Please share details.`)}`;
-    const body = `<div class="hero" data-sec="overview"><h1>${esc5(title)}</h1><p>${esc5(sub)}</p></div>
+    const body = `<div class="hero" data-sec="overview"><h1>${esc5(title)}</h1><p>${esc5(sub2)}</p></div>
 ${image ? `<div class="imgs"><img src="${esc5(image)}" alt="" loading="lazy"></div>` : ""}
 <div class="card" data-sec="overview"><h2>${t.over}</h2>${overview}</div>
 <div class="card" data-sec="plans"><h2>${t.plans}</h2>${plans}</div>
@@ -78630,13 +79000,13 @@ ${image ? `<div class="imgs"><img src="${esc5(image)}" alt="" loading="lazy"></d
 <div class="card"><div class="broker">${b.logo ? `<img src="${esc5(b.logo)}" alt="">` : ""}<div><div class="small" style="margin:0">${t.by}</div><b>${esc5(b.displayName)}</b>${b.company ? `<div style="font-size:13px">${esc5(b.company)}</div>` : ""}${b.reraId ? `<div style="font-size:12px;color:#555">${t.rera}: ${esc5(b.reraId)}</div>` : ""}${b.tagline ? `<div style="font-size:12px;color:#555">${esc5(b.tagline)}</div>` : ""}</div></div>
 <div class="btns"><a class="call" href="tel:+91${esc5(b.phone)}">${t.call}</a><a class="wa" href="${esc5(wa)}">${t.wa}</a></div></div>
 <p class="small">${t.note}</p>${joinFooter(card)}`;
-    res.send(pageShell(`${title} \u2014 ${b.displayName}`, sub, image, body, l.token));
+    res.send(pageShell(`${title} \u2014 ${b.displayName}`, sub2, image, body, l.token));
   });
   return r;
 }
 
 // server/spam.ts
-import crypto19 from "node:crypto";
+import crypto20 from "node:crypto";
 
 // src/shared/spamRules.ts
 var NEW_ACCOUNT_DAYS = 7;
@@ -78651,11 +79021,11 @@ function filterMessage(u, text, now = Date.now(), demo = false) {
 }
 
 // server/spam.ts
-var sign = (body) => crypto19.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
+var sign2 = (body) => crypto20.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
 function makeChallenge(now = Date.now()) {
-  const a = crypto19.randomInt(3, 15), b = crypto19.randomInt(2, 10);
+  const a = crypto20.randomInt(3, 15), b = crypto20.randomInt(2, 10);
   const body = Buffer.from(JSON.stringify({ a, b, t: now })).toString("base64url");
-  return { question: `${a} + ${b}`, token: `${body}.${sign(body)}` };
+  return { question: `${a} + ${b}`, token: `${body}.${sign2(body)}` };
 }
 var usedChallenges = /* @__PURE__ */ new Map();
 setInterval(() => {
@@ -78665,8 +79035,8 @@ setInterval(() => {
 function checkChallenge(token, answer, now = Date.now()) {
   const [body, sig] = String(token || "").split(".");
   if (!body || !sig) return "BAD";
-  const good = sign(body);
-  if (sig.length !== good.length || !crypto19.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
+  const good = sign2(body);
+  if (sig.length !== good.length || !crypto20.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
   try {
     const { a, b, t } = JSON.parse(Buffer.from(body, "base64url").toString());
     if (now - t > 10 * 6e4) return "EXPIRED";
@@ -78682,7 +79052,7 @@ function checkChallenge(token, answer, now = Date.now()) {
 var isNewAccount2 = (u, now = Date.now()) => isNewAccount(u, now, DEMO_MODE);
 var filterMessage2 = (u, text) => filterMessage(u, text, Date.now(), DEMO_MODE);
 function isFlood(userId, text) {
-  const key = `flood:${userId}:${crypto19.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
+  const key = `flood:${userId}:${crypto20.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
   return hit(key, 2, 10 * 6e4) > 0;
 }
 function newAccountCap(kind, limit) {
@@ -78737,7 +79107,7 @@ function ensureReferralCode(u) {
   const taken = new Set(db.getState().users.map((x) => x.referralCode).filter(Boolean));
   let code = "";
   do {
-    code = `GZ-${letters}-${crypto20.randomInt(1e3, 1e4)}`;
+    code = `GZ-${letters}-${crypto21.randomInt(1e3, 1e4)}`;
   } while (taken.has(code));
   u.referralCode = code;
   db.save();
@@ -79731,13 +80101,13 @@ function createDailyRouter() {
 // server/pdocs.ts
 var import_express31 = __toESM(require_express2(), 1);
 var import_express32 = __toESM(require_express2(), 1);
-import crypto21 from "node:crypto";
+import crypto22 from "node:crypto";
 import fs9 from "node:fs";
 import path9 from "node:path";
 var me15 = () => ctx().user;
 var nowIso21 = () => (/* @__PURE__ */ new Date()).toISOString();
 var DIR4 = () => path9.resolve(process.cwd(), "data", "protected");
-var MAX_PAGES = 12;
+var MAX_PAGES2 = 12;
 var MAX_PAGE_BYTES = 15e5;
 var kindOf = (b) => {
   if (b.length > 3 && b[0] === 255 && b[1] === 216 && b[2] === 255) return "image/jpeg";
@@ -79746,11 +80116,6 @@ var kindOf = (b) => {
   return null;
 };
 var pageFile = (id, n2) => path9.join(DIR4(), `${id}-${n2}.bin`);
-var tokens = /* @__PURE__ */ new Map();
-setInterval(() => {
-  const n2 = Date.now();
-  for (const [k, v] of tokens) if (v.exp < n2) tokens.delete(k);
-}, 6e4).unref();
 function accessState(doc, userId, now = Date.now(), ignoreLimit = false) {
   if (doc.revoked) return { ok: false, reason: "This document was withdrawn by its owner." };
   if (doc.ownerId === userId) return { ok: true };
@@ -79762,7 +80127,7 @@ function accessState(doc, userId, now = Date.now(), ignoreLimit = false) {
 }
 var log2 = (docId2, userId, page2, allowed, ip) => {
   const st22 = db.getState();
-  st22.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto21.randomInt(1e3, 9999)}`, docId: docId2, userId, page: page2, at: nowIso21(), ip, allowed });
+  st22.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto22.randomInt(1e3, 9999)}`, docId: docId2, userId, page: page2, at: nowIso21(), ip, allowed });
   if (st22.docAccessLogs.length > 3e3) st22.docAccessLogs.splice(0, st22.docAccessLogs.length - 3e3);
 };
 var summary2 = (d, u) => {
@@ -79801,7 +80166,7 @@ function createPdocsRouter() {
   r.post("/", needs("pdoc:use"), rateLimit("pdocup", 20, 60 * 6e4), big, (req, res) => {
     const u = me15();
     const st22 = db.getState();
-    const b = external_exports.object({ title: external_exports.string().trim().min(2).max(120), propertyId: external_exports.string().max(60).optional(), pages: external_exports.array(external_exports.string().max(21e5)).min(1).max(MAX_PAGES) }).safeParse(req.body);
+    const b = external_exports.object({ title: external_exports.string().trim().min(2).max(120), propertyId: external_exports.string().max(60).optional(), pages: external_exports.array(external_exports.string().max(21e5)).min(1).max(MAX_PAGES2) }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Give the document a title and add 1\u201312 page images." });
     if (st22.protectedDocs.filter((d) => d.ownerId === u.id && !d.revoked).length >= 200) return res.status(400).json({ error: "You have reached 200 protected documents. Remove old ones first." });
     const bufs = [];
@@ -79816,7 +80181,7 @@ function createPdocsRouter() {
       bufs.push(buf);
       mimes.push(mime);
     }
-    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto21.randomInt(100, 999)}`;
+    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto22.randomInt(100, 999)}`;
     fs9.mkdirSync(DIR4(), { recursive: true });
     bufs.forEach((buf, i) => fs9.writeFileSync(pageFile(id, i), buf));
     const doc = { id, ownerId: u.id, title: b.data.title, propertyId: b.data.propertyId, pages: bufs.length, mime: mimes, viewers: [], createdAt: nowIso21() };
@@ -79896,24 +80261,18 @@ function createPdocsRouter() {
       return res.status(403).json({ error: a.reason });
     }
     if (a.viewer) a.viewer.views += 1;
-    const exp = Date.now() + 5 * 6e4;
-    const list = [];
-    for (let i = 0; i < d.pages; i++) {
-      const t = crypto21.randomBytes(18).toString("base64url");
-      tokens.set(t, { docId: d.id, userId: u.id, page: i, exp });
-      list.push(t);
-    }
+    const list = Array.from({ length: d.pages }, (_, i) => makeViewToken("PDOC", d.id, u.id, i));
     db.save();
-    const stamp = (/* @__PURE__ */ new Date()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "short", timeStyle: "short" });
-    res.json({ success: true, title: d.title, pages: d.pages, tokens: list, watermark: `${u.name} \xB7 ${digits(u.phone).slice(-4).padStart(4, "\u2022")} \xB7 ${stamp}`, canDownload: d.ownerId === u.id });
+    res.json({ success: true, title: d.title, pages: d.pages, tokens: list, watermark: stampFor(u.name, digits(u.phone)), canDownload: d.ownerId === u.id });
   });
   r.get("/page/:token", needs("pdoc:use"), (req, res) => {
-    const t = tokens.get(req.params.token);
-    tokens.delete(req.params.token);
+    const c = useViewToken(req.params.token, "PDOC", me15().id);
     const dest = String(req.headers["sec-fetch-dest"] || "image");
-    if (!t || t.exp < Date.now() || t.userId !== me15().id) return res.status(403).end();
+    if (!c) return res.status(403).end();
+    const t = { docId: c.d, userId: c.u, page: c.p };
     if (dest !== "image") {
       log2(t.docId, t.userId, t.page, false, req.ip || "");
+      db.save();
       return res.status(403).end();
     }
     const d = db.getState().protectedDocs.find((x) => x.id === t.docId);
@@ -80815,7 +81174,7 @@ var allSidesDone = (d) => [d.introducingBrokerId, d.closingBrokerId].every((id) 
 var feeFor = (d, userId) => isOwnSide(d) ? feeOf(d, userId) : d.totalCommissionExpected || 0;
 
 // server/timeline.ts
-import crypto22 from "node:crypto";
+import crypto23 from "node:crypto";
 var nowIso23 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st10 = () => db.getState();
 var bad11 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
@@ -80883,7 +81242,7 @@ function createTimelineRouter() {
     }
     if (p?.soldAt && offers.some((o) => o.id === p.soldOfferId)) ev2.push({ at: p.soldAt, kind: "SOLD", title: `Property marked ${p.listingStatus} through this deal` });
     ev2.sort((a, b) => a.at.localeCompare(b.at));
-    const fingerprint = crypto22.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
+    const fingerprint = crypto23.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
     const intro = profile(d.introducingBrokerId);
     const clos = profile(d.closingBrokerId);
     res.json({
@@ -80923,7 +81282,7 @@ function createTimelineRouter() {
     if (m.plannedAt && Number.isNaN(Date.parse(m.plannedAt))) return bad11(res, "Invalid planned date");
     if (hit(`ms:${u.id}`, 60, 36e5)) return bad11(res, "Too many milestones \u2014 slow down", 429);
     const ts = nowIso23();
-    const x = { id: `MS-${Date.now().toString(36)}${crypto22.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
+    const x = { id: `MS-${Date.now().toString(36)}${crypto23.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
     st10().dealMilestones.push(x);
     db.save();
     db.appendAuditEvent(u.id, u.role, "DEAL", d.id, "MILESTONE_ADDED", `${u.name} added ${m.kind} milestone "${m.title}"`);
@@ -81002,7 +81361,7 @@ function createTimelineRouter() {
     if (text.length < 2 || text.length > 500) return bad11(res, "Note must be 2\u2013500 characters");
     if (remind && Number.isNaN(Date.parse(remind))) return bad11(res, "Invalid reminder date");
     if (st10().brokerNotes.filter((n3) => n3.userId === u.id && n3.dealRoomId === d.id).length >= 200) return bad11(res, "Too many notes on this deal", 429);
-    const n2 = { id: `BN-${Date.now().toString(36)}${crypto22.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso23() };
+    const n2 = { id: `BN-${Date.now().toString(36)}${crypto23.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso23() };
     st10().brokerNotes.push(n2);
     db.save();
     res.json({ success: true, note: n2 });
@@ -81020,7 +81379,7 @@ function createTimelineRouter() {
 
 // server/network.ts
 var import_express35 = __toESM(require_express2(), 1);
-import crypto23 from "node:crypto";
+import crypto24 from "node:crypto";
 var nowIso24 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st11 = () => db.getState();
 var me16 = () => ctx().user;
@@ -81615,7 +81974,7 @@ var proposeSchema = external_exports.object({
 });
 var brokerCard = (u) => u ? { id: u.id, name: u.name, company: u.companyName || "", city: u.city, tier: tierOf(u), tierLabel: tierOf(u) ? TIER_LABEL[tierOf(u)] : null } : null;
 function tieupHash(t) {
-  return crypto23.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
+  return crypto24.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
 }
 function createTieupsRouter() {
   const r = (0, import_express35.Router)();
@@ -82441,7 +82800,7 @@ function createLegalRouter() {
 
 // server/revenue.ts
 var import_express38 = __toESM(require_express2(), 1);
-import crypto24 from "node:crypto";
+import crypto25 from "node:crypto";
 
 // src/shared/revenueRules.ts
 var r2 = (n2) => Math.round(n2);
@@ -83220,7 +83579,7 @@ function createRevenueRouter() {
     const p = external_exports.object({ city: external_exports.string().trim().max(80).optional().default(""), label: external_exports.string().trim().min(2).max(80), days: external_exports.number().int().min(1).max(90).optional().default(30) }).safeParse(req.body);
     if (!p.success) return bad14(res, p.error.issues[0]?.message || "Invalid link");
     const s = st13();
-    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto24.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso26(), createdBy: me18().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
+    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto25.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso26(), createdBy: me18().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
     s.strengthLinks.push(l);
     db.save();
     audit5("SYSTEM", l.id, "STRENGTH_LINK_CREATED", `Network-strength link for "${l.label}" (${l.city || "All India"}), ${p.data.days} days`);
@@ -83682,13 +84041,13 @@ function createSidesRouter() {
 
 // server/buyerbond.ts
 var import_express42 = __toESM(require_express2(), 1);
-import crypto25 from "crypto";
+import crypto26 from "crypto";
 var nowIso27 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st14 = () => db.getState();
 var me19 = () => ctx().user;
 var bad15 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone104 = (p) => digits(String(p ?? "")).slice(-10);
-var buyerKeyOf = (p) => crypto25.createHmac("sha256", secret()).update(`bb-phone|${phone104(p)}`).digest("hex");
+var buyerKeyOf = (p) => crypto26.createHmac("sha256", secret()).update(`bb-phone|${phone104(p)}`).digest("hex");
 var isActive = (b, now = Date.now()) => b.status === "ACTIVE" && Date.parse(b.expiresAt) > now;
 var note2 = (b, text) => {
   b.events.push({ at: nowIso27(), text });
@@ -83723,7 +84082,7 @@ function makeBuyerBond(a) {
   const days3 = daysFor();
   const now = Date.now();
   const b = {
-    id: `BB-${now.toString(36).toUpperCase()}${crypto25.randomInt(100, 999)}`,
+    id: `BB-${now.toString(36).toUpperCase()}${crypto26.randomInt(100, 999)}`,
     propertyId: a.propertyId,
     brokerId: a.brokerId,
     buyerKey: buyerKeyOf(a.buyerPhone),
@@ -83807,7 +84166,7 @@ function createBuyerBondRouter() {
     if (b.brokerId === u.id) return bad15(res, "This is your own buyer bond", 400);
     if (b.asks.some((a) => a.fromId === u.id)) return bad15(res, "You already asked \u2014 the broker has your name and mobile.", 409, { code: "ALREADY_ASKED" });
     const text = String(req.body?.note ?? "").trim().slice(0, 300);
-    b.asks.push({ id: crypto25.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso27() });
+    b.asks.push({ id: crypto26.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso27() });
     note2(b, `Co-broke request from ${u.name}`);
     db.save();
     const p = db.byId("properties", b.propertyId);
@@ -83840,7 +84199,7 @@ function createBuyerBondRouter() {
 
 // server/consent.ts
 var import_express43 = __toESM(require_express2(), 1);
-import crypto26 from "crypto";
+import crypto27 from "crypto";
 import fs10 from "fs";
 import path10 from "path";
 
@@ -84249,12 +84608,16 @@ var st15 = () => db.getState();
 var me20 = () => ctx().user;
 var bad16 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var esc7 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac2 = (tag, v) => crypto26.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
-var sha4 = (v) => crypto26.createHash("sha256").update(v).digest("hex");
+var hmac2 = (tag, v) => crypto27.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha4 = (v) => crypto27.createHash("sha256").update(v).digest("hex");
 var PAPER_DIR = () => path10.resolve(process.cwd(), "data", "consent-papers");
 var PAPER_MAX = 4 * 1024 * 1024;
 var SIG_DIR = () => path10.resolve(process.cwd(), "data", "consent-signatures");
 var PHONE_RE5 = /^[6-9]\d{9}$/;
+var fullPhone = (raw) => {
+  const d = phone105(raw);
+  return d.length === 10 ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : "";
+};
 var keyOf2 = (p) => hmac2("oc-key", looseKeyText(p));
 var ipOf = (req) => hmac2("oc-ip", String(req.ip || req.socket.remoteAddress || ""));
 var uaOf = (req) => hmac2("oc-ua", String(req.headers["user-agent"] || ""));
@@ -84428,7 +84791,7 @@ function signatureSummary(consentId) {
   return c?.ownerSignature ? { initials: c.ownerSignature.initials, drawn: c.ownerSignature.drawn, at: c.ownerSignature.at, name: c.ownerTypedName } : null;
 }
 function nextId5(prefix, list) {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto26.randomInt(100, 999)}${list.length % 10}`;
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto27.randomInt(100, 999)}${list.length % 10}`;
 }
 function myDraft(req, res) {
   const d = st15().listingDrafts.find((x) => x.id === req.params.id && x.brokerId === me20().id && x.status !== "DISCARDED");
@@ -84694,7 +85057,7 @@ function createConsentRouter() {
     const prep = prepare(req, res, d);
     if (!prep) return;
     const { c, f, s } = prep;
-    const token = crypto26.randomBytes(18).toString("base64url");
+    const token = crypto27.randomBytes(18).toString("base64url");
     c.tokenHash = sha4(token);
     c.linkExpiresAt = new Date(Date.now() + CONSENT_LINK_DAYS * 864e5).toISOString();
     const url3 = `${publicBase(req)}/oc/${token}`;
@@ -84740,7 +85103,7 @@ ${msgEn}`)}` } });
     } catch {
       return bad16(res, "The photo could not be saved. Please try again.", 500);
     }
-    c.paper = { mime, size: buf.length, sha256: crypto26.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso28() };
+    c.paper = { mime, size: buf.length, sha256: crypto27.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso28() };
     note3(c, `Signed form uploaded (${Math.round(buf.length / 1024)} KB) \u2014 waiting for a GENZ check`);
     s.ownerConsents.unshift(c);
     d.consentId = c.id;
@@ -84763,8 +85126,10 @@ ${msgEn}`)}` } });
     res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Owner consent form \u2014 GENZ</title>
 <style>@page{size:A4;margin:16mm}body{font-family:system-ui,"Noto Sans Devanagari","Mangal","Nirmala UI",sans-serif;max-width:760px;margin:24px auto;padding:0 18px;color:#111;line-height:1.55}h1{font-size:20px;margin:6px 0}p{font-size:14px}.box{border:1px solid #999;border-radius:8px;padding:12px 16px;margin:12px 0}.sig{display:flex;gap:24px;margin-top:44px}.sig div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px}.w{margin-top:30px;font-size:13px}.w span{display:inline-block;border-bottom:1px solid #333;min-width:170px;margin:0 10px 0 4px}small{color:#555}button{margin-bottom:8px}@media print{button{display:none}body{margin:0 auto}.box,.sig,p{break-inside:avoid}}</style></head>
 <body><button onclick="window.print()">Print</button><h1>Owner consent to list a property \u2014 GENZ Broker Network<br><span style="font-size:15px;font-weight:600">\u092E\u093E\u0932\u093F\u0915 \u0915\u0940 \u0938\u0939\u092E\u0924\u093F \u2014 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 GENZ \u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u092A\u0930 \u0921\u093E\u0932\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F</span></h1><small>Form ${CONSENT_FORM_VERSION} \xB7 Draft ${esc7(d.id)}</small>
-<div class="box"><p><b>Property / \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940:</b> ${esc7(f.title)}<br><b>Place / \u091C\u0917\u0939:</b> ${esc7(f.locality)}, ${esc7(f.city)}${f.state ? `, ${esc7(f.state)}` : ""}${addr ? `<br><b>Address / \u092A\u0924\u093E:</b> ${esc7(addr)}` : ""}<br><b>Price / \u0915\u093C\u0940\u092E\u0924:</b> ${esc7(priceLabel(Number(f.askingPrice) || 0, f.transactionType === "Rent"))}<br><b>Owner / \u092E\u093E\u0932\u093F\u0915:</b> ${esc7(f.ownerName)} \xB7 mobile ending ${esc7(phone105(f.ownerPhone).slice(-4))}<br><b>Broker / \u092C\u094D\u0930\u094B\u0915\u0930:</b> ${esc7(u.name)}${u.companyName ? `, ${esc7(u.companyName)}` : ""}${u.reraNumber ? ` \xB7 RERA ${esc7(u.reraNumber)}` : ""}<br><b>Protection / \u0938\u0941\u0930\u0915\u094D\u0937\u093E:</b> ${esc7(shownDays)} days from the date of signing / \u0938\u093E\u0907\u0928 \u0915\u0940 \u0924\u093E\u0930\u0940\u0916\u093C \u0938\u0947 ${esc7(shownDays)} \u0926\u093F\u0928</p></div>
+<div class="box"><p><b>Property / \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940:</b> ${esc7(f.title)}<br><b>Place / \u091C\u0917\u0939:</b> ${esc7(f.locality)}, ${esc7(f.city)}${f.state ? `, ${esc7(f.state)}` : ""}${addr ? `<br><b>Address / \u092A\u0924\u093E:</b> ${esc7(addr)}` : ""}<br><b>Price / \u0915\u093C\u0940\u092E\u0924:</b> ${esc7(priceLabel(Number(f.askingPrice) || 0, f.transactionType === "Rent"))}<br><b>Owner / \u092E\u093E\u0932\u093F\u0915:</b> ${esc7(f.ownerName)} \xB7 <b>Mobile / \u092E\u094B\u092C\u093E\u0907\u0932:</b> ${esc7(fullPhone(f.ownerPhone) || "__________________")}<br><b>Broker / \u092C\u094D\u0930\u094B\u0915\u0930:</b> ${esc7(u.name)}${u.companyName ? `, ${esc7(u.companyName)}` : ""}${u.reraNumber ? ` \xB7 RERA ${esc7(u.reraNumber)}` : ""}${fullPhone(u.phone) ? ` \xB7 <b>Mobile / \u092E\u094B\u092C\u093E\u0907\u0932:</b> ${esc7(fullPhone(u.phone))}` : ""}<br><b>Protection / \u0938\u0941\u0930\u0915\u094D\u0937\u093E:</b> ${esc7(shownDays)} days from the date of signing / \u0938\u093E\u0907\u0928 \u0915\u0940 \u0924\u093E\u0930\u0940\u0916\u093C \u0938\u0947 ${esc7(shownDays)} \u0926\u093F\u0928</p></div>
 <p>${esc7(words.en)}</p><p>${esc7(words.hi)}</p>
+<p class="w">Owner's name (in own hand) / \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u093E\u092E (\u0905\u092A\u0928\u0947 \u0939\u093E\u0925 \u0938\u0947): <span></span></p>
+<p class="w">Owner's mobile / \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932: <span></span></p>
 <p class="w">Date / \u0924\u093E\u0930\u0940\u0916\u093C: <span></span> Place / \u0938\u094D\u0925\u093E\u0928: <span></span></p>
 <div class="sig"><div>Owner's signature or thumb impression<br>\u092E\u093E\u0932\u093F\u0915 \u0915\u0947 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 / \u0905\u0902\u0917\u0942\u0920\u093E, \u0914\u0930 \u0928\u093E\u092E</div><div>Broker's signature<br>\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930</div></div>
 <div class="sig"><div>Witness name and signature (if thumb impression)<br>\u0917\u0935\u093E\u0939 \u0915\u093E \u0928\u093E\u092E \u0914\u0930 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 (\u0905\u0902\u0917\u0942\u0920\u0947 \u0915\u0940 \u0938\u094D\u0925\u093F\u0924\u093F \u092E\u0947\u0902)</div><div>Witness mobile / \u0917\u0935\u093E\u0939 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932</div></div></body></html>`);
@@ -84983,7 +85348,8 @@ function createOwnerConsentPageRouter() {
     const tl = c.terms ? termsLine(c.terms) : null;
     const head = `<div class="top"><h1>\u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0932\u093F\u0938\u094D\u091F \u0915\u0930\u0928\u0947 \u0915\u0940 \u0938\u0939\u092E\u0924\u093F</h1><p>Consent to list your property \xB7 GENZ Broker Network</p></div>
 <div class="card"><div class="row"><span>\u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Property</span><b>${esc7(c.snapshot.title)}</b></div><div class="row"><span>\u091C\u0917\u0939 / Place</span><b>${esc7(c.snapshot.locality)}, ${esc7(c.snapshot.city)}</b></div>
-<div class="row"><span>\u0915\u0940\u092E\u0924 / Price</span><b>${esc7(priceLabel(c.snapshot.price, c.snapshot.transactionType === "Rent"))}</b></div><div class="row"><span>\u092C\u094D\u0930\u094B\u0915\u0930 / Broker</span><b>${esc7(broker?.name || "")}${broker?.companyName ? `<br><small>${esc7(broker.companyName)}</small>` : ""}${broker?.reraNumber ? `<br><small>RERA ${esc7(broker.reraNumber)}</small>` : ""}</b></div>
+<div class="row"><span>\u092E\u093E\u0932\u093F\u0915 / Owner</span><b>${esc7(c.ownerName)}<br><small>\u092E\u094B\u092C\u093E\u0907\u0932 \u091C\u094B ${esc7(c.ownerPhoneLast4)} \u092A\u0930 \u0916\u093C\u0924\u094D\u092E \u0939\u094B\u0924\u093E \u0939\u0948 / mobile ending ${esc7(c.ownerPhoneLast4)}</small></b></div>
+<div class="row"><span>\u0915\u0940\u092E\u0924 / Price</span><b>${esc7(priceLabel(c.snapshot.price, c.snapshot.transactionType === "Rent"))}</b></div><div class="row"><span>\u092C\u094D\u0930\u094B\u0915\u0930 / Broker</span><b>${esc7(broker?.name || "")}${broker?.companyName ? `<br><small>${esc7(broker.companyName)}</small>` : ""}${broker?.reraNumber ? `<br><small>RERA ${esc7(broker.reraNumber)}</small>` : ""}${fullPhone(broker?.phone) ? `<br><small>\u{1F4DE} ${esc7(fullPhone(broker?.phone))}</small>` : ""}</b></div>
 <div class="row"><span>\u0938\u0941\u0930\u0915\u094D\u0937\u093E / Protection</span><b>${esc7(daysLabel(c.protectionDays, true))}</b></div>${tl ? `<div class="row"><span>\u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C / Brokerage</span><b>${esc7(tl.kind.hi)}<br><small>${esc7(tl.kind.en)}</small><br><small>${esc7(tl.atAsking.hi)}</small></b></div>` : ""}</div>`;
     const tok2 = esc7(req.params.token);
     if (c.status === "ACCEPTED") {
@@ -85083,7 +85449,7 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
       try {
         fs10.mkdirSync(SIG_DIR(), { recursive: true });
         fs10.writeFileSync(path10.join(SIG_DIR(), `${c.id}.png`), sig.png);
-        c.ownerSignature.sha256 = crypto26.createHash("sha256").update(sig.png).digest("hex");
+        c.ownerSignature.sha256 = crypto27.createHash("sha256").update(sig.png).digest("hex");
         c.ownerSignature.size = sig.png.length;
       } catch {
         return render(req, res, c, "\u0938\u093E\u0907\u0928 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E, \u092B\u093F\u0930 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / The signature could not be saved \u2014 please try again.");
@@ -85120,7 +85486,7 @@ function sweepConsents() {
 
 // server/broadcast.ts
 var import_express44 = __toESM(require_express2(), 1);
-import crypto27 from "crypto";
+import crypto28 from "crypto";
 var nowIso29 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st16 = () => db.getState();
 var me21 = () => ctx().user;
@@ -85174,7 +85540,7 @@ function createBroadcastRouter() {
       }
     }
     const b = {
-      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto27.randomInt(100, 999)}`,
+      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto28.randomInt(100, 999)}`,
       brokerId: u.id,
       requirementId: rq.id,
       summary: summaryOf(rq),
@@ -85801,7 +86167,7 @@ function createOffersRouter() {
 
 // server/listings.ts
 var import_express47 = __toESM(require_express2(), 1);
-import crypto28 from "node:crypto";
+import crypto29 from "node:crypto";
 var nowIso31 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st18 = () => db.getState();
 var bad19 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
@@ -85819,7 +86185,7 @@ function purgeBlocked(p) {
 function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
   const s = st18();
   s.marketRecords.push({
-    id: `MR-${crypto28.randomBytes(4).toString("hex")}`,
+    id: `MR-${crypto29.randomBytes(4).toString("hex")}`,
     city: p.city,
     locality: p.locality,
     propertyType: p.propertyType,
@@ -86071,7 +86437,7 @@ function createListingsRouter() {
       listingStatus: "active",
       verificationStatus: "PENDING",
       priceHistory: [{ price: d.askingPrice, changedAt: ts, reason: `Relisted (resale of ${p.id})` }],
-      duplicateHash: crypto28.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
+      duplicateHash: crypto29.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
       soldAt: void 0,
       soldVia: void 0,
       soldPrice: void 0,
@@ -86102,7 +86468,7 @@ function createListingsRouter() {
     if (p.listingBrokerId !== u.id) return bad19(res, "Only the listing broker can make the site poster \u2014 it carries the broker's contact", 403);
     if (!PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad19(res, "Poster is available for verified, live listings", 409);
     if (!p.posterCode) {
-      p.posterCode = crypto28.randomBytes(5).toString("hex").toUpperCase();
+      p.posterCode = crypto29.randomBytes(5).toString("hex").toUpperCase();
       db.save();
       audit8(u, p, "POSTER_CREATED", `Site poster code created for ${p.id}`);
     }
@@ -86238,7 +86604,7 @@ ${broker ? `<div class="card"><b>${esc9(broker.name)}</b>${broker.companyName ? 
     if (req.body?.consent !== true) return bad19(res, "Please tick the consent box so the broker may contact you");
     if (hit(`penq:${digits(ph.data).slice(-10)}:${p.id}`, 2, 24 * 36e5)) return bad19(res, "You have already sent an enquiry for this property today", 429);
     if (hit(`penq-prop:${p.id}`, 60, 24 * 36e5)) return bad19(res, "Too many enquiries for this listing today", 429);
-    st18().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto28.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso31(), status: "NEW", createdAt: nowIso31() });
+    st18().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto29.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso31(), status: "NEW", createdAt: nowIso31() });
     db.save();
     db.appendAuditEvent("public", "SUPERADMIN", "PROPERTY", p.id, "POSTER_ENQUIRY", `Enquiry received via site poster for ${p.id} (consent recorded)`);
     res.json({ success: true });
@@ -86249,13 +86615,13 @@ ${broker ? `<div class="card"><b>${esc9(broker.name)}</b>${broker.companyName ? 
 // server/visitpass.ts
 var import_express50 = __toESM(require_express2(), 1);
 var import_qrcode4 = __toESM(require_lib5(), 1);
-import crypto30 from "node:crypto";
+import crypto31 from "node:crypto";
 
 // server/visitack.ts
 var import_express48 = __toESM(require_express2(), 1);
 var import_express49 = __toESM(require_express2(), 1);
 var import_qrcode3 = __toESM(require_lib5(), 1);
-import crypto29 from "crypto";
+import crypto30 from "crypto";
 
 // src/shared/visitAckRules.ts
 var ACK_VERSION = "v1";
@@ -86273,7 +86639,7 @@ var ACK_NOTE = {
 var st19 = () => db.getState();
 var nowIso32 = () => (/* @__PURE__ */ new Date()).toISOString();
 var esc10 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac3 = (tag, v) => crypto29.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hmac3 = (tag, v) => crypto30.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone106 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE6 = /^[6-9]\d{9}$/;
 var smsOn3 = () => !!process.env.SMS_WEBHOOK_URL;
@@ -86298,7 +86664,7 @@ function createAck(a) {
   if (old) return old;
   const broker = db.byId("users", a.brokerId);
   const ack = {
-    id: `VAK-${crypto29.randomBytes(5).toString("hex")}`,
+    id: `VAK-${crypto30.randomBytes(5).toString("hex")}`,
     kind: a.kind,
     refId: a.refId,
     phoneKey: hmac3("va-phone", phone),
@@ -86568,11 +86934,11 @@ function createVisitRouter() {
     for (const o of st20().visitPasses) if (o.leadId === lead.id && o.status === "ACTIVE") o.status = "SUPERSEDED";
     let code = "";
     do {
-      code = makeCode((n2) => crypto30.randomInt(n2));
+      code = makeCode((n2) => crypto31.randomInt(n2));
     } while (st20().visitPasses.some((p) => p.code === code));
     const ts = nowIso33();
     const pass = {
-      id: `VP-${Date.now().toString(36)}${crypto30.randomInt(1296).toString(36)}`,
+      id: `VP-${Date.now().toString(36)}${crypto31.randomInt(1296).toString(36)}`,
       code,
       leadId: lead.id,
       projectId: project.id,
@@ -86795,7 +87161,7 @@ function createPublicVisitRouter() {
 // server/clientroom.ts
 var import_express51 = __toESM(require_express2(), 1);
 var import_express52 = __toESM(require_express2(), 1);
-import crypto31 from "crypto";
+import crypto32 from "crypto";
 
 // src/shared/clientRoomRules.ts
 var ROOM_KINDS = [
@@ -86846,11 +87212,11 @@ var st21 = () => db.getState();
 var nowIso34 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me23 = () => ctx().user;
 var esc12 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha5 = (v) => crypto31.createHash("sha256").update(v).digest("hex");
-var hmac4 = (tag, v) => crypto31.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha5 = (v) => crypto32.createHash("sha256").update(v).digest("hex");
+var hmac4 = (tag, v) => crypto32.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone107 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE7 = /^[6-9]\d{9}$/;
-var newToken2 = () => crypto31.randomBytes(18).toString("base64url");
+var newToken2 = () => crypto32.randomBytes(18).toString("base64url");
 var smsOn4 = () => !!process.env.SMS_WEBHOOK_URL;
 var inr12 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad22 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
@@ -86858,7 +87224,7 @@ var ev = (r, text) => {
   r.events.push({ at: nowIso34(), text });
   r.updatedAt = nowIso34();
 };
-var rid3 = (p) => `${p}-${crypto31.randomBytes(5).toString("hex")}`;
+var rid3 = (p) => `${p}-${crypto32.randomBytes(5).toString("hex")}`;
 var live3 = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
 var goneText = (p) => !p ? "removed" : p.listingStatus === "sold" ? "sold" : p.listingStatus === "rented" ? "rented" : "not available now";
 function publicProperty(p) {
@@ -87146,7 +87512,7 @@ function createClientRoomRouter() {
     if (!room) return bad22(res, "Room not found", 404);
     room.status = "CLOSED";
     room.closedAt = nowIso34();
-    room.tokenHash = sha5(crypto31.randomBytes(8).toString("hex"));
+    room.tokenHash = sha5(crypto32.randomBytes(8).toString("hex"));
     room.sessVersion += 1;
     room.devices = [];
     room.otpHash = void 0;
@@ -87310,7 +87676,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
         db.save();
         return gate(res, room, req.params.token, FULL_DEVICES, "phone", 403);
       }
-      dev = crypto31.randomBytes(6).toString("hex");
+      dev = crypto32.randomBytes(6).toString("hex");
       devices.push({ id: dev, label: deviceLabel(req.headers["user-agent"]), firstAt: nowIso34(), lastAt: nowIso34() });
       fresh = true;
     }
@@ -87659,9 +88025,9 @@ var import_express54 = __toESM(require_express2(), 1);
 
 // src/shared/redflags.ts
 var norm3 = (s) => (s || "").toLowerCase().replace(/\b(shri|smt|mr|mrs|ms|dr|late|sri)\b\.?/g, "").replace(/[^a-zऀ-ॿ ]/g, " ").replace(/\s+/g, " ").trim();
-var tokens2 = (s) => new Set(norm3(s).split(" ").filter((t) => t.length > 1));
+var tokens = (s) => new Set(norm3(s).split(" ").filter((t) => t.length > 1));
 function nameMatches(a, b) {
-  const A = tokens2(a), B = tokens2(b);
+  const A = tokens(a), B = tokens(b);
   if (!A.size || !B.size) return true;
   const small = A.size <= B.size ? A : B, big = A.size <= B.size ? B : A;
   return [...small].every((t) => big.has(t));
@@ -87820,7 +88186,7 @@ function createLandRecordsRouter() {
 
 // server/connector.ts
 var import_express55 = __toESM(require_express2(), 1);
-import crypto32 from "crypto";
+import crypto33 from "crypto";
 var DUP_WINDOW_DAYS = 60;
 var MAX_REWARD = 1e5;
 var upiRegex = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
@@ -88149,7 +88515,7 @@ function createConnectorRouter() {
   };
   const maxPct = () => db.getState().settings.connectorMaxSharePct ?? DEFAULT_MAX_SHARE_PCT;
   const shareStep = (sh, side, action, pct2, note5) => {
-    sh.history.push({ id: "SS-" + crypto32.randomBytes(4).toString("hex"), at: nowIso36(), side, action, pct: pct2, note: note5 ? note5.slice(0, 200) : void 0 });
+    sh.history.push({ id: "SS-" + crypto33.randomBytes(4).toString("hex"), at: nowIso36(), side, action, pct: pct2, note: note5 ? note5.slice(0, 200) : void 0 });
     sh.updatedAt = nowIso36();
   };
   const ping2 = (x, toSide, title, body) => {
@@ -88181,7 +88547,7 @@ function createConnectorRouter() {
     let sh = x.share;
     if (sh && ["AGREED", "PAID", "CONFIRMED", "NOT_RECEIVED"].includes(sh.status)) return res.status(409).json({ error: "The share is already agreed and locked" });
     if (!sh || sh.status === "DECLINED") {
-      sh = x.share = { id: "SH-" + crypto32.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso36() };
+      sh = x.share = { id: "SH-" + crypto33.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso36() };
       shareStep(sh, side, "PROPOSED", pct2, note5);
     } else {
       const counter = sh.proposedBy !== side;
@@ -90614,16 +90980,39 @@ function remunerationAtAsking(m) {
   else broker = Math.max(0, adv - m.approvedNetPrice);
   return { brokerRemunerationAtAsking: broker, ownerReceivesAtAsking: Math.max(0, adv - broker) };
 }
+var showPhone = (raw) => {
+  const d = String(raw ?? "").replace(/\D/g, "").slice(-10);
+  return d.length === 10 ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : "";
+};
 function mandateView(m, state = db.getState()) {
   const { otpChallenge: _o, otpExpiresAt: _e, otpAttempts: _a3, ...rest } = m;
   const broker = db.byId("users", m.brokerId);
   const owner = db.byId("users", m.ownerId);
   const prop = db.byId("properties", m.propertyId);
+  const consent = m.consentId ? state.ownerConsents.find((c) => c.id === m.consentId) : void 0;
+  let viewer;
+  try {
+    viewer = ctx().user || void 0;
+  } catch {
+    viewer = void 0;
+  }
+  const party = !!viewer && (isAdmin(viewer) || viewer.id === m.brokerId || !!m.ownerId && viewer.id === m.ownerId);
+  const ownerName = owner?.name || prop?.ownerName || consent?.ownerName || m.offPlatformOwner?.name;
+  const signedAs = consent?.ownerTypedName || m.offPlatformOwner?.name;
+  const ownerPhone = showPhone(owner?.phone || prop?.ownerPhone);
+  const last42 = (ownerPhone ? ownerPhone.replace(/\D/g, "") : "").slice(-4) || m.offPlatformOwner?.phoneLast4 || consent?.ownerPhoneLast4 || "";
   return {
     ...rest,
-    ownerName: owner?.name || m.offPlatformOwner?.name,
+    ownerName,
+    ownerSignedAs: signedAs && ownerName && signedAs.trim().toLowerCase() !== ownerName.trim().toLowerCase() ? signedAs : void 0,
+    ownerPhone: party ? ownerPhone || void 0 : void 0,
+    ownerPhoneLast4: last42 || void 0,
     ownerSignature: m.consentId ? signatureSummary(m.consentId) : void 0,
     brokerName: broker?.name,
+    brokerCode: broker?.brokerId,
+    brokerCompany: broker?.companyName || void 0,
+    brokerRera: broker?.reraNumber || void 0,
+    brokerPhone: party ? showPhone(broker?.phone) || void 0 : void 0,
     propertyTitle: prop?.title,
     ...remunerationAtAsking(m)
   };
@@ -91461,7 +91850,7 @@ app.get("/api/admin/control-center", needs("admin:control_center"), (_req, res) 
     m[k] = (m[k] || 0) + 1;
     return m;
   }, {});
-  const refs = state.connectorReferrals || [];
+  const refs2 = state.connectorReferrals || [];
   res.json({
     success: true,
     system: { demoMode: DEMO_MODE, storage: process.env.DATABASE_URL ? "PostgreSQL" : "JSON file", nodeEnv: process.env.NODE_ENV || "development", uptimeSec: Math.round(process.uptime()), policyVersion: POLICY_VERSION },
@@ -91478,11 +91867,11 @@ app.get("/api/admin/control-center", needs("admin:control_center"), (_req, res) 
     invitations: { pending: state.invitations.filter((i) => i.status === "PENDING").length, redeemed: state.invitations.filter((i) => i.status === "REDEEMED").length },
     privacy: { openRequests: (state.privacyRequests || []).filter((r) => r.status === "OPEN" || r.status === "PENDING").length },
     connector: {
-      referrals: refs.length,
-      unassigned: refs.filter((r) => r.status === "SUBMITTED" && !r.assignedToId).length,
-      rewardApprovals: refs.filter((r) => r.status === "CLOSED_WON" && r.rewardStatus === "NONE").length,
-      payoutsDue: refs.filter((r) => r.rewardStatus === "APPROVED").length,
-      payoutsDueAmount: refs.filter((r) => r.rewardStatus === "APPROVED").reduce((a, r) => a + (r.rewardAmount || 0), 0)
+      referrals: refs2.length,
+      unassigned: refs2.filter((r) => r.status === "SUBMITTED" && !r.assignedToId).length,
+      rewardApprovals: refs2.filter((r) => r.status === "CLOSED_WON" && r.rewardStatus === "NONE").length,
+      payoutsDue: refs2.filter((r) => r.rewardStatus === "APPROVED").length,
+      payoutsDueAmount: refs2.filter((r) => r.rewardStatus === "APPROVED").reduce((a, r) => a + (r.rewardAmount || 0), 0)
     },
     settings: state.settings,
     audit: { integrity: db.verifyAuditIntegrity(), recent: state.auditEvents.slice(-10).reverse().map((e) => ({ id: e.id, at: e.timestamp, action: e.action, actor: e.actorRole, entity: e.entityId })) }

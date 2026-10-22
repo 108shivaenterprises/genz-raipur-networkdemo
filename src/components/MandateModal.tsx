@@ -192,12 +192,27 @@ export const MandateModal: React.FC<Props> = ({ property, mandates, currentUser,
                     {m!.status === 'ACTIVE' ? (hi ? 'सक्रिय — दोनों के हस्ताक्षर' : 'ACTIVE — both signed') : (hi ? 'ब्रोकर के हस्ताक्षर बाकी' : 'WAITING FOR BROKER')}
                   </span>
                 </div>
+                {/* v49 — whose agreement this is: both parties with name and mobile (the owner's number was only “••1234”, or missing) */}
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="mandate-parties">
+                  <div className="rounded-lg bg-slate-50 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{hi ? 'मालिक' : 'Owner'}</p>
+                    <p className="text-sm font-bold text-slate-900" data-testid="mandate-owner-name">{m!.ownerName || m!.offPlatformOwner?.name || (m!.ownerId === currentUser.id ? currentUser.name : '—')}</p>
+                    <p className="mt-0.5 text-slate-700" data-testid="mandate-owner-phone">
+                      {hi ? 'मोबाइल' : 'Mobile'}: {m!.ownerPhone
+                        ? <a href={`tel:${m!.ownerPhone.replace(/\s/g, '')}`} className="font-semibold text-blue-700 underline">{m!.ownerPhone}</a>
+                        : m!.ownerPhoneLast4 ? (hi ? `…${m!.ownerPhoneLast4} पर ख़त्म होने वाला नंबर` : `number ending ${m!.ownerPhoneLast4}`) : '—'}
+                    </p>
+                    {m!.ownerSignedAs && <p className="mt-0.5 text-[11px] text-amber-800" data-testid="mandate-owner-signed-as">{hi ? `लिंक पर इस नाम से साइन किया: ${m!.ownerSignedAs}` : `Signed on the link as: ${m!.ownerSignedAs}`}</p>}
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{hi ? 'लिस्टिंग ब्रोकर' : 'Listing broker'}</p>
+                    <p className="text-sm font-bold text-slate-900" data-testid="mandate-broker-name">{m!.brokerName || (m!.brokerId === currentUser.id ? currentUser.name : brokerName)}</p>
+                    {m!.brokerCompany && <p className="text-slate-700">{m!.brokerCompany}</p>}
+                    <p className="text-slate-700">{[m!.brokerCode, m!.brokerRera ? `RERA ${m!.brokerRera}` : ''].filter(Boolean).join(' · ')}</p>
+                    {m!.brokerPhone && <p className="mt-0.5 text-slate-700" data-testid="mandate-broker-phone">{hi ? 'मोबाइल' : 'Mobile'}: <a href={`tel:${m!.brokerPhone.replace(/\s/g, '')}`} className="font-semibold text-blue-700 underline">{m!.brokerPhone}</a></p>}
+                  </div>
+                </div>
                 <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
-                  {/* v47 — whose agreement this is: the owner's and the listing broker's names (they were missing) */}
-                  <dt className="text-slate-500">{hi ? 'मालिक' : 'Owner'}</dt>
-                  <dd className="text-right font-semibold text-slate-900" data-testid="mandate-owner-name">{m!.ownerName || m!.offPlatformOwner?.name || (m!.ownerId === currentUser.id ? currentUser.name : '—')}{m!.offPlatformOwner?.phoneLast4 ? ` (••${m!.offPlatformOwner.phoneLast4})` : ''}</dd>
-                  <dt className="text-slate-500">{hi ? 'लिस्टिंग ब्रोकर' : 'Listing broker'}</dt>
-                  <dd className="text-right font-semibold text-slate-900" data-testid="mandate-broker-name">{m!.brokerName || (m!.brokerId === currentUser.id ? currentUser.name : brokerName)}</dd>
                   <dt className="text-slate-500">{hi ? 'विज्ञापित कीमत' : 'Advertised price'}</dt>
                   <dd className="text-right font-semibold">{formatINR(m!.advertisedPrice)}</dd>
                   <dt className="text-slate-500">{hi ? 'ब्रोकरेज का प्रकार' : 'Brokerage type'}</dt>

@@ -581,8 +581,9 @@ export default function App() {
 
         {activeTab === 'daily' && hasPerm(permissions, 'daily:use') && <DailyView currentUser={currentUser} onNavigate={setActiveTab} />}
 
-        {activeTab === 'propdocs' && hasPerm(permissions, 'propdoc:use') && <PropertyPapersView />}
-        {activeTab === 'pdocs' && hasPerm(permissions, 'pdoc:use') && <ProtectedDocsView />}
+        {activeTab === 'propdocs' && hasPerm(permissions, 'propdoc:use') && <PropertyPapersView withProtected={hasPerm(permissions, 'pdoc:use')} />}
+        {/* v49: whoever has Property Papers finds Protected Docs inside it (the old tab link is redirected there) */}
+        {activeTab === 'pdocs' && hasPerm(permissions, 'pdoc:use') && !hasPerm(permissions, 'propdoc:use') && <ProtectedDocsView />}
 
         {activeTab === 'community' && hasPerm(permissions, 'chapter:read', 'academy:read', 'loan:manage', 'report:manage') && <CommunityView perms={permissions} currentUser={currentUser} />}
 

@@ -2759,16 +2759,36 @@ function remunerationAtAsking(m: any) {
   return { brokerRemunerationAtAsking: broker, ownerReceivesAtAsking: Math.max(0, adv - broker) };
 }
 
+/** "+91 98261 55667" from any way a mobile was typed; '' when there is no 10-digit number */
+const showPhone = (raw: unknown) => { const d = String(raw ?? '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : ''; };
+
 function mandateView(m: any, state = db.getState()) {
   const { otpChallenge: _o, otpExpiresAt: _e, otpAttempts: _a, ...rest } = m;
-  const broker = db.byId('users', m.brokerId);
-  const owner = db.byId('users', m.ownerId);
-  const prop = db.byId('properties', m.propertyId);
+  const broker = db.byId('users', m.brokerId) as UserProfile | undefined;
+  const owner = db.byId('users', m.ownerId) as UserProfile | undefined;
+  const prop = db.byId('properties', m.propertyId) as any;
+  const consent = m.consentId ? state.ownerConsents.find(c => c.id === m.consentId) : undefined;
+  // v49 — the owner's NAME and full MOBILE, and the listing broker's details, for the three people a mandate is between:
+  // the owner, the listing broker and GENZ admins (nobody else can open a mandate). A broker-made listing has no owner login,
+  // so the name and number come from the listing (what the broker entered); the name the owner signed with on the link is shown too.
+  let viewer: UserProfile | undefined; try { viewer = ctx().user || undefined; } catch { viewer = undefined; }
+  const party = !!viewer && (isAdmin(viewer) || viewer.id === m.brokerId || (!!m.ownerId && viewer.id === m.ownerId));
+  const ownerName = owner?.name || prop?.ownerName || consent?.ownerName || m.offPlatformOwner?.name;
+  const signedAs = consent?.ownerTypedName || m.offPlatformOwner?.name;
+  const ownerPhone = showPhone(owner?.phone || prop?.ownerPhone);
+  const last4 = (ownerPhone ? ownerPhone.replace(/\D/g, '') : '').slice(-4) || m.offPlatformOwner?.phoneLast4 || consent?.ownerPhoneLast4 || '';
   return {
     ...rest,
-    ownerName: owner?.name || m.offPlatformOwner?.name,
+    ownerName,
+    ownerSignedAs: signedAs && ownerName && signedAs.trim().toLowerCase() !== ownerName.trim().toLowerCase() ? signedAs : undefined,
+    ownerPhone: party ? ownerPhone || undefined : undefined,
+    ownerPhoneLast4: last4 || undefined,
     ownerSignature: m.consentId ? signatureSummary(m.consentId) : undefined,
     brokerName: broker?.name,
+    brokerCode: broker?.brokerId,
+    brokerCompany: broker?.companyName || undefined,
+    brokerRera: broker?.reraNumber || undefined,
+    brokerPhone: party ? showPhone(broker?.phone) || undefined : undefined,
     propertyTitle: prop?.title,
     ...remunerationAtAsking(m),
   };

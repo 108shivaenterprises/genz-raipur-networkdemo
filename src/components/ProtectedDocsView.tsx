@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, FileLock2, Upload, Eye, Share2, Trash2, X, Download, ShieldCheck, Camera } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Loader2, FileLock2, Upload, Eye, Share2, Trash2, X, ShieldCheck, Camera } from 'lucide-react';
+import { WatermarkViewer } from './WatermarkViewer.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 
@@ -27,6 +28,7 @@ export const ProtectedDocsView: React.FC = () => {
   const load = useCallback(() => api.pdocs().then(r => setDocs(r.docs)).catch(e => setErr(e.message)), []);
   useEffect(() => { load(); }, [load]);
   const remove = async (d: any) => { if (!window.confirm(tx('Delete this document for everyone?', 'यह दस्तावेज़ सबके लिए हटाएँ?'))) return; await api.pdocDelete(d.id); load(); };
+  const closeView = useCallback(() => setView(null), []);
   const open = async (d: any) => { try { setView(await api.pdocOpen(d.id).then(r => ({ ...r, id: d.id }))); load(); } catch (e: any) { setErr(e.message); } };
   if (!docs) return <div className="flex justify-center py-16">{err ? <p className="text-sm text-red-700">{err}</p> : <Loader2 className="h-6 w-6 animate-spin text-slate-500" />}</div>;
   const mine = docs.filter(d => d.owner), shared = docs.filter(d => !d.owner);
@@ -51,7 +53,8 @@ export const ProtectedDocsView: React.FC = () => {
       </Section>
       {upload && <Upload_ onClose={() => setUpload(false)} onDone={() => { setUpload(false); load(); }} />}
       {share && <ShareSheet doc={share} onClose={() => { setShare(null); load(); }} />}
-      {view && <Viewer session={view} onClose={() => setView(null)} />}
+      {view && <WatermarkViewer session={view} pageUrl={pdocPage} onClose={closeView}
+        downloads={view.canDownload ? Array.from({ length: Math.min(view.pages, 12) }, (_, n) => ({ label: view.pages > 1 ? `${n + 1}` : tx('Original', 'मूल'), href: `/api/pdocs/${view.id}/download/${n}` })) : undefined} />}
     </div>
   );
 };
@@ -137,64 +140,4 @@ const ShareSheet: React.FC<{ doc: any; onClose: () => void }> = ({ doc, onClose 
   );
 };
 
-const LOADS = new WeakMap<object, Promise<(HTMLCanvasElement | null)[]>>();
-
-/** Draws each page on a canvas with a tiled watermark; hides everything when the tab loses focus; blocks save / print / copy shortcuts. */
-const Viewer: React.FC<{ session: any; onClose: () => void }> = ({ session, onClose }) => {
-  const tx = useTx();
-  const [imgs, setImgs] = useState<(HTMLCanvasElement | null)[]>([]);
-  const [hidden, setHidden] = useState(false);
-  const [failed, setFailed] = useState('');
-  const host = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    let dead = false;
-    // single-use page tokens: load once per session (React StrictMode runs effects twice in development)
-    let job = LOADS.get(session);
-    if (!job) {
-      job = (async () => {
-        const out: (HTMLCanvasElement | null)[] = [];
-        for (const t of session.tokens as string[]) {
-          try {
-            const img = await new Promise<HTMLImageElement>((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('x')); i.src = `/api/pdocs/page/${t}`; });
-            const c = document.createElement('canvas'); const k = Math.min(1, 1000 / img.width); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-            const g = c.getContext('2d')!; g.drawImage(img, 0, 0, c.width, c.height);
-            g.save(); g.globalAlpha = 0.16; g.fillStyle = '#b91c1c'; g.font = `bold ${Math.max(14, Math.round(c.width / 30))}px sans-serif`; g.rotate(-Math.PI / 7);
-            const step = Math.max(110, Math.round(c.width / 5));
-            for (let y = -c.height; y < c.height * 1.5; y += step) for (let x = -c.width; x < c.width * 1.6; x += Math.round(c.width * 0.62)) g.fillText(session.watermark, x, y);
-            g.restore();
-            out.push(c);
-          } catch { out.push(null); }
-        }
-        return out;
-      })();
-      LOADS.set(session, job);
-    }
-    job.then(out => { if (!dead) { setImgs(out); if (out.every(x => !x)) setFailed(tx('Could not load the pages. Close and open again.', 'पेज लोड नहीं हुए। बंद करके दोबारा खोलें।')); } });
-    return () => { dead = true; };
-  }, [session, tx]);
-
-  useEffect(() => {
-    const blur = () => setHidden(document.visibilityState !== 'visible' || !document.hasFocus());
-    const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && ['s', 'p', 'c', 'u'].includes(e.key.toLowerCase())) e.preventDefault(); if (e.key === 'PrintScreen') { setHidden(true); try { navigator.clipboard?.writeText(''); } catch { /* ignore */ } } };
-    const ctx = (e: Event) => e.preventDefault();
-    window.addEventListener('blur', blur); window.addEventListener('focus', blur); document.addEventListener('visibilitychange', blur); window.addEventListener('keydown', key); document.addEventListener('contextmenu', ctx);
-    return () => { window.removeEventListener('blur', blur); window.removeEventListener('focus', blur); document.removeEventListener('visibilitychange', blur); window.removeEventListener('keydown', key); document.removeEventListener('contextmenu', ctx); };
-  }, []);
-
-  useEffect(() => { const h = host.current; if (!h) return; h.replaceChildren(); imgs.forEach(c => { if (!c) return; c.style.cssText = 'width:100%;height:auto;display:block;margin-bottom:8px;border-radius:6px;pointer-events:none;-webkit-user-drag:none;user-select:none'; c.draggable = false; h.appendChild(c); }); }, [imgs]);
-
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-950 print:hidden" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
-      <div className="flex items-center justify-between gap-2 bg-slate-900 px-4 py-3 text-white"><div className="min-w-0"><div className="truncate text-sm font-bold">{session.title}</div><div className="truncate text-[11px] text-slate-400">{tx('View only · ', 'सिर्फ़ देखने के लिए · ')}{session.watermark}</div></div>
-        {session.canDownload && Array.from({ length: Math.min(session.pages, 12) }, (_, n) => <a key={n} href={`/api/pdocs/${session.id}/download/${n}`} className="inline-flex min-h-10 items-center gap-1 rounded-lg bg-white/10 px-2.5 text-xs font-semibold"><Download className="h-3.5 w-3.5" aria-hidden />{n + 1}</a>)}
-        <button onClick={onClose} className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg bg-white/10" aria-label={tx('Close', 'बंद करें')}><X className="h-5 w-5" /></button></div>
-      <div className="relative flex-1 overflow-y-auto p-3">
-        {imgs.length === 0 && !failed && <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>}
-        {failed && <p className="py-20 text-center text-sm text-red-300">{failed}</p>}
-        <div ref={host} className={`mx-auto max-w-2xl transition ${hidden ? 'blur-2xl' : ''}`} />
-        {hidden && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/70 text-center text-sm font-semibold text-white">{tx('Hidden while this window is not in focus', 'यह विंडो फोकस में न होने पर छुपा रहता है')}</div>}
-      </div>
-    </div>
-  );
-};
+const pdocPage = (t: string) => `/api/pdocs/page/${t}`;

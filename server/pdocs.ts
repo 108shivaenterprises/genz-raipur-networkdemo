@@ -22,6 +22,7 @@ import { db } from './db.js';
 import type { UserProfile, ProtectedDoc } from './db.js';
 import { ctx, needs, rateLimit, digits } from './auth.js';
 import { can } from './permissions.js';
+import { makeViewToken, useViewToken, stampFor } from './viewToken.js';
 
 const me = () => ctx().user as UserProfile;
 const nowIso = () => new Date().toISOString();
@@ -37,9 +38,7 @@ const kindOf = (b: Buffer): string | null => {
 };
 const pageFile = (id: string, n: number) => path.join(DIR(), `${id}-${n}.bin`);
 
-// one-time page tokens (memory only; a restart simply asks the viewer to reopen)
-const tokens = new Map<string, { docId: string; userId: string; page: number; exp: number }>();
-setInterval(() => { const n = Date.now(); for (const [k, v] of tokens) if (v.exp < n) tokens.delete(k); }, 60_000).unref();
+// v49: page tokens are signed (server/viewToken.ts) so they work across server instances; each is served once per instance
 
 export function accessState(doc: ProtectedDoc, userId: string, now = Date.now(), ignoreLimit = false): { ok: boolean; reason?: string; viewer?: ProtectedDoc['viewers'][number] } {
   if (doc.revoked) return { ok: false, reason: 'This document was withdrawn by its owner.' };
@@ -160,21 +159,19 @@ export function createPdocsRouter() {
     log(d.id, u.id, 0, a.ok, req.ip || '');
     if (!a.ok) { db.save(); return res.status(403).json({ error: a.reason }); }
     if (a.viewer) a.viewer.views += 1;
-    const exp = Date.now() + 5 * 60_000;
-    const list: string[] = [];
-    for (let i = 0; i < d.pages; i++) { const t = crypto.randomBytes(18).toString('base64url'); tokens.set(t, { docId: d.id, userId: u.id, page: i, exp }); list.push(t); }
+    const list = Array.from({ length: d.pages }, (_, i) => makeViewToken('PDOC', d.id, u.id, i));
     db.save();
-    const stamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' });
-    res.json({ success: true, title: d.title, pages: d.pages, tokens: list, watermark: `${u.name} · ${digits(u.phone).slice(-4).padStart(4, '•')} · ${stamp}`, canDownload: d.ownerId === u.id });
+    // v49: whoever opens it — the owner too — gets their OWN name stamped on every page in the viewer; only the owner may download
+    res.json({ success: true, title: d.title, pages: d.pages, tokens: list, watermark: stampFor(u.name, digits(u.phone)), canDownload: d.ownerId === u.id });
   });
 
   /** One-time image fetch. Only works as an <img> load for the same logged-in user. */
   r.get('/page/:token', needs('pdoc:use'), (req: Request, res: Response) => {
-    const t = tokens.get(req.params.token);
-    tokens.delete(req.params.token);
+    const c = useViewToken(req.params.token, 'PDOC', me().id);
     const dest = String(req.headers['sec-fetch-dest'] || 'image');
-    if (!t || t.exp < Date.now() || t.userId !== me().id) return res.status(403).end();
-    if (dest !== 'image') { log(t.docId, t.userId, t.page, false, req.ip || ''); return res.status(403).end(); }
+    if (!c) return res.status(403).end();
+    const t = { docId: c.d, userId: c.u, page: c.p };
+    if (dest !== 'image') { log(t.docId, t.userId, t.page, false, req.ip || ''); db.save(); return res.status(403).end(); }
     const d = db.getState().protectedDocs.find(x => x.id === t.docId);
     if (!d || !accessState(d, t.userId, Date.now(), true).ok) return res.status(403).end();
     try {

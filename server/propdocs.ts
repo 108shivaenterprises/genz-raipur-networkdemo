@@ -19,7 +19,9 @@ import path from 'node:path';
 import { z } from 'zod';
 import { db } from './db.js';
 import type { UserProfile, Property, PropertyDoc, DatabaseState } from './db.js';
-import { ctx, needs, rateLimit } from './auth.js';
+import { ctx, needs, rateLimit, digits } from './auth.js';
+import { scannedPages } from './pdfPages.js';
+import { makeViewToken, useViewToken, stampFor } from './viewToken.js';
 import { can } from './permissions.js';
 import { isAdmin, isDealParticipant, isPropertyPrincipal, canAccessPropertyWorkspace } from './access.js';
 import {
@@ -34,7 +36,28 @@ const fileOf = (id: string) => path.join(DIR(), `${id}.bin`);
 const bad = (res: Response, error: string, status = 400) => res.status(status).json({ error });
 const LOG_CAP = 5000;
 
+/** v49 — the pages the view-only viewer shows: the photo itself, or the page photos of a scanned PDF (cached by fingerprint) */
+const pageCache = new Map<string, Buffer[]>();
+export function viewerPages(d: Pick<PropertyDoc, 'id' | 'mime' | 'sha256'>, buf?: Buffer): Buffer[] | null {
+  const hit = pageCache.get(d.sha256); if (hit) return hit;
+  let b = buf;
+  if (!b) { try { b = fs.readFileSync(fileOf(d.id)); } catch { return null; } }
+  const pages = d.mime === 'application/pdf' ? scannedPages(b) : [b];
+  if (!pages || !pages.length) return null;
+  pageCache.set(d.sha256, pages);
+  if (pageCache.size > 12) pageCache.delete(pageCache.keys().next().value as string);
+  return pages;
+}
+const NOT_SCANNED = {
+  code: 'PDF_NOT_SCANNED',
+  error: 'This PDF cannot be protected: it has no page photos (it was typed on a computer, or saved in a way GENZ cannot read). Add photos of its pages, or use “Make one PDF from page photos”, or keep it unprotected.',
+  hi: 'यह PDF सुरक्षित नहीं हो सकता: इसमें पेज की फ़ोटो नहीं हैं (कंप्यूटर पर टाइप हुआ है, या ऐसे सेव है जो GENZ पढ़ नहीं पाता)। इसके पेज की फ़ोटो डालें, या “पेज की फ़ोटो से एक PDF बनाएँ” से बनाएँ, या बिना सुरक्षा रखें।',
+};
+
 export type DocAccess = { ok: boolean; level?: 'MANAGE' | 'VIEW'; via?: string };
+/** v49 — a protected paper's original file (open / download) only for the uploader and the property's owner / listing broker;
+ *  everyone else — GENZ admins included — sees it only in the stamped viewer */
+export const mayHaveFile = (d: Pick<PropertyDoc, 'protect'>, a: DocAccess) => !d.protect || a.via === 'UPLOADER' || a.via === 'PRINCIPAL';
 
 const activeShare = (d: PropertyDoc, userId: string, now = Date.now()) =>
   d.shares.find(s => s.userId === userId && !s.revoked && (!s.expiresAt || new Date(s.expiresAt).getTime() > now));
@@ -76,6 +99,8 @@ function summary(st: DatabaseState, d: PropertyDoc, u: UserProfile, a: DocAccess
     visibility: d.visibility, ddItemId: d.ddItemId, createdAt: d.createdAt, updatedAt: d.updatedAt,
     uploaderId: d.uploaderId, uploaderName: nameOf(st, d.uploaderId), mine: d.uploaderId === u.id,
     access: a.level, via: a.via, canManage: manage,
+    protect: !!d.protect, pages: d.pages || 1, canDownload: mayHaveFile(d, a),
+    missing: !fs.existsSync(fileOf(d.id)),
     shares: manage ? d.shares.filter(s => !s.revoked).map(s => ({ userId: s.userId, name: nameOf(st, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now() })) : undefined,
   };
 }
@@ -165,6 +190,7 @@ export function createPropDocsRouter() {
       data: z.string().min(8),
       visibility: z.enum(PROP_DOC_VISIBILITY).default('PRIVATE'),
       ddItemId: z.string().max(80).optional(),
+      protect: z.boolean().optional(),
       attest: z.literal(true, { message: 'Please confirm you are the owner or authorised by the owner to keep this paper here.' }),
     }).safeParse(req.body);
     if (!b.success) return bad(res, b.error.issues[0]?.message || 'Please fill the form properly.');
@@ -193,6 +219,12 @@ export function createPropDocsRouter() {
     const mime = sniffMime(buf);
     if (!mime) return bad(res, 'Only PDF, JPEG, PNG or WebP files are accepted.', 415);
     if (usedBytes(st, u.id) + buf.length > PROP_DOC_MAX_USER_BYTES) return bad(res, 'Your storage is full. Delete old papers first.', 413);
+    let pages = 1;
+    if (b.data.protect && mime === 'application/pdf') {
+      const pp = scannedPages(buf);
+      if (!pp) return res.status(400).json(NOT_SCANNED);
+      pages = pp.length;
+    }
 
     const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto.randomInt(1000, 9999)}`;
     try {
@@ -207,9 +239,10 @@ export function createPropDocsRouter() {
       tags: cleanTags(b.data.tags), note: b.data.note || undefined,
       fileName: b.data.fileName.replace(/[\\/\0\r\n]+/g, '_'), mime, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'),
       visibility: b.data.visibility, shares: [], ddItemId, attestedAt: ts, createdAt: ts, updatedAt: ts,
+      ...(b.data.protect ? { protect: true, protectedAt: ts, pages } : {}),
     };
     st.propertyDocs.push(doc); db.save();
-    db.appendAuditEvent(u.id, u.role, 'SYSTEM', id, 'PROPDOC_UPLOADED', `Paper “${doc.title}” (${doc.type}, ${(doc.size / 1024).toFixed(0)} KB, SHA-256 ${doc.sha256.slice(0, 16)}…) added to ${prop.id}${ddItemId ? ` as evidence for ${ddItemId}` : ''}`);
+    db.appendAuditEvent(u.id, u.role, 'SYSTEM', id, 'PROPDOC_UPLOADED', `Paper “${doc.title}” (${doc.type}, ${(doc.size / 1024).toFixed(0)} KB, SHA-256 ${doc.sha256.slice(0, 16)}…) added to ${prop.id}${ddItemId ? ` as evidence for ${ddItemId}` : ''}${doc.protect ? ' — protected (view-only, watermarked)' : ''}`);
     res.json({ success: true, doc: summary(st, doc, u, docAccess(st, u, doc)) });
   });
 
@@ -226,11 +259,49 @@ export function createPropDocsRouter() {
     return x;
   };
 
+  /** v49 — start the stamped viewer: signed page tokens + the viewer's OWN stamp (everyone, the uploader too). */
+  r.post('/:id/view', need, rateLimit('propdocview', 300, 60 * 60_000), (req: Request, res: Response) => {
+    const x = load(req, res); if (!x) return;
+    const { u, d, a } = x;
+    const pages = viewerPages(d);
+    if (!pages) return fs.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad(res, 'The file is missing on the server. Please upload it again.', 404);
+    log(d.id, u.id, 'VIEW', req.ip || '', `${d.protect ? 'view-only viewer' : 'viewer'}, stamped${a.via === 'ADMIN' ? ' — GENZ admin' : ''}`); db.save();
+    res.json({
+      success: true, id: d.id, title: d.title, pages: pages.length, protect: !!d.protect,
+      tokens: pages.map((_, i) => makeViewToken('PROPDOC', d.id, u.id, i)),
+      watermark: stampFor(u.name, digits(u.phone)), canDownload: mayHaveFile(d, a),
+    });
+  });
+
+  /** v49 — one page of the viewer. Only as an <img> for the signed-in person the token was made for. */
+  r.get('/view/:token', need, (req: Request, res: Response) => {
+    const u = me();
+    const c = useViewToken(req.params.token, 'PROPDOC', u.id);
+    if (!c) return res.status(403).end();
+    if (String(req.headers['sec-fetch-dest'] || 'image') !== 'image') { log(c.d, u.id, 'DENIED', req.ip || '', 'page opened outside the viewer'); db.save(); return res.status(403).end(); }
+    const st = db.getState();
+    const d = st.propertyDocs.find(v => v.id === c.d);
+    if (!d || !docAccess(st, u, d).ok) return res.status(403).end();
+    const pages = viewerPages(d); const page = pages?.[c.p];
+    if (!page) return res.status(404).end();
+    res.setHeader('Content-Type', d.mime === 'application/pdf' ? 'image/jpeg' : d.mime);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(page);
+  });
+
   /** Open (inline) or download (?dl=1). Same-origin, cookie-authenticated, never cached. */
   r.get('/:id/file', need, rateLimit('propdocopen', 300, 60 * 60_000), (req: Request, res: Response) => {
     const x = load(req, res); if (!x) return;
     const { u, d, a } = x;
     const dl = req.query.dl === '1';
+    // v49 — a protected paper: only the uploader / owner / listing broker get the file; everyone else opens the stamped viewer
+    if (!mayHaveFile(d, a)) {
+      log(d.id, u.id, 'DENIED', req.ip || '', 'protected — file refused, viewer only'); db.save();
+      if (String(req.headers['sec-fetch-dest'] || '') === 'document') return res.redirect(303, `/?tab=propdocs&view=${encodeURIComponent(d.id)}`);
+      return res.status(403).json({ code: 'PROTECTED', error: 'This paper is protected — open it in the app to view it (your name is stamped on it). It cannot be downloaded.', hi: 'यह कागज़ सुरक्षित है — ऐप में खोलकर देखें (आपका नाम उस पर छपेगा)। डाउनलोड नहीं हो सकता।' });
+    }
     let buf: Buffer;
     try { buf = fs.readFileSync(fileOf(d.id)); } catch { return bad(res, 'The file is missing on the server. Please upload it again.', 404); }
     log(d.id, u.id, dl ? 'DOWNLOAD' : 'VIEW', req.ip || '', a.via === 'ADMIN' ? 'GENZ admin' : undefined); db.save();
@@ -250,8 +321,18 @@ export function createPropDocsRouter() {
     const b = z.object({
       type: z.enum(PROP_DOC_TYPE_IDS).optional(), title: z.string().trim().min(2).max(120).optional(), refNo: z.string().trim().max(60).optional(),
       tags: z.array(z.string()).max(20).optional(), note: z.string().trim().max(400).optional(), visibility: z.enum(PROP_DOC_VISIBILITY).optional(),
+      protect: z.boolean().optional(),
     }).safeParse(req.body);
     if (!b.success) return bad(res, b.error.issues[0]?.message || 'Please check the details.');
+    if (b.data.protect === true && !d.protect) {
+      const pp = viewerPages(d);
+      if (!pp) return fs.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad(res, 'The file is missing on the server. Please upload it again.', 404);
+      d.protect = true; d.protectedAt = nowIso(); d.pages = pp.length;
+      db.appendAuditEvent(u.id, u.role, 'SYSTEM', d.id, 'PROPDOC_PROTECT', `“${d.title}” protected: view-only, every viewer's name stamped, no download (except the uploader)`);
+    } else if (b.data.protect === false && d.protect) {
+      d.protect = false;
+      db.appendAuditEvent(u.id, u.role, 'SYSTEM', d.id, 'PROPDOC_UNPROTECT', `Protection removed from “${d.title}” — people it is shared with can open and download it again`);
+    }
     if (b.data.type) d.type = b.data.type;
     if (b.data.title) d.title = b.data.title;
     if (b.data.refNo !== undefined) d.refNo = b.data.refNo || undefined;

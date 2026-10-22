@@ -1,3 +1,4 @@
+import { goto } from '../lib/goto.js';
 import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
@@ -162,7 +163,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('team:manage') ? [{ id: 'team', label: t('nav.team', 'My Team'), icon: Users }] : []),
     ...(has('share:use') ? [{ id: 'share', label: t('nav.share', 'Share Kit'), icon: Share2 }] : []),
     ...(has('propdoc:use') ? [{ id: 'propdocs', label: t('nav.propdocs', 'Property Papers'), icon: FolderOpen }] : []),
-    ...(has('pdoc:use') ? [{ id: 'pdocs', label: t('nav.pdocs', 'Protected Docs'), icon: FileLock2 }] : []),
+    // v49: Protected Docs is a section of Property Papers for whoever has both
+    ...(has('pdoc:use') && !has('propdoc:use') ? [{ id: 'pdocs', label: t('nav.pdocs', 'Protected Docs'), icon: FileLock2 }] : []),
     ...(has('chapter:read', 'academy:read', 'loan:manage', 'report:manage') ? [{ id: 'community', label: t('nav.community', 'Community'), icon: GraduationCap }] : []),
     ...(has('growth:nominate') ? [{ id: 'grow', label: t('nav.grow', 'Grow Network'), icon: Users }] : []),
     ...(has('launch:manage') ? [{ id: 'launchdesk', label: t('nav.launchdesk', 'Launch Desk'), icon: Rocket }] : []),
@@ -192,7 +194,12 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
   // A remembered or linked tab this user may not open (permissions changed, someone else's link) → dashboard, never an empty page.
   const allowed = tabs.some(x => x.id === activeTab);
-  useEffect(() => { if (currentUser && !allowed) onChangeTab('dashboard'); }, [allowed, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!currentUser || allowed) return;
+    // v49: an old Protected Docs link / shortcut opens that section inside Property Papers
+    if (activeTab === 'pdocs' && has('propdoc:use') && has('pdoc:use')) { goto('propdocs', { tab: 'propdocs', sub: 'protected' }, t2 => onChangeTab(t2)); return; }
+    onChangeTab('dashboard');
+  }, [allowed, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // v26 — on a phone a broker gets 5 big buttons at the bottom instead of ~20 tabs; “More” opens the full list
   const simple = currentUser?.role === 'BROKER';
