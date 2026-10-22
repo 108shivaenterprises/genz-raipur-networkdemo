@@ -85729,6 +85729,7 @@ function summary3(r) {
     updatedAt: r.updatedAt,
     expiresAt: r.expiresAt,
     items: r.items.length,
+    propertyIds: r.items.map((i) => i.propertyId),
     codeAsk: !!(r.status === "ACTIVE" && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now()),
     unread: unread(r),
     openVisits: openVisits(r),

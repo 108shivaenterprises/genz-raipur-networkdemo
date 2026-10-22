@@ -43,6 +43,8 @@ const PartyWatchAdmin = lazyView(() => import('./components/PartyWatch.js'), 'Pa
 const PhotoCheckAdmin = lazyView(() => import('./components/VerifiedPhoto.js'), 'PhotoCheckAdmin');
 const ClientRoomsTab = lazyView(() => import('./components/ClientRooms.js'), 'ClientRoomsTab');
 const VisitsView = lazyView(() => import('./components/VisitsView.js'), 'VisitsView');
+const QuickScan = lazyView(() => import('./components/QuickScan.js'), 'QuickScan');
+const QrMenu = lazyView(() => import('./components/QuickScan.js'), 'QrMenu');
 const ProjectControlView = lazyView(() => import('./components/ProjectControlView.js'), 'ProjectControlView');
 const MyProjectsView = lazyView(() => import('./components/MyProjectsView.js'), 'MyProjectsView');
 const TeamView = lazyView(() => import('./components/TeamView.js'), 'TeamView');
@@ -139,6 +141,9 @@ export default function App() {
   const [showAddRequirement, setShowAddRequirement] = useState(false);
   const [showAddLead, setShowAddLead] = useState(false);
   const [showBrokerQrModal, setShowBrokerQrModal] = useState(false);
+  // v45 — header QR: a small menu (scan a visit QR / my card) and the scanner itself
+  const [showQrMenu, setShowQrMenu] = useState(false);
+  const [showQuickScan, setShowQuickScan] = useState(false);
   const [showBrokerSafetyModal, setShowBrokerSafetyModal] = useState(false);
   const [showFileDispute, setShowFileDispute] = useState<{ open: boolean; dealId?: string }>({ open: false });
   const [collaborationTarget, setCollaborationTarget] = useState<{
@@ -349,7 +354,8 @@ export default function App() {
         onLogout={handleLogout}
         onOpenPrivacy={() => setShowPrivacy(true)}
         onOpenInviteModal={() => setActiveTab('onboarding')}
-        onOpenBrokerQrModal={currentUser.role === 'BROKER' ? () => setShowBrokerQrModal(true) : undefined}
+        onOpenBrokerQrModal={currentUser.role === 'BROKER' ? () => setShowQrMenu(true) : undefined}
+        onOpenScan={currentUser.role !== 'BROKER' && hasPerm(permissions, 'sitevisit:verify', 'visit:scan') ? () => setShowQuickScan(true) : undefined}
         onOpenBrokerSafetyModal={() => setShowBrokerSafetyModal(true)}
       />
 
@@ -751,6 +757,16 @@ export default function App() {
       )}
 
       {/* Verified Broker Digital QR Card Modal */}
+      {showQrMenu && currentUser && (
+        <Suspense fallback={null}>
+          <QrMenu onClose={() => setShowQrMenu(false)} onScan={() => { setShowQrMenu(false); setShowQuickScan(true); }} onCard={() => { setShowQrMenu(false); setShowBrokerQrModal(true); }} />
+        </Suspense>
+      )}
+      {showQuickScan && currentUser && (
+        <Suspense fallback={null}>
+          <QuickScan currentUser={currentUser} canBuilderScan={hasPerm(permissions, 'visit:scan')} hasVisitsTab={hasPerm(permissions, 'visit:pass', 'visit:scan')} onNavigate={setActiveTab} onClose={() => setShowQuickScan(false)} />
+        </Suspense>
+      )}
       {showBrokerQrModal && currentUser && (
         <PublicBrokerQrModal
           isOpen={showBrokerQrModal}

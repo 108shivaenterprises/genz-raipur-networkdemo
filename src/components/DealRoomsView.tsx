@@ -63,7 +63,10 @@ import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { DealPipeline, StageStepper, NextSteps, MandatesBoard, DealCard } from './DealHub.js';
 import { ShareToRoom } from './ShareToRoom.js';
 import { SideFeePanel } from './SideFeePanel.js';
-import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare } from 'lucide-react';
+import { lazyView } from '../lib/lazyView.js';
+// v45 — the broker's client rooms sit next to his deal rooms (same Deals screen)
+const ClientRoomsTab = lazyView(() => import('./ClientRooms.js'), 'ClientRoomsTab');
 
 interface DealRoomsViewProps {
   deals: DealRoom[];
@@ -168,11 +171,33 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   // owners and employees of a broker are not parties to the broker↔broker commission: they get the redacted view
   const isOwnerViewer = currentUser.role === 'PROPERTY_OWNER' || currentUser.role === 'TEAM_MEMBER';
   // v37 — Deal Hub: the pipeline (board / list) is the home of this tab; a deal room opens from a card
-  const [mainMode, setMainMode] = useState<'PIPELINE' | 'DEAL_ROOMS' | 'PROPOSALS' | 'MANDATES'>(() => {
+  const [mainMode, setMainMode] = useState<'PIPELINE' | 'DEAL_ROOMS' | 'PROPOSALS' | 'MANDATES' | 'ROOMS'>(() => {
     if (urlQ.get('deal')) return 'DEAL_ROOMS';
     const v = urlQ.get('view');
-    return v === 'mandates' ? 'MANDATES' : v === 'proposals' ? 'PROPOSALS' : v === 'room' ? 'DEAL_ROOMS' : 'PIPELINE';
+    return v === 'mandates' ? 'MANDATES' : v === 'proposals' ? 'PROPOSALS' : v === 'room' ? 'DEAL_ROOMS' : v === 'rooms' ? 'ROOMS' : 'PIPELINE';
   });
+  // v45 — my client rooms, to show them beside the deals and to link a deal to the rooms that carry its property
+  const canRooms = perm('clientroom:use') && currentUser.role === 'BROKER';
+  const [myRooms, setMyRooms] = useState<any[]>([]);
+  const [roomKey, setRoomKey] = useState(0);
+  useEffect(() => {
+    if (!canRooms) return;
+    let live = true;
+    const pull = () => { api.crList().then(r => { if (live) setMyRooms((r.rooms || []).filter((x: any) => x.status === 'ACTIVE')); }).catch(() => undefined); };
+    pull();
+    window.addEventListener('genz:rooms-changed', pull);
+    return () => { live = false; window.removeEventListener('genz:rooms-changed', pull); };
+  }, [canRooms, mainMode]);
+  const roomsFor = (propertyId: string) => myRooms.filter((r: any) => (r.propertyIds || []).includes(propertyId));
+  const openClientRoom = (roomId?: string) => {
+    try { const u = new URL(window.location.href); if (roomId) u.searchParams.set('room', roomId); else u.searchParams.delete('room'); window.history.replaceState(null, '', u.toString()); } catch { /* old browser */ }
+    setRoomKey(k => k + 1);
+    setMainMode('ROOMS');
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* old browser */ }
+  };
+  const roomsAlert = myRooms.some((r: any) => r.unread > 0 || r.openVisits > 0 || r.codeAsk);
+  // keep the chosen mode's button in view on a phone (the switch scrolls sideways)
+  useEffect(() => { try { document.querySelector(`[data-testid="deal-mode-${mainMode}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch { /* old browser */ } }, [mainMode]);
   const [hub, setHub] = useState<any>(null);
   const [listQ, setListQ] = useState('');
   const [taskFilter, setTaskFilter] = useState<'ALL' | 'MINE' | 'OPEN' | 'OVERDUE' | 'REVIEW'>('ALL');
@@ -754,13 +779,15 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           </div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
             {mainMode === 'PIPELINE' ? tx('Deal pipeline', 'डील पाइपलाइन')
-              : mainMode === 'MANDATES' ? tx('Owner mandates', 'मालिक के मैंडेट')
+              : mainMode === 'MANDATES' ? tx('Owners — brokerage terms', 'मालिक — ब्रोकरेज की शर्तें')
+              : mainMode === 'ROOMS' ? tx('Client rooms', 'क्लाइंट रूम')
               : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Co-broking offers', 'को-ब्रोकिंग ऑफ़र')
               : tx('Deal room', 'डील रूम')}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             {mainMode === 'PIPELINE' ? tx('Every deal by stage — what needs you first. Tap a card to open its deal room.', 'हर डील स्टेज के हिसाब से — पहले वो जिसमें आपका काम बाकी है। डील रूम खोलने के लिए कार्ड दबाएँ।')
               : mainMode === 'MANDATES' ? tx('Brokerage mandates signed by owners — status, terms and protection days left.', 'मालिकों के साइन किए ब्रोकरेज मैंडेट — स्थिति, शर्तें और सुरक्षा के बचे दिन।')
+              : mainMode === 'ROOMS' ? tx('Your buyers’ private rooms — share homes, chat, and book visits. A deal shows the rooms that have its property.', 'आपके खरीदारों के निजी रूम — प्रॉपर्टी भेजें, बात करें, विज़िट तय करें। हर डील में वो रूम दिखते हैं जिनमें उसकी प्रॉपर्टी है।')
               : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Offers other brokers sent on your listings, and the ones you sent. Accepting one opens a deal room.', 'आपकी लिस्टिंग पर दूसरे ब्रोकरों के ऑफ़र, और आपके भेजे ऑफ़र। मंज़ूर करते ही डील रूम खुलता है।')
               : tx('Who does what, the brokerage agreement, title check and registry — all for this deal in one place.', 'कौन क्या करेगा, ब्रोकरेज समझौता, टाइटल जाँच और रजिस्ट्री — इस डील का सब एक जगह।')}
           </p>
@@ -771,10 +798,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
           ['DEAL_ROOMS', Briefcase, selectedDealId && mainMode === 'DEAL_ROOMS' ? `${tx('Deal room', 'डील रूम')} · ${selectedDealId}` : tx('Deal room', 'डील रूम'), undefined, false],
           ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Offers', 'ऑफ़र'), (offers || []).length, pendingIncomingCount > 0]] : []),
-          ...(perm('mandate:read') ? [['MANDATES', FileSignature, tx('Mandates', 'मैंडेट'), undefined, false]] : []),
+          ...(canRooms ? [['ROOMS', MessagesSquare, tx('Client rooms', 'क्लाइंट रूम'), myRooms.length, roomsAlert]] : []),
+          ...(perm('mandate:read') ? [['MANDATES', FileSignature, tx('Owners', 'मालिक'), undefined, false]] : []),
         ] as [typeof mainMode, React.ElementType, string, number | undefined, boolean][]).map(([id, Icon, text, n, dot]) => (
           <button key={id} type="button" role="tab" aria-selected={mainMode === id}
-            onClick={() => (id === 'DEAL_ROOMS' && !selectedDealId && deals[0] ? openDeal(deals[0].id) : setMainMode(id))}
+            onClick={() => (id === 'DEAL_ROOMS' && !selectedDealId && deals[0] ? openDeal(deals[0].id) : id === 'ROOMS' ? openClientRoom() : setMainMode(id))}
             className={`relative inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all ${mainMode === id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`} data-testid={`deal-mode-${id}`}>
             <Icon className="h-3.5 w-3.5" /><span className="whitespace-nowrap">{text}</span>
             {n !== undefined && <span className={`rounded-full px-1.5 text-[10px] font-bold ${mainMode === id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{n}</span>}
@@ -787,6 +815,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
         <DealPipeline hub={hub} onOpen={openDeal} showRoles={currentUser.role === 'BROKER'} />
       ) : mainMode === 'MANDATES' ? (
         <MandatesBoard currentUser={currentUser} deals={hub?.deals || []} onOpenDeal={(id) => openDeal(id)} />
+      ) : mainMode === 'ROOMS' && canRooms ? (
+        <React.Suspense fallback={<Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />}>
+          <div data-testid="deals-client-rooms"><ClientRoomsTab key={roomKey} /></div>
+        </React.Suspense>
       ) : mainMode === 'DEAL_ROOMS' || isOwnerViewer ? (
       /* Main Grid: Left List + Right Deal Room Details */
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
@@ -1025,6 +1057,22 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       <div className="text-[11px] text-slate-600 font-medium pt-1">
                         {tx('Mandate confirmed by owner', 'मालिक की मैंडेट पुष्टि')}: {activeDeal.ownerRemunerationConfirmed ? tx('Yes', 'हाँ') : tx('Pending', 'बाकी')}
                       </div>
+                      {/* v45 — the owner's terms and my client rooms for this property, one tap away */}
+                      <div className="flex flex-wrap gap-1.5 pt-2" data-testid="deal-links">
+                        {perm('mandate:read') && (
+                          <button type="button" onClick={() => setMainMode('MANDATES')} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-semibold text-slate-700 hover:border-slate-900" data-testid="deal-owner-terms">
+                            <FileSignature className="h-3.5 w-3.5" />{tx('Owner’s terms', 'मालिक की शर्तें')}
+                          </button>
+                        )}
+                        {canRooms && roomsFor(activeDeal.propertyId).map((r: any) => (
+                          <button key={r.id} type="button" onClick={() => openClientRoom(r.id)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-[11px] font-semibold text-indigo-800 hover:border-indigo-500" data-testid="deal-client-room">
+                            <MessagesSquare className="h-3.5 w-3.5" />{tx('Client room', 'क्लाइंट रूम')}: {r.clientName}{r.unread > 0 ? ` (${r.unread})` : ''}
+                          </button>
+                        ))}
+                      </div>
+                      {canRooms && roomsFor(activeDeal.propertyId).length === 0 && (
+                        <p className="pt-1 text-[11px] text-slate-500">{tx('None of your client rooms has this property yet — use “Send to client room” below.', 'आपके किसी क्लाइंट रूम में यह प्रॉपर्टी नहीं है — नीचे “क्लाइंट रूम में भेजें” दबाएँ।')}</p>
+                      )}
                     </div>
                   </div>
 

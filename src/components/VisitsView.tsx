@@ -107,6 +107,13 @@ const ScanDesk: React.FC<{ onDone: () => void }> = ({ onDone }) => {
     try { const r = await api.visitPreview(c); setCode(c); setPrev(r); setSize(r.pass.partySize ? String(r.pass.partySize) : ''); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
+  // v45: opened from the header Scan with a builder pass → look it up at once
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href); const c = u.searchParams.get('pass');
+      if (c) { u.searchParams.delete('pass'); window.history.replaceState(null, '', u.toString()); void lookup(c); }
+    } catch { /* old browser */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const confirm = async () => {
     setBusy(true); setErr('');
     try { const r = await api.visitConfirm(code, { idChecked: true, partySize: size ? Number(size) : undefined, note: note || undefined }); setResult(r); setPrev(null); setTyped(''); onDone(); }

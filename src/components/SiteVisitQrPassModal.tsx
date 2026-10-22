@@ -32,6 +32,8 @@ interface SiteVisitQrPassModalProps {
   currentUser: UserProfile;
   onClose: () => void;
   onSuccess?: () => void;
+  /** v45: a QR already scanned elsewhere (header Scan) — check in with it at once */
+  initialScan?: string;
 }
 
 export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
@@ -42,6 +44,7 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
   currentUser,
   onClose,
   onSuccess,
+  initialScan,
 }) => {
   const tx = useTx();
   const { lang } = useI18n();
@@ -67,6 +70,9 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
       setScannedToken(j.secret); handleScanCheckin(j.secret);
     } catch { setError(tx('That QR is not a GENZ property-visit pass.', 'यह QR GENZ का प्रॉपर्टी-विज़िट पास नहीं है।')); }
   };
+
+  // v45: scanned from the header QR button → go straight to check-in (once)
+  useEffect(() => { if (initialScan && !visit.isVerified) onScanned(initialScan); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const passToken = `VISIT-PASS-${visit.id}`;
   const verificationPayload = JSON.stringify({

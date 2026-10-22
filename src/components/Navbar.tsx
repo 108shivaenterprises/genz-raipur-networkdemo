@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile } from '../types/index.js';
-import { ShieldCheck, Building2, MapPin, CheckCircle2, AlertTriangle, Users, QrCode } from 'lucide-react';
+import { ShieldCheck, Building2, MapPin, CheckCircle2, AlertTriangle, Users, QrCode, ScanLine } from 'lucide-react';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -15,6 +15,8 @@ interface NavbarProps {
   onOpenInviteModal?: () => void;
   onOpenBrokerQrModal?: () => void;
   onOpenBrokerSafetyModal?: () => void;
+  /** v45: roles that verify visits but have no broker card (owner, builder team) get a Scan button */
+  onOpenScan?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -26,6 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPrivacy,
   onOpenBrokerQrModal,
   onOpenBrokerSafetyModal,
+  onOpenScan,
 }) => {
   const { t } = useI18n();
   const tx = useTx();
@@ -63,12 +66,24 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onOpenBrokerQrModal && (
             <button
               onClick={onOpenBrokerQrModal}
-              title={tx('View & share verified digital broker identity card with QR code', 'वेरिफ़ाइड डिजिटल ब्रोकर आइडी कार्ड QR के साथ देखें और शेयर करें')}
+              data-testid="header-qr"
+              title={tx('Scan a visit QR, or show your broker QR card', 'विज़िट QR स्कैन करें, या अपना ब्रोकर QR कार्ड दिखाएँ')}
               className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50/90 hover:bg-blue-100 px-2.5 py-1.5 text-xs font-bold text-blue-800 transition-colors shadow-2xs"
             >
               <QrCode className="h-3.5 w-3.5 text-blue-600" />
-              <span className="hidden sm:inline">{tx('Broker QR Card', 'ब्रोकर QR कार्ड')}</span>
-              <span className="sm:hidden">QR</span>
+              <span className="hidden sm:inline">{tx('QR · Scan / Card', 'QR · स्कैन / कार्ड')}</span>
+              <span className="sm:hidden">{tx('QR · Scan', 'QR · स्कैन')}</span>
+            </button>
+          )}
+          {!onOpenBrokerQrModal && onOpenScan && (
+            <button
+              onClick={onOpenScan}
+              data-testid="header-scan"
+              title={tx('Scan a visit QR at the property', 'प्रॉपर्टी पर विज़िट QR स्कैन करें')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50/90 hover:bg-blue-100 px-2.5 py-1.5 text-xs font-bold text-blue-800 transition-colors shadow-2xs"
+            >
+              <ScanLine className="h-3.5 w-3.5 text-blue-600" />
+              <span>{tx('Scan', 'स्कैन')}</span>
             </button>
           )}
 

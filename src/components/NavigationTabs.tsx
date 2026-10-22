@@ -206,9 +206,10 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
   // v31 — a broker's ~23 tabs in 6 groups, each in priority order (the order of `ids` is the order shown; a group opens on its first tab). Every tab is still reachable: a group lists the tabs below, and anything not named lands in “Other”.
   const GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
-    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'daily', 'clientroom', 'visits'] },
+    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'daily', 'visits'] },
     { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'share', 'propdocs', 'pdocs', 'landrecords'] },
-    { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'desk', 'legal', 'due_diligence', 'disputes', 'audit'] },
+    // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
+    { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'legal', 'due_diligence', 'disputes', 'audit'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },
     { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['network', 'community', 'grow', 'plans', 'launchdesk', 'citylaunch'] },
   ];
