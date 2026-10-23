@@ -73769,10 +73769,13 @@ function useViewToken(token, kind, userId) {
   used.set(sig, c.e);
   return c;
 }
-function stampFor(name, phoneDigits) {
+function initialsOf(name) {
+  return String(name || "").split(/\s+/).filter((w) => /^[A-Za-z\u0900-\u097F]/.test(w)).slice(0, 3).map((w) => w[0].toUpperCase() + ".").join("") || "?";
+}
+function stampFor(name, phoneDigits, via) {
   const stamp = (/* @__PURE__ */ new Date()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "short", timeStyle: "short" });
   const last42 = String(phoneDigits || "").replace(/\D/g, "").slice(-4);
-  return `${name} \xB7 ${last42 ? `\u2022\u2022${last42}` : "\u2022\u2022\u2022\u2022"} \xB7 ${stamp}`;
+  return `${initialsOf(name)} \xB7 ${name} \xB7 ${last42 ? `\u2022\u2022${last42}` : "\u2022\u2022\u2022\u2022"} \xB7 ${stamp}${via ? ` \xB7 via ${via}` : ""}`;
 }
 
 // src/shared/propDocs.ts
@@ -73813,6 +73816,23 @@ function sniffMime(b) {
   if (b.length > 12 && b[0] === 82 && b[1] === 73 && b[2] === 70 && b[3] === 70 && b[8] === 87 && b[9] === 69 && b[10] === 66 && b[11] === 80) return "image/webp";
   return null;
 }
+
+// src/shared/clientRoomRules.ts
+var ROOM_KINDS = [
+  { id: "BUYER", en: "Buyer", hi: "\u0916\u0930\u0940\u0926\u093E\u0930" },
+  { id: "RENTER", en: "Renter", hi: "\u0915\u093F\u0930\u093E\u090F \u092A\u0930 \u0932\u0947\u0928\u0947 \u0935\u093E\u0932\u093E" },
+  { id: "TENANT", en: "Tenant", hi: "\u0915\u093F\u0930\u093E\u090F\u0926\u093E\u0930" },
+  { id: "OTHER", en: "Other client", hi: "\u0905\u0928\u094D\u092F \u0915\u094D\u0932\u093E\u0907\u0902\u091F" }
+];
+var ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1e3, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 60, purgeClosedDays: 90, devices: 2, maxLifeDays: 365 };
+function containsPhone(text) {
+  const flat = String(text || "").replace(/[\s\-().]/g, "");
+  return /(?:\+?91|0)?[6-9]\d{9}(?!\d)/.test(flat);
+}
+var PHONE_IN_CHAT_MSG = {
+  en: "Please do not type phone numbers in this chat. The owner's number is shared only after a verified visit, and your broker's number is already on this page.",
+  hi: "\u0915\u0943\u092A\u092F\u093E \u0907\u0938 \u091A\u0948\u091F \u092E\u0947\u0902 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u0915\u0947 \u092C\u093E\u0926 \u092E\u093F\u0932\u0924\u093E \u0939\u0948, \u0914\u0930 \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u0902\u092C\u0930 \u0907\u0938\u0940 \u092A\u0947\u091C \u092A\u0930 \u0939\u0948\u0964"
+};
 
 // server/propdocs.ts
 var me5 = () => ctx().user;
@@ -73864,6 +73884,38 @@ var log = (docId2, userId, action, ip, note5) => {
   if (st22.propertyDocLogs.length > LOG_CAP) st22.propertyDocLogs.splice(0, st22.propertyDocLogs.length - LOG_CAP);
 };
 var nameOf = (st22, id) => db.byId("users", id)?.name || "\u2014";
+var logDocOpen = log;
+var shareOf = (d, userId) => d.shares.find((s) => s.userId === userId && !s.revoked);
+var shareLive = (s, now = Date.now()) => !s.revoked && (!s.expiresAt || Date.parse(s.expiresAt) > now);
+var viewsLeft = (s) => s.maxViews ? Math.max(0, s.maxViews - (s.views || 0)) : null;
+var daysAhead = (n2) => new Date(Date.now() + n2 * 864e5).toISOString();
+function ensureProtected(d, u) {
+  if (d.protect) return true;
+  const pp = viewerPages(d);
+  if (!pp) return false;
+  d.protect = true;
+  d.protectedAt = nowIso6();
+  d.pages = pp.length;
+  db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_PROTECT", `\u201C${d.title}\u201D protected while sharing it from a chat: view-only, every viewer's name stamped, no download (except the uploader)`);
+  return true;
+}
+function clientPaperState(st22, shareId, roomId, ignoreViews = false, now = Date.now()) {
+  const doc = st22.propertyDocs.find((d) => (d.clientShares || []).some((c) => c.id === shareId));
+  const cs = doc?.clientShares?.find((c) => c.id === shareId && c.roomId === roomId);
+  if (!doc || !cs) return { ok: false, reason: "GONE" };
+  if (cs.revoked || !doc.protect) return { ok: false, reason: "STOPPED" };
+  if (Date.parse(cs.expiresAt) <= now) return { ok: false, reason: "EXPIRED" };
+  if (!ignoreViews && cs.views >= cs.maxViews) return { ok: false, reason: "USED" };
+  const broker = st22.users.find((x) => x.id === cs.brokerId);
+  if (!broker) return { ok: false, reason: "STOPPED" };
+  const a = docAccess(st22, broker, doc, now);
+  if (!a.ok) return { ok: false, reason: "STOPPED" };
+  if (a.level !== "MANAGE") {
+    const own2 = shareOf(doc, broker.id);
+    if (!own2 || !shareLive(own2, now) || !own2.clientShare) return { ok: false, reason: "STOPPED" };
+  }
+  return { ok: true, doc, cs, broker };
+}
 function propLine(p) {
   return p ? { propertyTitle: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType } : { propertyTitle: "\u2014", locality: "", city: "", propertyType: "" };
 }
@@ -73897,7 +73949,16 @@ function summary(st22, d, u, a) {
     pages: d.pages || 1,
     canDownload: mayHaveFile(d, a),
     missing: !fs4.existsSync(fileOf(d.id)),
-    shares: manage ? d.shares.filter((s) => !s.revoked).map((s) => ({ userId: s.userId, name: nameOf(st22, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now() })) : void 0
+    shares: manage ? d.shares.filter((s) => !s.revoked).map((s) => ({ userId: s.userId, name: nameOf(st22, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now(), maxViews: s.maxViews || null, views: s.views || 0, dealId: s.dealId, clientShare: !!s.clientShare })) : void 0,
+    // v55 — what I was given (opens left, until when, may I show my client) and to which of my clients I showed it
+    myShare: a.via === "SHARED" ? (() => {
+      const s = shareOf(d, u.id);
+      return s ? { expiresAt: s.expiresAt, viewsLeft: viewsLeft(s), maxViews: s.maxViews || null, clientShare: !!s.clientShare, dealId: s.dealId } : void 0;
+    })() : void 0,
+    clientShares: (d.clientShares || []).filter((c) => c.brokerId === u.id && !c.revoked).map((c) => {
+      const room = st22.clientRooms.find((r) => r.id === c.roomId);
+      return { id: c.id, roomId: c.roomId, clientName: room?.clientName || "\u2014", expiresAt: c.expiresAt, maxViews: c.maxViews, views: c.views, lastAt: c.lastAt };
+    })
   };
 }
 function haystack(st22, d, a) {
@@ -74077,7 +74138,14 @@ function createPropDocsRouter() {
     const { u, d, a } = x;
     const pages = viewerPages(d);
     if (!pages) return fs4.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
-    log(d.id, u.id, "VIEW", req.ip || "", `${d.protect ? "view-only viewer" : "viewer"}, stamped${a.via === "ADMIN" ? " \u2014 GENZ admin" : ""}`);
+    const s = a.via === "SHARED" ? shareOf(d, u.id) : void 0;
+    if (s?.maxViews && (s.views || 0) >= s.maxViews) {
+      log(d.id, u.id, "DENIED", req.ip || "", "all allowed opens used");
+      db.save();
+      return res.status(403).json({ code: "VIEWS_USED", error: `You have opened this paper the ${s.maxViews} time(s) you were allowed. Ask the sender to share it again.`, hi: `\u0906\u092A \u092F\u0939 \u0915\u093E\u0917\u091C\u093C \u0924\u092F ${s.maxViews} \u092C\u093E\u0930 \u0916\u094B\u0932 \u091A\u0941\u0915\u0947 \u0939\u0948\u0902\u0964 \u092D\u0947\u091C\u0928\u0947 \u0935\u093E\u0932\u0947 \u0938\u0947 \u0926\u094B\u092C\u093E\u0930\u093E \u0936\u0947\u092F\u0930 \u0915\u0930\u0935\u093E\u090F\u0901\u0964` });
+    }
+    if (s?.maxViews) s.views = (s.views || 0) + 1;
+    log(d.id, u.id, "VIEW", req.ip || "", `${d.protect ? "view-only viewer" : "viewer"}, stamped${a.via === "ADMIN" ? " \u2014 GENZ admin" : ""}${s?.maxViews ? ` \u2014 open ${s.views} of ${s.maxViews}` : ""}`);
     db.save();
     res.json({
       success: true,
@@ -74087,7 +74155,9 @@ function createPropDocsRouter() {
       protect: !!d.protect,
       tokens: pages.map((_, i) => makeViewToken("PROPDOC", d.id, u.id, i)),
       watermark: stampFor(u.name, digits(u.phone)),
-      canDownload: mayHaveFile(d, a)
+      canDownload: mayHaveFile(d, a),
+      viewsLeft: s ? viewsLeft(s) : null,
+      expiresAt: s?.expiresAt
     });
   });
   r.get("/view/:token", need, (req, res) => {
@@ -74138,6 +74208,109 @@ function createPropDocsRouter() {
     res.setHeader("Content-Length", String(buf.length));
     if (d.mime !== "application/pdf") res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
     res.send(buf);
+  });
+  r.get("/for-deal/:dealId", need, (req, res) => {
+    const u = me5();
+    const st22 = db.getState();
+    const now = Date.now();
+    const deal = st22.dealRooms.find((x) => x.id === req.params.dealId);
+    if (!deal || !isDealParticipant(u, deal)) return bad4(res, "Deal room not found", 404);
+    const docs = st22.propertyDocs.filter((d) => d.propertyId === deal.propertyId).map((d) => {
+      const a = docAccess(st22, u, d, now);
+      return a.ok ? summary(st22, d, u, a) : null;
+    }).filter(Boolean);
+    const people = [.../* @__PURE__ */ new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId])].filter((id) => id && id !== u.id).map((id) => st22.users.find((x) => x.id === id)).filter((x) => !!x && x.verificationStatus === "VERIFIED" && can(x, "propdoc:use") && !isAdmin(x)).map((x) => ({ id: x.id, name: x.name, role: x.role }));
+    res.json({ success: true, docs, people, canClientShare: can(u, "clientroom:use") });
+  });
+  r.post("/:id/chat-share", need, rateLimit("propdocchat", 60, 60 * 6e4), (req, res) => {
+    const x = loadManage(req, res);
+    if (!x) return;
+    const { u, st: st22, d } = x;
+    const b = external_exports.object({
+      dealId: external_exports.string().min(3).max(60),
+      userIds: external_exports.array(external_exports.string()).min(1).max(5),
+      days: external_exports.coerce.number().int().min(1).max(30),
+      maxViews: external_exports.coerce.number().int().min(0).max(50),
+      clientShare: external_exports.boolean().default(false),
+      note: external_exports.string().trim().max(200).optional()
+    }).safeParse(req.body);
+    if (!b.success) return bad4(res, "Choose who may see it, for how many days and how many times.");
+    const deal = st22.dealRooms.find((r22) => r22.id === b.data.dealId);
+    if (!deal || deal.propertyId !== d.propertyId || !isDealParticipant(u, deal)) return bad4(res, "This paper does not belong to that deal room.", 400);
+    const inDeal = new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId].filter(Boolean));
+    const targets2 = [...new Set(b.data.userIds)].map((id) => st22.users.find((p) => p.id === id)).filter((p) => !!p && inDeal.has(p.id) && p.id !== u.id && p.verificationStatus === "VERIFIED" && can(p, "propdoc:use") && !isAdmin(p));
+    if (!targets2.length) return bad4(res, "Choose someone of this deal room to share with.");
+    if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
+    const expiresAt = daysAhead(b.data.days);
+    for (const t of targets2) {
+      const ex = d.shares.find((s) => s.userId === t.id);
+      const fresh = { userId: t.id, grantedBy: u.id, grantedAt: nowIso6(), expiresAt, revoked: false, maxViews: b.data.maxViews || void 0, views: 0, dealId: deal.id, clientShare: b.data.clientShare };
+      if (ex) Object.assign(ex, fresh);
+      else d.shares.push(fresh);
+      log(d.id, t.id, "SHARE", req.ip || "", `from the deal chat by ${u.name} \u2014 ${b.data.days} day(s), ${b.data.maxViews || "unlimited"} open(s)${b.data.clientShare ? ", may show own client" : ""}`);
+    }
+    d.updatedAt = nowIso6();
+    const names = targets2.map((t) => t.name).join(", ");
+    const msg = {
+      id: `MSG-${deal.id}-${Date.now().toString(36)}`,
+      dealRoomId: deal.id,
+      senderId: u.id,
+      senderName: u.name,
+      senderRole: u.role,
+      text: b.data.note || `Shared a paper (view-only): ${d.title}`,
+      audience: "ALL",
+      kind: "PAPER",
+      refId: d.id,
+      ...b.data.note ? {} : { auto: true },
+      timestamp: nowIso6()
+    };
+    st22.dealMessages.push(msg);
+    db.save();
+    db.appendAuditEvent(u.id, u.role, "DEAL", deal.id, "PROPDOC_CHAT_SHARED", `Paper \u201C${d.title}\u201D (${d.id}) shared in the deal chat with ${names}: ${b.data.days} day(s), ${b.data.maxViews || "unlimited"} open(s), view-only${b.data.clientShare ? ", may show own client" : ""}`);
+    res.json({ success: true, message: msg, doc: summary(st22, d, u, x.a) });
+  });
+  r.post("/:id/client-share", need, rateLimit("propdocclient", 60, 60 * 6e4), (req, res) => {
+    const x = load2(req, res);
+    if (!x) return;
+    const { u, st: st22, d, a } = x;
+    if (!can(u, "clientroom:use")) return bad4(res, "Client Rooms are not part of your account.", 403);
+    const b = external_exports.object({ roomId: external_exports.string().min(3).max(40), days: external_exports.coerce.number().int().min(1).max(30), maxViews: external_exports.coerce.number().int().min(1).max(10) }).safeParse(req.body);
+    if (!b.success) return bad4(res, "Choose the client room, for how many days and how many times.");
+    const room = st22.clientRooms.find((r22) => r22.id === b.data.roomId && r22.brokerId === u.id);
+    if (!room) return bad4(res, "Client room not found", 404);
+    if (room.status !== "ACTIVE") return bad4(res, "This client room is closed", 409);
+    let until = Date.now() + b.data.days * 864e5;
+    if (a.level !== "MANAGE") {
+      const own2 = shareOf(d, u.id);
+      if (!own2 || !shareLive(own2) || !own2.clientShare) return res.status(403).json({ code: "CLIENT_SHARE_OFF", error: "The sender did not allow showing this paper to your client.", hi: "\u092D\u0947\u091C\u0928\u0947 \u0935\u093E\u0932\u0947 \u0928\u0947 \u092F\u0939 \u0915\u093E\u0917\u091C\u093C \u0906\u092A\u0915\u0947 \u0915\u094D\u0932\u093E\u0907\u0902\u091F \u0915\u094B \u0926\u093F\u0916\u093E\u0928\u0947 \u0915\u0940 \u0905\u0928\u0941\u092E\u0924\u093F \u0928\u0939\u0940\u0902 \u0926\u0940\u0964" });
+      if (own2.maxViews && (own2.views || 0) >= own2.maxViews) return res.status(403).json({ code: "VIEWS_USED", error: "Your own opens of this paper are used up.", hi: "\u0907\u0938 \u0915\u093E\u0917\u091C\u093C \u0915\u094B \u0916\u094B\u0932\u0928\u0947 \u0915\u0940 \u0906\u092A\u0915\u0940 \u0924\u092F \u0917\u093F\u0928\u0924\u0940 \u092A\u0942\u0930\u0940 \u0939\u094B \u091A\u0941\u0915\u0940 \u0939\u0948\u0964" });
+      if (own2.expiresAt) until = Math.min(until, Date.parse(own2.expiresAt));
+    }
+    if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
+    if (room.messages.length >= ROOM_LIMITS.messages) return bad4(res, "This chat is full \u2014 open a new room or close this one");
+    const cs = { id: `CPS-${crypto8.randomBytes(5).toString("hex")}`, roomId: room.id, brokerId: u.id, grantedAt: nowIso6(), expiresAt: new Date(until).toISOString(), maxViews: b.data.maxViews, views: 0 };
+    (d.clientShares ||= []).push(cs);
+    room.messages.push({ id: `CRX-${crypto8.randomBytes(5).toString("hex")}`, from: "BROKER", text: `\u{1F4C4} ${d.title} \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F / view only`, at: nowIso6(), paper: { shareId: cs.id, docId: d.id, title: d.title } });
+    room.events.push({ at: nowIso6(), text: `Paper shown (view-only): ${d.title}` });
+    room.updatedAt = nowIso6();
+    room.lastBrokerSeenAt = nowIso6();
+    log(d.id, u.id, "SHARE", req.ip || "", `shown to his client ${room.clientName} (client room) \u2014 ${Math.ceil((until - Date.now()) / 864e5)} day(s), ${b.data.maxViews} open(s)`);
+    db.save();
+    db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "PROPDOC_CLIENT_SHARED", `Paper \u201C${d.title}\u201D (${d.id}) shown to the client of room ${room.id}: until ${cs.expiresAt.slice(0, 10)}, ${cs.maxViews} open(s), view-only`);
+    res.json({ success: true, share: cs, doc: summary(st22, d, u, a) });
+  });
+  r.post("/:id/client-revoke", need, (req, res) => {
+    const x = load2(req, res);
+    if (!x) return;
+    const { u, st: st22, d, a } = x;
+    const cs = (d.clientShares || []).find((c) => c.id === String(req.body?.shareId || "") && !c.revoked);
+    if (!cs) return bad4(res, "Not found", 404);
+    if (cs.brokerId !== u.id && a.level !== "MANAGE") return bad4(res, "Only the broker who showed it can stop it.", 403);
+    cs.revoked = true;
+    d.updatedAt = nowIso6();
+    log(d.id, cs.brokerId, "REVOKE", req.ip || "", `client showing stopped by ${u.name}`);
+    db.save();
+    res.json({ success: true, doc: summary(st22, d, u, a) });
   });
   r.patch("/:id", need, (req, res) => {
     const x = loadManage(req, res);
@@ -87312,23 +87485,6 @@ var import_express52 = __toESM(require_express2(), 1);
 var import_express53 = __toESM(require_express2(), 1);
 import crypto32 from "crypto";
 
-// src/shared/clientRoomRules.ts
-var ROOM_KINDS = [
-  { id: "BUYER", en: "Buyer", hi: "\u0916\u0930\u0940\u0926\u093E\u0930" },
-  { id: "RENTER", en: "Renter", hi: "\u0915\u093F\u0930\u093E\u090F \u092A\u0930 \u0932\u0947\u0928\u0947 \u0935\u093E\u0932\u093E" },
-  { id: "TENANT", en: "Tenant", hi: "\u0915\u093F\u0930\u093E\u090F\u0926\u093E\u0930" },
-  { id: "OTHER", en: "Other client", hi: "\u0905\u0928\u094D\u092F \u0915\u094D\u0932\u093E\u0907\u0902\u091F" }
-];
-var ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1e3, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 60, purgeClosedDays: 90, devices: 2, maxLifeDays: 365 };
-function containsPhone(text) {
-  const flat = String(text || "").replace(/[\s\-().]/g, "");
-  return /(?:\+?91|0)?[6-9]\d{9}(?!\d)/.test(flat);
-}
-var PHONE_IN_CHAT_MSG = {
-  en: "Please do not type phone numbers in this chat. The owner's number is shared only after a verified visit, and your broker's number is already on this page.",
-  hi: "\u0915\u0943\u092A\u092F\u093E \u0907\u0938 \u091A\u0948\u091F \u092E\u0947\u0902 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u0915\u0947 \u092C\u093E\u0926 \u092E\u093F\u0932\u0924\u093E \u0939\u0948, \u0914\u0930 \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u0902\u092C\u0930 \u0907\u0938\u0940 \u092A\u0947\u091C \u092A\u0930 \u0939\u0948\u0964"
-};
-
 // src/shared/roomMedia.ts
 var ROOM_MEDIA = { maxPhotos: 12, maxVideos: 2 };
 var okMediaUrl = (u) => typeof u === "string" && u.length > 0 && u.length <= 500 && (/^https:\/\/[^\s"'<>]+$/i.test(u) || /^\/[^\s"'<>]*$/.test(u));
@@ -87737,6 +87893,23 @@ function shell3(title, body, lang = "hi") {
 var CR_JS = `(function(){var im=document.querySelectorAll('.prop img,.gal img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
 var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}})();`;
+var PV_JS = `(function(){var R=document.getElementById('pv');if(!R)return;var T=JSON.parse(R.getAttribute('data-t')||'[]'),B=R.getAttribute('data-base')||'',W=R.getAttribute('data-wm')||'',H=document.getElementById('pv-pages'),C=document.getElementById('pv-cover');
+function st(img){var c=document.createElement('canvas'),k=Math.min(1,1200/img.width);c.width=Math.max(1,Math.round(img.width*k));c.height=Math.max(1,Math.round(img.height*k));var g=c.getContext('2d'),w=c.width,h=c.height;g.drawImage(img,0,0,w,h);
+var ini=(W.split(' \xB7 ')[0]||'').slice(0,8);if(ini){g.save();g.globalAlpha=0.13;g.fillStyle='#b91c1c';g.textAlign='center';g.textBaseline='middle';g.font='800 '+Math.round(Math.min(w,h)/3.2)+'px system-ui,sans-serif';g.translate(w/2,h/2);g.rotate(-Math.PI/7);g.fillText(ini,0,0);g.restore()}
+var sz=Math.max(15,Math.round(Math.min(w,h*1.4)/24)),line=W+' \xB7 GENZ';g.save();g.translate(w/2,h/2);g.rotate(-Math.PI/7);g.translate(-w/2,-h/2);g.font='700 '+sz+'px system-ui,sans-serif';g.textBaseline='middle';var sx=Math.round(g.measureText(line).width+sz*2.2),sy=Math.round(sz*3.6),row=0;
+for(var y=-h;y<h*2;y+=sy,row++){for(var x=-w-(row%2)*(sx/2);x<w*2;x+=sx){g.globalAlpha=0.42;g.lineWidth=Math.max(2,sz/7);g.strokeStyle='#fff';g.strokeText(line,x,y);g.globalAlpha=0.34;g.fillStyle='#b91c1c';g.fillText(line,x,y)}}g.restore();
+var band=Math.round(sz*2.3);g.globalAlpha=0.86;g.fillStyle='#0f172a';g.fillRect(0,h-band,w,band);g.globalAlpha=1;g.fillStyle='#fff';g.textBaseline='middle';var f='GENZ \xB7 View only \u2014 '+W+' \xB7 do not forward',fs=Math.round(sz*0.8);g.font='700 '+fs+'px system-ui,sans-serif';while(fs>9&&g.measureText(f).width>w-20){fs--;g.font='700 '+fs+'px system-ui,sans-serif'}g.fillText(f,10,h-band/2);return c}
+function nx(i){if(i>=T.length)return;var im=new Image();im.onload=function(){var c=st(im);c.style.cssText='width:100%;height:auto;display:block;margin-bottom:10px;border-radius:6px;pointer-events:none';H.appendChild(c);nx(i+1)};im.onerror=function(){var p=document.createElement('p');p.className='t';p.textContent='\u092F\u0939 \u092A\u0947\u091C \u0932\u094B\u0921 \u0928\u0939\u0940\u0902 \u0939\u0941\u0906 \u2014 \u092A\u0947\u091C \u0926\u094B\u092C\u093E\u0930\u093E \u0916\u094B\u0932\u0947\u0902 / This page could not load \u2014 open again';H.appendChild(p);nx(i+1)};im.src=B+T[i]}nx(0);
+function hd(){var x=document.visibilityState!=='visible'||!document.hasFocus();H.style.filter=x?'blur(24px)':'';C.style.display=x?'flex':'none'}
+window.addEventListener('blur',hd);window.addEventListener('focus',hd);document.addEventListener('visibilitychange',hd);document.addEventListener('contextmenu',function(e){e.preventDefault()});
+window.addEventListener('keydown',function(e){var k=(e.key||'').toLowerCase();if((e.ctrlKey||e.metaKey)&&['s','p','c','u'].indexOf(k)>=0)e.preventDefault();if(e.key==='PrintScreen'){H.style.filter='blur(24px)';try{navigator.clipboard.writeText('')}catch(x){}}})})();`;
+var PAPER_WHY = {
+  GONE: "\u092F\u0939 \u0915\u093E\u0917\u091C\u093C \u0905\u092C \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 / This paper is no longer here.",
+  STOPPED: "\u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u092F\u0939 \u0915\u093E\u0917\u091C\u093C \u0926\u093F\u0916\u093E\u0928\u093E \u092C\u0902\u0926 \u0915\u0930 \u0926\u093F\u092F\u093E \u0939\u0948\u0964 / Your broker stopped sharing this paper.",
+  EXPIRED: "\u0907\u0938\u0947 \u0926\u0947\u0916\u0928\u0947 \u0915\u093E \u0938\u092E\u092F \u0916\u093C\u0924\u094D\u092E \u0939\u094B \u0917\u092F\u093E\u0964 \u0905\u092A\u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u0926\u094B\u092C\u093E\u0930\u093E \u092D\u0947\u091C\u0928\u0947 \u0915\u094B \u0915\u0939\u0947\u0902\u0964 / The time to view it is over \u2014 ask your broker to share it again.",
+  USED: "\u0906\u092A \u0907\u0938\u0947 \u0924\u092F \u092C\u093E\u0930 \u0926\u0947\u0916 \u091A\u0941\u0915\u0947 \u0939\u0948\u0902\u0964 \u0905\u092A\u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u0926\u094B\u092C\u093E\u0930\u093E \u092D\u0947\u091C\u0928\u0947 \u0915\u094B \u0915\u0939\u0947\u0902\u0964 / You have opened it the allowed number of times \u2014 ask your broker to share it again."
+};
+var dayHi = (iso) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 function createClientRoomPageRouter() {
   const r = (0, import_express52.Router)();
   const form = import_express53.default.urlencoded({ extended: false, limit: "20kb" });
@@ -87753,6 +87926,10 @@ function createClientRoomPageRouter() {
   r.get("/cr.js", (_req, res) => {
     res.set({ "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" });
     res.send(CR_JS);
+  });
+  r.get("/pv.js", (_req, res) => {
+    res.set({ "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" });
+    res.send(PV_JS);
   });
   const brokerCard2 = (b) => {
     const ph = phone107(b?.phone);
@@ -87904,6 +88081,51 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     pingBroker(room, `New message from ${room.clientName}`, "Open Client Rooms to read and reply.");
     res.redirect(303, `/r/${req.params.token}#chat`);
   });
+  r.get("/:token/paper/:sid", rateLimit("cr-paper", 60, 6e4), (req, res) => {
+    const room = authed(req, res);
+    if (!room) return;
+    const dev = sessionFor(req, room);
+    const tok2 = esc12(req.params.token);
+    const x = clientPaperState(st21(), String(req.params.sid), room.id);
+    const back = `<div class="row"><a class="btn l" href="/r/${tok2}#chat">\u2190 \u0930\u0942\u092E \u092A\u0930 \u0935\u093E\u092A\u0938 / Back to the room</a></div>`;
+    if (!x.ok) return res.status(403).send(shell3("Paper", `<div class="card warn"><p class="h">${PAPER_WHY[x.reason]}</p>${back}</div>`));
+    const pages = viewerPages(x.doc);
+    if (!pages) return res.status(404).send(shell3("Paper", `<div class="card warn"><p class="h">\u092F\u0939 \u0915\u093E\u0917\u091C\u093C \u0905\u092D\u0940 \u0928\u0939\u0940\u0902 \u0916\u0941\u0932 \u0930\u0939\u093E\u0964 / This paper cannot be opened right now.</p>${back}</div>`));
+    x.cs.views += 1;
+    x.cs.lastAt = nowIso34();
+    ev(room, `Client opened a paper (${x.cs.views} of ${x.cs.maxViews}): ${x.doc.title}`);
+    logDocOpen(x.doc.id, x.cs.brokerId, "VIEW", req.ip || "", `his client ${room.clientName} opened it in the client room (${x.cs.views} of ${x.cs.maxViews})`);
+    db.save();
+    const who = `cr:${room.id}:${dev}`;
+    const tokens2 = pages.map((_, i) => makeViewToken("CRDOC", `${x.doc.id}|${x.cs.id}`, who, i));
+    const wm = stampFor(room.clientName, room.phoneLast4, x.broker.name);
+    const left = Math.max(0, x.cs.maxViews - x.cs.views);
+    res.send(shell3(x.doc.title, `<style>body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}@media print{body{display:none}}#pv-cover{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.75);color:#fff;font-weight:700;text-align:center;padding:20px;z-index:60}</style>
+<div class="top"><h1>\u{1F4C4} ${esc12(x.doc.title)}</h1><p>\u0938\u093F\u0930\u094D\u092B\u093C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \xB7 \u0939\u0930 \u092A\u0947\u091C \u092A\u0930 \u0906\u092A\u0915\u093E \u0928\u093E\u092E \u091B\u092A\u093E \u0939\u0948 \xB7 View only \u2014 your name is on every page</p></div>
+<div class="card"><p class="t">\u{1F512} ${esc12(wm)}</p><p class="small">${left > 0 ? `${left} \u092C\u093E\u0930 \u0914\u0930 \u0916\u094B\u0932 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902 \xB7 ${esc12(dayHi(x.cs.expiresAt))} \u0924\u0915 / ${left} more open(s) \xB7 till ${esc12(dayHi(x.cs.expiresAt))}` : "\u092F\u0939 \u0906\u0916\u093C\u093F\u0930\u0940 \u092C\u093E\u0930 \u0925\u093E \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0926\u0947\u0916\u0928\u093E \u0939\u094B \u0924\u094B \u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u0915\u0939\u0947\u0902\u0964 / This was the last open \u2014 ask your broker to share again."}</p><p class="small">\u0907\u0938\u0915\u093E \u0938\u094D\u0915\u094D\u0930\u0940\u0928\u0936\u0949\u091F \u092F\u093E \u092B\u093C\u094B\u091F\u094B \u0906\u0917\u0947 \u0928 \u092D\u0947\u091C\u0947\u0902 \u2014 \u0909\u0938 \u092A\u0930 \u0906\u092A\u0915\u093E \u0928\u093E\u092E \u0926\u093F\u0916\u0947\u0917\u093E\u0964 / Please do not forward a screenshot or photo \u2014 your name shows on it.</p>${back}</div>
+<div id="pv" data-t='${esc12(JSON.stringify(tokens2))}' data-base="/r/${tok2}/pp/" data-wm="${esc12(wm)}"><div id="pv-pages" style="margin-top:12px"></div></div>
+<div id="pv-cover">\u092F\u0939 \u092A\u0947\u091C \u0924\u092D\u0940 \u0926\u093F\u0916\u0924\u093E \u0939\u0948 \u091C\u092C \u092F\u0939 \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0938\u093E\u092E\u0928\u0947 \u0939\u094B / Shown only while this screen is in front</div>
+<script src="/r/pv.js" defer></script>`));
+  });
+  r.get("/:token/pp/:pt", (req, res) => {
+    headers(res);
+    const room = find(req.params.token);
+    const dev = room && room.status === "ACTIVE" ? sessionFor(req, room) : null;
+    if (!room || !dev) return res.status(403).end();
+    const c = useViewToken(req.params.pt, "CRDOC", `cr:${room.id}:${dev}`);
+    if (!c) return res.status(403).end();
+    if (String(req.headers["sec-fetch-dest"] || "image") !== "image") return res.status(403).end();
+    const [, sid] = c.d.split("|");
+    const x = clientPaperState(st21(), sid, room.id, true);
+    if (!x.ok) return res.status(403).end();
+    const page2 = viewerPages(x.doc)?.[c.p];
+    if (!page2) return res.status(404).end();
+    res.setHeader("Content-Type", x.doc.mime === "application/pdf" ? "image/jpeg" : x.doc.mime);
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Content-Disposition", "inline");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(page2);
+  });
   function render(req, res, room, msg = "") {
     const b = st21().users.find((u) => u.id === room.brokerId);
     room.lastClientSeenAt = nowIso34();
@@ -87932,7 +88154,13 @@ ${pub.description ? `<details><summary>\u092C\u094D\u092F\u094C\u0930\u093E / De
 ${pub.available ? `<div class="row"><form method="post" action="/r/${tok2}/react"><input type="hidden" name="item" value="${esc12(i.id)}"><button class="${i.reaction === "LIKE" ? "g" : "l"}" name="r" value="LIKE" type="submit">\u{1F44D} \u092A\u0938\u0902\u0926${i.reaction === "LIKE" ? " \u2714" : ""}</button> <button class="l" name="r" value="PASS" type="submit">${i.reaction === "PASS" ? "\u{1F44E} \u0928\u0939\u0940\u0902 \u2714" : "\u{1F44E} \u0928\u0939\u0940\u0902"}</button></form></div>
 <details${sent ? "" : ""}><summary>\u{1F5D3} \u0926\u0947\u0916\u0928\u0947 \u091C\u093E\u0928\u093E \u0939\u0948 / Ask for a visit${sent ? " \u2014 \u0905\u0928\u0941\u0930\u094B\u0927 \u092D\u0947\u091C\u093E \u0917\u092F\u093E \u2714" : ""}</summary><form method="post" action="/r/${tok2}/visit"><input type="hidden" name="item" value="${esc12(i.id)}"><label>\u0915\u092C? / When?</label><input type="datetime-local" name="when" required><label>\u0915\u0941\u091B \u092C\u0924\u093E\u0928\u093E \u0939\u0948? / Anything to add? (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915)</label><input type="text" name="note" maxlength="200"><div class="row"><button class="g" type="submit">\u0905\u0928\u0941\u0930\u094B\u0927 \u092D\u0947\u091C\u0947\u0902 / Send request</button></div></form></details>` : `<p class="t"><b>\u0905\u092C \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 (${esc12(pub.status)}).</b> / No longer available.</p>`}</div>`;
     }).join("");
-    const chat = room.messages.map((m) => `<div class="m ${m.from === "CLIENT" ? "mc" : "mb"}">${esc12(m.text)}${m.propertyId ? `<small>\u21B3 ${esc12(m.propertyId)}</small>` : ""}<small>${m.from === "CLIENT" ? "\u0906\u092A" : esc12(b?.name || "Broker")} \xB7 ${new Date(m.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></div>`).join("");
+    const paperLine = (pp) => {
+      const x = clientPaperState(st21(), pp.shareId, room.id);
+      if (!x.ok) return `<small>\u{1F512} ${esc12(PAPER_WHY[x.reason])}</small>`;
+      const left = Math.max(0, x.cs.maxViews - x.cs.views);
+      return `<div class="row" style="margin-top:6px"><a class="btn g" href="/r/${tok2}/paper/${esc12(pp.shareId)}">\u{1F4C4} \u0916\u094B\u0932\u0947\u0902 / Open</a></div><small>${left} \u092C\u093E\u0930 \u0914\u0930 \xB7 ${esc12(dayHi(x.cs.expiresAt))} \u0924\u0915 / ${left} more open(s) \xB7 till ${esc12(dayHi(x.cs.expiresAt))}</small>`;
+    };
+    const chat = room.messages.map((m) => `<div class="m ${m.from === "CLIENT" ? "mc" : "mb"}">${esc12(m.text)}${m.paper ? paperLine(m.paper) : ""}${m.propertyId ? `<small>\u21B3 ${esc12(m.propertyId)}</small>` : ""}<small>${m.from === "CLIENT" ? "\u0906\u092A" : esc12(b?.name || "Broker")} \xB7 ${new Date(m.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></div>`).join("");
     db.save();
     const mark = esc12(`${room.clientName} \u2022\u2022${room.phoneLast4} \xB7 ${b?.name || "GENZ"}`);
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join("")}</div>`;
@@ -90635,7 +90863,7 @@ function dealTotals(state) {
     openDisputes: openDisputeDeals(state).size
   };
 }
-var initialsOf = (n2) => String(n2 || "").split(/\s+/).filter((w) => /^[A-Za-zऀ-ॿ]/.test(w)).slice(0, 3).map((w) => w[0].toUpperCase() + ".").join(" ") || "Client";
+var initialsOf2 = (n2) => String(n2 || "").split(/\s+/).filter((w) => /^[A-Za-zऀ-ॿ]/.test(w)).slice(0, 3).map((w) => w[0].toUpperCase() + ".").join(" ") || "Client";
 var adminDealSeen = /* @__PURE__ */ new Map();
 function noteAdminDealAccess(user, deal, state) {
   const key = `${user.id}|${deal.id}`;
@@ -90669,7 +90897,7 @@ function shapeDealFor(deal, user, state = db.getState(), open2) {
     agreementHash: void 0,
     notes: "",
     commercialsHidden: true,
-    ...summary4 ? { summaryOnly: true, customerId: initialsOf(deal.customerId) } : {}
+    ...summary4 ? { summaryOnly: true, customerId: initialsOf2(deal.customerId) } : {}
   };
 }
 function dealVisibleTo(user, deal) {

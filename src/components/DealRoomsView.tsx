@@ -535,7 +535,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const chatKit = useDealChatKit({
     dealId: selectedDealId, active: chatOpen, meId: currentUser.id, role: currentUser.role,
     perms: permissions || ['property:read', 'sitevisit:create', 'deal:update_stage'],
-    send: sendChatBody, onOpen: (tab) => setActiveSubTab(tab as DealSubTab),
+    send: sendChatBody, onOpen: (tab) => setActiveSubTab(tab as DealSubTab), onMessage: (m) => setMessages(prev => [...prev, m]),
     onStageChanged: () => { if (selectedDealId) loadDetail(selectedDealId); onRefreshDeals(); },
   });
   useEffect(() => {

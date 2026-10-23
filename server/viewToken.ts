@@ -8,7 +8,7 @@
 import crypto from 'node:crypto';
 import { secret, safeEqual } from './auth.js';
 
-export type ViewKind = 'PDOC' | 'PROPDOC';
+export type ViewKind = 'PDOC' | 'PROPDOC' | 'CRDOC';
 export interface ViewClaim { k: ViewKind; d: string; u: string; p: number; e: number; n: string }
 
 const TTL_MS = 5 * 60_000;
@@ -35,9 +35,14 @@ export function useViewToken(token: string, kind: ViewKind, userId: string): Vie
   return c;
 }
 
-/** "Name · ••1234 · 22/10/26, 6:40 pm" — what is stamped on every page a viewer opens */
-export function stampFor(name: string, phoneDigits: string): string {
+/** "Rahul Sahu" → "R.S." — v55: the initials lead the stamp, so even a cropped photo of the screen shows whose copy it was */
+export function initialsOf(name: string): string {
+  return String(name || '').split(/\s+/).filter(w => /^[A-Za-z\u0900-\u097F]/.test(w)).slice(0, 3).map(w => w[0].toUpperCase() + '.').join('') || '?';
+}
+
+/** "R.S. · Rahul Sahu · ••1234 · 22/10/26, 6:40 pm" — what is stamped on every page a viewer opens (an extra "via …" for a client) */
+export function stampFor(name: string, phoneDigits: string, via?: string): string {
   const stamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' });
   const last4 = String(phoneDigits || '').replace(/\D/g, '').slice(-4);
-  return `${name} · ${last4 ? `••${last4}` : '••••'} · ${stamp}`;
+  return `${initialsOf(name)} · ${name} · ${last4 ? `••${last4}` : '••••'} · ${stamp}${via ? ` · via ${via}` : ''}`;
 }

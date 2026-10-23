@@ -1144,7 +1144,9 @@ export interface ClientRoom {
     media?: { photos: string[]; videos: string[]; at: string };
     /** v40 — site visits booked from this room for this home */
     visits?: { visitId: string; when: string; at: string }[] }[];
-  messages: { id: string; from: 'CLIENT' | 'BROKER'; text: string; at: string; propertyId?: string }[];
+  messages: { id: string; from: 'CLIENT' | 'BROKER'; text: string; at: string; propertyId?: string;
+    /** v55 — a protected property paper the broker showed his client (opens view-only, with the client's name stamped) */
+    paper?: { shareId: string; docId: string; title: string } }[];
   events: { at: string; text: string }[];
 }
 /** v50 — how far a person has read a deal-room chat (feeds the unread dot in the Chats inbox) */
@@ -1295,7 +1297,14 @@ export interface PropertyDoc {
   type: string; title: string; refNo?: string; tags: string[]; note?: string;
   fileName: string; mime: string; size: number; sha256: string;
   visibility: 'PRIVATE' | 'DEAL_PARTICIPANTS' | 'VERIFIED_BROKERS';
-  shares: { userId: string; grantedBy: string; grantedAt: string; expiresAt?: string; revoked?: boolean }[];
+  shares: {
+    userId: string; grantedBy: string; grantedAt: string; expiresAt?: string; revoked?: boolean;
+    /** v55 — shared from a deal chat: how many times the person may open it (0 / missing = no limit), how often he did, the deal,
+     *  and whether he may show it to his own client (in his Client Room, view-only, with the client's name stamped) */
+    maxViews?: number; views?: number; dealId?: string; clientShare?: boolean;
+  }[];
+  /** v55 — shown by a broker to his own client in a Client Room (view-only page; the client's own name is stamped on it) */
+  clientShares?: { id: string; roomId: string; brokerId: string; grantedAt: string; expiresAt: string; maxViews: number; views: number; revoked?: boolean; lastAt?: string }[];
   /** set when the paper was attached as due-diligence evidence */
   ddItemId?: string;
   /** the uploader confirmed they are the owner / authorised by the owner to keep this paper here (DPDP) */

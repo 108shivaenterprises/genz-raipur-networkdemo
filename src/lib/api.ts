@@ -822,6 +822,11 @@ export const api = {
   propDocLog: (id: string) => request<any>(`/api/property-docs/${id}/log`),
   /** v49 — the stamped viewer: signed page tokens + the viewer's own stamp */
   propDocView: (id: string) => request<any>(`/api/property-docs/${id}/view`, { method: 'POST', body: '{}' }),
+  // v55 — papers in the deal chat, and shown to one's own client
+  propDocForDeal: (dealId: string) => request<any>(`/api/property-docs/for-deal/${encodeURIComponent(dealId)}`),
+  propDocChatShare: (id: string, b: { dealId: string; userIds: string[]; days: number; maxViews: number; clientShare: boolean; note?: string }) => request<any>(`/api/property-docs/${id}/chat-share`, { method: 'POST', body: JSON.stringify(b) }),
+  propDocClientShare: (id: string, b: { roomId: string; days: number; maxViews: number }) => request<any>(`/api/property-docs/${id}/client-share`, { method: 'POST', body: JSON.stringify(b) }),
+  propDocClientRevoke: (id: string, shareId: string) => request<any>(`/api/property-docs/${id}/client-revoke`, { method: 'POST', body: JSON.stringify({ shareId }) }),
   propDocDelete: (id: string) => request<any>(`/api/property-docs/${id}`, { method: 'DELETE' }),
   pdocs: () => request<any>('/api/pdocs'),
   pdocPeople: () => request<any>('/api/pdocs/people'),

@@ -60,7 +60,7 @@ const DealChatPane: React.FC<{ row: Row; meId: string; perms: string[]; onBack: 
     try { const r = await api.sendDealMessage(row.id, body); setMsgs(p => [...(p || []), r.message]); window.dispatchEvent(new Event('genz:chats-changed')); return true; }
     catch (e: any) { setErr(e.message || tx('Could not send the message', 'संदेश भेजा नहीं जा सका')); return false; }
   };
-  const kit = useDealChatKit({ dealId: row.id, active: true, meId, perms, send: sendBody, onOpen: (t) => onOpenDeal(t), onStageChanged });
+  const kit = useDealChatKit({ dealId: row.id, active: true, meId, perms, send: sendBody, onOpen: (t) => onOpenDeal(t), onStageChanged, onMessage: (m) => setMsgs(p => [...(p || []), m]) });
   const thread: ThreadMsg[] = (msgs || []).map(m => kit.thread(m, meId));
   const others = new Set((msgs || []).filter(m => m.senderId !== meId).map(m => m.senderId));
   const send = (text: string) => sendBody({ text, audience: kit.audience });

@@ -21,8 +21,11 @@ import { isClosed } from '../shared/dealClose.js';
 import { PropertyThumb } from './PropertyThumb.js';
 import { STAGES } from './DealHub.js';
 import type { ThreadMsg } from './ChatKit.js';
+import { PaperCard, PaperSharePanel } from './PaperShare.js';
 
-interface Data { deal: any; property: any; visits: any[]; assets: any[]; isPrincipal: boolean; shared: Set<string> }
+interface Data { deal: any; property: any; visits: any[]; assets: any[]; isPrincipal: boolean; shared: Set<string>;
+  /** v55 — Property Papers of this deal's property I may open / share, who of the deal can receive one, may I show my client */
+  papers: any[] | null; paperPeople: { id: string; name: string; role: string }[]; canClientShare: boolean }
 
 /** which assets a still-valid "deal room participants" grant of THIS deal already opens */
 const sharedWithRoom = (grants: any[], dealId: string) => {
@@ -46,7 +49,7 @@ const when = (iso?: string) => { try { return iso ? new Date(iso).toLocaleString
 // ───────────── the card inside a bubble ─────────────
 const box = 'block w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-left hover:bg-slate-100';
 
-export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: string) => void }> = ({ m, data, onOpen }) => {
+export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: string) => void; reload?: () => void }> = ({ m, data, onOpen, reload }) => {
   const tx = useTx(); const label = useLabel();
   const p = data?.property;
   const open = (tab: string) => () => onOpen(tab);
@@ -113,6 +116,8 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
         </button>
       );
     }
+    case 'PAPER':
+      return <PaperCard m={m} papers={data ? data.papers : null} canClientShare={!!data?.canClientShare} onChanged={() => reload?.()} />;
     case 'STAGE':
       return (
         <button type="button" onClick={open('overview')} className={`${box} flex items-center gap-2.5`} data-testid="chat-card-STAGE">
@@ -155,12 +160,16 @@ interface Kit {
   startVisit: () => void;
   grantRoom: (assetId: string) => Promise<void>;
   moveStage: (next: string) => Promise<boolean>;
+  /** v55 — a message the server posted for us (a paper shared from the chat) goes straight into the thread */
+  addMessage: (m: any) => void;
+  reload: () => Promise<void>;
 }
 
 const PlusPanel: React.FC<{ kit: Kit; close: () => void }> = ({ kit, close }) => {
   const tx = useTx(); const label = useLabel();
   const [view, setView] = useState<'home' | 'doc' | 'photo' | 'stage'>('home');
   const [ask, setAsk] = useState<any>(null);          // a document waiting for "give the deal room access?"
+  const [paper, setPaper] = useState<any>(null);      // v55 — a Property Paper being shared from the chat
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const d = kit.data;
@@ -177,8 +186,29 @@ const PlusPanel: React.FC<{ kit: Kit; close: () => void }> = ({ kit, close }) =>
   if (view === 'doc') {
     return (
       <div data-testid="plus-docs">
-        <Head title={tx('Send a document', 'दस्तावेज़ भेजें')} onBack={() => { setView('home'); setAsk(null); setErr(''); }} />
-        {ask ? (
+        <Head title={tx('Send a document', 'दस्तावेज़ भेजें')} onBack={() => { if (paper) { setPaper(null); return; } setView('home'); setAsk(null); setErr(''); }} />
+        {/* v55 — my Property Papers of this property: shared view-only, with days / opens limits and "may show his client" */}
+        {paper ? (
+          <PaperSharePanel doc={paper} dealId={d.deal.id} people={d.paperPeople} onCancel={() => setPaper(null)}
+            onDone={(m) => { kit.addMessage(m); void kit.reload(); close(); }} />
+        ) : (d.papers || []).some((x) => x.canManage) && (
+          <div className="mb-2" data-testid="plus-papers">
+            <p className="mb-1 px-1 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('Property papers · view-only', 'प्रॉपर्टी के कागज़ · सिर्फ़ देखने को')}</p>
+            <ul className="space-y-1">
+              {(d.papers || []).filter((x) => x.canManage).map((x) => (
+                <li key={x.id}>
+                  <button type="button" onClick={() => setPaper(x)} className="flex min-h-12 w-full items-center gap-2.5 rounded-xl bg-white px-2.5 py-1.5 text-left ring-1 ring-slate-200 active:bg-slate-100" data-testid={`plus-paper-${x.id}`}>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700"><Lock className="h-4 w-4" aria-hidden /></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-900">{x.title}</span><span className="block text-xs text-slate-500">{x.protect ? tx('view-only · stamped', 'सिर्फ़ देखने को · मुहर') : tx('will become view-only when shared', 'भेजते ही सिर्फ़ देखने लायक हो जाएगा')}</span></span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {docs.length > 0 && <p className="mb-1 mt-2.5 px-1 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('Vault links', 'वॉल्ट के लिंक')}</p>}
+          </div>
+        )}
+        {paper ? null : ask ? (
           <div className="rounded-xl bg-white p-3 ring-1 ring-amber-300" data-testid="plus-doc-ask">
             <p className="text-sm font-semibold text-slate-900">{ask.originalFileName}</p>
             <p className="mt-1 text-xs text-slate-600">{tx('The other side cannot open this file yet. Give the deal room access for 7 days, or send only the card (they will see it exists but cannot open it).', 'दूसरी तरफ़ अभी यह फ़ाइल नहीं खोल सकती। डील रूम को 7 दिन का एक्सेस दें, या सिर्फ़ कार्ड भेजें (उन्हें दिखेगा कि फ़ाइल है, पर खुलेगी नहीं)।')}</p>
@@ -191,8 +221,8 @@ const PlusPanel: React.FC<{ kit: Kit; close: () => void }> = ({ kit, close }) =>
                 onClick={() => run('card', () => kit.post({ kind: 'DOCUMENT', refId: ask.id }))}>{tx('Send card only', 'सिर्फ़ कार्ड भेजें')}</button>
             </div>
           </div>
-        ) : docs.length === 0 ? (
-          <p className="rounded-xl bg-white p-3 text-sm text-slate-500 ring-1 ring-slate-200" data-testid="plus-docs-empty">{tx('No documents in this property’s vault that you can open.', 'इस प्रॉपर्टी के वॉल्ट में आपके खोलने लायक कोई दस्तावेज़ नहीं।')}</p>
+        ) : docs.length === 0 ? ((d.papers || []).some((x) => x.canManage) ? null :
+          <p className="rounded-xl bg-white p-3 text-sm text-slate-500 ring-1 ring-slate-200" data-testid="plus-docs-empty">{tx('No papers of this property that you can share. Add them in Property Papers (only the owner / listing broker can).', 'इस प्रॉपर्टी का कोई कागज़ नहीं जो आप भेज सकें। Property Papers में जोड़ें (सिर्फ़ मालिक / लिस्टिंग ब्रोकर)।')}</p>
         ) : (
           <ul className="space-y-1">
             {docs.map((a) => {
@@ -297,6 +327,8 @@ export function useDealChatKit(o: {
   onOpen: (tab: string) => void;
   /** the stage was moved from the menu */
   onStageChanged?: () => void;
+  /** v55 — a message the server posted (a paper shared from the chat): add it to the thread */
+  onMessage?: (m: any) => void;
 }) {
   const tx = useTx();
   const [data, setData] = useState<Data | null>(null);
@@ -316,7 +348,12 @@ export function useDealChatKit(o: {
           if (isPrincipal) { try { shared = sharedWithRoom((await api.getVaultGrants(d.property.id)).grants, id); } catch { /* grants unreadable: treat as none */ } }
         } catch { /* no vault access: the document list stays empty */ }
       }
-      if (live.current.dealId === id) setData({ deal: d.deal, property: d.property, visits: (d as any).siteVisits || [], assets, isPrincipal, shared });
+      // v55 — Property Papers of this property (only for roles that have Property Papers)
+      let papers: any[] | null = []; let paperPeople: any[] = []; let canClientShare = false;
+      if (live.current.perms.includes('propdoc:use')) {
+        try { const pp = await api.propDocForDeal(id); papers = pp.docs || []; paperPeople = pp.people || []; canClientShare = !!pp.canClientShare; } catch { papers = []; }
+      }
+      if (live.current.dealId === id) setData({ deal: d.deal, property: d.property, visits: (d as any).siteVisits || [], assets, isPrincipal, shared, papers, paperPeople, canClientShare });
     } catch { /* the card falls back to its plain text */ }
   }, []);
 
@@ -365,6 +402,8 @@ export function useDealChatKit(o: {
       await load(); live.current.onStageChanged?.();
       return ok;
     },
+    addMessage: (m: any) => { live.current.onMessage?.(m); window.dispatchEvent(new Event('genz:chats-changed')); },
+    reload: load,
   };
 
   return {
@@ -382,7 +421,7 @@ export function useDealChatKit(o: {
     menu: (close: () => void) => <PlusPanel kit={kit} close={close} />,
     /** a stored message → a bubble (with its card) */
     thread: (m: any, meId = o.meId): ThreadMsg => {
-      const card = m.kind ? <ChatCard m={m} data={data} onOpen={(t) => live.current.onOpen(t)} /> : undefined;
+      const card = m.kind ? <ChatCard m={m} data={data} onOpen={(t) => live.current.onOpen(t)} reload={() => void load()} /> : undefined;
       return { id: m.id, mine: m.senderId === meId, who: m.senderName, text: m.text, at: m.timestamp, link: m.kind === 'PHOTO' ? undefined : m.mediaUrl, card, hideText: !!(card && m.auto), priv: m.audience === 'BROKERS' };
     },
   };

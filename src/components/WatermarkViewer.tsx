@@ -29,6 +29,13 @@ export function stampCanvas(img: HTMLImageElement, stamp: string): HTMLCanvasEle
   g.drawImage(img, 0, 0, c.width, c.height);
   const W = c.width, H = c.height;
   const size = Math.max(15, Math.round(Math.min(W, H * 1.4) / 24));
+  // v55 — the viewer's initials, large and faint in the middle: a cropped photo of the screen still shows whose copy it was
+  const initials = (stamp.split(' · ')[0] || '').slice(0, 8);
+  if (initials && /\./.test(initials)) {
+    g.save(); g.globalAlpha = 0.13; g.fillStyle = '#b91c1c'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `800 ${Math.round(Math.min(W, H) / 3.2)}px system-ui, sans-serif`;
+    g.translate(W / 2, H / 2); g.rotate(-Math.PI / 7); g.fillText(initials, 0, 0); g.restore();
+  }
   const line = `${stamp} · GENZ`;
   // 1) tiled, diagonal, two-tone (a light edge + a dark red fill) so it shows on white paper and on dark photos alike
   g.save();

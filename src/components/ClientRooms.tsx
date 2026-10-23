@@ -5,8 +5,9 @@
  * phone, and inside a room: Chat (auto-scroll, quick replies) · Homes · Visits · Info.
  */
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check, MoreVertical } from 'lucide-react';
+import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check, MoreVertical, FileLock2 } from 'lucide-react';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
+import { ClientPaperPicker } from './PaperShare.js';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -198,6 +199,11 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
   const [mediaFor, setMediaFor] = useState('');                              // v40 — item whose photos / video are being chosen
   const [menu, setMenu] = useState(false);                                   // v50 — the ⋮ menu (new link, close room)
   const [aboutOpen, setAboutOpen] = useState(false);                         // v50 — the "about which property" picker under the message box
+  const [paperPick, setPaperPick] = useState(false);                         // v55 — "+" → show a paper to this client
+  const [papers, setPapers] = useState<any[] | null>(null);                  // v55 — my papers, for the status of the ones shown here
+  const hasPaper = !!r?.messages?.some((m: any) => m.paper);
+  const loadPapers = () => api.propDocs({ scope: 'all' }).then(x => setPapers(x.docs || [])).catch(() => setPapers([]));
+  useEffect(() => { if (hasPaper) void loadPapers(); /* eslint-disable-next-line */ }, [hasPaper, id]);
   const load = () => api.crGet(id).then(x => { setR(x.room); if (x.room.unread) api.crRead(id).then(onChange).catch(() => undefined); }).catch(e => setErr(e.message));
   useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) api.crGet(id).then(x => setR(x.room)).catch(() => undefined); }, 15000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => {
@@ -223,7 +229,22 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
   const tabs: [typeof tab, string, string, number | undefined][] = [
     ['chat', 'Chat', 'चैट', undefined], ['homes', 'Homes', 'प्रॉपर्टी', r.items.length], ['visits', 'Visits', 'विज़िट', openReqs || undefined], ['info', 'Info', 'जानकारी', undefined],
   ];
-  const msgs: ThreadMsg[] = r.messages.map((m: any) => ({ id: m.id, mine: m.from === 'BROKER', who: r.clientName, text: m.text, at: m.at, ref: m.propertyId }));
+  // v55 — a paper shown to this client: how often he opened it, until when, and "Stop"
+  const paperCard = (m: any) => {
+    const d = (papers || []).find((x: any) => (x.clientShares || []).some((c: any) => c.id === m.paper.shareId));
+    const c = d?.clientShares.find((x: any) => x.id === m.paper.shareId);
+    const over = c && (Date.parse(c.expiresAt) <= Date.now() || c.views >= c.maxViews);
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2" data-testid="room-paper-card">
+        <div className="flex items-center gap-2"><FileLock2 className="h-5 w-5 shrink-0 text-indigo-700" aria-hidden /><span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{m.paper.title}</span></div>
+        <p className="mt-1 text-xs text-slate-600">{papers === null ? '…' : !c ? tx('No longer shown to the client.', 'अब क्लाइंट को नहीं दिख रहा।')
+          : over ? tx(`Over — opened ${c.views}/${c.maxViews}`, `ख़त्म — ${c.views}/${c.maxViews} बार खोला`)
+          : tx(`View-only for your client · opened ${c.views}/${c.maxViews} · till ${new Date(c.expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`, `क्लाइंट के लिए सिर्फ़ देखने को · ${c.views}/${c.maxViews} बार खोला · ${new Date(c.expiresAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} तक`)}</p>
+        {c && !over && <button type="button" onClick={async () => { await api.propDocClientRevoke(d.id, c.id).catch(() => undefined); void loadPapers(); }} className="mt-1 inline-flex min-h-9 items-center rounded-md px-2 text-xs font-semibold text-red-700 hover:bg-red-50" data-testid="room-paper-stop">{tx('Stop showing', 'दिखाना बंद करें')}</button>}
+      </div>
+    );
+  };
+  const msgs: ThreadMsg[] = r.messages.map((m: any) => ({ id: m.id, mine: m.from === 'BROKER', who: r.clientName, text: m.text, at: m.at, ref: m.propertyId, ...(m.paper ? { card: paperCard(m), hideText: true } : {}) }));
   const sendMsg = async (text: string) => {
     setErr('');
     try { const x = await api.crSend(id, text, about || undefined); if (x?.room) setR(x.room); onChange(); return true; } catch (e: any) { setErr(e.message); return false; }
@@ -293,8 +314,10 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
             const withMedia = r.items.filter((i: any) => i.mediaAvailable?.photos > 0 || i.mediaAvailable?.videos > 0);
             const tile = 'flex min-h-[76px] flex-col items-center justify-center gap-1.5 rounded-xl bg-white px-1 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 active:bg-slate-100';
             const dot = (tone: string, I: React.ElementType) => <span className={`flex h-9 w-9 items-center justify-center rounded-full ${tone}`}><I className="h-5 w-5" aria-hidden /></span>;
+            if (paperPick) return <ClientPaperPicker room={{ id: r.id, clientName: r.clientName }} onCancel={() => setPaperPick(false)} onDone={() => { setPaperPick(false); close(); void load(); void loadPapers(); }} />;
             return (
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4" data-testid="room-plus">
+                <button type="button" className={tile} data-testid="room-plus-paper" onClick={() => setPaperPick(true)}>{dot('bg-amber-100 text-amber-800', FileLock2)}{tx('Show a paper', 'कागज़ दिखाएँ')}</button>
                 {r.items.length > 0 && <button type="button" className={tile} data-testid="room-about" aria-pressed={!!about} onClick={() => { setAboutOpen(true); close(); }}>{dot('bg-emerald-100 text-emerald-700', Home)}{tx('About a home', 'प्रॉपर्टी चुनें')}</button>}
                 <button type="button" className={tile} data-testid="room-plus-share" onClick={() => { setTab('homes'); close(); setTimeout(() => document.querySelector('[data-testid="room-pick"]')?.scrollIntoView({ block: 'center' }), 80); }}>{dot('bg-indigo-100 text-indigo-700', Plus)}{tx('Share a home', 'प्रॉपर्टी जोड़ें')}</button>
                 {r.items.length > 0 && <button type="button" className={tile} data-testid="room-plus-visit" onClick={() => { if (live.length === 1) setBook({ item: live[0] }); else setTab('homes'); close(); }}>{dot('bg-sky-100 text-sky-700', CalendarPlus)}{tx('Book a visit', 'विज़िट तय करें')}</button>}

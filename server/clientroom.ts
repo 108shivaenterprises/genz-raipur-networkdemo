@@ -24,6 +24,8 @@ import { ROOM_KINDS, ROOM_LIMITS as L, containsPhone, PHONE_IN_CHAT_MSG } from '
 import { joinFooter } from './publicFooter.js';
 import { partyBlock, partyCaution } from './partywatch.js';
 import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId } from '../src/shared/roomMedia.js';
+import { clientPaperState, viewerPages, logDocOpen } from './propdocs.js';
+import { makeViewToken, useViewToken, stampFor } from './viewToken.js';
 
 const st = () => db.getState();
 const nowIso = () => new Date().toISOString();
@@ -354,6 +356,32 @@ const CR_JS = `(function(){var im=document.querySelectorAll('.prop img,.gal img'
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
 var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}})();`;
 
+/**
+ * v55 — the client's view-only paper viewer (vanilla JS, served from /r/pv.js because the page allows only 'self' scripts).
+ * Every page is drawn on a canvas with the client's own stamp tiled across it, his initials large in the middle and a band at the bottom.
+ * The page blurs when it loses focus; save / print / copy shortcuts and the long-press / right-click menu are blocked.
+ * Honest limit: a web page cannot stop a screenshot or a second phone's camera — the stamp shows whose copy it was.
+ */
+const PV_JS = `(function(){var R=document.getElementById('pv');if(!R)return;var T=JSON.parse(R.getAttribute('data-t')||'[]'),B=R.getAttribute('data-base')||'',W=R.getAttribute('data-wm')||'',H=document.getElementById('pv-pages'),C=document.getElementById('pv-cover');
+function st(img){var c=document.createElement('canvas'),k=Math.min(1,1200/img.width);c.width=Math.max(1,Math.round(img.width*k));c.height=Math.max(1,Math.round(img.height*k));var g=c.getContext('2d'),w=c.width,h=c.height;g.drawImage(img,0,0,w,h);
+var ini=(W.split(' · ')[0]||'').slice(0,8);if(ini){g.save();g.globalAlpha=0.13;g.fillStyle='#b91c1c';g.textAlign='center';g.textBaseline='middle';g.font='800 '+Math.round(Math.min(w,h)/3.2)+'px system-ui,sans-serif';g.translate(w/2,h/2);g.rotate(-Math.PI/7);g.fillText(ini,0,0);g.restore()}
+var sz=Math.max(15,Math.round(Math.min(w,h*1.4)/24)),line=W+' · GENZ';g.save();g.translate(w/2,h/2);g.rotate(-Math.PI/7);g.translate(-w/2,-h/2);g.font='700 '+sz+'px system-ui,sans-serif';g.textBaseline='middle';var sx=Math.round(g.measureText(line).width+sz*2.2),sy=Math.round(sz*3.6),row=0;
+for(var y=-h;y<h*2;y+=sy,row++){for(var x=-w-(row%2)*(sx/2);x<w*2;x+=sx){g.globalAlpha=0.42;g.lineWidth=Math.max(2,sz/7);g.strokeStyle='#fff';g.strokeText(line,x,y);g.globalAlpha=0.34;g.fillStyle='#b91c1c';g.fillText(line,x,y)}}g.restore();
+var band=Math.round(sz*2.3);g.globalAlpha=0.86;g.fillStyle='#0f172a';g.fillRect(0,h-band,w,band);g.globalAlpha=1;g.fillStyle='#fff';g.textBaseline='middle';var f='GENZ · View only — '+W+' · do not forward',fs=Math.round(sz*0.8);g.font='700 '+fs+'px system-ui,sans-serif';while(fs>9&&g.measureText(f).width>w-20){fs--;g.font='700 '+fs+'px system-ui,sans-serif'}g.fillText(f,10,h-band/2);return c}
+function nx(i){if(i>=T.length)return;var im=new Image();im.onload=function(){var c=st(im);c.style.cssText='width:100%;height:auto;display:block;margin-bottom:10px;border-radius:6px;pointer-events:none';H.appendChild(c);nx(i+1)};im.onerror=function(){var p=document.createElement('p');p.className='t';p.textContent='यह पेज लोड नहीं हुआ — पेज दोबारा खोलें / This page could not load — open again';H.appendChild(p);nx(i+1)};im.src=B+T[i]}nx(0);
+function hd(){var x=document.visibilityState!=='visible'||!document.hasFocus();H.style.filter=x?'blur(24px)':'';C.style.display=x?'flex':'none'}
+window.addEventListener('blur',hd);window.addEventListener('focus',hd);document.addEventListener('visibilitychange',hd);document.addEventListener('contextmenu',function(e){e.preventDefault()});
+window.addEventListener('keydown',function(e){var k=(e.key||'').toLowerCase();if((e.ctrlKey||e.metaKey)&&['s','p','c','u'].indexOf(k)>=0)e.preventDefault();if(e.key==='PrintScreen'){H.style.filter='blur(24px)';try{navigator.clipboard.writeText('')}catch(x){}}})})();`;
+
+/** what the client sees when a paper cannot be opened (anymore) */
+const PAPER_WHY: Record<string, string> = {
+  GONE: 'यह कागज़ अब नहीं है। / This paper is no longer here.',
+  STOPPED: 'ब्रोकर ने यह कागज़ दिखाना बंद कर दिया है। / Your broker stopped sharing this paper.',
+  EXPIRED: 'इसे देखने का समय ख़त्म हो गया। अपने ब्रोकर से दोबारा भेजने को कहें। / The time to view it is over — ask your broker to share it again.',
+  USED: 'आप इसे तय बार देख चुके हैं। अपने ब्रोकर से दोबारा भेजने को कहें। / You have opened it the allowed number of times — ask your broker to share it again.',
+};
+const dayHi = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+
 export function createClientRoomPageRouter() {
   const r = Router();
   const form = express.urlencoded({ extended: false, limit: '20kb' });
@@ -366,6 +394,7 @@ export function createClientRoomPageRouter() {
   const headers = (res: Response) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); };
 
   r.get('/cr.js', (_req, res) => { res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); res.send(CR_JS); });
+  r.get('/pv.js', (_req, res) => { res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); res.send(PV_JS); });
 
   const brokerCard = (b?: UserProfile) => {
     const ph = phone10(b?.phone);
@@ -487,6 +516,52 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     res.redirect(303, `/r/${req.params.token}#chat`);
   });
 
+  // v55 — 4. a paper the broker showed: a view-only page with the client's own name stamped on every page; each open counts
+  r.get('/:token/paper/:sid', rateLimit('cr-paper', 60, 60_000), (req: Request, res: Response) => {
+    const room = authed(req, res); if (!room) return;
+    const dev = sessionFor(req, room)!;
+    const tok = esc(req.params.token);
+    const x = clientPaperState(st(), String(req.params.sid), room.id);
+    const back = `<div class="row"><a class="btn l" href="/r/${tok}#chat">← रूम पर वापस / Back to the room</a></div>`;
+    if (!x.ok) return res.status(403).send(shell('Paper', `<div class="card warn"><p class="h">${PAPER_WHY[x.reason]}</p>${back}</div>`));
+    const pages = viewerPages(x.doc);
+    if (!pages) return res.status(404).send(shell('Paper', `<div class="card warn"><p class="h">यह कागज़ अभी नहीं खुल रहा। / This paper cannot be opened right now.</p>${back}</div>`));
+    x.cs.views += 1; x.cs.lastAt = nowIso();
+    ev(room, `Client opened a paper (${x.cs.views} of ${x.cs.maxViews}): ${x.doc.title}`);
+    logDocOpen(x.doc.id, x.cs.brokerId, 'VIEW', req.ip || '', `his client ${room.clientName} opened it in the client room (${x.cs.views} of ${x.cs.maxViews})`);
+    db.save();
+    const who = `cr:${room.id}:${dev}`;
+    const tokens = pages.map((_, i) => makeViewToken('CRDOC', `${x.doc.id}|${x.cs.id}`, who, i));
+    const wm = stampFor(room.clientName, room.phoneLast4, x.broker.name);
+    const left = Math.max(0, x.cs.maxViews - x.cs.views);
+    res.send(shell(x.doc.title, `<style>body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}@media print{body{display:none}}#pv-cover{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.75);color:#fff;font-weight:700;text-align:center;padding:20px;z-index:60}</style>
+<div class="top"><h1>📄 ${esc(x.doc.title)}</h1><p>सिर्फ़ देखने के लिए · हर पेज पर आपका नाम छपा है · View only — your name is on every page</p></div>
+<div class="card"><p class="t">🔒 ${esc(wm)}</p><p class="small">${left > 0 ? `${left} बार और खोल सकते हैं · ${esc(dayHi(x.cs.expiresAt))} तक / ${left} more open(s) · till ${esc(dayHi(x.cs.expiresAt))}` : 'यह आख़िरी बार था — दोबारा देखना हो तो ब्रोकर से कहें। / This was the last open — ask your broker to share again.'}</p><p class="small">इसका स्क्रीनशॉट या फ़ोटो आगे न भेजें — उस पर आपका नाम दिखेगा। / Please do not forward a screenshot or photo — your name shows on it.</p>${back}</div>
+<div id="pv" data-t='${esc(JSON.stringify(tokens))}' data-base="/r/${tok}/pp/" data-wm="${esc(wm)}"><div id="pv-pages" style="margin-top:12px"></div></div>
+<div id="pv-cover">यह पेज तभी दिखता है जब यह स्क्रीन सामने हो / Shown only while this screen is in front</div>
+<script src="/r/pv.js" defer></script>`));
+  });
+
+  r.get('/:token/pp/:pt', (req: Request, res: Response) => {
+    headers(res);
+    const room = find(req.params.token);
+    const dev = room && room.status === 'ACTIVE' ? sessionFor(req, room) : null;
+    if (!room || !dev) return res.status(403).end();
+    const c = useViewToken(req.params.pt, 'CRDOC', `cr:${room.id}:${dev}`);
+    if (!c) return res.status(403).end();
+    if (String(req.headers['sec-fetch-dest'] || 'image') !== 'image') return res.status(403).end();
+    const [, sid] = c.d.split('|');
+    const x = clientPaperState(st(), sid, room.id, true);
+    if (!x.ok) return res.status(403).end();
+    const page = viewerPages(x.doc)?.[c.p];
+    if (!page) return res.status(404).end();
+    res.setHeader('Content-Type', x.doc.mime === 'application/pdf' ? 'image/jpeg' : x.doc.mime);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(page);
+  });
+
   function render(req: Request, res: Response, room: ClientRoom, msg = '') {
     const b = st().users.find(u => u.id === room.brokerId);
     room.lastClientSeenAt = nowIso();
@@ -517,7 +592,14 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
 <details${sent ? '' : ''}><summary>🗓 देखने जाना है / Ask for a visit${sent ? ' — अनुरोध भेजा गया ✔' : ''}</summary><form method="post" action="/r/${tok}/visit"><input type="hidden" name="item" value="${esc(i.id)}"><label>कब? / When?</label><input type="datetime-local" name="when" required><label>कुछ बताना है? / Anything to add? (वैकल्पिक)</label><input type="text" name="note" maxlength="200"><div class="row"><button class="g" type="submit">अनुरोध भेजें / Send request</button></div></form></details>`
  : `<p class="t"><b>अब उपलब्ध नहीं (${esc(pub.status)}).</b> / No longer available.</p>`}</div>`;
     }).join('');
-    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text)}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : esc(b?.name || 'Broker')} · ${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
+    // v55 — a paper the broker showed: an "Open" button while it may still be opened, otherwise why not
+    const paperLine = (pp: { shareId: string; title: string }) => {
+      const x = clientPaperState(st(), pp.shareId, room.id);
+      if (!x.ok) return `<small>🔒 ${esc(PAPER_WHY[x.reason])}</small>`;
+      const left = Math.max(0, x.cs.maxViews - x.cs.views);
+      return `<div class="row" style="margin-top:6px"><a class="btn g" href="/r/${tok}/paper/${esc(pp.shareId)}">📄 खोलें / Open</a></div><small>${left} बार और · ${esc(dayHi(x.cs.expiresAt))} तक / ${left} more open(s) · till ${esc(dayHi(x.cs.expiresAt))}</small>`;
+    };
+    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text)}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : esc(b?.name || 'Broker')} · ${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
     db.save();
     // v46 — the client's own name over the page: a screenshot forwarded to someone else still shows whose room it was
     const mark = esc(`${room.clientName} ••${room.phoneLast4} · ${b?.name || 'GENZ'}`);

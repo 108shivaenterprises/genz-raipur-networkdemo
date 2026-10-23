@@ -28,6 +28,7 @@ import {
   PROP_DOC_TYPES, PROP_DOC_TYPE_IDS, PROP_DOC_VISIBILITY, PROP_DOC_MAX_BYTES, PROP_DOC_MAX_PER_PROPERTY, PROP_DOC_MAX_USER_BYTES,
   matchesQuery, sniffMime,
 } from '../src/shared/propDocs.js';
+import { ROOM_LIMITS } from '../src/shared/clientRoomRules.js';
 
 const me = () => ctx().user as UserProfile;
 const nowIso = () => new Date().toISOString();
@@ -83,6 +84,47 @@ const log = (docId: string, userId: string, action: 'VIEW' | 'DOWNLOAD' | 'DENIE
 };
 
 const nameOf = (st: DatabaseState, id: string) => db.byId('users', id)?.name || '—';
+/** v55 — the client-room page writes to the same "who opened" log */
+export const logDocOpen = log;
+
+// ───────────── v55: limits on a share (how many days, how many opens) and showing a paper to one's own client ─────────────
+const shareOf = (d: PropertyDoc, userId: string) => d.shares.find(s => s.userId === userId && !s.revoked);
+const shareLive = (s: PropertyDoc['shares'][number], now = Date.now()) => !s.revoked && (!s.expiresAt || Date.parse(s.expiresAt) > now);
+const viewsLeft = (s: { maxViews?: number; views?: number }) => (s.maxViews ? Math.max(0, s.maxViews - (s.views || 0)) : null);
+const daysAhead = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
+
+/** make a paper view-only when it is shared from a chat; false when it cannot be (a PDF typed on a computer) */
+function ensureProtected(d: PropertyDoc, u: UserProfile): boolean {
+  if (d.protect) return true;
+  const pp = viewerPages(d); if (!pp) return false;
+  d.protect = true; d.protectedAt = nowIso(); d.pages = pp.length;
+  db.appendAuditEvent(u.id, u.role, 'SYSTEM', d.id, 'PROPDOC_PROTECT', `“${d.title}” protected while sharing it from a chat: view-only, every viewer's name stamped, no download (except the uploader)`);
+  return true;
+}
+
+export type ClientPaperState = { ok: true; doc: PropertyDoc; cs: NonNullable<PropertyDoc['clientShares']>[number]; broker: UserProfile } | { ok: false; reason: 'GONE' | 'STOPPED' | 'EXPIRED' | 'USED' };
+/**
+ * v55 — may the client of a Client Room open this paper right now? Only while: the broker's own showing is not stopped / expired / used up,
+ * the paper is still view-only, and the broker himself may still open it (his own share from the chat is live and allows showing clients —
+ * or he is the uploader / owner / listing broker). `ignoreViews` is for the page images of a view that was already counted.
+ */
+export function clientPaperState(st: DatabaseState, shareId: string, roomId: string, ignoreViews = false, now = Date.now()): ClientPaperState {
+  const doc = st.propertyDocs.find(d => (d.clientShares || []).some(c => c.id === shareId));
+  const cs = doc?.clientShares?.find(c => c.id === shareId && c.roomId === roomId);
+  if (!doc || !cs) return { ok: false, reason: 'GONE' };
+  if (cs.revoked || !doc.protect) return { ok: false, reason: 'STOPPED' };
+  if (Date.parse(cs.expiresAt) <= now) return { ok: false, reason: 'EXPIRED' };
+  if (!ignoreViews && cs.views >= cs.maxViews) return { ok: false, reason: 'USED' };
+  const broker = st.users.find(x => x.id === cs.brokerId);
+  if (!broker) return { ok: false, reason: 'STOPPED' };
+  const a = docAccess(st, broker, doc, now);
+  if (!a.ok) return { ok: false, reason: 'STOPPED' };
+  if (a.level !== 'MANAGE') {
+    const own = shareOf(doc, broker.id);
+    if (!own || !shareLive(own, now) || !own.clientShare) return { ok: false, reason: 'STOPPED' };
+  }
+  return { ok: true, doc, cs, broker };
+}
 
 /** What a viewer may search / see about the property a paper belongs to. */
 function propLine(p: Property | undefined) {
@@ -101,7 +143,13 @@ function summary(st: DatabaseState, d: PropertyDoc, u: UserProfile, a: DocAccess
     access: a.level, via: a.via, canManage: manage,
     protect: !!d.protect, pages: d.pages || 1, canDownload: mayHaveFile(d, a),
     missing: !fs.existsSync(fileOf(d.id)),
-    shares: manage ? d.shares.filter(s => !s.revoked).map(s => ({ userId: s.userId, name: nameOf(st, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now() })) : undefined,
+    shares: manage ? d.shares.filter(s => !s.revoked).map(s => ({ userId: s.userId, name: nameOf(st, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now(), maxViews: s.maxViews || null, views: s.views || 0, dealId: s.dealId, clientShare: !!s.clientShare })) : undefined,
+    // v55 — what I was given (opens left, until when, may I show my client) and to which of my clients I showed it
+    myShare: a.via === 'SHARED' ? (() => { const s = shareOf(d, u.id); return s ? { expiresAt: s.expiresAt, viewsLeft: viewsLeft(s), maxViews: s.maxViews || null, clientShare: !!s.clientShare, dealId: s.dealId } : undefined; })() : undefined,
+    clientShares: (d.clientShares || []).filter(c => c.brokerId === u.id && !c.revoked).map(c => {
+      const room = st.clientRooms.find(r => r.id === c.roomId);
+      return { id: c.id, roomId: c.roomId, clientName: room?.clientName || '—', expiresAt: c.expiresAt, maxViews: c.maxViews, views: c.views, lastAt: c.lastAt };
+    }),
   };
 }
 
@@ -265,11 +313,19 @@ export function createPropDocsRouter() {
     const { u, d, a } = x;
     const pages = viewerPages(d);
     if (!pages) return fs.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad(res, 'The file is missing on the server. Please upload it again.', 404);
-    log(d.id, u.id, 'VIEW', req.ip || '', `${d.protect ? 'view-only viewer' : 'viewer'}, stamped${a.via === 'ADMIN' ? ' — GENZ admin' : ''}`); db.save();
+    // v55 — a share with a limit: every open counts; when they are used up the paper does not open again (unless re-shared)
+    const s = a.via === 'SHARED' ? shareOf(d, u.id) : undefined;
+    if (s?.maxViews && (s.views || 0) >= s.maxViews) {
+      log(d.id, u.id, 'DENIED', req.ip || '', 'all allowed opens used'); db.save();
+      return res.status(403).json({ code: 'VIEWS_USED', error: `You have opened this paper the ${s.maxViews} time(s) you were allowed. Ask the sender to share it again.`, hi: `आप यह कागज़ तय ${s.maxViews} बार खोल चुके हैं। भेजने वाले से दोबारा शेयर करवाएँ।` });
+    }
+    if (s?.maxViews) s.views = (s.views || 0) + 1;
+    log(d.id, u.id, 'VIEW', req.ip || '', `${d.protect ? 'view-only viewer' : 'viewer'}, stamped${a.via === 'ADMIN' ? ' — GENZ admin' : ''}${s?.maxViews ? ` — open ${s.views} of ${s.maxViews}` : ''}`); db.save();
     res.json({
       success: true, id: d.id, title: d.title, pages: pages.length, protect: !!d.protect,
       tokens: pages.map((_, i) => makeViewToken('PROPDOC', d.id, u.id, i)),
       watermark: stampFor(u.name, digits(u.phone)), canDownload: mayHaveFile(d, a),
+      viewsLeft: s ? viewsLeft(s) : null, expiresAt: s?.expiresAt,
     });
   });
 
@@ -313,6 +369,104 @@ export function createPropDocsRouter() {
     res.setHeader('Content-Length', String(buf.length));
     if (d.mime !== 'application/pdf') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
     res.send(buf);
+  });
+
+  // ───────────── v55: papers in a deal chat ─────────────
+  /** The papers of a deal's property that I may open (and those I may share), and who in the deal can receive one. */
+  r.get('/for-deal/:dealId', need, (req: Request, res: Response) => {
+    const u = me(); const st = db.getState(); const now = Date.now();
+    const deal = st.dealRooms.find(x => x.id === req.params.dealId);
+    if (!deal || !isDealParticipant(u, deal)) return bad(res, 'Deal room not found', 404);
+    const docs = st.propertyDocs.filter(d => d.propertyId === deal.propertyId)
+      .map(d => { const a = docAccess(st, u, d, now); return a.ok ? summary(st, d, u, a) : null; })
+      .filter(Boolean);
+    const people = [...new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId])]
+      .filter(id => id && id !== u.id)
+      .map(id => st.users.find(x => x.id === id))
+      .filter((x): x is UserProfile => !!x && x.verificationStatus === 'VERIFIED' && can(x, 'propdoc:use') && !isAdmin(x))
+      .map(x => ({ id: x.id, name: x.name, role: x.role }));
+    res.json({ success: true, docs, people, canClientShare: can(u, 'clientroom:use') });
+  });
+
+  /** Share a paper from the deal chat: chosen people of the deal, for N days, M opens, and (optionally) "may show his client". */
+  r.post('/:id/chat-share', need, rateLimit('propdocchat', 60, 60 * 60_000), (req: Request, res: Response) => {
+    const x = loadManage(req, res); if (!x) return;
+    const { u, st, d } = x;
+    const b = z.object({
+      dealId: z.string().min(3).max(60),
+      userIds: z.array(z.string()).min(1).max(5),
+      days: z.coerce.number().int().min(1).max(30),
+      maxViews: z.coerce.number().int().min(0).max(50),
+      clientShare: z.boolean().default(false),
+      note: z.string().trim().max(200).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return bad(res, 'Choose who may see it, for how many days and how many times.');
+    const deal = st.dealRooms.find(r2 => r2.id === b.data.dealId);
+    if (!deal || deal.propertyId !== d.propertyId || !isDealParticipant(u, deal)) return bad(res, 'This paper does not belong to that deal room.', 400);
+    const inDeal = new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId].filter(Boolean) as string[]);
+    const targets = [...new Set(b.data.userIds)].map(id => st.users.find(p => p.id === id))
+      .filter((p): p is UserProfile => !!p && inDeal.has(p.id) && p.id !== u.id && p.verificationStatus === 'VERIFIED' && can(p, 'propdoc:use') && !isAdmin(p));
+    if (!targets.length) return bad(res, 'Choose someone of this deal room to share with.');
+    if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
+    const expiresAt = daysAhead(b.data.days);
+    for (const t of targets) {
+      const ex = d.shares.find(s => s.userId === t.id);
+      const fresh = { userId: t.id, grantedBy: u.id, grantedAt: nowIso(), expiresAt, revoked: false, maxViews: b.data.maxViews || undefined, views: 0, dealId: deal.id, clientShare: b.data.clientShare };
+      if (ex) Object.assign(ex, fresh); else d.shares.push(fresh);
+      log(d.id, t.id, 'SHARE', req.ip || '', `from the deal chat by ${u.name} — ${b.data.days} day(s), ${b.data.maxViews || 'unlimited'} open(s)${b.data.clientShare ? ', may show own client' : ''}`);
+    }
+    d.updatedAt = nowIso();
+    const names = targets.map(t => t.name).join(', ');
+    const msg = {
+      id: `MSG-${deal.id}-${Date.now().toString(36)}`, dealRoomId: deal.id, senderId: u.id, senderName: u.name, senderRole: u.role,
+      text: b.data.note || `Shared a paper (view-only): ${d.title}`, audience: 'ALL' as const, kind: 'PAPER' as const, refId: d.id,
+      ...(b.data.note ? {} : { auto: true }), timestamp: nowIso(),
+    };
+    st.dealMessages.push(msg);
+    db.save();
+    db.appendAuditEvent(u.id, u.role, 'DEAL', deal.id, 'PROPDOC_CHAT_SHARED', `Paper “${d.title}” (${d.id}) shared in the deal chat with ${names}: ${b.data.days} day(s), ${b.data.maxViews || 'unlimited'} open(s), view-only${b.data.clientShare ? ', may show own client' : ''}`);
+    res.json({ success: true, message: msg, doc: summary(st, d, u, x.a) });
+  });
+
+  /** Show a paper to my own client in one of my Client Rooms (view-only; never longer / more than I was allowed). */
+  r.post('/:id/client-share', need, rateLimit('propdocclient', 60, 60 * 60_000), (req: Request, res: Response) => {
+    const x = load(req, res); if (!x) return;
+    const { u, st, d, a } = x;
+    if (!can(u, 'clientroom:use')) return bad(res, 'Client Rooms are not part of your account.', 403);
+    const b = z.object({ roomId: z.string().min(3).max(40), days: z.coerce.number().int().min(1).max(30), maxViews: z.coerce.number().int().min(1).max(10) }).safeParse(req.body);
+    if (!b.success) return bad(res, 'Choose the client room, for how many days and how many times.');
+    const room = st.clientRooms.find(r2 => r2.id === b.data.roomId && r2.brokerId === u.id);
+    if (!room) return bad(res, 'Client room not found', 404);
+    if (room.status !== 'ACTIVE') return bad(res, 'This client room is closed', 409);
+    let until = Date.now() + b.data.days * 86_400_000;
+    if (a.level !== 'MANAGE') {
+      const own = shareOf(d, u.id);
+      if (!own || !shareLive(own) || !own.clientShare) return res.status(403).json({ code: 'CLIENT_SHARE_OFF', error: 'The sender did not allow showing this paper to your client.', hi: 'भेजने वाले ने यह कागज़ आपके क्लाइंट को दिखाने की अनुमति नहीं दी।' });
+      if (own.maxViews && (own.views || 0) >= own.maxViews) return res.status(403).json({ code: 'VIEWS_USED', error: 'Your own opens of this paper are used up.', hi: 'इस कागज़ को खोलने की आपकी तय गिनती पूरी हो चुकी है।' });
+      if (own.expiresAt) until = Math.min(until, Date.parse(own.expiresAt));
+    }
+    if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
+    if (room.messages.length >= ROOM_LIMITS.messages) return bad(res, 'This chat is full — open a new room or close this one');
+    const cs = { id: `CPS-${crypto.randomBytes(5).toString('hex')}`, roomId: room.id, brokerId: u.id, grantedAt: nowIso(), expiresAt: new Date(until).toISOString(), maxViews: b.data.maxViews, views: 0 };
+    (d.clientShares ||= []).push(cs);
+    room.messages.push({ id: `CRX-${crypto.randomBytes(5).toString('hex')}`, from: 'BROKER', text: `📄 ${d.title} — सिर्फ़ देखने के लिए / view only`, at: nowIso(), paper: { shareId: cs.id, docId: d.id, title: d.title } });
+    room.events.push({ at: nowIso(), text: `Paper shown (view-only): ${d.title}` }); room.updatedAt = nowIso(); room.lastBrokerSeenAt = nowIso();
+    log(d.id, u.id, 'SHARE', req.ip || '', `shown to his client ${room.clientName} (client room) — ${Math.ceil((until - Date.now()) / 86_400_000)} day(s), ${b.data.maxViews} open(s)`);
+    db.save();
+    db.appendAuditEvent(u.id, u.role, 'LEAD', room.id, 'PROPDOC_CLIENT_SHARED', `Paper “${d.title}” (${d.id}) shown to the client of room ${room.id}: until ${cs.expiresAt.slice(0, 10)}, ${cs.maxViews} open(s), view-only`);
+    res.json({ success: true, share: cs, doc: summary(st, d, u, a) });
+  });
+
+  /** Stop showing a paper to a client (the broker who showed it, or whoever manages the paper). */
+  r.post('/:id/client-revoke', need, (req: Request, res: Response) => {
+    const x = load(req, res); if (!x) return;
+    const { u, st, d, a } = x;
+    const cs = (d.clientShares || []).find(c => c.id === String(req.body?.shareId || '') && !c.revoked);
+    if (!cs) return bad(res, 'Not found', 404);
+    if (cs.brokerId !== u.id && a.level !== 'MANAGE') return bad(res, 'Only the broker who showed it can stop it.', 403);
+    cs.revoked = true; d.updatedAt = nowIso();
+    log(d.id, cs.brokerId, 'REVOKE', req.ip || '', `client showing stopped by ${u.name}`); db.save();
+    res.json({ success: true, doc: summary(st, d, u, a) });
   });
 
   r.patch('/:id', need, (req: Request, res: Response) => {
