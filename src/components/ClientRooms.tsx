@@ -287,15 +287,27 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
           placeholder={tx('Write to your client — no phone numbers', 'क्लाइंट को लिखें — फ़ोन नंबर नहीं')}
           emptyHint={tx('No messages yet. Say hello — or tap ⚡ for a ready reply.', 'अभी कोई संदेश नहीं। नमस्ते लिखें — या ⚡ से तैयार जवाब लें।')}
           quick={QUICK}
-          leading={r.items.length > 0 ? (
-            <button type="button" onClick={() => setAboutOpen(o => !o)} aria-pressed={aboutOpen || !!about} aria-label={tx('About which property', 'किस प्रॉपर्टी के बारे में')}
-              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${about ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : aboutOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-600'}`} data-testid="room-about"><Home className="h-5 w-5" /></button>
-          ) : undefined}
+          menu={(close) => {
+            // v53 — the same "+" as the deal chat, small: every item is a shortcut into something this screen already does (nothing new is shared from here)
+            const live = r.items.filter((i: any) => i.property?.available);
+            const withMedia = r.items.filter((i: any) => i.mediaAvailable?.photos > 0 || i.mediaAvailable?.videos > 0);
+            const tile = 'flex min-h-[76px] flex-col items-center justify-center gap-1.5 rounded-xl bg-white px-1 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 active:bg-slate-100';
+            const dot = (tone: string, I: React.ElementType) => <span className={`flex h-9 w-9 items-center justify-center rounded-full ${tone}`}><I className="h-5 w-5" aria-hidden /></span>;
+            return (
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4" data-testid="room-plus">
+                {r.items.length > 0 && <button type="button" className={tile} data-testid="room-about" aria-pressed={!!about} onClick={() => { setAboutOpen(true); close(); }}>{dot('bg-emerald-100 text-emerald-700', Home)}{tx('About a home', 'प्रॉपर्टी चुनें')}</button>}
+                <button type="button" className={tile} data-testid="room-plus-share" onClick={() => { setTab('homes'); close(); setTimeout(() => document.querySelector('[data-testid="room-pick"]')?.scrollIntoView({ block: 'center' }), 80); }}>{dot('bg-indigo-100 text-indigo-700', Plus)}{tx('Share a home', 'प्रॉपर्टी जोड़ें')}</button>
+                {r.items.length > 0 && <button type="button" className={tile} data-testid="room-plus-visit" onClick={() => { if (live.length === 1) setBook({ item: live[0] }); else setTab('homes'); close(); }}>{dot('bg-sky-100 text-sky-700', CalendarPlus)}{tx('Book a visit', 'विज़िट तय करें')}</button>}
+                {withMedia.length > 0 && <button type="button" className={tile} data-testid="room-plus-photos" onClick={() => { if (withMedia.length === 1) setMediaFor(withMedia[0].id); setTab('homes'); close(); }}>{dot('bg-violet-100 text-violet-700', ImageIcon)}{tx('Photos to show', 'फ़ोटो दिखाएँ')}</button>}
+              </div>
+            );
+          }}
           composerTop={r.items.length > 0 && (aboutOpen || about) ? (
             <label className="mb-1.5 flex items-center gap-1.5 text-xs text-slate-500">
               <select className="min-h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-xs" value={about} onChange={e => setAbout(e.target.value)} aria-label={tx('About which property', 'किस प्रॉपर्टी के बारे में')}>
                 <option value="">{tx('About: (none)', 'विषय: (कोई नहीं)')}</option>{r.items.map((i: any) => <option key={i.id} value={i.propertyId}>{i.property?.title || i.propertyId}</option>)}
               </select>
+              <button type="button" onClick={() => { setAbout(''); setAboutOpen(false); }} aria-label={tx('Remove', 'हटाएँ')} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" data-testid="room-about-off"><X className="h-4 w-4" /></button>
             </label>
           ) : undefined}
           ids={{ root: 'room-chat-root', chat: 'room-chat', input: 'room-msg-input', send: 'room-send', quick: 'room-quick' }}

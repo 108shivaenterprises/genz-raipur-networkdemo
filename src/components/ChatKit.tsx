@@ -8,7 +8,7 @@
  * Both are presentation only: whoever uses them loads and sends the messages.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, MessageSquare, Send, Zap } from 'lucide-react';
+import { ArrowLeft, Loader2, Lock, MessageSquare, Plus, Send, Zap } from 'lucide-react';
 import { useI18n, useTx } from '../lib/i18n.js';
 
 export interface ThreadMsg {
@@ -22,6 +22,12 @@ export interface ThreadMsg {
   ref?: string;
   /** an attached file or media link */
   link?: string;
+  /** v53 — a card (property / document / photo / location / visit / stage) shown inside the bubble above the text */
+  card?: React.ReactNode;
+  /** v53 — the text is only the server's one-line fallback for a card: do not show it */
+  hideText?: boolean;
+  /** v53 — sent in the brokers-only channel: marked with a small lock */
+  priv?: boolean;
 }
 
 const timeOf = (iso: string) => { try { return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
@@ -48,9 +54,11 @@ export const ChatThread: React.FC<{
   composerTop?: React.ReactNode;
   /** an extra round button at the left of the message box */
   leading?: React.ReactNode;
+  /** v53 — the "+" menu: a round + button at the left of the message box; the panel it opens sits above the box. `close` shuts it. */
+  menu?: (close: () => void) => React.ReactNode;
   error?: string;
   ids?: { root?: string; chat?: string; input?: string; send?: string; quick?: string };
-}> = ({ msgs, onSend, placeholder, emptyHint, showWho, quick, composerTop, leading, error, ids = {} }) => {
+}> = ({ msgs, onSend, placeholder, emptyHint, showWho, quick, composerTop, leading, menu, error, ids = {} }) => {
   const tx = useTx();
   const hi = useI18n().lang === 'hi';
   const box = useRef<HTMLDivElement>(null);
@@ -58,6 +66,7 @@ export const ChatThread: React.FC<{
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs.length]);
   const grow = () => { const el = field.current; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; };
@@ -67,7 +76,7 @@ export const ChatThread: React.FC<{
     const v = text.trim();
     if (!v || busy) return;
     setBusy(true);
-    try { const ok = await onSend(v); if (ok !== false) { setText(''); setQuickOpen(false); } } finally { setBusy(false); field.current?.focus(); }
+    try { const ok = await onSend(v); if (ok !== false) { setText(''); setQuickOpen(false); setMenuOpen(false); } } finally { setBusy(false); field.current?.focus(); }
   };
 
   let lastDay = ''; let lastWho = '';
@@ -87,9 +96,11 @@ export const ChatThread: React.FC<{
             <React.Fragment key={m.id}>
               {newDay && <div className="sticky top-0 z-10 flex justify-center py-1"><span className="rounded-full bg-white/95 px-3 py-0.5 text-xs font-semibold text-slate-500 shadow-xs">{dayLabel(m.at, hi)}</span></div>}
               <div className={`flex ${m.mine ? 'justify-end' : 'justify-start'} ${newRun ? 'pt-1.5' : ''}`}>
-                <div className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-[15px] leading-snug ${m.mine ? 'rounded-br-md bg-emerald-100 text-slate-900' : 'rounded-bl-md bg-white text-slate-900 shadow-xs'}`}>
+                <div className={`${m.card ? 'w-[85%] sm:w-80' : 'max-w-[85%]'} whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-[15px] leading-snug ${m.priv ? 'ring-1 ring-amber-300' : ''} ${m.mine ? 'rounded-br-md bg-emerald-100 text-slate-900' : 'rounded-bl-md bg-white text-slate-900 shadow-xs'}`}>
                   {showWho && !m.mine && newRun && <div className="mb-0.5 text-xs font-bold text-indigo-700">{m.who}</div>}
-                  {m.text}
+                  {m.priv && <div className="mb-0.5 flex items-center gap-1 text-xs font-semibold text-amber-800" data-testid="msg-private"><Lock className="h-3 w-3" aria-hidden />{tx('Brokers only', 'सिर्फ़ ब्रोकर')}</div>}
+                  {m.card}
+                  {!m.hideText && m.text}
                   {m.ref && <div className="mt-0.5 text-xs text-slate-500">↳ {m.ref}</div>}
                   {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-semibold text-blue-700 underline">{tx('Attached file', 'संलग्न फ़ाइल')}</a>}
                   <div className="mt-0.5 text-right text-xs text-slate-400">{timeOf(m.at)}</div>
@@ -106,9 +117,14 @@ export const ChatThread: React.FC<{
             {quick.map(q => <button key={q.en} type="button" onClick={() => { setText(hi ? q.hi : q.en); setQuickOpen(false); field.current?.focus(); }} className="min-h-9 shrink-0 rounded-full border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700">{hi ? q.hi : q.en}</button>)}
           </div>
         )}
+        {menu && menuOpen && <div className="mb-2 max-h-[55vh] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-2" data-testid="plus-panel">{menu(() => setMenuOpen(false))}</div>}
         {composerTop}
         {error && <p className="mb-1 text-xs font-medium text-red-700" role="alert">{error}</p>}
         <form onSubmit={e => { e.preventDefault(); void send(); }} className="flex items-end gap-2">
+          {menu && (
+            <button type="button" onClick={() => { setMenuOpen(o => !o); setQuickOpen(false); field.current?.blur(); }} aria-expanded={menuOpen} aria-label={tx('Share something', 'कुछ साझा करें')}
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-colors ${menuOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="chat-plus"><Plus className={`h-5 w-5 transition-transform ${menuOpen ? 'rotate-45' : ''}`} /></button>
+          )}
           {leading}
           {quick && (
             <button type="button" onClick={() => setQuickOpen(o => !o)} aria-pressed={quickOpen} aria-label={tx('Quick replies', 'तैयार जवाब')}

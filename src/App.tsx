@@ -167,6 +167,27 @@ export default function App() {
   const [verifyOtpVisit, setVerifyOtpVisit] = useState<SiteVisit | null>(null);
   const [qrPassVisit, setQrPassVisit] = useState<SiteVisit | null>(null);
   const [dealRoomsRefreshKey, setDealRoomsRefreshKey] = useState<number>(0);
+  const openScheduleVisit = (dealId: string, propertyId: string) => {
+    const prop = properties.find((p) => p.id === propertyId);
+    // v40 — the buyer of this deal room is filled in when this broker can see him (his own requirement; a masked number is left out)
+    const deal = deals.find((d) => d.id === dealId);
+    const req = deal?.requirementId ? requirements.find((q) => q.id === deal.requirementId) : undefined;
+    const phone = req?.customerPhone && !/[x*•]/i.test(req.customerPhone) ? req.customerPhone : undefined;
+    setScheduleVisitTarget({
+      open: true,
+      dealId,
+      propertyId,
+      propertyTitle: prop?.title,
+      defaults: req ? { name: req.customerName, phone } : undefined,
+    });
+  };
+  // v53 — the chat's "+ Visit" opens the same schedule-visit window from the chat screen (the window sits above the full-screen chat)
+  const openScheduleVisitRef = useRef(openScheduleVisit); openScheduleVisitRef.current = openScheduleVisit;
+  useEffect(() => {
+    const h = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (d.dealId && d.propertyId) openScheduleVisitRef.current(d.dealId, d.propertyId); };
+    window.addEventListener('genz:schedule-visit', h);
+    return () => window.removeEventListener('genz:schedule-visit', h);
+  }, []);
 
   // Matching Selection State
   const [matchSelectedReqId, setMatchSelectedReqId] = useState<string | undefined>(undefined);
@@ -518,20 +539,7 @@ export default function App() {
             onRefreshDeals={loadData}
             onRefreshOffers={loadData}
             onOpenBrokerSafetyModal={() => setShowBrokerSafetyModal(true)}
-            onOpenScheduleVisit={(dealId, propertyId) => {
-              const prop = properties.find((p) => p.id === propertyId);
-              // v40 — the buyer of this deal room is filled in when this broker can see him (his own requirement; a masked number is left out)
-              const deal = deals.find((d) => d.id === dealId);
-              const req = deal?.requirementId ? requirements.find((q) => q.id === deal.requirementId) : undefined;
-              const phone = req?.customerPhone && !/[x*•]/i.test(req.customerPhone) ? req.customerPhone : undefined;
-              setScheduleVisitTarget({
-                open: true,
-                dealId,
-                propertyId,
-                propertyTitle: prop?.title,
-                defaults: req ? { name: req.customerName, phone } : undefined,
-              });
-            }}
+            onOpenScheduleVisit={openScheduleVisit}
             onOpenVerifyVisitOtp={(visit) => {
               setVerifyOtpVisit(visit);
             }}
@@ -710,7 +718,7 @@ export default function App() {
           propertyId={scheduleVisitTarget.propertyId}
           propertyTitle={scheduleVisitTarget.propertyTitle}
           defaults={scheduleVisitTarget.defaults}
-          onClose={() => setScheduleVisitTarget(null)}
+          onClose={() => { setScheduleVisitTarget(null); window.dispatchEvent(new Event('genz:visit-modal-closed')); }}
           onSuccess={() => {
             loadData();
             setDealRoomsRefreshKey((k) => k + 1);

@@ -71951,7 +71951,7 @@ function trailsFor(u) {
 function createMoneyTrailRouter() {
   const r = (0, import_express5.Router)();
   const me25 = () => ctx().user;
-  const bad24 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
+  const bad25 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
   const st22 = () => db.getState();
   const leadOf = (b) => db.byId("crmLeads", b.leadId);
   const lead = (b, note5) => {
@@ -71966,13 +71966,13 @@ function createMoneyTrailRouter() {
     const b = st22().crmBookings.find((x) => (x.trails || []).some((t2) => t2.id === req.params.id));
     const t = b?.trails?.find((x) => x.id === req.params.id);
     if (!b || !t) {
-      bad24(res, "Money entry not found", 404);
+      bad25(res, "Money entry not found", 404);
       return null;
     }
     const a = actorOn(u, b);
     const seen2 = trailsFor(u).some((x) => x.id === t.id);
     if (!a.side || !seen2) {
-      bad24(res, "Money entry not found", 404);
+      bad25(res, "Money entry not found", 404);
       return null;
     }
     return { b, t, a };
@@ -72021,29 +72021,29 @@ function createMoneyTrailRouter() {
   });
   r.post("/trails", needs("crm:money_collect"), rateLimit("money-trail-start", 300, 24 * 36e5), (req, res) => {
     const u = me25();
-    if (isAdmin(u)) return bad24(res, "The platform only watches the money trail \u2014 the partner and the builder record it", 403);
+    if (isAdmin(u)) return bad25(res, "The platform only watches the money trail \u2014 the partner and the builder record it", 403);
     const b = st22().crmBookings.find((x) => x.id === String(req.body?.bookingId || ""));
     const a = b ? actorOn(u, b) : NO_ACTOR(u.id);
-    if (!b || !a.side) return bad24(res, "Booking not found", 404);
-    if (!a.canCollect) return bad24(res, "Your employer has not allowed you to record collected money", 403, "MONEY_NOT_ALLOWED");
-    if (!staffMayCollect(a, b, leadOf(b))) return bad24(res, "You can record money only for customers you work with", 403);
-    if (b.status !== "REQUESTED" && b.status !== "APPROVED") return bad24(res, `This booking is ${b.status.toLowerCase()} \u2014 no money can be recorded on it`, 409);
+    if (!b || !a.side) return bad25(res, "Booking not found", 404);
+    if (!a.canCollect) return bad25(res, "Your employer has not allowed you to record collected money", 403, "MONEY_NOT_ALLOWED");
+    if (!staffMayCollect(a, b, leadOf(b))) return bad25(res, "You can record money only for customers you work with", 403);
+    if (b.status !== "REQUESTED" && b.status !== "APPROVED") return bad25(res, `This booking is ${b.status.toLowerCase()} \u2014 no money can be recorded on it`, 409);
     const c = cleanNewTrail(req.body);
-    if ("error" in c) return bad24(res, c.error);
+    if ("error" in c) return bad25(res, c.error);
     const d = c.ok;
     let targetName;
     if (d.target === "TOKEN") {
-      if (!b.token || b.token.status === "RECEIVED") return bad24(res, "There is no pending booking amount on this booking", 409);
-      if (d.amount !== b.token.amount) return bad24(res, `The booking amount on this request is ${inr4(b.token.amount)} \u2014 record exactly that`, 400);
-      if (openTrailOn(b.trails, "TOKEN")) return bad24(res, "The booking amount is already travelling through the Money Trail", 409, "MONEY_TRAIL_OPEN");
+      if (!b.token || b.token.status === "RECEIVED") return bad25(res, "There is no pending booking amount on this booking", 409);
+      if (d.amount !== b.token.amount) return bad25(res, `The booking amount on this request is ${inr4(b.token.amount)} \u2014 record exactly that`, 400);
+      if (openTrailOn(b.trails, "TOKEN")) return bad25(res, "The booking amount is already travelling through the Money Trail", 409, "MONEY_TRAIL_OPEN");
       targetName = "Booking amount";
     } else {
-      if (b.status !== "APPROVED") return bad24(res, "Instalments can be recorded only after the builder approves the booking", 409);
+      if (b.status !== "APPROVED") return bad25(res, "Instalments can be recorded only after the builder approves the booking", 409);
       const m = b.paymentSchedule.find((x) => x.id === d.target);
-      if (!m) return bad24(res, "Instalment not found", 404);
+      if (!m) return bad25(res, "Instalment not found", 404);
       const pending = m.amount - paidOf(m) - reservedOn(b.trails, m.id);
-      if (pending <= 0) return bad24(res, "Nothing is pending on this instalment", 409);
-      if (d.amount > pending) return bad24(res, `Only ${inr4(pending)} is pending on this instalment`, 400);
+      if (pending <= 0) return bad25(res, "Nothing is pending on this instalment", 409);
+      if (d.amount > pending) return bad25(res, `Only ${inr4(pending)} is pending on this instalment`, 400);
       targetName = m.name;
     }
     const ts = nowIso4();
@@ -72076,16 +72076,16 @@ function createMoneyTrailRouter() {
     if (!o) return;
     const { b, t, a } = o;
     const u = me25();
-    if (typeof req.body?.received !== "boolean") return bad24(res, "received must be true or false");
+    if (typeof req.body?.received !== "boolean") return bad25(res, "received must be true or false");
     const can2 = trailActions(t, a);
     if (!can2.cpConfirm) {
-      if (t.route !== "CP") return bad24(res, "This money was collected on the builder's side \u2014 the builder confirms it", 409);
-      if (a.id === t.collector.id) return bad24(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
-      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad24(res, "Only the partner or a team member he has authorised can confirm this", 403, "MONEY_NOT_ALLOWED");
-      return bad24(res, "This money is not waiting for the partner's confirmation", 409);
+      if (t.route !== "CP") return bad25(res, "This money was collected on the builder's side \u2014 the builder confirms it", 409);
+      if (a.id === t.collector.id) return bad25(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
+      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad25(res, "Only the partner or a team member he has authorised can confirm this", 403, "MONEY_NOT_ALLOWED");
+      return bad25(res, "This money is not waiting for the partner's confirmation", 409);
     }
     const note5 = cleanNote(req.body?.note);
-    if (!req.body.received && note5.length < TRAIL_NOTE_MIN) return bad24(res, `Say why \u2014 e.g. "${t.collector.name} has not given it to me yet"`);
+    if (!req.body.received && note5.length < TRAIL_NOTE_MIN) return bad25(res, `Say why \u2014 e.g. "${t.collector.name} has not given it to me yet"`);
     if (req.body.received) {
       t.status = "WITH_CP";
       step(t, "CP_CONFIRMED", a, { note: note5 });
@@ -72106,17 +72106,17 @@ function createMoneyTrailRouter() {
     const u = me25();
     const can2 = trailActions(t, a);
     if (!can2.handover) {
-      if (t.route !== "CP") return bad24(res, "This money was collected on the builder's side \u2014 there is no hand-over", 409);
-      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad24(res, "Only the partner or a team member he has authorised can hand money over to the builder", 403, "MONEY_NOT_ALLOWED");
-      return bad24(res, t.status === "WITH_COLLECTOR" ? "The partner must first confirm that he received this money from his team member" : "This money is not with the partner right now", 409);
+      if (t.route !== "CP") return bad25(res, "This money was collected on the builder's side \u2014 there is no hand-over", 409);
+      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad25(res, "Only the partner or a team member he has authorised can hand money over to the builder", 403, "MONEY_NOT_ALLOWED");
+      return bad25(res, t.status === "WITH_COLLECTOR" ? "The partner must first confirm that he received this money from his team member" : "This money is not with the partner right now", 409);
     }
     let mode;
     let ref;
     if (req.body?.mode !== void 0 && req.body.mode !== "") {
       mode = String(req.body.mode);
-      if (!TRAIL_MODE_IDS.includes(mode)) return bad24(res, "Pick how it was handed over \u2014 cash / cheque / UPI / NEFT \u2026");
+      if (!TRAIL_MODE_IDS.includes(mode)) return bad25(res, "Pick how it was handed over \u2014 cash / cheque / UPI / NEFT \u2026");
       ref = String(req.body?.ref ?? "").trim().slice(0, 40);
-      if (mode !== "CASH" && ref.length < 3) return bad24(res, "Give the cheque number / UTR of the hand-over (min 3 characters) \u2014 the builder's accounts need it to match");
+      if (mode !== "CASH" && ref.length < 3) return bad25(res, "Give the cheque number / UTR of the hand-over (min 3 characters) \u2014 the builder's accounts need it to match");
     }
     const note5 = cleanNote(req.body?.note);
     t.status = "HANDED_OVER";
@@ -72132,36 +72132,36 @@ function createMoneyTrailRouter() {
     if (!o) return;
     const { b, t, a } = o;
     const u = me25();
-    if (typeof req.body?.received !== "boolean") return bad24(res, "received must be true or false");
+    if (typeof req.body?.received !== "boolean") return bad25(res, "received must be true or false");
     const received = req.body.received;
     const can2 = trailActions(t, a);
     if (!can2.builderConfirm) {
-      if (a.id === t.collector.id) return bad24(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
-      if (a.side !== "BUILDER_OWNER" && !(a.side === "BUILDER_STAFF" && a.canConfirm)) return bad24(res, "Only the builder or the accounts person he has authorised can confirm that the money arrived", 403, "MONEY_NOT_ALLOWED");
-      return bad24(res, "This money is already settled", 409);
+      if (a.id === t.collector.id) return bad25(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
+      if (a.side !== "BUILDER_OWNER" && !(a.side === "BUILDER_STAFF" && a.canConfirm)) return bad25(res, "Only the builder or the accounts person he has authorised can confirm that the money arrived", 403, "MONEY_NOT_ALLOWED");
+      return bad25(res, "This money is already settled", 409);
     }
     const note5 = cleanNote(req.body?.note);
     if (builderNeedsNote(t, received) && note5.length < TRAIL_NOTE_MIN) {
-      return bad24(res, received ? 'This money has not been handed over yet \u2014 say why you are confirming it now (e.g. "customer paid our account directly")' : 'Say why \u2014 e.g. "cheque bounced" or "not in the bank yet"', 400, "NOTE_REQUIRED");
+      return bad25(res, received ? 'This money has not been handed over yet \u2014 say why you are confirming it now (e.g. "customer paid our account directly")' : 'Say why \u2014 e.g. "cheque bounced" or "not in the bank yet"', 400, "NOTE_REQUIRED");
     }
     const ts = nowIso4();
     const hand = [...t.steps].reverse().find((s) => s.stage === "HANDED_OVER");
     const mode = hand?.mode || t.mode;
     const ref = hand?.mode ? hand.ref : t.ref;
     const rn = String(req.body?.receiptNo ?? "").trim();
-    if (rn && (rn.length < 3 || rn.length > 40)) return bad24(res, "The receipt number must be 3\u201340 characters");
+    if (rn && (rn.length < 3 || rn.length > 40)) return bad25(res, "The receipt number must be 3\u201340 characters");
     if (received) {
-      if (b.status !== "APPROVED") return bad24(res, "Approve the booking first, then confirm that the money arrived", 409);
+      if (b.status !== "APPROVED") return bad25(res, "Approve the booking first, then confirm that the money arrived", 409);
       if (t.target === "TOKEN") {
-        if (!b.token || b.token.status === "RECEIVED") return bad24(res, "The booking amount is already confirmed", 409);
+        if (!b.token || b.token.status === "RECEIVED") return bad25(res, "The booking amount is already confirmed", 409);
         b.token = { ...b.token, mode, ...ref ? { ref } : {}, ...t.paidOn ? { paidOn: t.paidOn } : {} };
         const c = confirmToken(b, u, true, note5 || void 0, { trailId: t.id, ...rn ? { receiptNo: rn } : {} });
-        if ("error" in c) return bad24(res, c.error, c.status);
+        if ("error" in c) return bad25(res, c.error, c.status);
       } else {
         const m = b.paymentSchedule.find((x) => x.id === t.target);
-        if (!m) return bad24(res, "Instalment not found", 404);
+        if (!m) return bad25(res, "Instalment not found", 404);
         const pending = m.amount - paidOf(m);
-        if (t.amount > pending) return bad24(res, `Only ${inr4(pending)} is pending on this instalment now \u2014 cancel this entry or ask for a corrected amount`, 409);
+        if (t.amount > pending) return bad25(res, `Only ${inr4(pending)} is pending on this instalment now \u2014 cancel this entry or ask for a corrected amount`, 409);
         const rref = (rn || (ref && ref.length >= 3 ? ref : "CASH")).slice(0, 40);
         m.receipts = [...m.receipts || [], { id: `RC-${Date.now().toString(36)}-${m.id.slice(-2)}`, amount: t.amount, mode, ref: rref, at: ts, byId: u.id, byName: u.name, trailId: t.id }];
         m.paidAmount = paidOf(m) + t.amount;
@@ -72178,7 +72178,7 @@ function createMoneyTrailRouter() {
     } else {
       if (t.target === "TOKEN" && b.token && b.token.status !== "RECEIVED") {
         const c = confirmToken(b, u, false, note5 || void 0);
-        if ("error" in c) return bad24(res, c.error, c.status);
+        if ("error" in c) return bad25(res, c.error, c.status);
       }
       t.status = "NOT_RECEIVED";
       step(t, "BUILDER_NOT_RECEIVED", a, { note: note5 });
@@ -72194,9 +72194,9 @@ function createMoneyTrailRouter() {
     if (!o) return;
     const { b, t, a } = o;
     const u = me25();
-    if (!trailActions(t, a).cancel) return bad24(res, isOpenTrail(t) ? "You cannot cancel this entry at this stage" : "This money is already settled", isOpenTrail(t) ? 403 : 409);
+    if (!trailActions(t, a).cancel) return bad25(res, isOpenTrail(t) ? "You cannot cancel this entry at this stage" : "This money is already settled", isOpenTrail(t) ? 403 : 409);
     const reason = cleanNote(req.body?.reason);
-    if (reason.length < TRAIL_NOTE_MIN) return bad24(res, "Say why this entry is being cancelled");
+    if (reason.length < TRAIL_NOTE_MIN) return bad25(res, "Say why this entry is being cancelled");
     t.status = "CANCELLED";
     step(t, "CANCELLED", a, { note: reason });
     b.updatedAt = nowIso4();
@@ -76212,7 +76212,7 @@ var shareSchema = external_exports.object({
 function createInventoryDeskRouter() {
   const r = (0, import_express19.Router)();
   const me25 = () => ctx().user;
-  const bad24 = (res, msg, code = 400) => res.status(code).json({ error: msg });
+  const bad25 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const audit8 = (id, action, details) => {
     const u = me25();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
@@ -76227,7 +76227,7 @@ function createInventoryDeskRouter() {
       rows = st22.inventoryPosts.filter((p) => p.employerId === u.employerId && postIsLive(p) && (p.memberIds.length === 0 || p.memberIds.includes(u.id)));
     } else if (u.role === "BROKER" || u.role === "DEVELOPER_BUILDER") {
       rows = st22.inventoryPosts.filter((p) => p.employerId === u.id);
-    } else return bad24(res, "Not available", 403);
+    } else return bad25(res, "Not available", 403);
     if (projectId) rows = rows.filter((p) => p.projectId === projectId);
     const out = rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100).map((p) => ({
       ...p,
@@ -76241,22 +76241,22 @@ function createInventoryDeskRouter() {
   r.post("/posts", needs("team:manage"), (req, res) => {
     const u = me25();
     const st22 = db.getState();
-    if (u.role !== "BROKER" && u.role !== "DEVELOPER_BUILDER") return bad24(res, "Only a partner or a builder can post units to a team", 403);
+    if (u.role !== "BROKER" && u.role !== "DEVELOPER_BUILDER") return bad25(res, "Only a partner or a builder can post units to a team", 403);
     const parsed = postSchema.safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid post");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid post");
     const d = parsed.data;
     const a = actorFor(u, d.projectId);
-    if (!a) return bad24(res, "Project not found", 404);
+    if (!a) return bad25(res, "Project not found", 404);
     const actor = a.actor;
     const units = st22.inventoryUnits.filter((x) => x.projectId === d.projectId && d.unitIds.includes(x.id));
-    if (units.length !== new Set(d.unitIds).size) return bad24(res, "Some units are not part of this project");
+    if (units.length !== new Set(d.unitIds).size) return bad25(res, "Some units are not part of this project");
     for (const x of units) {
-      if (!seenBy(actor, a.project, x).visible) return bad24(res, `Unit ${x.label} is not open to you`);
-      if (x.status !== "AVAILABLE") return bad24(res, `Unit ${x.label} is not available any more`, 409);
+      if (!seenBy(actor, a.project, x).visible) return bad25(res, `Unit ${x.label} is not open to you`);
+      if (x.status !== "AVAILABLE") return bad25(res, `Unit ${x.label} is not available any more`, 409);
     }
     const mineIds = new Set(teamOf(u.id).map((x) => x.id));
-    if (d.memberIds.some((id) => !mineIds.has(id))) return bad24(res, "Pick only your own team members");
-    if (st22.inventoryPosts.filter((p) => p.employerId === u.id && postIsLive(p)).length >= MAX_ACTIVE_POSTS) return bad24(res, `You can keep ${MAX_ACTIVE_POSTS} live posts \u2014 end an old one first`, 409);
+    if (d.memberIds.some((id) => !mineIds.has(id))) return bad25(res, "Pick only your own team members");
+    if (st22.inventoryPosts.filter((p) => p.employerId === u.id && postIsLive(p)).length >= MAX_ACTIVE_POSTS) return bad25(res, `You can keep ${MAX_ACTIVE_POSTS} live posts \u2014 end an old one first`, 409);
     const canPrice = units.every((x) => seenBy(actor, a.project, x).price);
     const post = {
       id: uid("POST"),
@@ -76281,7 +76281,7 @@ function createInventoryDeskRouter() {
   r.post("/posts/:id/end", needs("team:manage"), (req, res) => {
     const u = me25();
     const p = db.getState().inventoryPosts.find((x) => x.id === req.params.id && x.employerId === u.id);
-    if (!p) return bad24(res, "Post not found", 404);
+    if (!p) return bad25(res, "Post not found", 404);
     p.active = false;
     db.save();
     audit8(p.id, "INVENTORY_POST_ENDED", `${u.name} ended a team post`);
@@ -76311,11 +76311,11 @@ function createInventoryDeskRouter() {
     const u = me25();
     const st22 = db.getState();
     const parsed = shareSchema.safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid request");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid request");
     const d = parsed.data;
     const rs = resolve(u, d.projectId, d.unitIds);
-    if ("error" in rs) return bad24(res, rs.error, rs.code || 400);
-    if (st22.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return bad24(res, "Too many links \u2014 revoke old ones first", 409);
+    if ("error" in rs) return bad25(res, rs.error, rs.code || 400);
+    if (st22.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return bad25(res, "Too many links \u2014 revoke old ones first", 409);
     const flags = capShareFlags({ showPrice: d.showPrice, showFeatures: d.showFeatures }, rs.canPrice, rs.canFeatures);
     const link = {
       token: crypto14.randomBytes(8).toString("base64url"),
@@ -76362,7 +76362,7 @@ function createInventoryDeskRouter() {
   r.post("/shares/:token/revoke", needShare, (req, res) => {
     const u = me25();
     const l = db.getState().shareLinks.find((x) => x.token === req.params.token && x.kind === "UNITS" && (x.ownerId === u.id || x.employerId === u.id));
-    if (!l) return bad24(res, "Link not found", 404);
+    if (!l) return bad25(res, "Link not found", 404);
     l.revoked = true;
     db.save();
     res.json({ success: true });
@@ -76391,7 +76391,7 @@ function createLaunchRouter() {
   const r = (0, import_express20.Router)();
   const me25 = () => ctx().user;
   const st22 = () => db.getState();
-  const bad24 = (res, msg, code = 400) => res.status(code).json({ error: msg });
+  const bad25 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const audit8 = (id, action, details) => {
     const u = me25();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
@@ -76428,10 +76428,10 @@ function createLaunchRouter() {
   });
   r.put("/admin/partners/:id/segment", needs("launch:manage"), (req, res) => {
     const u = st22().users.find((x) => x.id === req.params.id && x.role === "BROKER");
-    if (!u) return bad24(res, "Partner not found", 404);
-    if (tierOf(u) === "TIER2") return bad24(res, "A local associate (no RERA no.) cannot be moved to a RERA group \u2014 add the RERA registration first", 409);
+    if (!u) return bad25(res, "Partner not found", 404);
+    if (tierOf(u) === "TIER2") return bad25(res, "A local associate (no RERA no.) cannot be moved to a RERA group \u2014 add the RERA registration first", 409);
     const seg = req.body?.segment;
-    if (seg !== null && seg !== "BIG_FIRM" && seg !== "INDEPENDENT") return bad24(res, "Segment must be BIG_FIRM, INDEPENDENT or null (automatic)");
+    if (seg !== null && seg !== "BIG_FIRM" && seg !== "INDEPENDENT") return bad25(res, "Segment must be BIG_FIRM, INDEPENDENT or null (automatic)");
     if (seg === null) delete u.firmSegment;
     else u.firmSegment = seg;
     db.save();
@@ -76440,12 +76440,12 @@ function createLaunchRouter() {
   });
   r.post("/admin/projects/:id/request", needs("launch:manage"), rateLimit("launch-req", 40, 24 * 36e5), (req, res) => {
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || p.status === "ARCHIVED") return bad24(res, "Project not found", 404);
+    if (!p || p.status === "ARCHIVED") return bad25(res, "Project not found", 404);
     const parsed = requestSchema.safeParse(req.body || {});
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid request");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid request");
     const plan = p.launch ?? emptyPlan();
-    if (plan.consent === "GRANTED") return bad24(res, "The builder has already agreed \u2014 plan the launch", 409);
-    if (plan.consent === "REQUESTED") return bad24(res, "A request is already waiting for the builder", 409);
+    if (plan.consent === "GRANTED") return bad25(res, "The builder has already agreed \u2014 plan the launch", 409);
+    if (plan.consent === "REQUESTED") return bad25(res, "A request is already waiting for the builder", 409);
     plan.consent = "REQUESTED";
     plan.requestedBy = me25().name;
     plan.requestedAt = nowIso13();
@@ -76460,10 +76460,10 @@ function createLaunchRouter() {
   });
   r.put("/admin/projects/:id/plan", needs("launch:manage"), (req, res) => {
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || p.status === "ARCHIVED") return bad24(res, "Project not found", 404);
-    if (!p.launch || p.launch.consent !== "GRANTED") return bad24(res, "The builder has not agreed to a GENZ launch yet", 409);
+    if (!p || p.status === "ARCHIVED") return bad25(res, "Project not found", 404);
+    if (!p.launch || p.launch.consent !== "GRANTED") return bad25(res, "The builder has not agreed to a GENZ launch yet", 409);
     const next2 = cleanPlanInput(req.body || {}, p.launch);
-    if (typeof next2 === "string") return bad24(res, next2);
+    if (typeof next2 === "string") return bad25(res, next2);
     pushHistory(next2, me25().name, `Launch plan edited${p.launch.status === "LIVE" ? " (while live)" : ""}`);
     p.launch = next2;
     db.save();
@@ -76472,17 +76472,17 @@ function createLaunchRouter() {
   });
   r.post("/admin/projects/:id/status", needs("launch:manage"), (req, res) => {
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || p.status === "ARCHIVED") return bad24(res, "Project not found", 404);
+    if (!p || p.status === "ARCHIVED") return bad25(res, "Project not found", 404);
     const plan = p.launch;
-    if (!plan || plan.consent !== "GRANTED") return bad24(res, "The builder has not agreed to a GENZ launch yet", 409);
+    if (!plan || plan.consent !== "GRANTED") return bad25(res, "The builder has not agreed to a GENZ launch yet", 409);
     const parsed = statusSchema.safeParse(req.body || {});
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid status");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid status");
     const to = parsed.data.status;
     if (to === "LIVE") {
-      if (!VISIBLE_STATUS.includes(p.status)) return bad24(res, "This project is not taking new partners (status must be Active launch or Pre-booking)", 409);
-      if ((p.access || "OPEN_APPLY") !== "OPEN_APPLY") return bad24(res, "The builder set this project to invite-only. Ask the builder to open it to applications first.", 409);
+      if (!VISIBLE_STATUS.includes(p.status)) return bad25(res, "This project is not taking new partners (status must be Active launch or Pre-booking)", 409);
+      if ((p.access || "OPEN_APPLY") !== "OPEN_APPLY") return bad25(res, "The builder set this project to invite-only. Ask the builder to open it to applications first.", 409);
     }
-    if (plan.status === to) return bad24(res, `Already ${to.toLowerCase()}`, 409);
+    if (plan.status === to) return bad25(res, `Already ${to.toLowerCase()}`, 409);
     plan.status = to;
     pushHistory(plan, me25().name, `Launch ${to.toLowerCase()}${parsed.data.note ? ` \u2014 ${parsed.data.note}` : ""}`);
     db.save();
@@ -76507,26 +76507,26 @@ function createLaunchRouter() {
   r.post("/builder/projects/:id/consent", needs("pcontrol:manage"), (req, res) => {
     const u = me25();
     const p = ownProject(u, req.params.id);
-    if (!p) return bad24(res, "Project not found", 404);
+    if (!p) return bad25(res, "Project not found", 404);
     const decision = req.body?.decision;
     const note5 = String(req.body?.note || "").trim().slice(0, 200);
-    if (!["GRANT", "DECLINE", "WITHDRAW"].includes(decision)) return bad24(res, "Decision must be GRANT, DECLINE or WITHDRAW");
+    if (!["GRANT", "DECLINE", "WITHDRAW"].includes(decision)) return bad25(res, "Decision must be GRANT, DECLINE or WITHDRAW");
     const plan = p.launch ?? emptyPlan();
     const at = nowIso13();
     if (decision === "GRANT") {
-      if (plan.consent === "GRANTED") return bad24(res, "Already agreed", 409);
+      if (plan.consent === "GRANTED") return bad25(res, "Already agreed", 409);
       plan.consent = "GRANTED";
       plan.decidedBy = u.name;
       plan.decidedAt = at;
       pushHistory(plan, u.name, plan.requestedAt ? "Builder agreed to the GENZ launch" : "Builder invited GENZ to launch this project", at);
     } else if (decision === "DECLINE") {
-      if (plan.consent !== "REQUESTED") return bad24(res, "There is no pending request to decline", 409);
+      if (plan.consent !== "REQUESTED") return bad25(res, "There is no pending request to decline", 409);
       plan.consent = "DECLINED";
       plan.decidedBy = u.name;
       plan.decidedAt = at;
       pushHistory(plan, u.name, `Builder declined the GENZ launch${note5 ? ` \u2014 ${note5}` : ""}`, at);
     } else {
-      if (plan.consent !== "GRANTED") return bad24(res, "Nothing to withdraw", 409);
+      if (plan.consent !== "GRANTED") return bad25(res, "Nothing to withdraw", 409);
       plan.consent = "DECLINED";
       plan.status = "CLOSED";
       plan.decidedBy = u.name;
@@ -80384,7 +80384,7 @@ function createPcontrolRouter() {
     db.appendAuditEvent(u.id, u.role, entity, id, action, details);
   };
   const state = () => db.getState();
-  const bad24 = (res, msg, code = 400) => res.status(code).json({ error: msg });
+  const bad25 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const projectFor = (id, write) => {
     const u = me25();
     const p = state().builderProjects.find((x) => x.id === id);
@@ -80436,7 +80436,7 @@ function createPcontrolRouter() {
     const u = me25();
     const st22 = state();
     const p = projectFor(req.params.id, false);
-    if (!p) return bad24(res, "Project not found", 404);
+    if (!p) return bad25(res, "Project not found", 404);
     const leads = st22.crmLeads.filter((l) => l.projectId === p.id);
     const mask2 = (l) => isAdmin(u) && !isSuper(u) ? { ...l, phone: l.phone.slice(0, -5) + "\u2022\u2022\u2022\u2022\u2022" } : l;
     const partners = st22.associateMandates.filter((m) => m.projectId === p.id).map((m) => {
@@ -80500,14 +80500,14 @@ function createPcontrolRouter() {
   });
   r.put("/builder/projects/:id/details", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad24(res, "Project not found", 404);
+    if (!p) return bad25(res, "Project not found", 404);
     const parsed = detailsSchema.safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid details");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid details");
     const d = parsed.data;
     const lo = d.priceStartingFrom ?? p.priceStartingFrom;
     const hi = d.priceMax ?? p.priceMax;
-    if (hi < lo) return bad24(res, "Maximum price must be \u2265 starting price");
-    if (d.availableUnits !== void 0 && d.availableUnits > p.totalUnits) return bad24(res, `Available units cannot exceed total units (${p.totalUnits})`);
+    if (hi < lo) return bad25(res, "Maximum price must be \u2265 starting price");
+    if (d.availableUnits !== void 0 && d.availableUnits > p.totalUnits) return bad25(res, `Available units cannot exceed total units (${p.totalUnits})`);
     const changed = [];
     for (const [k, v] of Object.entries(d)) {
       if (v !== void 0 && JSON.stringify(p[k]) !== JSON.stringify(v)) {
@@ -80524,9 +80524,9 @@ function createPcontrolRouter() {
   });
   r.put("/builder/projects/:id/settings", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad24(res, "Project not found", 404);
+    if (!p) return bad25(res, "Project not found", 404);
     const parsed = settingsSchema2.safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid settings");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid settings");
     const d = parsed.data;
     const was = `${p.access || "OPEN_APPLY"}/${p.leadIntake || "OPEN"}/${p.leadVerification || "AUTO"}/${p.registrationDays || 60}d`;
     if (d.access) p.access = d.access;
@@ -80553,10 +80553,10 @@ function createPcontrolRouter() {
   });
   r.post("/builder/projects/:id/updates", needs("pcontrol:manage"), rateLimit("pc-update", 60, 24 * 36e5), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad24(res, "Project not found", 404);
+    if (!p) return bad25(res, "Project not found", 404);
     const parsed = updateSchema.safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid notice");
-    if (state().projectUpdates.filter((x2) => x2.projectId === p.id).length >= 100) return bad24(res, "Notice board is full (100) \u2014 delete old notices first", 409);
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid notice");
+    if (state().projectUpdates.filter((x2) => x2.projectId === p.id).length >= 100) return bad25(res, "Notice board is full (100) \u2014 delete old notices first", 409);
     const x = { id: uid2("PU"), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me25().id, createdAt: nowIso22() };
     state().projectUpdates.unshift(x);
     db.save();
@@ -80565,7 +80565,7 @@ function createPcontrolRouter() {
   });
   r.delete("/builder/updates/:uid", needs("pcontrol:manage"), (req, res) => {
     const x = state().projectUpdates.find((y) => y.id === req.params.uid);
-    if (!x || !projectFor(x.projectId, true)) return bad24(res, "Notice not found", 404);
+    if (!x || !projectFor(x.projectId, true)) return bad25(res, "Notice not found", 404);
     state().projectUpdates = state().projectUpdates.filter((y) => y.id !== x.id);
     db.save();
     audit8("SYSTEM", x.id, "PROJECT_NOTICE_DELETED", `${me25().name} deleted notice "${x.title}"`);
@@ -80573,11 +80573,11 @@ function createPcontrolRouter() {
   });
   r.post("/builder/projects/:id/collateral", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad24(res, "Project not found", 404);
+    if (!p) return bad25(res, "Project not found", 404);
     const parsed = collateralSchema.safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid link");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid link");
     p.collateral ||= [];
-    if (p.collateral.length >= 30) return bad24(res, "Up to 30 files per project", 409);
+    if (p.collateral.length >= 30) return bad25(res, "Up to 30 files per project", 409);
     const c = { id: uid2("PC"), ...parsed.data, addedAt: nowIso22() };
     p.collateral.unshift(c);
     db.save();
@@ -80586,10 +80586,10 @@ function createPcontrolRouter() {
   });
   r.delete("/builder/projects/:id/collateral/:cid", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad24(res, "Project not found", 404);
+    if (!p) return bad25(res, "Project not found", 404);
     const before = (p.collateral || []).length;
     p.collateral = (p.collateral || []).filter((c) => c.id !== req.params.cid);
-    if (p.collateral.length === before) return bad24(res, "File not found", 404);
+    if (p.collateral.length === before) return bad25(res, "File not found", 404);
     db.save();
     audit8("SYSTEM", p.id, "PROJECT_COLLATERAL_REMOVED", `${me25().name} removed a file from ${p.projectName}`);
     res.json({ success: true });
@@ -80601,24 +80601,24 @@ function createPcontrolRouter() {
   };
   r.post("/builder/mandates/:id/decide", needs("pcontrol:manage"), (req, res) => {
     const f = mandateFor(req.params.id);
-    if (!f) return bad24(res, "Partner request not found", 404);
+    if (!f) return bad25(res, "Partner request not found", 404);
     const { m, p } = f;
-    if (!["APPLIED", "SHORTLISTED", "INVITED", "DECLINED"].includes(m.status)) return bad24(res, `This partner is already ${m.status.toLowerCase().replace("_", " ")}`, 409);
+    if (!["APPLIED", "SHORTLISTED", "INVITED", "DECLINED"].includes(m.status)) return bad25(res, `This partner is already ${m.status.toLowerCase().replace("_", " ")}`, 409);
     const { action, commissionPct, quota, dailyLeadCap, validUntil, note: note5 } = req.body || {};
     const broker = state().users.find((x) => x.id === m.brokerId);
     if (action === "APPROVE") {
-      if (!broker || broker.verificationStatus !== "VERIFIED") return bad24(res, "Only KYC-verified brokers can be appointed");
-      if (tierOf(broker) === "TIER2") return bad24(res, "This broker is a Tier 2 local associate (no RERA). Builder projects need a RERA-verified (Tier 1) broker.", 409);
+      if (!broker || broker.verificationStatus !== "VERIFIED") return bad25(res, "Only KYC-verified brokers can be appointed");
+      if (tierOf(broker) === "TIER2") return bad25(res, "This broker is a Tier 2 local associate (no RERA). Builder projects need a RERA-verified (Tier 1) broker.", 409);
       const pct2 = commissionPct === void 0 || commissionPct === "" ? p.channelPartnerCommissionPct : Number(commissionPct);
-      if (!pctOk(pct2)) return bad24(res, "Commission must be between 0.1% and 10%");
+      if (!pctOk(pct2)) return bad25(res, "Commission must be between 0.1% and 10%");
       const q = quota === void 0 || quota === "" ? 5 : Number(quota);
-      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad24(res, "Target units must be a whole number between 1 and 1000");
+      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad25(res, "Target units must be a whole number between 1 and 1000");
       let cap;
       if (dailyLeadCap !== void 0 && dailyLeadCap !== "" && dailyLeadCap !== null) {
         cap = Number(dailyLeadCap);
-        if (!Number.isInteger(cap) || cap < 1 || cap > 200) return bad24(res, "Daily lead limit must be 1\u2013200");
+        if (!Number.isInteger(cap) || cap < 1 || cap > 200) return bad25(res, "Daily lead limit must be 1\u2013200");
       }
-      if (validUntil && (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now())) return bad24(res, "End date must be in the future");
+      if (validUntil && (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now())) return bad25(res, "End date must be in the future");
       m.status = "ACTIVE_ASSOCIATE";
       m.agreedCommissionPct = pct2;
       m.targetUnitsQuota = q;
@@ -80635,35 +80635,35 @@ function createPcontrolRouter() {
       m.statusReason = note5 ? String(note5).slice(0, 200) : "Shortlisted \u2014 builder will confirm";
       m.decidedAt = nowIso22();
     } else if (action === "DECLINE") {
-      if (!note5 || String(note5).trim().length < 3) return bad24(res, "Give the partner a short reason");
+      if (!note5 || String(note5).trim().length < 3) return bad25(res, "Give the partner a short reason");
       m.status = "DECLINED";
       m.statusReason = String(note5).slice(0, 200);
       m.decidedAt = nowIso22();
-    } else return bad24(res, "Action must be APPROVE, SHORTLIST or DECLINE");
+    } else return bad25(res, "Action must be APPROVE, SHORTLIST or DECLINE");
     db.save();
     audit8("DEAL", m.id, `PARTNER_${action}`, `${me25().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${action === "APPROVE" ? ` (${m.agreedCommissionPct}%, quota ${m.targetUnitsQuota}${m.dailyLeadCap ? `, ${m.dailyLeadCap}/day` : ""}${m.validUntil ? `, until ${m.validUntil.slice(0, 10)}` : ""})` : m.statusReason ? `: ${m.statusReason}` : ""}`);
     res.json({ success: true, mandate: m });
   });
   r.post("/builder/mandates/:id/status", needs("pcontrol:manage"), (req, res) => {
     const f = mandateFor(req.params.id);
-    if (!f) return bad24(res, "Partner not found", 404);
+    if (!f) return bad25(res, "Partner not found", 404);
     const { m, p } = f;
     const st22 = state();
     const { action, reason, takeOpenLeads } = req.body || {};
     const active = ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status);
     if (action === "PAUSE") {
-      if (!active) return bad24(res, "Only an active partner can be paused", 409);
-      if (!reason || String(reason).trim().length < 3) return bad24(res, "Give a short reason");
+      if (!active) return bad25(res, "Only an active partner can be paused", 409);
+      if (!reason || String(reason).trim().length < 3) return bad25(res, "Give a short reason");
       m.status = "PAUSED";
       m.statusReason = String(reason).slice(0, 200);
     } else if (action === "RESUME") {
-      if (m.status !== "PAUSED") return bad24(res, "Only a paused partner can be resumed", 409);
+      if (m.status !== "PAUSED") return bad25(res, "Only a paused partner can be resumed", 409);
       m.status = "ACTIVE_ASSOCIATE";
       m.statusReason = void 0;
     } else if (action === "REVOKE") {
-      if (!active && m.status !== "PAUSED") return bad24(res, "Only an active or paused partner can be revoked", 409);
-      if (!reason || String(reason).trim().length < 5) return bad24(res, "A reason (min 5 characters) is required to revoke");
-      if (st22.crmBookings.some((b) => b.mandateId === m.id && b.status === "REQUESTED")) return bad24(res, "Decide this partner's pending booking requests first, then revoke", 409);
+      if (!active && m.status !== "PAUSED") return bad25(res, "Only an active or paused partner can be revoked", 409);
+      if (!reason || String(reason).trim().length < 5) return bad25(res, "A reason (min 5 characters) is required to revoke");
+      if (st22.crmBookings.some((b) => b.mandateId === m.id && b.status === "REQUESTED")) return bad25(res, "Decide this partner's pending booking requests first, then revoke", 409);
       m.status = "REVOKED";
       m.statusReason = String(reason).slice(0, 200);
       p.assignedAssociatesCount = Math.max(0, (p.assignedAssociatesCount || 1) - 1);
@@ -80683,7 +80683,7 @@ function createPcontrolRouter() {
           l.updatedAt = nowIso22();
         }
       }
-    } else return bad24(res, "Action must be PAUSE, RESUME or REVOKE");
+    } else return bad25(res, "Action must be PAUSE, RESUME or REVOKE");
     m.decidedAt = nowIso22();
     p.updatedAt = nowIso22();
     db.save();
@@ -80692,34 +80692,34 @@ function createPcontrolRouter() {
   });
   r.put("/builder/mandates/:id/terms", needs("pcontrol:manage"), (req, res) => {
     const f = mandateFor(req.params.id);
-    if (!f) return bad24(res, "Partner not found", 404);
+    if (!f) return bad25(res, "Partner not found", 404);
     const { m, p } = f;
-    if (!["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"].includes(m.status)) return bad24(res, "Terms can be changed for appointed partners only", 409);
+    if (!["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"].includes(m.status)) return bad25(res, "Terms can be changed for appointed partners only", 409);
     const { commissionPct, quota, dailyLeadCap, validUntil, note: note5 } = req.body || {};
-    if (!note5 || String(note5).trim().length < 3) return bad24(res, "Add a short note \u2014 the partner will see why the terms changed");
+    if (!note5 || String(note5).trim().length < 3) return bad25(res, "Add a short note \u2014 the partner will see why the terms changed");
     lockTargetTerms(p);
     const next2 = { commissionPct: m.agreedCommissionPct, quota: m.targetUnitsQuota, cap: m.dailyLeadCap, until: m.validUntil };
     if (commissionPct !== void 0) {
-      if (!pctOk(Number(commissionPct))) return bad24(res, "Commission must be between 0.1% and 10%");
+      if (!pctOk(Number(commissionPct))) return bad25(res, "Commission must be between 0.1% and 10%");
       next2.commissionPct = Number(commissionPct);
     }
     if (quota !== void 0) {
       const q = Number(quota);
-      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad24(res, "Target units must be 1\u20131000");
+      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad25(res, "Target units must be 1\u20131000");
       next2.quota = q;
     }
     if (dailyLeadCap !== void 0) {
       if (dailyLeadCap === null || dailyLeadCap === "") next2.cap = void 0;
       else {
         const c = Number(dailyLeadCap);
-        if (!Number.isInteger(c) || c < 1 || c > 200) return bad24(res, "Daily lead limit must be 1\u2013200");
+        if (!Number.isInteger(c) || c < 1 || c > 200) return bad25(res, "Daily lead limit must be 1\u2013200");
         next2.cap = c;
       }
     }
     if (validUntil !== void 0) {
       if (!validUntil) next2.until = void 0;
       else {
-        if (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now()) return bad24(res, "End date must be in the future");
+        if (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now()) return bad25(res, "End date must be in the future");
         next2.until = String(validUntil);
       }
     }
@@ -80749,11 +80749,11 @@ function createPcontrolRouter() {
   r.post("/builder/leads/:id/verify", needs("crm:read"), (req, res) => {
     const u = me25();
     const l = state().crmLeads.find((x) => x.id === req.params.id);
-    if (!l || !canVerify(u, l)) return bad24(res, "Lead not found", 404);
-    if (l.verify !== "PENDING") return bad24(res, "This lead is not waiting for verification", 409);
+    if (!l || !canVerify(u, l)) return bad25(res, "Lead not found", 404);
+    if (l.verify !== "PENDING") return bad25(res, "This lead is not waiting for verification", 409);
     const { decision, note: note5 } = req.body || {};
-    if (decision === "REJECT" && (!note5 || String(note5).trim().length < 3)) return bad24(res, "Give the partner a short reason");
-    if (decision !== "ACCEPT" && decision !== "REJECT") return bad24(res, "Decision must be ACCEPT or REJECT");
+    if (decision === "REJECT" && (!note5 || String(note5).trim().length < 3)) return bad25(res, "Give the partner a short reason");
+    if (decision !== "ACCEPT" && decision !== "REJECT") return bad25(res, "Decision must be ACCEPT or REJECT");
     l.verify = decision === "ACCEPT" ? "ACCEPTED" : "REJECTED";
     l.verifiedBy = u.name;
     l.verifiedAt = nowIso22();
@@ -80828,7 +80828,7 @@ function createPcontrolRouter() {
     const u = me25();
     const st22 = state();
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || !visibleTo2(p, u.id)) return bad24(res, "Project not found", 404);
+    if (!p || !visibleTo2(p, u.id)) return bad25(res, "Project not found", 404);
     const m = myMandate(p.id, u.id);
     const rel = relationOf(m);
     const now = Date.now();
@@ -80876,10 +80876,10 @@ function createPcontrolRouter() {
     const u = me25();
     const st22 = state();
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || !visibleTo2(p, u.id)) return bad24(res, "Project not found", 404);
-    if (u.verificationStatus !== "VERIFIED") return bad24(res, "Your account must be KYC-verified to apply", 403);
-    if (!VISIBLE_STATUS2.includes(p.status)) return bad24(res, "This project is not taking new partners", 409);
-    if ((p.access || "OPEN_APPLY") === "INVITE_ONLY") return bad24(res, "This project is invite-only", 403);
+    if (!p || !visibleTo2(p, u.id)) return bad25(res, "Project not found", 404);
+    if (u.verificationStatus !== "VERIFIED") return bad25(res, "Your account must be KYC-verified to apply", 403);
+    if (!VISIBLE_STATUS2.includes(p.status)) return bad25(res, "This project is not taking new partners", 409);
+    if ((p.access || "OPEN_APPLY") === "INVITE_ONLY") return bad25(res, "This project is invite-only", 403);
     const note5 = String(req.body?.note || "").trim().slice(0, 300);
     const ex = myMandate(p.id, u.id);
     if (ex) {
@@ -80891,7 +80891,7 @@ function createPcontrolRouter() {
         db.save();
         return res.json({ success: true, relation: "APPLIED" });
       }
-      return bad24(res, ex.status === "DECLINED" ? "The builder declined your request recently \u2014 you can apply again after 30 days" : `You already have a ${relationOf(ex).toLowerCase()} request / partnership on this project`, 409);
+      return bad25(res, ex.status === "DECLINED" ? "The builder declined your request recently \u2014 you can apply again after 30 days" : `You already have a ${relationOf(ex).toLowerCase()} request / partnership on this project`, 409);
     }
     const m = {
       id: mandateSeq(),
@@ -80935,22 +80935,22 @@ function createPcontrolRouter() {
     const u = me25();
     const st22 = state();
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || !visibleTo2(p, u.id)) return bad24(res, "Project not found", 404);
+    if (!p || !visibleTo2(p, u.id)) return bad25(res, "Project not found", 404);
     const parsed = shortlistSchema.safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid shortlist");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid shortlist");
     const d = parsed.data;
     let name = d.clientName || "";
     let clientId;
     if (d.clientId) {
       const c = st22.clientCards.find((x) => x.id === d.clientId && x.brokerId === u.id);
-      if (!c) return bad24(res, "Client not found", 404);
+      if (!c) return bad25(res, "Client not found", 404);
       clientId = c.id;
       name = c.name;
     }
-    if (!name) return bad24(res, "Pick a client or type a name");
-    if (st22.projectShortlists.filter((s2) => s2.ownerId === u.id && s2.status !== "DROPPED").length >= 300) return bad24(res, "Shortlist limit (300) reached", 409);
+    if (!name) return bad25(res, "Pick a client or type a name");
+    if (st22.projectShortlists.filter((s2) => s2.ownerId === u.id && s2.status !== "DROPPED").length >= 300) return bad25(res, "Shortlist limit (300) reached", 409);
     const key = clientId || name.toLowerCase();
-    if (st22.projectShortlists.some((s2) => s2.ownerId === u.id && s2.projectId === p.id && s2.status !== "DROPPED" && (s2.clientId || s2.clientName.toLowerCase()) === key)) return bad24(res, "This client is already on your shortlist for this project", 409);
+    if (st22.projectShortlists.some((s2) => s2.ownerId === u.id && s2.projectId === p.id && s2.status !== "DROPPED" && (s2.clientId || s2.clientName.toLowerCase()) === key)) return bad25(res, "This client is already on your shortlist for this project", 409);
     const ts = nowIso22();
     const s = { id: uid2("SL"), ownerId: u.id, projectId: p.id, projectName: p.projectName, clientId, clientName: name, units: d.units, note: d.note, status: "SHORTLISTED", createdAt: ts, updatedAt: ts };
     st22.projectShortlists.unshift(s);
@@ -80960,9 +80960,9 @@ function createPcontrolRouter() {
   const myShortlist = (id) => state().projectShortlists.find((s) => s.id === id && s.ownerId === me25().id);
   r.put("/partner/shortlist/:sid", partnerOnly, (req, res) => {
     const s = myShortlist(req.params.sid);
-    if (!s) return bad24(res, "Not found", 404);
+    if (!s) return bad25(res, "Not found", 404);
     const parsed = shortlistSchema.pick({ units: true, note: true }).partial().safeParse(req.body);
-    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid");
+    if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid");
     if (parsed.data.units) s.units = parsed.data.units;
     if (parsed.data.note !== void 0) s.note = parsed.data.note;
     s.updatedAt = nowIso22();
@@ -80971,7 +80971,7 @@ function createPcontrolRouter() {
   });
   r.delete("/partner/shortlist/:sid", partnerOnly, (req, res) => {
     const s = myShortlist(req.params.sid);
-    if (!s) return bad24(res, "Not found", 404);
+    if (!s) return bad25(res, "Not found", 404);
     s.status = "DROPPED";
     s.updatedAt = nowIso22();
     db.save();
@@ -80981,11 +80981,11 @@ function createPcontrolRouter() {
     const u = me25();
     const st22 = state();
     const s = myShortlist(req.params.sid);
-    if (!s || s.status === "DROPPED") return bad24(res, "Not found", 404);
-    if (s.status === "LEAD_REGISTERED") return bad24(res, "Already registered as a lead", 409);
+    if (!s || s.status === "DROPPED") return bad25(res, "Not found", 404);
+    if (s.status === "LEAD_REGISTERED") return bad25(res, "Already registered as a lead", 409);
     const card = s.clientId ? st22.clientCards.find((c) => c.id === s.clientId && c.brokerId === u.id) : void 0;
     const phone = String(req.body?.phone || card?.phone || "");
-    if (!card && digits(phone).length < 10) return bad24(res, "Enter the client's 10-digit mobile number");
+    if (!card && digits(phone).length < 10) return bad25(res, "Enter the client's 10-digit mobile number");
     const input2 = leadCreateSchema.safeParse({
       projectId: s.projectId,
       name: s.clientName,
@@ -80997,7 +80997,7 @@ function createPcontrolRouter() {
       note: s.note ? `From shortlist: ${s.note}` : "From project shortlist",
       consent: req.body?.consent === true ? true : void 0
     });
-    if (!input2.success) return bad24(res, input2.error.issues[0]?.message || "Invalid details");
+    if (!input2.success) return bad25(res, input2.error.issues[0]?.message || "Invalid details");
     const out = registerLead(u, input2.data, { shortlistId: s.id, via: "SHORTLIST" });
     if (out.status !== 200) return res.status(out.status).json(out.body);
     s.status = "LEAD_REGISTERED";
@@ -81008,7 +81008,7 @@ function createPcontrolRouter() {
   });
   const teamGate = needs("team:manage");
   const employerOnly = (req, res, next2) => {
-    teamGate(req, res, () => ["BROKER", "DEVELOPER_BUILDER"].includes(me25().role) ? next2() : bad24(res, "Only a broker or builder manages a team", 403));
+    teamGate(req, res, () => ["BROKER", "DEVELOPER_BUILDER"].includes(me25().role) ? next2() : bad25(res, "Only a broker or builder manages a team", 403));
   };
   const myMember = (id) => membersOf(me25().id).find((m) => m.id === id);
   r.get("/team/control", employerOnly, (_req, res) => {
@@ -81036,7 +81036,7 @@ function createPcontrolRouter() {
   r.put("/team/routing", employerOnly, (req, res) => {
     const u = me25();
     const mode = req.body?.mode;
-    if (!["OFF", "ROUND_ROBIN", "LEAST_LOADED"].includes(mode)) return bad24(res, "Mode must be OFF, ROUND_ROBIN or LEAST_LOADED");
+    if (!["OFF", "ROUND_ROBIN", "LEAST_LOADED"].includes(mode)) return bad25(res, "Mode must be OFF, ROUND_ROBIN or LEAST_LOADED");
     u.leadRouting = { mode, cursor: u.leadRouting?.cursor || 0 };
     db.save();
     audit8("LEAD", u.id, "LEAD_ROUTING_SET", `${u.name} set new-lead routing to ${mode}`);
@@ -81045,13 +81045,13 @@ function createPcontrolRouter() {
   r.put("/team/:id/policy", employerOnly, (req, res) => {
     const u = me25();
     const m = myMember(req.params.id);
-    if (!m) return bad24(res, "Team member not found", 404);
+    if (!m) return bad25(res, "Team member not found", 404);
     const clean = cleanPolicy(req.body || {}, policyOf(m));
-    if (typeof clean === "string") return bad24(res, clean);
-    if (clean.canVerify && u.role !== "DEVELOPER_BUILDER") return bad24(res, "Only a builder can let staff verify partner leads");
-    if (clean.canScanVisits && u.role !== "DEVELOPER_BUILDER") return bad24(res, "Only a builder can let staff scan visit QR passes (a partner's staff cannot verify their own visits)");
+    if (typeof clean === "string") return bad25(res, clean);
+    if (clean.canVerify && u.role !== "DEVELOPER_BUILDER") return bad25(res, "Only a builder can let staff verify partner leads");
+    if (clean.canScanVisits && u.role !== "DEVELOPER_BUILDER") return bad25(res, "Only a builder can let staff scan visit QR passes (a partner's staff cannot verify their own visits)");
     const mine3 = new Set(u.role === "DEVELOPER_BUILDER" ? state().builderProjects.filter((p) => p.builderId === u.id).map((p) => p.id) : state().associateMandates.filter((x) => x.brokerId === u.id).map((x) => x.projectId));
-    if (clean.projectIds.some((id) => !mine3.has(id))) return bad24(res, "Pick only your own projects");
+    if (clean.projectIds.some((id) => !mine3.has(id))) return bad25(res, "Pick only your own projects");
     const prev = policyOf(m);
     m.teamPolicy = clean;
     let handed = 0;
@@ -81063,9 +81063,9 @@ function createPcontrolRouter() {
   r.post("/team/handover", employerOnly, (req, res) => {
     const u = me25();
     const from = myMember(String(req.body?.fromMemberId || ""));
-    if (!from) return bad24(res, "Team member not found", 404);
+    if (!from) return bad25(res, "Team member not found", 404);
     const toId = req.body?.toMemberId ? String(req.body.toMemberId) : null;
-    if (toId && !membersOf(u.id).some((m) => m.id === toId && m.verificationStatus === "VERIFIED" && m.id !== from.id)) return bad24(res, "Pick another active team member");
+    if (toId && !membersOf(u.id).some((m) => m.id === toId && m.verificationStatus === "VERIFIED" && m.id !== from.id)) return bad25(res, "Pick another active team member");
     const n2 = releaseMemberLeads(u, from, u.id, u.name, toId);
     db.save();
     audit8("LEAD", from.id, "LEADS_HANDED_OVER", `${u.name} handed ${n2} open lead(s) of ${from.name} to ${toId ? membersOf(u.id).find((m) => m.id === toId)?.name : "the pool / routing"}`);
@@ -81075,10 +81075,10 @@ function createPcontrolRouter() {
     const u = me25();
     const st22 = state();
     const ids2 = Array.isArray(req.body?.leadIds) ? req.body.leadIds.map(String).slice(0, 100) : [];
-    if (!ids2.length) return bad24(res, "Select at least one lead");
+    if (!ids2.length) return bad25(res, "Select at least one lead");
     const memberId = req.body?.memberId ? String(req.body.memberId) : "";
     const to = memberId ? myMember(memberId) : void 0;
-    if (memberId && (!to || to.verificationStatus !== "VERIFIED")) return bad24(res, "Pick one of your active team members");
+    if (memberId && (!to || to.verificationStatus !== "VERIFIED")) return bad25(res, "Pick one of your active team members");
     let n2 = 0;
     for (const l of st22.crmLeads.filter((x) => ids2.includes(x.id) && ownerIdOf(x) === u.id && isOpen2(x) && x.stage !== "BOOKING_REQUESTED")) {
       const prev = l.assignedMemberName;
@@ -81097,7 +81097,7 @@ function createPcontrolRouter() {
   });
   const staffOnly = (req, res, next2) => {
     const u = me25();
-    if (u.role !== "TEAM_MEMBER") return bad24(res, "Only team members use this", 403);
+    if (u.role !== "TEAM_MEMBER") return bad25(res, "Only team members use this", 403);
     next2();
   };
   r.post("/leads/:id/reveal", needs("pcontrol:staff"), staffOnly, rateLimit("pc-reveal", 200, 24 * 36e5), (req, res) => {
@@ -81105,12 +81105,12 @@ function createPcontrolRouter() {
     const st22 = state();
     const pol = policyOf(u);
     const l = leadsForMember(u).find((x) => x.id === req.params.id);
-    if (!l) return bad24(res, "Lead not found", 404);
-    if (pol.phoneMode === "HIDDEN") return bad24(res, "Your employer has not allowed you to see customer numbers", 403);
+    if (!l) return bad25(res, "Lead not found", 404);
+    if (pol.phoneMode === "HIDDEN") return bad25(res, "Your employer has not allowed you to see customer numbers", 403);
     if (pol.phoneMode === "FULL") return res.json({ success: true, phone: l.phone });
-    if (l.assignedMemberId !== u.id) return bad24(res, "You can reveal the number only of leads allotted to you", 403);
+    if (l.assignedMemberId !== u.id) return bad25(res, "You can reveal the number only of leads allotted to you", 403);
     const today = st22.leadReveals.filter((x) => x.userId === u.id && Date.parse(x.at) >= startOfDayMs());
-    if (!today.some((x) => x.leadId === l.id) && today.length >= pol.revealCap) return bad24(res, `Daily limit of ${pol.revealCap} number reveals reached \u2014 ask your employer`, 429);
+    if (!today.some((x) => x.leadId === l.id) && today.length >= pol.revealCap) return bad25(res, `Daily limit of ${pol.revealCap} number reveals reached \u2014 ask your employer`, 429);
     if (!today.some((x) => x.leadId === l.id)) {
       st22.leadReveals.unshift({ id: uid2("RV"), employerId: u.employerId, userId: u.id, userName: u.name, leadId: l.id, at: nowIso22() });
       if (st22.leadReveals.length > 5e3) st22.leadReveals.length = 5e3;
@@ -81129,12 +81129,12 @@ function createPcontrolRouter() {
   r.post("/staff/claim", needs("pcontrol:staff"), staffOnly, (req, res) => {
     const u = me25();
     const pol = policyOf(u);
-    if (!pol.canClaim) return bad24(res, "Your employer has not enabled lead claiming for you", 403);
-    if (pol.onLeave) return bad24(res, "You are marked on leave", 403);
+    if (!pol.canClaim) return bad25(res, "Your employer has not enabled lead claiming for you", 403);
+    if (pol.onLeave) return bad25(res, "You are marked on leave", 403);
     const cap = pol.maxOpenLeads ?? 50;
-    if (openLoad(u.id) >= cap) return bad24(res, `You already hold ${cap} open leads \u2014 close some first`, 409);
+    if (openLoad(u.id) >= cap) return bad25(res, `You already hold ${cap} open leads \u2014 close some first`, 409);
     const l = poolFor(u.employerId).find((x) => x.id === String(req.body?.leadId || "") && (pol.projectIds.length === 0 || pol.projectIds.includes(x.projectId)));
-    if (!l) return bad24(res, "This lead is no longer available", 409);
+    if (!l) return bad25(res, "This lead is no longer available", 409);
     l.assignedMemberId = u.id;
     l.assignedMemberName = u.name;
     l.updatedAt = nowIso22();
@@ -87250,6 +87250,63 @@ function createPublicVisitRouter() {
   return r;
 }
 
+// server/chatcards.ts
+var CARD_KINDS = ["PROPERTY", "DOCUMENT", "PHOTO", "LOCATION", "VISIT", "STAGE"];
+var isCardKind = (k) => typeof k === "string" && CARD_KINDS.includes(k);
+var CATEGORY_EN = {
+  OWNERSHIP_TITLE_DEED: "title deed",
+  SALE_DEED_CHAIN: "sale-deed chain",
+  LAYOUT_SITE_PLAN: "layout / site plan",
+  SURVEY_MEASUREMENT: "survey / measurement",
+  TAX_RECEIPT_NOC: "tax receipt / NOC",
+  WALKTHROUGH_VIDEO: "walkthrough video",
+  OTHER_ATTACHMENT: "attachment",
+  PHOTOGRAPH: "photo"
+};
+var bad22 = (status, code, error62) => ({ ok: false, status, code, error: error62 });
+function checkCard(i) {
+  const { kind, deal } = i;
+  const ref = typeof i.refId === "string" ? i.refId.trim().slice(0, 120) : "";
+  switch (kind) {
+    case "PROPERTY":
+    case "LOCATION": {
+      if (!i.property) return bad22(404, "CARD_NOT_FOUND", "Property not found");
+      if (ref && ref !== deal.propertyId) return bad22(400, "CARD_BAD_REF", "A deal chat can only carry the property of this deal.");
+      return { ok: true, refId: deal.propertyId, auto: kind === "PROPERTY" ? `Shared the property: ${String(i.property.title || deal.propertyId).slice(0, 120)}` : "Shared the property location" };
+    }
+    case "PHOTO": {
+      if (!i.property) return bad22(404, "CARD_NOT_FOUND", "Property not found");
+      const url3 = typeof i.mediaUrl === "string" ? i.mediaUrl.trim() : "";
+      const mine3 = /* @__PURE__ */ new Set([...i.property.images || [], ...i.visibleAssets.filter((a) => a.category === "PHOTOGRAPH").map((a) => a.fileUrl)]);
+      if (!url3 || !mine3.has(url3)) return bad22(403, "CARD_NOT_YOURS", "That photo is not one you can share from this property.");
+      return { ok: true, refId: deal.propertyId, mediaUrl: url3, auto: "Shared a photo" };
+    }
+    case "DOCUMENT": {
+      const a = i.visibleAssets.find((x) => x.id === ref);
+      if (!a) return bad22(403, "CARD_NOT_YOURS", "That document is not one you can open on this property, so it cannot be shared from the chat.");
+      return { ok: true, refId: a.id, auto: `Shared a document (${CATEGORY_EN[a.category] || "document"})` };
+    }
+    case "VISIT": {
+      const v = i.visits.find((x) => x.id === ref && x.dealRoomId === deal.id);
+      if (!v) return bad22(404, "CARD_NOT_FOUND", "That site visit is not part of this deal room.");
+      if (v.brokerId !== i.userId && !i.isBroker) return bad22(403, "CARD_NOT_YOURS", "Only the broker who set up the visit (or a deal broker) can share it.");
+      const when2 = (() => {
+        try {
+          return new Date(v.scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+        } catch {
+          return "";
+        }
+      })();
+      return { ok: true, refId: v.id, auto: `Site visit${when2 ? ` on ${when2}` : ""}` };
+    }
+    case "STAGE": {
+      if (!i.isBroker) return bad22(403, "CARD_NOT_YOURS", "Only the deal brokers can post a stage card.");
+      if (ref !== deal.stage) return bad22(409, "CARD_STALE", "The deal is no longer at that stage.");
+      return { ok: true, refId: deal.stage, auto: `Deal stage: ${deal.stage}` };
+    }
+  }
+}
+
 // server/clientroom.ts
 var import_express52 = __toESM(require_express2(), 1);
 var import_express53 = __toESM(require_express2(), 1);
@@ -87311,7 +87368,7 @@ var PHONE_RE7 = /^[6-9]\d{9}$/;
 var newToken2 = () => crypto32.randomBytes(18).toString("base64url");
 var smsOn4 = () => !!process.env.SMS_WEBHOOK_URL;
 var inr12 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
-var bad22 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
+var bad23 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var ev = (r, text) => {
   r.events.push({ at: nowIso34(), text });
   r.updatedAt = nowIso34();
@@ -87443,16 +87500,16 @@ function createClientRoomRouter() {
     const name = String(req.body?.clientName || "").trim().slice(0, 80);
     const phone = phone107(req.body?.phone);
     const kind = ROOM_KINDS.find((k) => k.id === req.body?.kind)?.id || "BUYER";
-    if (name.length < 2) return bad22(res, "Enter your client's name");
-    if (!PHONE_RE7.test(phone)) return bad22(res, "Enter your client's 10-digit mobile number");
-    if (req.body?.consent !== true) return bad22(res, "Confirm that your client agreed to receive properties and chat in this room");
-    if (st21().clientRooms.filter((x) => x.brokerId === u.id && x.status === "ACTIVE").length >= ROOM_LIMITS.activeRooms) return bad22(res, `You can keep ${ROOM_LIMITS.activeRooms} client rooms open \u2014 close some old ones`);
+    if (name.length < 2) return bad23(res, "Enter your client's name");
+    if (!PHONE_RE7.test(phone)) return bad23(res, "Enter your client's 10-digit mobile number");
+    if (req.body?.consent !== true) return bad23(res, "Confirm that your client agreed to receive properties and chat in this room");
+    if (st21().clientRooms.filter((x) => x.brokerId === u.id && x.status === "ACTIVE").length >= ROOM_LIMITS.activeRooms) return bad23(res, `You can keep ${ROOM_LIMITS.activeRooms} client rooms open \u2014 close some old ones`);
     {
       const pb = partyBlock(phone, "buyer");
       if (pb) return res.status(403).json(pb);
     }
     const phoneKey = hmac4("cr-phone", phone);
-    if (st21().clientRooms.some((x) => x.brokerId === u.id && x.status === "ACTIVE" && x.phoneKey === phoneKey)) return bad22(res, "You already have an open room for this mobile number", 409);
+    if (st21().clientRooms.some((x) => x.brokerId === u.id && x.status === "ACTIVE" && x.phoneKey === phoneKey)) return bad23(res, "You already have an open room for this mobile number", 409);
     const token = newToken2();
     const room = {
       id: rid3("CRM"),
@@ -87480,17 +87537,17 @@ function createClientRoomRouter() {
   });
   r.get("/:id", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
+    if (!room) return bad23(res, "Room not found", 404);
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/items", rateLimit("cr-items", 120, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad22(res, "This room is closed", 409);
+    if (!room) return bad23(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad23(res, "This room is closed", 409);
     const p = st21().properties.find((x) => x.id === String(req.body?.propertyId || ""));
-    if (!p || !live3(p)) return bad22(res, "That property is not available to share", 404);
-    if (room.items.some((i) => i.propertyId === p.id)) return bad22(res, "Already shared in this room", 409);
-    if (room.items.length >= ROOM_LIMITS.items) return bad22(res, `A room can hold ${ROOM_LIMITS.items} properties`);
+    if (!p || !live3(p)) return bad23(res, "That property is not available to share", 404);
+    if (room.items.some((i) => i.propertyId === p.id)) return bad23(res, "Already shared in this room", 409);
+    if (room.items.length >= ROOM_LIMITS.items) return bad23(res, `A room can hold ${ROOM_LIMITS.items} properties`);
     const note5 = stripPhones(String(req.body?.note || "").trim()).slice(0, 200) || void 0;
     const media = req.body?.withMedia === false ? void 0 : allMedia(me23(), p);
     room.items.push({ id: rid3("CRI"), propertyId: p.id, sharedAt: nowIso34(), note: note5, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
@@ -87501,28 +87558,28 @@ function createClientRoomRouter() {
   });
   r.get("/:id/items/:itemId/media", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
+    if (!room) return bad23(res, "Room not found", 404);
     const it = room.items.find((i) => i.id === req.params.itemId);
-    if (!it) return bad22(res, "Not found", 404);
+    if (!it) return bad23(res, "Not found", 404);
     const p = st21().properties.find((x) => x.id === it.propertyId);
-    if (!p) return bad22(res, "Property not found", 404);
+    if (!p) return bad23(res, "Property not found", 404);
     const avail = shareableMedia(me23(), p);
     res.json({ success: true, available: { photos: avail.photos, videos: avail.videos.map((url3) => ({ url: url3, kind: videoKind(url3) })) }, chosen: chosenMedia(room, it, p), limits: ROOM_MEDIA });
   });
   r.put("/:id/items/:itemId/media", rateLimit("cr-media", 120, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad22(res, "This room is closed", 409);
+    if (!room) return bad23(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad23(res, "This room is closed", 409);
     const it = room.items.find((i) => i.id === req.params.itemId);
-    if (!it) return bad22(res, "Not found", 404);
+    if (!it) return bad23(res, "Not found", 404);
     const p = st21().properties.find((x) => x.id === it.propertyId);
-    if (!p || !live3(p)) return bad22(res, "That property is not available to share", 404);
+    if (!p || !live3(p)) return bad23(res, "That property is not available to share", 404);
     const photos = Array.isArray(req.body?.photos) ? req.body.photos.map(String) : [];
     const videos = Array.isArray(req.body?.videos) ? req.body.videos.map(String) : [];
-    if (photos.length > ROOM_MEDIA.maxPhotos) return bad22(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
-    if (videos.length > ROOM_MEDIA.maxVideos) return bad22(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
+    if (photos.length > ROOM_MEDIA.maxPhotos) return bad23(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
+    if (videos.length > ROOM_MEDIA.maxVideos) return bad23(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
     const avail = shareableMedia(me23(), p);
-    if (!photos.every((x) => avail.photos.includes(x)) || !videos.every((x) => avail.videos.includes(x))) return bad22(res, "You can share only this listing's own photos and videos", 400, { code: "MEDIA_NOT_SHAREABLE" });
+    if (!photos.every((x) => avail.photos.includes(x)) || !videos.every((x) => avail.videos.includes(x))) return bad23(res, "You can share only this listing's own photos and videos", 400, { code: "MEDIA_NOT_SHAREABLE" });
     it.media = { photos: [...new Set(photos)], videos: [...new Set(videos)], at: nowIso34() };
     ev(room, `Photos & video of ${p.id}: ${it.media.photos.length} photo(s)${it.media.videos.length ? `, ${it.media.videos.length} video(s)` : ""}`);
     db.save();
@@ -87530,9 +87587,9 @@ function createClientRoomRouter() {
   });
   r.delete("/:id/items/:itemId", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
+    if (!room) return bad23(res, "Room not found", 404);
     const i = room.items.findIndex((x) => x.id === req.params.itemId);
-    if (i < 0) return bad22(res, "Not found", 404);
+    if (i < 0) return bad23(res, "Not found", 404);
     room.items.splice(i, 1);
     ev(room, "A property was taken out");
     db.save();
@@ -87540,13 +87597,13 @@ function createClientRoomRouter() {
   });
   r.post("/:id/messages", rateLimit("cr-msg-b", 300, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad22(res, "This room is closed", 409);
+    if (!room) return bad23(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad23(res, "This room is closed", 409);
     const text = String(req.body?.text || "").trim();
-    if (!text) return bad22(res, "Write a message");
-    if (text.length > ROOM_LIMITS.textChars) return bad22(res, `Keep it under ${ROOM_LIMITS.textChars} characters`);
-    if (containsPhone(text)) return bad22(res, PHONE_IN_CHAT_MSG.en, 400, { code: "PHONE_IN_CHAT", hi: PHONE_IN_CHAT_MSG.hi });
-    if (room.messages.length >= ROOM_LIMITS.messages) return bad22(res, "This chat is full \u2014 open a new room or close this one");
+    if (!text) return bad23(res, "Write a message");
+    if (text.length > ROOM_LIMITS.textChars) return bad23(res, `Keep it under ${ROOM_LIMITS.textChars} characters`);
+    if (containsPhone(text)) return bad23(res, PHONE_IN_CHAT_MSG.en, 400, { code: "PHONE_IN_CHAT", hi: PHONE_IN_CHAT_MSG.hi });
+    if (room.messages.length >= ROOM_LIMITS.messages) return bad23(res, "This chat is full \u2014 open a new room or close this one");
     room.messages.push({ id: rid3("CRX"), from: "BROKER", text, at: nowIso34(), propertyId: validPropRef(room, req.body?.propertyId) });
     room.lastBrokerSeenAt = nowIso34();
     ev(room, "Broker wrote");
@@ -87555,16 +87612,16 @@ function createClientRoomRouter() {
   });
   r.post("/:id/read", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
+    if (!room) return bad23(res, "Room not found", 404);
     room.lastBrokerSeenAt = nowIso34();
     db.save();
     res.json({ success: true });
   });
   r.post("/:id/visit/:itemId/:vid/handled", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
+    if (!room) return bad23(res, "Room not found", 404);
     const v = room.items.find((i) => i.id === req.params.itemId)?.visitRequests.find((x) => x.id === req.params.vid);
-    if (!v) return bad22(res, "Not found", 404);
+    if (!v) return bad23(res, "Not found", 404);
     v.status = "HANDLED";
     ev(room, "A visit request was handled");
     db.save();
@@ -87572,8 +87629,8 @@ function createClientRoomRouter() {
   });
   r.post("/:id/link", rateLimit("cr-link", 40, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad22(res, "This room is closed", 409);
+    if (!room) return bad23(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad23(res, "This room is closed", 409);
     const token = newToken2();
     room.tokenHash = sha5(token);
     room.sessVersion += 1;
@@ -87590,9 +87647,9 @@ function createClientRoomRouter() {
   });
   r.delete("/:id/devices/:dev", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
+    if (!room) return bad23(res, "Room not found", 404);
     const d = (room.devices || []).find((x) => x.id === req.params.dev);
-    if (!d) return bad22(res, "That phone is not signed in to this room", 404);
+    if (!d) return bad23(res, "That phone is not signed in to this room", 404);
     room.devices = (room.devices || []).filter((x) => x.id !== d.id);
     ev(room, `Broker removed a phone from the room (${d.label})`);
     db.save();
@@ -87601,7 +87658,7 @@ function createClientRoomRouter() {
   });
   r.post("/:id/close", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad22(res, "Room not found", 404);
+    if (!room) return bad23(res, "Room not found", 404);
     room.status = "CLOSED";
     room.closedAt = nowIso34();
     room.tokenHash = sha5(crypto32.randomBytes(8).toString("hex"));
@@ -87917,7 +87974,7 @@ function sweepClientRooms() {
 var import_express54 = __toESM(require_express2(), 1);
 var nowIso35 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me24 = () => ctx().user;
-var bad23 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
+var bad24 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var str4 = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var autoMs = () => process.env.NODE_ENV !== "production" && Number(process.env.DEAL_CLOSE_AUTO_MS) || CLOSE_AUTO_DAYS * 864e5;
 var STAGES3 = ["Lead", "Introduction", "Site Visit Done", "Negotiation", "Agreement", "Handover", "Settled"];
@@ -87956,17 +88013,17 @@ function createDealCloseRouter() {
     const u = me24();
     const d = db.byId("dealRooms", req.params.id);
     if (!d) {
-      bad23(res, "Deal room not found", 404);
+      bad24(res, "Deal room not found", 404);
       return null;
     }
     const broker = isDealBroker(u, d);
     const owner = !!opts.owner && d.ownerId === u.id;
     if (!broker && !owner) {
-      bad23(res, "Only the deal-room brokers can do this", 403);
+      bad24(res, "Only the deal-room brokers can do this", 403);
       return null;
     }
     if (openDisputeOf(db.getState(), d.id) || d.settlementStatus === "DISPUTED" || d.stage === "Disputed") {
-      bad23(res, "A dispute is open on this deal room \u2014 the GENZ desk decides there", 409);
+      bad24(res, "A dispute is open on this deal room \u2014 the GENZ desk decides there", 409);
       return null;
     }
     return { u, d, broker };
@@ -87975,12 +88032,12 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (d.stage === "Settled") return bad23(res, "A settled deal is already finished", 409);
-    if (isClosed(d)) return bad23(res, "This deal room is already closed", 409);
+    if (d.stage === "Settled") return bad24(res, "A settled deal is already finished", 409);
+    if (isClosed(d)) return bad24(res, "This deal room is already closed", 409);
     const reason = String(req.body?.reason || "");
-    if (!CLOSE_REASONS.some((x) => x.id === reason)) return bad23(res, "Choose why the deal did not happen");
+    if (!CLOSE_REASONS.some((x) => x.id === reason)) return bad24(res, "Choose why the deal did not happen");
     const text = str4(req.body?.note, 300);
-    if (reason === "OTHER" && text.length < 3) return bad23(res, "Write a short reason");
+    if (reason === "OTHER" && text.length < 3) return bad24(res, "Write a short reason");
     const now = nowIso35();
     if (d.closure?.status === "ASKED" && d.closure.byId !== u.id) {
       d.closure = { ...d.closure, status: "CLOSED", closedAt: now, how: "AGREED", agreedById: u.id };
@@ -87990,7 +88047,7 @@ function createDealCloseRouter() {
       ping(d.closure.byId, d, "Deal room closed", `${u.name} agreed \u2014 ${d.id} is closed.`);
       return res.json({ success: true, closure: d.closure });
     }
-    if (d.closure?.status === "ASKED") return bad23(res, "You have already asked to close this deal room", 409);
+    if (d.closure?.status === "ASKED") return bad24(res, "You have already asked to close this deal room", 409);
     const single = oneBroker(d);
     d.closure = {
       status: single ? "CLOSED" : "ASKED",
@@ -88013,8 +88070,8 @@ function createDealCloseRouter() {
     if (!c) return;
     const { u, d } = c;
     const cl = d.closure;
-    if (!cl || cl.status !== "ASKED") return bad23(res, "No close request is waiting", 409);
-    if (cl.byId === u.id) return bad23(res, "The other broker answers your request", 409);
+    if (!cl || cl.status !== "ASKED") return bad24(res, "No close request is waiting", 409);
+    if (cl.byId === u.id) return bad24(res, "The other broker answers your request", 409);
     const text = str4(req.body?.note, 300);
     if (req.body?.agree === true) {
       d.closure = { ...cl, status: "CLOSED", closedAt: nowIso35(), how: "AGREED", agreedById: u.id };
@@ -88022,7 +88079,7 @@ function createDealCloseRouter() {
       audit7(d, "DEAL_ROOM_CLOSED", "Deal room closed \u2014 both brokers agreed");
       ping(cl.byId, d, "Deal room closed", `${u.name} agreed \u2014 ${d.id} is closed.`);
     } else {
-      if (text.length < 3) return bad23(res, "Tell the other broker why the deal is still on");
+      if (text.length < 3) return bad24(res, "Tell the other broker why the deal is still on");
       d.closure = void 0;
       note4(d, `${u.name} said the deal is still on \u2014 close request dropped: ${text}`);
       audit7(d, "DEAL_ROOM_CLOSE_REFUSED", "Close request refused by the other broker");
@@ -88035,7 +88092,7 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (d.closure?.status !== "ASKED" || d.closure.byId !== u.id) return bad23(res, "You have no close request waiting", 409);
+    if (d.closure?.status !== "ASKED" || d.closure.byId !== u.id) return bad24(res, "You have no close request waiting", 409);
     d.closure = void 0;
     note4(d, `${u.name} took back the close request`);
     db.save();
@@ -88045,9 +88102,9 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (!isClosed(d)) return bad23(res, "This deal room is not closed", 409);
+    if (!isClosed(d)) return bad24(res, "This deal room is not closed", 409);
     const text = str4(req.body?.note, 300);
-    if (text.length < 3) return bad23(res, "Write why you are reopening it (the other broker sees this)");
+    if (text.length < 3) return bad24(res, "Write why you are reopening it (the other broker sees this)");
     d.closure = void 0;
     note4(d, `Deal room reopened by ${u.name}: ${text}`);
     audit7(d, "DEAL_ROOM_REOPENED", `Reopened: ${text}`);
@@ -88060,17 +88117,17 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (isClosed(d)) return bad23(res, "This deal room is closed \u2014 reopen it first", 409);
+    if (isClosed(d)) return bad24(res, "This deal room is closed \u2014 reopen it first", 409);
     const s = db.getState();
-    if (STAGES3.indexOf(d.stage) >= 2) return bad23(res, "This deal is already past \u201CSite Visit Done\u201D", 409);
-    if (s.siteVisits.some((v) => v.dealRoomId === d.id && v.isVerified)) return bad23(res, "A verified visit is already on this deal", 409);
-    if (d.offlineVisit && !d.offlineVisit.confirmedAt) return bad23(res, "A visit outside the app is already waiting for confirmation", 409);
-    if (oneBroker(d) && !(d.ownerId && s.users.some((x) => x.id === d.ownerId))) return bad23(res, "You are on both sides of this deal and the owner is not on GENZ \u2014 verify the visit with the buyer\u2019s OTP / QR instead", 409);
+    if (STAGES3.indexOf(d.stage) >= 2) return bad24(res, "This deal is already past \u201CSite Visit Done\u201D", 409);
+    if (s.siteVisits.some((v) => v.dealRoomId === d.id && v.isVerified)) return bad24(res, "A verified visit is already on this deal", 409);
+    if (d.offlineVisit && !d.offlineVisit.confirmedAt) return bad24(res, "A visit outside the app is already waiting for confirmation", 409);
+    if (oneBroker(d) && !(d.ownerId && s.users.some((x) => x.id === d.ownerId))) return bad24(res, "You are on both sides of this deal and the owner is not on GENZ \u2014 verify the visit with the buyer\u2019s OTP / QR instead", 409);
     const day2 = str4(req.body?.visitedOn, 10);
     const ms = Date.parse(`${day2}T00:00:00+05:30`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day2) || !Number.isFinite(ms) || ms > Date.now() + 864e5 || ms < Date.now() - 365 * 864e5) return bad23(res, "Write the visit date (within the last year, not in the future)");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day2) || !Number.isFinite(ms) || ms > Date.now() + 864e5 || ms < Date.now() - 365 * 864e5) return bad24(res, "Write the visit date (within the last year, not in the future)");
     const text = str4(req.body?.note, 300);
-    if (text.length < 5) return bad23(res, "Write who visited and what happened (the other side reads this)");
+    if (text.length < 5) return bad24(res, "Write who visited and what happened (the other side reads this)");
     d.offlineVisit = { byId: u.id, byName: u.name, at: nowIso35(), visitedOn: day2, note: text };
     note4(d, `${u.name} recorded a site visit outside the app on ${day2} \u2014 waiting for the other side to confirm`);
     audit7(d, "OFFLINE_VISIT_RECORDED", `Visit outside the app recorded (${day2}) \u2014 not verified`);
@@ -88084,14 +88141,14 @@ function createDealCloseRouter() {
       if (!c) return;
       const { u, d } = c;
       const ov = d.offlineVisit;
-      if (!ov || ov.confirmedAt) return bad23(res, "No visit is waiting for confirmation", 409);
+      if (!ov || ov.confirmedAt) return bad24(res, "No visit is waiting for confirmation", 409);
       if (what === "withdraw") {
-        if (ov.byId !== u.id) return bad23(res, "Only the one who recorded it can take it back", 403);
+        if (ov.byId !== u.id) return bad24(res, "Only the one who recorded it can take it back", 403);
         d.offlineVisit = void 0;
         note4(d, `${u.name} took back the visit outside the app`);
       } else {
-        if (ov.byId === u.id) return bad23(res, "The other side must confirm the visit you recorded (maker \u2260 checker)", 403);
-        if (u.id !== confirmerOf(d, ov.byId)) return bad23(res, "Only the other broker (or, in a one-broker deal, the owner) confirms this", 403);
+        if (ov.byId === u.id) return bad24(res, "The other side must confirm the visit you recorded (maker \u2260 checker)", 403);
+        if (u.id !== confirmerOf(d, ov.byId)) return bad24(res, "Only the other broker (or, in a one-broker deal, the owner) confirms this", 403);
         if (what === "confirm") {
           d.offlineVisit = { ...ov, confirmedById: u.id, confirmedByName: u.name, confirmedAt: nowIso35() };
           note4(d, `${u.name} confirmed the visit outside the app (${ov.visitedOn}) \u2014 NOT verified by OTP / QR`);
@@ -88099,7 +88156,7 @@ function createDealCloseRouter() {
           ping(ov.byId, d, "Visit confirmed", `${u.name} confirmed the visit of ${ov.visitedOn}. You can move the deal to \u201CSite Visit Done\u201D.`);
         } else {
           const why = str4(req.body?.note, 300);
-          if (why.length < 3) return bad23(res, "Write why (the other side reads this)");
+          if (why.length < 3) return bad24(res, "Write why (the other side reads this)");
           d.offlineVisit = void 0;
           note4(d, `${u.name} did not confirm the visit outside the app: ${why}`);
           ping(ov.byId, d, "Visit not confirmed", `${u.name}: ${why}`);
@@ -90367,8 +90424,8 @@ app.post("/api/collaborations", needs("collab:propose"), newAccountCap("collab",
   }
   const ownSide = data.feeMode === "OWN_SIDE";
   if (ownSide) {
-    const bad24 = checkProposerSide(data.proposerSide, currentUser2.id, targetBrokerId, prop.listingBrokerId);
-    if (bad24) return res.status(400).json({ error: bad24, code: "SIDE_MISMATCH" });
+    const bad25 = checkProposerSide(data.proposerSide, currentUser2.id, targetBrokerId, prop.listingBrokerId);
+    if (bad25) return res.status(400).json({ error: bad25, code: "SIDE_MISMATCH" });
   }
   const introShare = ownSide ? 100 : data.proposedIntroducingShare;
   const closeShare = ownSide ? 100 : data.proposedClosingShare;
@@ -90498,8 +90555,8 @@ app.post("/api/collaborations/:id/respond", needs("collab:respond"), (req, res) 
     if (toOwn && !offer.proposerSide) {
       const mine3 = req.body?.mySide;
       if (mine3 !== "SELLER" && mine3 !== "BUYER") return res.status(400).json({ error: "Say which side you act for: seller or buyer" });
-      const bad24 = checkProposerSide(otherSide(mine3), offer.proposingBrokerId, offer.receivingBrokerId, db.byId("properties", offer.propertyId)?.listingBrokerId);
-      if (bad24) return res.status(400).json({ error: bad24, code: "SIDE_MISMATCH" });
+      const bad25 = checkProposerSide(otherSide(mine3), offer.proposingBrokerId, offer.receivingBrokerId, db.byId("properties", offer.propertyId)?.listingBrokerId);
+      if (bad25) return res.status(400).json({ error: bad25, code: "SIDE_MISMATCH" });
       offer.proposerSide = otherSide(mine3);
     }
     if (!toOwn && ([a, b].some((n2) => !Number.isFinite(n2) || n2 < 0 || n2 > 100) || Math.abs(a + b - 100) > 1e-3)) {
@@ -93200,9 +93257,7 @@ function loadVaultProperty(user, id) {
   if (!property) throw new HttpError(404, "Property not found");
   return { state, property };
 }
-app.get("/api/properties/:id/vault/assets", needs("property:read"), (req, res) => {
-  const currentUser2 = getCurrentUser();
-  const { state, property } = loadVaultProperty(currentUser2, req.params.id);
+function visibleVaultAssets(state, currentUser2, property) {
   const id = property.id;
   const isOwnerOrListingBroker = isPropertyPrincipal(currentUser2, property);
   const seeAll = isOwnerOrListingBroker || can(currentUser2, "vault:read_all");
@@ -93216,7 +93271,13 @@ app.get("/api/properties/:id/vault/assets", needs("property:read"), (req, res) =
   activeGrants.forEach((g) => g.assetIds.forEach((aid2) => granted.add(aid2)));
   const listed = ["active", "under_negotiation"].includes(property.listingStatus);
   const assets = state.propertyMediaAssets.filter((a) => a.propertyId === id && a.status === "ACTIVE").filter((a) => seeAll || granted.has(a.id) || a.sensitivity === "PUBLIC" && listed);
-  res.json({ success: true, assets, isOwnerOrListingBroker, activeGrantsCount: activeGrants.length });
+  return { assets, isOwnerOrListingBroker, activeGrantsCount: activeGrants.length };
+}
+app.get("/api/properties/:id/vault/assets", needs("property:read"), (req, res) => {
+  const currentUser2 = getCurrentUser();
+  const { state, property } = loadVaultProperty(currentUser2, req.params.id);
+  const { assets, isOwnerOrListingBroker, activeGrantsCount } = visibleVaultAssets(state, currentUser2, property);
+  res.json({ success: true, assets, isOwnerOrListingBroker, activeGrantsCount });
 });
 app.post("/api/properties/:id/vault/assets", needs("vault:manage"), rateLimit("vaultup", 60, 6e4), (req, res) => {
   const currentUser2 = getCurrentUser();
@@ -93431,34 +93492,60 @@ app.post("/api/deals/:id/messages", needs("deal:chat"), rateLimit("chat", 60, 6e
     return res.status(403).json({ error: "Only deal participants can post in the deal room" });
   }
   const b = req.body || {};
+  const wantsCard = b.kind !== void 0 && b.kind !== null && b.kind !== "";
+  if (wantsCard && !isCardKind(b.kind)) return res.status(400).json({ error: `kind must be one of ${CARD_KINDS.join(", ")}`, code: "CARD_BAD_KIND" });
+  const kind = wantsCard ? b.kind : void 0;
   const text = typeof b.text === "string" ? b.text.trim() : "";
-  if (!text || text.length > 2e3) return res.status(400).json({ error: "Message must be 1\u20132000 characters" });
-  const blocked = filterMessage2(currentUser2, text);
-  if (blocked) {
-    db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "CHAT_BLOCKED", blocked);
-    return res.status(400).json({ error: blocked, code: "CHAT_FILTER" });
+  if (kind ? text.length > 300 : !text || text.length > 2e3) return res.status(400).json({ error: kind ? "A caption can be up to 300 characters" : "Message must be 1\u20132000 characters" });
+  if (text) {
+    const blocked = filterMessage2(currentUser2, text);
+    if (blocked) {
+      db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "CHAT_BLOCKED", blocked);
+      return res.status(400).json({ error: blocked, code: "CHAT_FILTER" });
+    }
   }
-  if (isFlood(currentUser2.id, text)) return res.status(429).json({ error: "You already sent this exact message a moment ago." });
   if (b.mediaUrl && !isSafeUrl(b.mediaUrl)) return res.status(400).json({ error: "mediaUrl must be an https URL" });
   const mediaType = ["IMAGE", "DOCUMENT", "AUDIO_VOICE_NOTE"].includes(b.mediaType) ? b.mediaType : void 0;
   const audience = b.audience === "BROKERS" ? "BROKERS" : "ALL";
   if (audience === "BROKERS" && !isDealBroker(currentUser2, deal)) {
     return res.status(403).json({ error: "Only the deal brokers can use the brokers-only channel" });
   }
+  let card;
+  if (kind) {
+    const property = db.byId("properties", deal.propertyId);
+    const onProperty = ["PROPERTY", "LOCATION", "PHOTO", "DOCUMENT"].includes(kind);
+    if (onProperty && !can(currentUser2, "property:read")) return res.status(403).json({ error: "You do not have access to this property\u2019s details", code: "CARD_NOT_YOURS" });
+    const r = checkCard({
+      kind,
+      refId: b.refId,
+      mediaUrl: b.mediaUrl,
+      deal,
+      property: property || void 0,
+      visibleAssets: property ? visibleVaultAssets(state, currentUser2, property).assets : [],
+      visits: state.siteVisits.filter((v) => v.dealRoomId === deal.id),
+      isBroker: isDealBroker(currentUser2, deal),
+      userId: currentUser2.id
+    });
+    if (!r.ok) return res.status(r.status).json({ error: r.error, code: r.code });
+    card = { kind, refId: r.refId, mediaUrl: r.mediaUrl, auto: r.auto };
+  }
+  if (isFlood(currentUser2.id, card ? `card:${card.kind}:${card.refId}:${text}` : text)) return res.status(429).json({ error: card ? "You already shared this a moment ago." : "You already sent this exact message a moment ago." });
   const newMsg = {
     id: `MSG-${deal.id}-${Date.now().toString(36)}`,
     dealRoomId: deal.id,
     senderId: currentUser2.id,
     senderName: currentUser2.name,
     senderRole: currentUser2.role,
-    text,
+    text: card ? text || card.auto : text,
     audience,
-    mediaUrl: b.mediaUrl ? String(b.mediaUrl).slice(0, 500) : void 0,
-    mediaType: b.mediaUrl ? mediaType : void 0,
+    mediaUrl: card ? card.mediaUrl : b.mediaUrl ? String(b.mediaUrl).slice(0, 500) : void 0,
+    mediaType: card ? card.mediaUrl ? "IMAGE" : void 0 : b.mediaUrl ? mediaType : void 0,
+    ...card ? { kind: card.kind, refId: card.refId, ...text ? {} : { auto: true } } : {},
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
   state.dealMessages.push(newMsg);
   db.save();
+  if (card) db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "CHAT_CARD_SENT", `${card.kind} card ${card.refId}${audience === "BROKERS" ? " (brokers only)" : ""}`);
   res.json({ success: true, message: newMsg });
 });
 app.use("/api/crm/money", createMoneyTrailRouter());

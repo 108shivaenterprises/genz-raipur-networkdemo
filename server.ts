@@ -138,6 +138,7 @@ import { createOffersRouter, sweepOffers } from './server/offers.js';
 import { createListingsRouter, createPublicPosterRouter, sweepSoldPurge } from './server/listings.js';
 import { createVisitRouter, createPublicVisitRouter, sweepVisitPasses } from './server/visitpass.js';
 import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
+import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
 import { roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
@@ -5041,11 +5042,9 @@ function loadVaultProperty(user: UserProfile, id: string) {
   return { state, property };
 }
 
-app.get('/api/properties/:id/vault/assets', needs('property:read'), (req: Request, res: Response) => {
-  const currentUser = getCurrentUser();
-  const { state, property } = loadVaultProperty(currentUser, req.params.id);
+/** The vault assets this user may open on a property (his own, or shared with him / his deal room / all verified members, or public on a live listing). */
+function visibleVaultAssets(state: ReturnType<typeof db.getState>, currentUser: UserProfile, property: any) {
   const id = property.id;
-
   const isOwnerOrListingBroker = isPropertyPrincipal(currentUser, property);
   const seeAll = isOwnerOrListingBroker || can(currentUser, 'vault:read_all');
 
@@ -5065,8 +5064,14 @@ app.get('/api/properties/:id/vault/assets', needs('property:read'), (req: Reques
   const assets = state.propertyMediaAssets
     .filter(a => a.propertyId === id && a.status === 'ACTIVE')
     .filter(a => seeAll || granted.has(a.id) || (a.sensitivity === 'PUBLIC' && listed));
+  return { assets, isOwnerOrListingBroker, activeGrantsCount: activeGrants.length };
+}
 
-  res.json({ success: true, assets, isOwnerOrListingBroker, activeGrantsCount: activeGrants.length });
+app.get('/api/properties/:id/vault/assets', needs('property:read'), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const { state, property } = loadVaultProperty(currentUser, req.params.id);
+  const { assets, isOwnerOrListingBroker, activeGrantsCount } = visibleVaultAssets(state, currentUser, property);
+  res.json({ success: true, assets, isOwnerOrListingBroker, activeGrantsCount });
 });
 
 app.post('/api/properties/:id/vault/assets', needs('vault:manage'), rateLimit('vaultup', 60, 60_000), (req: Request, res: Response) => {
@@ -5283,11 +5288,16 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
     return res.status(403).json({ error: 'Only deal participants can post in the deal room' });
   }
   const b = req.body || {};
+  // v53 — a card from the "+" menu (property / document / photo / location / visit / stage); the text is then only an optional caption
+  const wantsCard = b.kind !== undefined && b.kind !== null && b.kind !== '';
+  if (wantsCard && !isCardKind(b.kind)) return res.status(400).json({ error: `kind must be one of ${CARD_KINDS.join(', ')}`, code: 'CARD_BAD_KIND' });
+  const kind = wantsCard ? (b.kind as (typeof CARD_KINDS)[number]) : undefined;
   const text = typeof b.text === 'string' ? b.text.trim() : '';
-  if (!text || text.length > 2000) return res.status(400).json({ error: 'Message must be 1–2000 characters' });
-  const blocked = filterMessage(currentUser, text);
-  if (blocked) { db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'CHAT_BLOCKED', blocked); return res.status(400).json({ error: blocked, code: 'CHAT_FILTER' }); }
-  if (isFlood(currentUser.id, text)) return res.status(429).json({ error: 'You already sent this exact message a moment ago.' });
+  if (kind ? text.length > 300 : (!text || text.length > 2000)) return res.status(400).json({ error: kind ? 'A caption can be up to 300 characters' : 'Message must be 1–2000 characters' });
+  if (text) {
+    const blocked = filterMessage(currentUser, text);
+    if (blocked) { db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'CHAT_BLOCKED', blocked); return res.status(400).json({ error: blocked, code: 'CHAT_FILTER' }); }
+  }
   if (b.mediaUrl && !isSafeUrl(b.mediaUrl)) return res.status(400).json({ error: 'mediaUrl must be an https URL' });
   const mediaType = ['IMAGE', 'DOCUMENT', 'AUDIO_VOICE_NOTE'].includes(b.mediaType) ? b.mediaType : undefined;
   // 'BROKERS' = private channel for the two deal brokers (commission talk etc.); the owner can never post to / read it.
@@ -5296,20 +5306,39 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
     return res.status(403).json({ error: 'Only the deal brokers can use the brokers-only channel' });
   }
 
+  let card: { kind: (typeof CARD_KINDS)[number]; refId: string; mediaUrl?: string; auto: string } | undefined;
+  if (kind) {
+    const property = db.byId('properties', deal.propertyId);
+    const onProperty = ['PROPERTY', 'LOCATION', 'PHOTO', 'DOCUMENT'].includes(kind);
+    if (onProperty && !can(currentUser, 'property:read')) return res.status(403).json({ error: 'You do not have access to this property’s details', code: 'CARD_NOT_YOURS' });
+    const r = checkCard({
+      kind, refId: b.refId, mediaUrl: b.mediaUrl, deal, property: property || undefined,
+      visibleAssets: property ? visibleVaultAssets(state, currentUser, property).assets : [],
+      visits: state.siteVisits.filter(v => v.dealRoomId === deal.id),
+      isBroker: isDealBroker(currentUser, deal), userId: currentUser.id,
+    });
+    if (!r.ok) return res.status(r.status).json({ error: r.error, code: r.code });
+    card = { kind, refId: r.refId, mediaUrl: r.mediaUrl, auto: r.auto };
+  }
+  if (isFlood(currentUser.id, card ? `card:${card.kind}:${card.refId}:${text}` : text)) return res.status(429).json({ error: card ? 'You already shared this a moment ago.' : 'You already sent this exact message a moment ago.' });
+
   const newMsg: DealMessage = {
     id: `MSG-${deal.id}-${Date.now().toString(36)}`,
     dealRoomId: deal.id,
     senderId: currentUser.id,
     senderName: currentUser.name,
     senderRole: currentUser.role,
-    text,
+    text: card ? (text || card.auto) : text,
     audience,
-    mediaUrl: b.mediaUrl ? String(b.mediaUrl).slice(0, 500) : undefined,
-    mediaType: b.mediaUrl ? mediaType : undefined,
+    mediaUrl: card ? card.mediaUrl : (b.mediaUrl ? String(b.mediaUrl).slice(0, 500) : undefined),
+    mediaType: card ? (card.mediaUrl ? 'IMAGE' : undefined) : (b.mediaUrl ? mediaType : undefined),
+    ...(card ? { kind: card.kind, refId: card.refId, ...(text ? {} : { auto: true }) } : {}),
     timestamp: new Date().toISOString(),
   };
   state.dealMessages.push(newMsg);
   db.save();
+  // a card points at a document / photo / the stage: leave a trace (the chat text itself is not audited, as before)
+  if (card) db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'CHAT_CARD_SENT', `${card.kind} card ${card.refId}${audience === 'BROKERS' ? ' (brokers only)' : ''}`);
   res.json({ success: true, message: newMsg });
 });
 

@@ -168,7 +168,7 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
       <div className="w-full max-w-lg max-h-[92vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
         {/* Sticky Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-900 text-white rounded-t-2xl shrink-0">

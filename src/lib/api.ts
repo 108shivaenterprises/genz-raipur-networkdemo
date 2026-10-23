@@ -557,7 +557,7 @@ export const api = {
   // Deal Room Chat & Communication
   getDealMessages: (dealId: string) =>
     request<{ success: boolean; messages: DealMessage[] }>(`/api/deals/${dealId}/messages`),
-  sendDealMessage: (dealId: string, payload: { text: string; mediaUrl?: string; mediaType?: string; audience?: 'ALL' | 'BROKERS' }) =>
+  sendDealMessage: (dealId: string, payload: { text?: string; mediaUrl?: string; mediaType?: string; audience?: 'ALL' | 'BROKERS'; /** v53 — a card from the chat's "+" menu */ kind?: string; refId?: string }) =>
     request<{ success: boolean; message: DealMessage }>(`/api/deals/${dealId}/messages`, {
       method: 'POST',
       body: JSON.stringify(payload),

@@ -1278,6 +1278,8 @@ export const ScheduleVisitModal: React.FC<{
         setScheduledVisit(res.siteVisit);
         setWatchNote((res as any).watch || null);
         onSuccess();
+        // v53 — a chat that started this ("+ Visit") answers with a card; it receives only the ids, never the OTP / QR secret
+        try { window.dispatchEvent(new CustomEvent('genz:visit-scheduled', { detail: { dealId: res.siteVisit.dealRoomId, visitId: res.siteVisit.id } })); } catch { /* old browser */ }
       } else {
         throw new Error(tx('Failed to create site visit record', 'साइट विज़िट रिकॉर्ड नहीं बन सका'));
       }
@@ -1323,7 +1325,7 @@ export const ScheduleVisitModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl transition-all">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">

@@ -11,6 +11,7 @@ import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { ROOM_KINDS } from '../shared/clientRoomRules.js';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
+import { useDealChatKit } from './ChatPlus.js';
 import { RoomDetail } from './ClientRooms.js';
 import { goto } from '../lib/goto.js';
 
@@ -40,7 +41,7 @@ type Row = {
 };
 
 /** one deal-room chat on its own screen (loads, polls, sends, and tells the server how far I have read) */
-const DealChatPane: React.FC<{ row: Row; meId: string; onBack: () => void; onOpenDeal: () => void }> = ({ row, meId, onBack, onOpenDeal }) => {
+const DealChatPane: React.FC<{ row: Row; meId: string; perms: string[]; onBack: () => void; onOpenDeal: (sub?: string) => void; onStageChanged: () => void }> = ({ row, meId, perms, onBack, onOpenDeal, onStageChanged }) => {
   const tx = useTx();
   const [msgs, setMsgs] = useState<any[] | null>(null);
   const [err, setErr] = useState('');
@@ -53,24 +54,28 @@ const DealChatPane: React.FC<{ row: Row; meId: string; onBack: () => void; onOpe
     const t = setInterval(() => { if (!document.hidden) load(); }, 12000);
     return () => clearInterval(t);
   }, [load]);
-  const thread: ThreadMsg[] = (msgs || []).map(m => ({ id: m.id, mine: m.senderId === meId, who: m.senderName, text: m.text, at: m.timestamp, link: m.mediaUrl }));
-  const others = new Set((msgs || []).filter(m => m.senderId !== meId).map(m => m.senderId));
-  const send = async (text: string) => {
+  // v53 — the "+" menu (property / document / photo / location / visit / stage) and the brokers-only switch, same as inside the deal room
+  const sendBody = async (body: Record<string, unknown>) => {
     setErr('');
-    try { const r = await api.sendDealMessage(row.id, { text }); setMsgs(p => [...(p || []), r.message]); window.dispatchEvent(new Event('genz:chats-changed')); return true; }
+    try { const r = await api.sendDealMessage(row.id, body); setMsgs(p => [...(p || []), r.message]); window.dispatchEvent(new Event('genz:chats-changed')); return true; }
     catch (e: any) { setErr(e.message || tx('Could not send the message', 'संदेश भेजा नहीं जा सका')); return false; }
   };
+  const kit = useDealChatKit({ dealId: row.id, active: true, meId, perms, send: sendBody, onOpen: (t) => onOpenDeal(t), onStageChanged });
+  const thread: ThreadMsg[] = (msgs || []).map(m => kit.thread(m, meId));
+  const others = new Set((msgs || []).filter(m => m.senderId !== meId).map(m => m.senderId));
+  const send = (text: string) => sendBody({ text, audience: kit.audience });
   return (
     <ChatShell
       onBack={onBack} testId="deal-chat"
       avatar={<PropertyThumb src={row.deal?.cover} type={row.deal?.propertyType} seed={row.title} className="h-10 w-10 rounded-xl" />}
       title={row.title} subtitle={row.sub}
-      actions={<button type="button" onClick={onOpenDeal} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50" data-testid="chat-open-deal"><ExternalLink className="h-4 w-4" aria-hidden />{tx('Deal', 'डील')}</button>}
+      actions={<button type="button" onClick={() => onOpenDeal()} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50" data-testid="chat-open-deal"><ExternalLink className="h-4 w-4" aria-hidden />{tx('Deal', 'डील')}</button>}
     >
       {msgs === null && !err ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div> : (
         <ChatThread
           msgs={thread} onSend={send} error={err} showWho={others.size > 1}
-          placeholder={tx('Message…', 'संदेश लिखें…')}
+          menu={kit.menu} composerTop={kit.banner}
+          placeholder={kit.brokersOnly && kit.can.private ? tx('Message to the other broker only…', 'सिर्फ़ दूसरे ब्रोकर को संदेश…') : tx('Message…', 'संदेश लिखें…')}
           emptyHint={tx('No messages yet. Talk about the visit, token, registry dates here.', 'अभी कोई संदेश नहीं। यहाँ विज़िट, टोकन, रजिस्ट्री की तारीख़ की बात करें।')}
           ids={{ root: 'deal-chat-root', chat: 'deal-chat-messages', input: 'deal-chat-input', send: 'deal-chat-send' }}
         />
@@ -173,8 +178,8 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
       fresh={fresh && fresh.id === cur.id ? fresh : null} onFreshDone={() => setFresh(null)}
       onLink={(link) => setFresh({ link, name: cur.title, phone: '', id: cur.id })} />
   ) : (
-    <DealChatPane key={cur.id} row={cur} meId={meId} onBack={() => { setOpenUrl(''); load(); }}
-      onOpenDeal={() => goto('deals', { deal: cur.id, sub: 'overview', chat: '' }, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t })))} />
+    <DealChatPane key={cur.id} row={cur} meId={meId} perms={permissions} onBack={() => { setOpenUrl(''); load(); }} onStageChanged={load}
+      onOpenDeal={(sub) => goto('deals', { deal: cur.id, sub: sub || 'overview', chat: '' }, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t })))} />
   );
 
   return (

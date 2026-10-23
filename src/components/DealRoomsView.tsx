@@ -69,7 +69,8 @@ import { DealStatusPanel } from './DealStatusPanel.js';
 import { PaymentRequestsPanel } from './PaymentRequestsPanel.js';
 import { isClosed } from '../shared/dealClose.js';
 import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare } from 'lucide-react';
-import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
+import { ChatShell, ChatThread } from './ChatKit.js';
+import { useDealChatKit } from './ChatPlus.js';
 import { lazyView } from '../lib/lazyView.js';
 // v45 — the broker's client rooms sit next to his deal rooms (same Deals screen)
 const ClientRoomsTab = lazyView(() => import('./ClientRooms.js'), 'ClientRoomsTab');
@@ -170,7 +171,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const [selectedDealId, setSelectedDealId] = useState<string>(urlQ.get('deal') || deals[0]?.id || '');
   const [dealDetail, setDealDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
-  const [activeSubTab, setActiveSubTab] = useState<DealSubTab>(urlQ.get('sub') === 'chat_call' ? 'chat_call' : 'overview');
+  const [activeSubTab, setActiveSubTab] = useState<DealSubTab>(() => {
+    const q = urlQ.get('sub');   // v53 — a link / card can open any section of the deal room
+    return (['overview', 'antibypass_protocol', 'chat_call', 'media_vault', 'responsibilities', 'commission_agreement', 'due_diligence', 'readiness_report', 'legal_help', 'disputes_holds'].includes(q || '') ? q : 'overview') as DealSubTab;
+  });
   const [selectedVisitForQrPass, setSelectedVisitForQrPass] = useState<SiteVisit | null>(null);
 
   // Top-Level Mode: Deal Rooms vs Collaboration Proposals
@@ -510,11 +514,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   };
 
   // v50 — send from the chat screen (the text stays in the box when it is refused)
-  const sendChat = async (text: string) => {
+  // v53 — one sender for typed text and for the cards of the "+" menu (the "Brokers only" switch decides the channel)
+  const sendChatBody = async (body: Record<string, unknown>) => {
     if (!selectedDealId) return false;
     setChatErr('');
     try {
-      const res = await api.sendDealMessage(selectedDealId, { text });
+      const res = await api.sendDealMessage(selectedDealId, body);
       setMessages(prev => [...prev, res.message]);
       window.dispatchEvent(new Event('genz:chats-changed'));
       return true;
@@ -523,8 +528,16 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       return false;
     }
   };
+  const sendChat = (text: string) => sendChatBody({ text, audience: chatKit.audience });
   // v50 — while the chat is open: tell the server how far I have read, and look for new messages every 12 seconds
   const chatOpen = activeSubTab === 'chat_call' && mainMode === 'DEAL_ROOMS';
+  // v53 — the "+" menu, its cards and the brokers-only switch (no permission list passed → nothing is hidden; the server still enforces every call)
+  const chatKit = useDealChatKit({
+    dealId: selectedDealId, active: chatOpen, meId: currentUser.id, role: currentUser.role,
+    perms: permissions || ['property:read', 'sitevisit:create', 'deal:update_stage'],
+    send: sendChatBody, onOpen: (tab) => setActiveSubTab(tab as DealSubTab),
+    onStageChanged: () => { if (selectedDealId) loadDetail(selectedDealId); onRefreshDeals(); },
+  });
   useEffect(() => {
     if (!chatOpen || !selectedDealId) return;
     const id = selectedDealId;
@@ -1356,7 +1369,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 const otherBroker: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : participants?.introducingBroker;
                 const phone = typeof otherBroker?.phone === 'string' ? otherBroker.phone : '';
                 const names = [...new Set([participants?.introducingBroker, participants?.closingBroker, participants?.owner].filter((p: any) => p && p.id !== currentUser.id).map((p: any) => p.name as string))];
-                const thread: ThreadMsg[] = messages.map(m => ({ id: m.id, mine: m.senderId === currentUser.id, who: m.senderName, text: m.text, at: m.timestamp, link: m.mediaUrl }));
+                const thread = messages.map(m => chatKit.thread(m, currentUser.id));
                 const others = new Set(messages.filter(m => m.senderId !== currentUser.id).map(m => m.senderId));
                 return (
                   <ChatShell
@@ -1368,7 +1381,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                   >
                     <ChatThread
                       msgs={thread} onSend={sendChat} error={chatErr} showWho={others.size > 1}
-                      placeholder={tx('Message…', 'संदेश लिखें…')}
+                      menu={chatKit.menu} composerTop={chatKit.banner}
+                      placeholder={chatKit.brokersOnly && chatKit.can.private ? tx('Message to the other broker only…', 'सिर्फ़ दूसरे ब्रोकर को संदेश…') : tx('Message…', 'संदेश लिखें…')}
                       emptyHint={tx('No messages yet. Talk about the visit, token, registry dates here.', 'अभी कोई संदेश नहीं। यहाँ विज़िट, टोकन, रजिस्ट्री की तारीख़ की बात करें।')}
                       ids={{ root: 'deal-chat-root', chat: 'deal-chat-messages', input: 'deal-chat-input', send: 'deal-chat-send' }}
                     />

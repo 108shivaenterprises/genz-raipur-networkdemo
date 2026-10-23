@@ -51,6 +51,7 @@ Aapne kaha tha ki dusre apps saaf hain aur hamara confusing. Deals aur Deal room
 - Manual update nahi kiya (aapka standing instruction).
 
 ## Tests
-- Server/API mein kuch nahi badla, isliye naye server test nahi. Poora suite phir chalaya (result neeche). `tsc` aur `vite build` saaf.
+- Server/API mein kuch nahi badla, isliye naye server test nahi. Poora suite phir chalaya: **60 files / 882 test pass.** `tsc` aur `vite build` saaf.
+- Deploy: commit `d0cde13`, Vercel status success.
 
 Files: `src/components/DealHub.tsx` (KPI tile + chip row, `NextSteps`, naya `SubTabBar`, naya `DealIds`), `DealStatusPanel.tsx`, `DealRoomsView.tsx`.
