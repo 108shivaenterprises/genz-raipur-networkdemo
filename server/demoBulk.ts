@@ -15,6 +15,7 @@ import type { DatabaseState, UserProfile, Property, BuyerRequirement, DealRoom, 
 import type { CrmLead, CrmBooking } from '../src/types/crm.js';
 import type { UserRole } from './permissions.js';
 import { secret } from './auth.js';
+import { RENT_TASK_OVERRIDES } from './dealTemplates.js';
 
 const DAY = 86_400_000;
 const MARK = 'USR-BRK-005';
@@ -236,6 +237,11 @@ export function seedDemoBulk(s: DatabaseState, sharedPasswordHash: string) {
     tplTasks.forEach((t0: any, k: number) => {
       const t: any = JSON.parse(JSON.stringify(t0));
       t.id = `TSK-DMO-${pad(i + 1)}-${pad(k + 1, 2)}`; t.dealId = id;
+      // v60 — a rent / lease demo deal shows the rental duties, as a real one does
+      const rentDef = base.transactionType !== 'Sale' ? RENT_TASK_OVERRIDES[t.taskKey] : undefined;
+      if (rentDef?.title) t.title = rentDef.title;
+      if (rentDef?.description) t.description = rentDef.description;
+      if (rentDef?.na) { t.isApplicable = false; t.notApplicableReason = rentDef.na; }
       for (const f of ['assignedParticipantId', 'responsibleParticipantId', 'reviewingParticipantId', 'acceptedBy', 'verifiedBy']) if (t[f]) t[f] = map(t[f]);
       t.supportingParticipantIds = (t.supportingParticipantIds || []).map(map);
       t.assignedParticipantName = user(t.assignedParticipantId)?.name || t.assignedParticipantName;

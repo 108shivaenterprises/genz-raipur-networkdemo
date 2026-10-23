@@ -34,6 +34,7 @@ import {
   MessageCircle,
   Store,
   Globe,
+  DoorOpen,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -76,6 +77,7 @@ export type TabType =
   | 'launchdesk'
   | 'partners'
   | 'mypage'
+  | 'rentdesk'
   | 'chats';
 
 interface NavigationTabsProps {
@@ -183,6 +185,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('partner:manage', 'partner:oversee') ? [{ id: 'partners', label: t('nav.partners', 'Shop QR Partners'), icon: Store }] : []),
     ...(has('team:manage') ? [{ id: 'team', label: t('nav.team', 'My Team'), icon: Users }] : []),
     ...(has('publicpage:use') ? [{ id: 'mypage', label: t('nav.mypage', 'My Public Page'), icon: Globe, badge: pageBadge }] : []),
+    ...(has('rent:use') ? [{ id: 'rentdesk', label: t('nav.rentdesk', 'Rent Desk'), icon: DoorOpen }] : []),
     ...(has('share:use') ? [{ id: 'share', label: t('nav.share', 'Share Kit'), icon: Share2 }] : []),
     ...(has('propdoc:use') ? [{ id: 'propdocs', label: t('nav.propdocs', 'Property Papers'), icon: FolderOpen }] : []),
     // v49: Protected Docs is a section of Property Papers for whoever has both
@@ -241,7 +244,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'chats', 'daily', 'visits'] },
     { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'mypage', 'share', 'propdocs', 'pdocs', 'landrecords'] },
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
-    { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'legal', 'due_diligence', 'disputes', 'audit'] },
+    { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'rentdesk', 'legal', 'due_diligence', 'disputes', 'audit'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'partners', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },
     { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['network', 'community', 'grow', 'plans', 'launchdesk', 'citylaunch'] },
   ];

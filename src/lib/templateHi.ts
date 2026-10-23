@@ -34,6 +34,27 @@ const HI: Record<string, string> = {
   'Construction, Renovation or Contractor Coordination': 'निर्माण, रेनोवेशन या ठेकेदार से तालमेल',
   'Connect client with verified GENZ BUILDCON turnkey contractors for elevation, interior fitout, or expansion where applicable.': 'जहाँ ज़रूरी हो, एलिवेशन, इंटीरियर या विस्तार के लिए ग्राहक को वेरिफ़ाइड GENZ BUILDCON टर्नकी ठेकेदारों से जोड़ें।',
 
+  // ---- v60: the same duties for a rental ----
+  'Tenant or Owner Introduction': 'किरायेदार या मालिक का परिचय',
+  'Record who introduced the tenant and the owner, the source of the lead, the time of introduction and the client’s consent.': 'किरायेदार और मालिक को किसने मिलाया, लीड कहाँ से आई, परिचय का समय और ग्राहक की सहमति दर्ज करें।',
+  'Owner Contact & Rent Negotiation': 'मालिक से संपर्क और किराये पर बातचीत',
+  'Agree the rent, deposit, maintenance, lock-in and yearly increase within what the owner approved, without bypassing the listing broker.': 'मालिक की मंज़ूरी के अंदर किराया, डिपॉज़िट, मेंटेनेंस, लॉक-इन और सालाना बढ़ोतरी तय करें — लिस्टिंग ब्रोकर को बायपास किए बिना।',
+  'Tenant Check & Site Visits': 'किरायेदार की जाँच और साइट विज़िट',
+  'Check the tenant’s job or business and family size, and record the visits with OTP / QR.': 'किरायेदार की नौकरी या कारोबार और परिवार का आकार जाँचें, और विज़िट OTP / QR से दर्ज करें।',
+  'Owner & Tenant Documents': 'मालिक और किरायेदार के दस्तावेज़',
+  'Owner: ID and ownership proof (latest tax receipt or electricity bill), society NOC if needed. Tenant: ID, photo, job or business proof.': 'मालिक: ID और मालिकाना सबूत (ताज़ा टैक्स रसीद या बिजली बिल), ज़रूरत हो तो सोसाइटी NOC। किरायेदार: ID, फ़ोटो, नौकरी या कारोबार का सबूत।',
+  'A full title search is not needed for a rental — check the ownership proof with the documents.': 'किराये में पूरी टाइटल सर्च ज़रूरी नहीं — दस्तावेज़ों में मालिकाना सबूत देख लें।',
+  'No survey is needed for a rental.': 'किराये के लिए सर्वे ज़रूरी नहीं।',
+  'No loan in a rental.': 'किराये में लोन नहीं होता।',
+  'Rent Agreement, E-stamp & Notary': 'किराया अनुबंध, ई-स्टाम्प और नोटरी',
+  'Put the agreed rent, deposit, lock-in, yearly increase and notice in the rent agreement on e-stamp paper; both sign before a notary. A lease of a year or more must be registered — that is why most agreements are for 11 months.': 'तय किराया, डिपॉज़िट, लॉक-इन, सालाना बढ़ोतरी और नोटिस ई-स्टाम्प पेपर पर किराया अनुबंध में लिखें; दोनों नोटरी के सामने साइन करें। एक साल या उससे लंबी लीज़ रजिस्टर करानी पड़ती है — इसीलिए ज़्यादातर अनुबंध 11 महीने के होते हैं।',
+  'Tenant Police Verification': 'किरायेदार का पुलिस वेरिफ़िकेशन',
+  'Submit the tenant verification form with the tenant’s photo and ID at the local police station or on the CG Police Citizen Portal; keep the acknowledgement number.': 'किरायेदार की फ़ोटो और ID के साथ वेरिफ़िकेशन फ़ॉर्म नज़दीकी थाने में या CG Police Citizen Portal पर जमा करें; पावती नंबर रखें।',
+  'No registry for an 11-month rent agreement.': '11 महीने के किराया अनुबंध की रजिस्ट्री नहीं होती।',
+  'Deposit, Keys & Meter Readings': 'डिपॉज़िट, चाबी और मीटर रीडिंग',
+  'Confirm the deposit and the first rent reached the owner directly (GENZ never holds money), hand over the keys, and note the meter readings and fittings.': 'पक्का करें कि डिपॉज़िट और पहला किराया सीधे मालिक को मिला (GENZ पैसे कभी नहीं रखता), चाबी सौंपें, और मीटर रीडिंग व फ़िटिंग लिख लें।',
+  'No construction work in a rental.': 'किराये में निर्माण का काम नहीं।',
+
   // ---- due-diligence checklist ----
   'Owner Identity & Authority to Transact': 'मालिक की पहचान और बेचने का अधिकार',
   'Verify seller Aadhaar, PAN card, Power of Attorney validity, and registered board resolution if corporate seller.': 'विक्रेता का आधार, पैन, पावर ऑफ़ अटॉर्नी की वैधता जाँचें; कंपनी विक्रेता हो तो रजिस्टर्ड बोर्ड रेज़ोल्यूशन भी।',

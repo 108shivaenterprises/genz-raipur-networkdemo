@@ -827,6 +827,15 @@ export const api = {
   savedToggle: (propertyId: string) => request<any>(`/api/saved/${encodeURIComponent(propertyId)}`, { method: 'POST', body: '{}' }),
   // v57 — My Public Page
   ppGet: () => request<any>('/api/public-page'),
+  // v60 — Rent desk
+  rentList: () => request<any>('/api/rent'),
+  rentCreate: (b: any) => request<any>('/api/rent', { method: 'POST', body: JSON.stringify(b) }),
+  rentPatch: (id: string, b: any) => request<any>(`/api/rent/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(b) }),
+  rentPolice: (id: string, b: any) => request<any>(`/api/rent/${encodeURIComponent(id)}/police`, { method: 'POST', body: JSON.stringify(b) }),
+  rentRenew: (id: string, b: any) => request<any>(`/api/rent/${encodeURIComponent(id)}/renew`, { method: 'POST', body: JSON.stringify(b) }),
+  rentNotice: (id: string, b: any) => request<any>(`/api/rent/${encodeURIComponent(id)}/notice`, { method: 'POST', body: JSON.stringify(b) }),
+  rentVacate: (id: string, b: any) => request<any>(`/api/rent/${encodeURIComponent(id)}/vacate`, { method: 'POST', body: JSON.stringify(b) }),
+  rentDelete: (id: string) => request<any>(`/api/rent/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   ppBadge: () => request<{ success: boolean; count: number }>('/api/public-page/badge'),
   ppSettings: (b: { enabled?: boolean; showPhone?: boolean; headline?: string; areas?: string[] | string }) => request<any>('/api/public-page/settings', { method: 'PUT', body: JSON.stringify(b) }),
   ppHomes: (ids: string[], ownerOk?: boolean) => request<any>('/api/public-page/homes', { method: 'PUT', body: JSON.stringify({ ids, ...(ownerOk ? { ownerOk: true } : {}) }) }),

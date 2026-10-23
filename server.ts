@@ -123,6 +123,7 @@ import { createDealHubRouter } from './server/dealhub.js';
 import { createChatsRouter } from './server/chats.js';
 import { createSavedRouter } from './server/saved.js';
 import { createPublicPageRouter, createBrokerPagePublicRouter, sweepPageEnquiries, seedDemoPage } from './server/publicPage.js';
+import { createRentRouter, sweepRent, seedDemoRent } from './server/rentdesk.js';
 import { createSidesRouter, shapeSideDeal, stripSideData } from './server/sides.js';
 import { allSidesDone, checkProposerSide, feeFor, isOwnSide, otherSide, undertakingDone } from './src/shared/sideFees.js';
 import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } from './server/partywatch.js';
@@ -4128,6 +4129,7 @@ app.get('/api/deals/:id/tasks', needs('task:read'), (req: Request, res: Response
       contractorId: contractor?.id,
       contractorName: contractor?.name,
       propertyType: prop?.propertyType,
+      transactionType: prop?.transactionType,
     });
     state.dealTasks.push(...tasks);
     db.save();
@@ -5404,6 +5406,8 @@ app.use('/api/share', createShareRouter());
 app.use('/api/land-records', createLandRecordsRouter());
 app.use('/s', createPublicShareRouter());
 app.use('/api/client-rooms', createClientRoomRouter());
+// v60 — Rent desk: the broker's tenancies after the deal (terms, police verification, renewal, vacating)
+app.use('/api/rent', createRentRouter());
 app.use('/r', createClientRoomPageRouter());
 // v46 — shop QR partners: broker API, the customer's scan form + poster, the shopkeeper's own page
 app.use('/api/shop-partners', createShopPartnerRouter());
@@ -5522,6 +5526,7 @@ async function startServer() {
   assertProductionConfig();
   try { seedDemoPartners(); } catch (e) { console.error('[DEMO] shop partners seed failed', e); }
   try { seedDemoPage(); } catch (e) { console.error('[DEMO] public page seed failed', e); }
+  try { seedDemoRent(); } catch (e) { console.error('[DEMO] rent desk seed failed', e); }
   // Unknown API paths must not fall through to the SPA shell.
   app.use('/api', (_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 
@@ -5577,10 +5582,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

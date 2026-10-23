@@ -12,6 +12,22 @@ export function sha256(data: string): string {
   return crypto.createHash('sha256').update(data).digest('hex');
 }
 
+/** v60 — the same 13 duties read for a rental: new words where the work differs, "not needed" where it does not apply */
+export const RENT_TASK_OVERRIDES: Record<string, { title?: string; description?: string; na?: string }> = {
+  T1_BUYER_SELLER_INTRO: { title: 'Tenant or Owner Introduction', description: 'Record who introduced the tenant and the owner, the source of the lead, the time of introduction and the client’s consent.' },
+  T3_OWNER_NEGOTIATION: { title: 'Owner Contact & Rent Negotiation', description: 'Agree the rent, deposit, maintenance, lock-in and yearly increase within what the owner approved, without bypassing the listing broker.' },
+  T4_BUYER_QUALIFICATION_VISIT: { title: 'Tenant Check & Site Visits', description: 'Check the tenant’s job or business and family size, and record the visits with OTP / QR.' },
+  T5_DOCUMENT_COLLECTION: { title: 'Owner & Tenant Documents', description: 'Owner: ID and ownership proof (latest tax receipt or electricity bill), society NOC if needed. Tenant: ID, photo, job or business proof.' },
+  T6_LEGAL_TITLE_REVIEW: { na: 'A full title search is not needed for a rental — check the ownership proof with the documents.' },
+  T7_SURVEY_BOUNDARY_VERIF: { na: 'No survey is needed for a rental.' },
+  T8_LOAN_BANK_COORD: { na: 'No loan in a rental.' },
+  T9_AGREEMENT_DRAFTING: { title: 'Rent Agreement, E-stamp & Notary', description: 'Put the agreed rent, deposit, lock-in, yearly increase and notice in the rent agreement on e-stamp paper; both sign before a notary. A lease of a year or more must be registered — that is why most agreements are for 11 months.' },
+  T10_STAMP_DUTY_REGISTRATION: { title: 'Tenant Police Verification', description: 'Submit the tenant verification form with the tenant’s photo and ID at the local police station or on the CG Police Citizen Portal; keep the acknowledgement number.' },
+  T11_REGISTRY_APPOINTMENT: { na: 'No registry for an 11-month rent agreement.' },
+  T12_PAYMENT_POSSESSION_HANDOVER: { title: 'Deposit, Keys & Meter Readings', description: 'Confirm the deposit and the first rent reached the owner directly (GENZ never holds money), hand over the keys, and note the meter readings and fittings.' },
+  T13_CONSTRUCTION_CONTRACTOR: { na: 'No construction work in a rental.' },
+};
+
 // 13 Task Templates required by Module A1
 export const TASK_DEFINITIONS = [
   {
@@ -138,6 +154,8 @@ export function generateDealTasks(
     contractorId?: string;
     contractorName?: string;
     propertyType?: string;
+    /** v60 — a rent / lease deal gets the rental duties instead of the sale ones (no loan, survey or registry) */
+    transactionType?: string;
   }
 ): DealTask[] {
   const now = new Date();
@@ -184,17 +202,18 @@ export function generateDealTasks(
       options.propertyType === 'Residential Villa' ||
       options.propertyType === 'Commercial Office';
 
-    const isApplicable = def.key !== 'T13_CONSTRUCTION_CONTRACTOR' || isConstructionApplicable;
+    const rentDef = options.transactionType === 'Rent' || options.transactionType === 'Lease' ? RENT_TASK_OVERRIDES[def.key] : undefined;
+    const isApplicable = rentDef?.na ? false : (def.key !== 'T13_CONSTRUCTION_CONTRACTOR' || isConstructionApplicable);
 
     tasks.push({
       id: taskId,
       dealId,
       taskKey: def.key,
-      title: def.title,
-      description: def.description,
+      title: rentDef?.title || def.title,
+      description: rentDef?.description || def.description,
       category: def.category,
       isApplicable,
-      notApplicableReason: isApplicable ? undefined : 'No immediate construction or renovation scope requested by buyer for ready flat.',
+      notApplicableReason: isApplicable ? undefined : rentDef?.na || 'No immediate construction or renovation scope requested by buyer for ready flat.',
       assignedParticipantId: assignedId,
       assignedParticipantRole: assignedRole,
       assignedParticipantName: assignedName,
