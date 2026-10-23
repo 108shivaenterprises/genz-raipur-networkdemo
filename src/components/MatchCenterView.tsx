@@ -12,7 +12,7 @@ import { api } from '../lib/api.js';
 import { formatINR } from '../lib/utils.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel, useReason } from '../lib/labels.js';
-import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown } from 'lucide-react';
+import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart } from 'lucide-react';
 
 interface MatchCenterViewProps {
   properties: Property[];
@@ -50,6 +50,10 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [shown, setShown] = useState(PAGE);
   const [why, setWhy] = useState('');
+  // v56 — a buyer (no co-broking) saves homes instead
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+  useEffect(() => { if (!canPropose) api.savedList().then(r => setSaved(new Set(r.ids || []))).catch(() => undefined); }, [canPropose]);
+  const toggleSave = async (id: string) => { try { const r = await api.savedToggle(id); setSaved(x => { const n = new Set(x); if (r.saved) n.add(id); else n.delete(id); return n; }); } catch { /* not available any more */ } };
 
   useEffect(() => {
     setShown(PAGE); setWhy('');
@@ -168,6 +172,11 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                   <button type="button" onClick={() => setWhy(open ? '' : key)} aria-expanded={open} className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50" data-testid="match-why">
                     {tx('Why this match', 'यह मैच क्यों')}<ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
                   </button>
+                  {!canPropose && isPropMatch && (
+                    <button type="button" onClick={() => void toggleSave(p.id)} aria-pressed={saved.has(p.id)} className={`ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3.5 text-sm font-semibold ${saved.has(p.id) ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="match-save">
+                      <Heart className={`h-4 w-4 ${saved.has(p.id) ? 'fill-rose-500 text-rose-500' : ''}`} />{saved.has(p.id) ? tx('Saved', 'सेव है') : tx('Save', 'सेव करें')}
+                    </button>
+                  )}
                   {canPropose && (
                     <button
                       onClick={() => onOpenCollaborationModal({

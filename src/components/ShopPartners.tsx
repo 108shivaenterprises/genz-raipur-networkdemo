@@ -6,7 +6,7 @@
  */
 import { PageTitle } from './PageTitle.js';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck } from 'lucide-react';
+import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck, MessagesSquare } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -155,20 +155,27 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         <span className="text-[11px] text-slate-500">{tx('via', 'से')} <b>{l.shopName}</b> · {when(l.createdAt)}</span>
       </div>
       <p className="text-xs text-slate-600">{l.locality}{l.budget ? ` · ${l.budget}` : ''}{l.propertyType ? ` · ${l.propertyType}` : ''}{l.note ? ` · “${l.note}”` : ''}</p>
+      {/* v56 — a client room first: the chat, the homes shown and the visits stay on record (a call or WhatsApp does not) */}
       <div className="flex flex-wrap gap-1.5">
-        <a className={light + ' !min-h-9 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
-        <a className={light + ' !min-h-9 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
+        <button type="button" className={dark + ' !min-h-10'} data-testid="sp-lead-room" onClick={() => {
+          const kindOfRoom = l.kind === 'BUY' ? 'BUYER' : l.kind === 'RENT_IN' ? 'RENTER' : 'OTHER';
+          try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}` })); } catch { /* storage blocked: the form opens empty */ }
+          window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
+        }}><MessagesSquare className="h-4 w-4" />{tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
+        <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
+        <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
       </div>
+      <p className="text-[11px] text-slate-500">{tx('A call or WhatsApp is not recorded in GENZ. A client room keeps the chat, the homes you show and the visits on record — useful if this lead or the shop’s share is ever questioned.', 'कॉल या WhatsApp GENZ में दर्ज नहीं होता। क्लाइंट रूम में चैट, दिखाए घर और विज़िट दर्ज रहते हैं — लीड या दुकान के हिस्से पर कभी सवाल उठे तो काम आता है।')}</p>
       {l.links.length > 0 && <div className="flex flex-wrap gap-1">{l.links.map((x: any, i: number) => <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{hi ? x.hi : x.en} · {when(x.at)}</span>)}</div>}
       {l.flags.map((f: any) => <p key={f.code} className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800" data-testid="sp-flag"><AlertTriangle className="h-3.5 w-3.5" />{hi ? f.hi : f.en}</p>)}
       <p className="text-[11px] text-slate-500"><ShieldCheck className="mr-0.5 inline h-3 w-3" />{l.locked ? tx(`The shop’s lead till ${when(l.lockUntil)} · their share: ${cutText(cut)}`, `${when(l.lockUntil)} तक दुकान की लीड · हिस्सा: ${cutText(cut, true)}`) : tx('Protection over', 'सुरक्षा का समय पूरा')}</p>
       {l.status !== 'WON' ? (
         <div className="flex flex-wrap items-center gap-1">
           {LEAD_STATUSES.filter((s) => !['WON', 'LOST'].includes(s.id)).map((s) => (
-            <button key={s.id} disabled={busy} onClick={() => run(() => api.spLeadStatus(l.id, s.id))} className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${l.status === s.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? s.hi : s.en}</button>
+            <button key={s.id} disabled={busy} onClick={() => run(() => api.spLeadStatus(l.id, s.id))} className={`inline-flex min-h-9 items-center rounded-full border px-3 text-xs font-semibold ${l.status === s.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? s.hi : s.en}</button>
           ))}
-          <button onClick={() => setMode(mode === 'won' ? '' : 'won')} className="rounded-full border border-emerald-500 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800" data-testid="sp-won">{tx('Deal done', 'डील हुई')}</button>
-          <button onClick={() => setMode(mode === 'lost' ? '' : 'lost')} className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${l.status === 'LOST' ? 'border-red-600 bg-red-600 text-white' : 'border-red-300 text-red-700'}`}>{tx('Not going ahead', 'आगे नहीं बढ़ी')}</button>
+          <button onClick={() => setMode(mode === 'won' ? '' : 'won')} className="inline-flex min-h-9 items-center rounded-full border border-emerald-500 bg-emerald-50 px-3 text-xs font-bold text-emerald-800" data-testid="sp-won">{tx('Deal done', 'डील हुई')}</button>
+          <button onClick={() => setMode(mode === 'lost' ? '' : 'lost')} className={`inline-flex min-h-9 items-center rounded-full border px-3 text-xs font-semibold ${l.status === 'LOST' ? 'border-red-600 bg-red-600 text-white' : 'border-red-300 text-red-700'}`}>{tx('Not going ahead', 'आगे नहीं बढ़ी')}</button>
         </div>
       ) : (
         <div className="rounded-lg bg-emerald-50 p-2 text-xs text-emerald-900">

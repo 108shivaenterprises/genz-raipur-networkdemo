@@ -15,7 +15,7 @@ import { ReportButton } from './ReportButton.js';
 import { EditPropertyModal } from './EditPropertyModal.js';
 import { ListingDrafts } from './ListingDrafts.js';
 import { ConsentQueue } from './ConsentQueue.js';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Heart } from 'lucide-react';
 import {
   Building2,
   FolderOpen,
@@ -75,6 +75,12 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   const isBuyer = currentUser.role === 'BUYER_TENANT';
   const isOwner = currentUser.role === 'PROPERTY_OWNER';
   const isBroker = currentUser.role === 'BROKER';
+  // v56 — a buyer's saved homes (♡ Save on each card; listed on his Home)
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+  useEffect(() => { if (isBuyer) api.savedList().then(r => setSaved(new Set(r.ids || []))).catch(() => undefined); }, [isBuyer]);
+  const toggleSave = async (id: string) => {
+    try { const r = await api.savedToggle(id); setSaved(x => { const n = new Set(x); if (r.saved) n.add(id); else n.delete(id); return n; }); } catch (e: any) { alert(e.message); }
+  };
   const [approvalBusy, setApprovalBusy] = useState('');
   /** v28 — a listing without the owner's approval: make / open its owner-approval draft (WhatsApp link + optional brokerage) */
   const openOwnerApproval = async (propertyId: string) => {
@@ -369,6 +375,10 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
             const listingBroker = users?.find((u) => u.id === p.listingBrokerId);
             const btn = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors';
             const actions: { key: string; node: React.ReactNode }[] = [];
+            if (isBuyer && !isClosed) actions.push({ key: 'save', node: (
+              <button onClick={() => void toggleSave(p.id)} aria-pressed={saved.has(p.id)} className={`${btn} border ${saved.has(p.id) ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`} data-testid={`save-${p.id}`}>
+                <Heart className={`h-3.5 w-3.5 ${saved.has(p.id) ? 'fill-rose-500 text-rose-500' : ''}`} /><span>{saved.has(p.id) ? tx('Saved', 'सेव है') : tx('Save', 'सेव करें')}</span>
+              </button>) });
             if (canEditListing && !isClosed) actions.push({ key: 'edit', node: (
               <button onClick={() => setEditingProperty(p)} className={`${btn} bg-blue-600 text-white hover:bg-blue-700`} title={tx('Edit listing details, price, photos gallery, video tour, or status', 'लिस्टिंग का विवरण, कीमत, फ़ोटो, वीडियो या स्टेटस बदलें')}>
                 <Pencil className="h-3.5 w-3.5" /><span>{tx('Edit', 'एडिट करें')}</span>

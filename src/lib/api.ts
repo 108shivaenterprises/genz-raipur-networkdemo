@@ -822,6 +822,9 @@ export const api = {
   propDocLog: (id: string) => request<any>(`/api/property-docs/${id}/log`),
   /** v49 — the stamped viewer: signed page tokens + the viewer's own stamp */
   propDocView: (id: string) => request<any>(`/api/property-docs/${id}/view`, { method: 'POST', body: '{}' }),
+  // v56 — saved homes (buyer shortlist)
+  savedList: () => request<any>('/api/saved'),
+  savedToggle: (propertyId: string) => request<any>(`/api/saved/${encodeURIComponent(propertyId)}`, { method: 'POST', body: '{}' }),
   // v55 — papers in the deal chat, and shown to one's own client
   propDocForDeal: (dealId: string) => request<any>(`/api/property-docs/for-deal/${encodeURIComponent(dealId)}`),
   propDocChatShare: (id: string, b: { dealId: string; userIds: string[]; days: number; maxViews: number; clientShare: boolean; note?: string }) => request<any>(`/api/property-docs/${id}/chat-share`, { method: 'POST', body: JSON.stringify(b) }),

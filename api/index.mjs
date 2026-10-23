@@ -1380,7 +1380,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports, module) {
     "use strict";
-    var crypto34 = require_utils2();
+    var crypto35 = require_utils2();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -1398,7 +1398,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto34.randomBytes(18).toString("base64");
+      const clientNonce = crypto35.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -1440,20 +1440,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto34.hashByName(hashName, peerCert);
+        const certHash = await crypto35.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto34.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto34.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto34.sha256(clientKey);
-      const clientSignature = await crypto34.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto35.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto35.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto35.sha256(clientKey);
+      const clientSignature = await crypto35.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto34.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto34.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto35.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto35.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -3692,7 +3692,7 @@ var require_client = __commonJS({
     var Query2 = require_query();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto34 = require_utils2();
+    var crypto35 = require_utils2();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -3947,7 +3947,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto34.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto35.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e) {
             this.emit("error", e);
@@ -24535,14 +24535,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto34 = __require("crypto");
+    var crypto35 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash3 = crypto34.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash3 = crypto35.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash3 + '"';
     }
@@ -26435,7 +26435,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports, module) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router50 = require_router();
+    var Router51 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query3();
@@ -26500,7 +26500,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router50({
+        this._router = new Router51({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -27451,11 +27451,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto34 = __require("crypto");
+    var crypto35 = __require("crypto");
     exports.sign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret2) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto34.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto35.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -27464,7 +27464,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac3) == sha1(val) ? str6 : false;
     };
     function sha1(str6) {
-      return crypto34.createHash("sha1").update(str6).digest("hex");
+      return crypto35.createHash("sha1").update(str6).digest("hex");
     }
   }
 });
@@ -28364,7 +28364,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router50 = require_router();
+    var Router51 = require_router();
     var req = require_request();
     var res = require_response();
     exports = module.exports = createApplication;
@@ -28387,7 +28387,7 @@ var require_express = __commonJS({
     exports.request = req;
     exports.response = res;
     exports.Route = Route;
-    exports.Router = Router50;
+    exports.Router = Router51;
     exports.json = bodyParser.json;
     exports.query = require_query3();
     exports.raw = bodyParser.raw;
@@ -43180,7 +43180,7 @@ process.chdir(work);
 
 // server.ts
 await init_bootstrap();
-var import_express57 = __toESM(require_express2(), 1);
+var import_express58 = __toESM(require_express2(), 1);
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -65363,14 +65363,14 @@ function seedDemoBulk(s, sharedPasswordHash) {
   });
   const hm2 = (tag, v) => crypto4.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
   const KINDS_R = ["BUYER", "BUYER", "RENTER", "TENANT", "BUYER", "OTHER"];
-  const live4 = props.filter((p) => p.listingStatus === "active");
+  const live5 = props.filter((p) => p.listingStatus === "active");
   for (let i = 0; i < 14; i++) {
     const b = i < 8 ? user(featured[i % 4]) : brokers[i * 3 % brokers.length];
     const q = reqs[(i * 2 + 1) % reqs.length];
     const phone = digits2(q.customerPhone);
     const opened = int2(3, 30);
     const items = [0, 1, 2].slice(0, 1 + i % 3).map((k) => {
-      const p = live4[(i * 3 + k * 5) % live4.length];
+      const p = live5[(i * 3 + k * 5) % live5.length];
       return { id: `CRI-DMO-${pad3(i + 1)}-${k + 1}`, propertyId: p.id, sharedAt: ago(opened - 1 - k), ...k === 0 && i % 2 === 0 ? { reaction: "LIKE", reactionAt: ago(opened - 2) } : k === 1 && i % 3 === 0 ? { reaction: "PASS", reactionAt: ago(opened - 2) } : {}, visitRequests: k === 0 && i % 3 === 1 ? [{ id: `VR-DMO-${i + 1}`, at: ago(1), preferred: "Sunday 11 am", status: "REQUESTED" }] : [] };
     });
     const msgs = [
@@ -66614,6 +66614,7 @@ function getInitialSeedData() {
     profilePhotos: [],
     clientRooms: [],
     chatReads: [],
+    savedProperties: [],
     shopPartners: [],
     partnerLeads: [],
     paymentRequests: [],
@@ -66794,7 +66795,7 @@ function migrateState(parsed, seed2) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ["clientCards", "projectUpdates", "projectShortlists", "leadReveals", "visitPasses", "propertyOffers", "tier2Applications", "tieups", "deskRequests", "dealMilestones", "brokerNotes", "posterEnquiries", "marketRecords", "digestPrefs", "listingReports", "pointEvents", "chapters", "chapterMeets", "loanReferrals", "protectedDocs", "docAccessLogs", "propertyDocs", "propertyDocLogs", "idDocs", "idReviewTasks", "kycVault", "listingDrafts", "ownerConsents", "pushSubs", "pushPrefs", "broadcasts", "peerConfirms", "buyerBonds", "partyAlerts", "profilePhotos", "clientRooms", "chatReads", "shopPartners", "partnerLeads", "paymentRequests", "visitAcks", "twoFactor", "academyProgress", "activityDays", "masterCpAgreements", "masterCpEntries", "strengthLinks", "legalRequests", "legalProfiles", "legalLedger", "billingRules", "billingPlans", "billingLedger", "billingGates"]) parsed[k] ||= [];
+  for (const k of ["clientCards", "projectUpdates", "projectShortlists", "leadReveals", "visitPasses", "propertyOffers", "tier2Applications", "tieups", "deskRequests", "dealMilestones", "brokerNotes", "posterEnquiries", "marketRecords", "digestPrefs", "listingReports", "pointEvents", "chapters", "chapterMeets", "loanReferrals", "protectedDocs", "docAccessLogs", "propertyDocs", "propertyDocLogs", "idDocs", "idReviewTasks", "kycVault", "listingDrafts", "ownerConsents", "pushSubs", "pushPrefs", "broadcasts", "peerConfirms", "buyerBonds", "partyAlerts", "profilePhotos", "clientRooms", "chatReads", "savedProperties", "shopPartners", "partnerLeads", "paymentRequests", "visitAcks", "twoFactor", "academyProgress", "activityDays", "masterCpAgreements", "masterCpEntries", "strengthLinks", "legalRequests", "legalProfiles", "legalLedger", "billingRules", "billingPlans", "billingLedger", "billingGates"]) parsed[k] ||= [];
   parsed.legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...parsed.legalSettings || {} };
   for (const p of parsed.properties) p.confirmedAt ||= (/* @__PURE__ */ new Date()).toISOString();
   parsed.settings.connectorProgramEnabled ??= true;
@@ -68547,7 +68548,7 @@ function createBillingRouter() {
     ensureBilling();
     const s = st();
     const now = Date.now();
-    const live4 = s.billingLedger.filter((e) => e.kind === "MEMBERSHIP" && (e.status === "CONFIRMED" || e.status === "WAIVED") && e.validTo && new Date(e.validTo).getTime() > now && new Date(e.validFrom).getTime() <= now);
+    const live5 = s.billingLedger.filter((e) => e.kind === "MEMBERSHIP" && (e.status === "CONFIRMED" || e.status === "WAIVED") && e.validTo && new Date(e.validTo).getTime() > now && new Date(e.validFrom).getTime() <= now);
     const sum = (f) => s.billingLedger.filter(f).reduce((a, e) => a + e.amount, 0);
     const ids2 = /* @__PURE__ */ new Set();
     for (const x of [...s.billingRules, ...s.billingPlans]) for (const id of [...x.includeUserIds, ...x.excludeUserIds]) ids2.add(id);
@@ -68560,9 +68561,9 @@ function createBillingRouter() {
       success: true,
       people,
       rules: s.billingRules.slice().sort((a, b) => a.event.localeCompare(b.event) || b.updatedAt.localeCompare(a.updatedAt)).map((x) => ({ ...x, text: { en: describeRule(x, "en"), hi: describeRule(x, "hi") }, warnings: ruleWarnings(x) })),
-      plans: s.billingPlans.map((p) => ({ ...describePlanFor(p), members: live4.filter((e) => e.planId === p.id).length, warnings: planWarnings(p) })),
+      plans: s.billingPlans.map((p) => ({ ...describePlanFor(p), members: live5.filter((e) => e.planId === p.id).length, warnings: planWarnings(p) })),
       gates: s.billingGates,
-      members: live4.map((e) => ({ entryId: e.id, userId: e.payerId, name: e.payerName, segment: e.payerSegment, planId: e.planId, planName: e.planName, validFrom: e.validFrom, validTo: e.validTo, comp: !!e.comp })),
+      members: live5.map((e) => ({ entryId: e.id, userId: e.payerId, name: e.payerName, segment: e.payerSegment, planId: e.planId, planName: e.planName, validFrom: e.validFrom, validTo: e.validTo, comp: !!e.comp })),
       totals: {
         toConfirm: s.billingLedger.filter((e) => e.status === "MARKED_PAID").length,
         due: sum((e) => e.status === "DUE" || e.status === "REJECTED"),
@@ -68570,7 +68571,7 @@ function createBillingRouter() {
         receivedFees: sum((e) => e.status === "CONFIRMED" && e.kind === "CHARGE"),
         receivedMemberships: sum((e) => e.status === "CONFIRMED" && e.kind === "MEMBERSHIP"),
         refunds: s.billingLedger.filter((e) => e.needsRefund).length,
-        activeMembers: live4.length
+        activeMembers: live5.length
       }
     });
   });
@@ -69693,9 +69694,9 @@ var importRowSchema = external_exports.object({
 });
 function createInventoryRouter() {
   const r = (0, import_express2.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   const audit8 = (entity, id, action, details) => {
-    const u = me25();
+    const u = me26();
     db.appendAuditEvent(u.id, u.role, entity, id, action, details);
   };
   const access = (u, id) => actorFor(u, id);
@@ -69710,7 +69711,7 @@ function createInventoryRouter() {
   };
   r.get("/projects", (_req, res) => {
     sweepHolds();
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const list = [];
     for (const p of st22.builderProjects) {
@@ -69733,7 +69734,7 @@ function createInventoryRouter() {
   });
   r.get("/projects/:id", (req, res) => {
     sweepHolds();
-    const u = me25();
+    const u = me26();
     const a = access(u, req.params.id);
     if (!a) return res.status(404).json({ error: "Project not found" });
     const { project: p, actor } = a;
@@ -69758,7 +69759,7 @@ function createInventoryRouter() {
     });
   });
   r.post("/projects/:id/units/generate", needs("inventory:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const parsed = generateSchema.safeParse(req.body);
@@ -69800,7 +69801,7 @@ function createInventoryRouter() {
     res.json({ success: true, added: made.length });
   });
   r.put("/units/:uid", needs("inventory:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const unit = db.byId("inventoryUnits", req.params.uid);
     if (!unit || unit.builderId !== u.id) return res.status(404).json({ error: "Unit not found" });
     const p = patchSchema.safeParse(req.body);
@@ -69843,7 +69844,7 @@ function createInventoryRouter() {
     res.json({ success: true });
   });
   r.post("/projects/:id/units/bulk", needs("inventory:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     sweepHolds();
@@ -69948,7 +69949,7 @@ function createInventoryRouter() {
     return res.status(400).json({ error: "Unknown action" });
   });
   r.put("/projects/:id/visibility", needs("inventory:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const v = cleanVis(req.body || {}, p.invVis || DEFAULT_VIS);
@@ -69971,14 +69972,14 @@ function createInventoryRouter() {
     res.json({ success: true, vis: v, cleared });
   });
   r.get("/projects/:id/partners", needs("inventory:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const rows = db.getState().associateMandates.filter((m) => m.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"].includes(m.status)).map((m) => ({ brokerId: m.brokerId, name: m.brokerName, company: m.brokerCompany, status: m.status }));
     res.json({ success: true, partners: rows });
   });
   r.post("/projects/:id/units/import", needs("inventory:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
@@ -70071,7 +70072,7 @@ function createInventoryRouter() {
     res.json({ success: true, created, updated });
   });
   r.put("/projects/:id/settings", needs("inventory:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const s = settingsSchema.safeParse(req.body);
@@ -70090,7 +70091,7 @@ function createInventoryRouter() {
     res.json({ success: true });
   });
   r.post("/units/:uid/hold", needs("inventory:hold"), tier1Gate, (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     sweepHolds();
     const unit = db.byId("inventoryUnits", req.params.uid);
@@ -70120,7 +70121,7 @@ function createInventoryRouter() {
     res.json({ success: true, unit: shapeUnit(unit, p, a.actor, seenBy(a.actor, p, unit)) });
   });
   r.post("/units/:uid/release", (req, res) => {
-    const u = me25();
+    const u = me26();
     const unit = db.byId("inventoryUnits", req.params.uid);
     if (!unit || unit.status !== "HOLD" || !unit.hold) return res.status(404).json({ error: "No active hold on this unit" });
     const allowed = isAdmin(u) || unit.builderId === u.id || unit.hold.brokerId === u.id;
@@ -70135,7 +70136,7 @@ function createInventoryRouter() {
     res.json({ success: true });
   });
   r.get("/projects/:id/leaderboard", (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const a = access(u, req.params.id);
     if (!a || a.actor.kind === "MEMBER") return res.status(404).json({ error: "Project not found" });
@@ -71011,7 +71012,7 @@ function cancelBooking(user, booking, reasonIn, b) {
 }
 function createCrmRouter() {
   const r = (0, import_express3.Router)();
-  const me25 = currentUser;
+  const me26 = currentUser;
   const leadsFor = leadsForUser;
   const bookingsFor = bookingsForUser;
   const findLead = (id, user) => leadsFor(user).find((l) => l.id === id);
@@ -71025,7 +71026,7 @@ function createCrmRouter() {
   };
   r.use(needs("crm:read"));
   r.get("/overview", (_req, res) => {
-    const user = me25();
+    const user = me26();
     const leads = leadsFor(user);
     const bookings = bookingsFor(user);
     const now = Date.now();
@@ -71061,7 +71062,7 @@ function createCrmRouter() {
     });
   });
   r.get("/projects", (_req, res) => {
-    const user = employerOf(me25());
+    const user = employerOf(me26());
     const state = db.getState();
     let projects = state.builderProjects || [];
     let mandates = state.associateMandates || [];
@@ -71092,7 +71093,7 @@ function createCrmRouter() {
     });
   });
   r.get("/leads", (req, res) => {
-    const user = me25();
+    const user = me26();
     const { projectId, stage, q, temperature, source, associateId, from, to } = req.query;
     let leads = leadsFor(user);
     if (projectId) leads = leads.filter((l) => l.projectId === String(projectId));
@@ -71119,7 +71120,7 @@ function createCrmRouter() {
     res.json({ success: true, total, offset, limit, leads: leads.slice(offset, offset + limit).map((l) => viewLead(l, user)) });
   });
   r.get("/leads/:id", (req, res) => {
-    const user = me25();
+    const user = me26();
     const lead = findLead(req.params.id, user);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
     const booking = lead.bookingId ? db.byId("crmBookings", lead.bookingId) : void 0;
@@ -71133,11 +71134,11 @@ function createCrmRouter() {
   r.post("/leads", needs("crm:lead_create"), (req, res) => {
     const parsed = leadCreateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid lead" });
-    const out = registerLead(me25(), parsed.data);
+    const out = registerLead(me26(), parsed.data);
     res.status(out.status).json(out.body);
   });
   r.patch("/leads/:id", needs("crm:lead_manage"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const parsed = leadPatchSchema.safeParse(req.body);
@@ -71164,7 +71165,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/stage", needs("crm:lead_manage"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const { stage, note: note5, lostReason } = req.body || {};
@@ -71218,7 +71219,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/activity", needs("crm:lead_manage"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const { type, note: note5 } = req.body || {};
@@ -71235,7 +71236,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/followups", needs("crm:lead_manage"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     if (lead.optedOutAt) return res.status(409).json({ error: "Customer has opted out of contact \u2014 no follow-ups can be scheduled.", code: "OPTED_OUT" });
@@ -71251,7 +71252,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/followups/:fid/done", needs("crm:lead_manage"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const fu = lead.followUps.find((f) => f.id === req.params.fid);
@@ -71266,7 +71267,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/assign", needs("crm:assign"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const lead = findLead(req.params.id, user);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
     if (user.role === "DEVELOPER_BUILDER" && lead.builderId !== user.id) return res.status(403).json({ error: "Not your project" });
@@ -71289,10 +71290,10 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.get("/bookings", (_req, res) => {
-    res.json({ success: true, bookings: bookingsFor(me25()).map(viewBooking) });
+    res.json({ success: true, bookings: bookingsFor(me26()).map(viewBooking) });
   });
   r.post("/leads/:id/booking-request", needs("crm:booking_request"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const state = db.getState();
     const lead = findLead(req.params.id, user);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
@@ -71405,7 +71406,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: user.role === "TEAM_MEMBER" ? bookingForMember(booking, user.id) : viewBooking(booking), lead: viewLead(lead, user) });
   });
   r.post("/bookings/:id/decision", needs("crm:booking_decide"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const state = db.getState();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
@@ -71470,7 +71471,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: viewBooking(booking), lead: viewLead(lead, user) });
   });
   r.post("/bookings/:id/token", needs("crm:booking_decide"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
     if (typeof req.body?.received !== "boolean") return res.status(400).json({ error: "received must be true or false" });
@@ -71486,7 +71487,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: viewBooking(booking) });
   });
   r.post("/bookings/:id/payments/:mid/receive", needs("crm:booking_decide"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
     if (booking.status !== "APPROVED") return res.status(409).json({ error: "Collections can be recorded only on approved bookings" });
@@ -71516,7 +71517,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: viewBooking(booking) });
   });
   r.post("/bookings/:id/payout", needs("crm:payout"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const state = db.getState();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
@@ -71567,7 +71568,7 @@ function createCrmRouter() {
     return { mandates, status };
   };
   r.get("/bonus", (_req, res) => {
-    const user = me25();
+    const user = me26();
     if (user.role === "TEAM_MEMBER") return res.status(403).json({ error: "Bonus details are visible to your employer only" });
     const state = db.getState();
     let projects = state.builderProjects || [];
@@ -71593,7 +71594,7 @@ function createCrmRouter() {
     res.json({ success: true, projects: out, canManage: user.role === "DEVELOPER_BUILDER" || isSuper(user) });
   });
   r.put("/projects/:id/bonus-scheme", needs("crm:bonus_manage"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const state = db.getState();
     const project = db.byId("builderProjects", req.params.id);
     if (!project || user.role === "DEVELOPER_BUILDER" && project.builderId !== user.id) return res.status(404).json({ error: "Project not found" });
@@ -71615,7 +71616,7 @@ function createCrmRouter() {
     res.json({ success: true, scheme });
   });
   r.post("/projects/:id/bonus/pay", needs("crm:payout"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const state = db.getState();
     const project = db.byId("builderProjects", req.params.id);
     if (!project || user.role === "DEVELOPER_BUILDER" && project.builderId !== user.id) return res.status(404).json({ error: "Project not found" });
@@ -71637,7 +71638,7 @@ function createCrmRouter() {
     res.json({ success: true, payout: rec2, tds, net: amount2 - tds });
   });
   r.post("/bookings/:id/cancel", needs("crm:booking_decide"), (req, res) => {
-    const user = me25();
+    const user = me26();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
     const out = cancelBooking(user, booking, String(req.body?.reason || ""), req.body || {});
@@ -71950,19 +71951,19 @@ function trailsFor(u) {
 }
 function createMoneyTrailRouter() {
   const r = (0, import_express5.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   const bad25 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
   const st22 = () => db.getState();
   const leadOf = (b) => db.byId("crmLeads", b.leadId);
   const lead = (b, note5) => {
     const l = leadOf(b);
-    const u = me25();
+    const u = me26();
     if (!l) return;
     l.activities.unshift({ id: `A-${Date.now().toString(36)}${Math.floor(Math.random() * 99)}`, type: "SYSTEM", note: note5, byUserId: u.id, byName: u.name, at: nowIso4() });
     l.updatedAt = nowIso4();
   };
   const open2 = (req, res) => {
-    const u = me25();
+    const u = me26();
     const b = st22().crmBookings.find((x) => (x.trails || []).some((t2) => t2.id === req.params.id));
     const t = b?.trails?.find((x) => x.id === req.params.id);
     if (!b || !t) {
@@ -71978,14 +71979,14 @@ function createMoneyTrailRouter() {
     return { b, t, a };
   };
   const step = (t, stage, a, extra = {}) => {
-    const u = me25();
+    const u = me26();
     const ts = nowIso4();
     t.steps.push({ stage, at: ts, byId: u.id, byName: u.name, side: a.side, ...extra.note ? { note: extra.note.slice(0, 200) } : {}, ...extra.ref ? { ref: extra.ref } : {}, ...extra.mode ? { mode: extra.mode } : {} });
     t.updatedAt = ts;
   };
   const cleanNote = (v) => String(v ?? "").trim().slice(0, 200);
   r.get("/trails", needs("crm:read"), (req, res) => {
-    const u = me25();
+    const u = me26();
     let rows = trailsFor(u);
     const bookingId = typeof req.query.bookingId === "string" ? req.query.bookingId : "";
     if (bookingId) rows = rows.filter((x) => x.bookingId === bookingId);
@@ -72001,7 +72002,7 @@ function createMoneyTrailRouter() {
     });
   });
   r.get("/collectables", needs("crm:money_collect"), (_req, res) => {
-    const u = me25();
+    const u = me26();
     const out = [];
     for (const b of st22().crmBookings) {
       if (b.status !== "REQUESTED" && b.status !== "APPROVED") continue;
@@ -72020,7 +72021,7 @@ function createMoneyTrailRouter() {
     res.json({ success: true, bookings: out });
   });
   r.post("/trails", needs("crm:money_collect"), rateLimit("money-trail-start", 300, 24 * 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     if (isAdmin(u)) return bad25(res, "The platform only watches the money trail \u2014 the partner and the builder record it", 403);
     const b = st22().crmBookings.find((x) => x.id === String(req.body?.bookingId || ""));
     const a = b ? actorOn(u, b) : NO_ACTOR(u.id);
@@ -72075,7 +72076,7 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me25();
+    const u = me26();
     if (typeof req.body?.received !== "boolean") return bad25(res, "received must be true or false");
     const can2 = trailActions(t, a);
     if (!can2.cpConfirm) {
@@ -72103,7 +72104,7 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me25();
+    const u = me26();
     const can2 = trailActions(t, a);
     if (!can2.handover) {
       if (t.route !== "CP") return bad25(res, "This money was collected on the builder's side \u2014 there is no hand-over", 409);
@@ -72131,7 +72132,7 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me25();
+    const u = me26();
     if (typeof req.body?.received !== "boolean") return bad25(res, "received must be true or false");
     const received = req.body.received;
     const can2 = trailActions(t, a);
@@ -72193,7 +72194,7 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me25();
+    const u = me26();
     if (!trailActions(t, a).cancel) return bad25(res, isOpenTrail(t) ? "You cannot cancel this entry at this stage" : "This money is already settled", isOpenTrail(t) ? 403 : 409);
     const reason = cleanNote(req.body?.reason);
     if (reason.length < TRAIL_NOTE_MIN) return bad25(res, "Say why this entry is being cancelled");
@@ -72298,8 +72299,8 @@ function createCrmPlusRouter() {
       add("PAYOUT_NEW", "med", bks.filter((b) => (b.payouts || []).some((p) => p.status === "RECORDED" && now - Date.parse(p.at) <= PAYOUT_CONFIRM_DAYS * DAY6)).map((b) => b.id), "New payouts \u2014 confirm that you received them", "\u0928\u090F \u092A\u0947\u0906\u0909\u091F \u2014 \u092E\u093F\u0932\u0928\u0947 \u092A\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902");
       add("CLAWBACK_DUE", "high", bks.filter((b) => b.settlement?.clawbackStatus === "DUE").map((b) => b.id), "Brokerage clawback due on a cancelled booking", "\u0915\u0948\u0902\u0938\u093F\u0932 \u092C\u0941\u0915\u093F\u0902\u0917 \u092A\u0930 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0935\u093E\u092A\u0938\u0940 \u092C\u093E\u0915\u0940");
     }
-    const live4 = trailsFor(u).filter(isOpenTrail);
-    const tf = trailFlags(live4, now);
+    const live5 = trailsFor(u).filter(isOpenTrail);
+    const tf = trailFlags(live5, now);
     const uniq = (xs) => [...new Set(xs.map((x) => x.bookingId))];
     add("MONEY_WITH_TEAM", "high", uniq(tf.withTeam.filter((t) => t.can.cpConfirm || t.can.builderConfirm)), "Money collected by a team member \u2014 waiting for your confirmation", "\u091F\u0940\u092E \u092E\u0947\u0902\u092C\u0930 \u0926\u094D\u0935\u093E\u0930\u093E \u0932\u0940 \u0917\u0908 \u0930\u0915\u092E \u2014 \u0906\u092A\u0915\u0947 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0928\u0947 \u0915\u0940 \u092A\u094D\u0930\u0924\u0940\u0915\u094D\u0937\u093E \u092E\u0947\u0902");
     add("MONEY_AWAITING_BUILDER", "high", uniq(tf.awaitingBuilder.filter((t) => t.can.builderConfirm)), "Money handed over to you \u2014 confirm that it arrived", "\u0906\u092A\u0915\u094B \u0938\u094C\u0902\u092A\u0940 \u0917\u0908 \u0930\u0915\u092E \u2014 \u092E\u093F\u0932\u0928\u0947 \u092A\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902");
@@ -72570,14 +72571,14 @@ function createCrmPlusRouter() {
     if (rc.reversed) return bad2(res, "Already reversed", 409);
     const reason = String(req.body?.reason || "").trim();
     if (reason.length < 5) return bad2(res, "A reason (min 5 chars) is required");
-    const live4 = (m.receipts || []).filter((x) => !x.reversed && x.id !== rc.id).reduce((a, x) => a + x.amount, 0);
+    const live5 = (m.receipts || []).filter((x) => !x.reversed && x.id !== rc.id).reduce((a, x) => a + x.amount, 0);
     const total = b.paymentSchedule.reduce((a, x) => a + x.amount, 0) || 1;
-    const newCollected = b.paymentSchedule.reduce((a, x) => a + (x.id === m.id ? live4 : paidOf(x)), 0);
+    const newCollected = b.paymentSchedule.reduce((a, x) => a + (x.id === m.id ? live5 : paidOf(x)), 0);
     const supports = Math.round(b.brokerageAmount * Math.min(100, newCollected / total * 100) / 100);
     if (b.brokeragePaidAmount > supports) return bad2(res, `Brokerage already paid (\u20B9${b.brokeragePaidAmount.toLocaleString("en-IN")}) is more than the reduced collection supports (\u20B9${supports.toLocaleString("en-IN")}). Settle with the associate first.`, 409, "PAYOUT_EXCEEDS");
     rc.reversed = { at: nowIso4(), byName: u.name, reason: reason.slice(0, 200) };
-    m.paidAmount = live4;
-    m.paid = live4 >= m.amount;
+    m.paidAmount = live5;
+    m.paid = live5 >= m.amount;
     if (!m.paid) {
       m.paidAt = void 0;
       m.receiptNo = void 0;
@@ -73271,20 +73272,20 @@ function bookingStats(bookings, collectedOf2, nowMs, seriesDays = 30) {
 }
 var isLiveProject = (p) => (p.availableUnits ?? p.totalUnits ?? 0) > 0;
 function projectStats(projects) {
-  const live4 = projects.filter(isLiveProject);
+  const live5 = projects.filter(isLiveProject);
   const byStage = {};
   const byCity = {};
-  for (const p of live4) {
+  for (const p of live5) {
     byStage[p.projectStage || "\u2014"] = (byStage[p.projectStage || "\u2014"] || 0) + 1;
     byCity[p.city || "\u2014"] = (byCity[p.city || "\u2014"] || 0) + 1;
   }
   const total = projects.reduce((a, p) => a + (p.totalUnits || 0), 0);
-  const available = live4.reduce((a, p) => a + (p.availableUnits ?? p.totalUnits ?? 0), 0);
+  const available = live5.reduce((a, p) => a + (p.availableUnits ?? p.totalUnits ?? 0), 0);
   return {
     total: projects.length,
-    live: live4.length,
+    live: live5.length,
     builders: new Set(projects.map((p) => p.builderId)).size,
-    liveBuilders: new Set(live4.map((p) => p.builderId)).size,
+    liveBuilders: new Set(live5.map((p) => p.builderId)).size,
     units: { total, available, sold: Math.max(0, total - available) },
     byStage,
     byCity: Object.entries(byCity).sort((a, b) => b[1] - a[1]).map(([city, count]) => ({ city, count }))
@@ -74613,14 +74614,14 @@ function readTicket(t) {
 }
 function createTwoFactorRouter() {
   const r = (0, import_express11.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   r.get("/status", requireAuth, (_req, res) => {
-    const u = me25();
+    const u = me26();
     const x = rec(u.id);
     res.json({ success: true, enabled: !!x?.enabledAt, enabledAt: x?.enabledAt || null, recommended: twoFactorRecommended(u), recoveryLeft: x?.enabledAt ? x.recovery.length : 0 });
   });
   r.post("/setup", requireAuth, rateLimit("2fa-setup", 10, 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     if (!verifyPassword(String(req.body?.password || ""), u.passwordHash)) return res.status(400).json({ error: "Password is not correct", code: "BAD_PASSWORD" });
     const s = db.getState();
     const x = rec(u.id);
@@ -74635,7 +74636,7 @@ function createTwoFactorRouter() {
     res.json({ success: true, secret: b32, otpauth: `otpauth://totp/${label}?secret=${b32}&issuer=GENZ&algorithm=SHA1&digits=6&period=30` });
   });
   r.post("/enable", requireAuth, rateLimit("2fa-enable", 20, 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     const x = rec(u.id);
     if (!x || x.enabledAt) return res.status(409).json({ error: "Start the setup first." });
     const step = checkTotp(unseal(x.secretEnc), String(req.body?.code || ""));
@@ -74650,7 +74651,7 @@ function createTwoFactorRouter() {
     res.json({ success: true, recoveryCodes: codes });
   });
   r.post("/disable", requireAuth, rateLimit("2fa-disable", 10, 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     if (!verifyPassword(String(req.body?.password || ""), u.passwordHash)) return res.status(400).json({ error: "Password is not correct", code: "BAD_PASSWORD" });
     const v = verifySecondFactor(u.id, String(req.body?.code || ""));
     if (v === "LOCKED") return res.status(429).json({ error: "Too many wrong codes. Wait 15 minutes." });
@@ -74950,8 +74951,8 @@ function createKycVaultRouter() {
     if (!b.success) return bad5(res, b.error.issues[0]?.message || "Choose a purpose and write the reason", 400, "REVEAL_FIELDS");
     const t = s.users.find((x) => x.id === req.params.userId);
     if (!t) return bad5(res, "Member not found", 404);
-    const me25 = s.users.find((x) => x.id === a.id);
-    if (!verifyPassword(b.data.password, me25?.passwordHash)) {
+    const me26 = s.users.find((x) => x.id === a.id);
+    if (!verifyPassword(b.data.password, me26?.passwordHash)) {
       audit8(t.id, "KYC_REVEAL_DENIED", `${a.name} tried to open the KYC of ${t.name} with a wrong password`);
       return bad5(res, "Your password is not correct.", 403, "BAD_PASSWORD");
     }
@@ -75726,7 +75727,7 @@ var prefSchema = external_exports.object({ matches: external_exports.boolean(), 
 var prefView = (p) => ({ matches: p.matches, deals: p.deals, consent: p.consent, broadcast: p.broadcast, digest: p.digest, quiet: p.quiet });
 function createPushRouter() {
   const r = (0, import_express15.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   r.get("/key", (_req, res) => {
     const k = vapidKeys();
     res.json({ success: true, publicKey: k?.publicKey || null });
@@ -75741,7 +75742,7 @@ function createPushRouter() {
       return res.status(400).json({ error: "The browser\u2019s push keys are not valid." });
     }
     const s = db.getState();
-    const u = me25();
+    const u = me26();
     const id = crypto12.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
     const mine3 = s.pushSubs.filter((x) => x.userId === u.id);
@@ -75756,27 +75757,27 @@ function createPushRouter() {
   });
   r.post("/unsubscribe", requireAuth, (req, res) => {
     const s = db.getState();
-    const u = me25();
+    const u = me26();
     const ep = String(req.body?.endpoint || "");
     s.pushSubs = s.pushSubs.filter((x) => !(x.userId === u.id && (!ep || x.endpoint === ep)));
     db.save();
     res.json({ success: true, devices: s.pushSubs.filter((x) => x.userId === u.id).length });
   });
   r.get("/prefs", requireAuth, (_req, res) => {
-    const u = me25();
+    const u = me26();
     const p = prefsOf(u.id);
     res.json({ success: true, prefs: prefView(p), devices: db.getState().pushSubs.filter((x) => x.userId === u.id).length, ready: !!vapidKeys() });
   });
   r.put("/prefs", requireAuth, (req, res) => {
     const v = prefSchema.safeParse(req.body);
     if (!v.success) return res.status(400).json({ error: "Invalid choice" });
-    const p = prefsOf(me25().id);
+    const p = prefsOf(me26().id);
     Object.assign(p, v.data);
     db.save();
     res.json({ success: true, prefs: prefView(p) });
   });
   r.post("/test", requireAuth, rateLimit("push-test", 10, 36e5), async (_req, res) => {
-    const u = me25();
+    const u = me26();
     const n2 = await pushTo(u.id, { kind: "system", title: "GENZ alerts are on \u2714", body: "You will get new matches, offers and owner consents here.", url: "/" });
     res.json({ success: true, delivered: n2, devices: db.getState().pushSubs.filter((x) => x.userId === u.id).length });
   });
@@ -75925,9 +75926,9 @@ function legalConfig() {
 }
 function createPrivacyRouter() {
   const r = (0, import_express17.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   r.get("/export", requireAuth, rateLimit("export", 5, 60 * 6e4), (_req, res) => {
-    const u = me25();
+    const u = me26();
     const s = db.getState();
     const mine3 = (rows, ...keys) => rows.filter((x) => keys.some((k) => x[k] === u.id));
     const { passwordHash: _p, sessionVersion: _s, mustChangePassword: _m, ...profile5 } = u;
@@ -75955,7 +75956,7 @@ function createPrivacyRouter() {
     res.json(bundle);
   });
   r.post("/requests", requireAuth, rateLimit("privreq", 10, 24 * 60 * 6e4), (req, res) => {
-    const u = me25();
+    const u = me26();
     const { type, details } = req.body || {};
     if (!["ERASURE", "CORRECTION", "GRIEVANCE"].includes(type)) return res.status(400).json({ error: "Invalid request type" });
     const text = String(details || "").trim().slice(0, 2e3);
@@ -75979,13 +75980,13 @@ function createPrivacyRouter() {
     res.json({ success: true, request: pr, respondWithinDays: legalConfig().grievanceOfficer.responseDays });
   });
   r.get("/requests", requireAuth, (_req, res) => {
-    const u = me25();
+    const u = me26();
     const s = db.getState();
     const all = u.role === "SUPERADMIN" || u.role === "ADMIN";
     res.json({ success: true, requests: all ? s.privacyRequests : s.privacyRequests.filter((p) => p.userId === u.id) });
   });
   r.post("/requests/:id/resolve", needs("users:review"), (req, res) => {
-    const actor = me25();
+    const actor = me26();
     const s = db.getState();
     const pr = s.privacyRequests.find((p) => p.id === req.params.id);
     if (!pr) return res.status(404).json({ error: "Request not found" });
@@ -76058,9 +76059,9 @@ var createSchema = external_exports.object({
 var nowIso11 = () => (/* @__PURE__ */ new Date()).toISOString();
 function createTeamRouter() {
   const r = (0, import_express18.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   const audit8 = (entity, id, action, details) => {
-    const u = me25();
+    const u = me26();
     db.appendAuditEvent(u.id, u.role, entity, id, action, details);
   };
   const mine3 = (employerId) => db.getState().users.filter((u) => u.role === "TEAM_MEMBER" && u.employerId === employerId);
@@ -76074,7 +76075,7 @@ function createTeamRouter() {
     selfie: external_exports.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, "A selfie with the client is required").max(22e4, "Selfie is too large")
   });
   r.post("/checkin", needs("team:checkin"), rateLimit("checkin", 40, 24 * 60 * 6e4), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = checkinSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid check-in" });
     const state = db.getState();
@@ -76113,7 +76114,7 @@ function createTeamRouter() {
   });
   r.use(needs("team:manage"));
   r.get("/activity", (req, res) => {
-    const u = me25();
+    const u = me26();
     const state = db.getState();
     const days3 = Math.min(30, Math.max(1, Number(req.query.days) || 7));
     const since = Date.now() - days3 * 864e5;
@@ -76163,7 +76164,7 @@ function createTeamRouter() {
     res.json({ success: true, days: days3, rows });
   });
   r.get("/checkins", (req, res) => {
-    const u = me25();
+    const u = me26();
     const days3 = Math.min(90, Math.max(1, Number(req.query.days) || 14));
     const since = Date.now() - days3 * 864e5;
     const memberId = req.query.memberId ? String(req.query.memberId) : "";
@@ -76171,12 +76172,12 @@ function createTeamRouter() {
     res.json({ success: true, checkins: list });
   });
   r.get("/checkins/:id/selfie", (req, res) => {
-    const c = db.getState().siteCheckins.find((x) => x.id === req.params.id && x.employerId === me25().id);
+    const c = db.getState().siteCheckins.find((x) => x.id === req.params.id && x.employerId === me26().id);
     if (!c?.selfie) return res.status(404).json({ error: "No selfie stored for this check-in" });
     res.json({ success: true, selfie: c.selfie });
   });
   r.get("/incentives", (_req, res) => {
-    const u = me25();
+    const u = me26();
     const state = db.getState();
     const team = mine3(u.id);
     const teamIds = new Set(team.map((m) => m.id));
@@ -76203,7 +76204,7 @@ function createTeamRouter() {
     res.json({ success: true, rows, note: "Incentive is calculated on brokerage of approved bookings of leads the member worked. GENZ only calculates \u2014 you pay your employee yourself. Members never see these figures." });
   });
   r.get("/", (_req, res) => {
-    const u = me25();
+    const u = me26();
     const state = db.getState();
     const team = mine3(u.id);
     const ids2 = new Set(team.map((m) => m.id));
@@ -76232,7 +76233,7 @@ function createTeamRouter() {
     res.json({ success: true, members: members2, max: MAX_TEAM });
   });
   r.post("/", rateLimit("team-create", 20, 60 * 6e4), (req, res) => {
-    const u = me25();
+    const u = me26();
     if (u.verificationStatus !== "VERIFIED") return res.status(403).json({ error: "Your account must be verified first" });
     const p = createSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid details" });
@@ -76274,7 +76275,7 @@ function createTeamRouter() {
     res.json({ success: true, member: { id: m.id, name: m.name, phone: m.phone, teamTitle: m.teamTitle, teamRole: m.teamRole }, loginId: phone.slice(-10), temporaryPassword: temp, note: "Shown once. The member must change it at first sign-in." });
   });
   r.put("/:id", (req, res) => {
-    const u = me25();
+    const u = me26();
     const m = member(req.params.id, u.id);
     if (!m) return res.status(404).json({ error: "Team member not found" });
     if (req.body?.incentivePct !== void 0) {
@@ -76310,7 +76311,7 @@ function createTeamRouter() {
     res.json({ success: true });
   });
   r.post("/:id/reset-password", rateLimit("team-reset", 20, 60 * 6e4), (req, res) => {
-    const u = me25();
+    const u = me26();
     const m = member(req.params.id, u.id);
     if (!m) return res.status(404).json({ error: "Team member not found" });
     const temp = randomPassword();
@@ -76322,7 +76323,7 @@ function createTeamRouter() {
     res.json({ success: true, loginId: digits(m.phone).slice(-10), temporaryPassword: temp, note: "Shown once." });
   });
   r.post("/allot/lead", (req, res) => {
-    const u = me25();
+    const u = me26();
     const state = db.getState();
     const lead = state.crmLeads.find((l) => l.id === String(req.body?.leadId || ""));
     if (!lead || lead.associateId !== u.id && lead.builderId !== u.id) return res.status(404).json({ error: "Lead not found" });
@@ -76344,7 +76345,7 @@ function createTeamRouter() {
     res.json({ success: true, lead });
   });
   r.post("/allot/deal", (req, res) => {
-    const u = me25();
+    const u = me26();
     const state = db.getState();
     const deal = state.dealRooms.find((d) => d.id === String(req.body?.dealId || ""));
     if (!deal || !isDealBroker(u, deal)) return res.status(404).json({ error: "Deal room not found" });
@@ -76384,15 +76385,15 @@ var shareSchema = external_exports.object({
 });
 function createInventoryDeskRouter() {
   const r = (0, import_express19.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   const bad25 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const audit8 = (id, action, details) => {
-    const u = me25();
+    const u = me26();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
   };
   const teamOf = (employerId) => db.getState().users.filter((x) => x.role === "TEAM_MEMBER" && x.employerId === employerId);
   r.get("/posts", needs("inventory:read"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : void 0;
     let rows;
@@ -76412,7 +76413,7 @@ function createInventoryDeskRouter() {
     res.json({ success: true, posts: u.role === "TEAM_MEMBER" ? out.map(({ showPrice, ...x }) => ({ ...x, showPrice: showPrice && policyOf(u).invPrice })) : out });
   });
   r.post("/posts", needs("team:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     if (u.role !== "BROKER" && u.role !== "DEVELOPER_BUILDER") return bad25(res, "Only a partner or a builder can post units to a team", 403);
     const parsed = postSchema.safeParse(req.body);
@@ -76452,7 +76453,7 @@ function createInventoryDeskRouter() {
     res.json({ success: true, post, priceCapped: d.showPrice && !canPrice });
   });
   r.post("/posts/:id/end", needs("team:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = db.getState().inventoryPosts.find((x) => x.id === req.params.id && x.employerId === u.id);
     if (!p) return bad25(res, "Post not found", 404);
     p.active = false;
@@ -76481,7 +76482,7 @@ function createInventoryDeskRouter() {
     return { project, actor, units, canPrice, canFeatures };
   };
   r.post("/shares", needShare, rateLimit("invshare-create", 60, 24 * 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const parsed = shareSchema.safeParse(req.body);
     if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid request");
@@ -76512,7 +76513,7 @@ function createInventoryDeskRouter() {
     res.json({ success: true, token: link.token, path: `/s/${link.token}`, showPrice: flags.showPrice, showFeatures: flags.showFeatures, capped: d.showPrice && !flags.showPrice || d.showFeatures && !flags.showFeatures });
   });
   r.get("/shares", needShare, (_req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const mine3 = u.role === "TEAM_MEMBER" ? st22.shareLinks.filter((l) => l.ownerId === u.id && l.kind === "UNITS") : st22.shareLinks.filter((l) => l.kind === "UNITS" && (l.ownerId === u.id || l.employerId === u.id));
     const rows = mine3.map((l) => ({
@@ -76533,7 +76534,7 @@ function createInventoryDeskRouter() {
     res.json({ success: true, links: rows });
   });
   r.post("/shares/:token/revoke", needShare, (req, res) => {
-    const u = me25();
+    const u = me26();
     const l = db.getState().shareLinks.find((x) => x.token === req.params.token && x.kind === "UNITS" && (x.ownerId === u.id || x.employerId === u.id));
     if (!l) return bad25(res, "Link not found", 404);
     l.revoked = true;
@@ -76562,11 +76563,11 @@ var requestSchema = external_exports.object({ note: external_exports.string().tr
 var statusSchema = external_exports.object({ status: external_exports.enum(["DRAFT", "LIVE", "PAUSED", "CLOSED"]), note: external_exports.string().trim().max(200).default("") });
 function createLaunchRouter() {
   const r = (0, import_express20.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   const st22 = () => db.getState();
   const bad25 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const audit8 = (id, action, details) => {
-    const u = me25();
+    const u = me26();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
   };
   const planRow = (p) => ({
@@ -76608,7 +76609,7 @@ function createLaunchRouter() {
     if (seg === null) delete u.firmSegment;
     else u.firmSegment = seg;
     db.save();
-    audit8(u.id, "LAUNCH_SEGMENT_SET", `${me25().name} set ${u.name} to ${seg ?? "automatic (by team size)"}`);
+    audit8(u.id, "LAUNCH_SEGMENT_SET", `${me26().name} set ${u.name} to ${seg ?? "automatic (by team size)"}`);
     res.json({ success: true, segment: segmentFor(u) });
   });
   r.post("/admin/projects/:id/request", needs("launch:manage"), rateLimit("launch-req", 40, 24 * 36e5), (req, res) => {
@@ -76620,15 +76621,15 @@ function createLaunchRouter() {
     if (plan.consent === "GRANTED") return bad25(res, "The builder has already agreed \u2014 plan the launch", 409);
     if (plan.consent === "REQUESTED") return bad25(res, "A request is already waiting for the builder", 409);
     plan.consent = "REQUESTED";
-    plan.requestedBy = me25().name;
+    plan.requestedBy = me26().name;
     plan.requestedAt = nowIso13();
     plan.requestNote = parsed.data.note;
     plan.decidedAt = void 0;
     plan.decidedBy = void 0;
-    pushHistory(plan, me25().name, "Asked the builder to let GENZ launch this project to the network");
+    pushHistory(plan, me26().name, "Asked the builder to let GENZ launch this project to the network");
     p.launch = plan;
     db.save();
-    audit8(p.id, "LAUNCH_REQUESTED", `${me25().name} asked ${p.builderName} for permission to launch ${p.projectName} on the GENZ network`);
+    audit8(p.id, "LAUNCH_REQUESTED", `${me26().name} asked ${p.builderName} for permission to launch ${p.projectName} on the GENZ network`);
     res.json({ success: true, plan });
   });
   r.put("/admin/projects/:id/plan", needs("launch:manage"), (req, res) => {
@@ -76637,10 +76638,10 @@ function createLaunchRouter() {
     if (!p.launch || p.launch.consent !== "GRANTED") return bad25(res, "The builder has not agreed to a GENZ launch yet", 409);
     const next2 = cleanPlanInput(req.body || {}, p.launch);
     if (typeof next2 === "string") return bad25(res, next2);
-    pushHistory(next2, me25().name, `Launch plan edited${p.launch.status === "LIVE" ? " (while live)" : ""}`);
+    pushHistory(next2, me26().name, `Launch plan edited${p.launch.status === "LIVE" ? " (while live)" : ""}`);
     p.launch = next2;
     db.save();
-    audit8(p.id, "LAUNCH_PLAN_SET", `${me25().name} set the launch plan of ${p.projectName}: big firms ${next2.waves.BIG_FIRM.on ? next2.waves.BIG_FIRM.at.slice(0, 10) : "off"}, independents ${next2.waves.INDEPENDENT.on ? next2.waves.INDEPENDENT.at.slice(0, 10) : "off"}, locals ${next2.waves.LOCAL.mode}`);
+    audit8(p.id, "LAUNCH_PLAN_SET", `${me26().name} set the launch plan of ${p.projectName}: big firms ${next2.waves.BIG_FIRM.on ? next2.waves.BIG_FIRM.at.slice(0, 10) : "off"}, independents ${next2.waves.INDEPENDENT.on ? next2.waves.INDEPENDENT.at.slice(0, 10) : "off"}, locals ${next2.waves.LOCAL.mode}`);
     res.json({ success: true, plan: next2 });
   });
   r.post("/admin/projects/:id/status", needs("launch:manage"), (req, res) => {
@@ -76657,9 +76658,9 @@ function createLaunchRouter() {
     }
     if (plan.status === to) return bad25(res, `Already ${to.toLowerCase()}`, 409);
     plan.status = to;
-    pushHistory(plan, me25().name, `Launch ${to.toLowerCase()}${parsed.data.note ? ` \u2014 ${parsed.data.note}` : ""}`);
+    pushHistory(plan, me26().name, `Launch ${to.toLowerCase()}${parsed.data.note ? ` \u2014 ${parsed.data.note}` : ""}`);
     db.save();
-    audit8(p.id, `LAUNCH_${to}`, `${me25().name} set the GENZ launch of ${p.projectName} to ${to}${parsed.data.note ? `: ${parsed.data.note}` : ""}`);
+    audit8(p.id, `LAUNCH_${to}`, `${me26().name} set the GENZ launch of ${p.projectName} to ${to}${parsed.data.note ? `: ${parsed.data.note}` : ""}`);
     res.json({ success: true, plan });
   });
   const ownProject = (u, id) => {
@@ -76667,7 +76668,7 @@ function createLaunchRouter() {
     return p && u.role === "DEVELOPER_BUILDER" && p.builderId === u.id ? p : void 0;
   };
   r.get("/builder/projects", needs("pcontrol:manage"), (_req, res) => {
-    const u = me25();
+    const u = me26();
     const rows = st22().builderProjects.filter((p) => p.builderId === u.id && p.status !== "ARCHIVED").map((p) => ({
       id: p.id,
       projectName: p.projectName,
@@ -76678,7 +76679,7 @@ function createLaunchRouter() {
     res.json({ success: true, projects: rows });
   });
   r.post("/builder/projects/:id/consent", needs("pcontrol:manage"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = ownProject(u, req.params.id);
     if (!p) return bad25(res, "Project not found", 404);
     const decision = req.body?.decision;
@@ -76712,7 +76713,7 @@ function createLaunchRouter() {
     res.json({ success: true, consent: plan.consent, status: plan.status });
   });
   r.get("/feed", needs("launch:read"), (_req, res) => {
-    const u = me25();
+    const u = me26();
     const seg = launchSegmentFor(u);
     if (!seg || u.verificationStatus !== "VERIFIED") return res.json({ success: true, segment: seg, items: [] });
     const now = Date.now();
@@ -77165,6 +77166,7 @@ function insightsFor(u) {
   switch (u.role) {
     case "PROPERTY_OWNER": {
       const mine3 = s.properties.filter((p) => p.ownerId === u.id && !["draft"].includes(p.listingStatus)).slice(0, 20);
+      const openNeeds = s.requirements.filter((r) => ["active", "matching"].includes(String(r.status)));
       return {
         role: u.role,
         listings: mine3.map((p) => {
@@ -77181,7 +77183,9 @@ function insightsFor(u) {
             verifiedVisits: visits.filter((v) => v.isVerified).length,
             offers: s.propertyOffers.filter((o) => o.propertyId === p.id).length,
             days: Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / DAY8)),
-            canMarkSold: ["active", "under_negotiation"].includes(p.listingStatus)
+            canMarkSold: ["active", "under_negotiation"].includes(p.listingStatus),
+            // v56 — how many buyers / renters on GENZ want a home like this (a count only: no names, no numbers, no broker)
+            demand: ["active", "under_negotiation"].includes(p.listingStatus) ? openNeeds.filter((r) => calculatePropertyMatch(p, r).score >= 50).length : 0
           };
         })
       };
@@ -77192,7 +77196,12 @@ function insightsFor(u) {
       return {
         role: u.role,
         visits: visits.map((v) => ({ id: v.id, propertyId: v.propertyId, title: s.properties.find((p) => p.id === v.propertyId)?.title || v.propertyId, at: v.scheduledTime, verified: v.isVerified })),
-        needs: s.requirements.filter((r) => r.buyerId === u.id).length
+        needs: s.requirements.filter((r) => r.buyerId === u.id).length,
+        // v56 — the homes I saved (public facts only)
+        saved: (s.savedProperties || []).filter((x) => x.userId === u.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10).map((x) => {
+          const p = s.properties.find((q) => q.id === x.propertyId);
+          return p ? { id: p.id, title: p.title, locality: p.locality, city: p.city, askingPrice: p.askingPrice, transactionType: p.transactionType, image: (p.images || [])[0], available: ["active", "under_negotiation"].includes(p.listingStatus) } : null;
+        }).filter(Boolean)
       };
     }
     case "LEGAL_COUNSEL": {
@@ -77333,9 +77342,9 @@ function levelOf(a, now = Date.now()) {
   const d = a.decision;
   if (d?.action === "BLOCKED" && (!d.until || Date.parse(d.until) > now)) return "BLOCKED";
   const since = d?.action === "CLEARED" || d?.action === "BLOCKED" ? Date.parse(d.at) : 0;
-  const live4 = a.reports.filter((r) => counts2(r, now) && Date.parse(r.at) > since);
-  const brokers = new Set(live4.map((r) => r.brokerId));
-  const proven = new Set(live4.filter((r) => r.evidence.verified).map((r) => r.brokerId));
+  const live5 = a.reports.filter((r) => counts2(r, now) && Date.parse(r.at) > since);
+  const brokers = new Set(live5.map((r) => r.brokerId));
+  const proven = new Set(live5.filter((r) => r.evidence.verified).map((r) => r.brokerId));
   if (proven.size >= WATCH_LIMITS.verifiedForCaution || brokers.size >= WATCH_LIMITS.anyForCaution) return "CAUTION";
   if (brokers.size >= 1) return "WATCH";
   return "NONE";
@@ -78097,7 +78106,7 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
       if (has) lead.clientCardId = has.id;
       else {
         const n2 = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split("-").pop()) || 0), 0) + 1;
-        const card = {
+        const card2 = {
           id: `CLI-${String(n2).padStart(4, "0")}`,
           brokerId: p.brokerId,
           name: keep.name,
@@ -78116,8 +78125,8 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
           createdAt: now,
           updatedAt: now
         };
-        s.clientCards.unshift(card);
-        lead.clientCardId = card.id;
+        s.clientCards.unshift(card2);
+        lead.clientCardId = card2.id;
       }
     }
     s.partnerLeads.unshift(lead);
@@ -78406,7 +78415,7 @@ function seedDemoPartners() {
   mk("Sai Medical", "Rakesh Sahu", "9826011102", "Telibandha", "PENDING", { sale: { mode: "PCT", value: 15 }, rent: { mode: "FIXED", value: 1500 }, lockDays: 180 }, 0, 2);
   const gate = mk("Green Valley Society \u2014 main gate", "Ramesh (guard)", "9826011103", "Amlidih", "ACTIVE", { sale: { mode: "FIXED", value: 1e4 }, rent: { mode: "FIXED", value: 1500 }, lockDays: 120 }, 18, 25);
   let n2 = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split("-").pop()) || 0), 0);
-  const card = (name, phone, area, tx, at, shop) => {
+  const card2 = (name, phone, area, tx, at, shop) => {
     n2 += 1;
     const c = {
       id: `CLI-${String(n2).padStart(4, "0")}`,
@@ -78452,7 +78461,7 @@ function seedDemoPartners() {
       updatedAt: at,
       ...extra
     };
-    if ((kind === "BUY" || kind === "RENT_IN") && !extra.clientCardId && extra.status !== "LOST") l.clientCardId = card(name, phone, locality, kind === "BUY" ? "Sale" : "Rent", at, p.shopName);
+    if ((kind === "BUY" || kind === "RENT_IN") && !extra.clientCardId && extra.status !== "LOST") l.clientCardId = card2(name, phone, locality, kind === "BUY" ? "Sale" : "Rent", at, p.shopName);
     s.partnerLeads.unshift(l);
     return l;
   };
@@ -78460,7 +78469,7 @@ function seedDemoPartners() {
   lead(gupta, "RENT_IN", "Pooja Sinha", "9131100002", "Telibandha", "15,000 / \u092E\u0939\u0940\u0928\u093E", 6, { status: "CONTACTED" });
   lead(gupta, "SELL", "Harish Agrawal", "9131100003", "Shankar Nagar", "1.2 \u0915\u0930\u094B\u0921\u093C", 30, { status: "WON", won: { at: ago(4), brokerage: 12e4, amount: 24e3, side: "SALE" }, payout: { status: "PAID", paidAt: ago(2), ref: "UPI 4471" } });
   lead(gupta, "BUY", "Deepak Soni", "9131100004", "Pandri", "40 \u0932\u093E\u0916", 20, { status: "LOST", lostAt: ago(10), lostReason: "\u092C\u091C\u091F \u0928\u0939\u0940\u0902 \u0925\u093E" });
-  card("Deepak Soni", "9131100004", "Pandri", "Sale", ago(5), "");
+  card2("Deepak Soni", "9131100004", "Pandri", "Sale", ago(5), "");
   lead(gate, "RENT_OUT", "Kavita Jain", "9131100005", "Amlidih", "18,000 / \u092E\u0939\u0940\u0928\u093E", 3);
   lead(gate, "BUY", "Anil Dubey", "9131100006", "Amlidih", "75 \u0932\u093E\u0916", 12, { status: "VISIT" });
   db.save();
@@ -78977,22 +78986,22 @@ function sourcesFor(u) {
 var canShare = (u, kind, refId) => sourcesFor(u).some((s) => s.kind === kind && s.id === refId);
 function createShareRouter() {
   const r = (0, import_express28.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   r.use(needs("share:use"));
-  r.get("/brand", (_req, res) => res.json({ success: true, brand: brandOf(me25()) }));
+  r.get("/brand", (_req, res) => res.json({ success: true, brand: brandOf(me26()) }));
   r.put("/brand", (req, res) => {
     const p = brandSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid details" });
-    const u = me25();
+    const u = me26();
     const stored = db.byId("users", u.id);
     stored.brand = { ...stored.brand, ...Object.fromEntries(Object.entries(p.data).filter(([, v]) => v !== void 0)) };
     if (p.data.logo === "") delete stored.brand.logo;
     db.save();
     res.json({ success: true, brand: brandOf(stored) });
   });
-  r.get("/sources", (_req, res) => res.json({ success: true, sources: sourcesFor(me25()) }));
+  r.get("/sources", (_req, res) => res.json({ success: true, sources: sourcesFor(me26()) }));
   r.get("/links", (_req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const links = st22.shareLinks.filter((l) => l.ownerId === u.id).map((l) => {
       const title = l.kind === "PROJECT" ? db.byId("builderProjects", l.refId)?.projectName : l.kind === "UNITS" ? `${db.byId("builderProjects", l.refId)?.projectName || l.refId} \xB7 ${(l.unitIds || []).length} unit(s)` : db.byId("properties", l.refId)?.title;
@@ -79001,7 +79010,7 @@ function createShareRouter() {
     res.json({ success: true, links });
   });
   r.post("/links", rateLimit("share-create", 60, 24 * 60 * 6e4), (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = linkSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid request" });
     if (!canShare(u, p.data.kind, p.data.refId)) return res.status(404).json({ error: "You cannot share this item" });
@@ -79024,7 +79033,7 @@ function createShareRouter() {
     res.json({ success: true, token: link.token, path: `/s/${link.token}` });
   });
   r.post("/links/:token/revoke", (req, res) => {
-    const l = db.getState().shareLinks.find((x) => x.token === req.params.token && x.ownerId === me25().id);
+    const l = db.getState().shareLinks.find((x) => x.token === req.params.token && x.ownerId === me26().id);
     if (!l) return res.status(404).json({ error: "Link not found" });
     l.revoked = true;
     db.save();
@@ -79085,12 +79094,12 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     const t = T[lang];
     const gone = () => res.status(404).send(pageShell("Link inactive", "", void 0, `<div class="card"><p>${esc5(t.unavailable)}</p></div>`));
     if (!l || l.revoked || !owner || owner.verificationStatus !== "VERIFIED") return gone();
-    let card = owner;
+    let card2 = owner;
     if (owner.role === "TEAM_MEMBER") {
       const emp = db.byId("users", owner.employerId);
       const pol = policyOf(owner);
       if (!emp || emp.verificationStatus !== "VERIFIED" || pol.invMode === "OFF" || !pol.invShareOut || pol.onLeave) return gone();
-      card = emp;
+      card2 = emp;
     }
     let title = "";
     let sub2 = "";
@@ -79164,7 +79173,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       seen.set(key, Date.now());
       if (seen.size > 5e3) seen.clear();
     }
-    const b = brandOf(card);
+    const b = brandOf(card2);
     const wa = `https://wa.me/91${b.phone}?text=${encodeURIComponent(`Hello ${b.displayName}, I saw ${title}. Please share details.`)}`;
     const body = `<div class="hero" data-sec="overview"><h1>${esc5(title)}</h1><p>${esc5(sub2)}</p></div>
 ${image ? `<div class="imgs"><img src="${esc5(image)}" alt="" loading="lazy"></div>` : ""}
@@ -79173,7 +79182,7 @@ ${image ? `<div class="imgs"><img src="${esc5(image)}" alt="" loading="lazy"></d
 <div class="card" data-sec="location"><h2>${t.loc} \xB7 ${t.amen}</h2>${location}</div>
 <div class="card"><div class="broker">${b.logo ? `<img src="${esc5(b.logo)}" alt="">` : ""}<div><div class="small" style="margin:0">${t.by}</div><b>${esc5(b.displayName)}</b>${b.company ? `<div style="font-size:13px">${esc5(b.company)}</div>` : ""}${b.reraId ? `<div style="font-size:12px;color:#555">${t.rera}: ${esc5(b.reraId)}</div>` : ""}${b.tagline ? `<div style="font-size:12px;color:#555">${esc5(b.tagline)}</div>` : ""}</div></div>
 <div class="btns"><a class="call" href="tel:+91${esc5(b.phone)}">${t.call}</a><a class="wa" href="${esc5(wa)}">${t.wa}</a></div></div>
-<p class="small">${t.note}</p>${joinFooter(card)}`;
+<p class="small">${t.note}</p>${joinFooter(card2)}`;
     res.send(pageShell(`${title} \u2014 ${b.displayName}`, sub2, image, body, l.token));
   });
   return r;
@@ -79326,7 +79335,7 @@ function shareTexts(u, code) {
 }
 function createGrowthRouter() {
   const r = (0, import_express29.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   r.get("/public/challenge", rateLimit("challenge", 60, 60 * 6e4), (_req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.json(makeChallenge());
@@ -79376,7 +79385,7 @@ function createGrowthRouter() {
     res.json(generic);
   });
   r.get("/me", needs("growth:nominate"), (_req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const code = ensureReferralCode(u);
     const invitees = st22.users.filter((x) => x.invitedById === u.id);
@@ -79397,7 +79406,7 @@ function createGrowthRouter() {
     });
   });
   r.post("/nominations", needs("growth:nominate"), rateLimit("nominate", 10, 24 * 60 * 6e4), (req, res) => {
-    const u = me25();
+    const u = me26();
     if (!isVerified(u)) return res.status(403).json({ error: "Your account must be verified before you can nominate others" });
     const p = nominateSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Please check the form" });
@@ -79429,7 +79438,7 @@ function createGrowthRouter() {
     res.json({ success: true, lead: { id: lead.id, name: lead.name, city: lead.city, role: lead.role, status: lead.status } });
   });
   r.put("/card", needs("growth:nominate"), (req, res) => {
-    const u = me25();
+    const u = me26();
     if (!isVerified(u)) return res.status(403).json({ error: "Your account must be verified first" });
     const p = cardSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid" });
@@ -79452,7 +79461,7 @@ function createGrowthRouter() {
     });
   });
   r.post("/queue/:id/approve", needs("growth:manage"), (req, res) => {
-    const actor = me25();
+    const actor = me26();
     const st22 = db.getState();
     const lead = db.byId("growthLeads", req.params.id);
     if (!lead) return res.status(404).json({ error: "Not found" });
@@ -79487,7 +79496,7 @@ function createGrowthRouter() {
     });
   });
   r.post("/queue/:id/reject", needs("growth:manage"), (req, res) => {
-    const actor = me25();
+    const actor = me26();
     const lead = db.byId("growthLeads", req.params.id);
     if (!lead) return res.status(404).json({ error: "Not found" });
     if (lead.status !== "NEW") return res.status(409).json({ error: `Already ${lead.status.toLowerCase()}` });
@@ -79499,7 +79508,7 @@ function createGrowthRouter() {
     res.json({ success: true });
   });
   r.post("/resets/:id/issue", needs("users:reset_password"), (req, res) => {
-    const actor = me25();
+    const actor = me26();
     const st22 = db.getState();
     const rr = st22.resetRequests.find((x) => x.id === req.params.id);
     if (!rr || rr.status !== "NEW") return res.status(404).json({ error: "Request not found" });
@@ -79525,7 +79534,7 @@ function createGrowthRouter() {
     });
   });
   r.post("/resets/:id/dismiss", needs("users:reset_password"), (req, res) => {
-    const actor = me25();
+    const actor = me26();
     const rr = db.getState().resetRequests.find((x) => x.id === req.params.id);
     if (!rr || rr.status !== "NEW") return res.status(404).json({ error: "Request not found" });
     rr.status = "DISMISSED";
@@ -80068,7 +80077,7 @@ function createDailyRouter() {
     if (mine3.length >= 2e3) return res.status(400).json({ error: "Client limit reached (2000). Archive old clients first." });
     if (mine3.some((c) => digits(c.phone).slice(-10) === digits(d.phone).slice(-10) && c.stage !== "LOST")) return res.status(409).json({ error: "You already have a client with this mobile number." });
     const now = nowIso20();
-    const card = {
+    const card2 = {
       id: nextClientId(st22.clientCards),
       brokerId: u.id,
       name: d.name,
@@ -80089,10 +80098,10 @@ function createDailyRouter() {
       createdAt: now,
       updatedAt: now
     };
-    st22.clientCards.unshift(card);
+    st22.clientCards.unshift(card2);
     db.save();
-    audit8("CLIENT_CARD_CREATED", card.id, `Client card created (consent recorded)`);
-    res.json({ success: true, client: view3(st22, u, card, browsable(st22, u)) });
+    audit8("CLIENT_CARD_CREATED", card2.id, `Client card created (consent recorded)`);
+    res.json({ success: true, client: view3(st22, u, card2, browsable(st22, u)) });
   });
   r.put("/clients/:id", needs("daily:use"), (req, res) => {
     const c = findCard(req.params.id);
@@ -80551,15 +80560,15 @@ var collateralSchema = external_exports.object({
 var pctOk = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.1 && v <= 10;
 function createPcontrolRouter() {
   const r = (0, import_express33.Router)();
-  const me25 = () => ctx().user;
+  const me26 = () => ctx().user;
   const audit8 = (entity, id, action, details) => {
-    const u = me25();
+    const u = me26();
     db.appendAuditEvent(u.id, u.role, entity, id, action, details);
   };
   const state = () => db.getState();
   const bad25 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const projectFor = (id, write) => {
-    const u = me25();
+    const u = me26();
     const p = state().builderProjects.find((x) => x.id === id);
     if (!p) return void 0;
     if (isSuper(u)) return p;
@@ -80577,7 +80586,7 @@ function createPcontrolRouter() {
     return c;
   };
   r.get("/builder/projects", needs("pcontrol:manage", "pcontrol:oversee"), (_req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const projects = st22.builderProjects.filter((p) => isAdmin(u) || p.builderId === u.id).map((p) => {
       const ms = st22.associateMandates.filter((m) => m.projectId === p.id);
@@ -80606,7 +80615,7 @@ function createPcontrolRouter() {
     res.json({ success: true, projects });
   });
   r.get("/builder/projects/:id", needs("pcontrol:manage", "pcontrol:oversee"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const p = projectFor(req.params.id, false);
     if (!p) return bad25(res, "Project not found", 404);
@@ -80691,7 +80700,7 @@ function createPcontrolRouter() {
     if (changed.length) {
       p.updatedAt = nowIso22();
       db.save();
-      audit8("SYSTEM", p.id, "PROJECT_DETAILS_UPDATED", `${me25().name} changed ${changed.join(", ")} on ${p.projectName}${changed.includes("channelPartnerCommissionPct") ? " (default commission applies to NEW appointments only)" : ""}`);
+      audit8("SYSTEM", p.id, "PROJECT_DETAILS_UPDATED", `${me26().name} changed ${changed.join(", ")} on ${p.projectName}${changed.includes("channelPartnerCommissionPct") ? " (default commission applies to NEW appointments only)" : ""}`);
     }
     res.json({ success: true, changed });
   });
@@ -80705,7 +80714,7 @@ function createPcontrolRouter() {
     if (d.access) p.access = d.access;
     if (d.desk !== void 0 && d.desk !== !!p.desk) {
       p.desk = d.desk;
-      audit8("SYSTEM", p.id, "PROJECT_DESK", `${me25().name}: ${p.projectName} GENZ desk coordination \u2192 ${d.desk ? "ON" : "OFF"}`);
+      audit8("SYSTEM", p.id, "PROJECT_DESK", `${me26().name}: ${p.projectName} GENZ desk coordination \u2192 ${d.desk ? "ON" : "OFF"}`);
     }
     if (d.leadIntake) {
       p.leadIntake = d.leadIntake;
@@ -80717,11 +80726,11 @@ function createPcontrolRouter() {
     if (d.visitProof && d.visitProof !== (p.visitProof || "OFF")) {
       p.visitProof = d.visitProof;
       p.visitProofSince = d.visitProof === "QR_REQUIRED" ? nowIso22() : void 0;
-      audit8("SYSTEM", p.id, "VISIT_PROOF_RULE", `${me25().name}: ${p.projectName} visit proof \u2192 ${d.visitProof}`);
+      audit8("SYSTEM", p.id, "VISIT_PROOF_RULE", `${me26().name}: ${p.projectName} visit proof \u2192 ${d.visitProof}`);
     }
     p.updatedAt = nowIso22();
     db.save();
-    audit8("SYSTEM", p.id, "PROJECT_CONTROL_SETTINGS", `${me25().name}: ${p.projectName} ${was} \u2192 ${p.access || "OPEN_APPLY"}/${p.leadIntake || "OPEN"}/${p.leadVerification || "AUTO"}/${p.registrationDays || 60}d`);
+    audit8("SYSTEM", p.id, "PROJECT_CONTROL_SETTINGS", `${me26().name}: ${p.projectName} ${was} \u2192 ${p.access || "OPEN_APPLY"}/${p.leadIntake || "OPEN"}/${p.leadVerification || "AUTO"}/${p.registrationDays || 60}d`);
     res.json({ success: true });
   });
   r.post("/builder/projects/:id/updates", needs("pcontrol:manage"), rateLimit("pc-update", 60, 24 * 36e5), (req, res) => {
@@ -80730,10 +80739,10 @@ function createPcontrolRouter() {
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) return bad25(res, parsed.error.issues[0]?.message || "Invalid notice");
     if (state().projectUpdates.filter((x2) => x2.projectId === p.id).length >= 100) return bad25(res, "Notice board is full (100) \u2014 delete old notices first", 409);
-    const x = { id: uid2("PU"), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me25().id, createdAt: nowIso22() };
+    const x = { id: uid2("PU"), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me26().id, createdAt: nowIso22() };
     state().projectUpdates.unshift(x);
     db.save();
-    audit8("SYSTEM", x.id, "PROJECT_NOTICE_POSTED", `${me25().name} posted "${x.title}" (${x.kind}) for ${p.projectName} to ${x.audience === "ASSOCIATES" ? "appointed partners" : "all brokers"}`);
+    audit8("SYSTEM", x.id, "PROJECT_NOTICE_POSTED", `${me26().name} posted "${x.title}" (${x.kind}) for ${p.projectName} to ${x.audience === "ASSOCIATES" ? "appointed partners" : "all brokers"}`);
     res.json({ success: true, update: x });
   });
   r.delete("/builder/updates/:uid", needs("pcontrol:manage"), (req, res) => {
@@ -80741,7 +80750,7 @@ function createPcontrolRouter() {
     if (!x || !projectFor(x.projectId, true)) return bad25(res, "Notice not found", 404);
     state().projectUpdates = state().projectUpdates.filter((y) => y.id !== x.id);
     db.save();
-    audit8("SYSTEM", x.id, "PROJECT_NOTICE_DELETED", `${me25().name} deleted notice "${x.title}"`);
+    audit8("SYSTEM", x.id, "PROJECT_NOTICE_DELETED", `${me26().name} deleted notice "${x.title}"`);
     res.json({ success: true });
   });
   r.post("/builder/projects/:id/collateral", needs("pcontrol:manage"), (req, res) => {
@@ -80754,7 +80763,7 @@ function createPcontrolRouter() {
     const c = { id: uid2("PC"), ...parsed.data, addedAt: nowIso22() };
     p.collateral.unshift(c);
     db.save();
-    audit8("SYSTEM", p.id, "PROJECT_COLLATERAL_ADDED", `${me25().name} added "${c.title}" (${c.kind}) to ${p.projectName}`);
+    audit8("SYSTEM", p.id, "PROJECT_COLLATERAL_ADDED", `${me26().name} added "${c.title}" (${c.kind}) to ${p.projectName}`);
     res.json({ success: true, collateral: c });
   });
   r.delete("/builder/projects/:id/collateral/:cid", needs("pcontrol:manage"), (req, res) => {
@@ -80764,7 +80773,7 @@ function createPcontrolRouter() {
     p.collateral = (p.collateral || []).filter((c) => c.id !== req.params.cid);
     if (p.collateral.length === before) return bad25(res, "File not found", 404);
     db.save();
-    audit8("SYSTEM", p.id, "PROJECT_COLLATERAL_REMOVED", `${me25().name} removed a file from ${p.projectName}`);
+    audit8("SYSTEM", p.id, "PROJECT_COLLATERAL_REMOVED", `${me26().name} removed a file from ${p.projectName}`);
     res.json({ success: true });
   });
   const mandateFor = (id) => {
@@ -80800,7 +80809,7 @@ function createPcontrolRouter() {
       m.statusReason = note5 ? String(note5).slice(0, 200) : void 0;
       m.decidedAt = nowIso22();
       m.marketingKitAccess = true;
-      m.termsHistory = [...m.termsHistory || [], { at: nowIso22(), by: me25().name, commissionPct: pct2, quota: q, dailyLeadCap: cap, validUntil: m.validUntil, note: "Appointed" }];
+      m.termsHistory = [...m.termsHistory || [], { at: nowIso22(), by: me26().name, commissionPct: pct2, quota: q, dailyLeadCap: cap, validUntil: m.validUntil, note: "Appointed" }];
       p.assignedAssociatesCount = (p.assignedAssociatesCount || 0) + 1;
       p.updatedAt = nowIso22();
     } else if (action === "SHORTLIST") {
@@ -80814,7 +80823,7 @@ function createPcontrolRouter() {
       m.decidedAt = nowIso22();
     } else return bad25(res, "Action must be APPROVE, SHORTLIST or DECLINE");
     db.save();
-    audit8("DEAL", m.id, `PARTNER_${action}`, `${me25().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${action === "APPROVE" ? ` (${m.agreedCommissionPct}%, quota ${m.targetUnitsQuota}${m.dailyLeadCap ? `, ${m.dailyLeadCap}/day` : ""}${m.validUntil ? `, until ${m.validUntil.slice(0, 10)}` : ""})` : m.statusReason ? `: ${m.statusReason}` : ""}`);
+    audit8("DEAL", m.id, `PARTNER_${action}`, `${me26().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${action === "APPROVE" ? ` (${m.agreedCommissionPct}%, quota ${m.targetUnitsQuota}${m.dailyLeadCap ? `, ${m.dailyLeadCap}/day` : ""}${m.validUntil ? `, until ${m.validUntil.slice(0, 10)}` : ""})` : m.statusReason ? `: ${m.statusReason}` : ""}`);
     res.json({ success: true, mandate: m });
   });
   r.post("/builder/mandates/:id/status", needs("pcontrol:manage"), (req, res) => {
@@ -80847,7 +80856,7 @@ function createPcontrolRouter() {
       }
       if (takeOpenLeads === true) {
         for (const l of st22.crmLeads.filter((x) => x.mandateId === m.id && isOpen2(x) && x.stage !== "BOOKING_REQUESTED")) {
-          l.activities.unshift({ id: uid2("A"), type: "SYSTEM", note: `Taken back by builder desk after partnership ended: ${String(reason).slice(0, 120)}`, byUserId: me25().id, byName: me25().name, at: nowIso22() });
+          l.activities.unshift({ id: uid2("A"), type: "SYSTEM", note: `Taken back by builder desk after partnership ended: ${String(reason).slice(0, 120)}`, byUserId: me26().id, byName: me26().name, at: nowIso22() });
           l.associateId = "";
           l.associateName = "Builder desk";
           l.mandateId = void 0;
@@ -80860,7 +80869,7 @@ function createPcontrolRouter() {
     m.decidedAt = nowIso22();
     p.updatedAt = nowIso22();
     db.save();
-    audit8("DEAL", m.id, `PARTNER_${action}`, `${me25().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${m.statusReason ? ` (${m.statusReason})` : ""}${action === "REVOKE" ? takeOpenLeads === true ? "; open leads taken back" : "; registered leads keep attribution" : ""}`);
+    audit8("DEAL", m.id, `PARTNER_${action}`, `${me26().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${m.statusReason ? ` (${m.statusReason})` : ""}${action === "REVOKE" ? takeOpenLeads === true ? "; open leads taken back" : "; registered leads keep attribution" : ""}`);
     res.json({ success: true, mandate: m });
   });
   r.put("/builder/mandates/:id/terms", needs("pcontrol:manage"), (req, res) => {
@@ -80901,9 +80910,9 @@ function createPcontrolRouter() {
     m.targetUnitsQuota = next2.quota;
     m.dailyLeadCap = next2.cap;
     m.validUntil = next2.until;
-    m.termsHistory = [...m.termsHistory || [], { at: nowIso22(), by: me25().name, commissionPct: next2.commissionPct, quota: next2.quota, dailyLeadCap: next2.cap, validUntil: next2.until, note: String(note5).slice(0, 200) }];
+    m.termsHistory = [...m.termsHistory || [], { at: nowIso22(), by: me26().name, commissionPct: next2.commissionPct, quota: next2.quota, dailyLeadCap: next2.cap, validUntil: next2.until, note: String(note5).slice(0, 200) }];
     db.save();
-    audit8("DEAL", m.id, "PARTNER_TERMS_CHANGED", `${me25().name}: ${m.brokerName} on ${p.projectName} ${before} \u2192 ${m.agreedCommissionPct}%/${m.targetUnitsQuota}/${m.dailyLeadCap ?? "\u221E"}/${m.validUntil?.slice(0, 10) ?? "\u221E"} (${String(note5).slice(0, 100)}). Applies to bookings requested from now on.`);
+    audit8("DEAL", m.id, "PARTNER_TERMS_CHANGED", `${me26().name}: ${m.brokerName} on ${p.projectName} ${before} \u2192 ${m.agreedCommissionPct}%/${m.targetUnitsQuota}/${m.dailyLeadCap ?? "\u221E"}/${m.validUntil?.slice(0, 10) ?? "\u221E"} (${String(note5).slice(0, 100)}). Applies to bookings requested from now on.`);
     res.json({ success: true, mandate: m });
   });
   const canVerify = (u, l) => {
@@ -80915,12 +80924,12 @@ function createPcontrolRouter() {
     return false;
   };
   r.get("/builder/verification-queue", needs("crm:read"), (_req, res) => {
-    const u = me25();
+    const u = me26();
     const q = state().crmLeads.filter((l) => l.verify === "PENDING" && canVerify(u, l)).map((l) => maskLeadForViewer(l, u));
     res.json({ success: true, leads: q });
   });
   r.post("/builder/leads/:id/verify", needs("crm:read"), (req, res) => {
-    const u = me25();
+    const u = me26();
     const l = state().crmLeads.find((x) => x.id === req.params.id);
     if (!l || !canVerify(u, l)) return bad25(res, "Lead not found", 404);
     if (l.verify !== "PENDING") return bad25(res, "This lead is not waiting for verification", 409);
@@ -80959,7 +80968,7 @@ function createPcontrolRouter() {
   };
   const audienceOk = (aud, rel) => aud === "ALL_CPS" || ["ACTIVE", "PAUSED", "COMPLETED"].includes(rel);
   r.get("/partner/projects", partnerOnly, (_req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const order = { ACTIVE: 0, PAUSED: 1, SHORTLISTED: 2, APPLIED: 3, INVITED: 4, NONE: 5, COMPLETED: 6, DECLINED: 7, REVOKED: 8 };
     const rows = st22.builderProjects.filter((p) => p.status !== "ARCHIVED" || myMandate(p.id, u.id)).filter((p) => visibleTo2(p, u.id)).map((p) => {
@@ -80998,7 +81007,7 @@ function createPcontrolRouter() {
     res.json({ success: true, projects: rows });
   });
   r.get("/partner/projects/:id", partnerOnly, (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const p = db.byId("builderProjects", req.params.id);
     if (!p || !visibleTo2(p, u.id)) return bad25(res, "Project not found", 404);
@@ -81046,7 +81055,7 @@ function createPcontrolRouter() {
     });
   });
   r.post("/partner/projects/:id/apply", partnerOnly, rateLimit("pc-apply", 20, 24 * 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const p = db.byId("builderProjects", req.params.id);
     if (!p || !visibleTo2(p, u.id)) return bad25(res, "Project not found", 404);
@@ -81099,13 +81108,13 @@ function createPcontrolRouter() {
     note: external_exports.string().trim().max(300).default("")
   });
   r.get("/partner/shortlist", partnerOnly, (_req, res) => {
-    res.json({ success: true, shortlist: state().projectShortlists.filter((s) => s.ownerId === me25().id && s.status !== "DROPPED") });
+    res.json({ success: true, shortlist: state().projectShortlists.filter((s) => s.ownerId === me26().id && s.status !== "DROPPED") });
   });
   r.get("/partner/clients", partnerOnly, (_req, res) => {
-    res.json({ success: true, clients: state().clientCards.filter((c) => c.brokerId === me25().id && !["CLOSED", "LOST"].includes(String(c.stage))).map((c) => ({ id: c.id, name: c.name, budgetMax: c.budgetMax, city: c.city, stage: c.stage })) });
+    res.json({ success: true, clients: state().clientCards.filter((c) => c.brokerId === me26().id && !["CLOSED", "LOST"].includes(String(c.stage))).map((c) => ({ id: c.id, name: c.name, budgetMax: c.budgetMax, city: c.city, stage: c.stage })) });
   });
   r.post("/partner/projects/:id/shortlist", partnerOnly, rateLimit("pc-short", 200, 24 * 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const p = db.byId("builderProjects", req.params.id);
     if (!p || !visibleTo2(p, u.id)) return bad25(res, "Project not found", 404);
@@ -81130,7 +81139,7 @@ function createPcontrolRouter() {
     db.save();
     res.json({ success: true, shortlist: s });
   });
-  const myShortlist = (id) => state().projectShortlists.find((s) => s.id === id && s.ownerId === me25().id);
+  const myShortlist = (id) => state().projectShortlists.find((s) => s.id === id && s.ownerId === me26().id);
   r.put("/partner/shortlist/:sid", partnerOnly, (req, res) => {
     const s = myShortlist(req.params.sid);
     if (!s) return bad25(res, "Not found", 404);
@@ -81151,22 +81160,22 @@ function createPcontrolRouter() {
     res.json({ success: true });
   });
   r.post("/partner/shortlist/:sid/register", partnerOnly, (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const s = myShortlist(req.params.sid);
     if (!s || s.status === "DROPPED") return bad25(res, "Not found", 404);
     if (s.status === "LEAD_REGISTERED") return bad25(res, "Already registered as a lead", 409);
-    const card = s.clientId ? st22.clientCards.find((c) => c.id === s.clientId && c.brokerId === u.id) : void 0;
-    const phone = String(req.body?.phone || card?.phone || "");
-    if (!card && digits(phone).length < 10) return bad25(res, "Enter the client's 10-digit mobile number");
+    const card2 = s.clientId ? st22.clientCards.find((c) => c.id === s.clientId && c.brokerId === u.id) : void 0;
+    const phone = String(req.body?.phone || card2?.phone || "");
+    if (!card2 && digits(phone).length < 10) return bad25(res, "Enter the client's 10-digit mobile number");
     const input2 = leadCreateSchema.safeParse({
       projectId: s.projectId,
       name: s.clientName,
       phone,
       source: "ASSOCIATE_REFERRAL",
       unitInterest: s.units.join(", ") || String(req.body?.unitInterest || ""),
-      budgetMax: card?.budgetMax && card.budgetMax > 0 ? card.budgetMax : void 0,
-      budgetMin: card?.budgetMin && card.budgetMin > 0 ? card.budgetMin : void 0,
+      budgetMax: card2?.budgetMax && card2.budgetMax > 0 ? card2.budgetMax : void 0,
+      budgetMin: card2?.budgetMin && card2.budgetMin > 0 ? card2.budgetMin : void 0,
       note: s.note ? `From shortlist: ${s.note}` : "From project shortlist",
       consent: req.body?.consent === true ? true : void 0
     });
@@ -81181,11 +81190,11 @@ function createPcontrolRouter() {
   });
   const teamGate = needs("team:manage");
   const employerOnly = (req, res, next2) => {
-    teamGate(req, res, () => ["BROKER", "DEVELOPER_BUILDER"].includes(me25().role) ? next2() : bad25(res, "Only a broker or builder manages a team", 403));
+    teamGate(req, res, () => ["BROKER", "DEVELOPER_BUILDER"].includes(me26().role) ? next2() : bad25(res, "Only a broker or builder manages a team", 403));
   };
-  const myMember = (id) => membersOf(me25().id).find((m) => m.id === id);
+  const myMember = (id) => membersOf(me26().id).find((m) => m.id === id);
   r.get("/team/control", employerOnly, (_req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const today = startOfDayMs();
     const wk = Date.now() - 7 * 864e5;
@@ -81207,7 +81216,7 @@ function createPcontrolRouter() {
     res.json({ success: true, routing: u.leadRouting?.mode || "OFF", pool: poolFor(u.id).length, members: members2, projects, canVerifyEnabled: u.role === "DEVELOPER_BUILDER" });
   });
   r.put("/team/routing", employerOnly, (req, res) => {
-    const u = me25();
+    const u = me26();
     const mode = req.body?.mode;
     if (!["OFF", "ROUND_ROBIN", "LEAST_LOADED"].includes(mode)) return bad25(res, "Mode must be OFF, ROUND_ROBIN or LEAST_LOADED");
     u.leadRouting = { mode, cursor: u.leadRouting?.cursor || 0 };
@@ -81216,7 +81225,7 @@ function createPcontrolRouter() {
     res.json({ success: true });
   });
   r.put("/team/:id/policy", employerOnly, (req, res) => {
-    const u = me25();
+    const u = me26();
     const m = myMember(req.params.id);
     if (!m) return bad25(res, "Team member not found", 404);
     const clean = cleanPolicy(req.body || {}, policyOf(m));
@@ -81234,7 +81243,7 @@ function createPcontrolRouter() {
     res.json({ success: true, policy: clean, handedBack: handed });
   });
   r.post("/team/handover", employerOnly, (req, res) => {
-    const u = me25();
+    const u = me26();
     const from = myMember(String(req.body?.fromMemberId || ""));
     if (!from) return bad25(res, "Team member not found", 404);
     const toId = req.body?.toMemberId ? String(req.body.toMemberId) : null;
@@ -81245,7 +81254,7 @@ function createPcontrolRouter() {
     res.json({ success: true, moved: n2 });
   });
   r.post("/team/bulk-allot", employerOnly, (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const ids2 = Array.isArray(req.body?.leadIds) ? req.body.leadIds.map(String).slice(0, 100) : [];
     if (!ids2.length) return bad25(res, "Select at least one lead");
@@ -81266,15 +81275,15 @@ function createPcontrolRouter() {
     res.json({ success: true, moved: n2 });
   });
   r.get("/team/reveals", employerOnly, (_req, res) => {
-    res.json({ success: true, reveals: state().leadReveals.filter((x) => x.employerId === me25().id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100) });
+    res.json({ success: true, reveals: state().leadReveals.filter((x) => x.employerId === me26().id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100) });
   });
   const staffOnly = (req, res, next2) => {
-    const u = me25();
+    const u = me26();
     if (u.role !== "TEAM_MEMBER") return bad25(res, "Only team members use this", 403);
     next2();
   };
   r.post("/leads/:id/reveal", needs("pcontrol:staff"), staffOnly, rateLimit("pc-reveal", 200, 24 * 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = state();
     const pol = policyOf(u);
     const l = leadsForMember(u).find((x) => x.id === req.params.id);
@@ -81293,14 +81302,14 @@ function createPcontrolRouter() {
     res.json({ success: true, phone: l.phone });
   });
   r.get("/staff/pool", needs("pcontrol:staff"), staffOnly, (_req, res) => {
-    const u = me25();
+    const u = me26();
     const pol = policyOf(u);
     if (!pol.canClaim) return res.json({ success: true, enabled: false, leads: [] });
     const leads = poolFor(u.employerId).filter((l) => pol.projectIds.length === 0 || pol.projectIds.includes(l.projectId)).map((l) => ({ id: l.id, name: l.name, projectName: l.projectName, stage: l.stage, unitInterest: l.unitInterest, createdAt: l.createdAt, phone: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" + l.phone.replace(/\D/g, "").slice(-2) }));
     res.json({ success: true, enabled: true, leads, open: openLoad(u.id), cap: pol.maxOpenLeads ?? 50 });
   });
   r.post("/staff/claim", needs("pcontrol:staff"), staffOnly, (req, res) => {
-    const u = me25();
+    const u = me26();
     const pol = policyOf(u);
     if (!pol.canClaim) return bad25(res, "Your employer has not enabled lead claiming for you", 403);
     if (pol.onLeave) return bad25(res, "You are marked on leave", 403);
@@ -81369,8 +81378,8 @@ var milestoneSchema = external_exports.object({
 });
 function createTimelineRouter() {
   const r = (0, import_express34.Router)();
-  const me25 = () => ctx().user;
-  const self = () => profile(me25().id);
+  const me26 = () => ctx().user;
+  const self = () => profile(me26().id);
   const loadDeal = (req, res) => {
     const u = self();
     const d = db.byId("dealRooms", req.params.dealId);
@@ -83246,11 +83255,11 @@ function syncMasterCp(now = Date.now()) {
   const s = st13();
   let added = 0;
   let cancelled = 0;
-  const live4 = s.masterCpAgreements.filter((a) => (a.status === "SIGNED" || a.status === "LOI") && a.projectIds.length);
-  if (!live4.length && !s.masterCpEntries.length) return { added, cancelled };
+  const live5 = s.masterCpAgreements.filter((a) => (a.status === "SIGNED" || a.status === "LOI") && a.projectIds.length);
+  if (!live5.length && !s.masterCpEntries.length) return { added, cancelled };
   const byBooking = new Map(s.masterCpEntries.filter((e) => e.bookingId).map((e) => [e.bookingId, e]));
   const agOf = /* @__PURE__ */ new Map();
-  for (const a of live4) for (const p of a.projectIds) agOf.set(p, a);
+  for (const a of live5) for (const p of a.projectIds) agOf.set(p, a);
   for (const b of s.crmBookings) {
     const existing = byBooking.get(b.id);
     if (existing) {
@@ -83848,7 +83857,7 @@ function createProtectionRouter() {
     res.json({ success: true, ...currentProtection(), changedBy: s.bypassMaxChangedBy ? true : false, changedAt: s.bypassMaxChangedAt || null });
   });
   r.put("/settings", needs("admin:control_center"), (req, res) => {
-    const me25 = ctx().user;
+    const me26 = ctx().user;
     const p = settingsSchema3.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid days", code: "PROTECTION_SETTINGS" });
     const s = db.getState().settings;
@@ -83865,9 +83874,9 @@ function createProtectionRouter() {
     s.bypassMaxDays = max;
     s.defaultProtectionPeriodDays = def;
     if (changes.length) {
-      s.bypassMaxChangedBy = me25.id;
+      s.bypassMaxChangedBy = me26.id;
       s.bypassMaxChangedAt = (/* @__PURE__ */ new Date()).toISOString();
-      db.appendAuditEvent(me25.id, me25.role, "SYSTEM", "PROTECTION-DAYS", "PROTECTION_LIMIT_CHANGED", `Bypass protection: ${changes.join("; ")}. Existing bonds keep their days.`);
+      db.appendAuditEvent(me26.id, me26.role, "SYSTEM", "PROTECTION-DAYS", "PROTECTION_LIMIT_CHANGED", `Bypass protection: ${changes.join("; ")}. Existing bonds keep their days.`);
     }
     db.save();
     res.json({ success: true, ...currentProtection() });
@@ -84052,7 +84061,7 @@ function createDealHubRouter() {
     const open2 = openDisputeDeals(s);
     const now = Date.now();
     const items = s.dealRooms.filter((d) => canViewDeal(u, d, { allowLegal: true })).map((d) => hubItem(d, u, s, open2, now));
-    const live4 = items.filter((i) => i.stage !== "Settled" && !i.closed);
+    const live5 = items.filter((i) => i.stage !== "Settled" && !i.closed);
     const byStage = {};
     for (const i of items) byStage[i.stage] = (byStage[i.stage] || 0) + 1;
     res.json({
@@ -84062,14 +84071,14 @@ function createDealHubRouter() {
       deals: items,
       kpis: {
         total: items.length,
-        live: live4.length,
+        live: live5.length,
         settled: items.filter((i) => i.stage === "Settled").length,
         closed: items.filter((i) => i.closed).length,
         byStage,
         needsMe: items.filter((i) => i.needsMe).length,
         stalled: items.filter((i) => i.stalled).length,
         disputes: items.filter((i) => i.openDispute).length,
-        myPipeline: live4.reduce((n2, i) => n2 + (i.money?.myShare || 0), 0),
+        myPipeline: live5.reduce((n2, i) => n2 + (i.money?.myShare || 0), 0),
         mySettled: items.filter((i) => i.stage === "Settled").reduce((n2, i) => n2 + (i.money?.myShare || 0), 0),
         hasMoney: items.some((i) => !!i.money)
       }
@@ -84168,8 +84177,58 @@ function createChatsRouter() {
   return r;
 }
 
-// server/sides.ts
+// server/saved.ts
 var import_express42 = __toESM(require_express2(), 1);
+import crypto26 from "node:crypto";
+var MAX_SAVED = 100;
+var me19 = () => ctx().user;
+var live = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
+var card = (p) => ({
+  id: p.id,
+  title: p.title,
+  locality: p.locality,
+  city: p.city,
+  propertyType: p.propertyType,
+  transactionType: p.transactionType,
+  askingPrice: p.askingPrice,
+  image: (p.images || []).find((x) => typeof x === "string" && x.length < 400),
+  available: live(p),
+  status: p.listingStatus
+});
+function createSavedRouter() {
+  const r = (0, import_express42.Router)();
+  r.get("/", needs("property:read"), (_req, res) => {
+    const u = me19();
+    const s = db.getState();
+    const mine3 = (s.savedProperties || []).filter((x) => x.userId === u.id).sort((a, b) => b.at.localeCompare(a.at));
+    const saved = mine3.map((x) => {
+      const p = s.properties.find((q) => q.id === x.propertyId);
+      return p && p.verificationStatus === "VERIFIED" ? { ...card(p), savedAt: x.at } : null;
+    }).filter(Boolean);
+    res.json({ success: true, ids: mine3.map((x) => x.propertyId), saved });
+  });
+  r.post("/:propertyId", needs("property:read"), rateLimit("saved", 200, 36e5), (req, res) => {
+    const u = me19();
+    const s = db.getState();
+    const list = s.savedProperties ||= [];
+    const i = list.findIndex((x) => x.userId === u.id && x.propertyId === req.params.propertyId);
+    if (i >= 0) {
+      list.splice(i, 1);
+      db.save();
+      return res.json({ success: true, saved: false });
+    }
+    const p = s.properties.find((q) => q.id === req.params.propertyId);
+    if (!live(p)) return res.status(404).json({ error: "This home is not available to save.", hi: "\u092F\u0939 \u0918\u0930 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u0938\u0915\u0924\u093E (\u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902)\u0964" });
+    if (list.filter((x) => x.userId === u.id).length >= MAX_SAVED) return res.status(400).json({ error: `You can keep ${MAX_SAVED} saved homes \u2014 remove some first.`, hi: `\u0906\u092A ${MAX_SAVED} \u0918\u0930 \u0938\u0947\u0935 \u0930\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902 \u2014 \u092A\u0939\u0932\u0947 \u0915\u0941\u091B \u0939\u091F\u093E\u090F\u0901\u0964` });
+    list.push({ id: `SAV-${crypto26.randomBytes(5).toString("hex")}`, userId: u.id, propertyId: p.id, at: (/* @__PURE__ */ new Date()).toISOString() });
+    db.save();
+    res.json({ success: true, saved: true });
+  });
+  return r;
+}
+
+// server/sides.ts
+var import_express43 = __toESM(require_express2(), 1);
 var str3 = (v, max = 300) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var REF_RE = /^[A-Za-z0-9][A-Za-z0-9 \-\/_.,#:]{3,59}$/;
 function sideViewFor(d, u) {
@@ -84230,7 +84289,7 @@ function load(req, res, write) {
   return { u, deal };
 }
 function createSidesRouter() {
-  const r = (0, import_express42.Router)();
+  const r = (0, import_express43.Router)();
   r.get("/:id/sides", needs("deal:read"), (req, res) => {
     const c = load(req, res, false);
     if (!c) return;
@@ -84305,14 +84364,14 @@ function createSidesRouter() {
 }
 
 // server/buyerbond.ts
-var import_express43 = __toESM(require_express2(), 1);
-import crypto26 from "crypto";
+var import_express44 = __toESM(require_express2(), 1);
+import crypto27 from "crypto";
 var nowIso27 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st14 = () => db.getState();
-var me19 = () => ctx().user;
+var me20 = () => ctx().user;
 var bad15 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone104 = (p) => digits(String(p ?? "")).slice(-10);
-var buyerKeyOf = (p) => crypto26.createHmac("sha256", secret()).update(`bb-phone|${phone104(p)}`).digest("hex");
+var buyerKeyOf = (p) => crypto27.createHmac("sha256", secret()).update(`bb-phone|${phone104(p)}`).digest("hex");
 var isActive = (b, now = Date.now()) => b.status === "ACTIVE" && Date.parse(b.expiresAt) > now;
 var note2 = (b, text) => {
   b.events.push({ at: nowIso27(), text });
@@ -84347,7 +84406,7 @@ function makeBuyerBond(a) {
   const days3 = daysFor();
   const now = Date.now();
   const b = {
-    id: `BB-${now.toString(36).toUpperCase()}${crypto26.randomInt(100, 999)}`,
+    id: `BB-${now.toString(36).toUpperCase()}${crypto27.randomInt(100, 999)}`,
     propertyId: a.propertyId,
     brokerId: a.brokerId,
     buyerKey: buyerKeyOf(a.buyerPhone),
@@ -84407,14 +84466,14 @@ function bondView(b, forHolder) {
   };
 }
 function createBuyerBondRouter() {
-  const r = (0, import_express43.Router)();
+  const r = (0, import_express44.Router)();
   r.get("/mine", needs("offer:make", "sitevisit:create"), (_req, res) => {
-    const u = me19();
+    const u = me20();
     const list = st14().buyerBonds.filter((b) => b.brokerId === u.id).slice(0, 300).map((b) => bondView(b, true));
     res.json({ success: true, bonds: list, active: list.filter((b) => b.active).length, asks: list.reduce((n2, b) => n2 + (b.active ? b.asks?.length || 0 : 0), 0) });
   });
   r.post("/:id/release", needs("offer:make", "sitevisit:create"), (req, res) => {
-    const u = me19();
+    const u = me20();
     const b = st14().buyerBonds.find((x) => x.id === req.params.id && x.brokerId === u.id);
     if (!b) return bad15(res, "Buyer bond not found", 404);
     if (!isActive(b)) return bad15(res, "This bond has already ended", 409);
@@ -84425,13 +84484,13 @@ function createBuyerBondRouter() {
     res.json({ success: true, bond: bondView(b, true) });
   });
   r.post("/:id/ask", needs("offer:make", "sitevisit:create"), rateLimit("bb-ask", 20, 36e5), (req, res) => {
-    const u = me19();
+    const u = me20();
     const b = st14().buyerBonds.find((x) => x.id === req.params.id);
     if (!b || !isActive(b)) return bad15(res, "This protection has ended \u2014 you can go ahead now.", 404, { code: "BOND_ENDED" });
     if (b.brokerId === u.id) return bad15(res, "This is your own buyer bond", 400);
     if (b.asks.some((a) => a.fromId === u.id)) return bad15(res, "You already asked \u2014 the broker has your name and mobile.", 409, { code: "ALREADY_ASKED" });
     const text = String(req.body?.note ?? "").trim().slice(0, 300);
-    b.asks.push({ id: crypto26.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso27() });
+    b.asks.push({ id: crypto27.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso27() });
     note2(b, `Co-broke request from ${u.name}`);
     db.save();
     const p = db.byId("properties", b.propertyId);
@@ -84446,7 +84505,7 @@ function createBuyerBondRouter() {
     res.json({ success: true, bonds: list });
   });
   r.post("/admin/:id/void", needs("property:moderate"), (req, res) => {
-    const a = me19();
+    const a = me20();
     const b = st14().buyerBonds.find((x) => x.id === req.params.id);
     if (!b) return bad15(res, "Not found", 404);
     const why = String(req.body?.note ?? "").trim().slice(0, 300);
@@ -84463,8 +84522,8 @@ function createBuyerBondRouter() {
 }
 
 // server/consent.ts
-var import_express44 = __toESM(require_express2(), 1);
-import crypto27 from "crypto";
+var import_express45 = __toESM(require_express2(), 1);
+import crypto28 from "crypto";
 import fs10 from "fs";
 import path10 from "path";
 
@@ -84870,11 +84929,11 @@ var SIGN_MAX_BYTES = 200 * 1024;
 var stateFor = (state, city) => findState(String(state || ""))?.name || TOP_CITIES.find((c) => c.name === normCity(city))?.state || String(state || "");
 var nowIso28 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st15 = () => db.getState();
-var me20 = () => ctx().user;
+var me21 = () => ctx().user;
 var bad16 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var esc7 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac2 = (tag, v) => crypto27.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
-var sha4 = (v) => crypto27.createHash("sha256").update(v).digest("hex");
+var hmac2 = (tag, v) => crypto28.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha4 = (v) => crypto28.createHash("sha256").update(v).digest("hex");
 var PAPER_DIR = () => path10.resolve(process.cwd(), "data", "consent-papers");
 var PAPER_MAX = 4 * 1024 * 1024;
 var SIG_DIR = () => path10.resolve(process.cwd(), "data", "consent-signatures");
@@ -84902,8 +84961,8 @@ function findBlockingBond(p, brokerId, exceptConsentId = "") {
 }
 function blockedAnswer(c) {
   const prop = c.propertyId ? db.byId("properties", c.propertyId) : void 0;
-  const live4 = prop && prop.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(prop.listingStatus);
-  return { error: TAKEN_MSG.en, hi: TAKEN_MSG.hi, code: "CONSENT_TAKEN", protectedUntil: c.expiresAt, coBrokePropertyId: live4 ? prop.id : void 0 };
+  const live5 = prop && prop.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(prop.listingStatus);
+  return { error: TAKEN_MSG.en, hi: TAKEN_MSG.hi, code: "CONSENT_TAKEN", protectedUntil: c.expiresAt, coBrokePropertyId: live5 ? prop.id : void 0 };
 }
 function consentForPublish(consentId, brokerId, data) {
   const c = st15().ownerConsents.find((x) => x.id === consentId);
@@ -85056,10 +85115,10 @@ function signatureSummary(consentId) {
   return c?.ownerSignature ? { initials: c.ownerSignature.initials, drawn: c.ownerSignature.drawn, at: c.ownerSignature.at, name: c.ownerTypedName } : null;
 }
 function nextId5(prefix, list) {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto27.randomInt(100, 999)}${list.length % 10}`;
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto28.randomInt(100, 999)}${list.length % 10}`;
 }
 function myDraft(req, res) {
-  const d = st15().listingDrafts.find((x) => x.id === req.params.id && x.brokerId === me20().id && x.status !== "DISCARDED");
+  const d = st15().listingDrafts.find((x) => x.id === req.params.id && x.brokerId === me21().id && x.status !== "DISCARDED");
   if (!d) {
     bad16(res, "Draft not found", 404);
     return null;
@@ -85112,10 +85171,10 @@ function draftForProperty(u, p) {
   return { draft: d };
 }
 function createConsentRouter() {
-  const r = (0, import_express44.Router)();
-  const big = import_express44.default.json({ limit: "6mb" });
+  const r = (0, import_express45.Router)();
+  const big = import_express45.default.json({ limit: "6mb" });
   r.post("/paste", needs("property:create"), rateLimit("wa-paste", 30, 36e5), (req, res) => {
-    const u = me20();
+    const u = me21();
     const s = st15();
     const text = String(req.body?.text ?? "");
     if (!text.trim()) return bad16(res, "Paste the WhatsApp messages first.");
@@ -85181,7 +85240,7 @@ function createConsentRouter() {
     if (!d) return;
     if (d.kind !== "NEED") return bad16(res, "Not a buyer-need draft", 400);
     const rq = db.byId("requirements", String(req.body?.requirementId || ""));
-    if (!rq || rq.assignedBrokerId !== me20().id) return bad16(res, "Buyer need not found", 404);
+    if (!rq || rq.assignedBrokerId !== me21().id) return bad16(res, "Buyer need not found", 404);
     d.status = "PUBLISHED";
     d.requirementId = rq.id;
     d.updatedAt = nowIso28();
@@ -85189,7 +85248,7 @@ function createConsentRouter() {
     res.json({ success: true, draft: draftView(d) });
   });
   r.get("/drafts", needs("property:create"), (_req, res) => {
-    const u = me20();
+    const u = me21();
     const list = st15().listingDrafts.filter((d) => d.brokerId === u.id && d.status !== "DISCARDED").slice(0, 300);
     res.json({ success: true, drafts: list.map(draftView), protection: currentProtection(), smsCodes: smsOn2() });
   });
@@ -85316,13 +85375,13 @@ function createConsentRouter() {
     return { c, f, s };
   };
   r.post("/drafts/:id/request", needs("property:create"), rateLimit("oc-request", 60, 36e5), (req, res) => {
-    const u = me20();
+    const u = me21();
     const d = myDraft(req, res);
     if (!d) return;
     const prep = prepare(req, res, d);
     if (!prep) return;
     const { c, f, s } = prep;
-    const token = crypto27.randomBytes(18).toString("base64url");
+    const token = crypto28.randomBytes(18).toString("base64url");
     c.tokenHash = sha4(token);
     c.linkExpiresAt = new Date(Date.now() + CONSENT_LINK_DAYS * 864e5).toISOString();
     const url3 = `${publicBase(req)}/oc/${token}`;
@@ -85347,7 +85406,7 @@ function createConsentRouter() {
 ${msgEn}`)}` } });
   });
   r.post("/drafts/:id/paper", needs("property:create"), rateLimit("oc-paper", 30, 36e5), big, (req, res) => {
-    const u = me20();
+    const u = me21();
     const d = myDraft(req, res);
     if (!d) return;
     const raw = String(req.body?.data ?? "").replace(/^data:[^;]+;base64,/, "");
@@ -85368,7 +85427,7 @@ ${msgEn}`)}` } });
     } catch {
       return bad16(res, "The photo could not be saved. Please try again.", 500);
     }
-    c.paper = { mime, size: buf.length, sha256: crypto27.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso28() };
+    c.paper = { mime, size: buf.length, sha256: crypto28.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso28() };
     note3(c, `Signed form uploaded (${Math.round(buf.length / 1024)} KB) \u2014 waiting for a GENZ check`);
     s.ownerConsents.unshift(c);
     d.consentId = c.id;
@@ -85379,7 +85438,7 @@ ${msgEn}`)}` } });
     res.json({ success: true, draft: draftView(d) });
   });
   r.get("/drafts/:id/form", needs("property:create"), (req, res) => {
-    const u = me20();
+    const u = me21();
     const d = myDraft(req, res);
     if (!d) return;
     const f = d.fields;
@@ -85400,7 +85459,7 @@ ${msgEn}`)}` } });
 <div class="sig"><div>Witness name and signature (if thumb impression)<br>\u0917\u0935\u093E\u0939 \u0915\u093E \u0928\u093E\u092E \u0914\u0930 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 (\u0905\u0902\u0917\u0942\u0920\u0947 \u0915\u0940 \u0938\u094D\u0925\u093F\u0924\u093F \u092E\u0947\u0902)</div><div>Witness mobile / \u0917\u0935\u093E\u0939 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932</div></div></body></html>`);
   });
   r.post("/from-property/:propertyId", needs("property:create"), (req, res) => {
-    const u = me20();
+    const u = me21();
     const p = db.byId("properties", req.params.propertyId);
     if (!p || p.listingBrokerId !== u.id) return bad16(res, "Listing not found", 404);
     const r22 = draftForProperty(u, p);
@@ -85409,7 +85468,7 @@ ${msgEn}`)}` } });
     res.json({ success: true, draft: draftView(r22.draft) });
   });
   r.post("/drafts/from-form", needs("property:create"), (req, res) => {
-    const u = me20();
+    const u = me21();
     const s = st15();
     const b = req.body || {};
     const parsed = draftFields.safeParse({
@@ -85437,7 +85496,7 @@ ${msgEn}`)}` } });
     res.json({ success: true, draft: draftView(d) });
   });
   r.post("/drafts/:id/attach", needs("property:create"), (req, res) => {
-    const u = me20();
+    const u = me21();
     const d = myDraft(req, res);
     if (!d) return;
     const p = db.byId("properties", String(d.fields?.forPropertyId || ""));
@@ -85452,7 +85511,7 @@ ${msgEn}`)}` } });
     res.json({ success: true, propertyId: p.id, mandateId: c.mandateId, draft: draftView(d) });
   });
   r.get("/:id/signature", needs("property:create", "property:moderate"), (req, res) => {
-    const u = me20();
+    const u = me21();
     const c = st15().ownerConsents.find((x) => x.id === req.params.id);
     if (!c?.ownerSignature?.drawn || c.brokerId !== u.id && !can(u, "property:moderate")) return bad16(res, "No signature", 404);
     try {
@@ -85464,7 +85523,7 @@ ${msgEn}`)}` } });
     }
   });
   r.get("/mine", needs("property:create"), (_req, res) => {
-    const u = me20();
+    const u = me21();
     res.json({ success: true, consents: st15().ownerConsents.filter((c) => c.brokerId === u.id).slice(0, 300).map(consentView) });
   });
   r.get("/admin/queue", needs("property:moderate"), (_req, res) => {
@@ -85487,7 +85546,7 @@ ${msgEn}`)}` } });
     }
   });
   r.post("/admin/:id/decide", needs("property:moderate"), (req, res) => {
-    const a = me20();
+    const a = me21();
     const c = st15().ownerConsents.find((x) => x.id === req.params.id);
     if (!c) return bad16(res, "Not found", 404);
     const approve = req.body?.approve === true;
@@ -85515,7 +85574,7 @@ ${msgEn}`)}` } });
     res.json({ success: true, consent: consentView(c) });
   });
   r.post("/admin/:id/void", needs("property:moderate"), (req, res) => {
-    const a = me20();
+    const a = me21();
     const c = st15().ownerConsents.find((x) => x.id === req.params.id);
     if (!c) return bad16(res, "Not found", 404);
     const why = String(req.body?.note ?? "").trim().slice(0, 300);
@@ -85593,8 +85652,8 @@ var f=pad.closest('form');
 if(f)f.addEventListener('submit',function(e){var m=document.querySelector('input[name=sigMode]:checked');if(m&&m.value==='draw'){if(n<${SIGN_MIN_POINTS}){e.preventDefault();alert('\u0915\u0943\u092A\u092F\u093E \u092A\u0939\u0932\u0947 \u0938\u093E\u0907\u0928 \u0915\u0930\u0947\u0902\u0964 / Please sign first.');return}png.value=pad.toDataURL('image/png');pts.value=String(n)}else{png.value='';pts.value='0'}});
 })();`;
 function createOwnerConsentPageRouter() {
-  const r = (0, import_express44.Router)();
-  const form = import_express44.default.urlencoded({ extended: false, limit: "300kb" });
+  const r = (0, import_express45.Router)();
+  const form = import_express45.default.urlencoded({ extended: false, limit: "300kb" });
   const find = (token) => {
     if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return void 0;
     const h = sha4(token);
@@ -85714,7 +85773,7 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
       try {
         fs10.mkdirSync(SIG_DIR(), { recursive: true });
         fs10.writeFileSync(path10.join(SIG_DIR(), `${c.id}.png`), sig.png);
-        c.ownerSignature.sha256 = crypto27.createHash("sha256").update(sig.png).digest("hex");
+        c.ownerSignature.sha256 = crypto28.createHash("sha256").update(sig.png).digest("hex");
         c.ownerSignature.size = sig.png.length;
       } catch {
         return render(req, res, c, "\u0938\u093E\u0907\u0928 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E, \u092B\u093F\u0930 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / The signature could not be saved \u2014 please try again.");
@@ -85750,18 +85809,18 @@ function sweepConsents() {
 }
 
 // server/broadcast.ts
-var import_express45 = __toESM(require_express2(), 1);
-import crypto28 from "crypto";
+var import_express46 = __toESM(require_express2(), 1);
+import crypto29 from "crypto";
 var nowIso29 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st16 = () => db.getState();
-var me21 = () => ctx().user;
+var me22 = () => ctx().user;
 var bad17 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var BROADCAST_DAYS = 7;
 var BROADCAST_PER_DAY = 5;
 var BROADCAST_MAX_RECIPIENTS = 80;
 var MATCH_MIN = 60;
 var inr10 = (n2) => n2 >= 1e7 ? `\u20B9${+(n2 / 1e7).toFixed(2)} Cr` : n2 >= 1e5 ? `\u20B9${+(n2 / 1e5).toFixed(1)} L` : `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
-var live = (p) => p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus) && !p.heldAt && !p.expiredAt;
+var live2 = (p) => p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus) && !p.heldAt && !p.expiredAt;
 var verifiedBroker = (u) => !!u && u.role === "BROKER" && u.verificationStatus === "VERIFIED";
 var ck = (s) => String(s || "").trim().toLowerCase();
 function summaryOf(r) {
@@ -85771,7 +85830,7 @@ var broadcastLine = (b) => `${b.propertyTypes.join(" / ")} ${b.transactionType =
 function fits(r, excludeBrokerId) {
   const out = [];
   for (const p of st16().properties) {
-    if (!p.listingBrokerId || p.listingBrokerId === excludeBrokerId || !live(p) || p.transactionType !== r.transactionType) continue;
+    if (!p.listingBrokerId || p.listingBrokerId === excludeBrokerId || !live2(p) || p.transactionType !== r.transactionType) continue;
     if (r.city && ck(p.city) !== ck(r.city)) continue;
     const m = calculatePropertyMatch(p, r);
     if (m.score >= MATCH_MIN) out.push({ p, score: m.score });
@@ -85779,9 +85838,9 @@ function fits(r, excludeBrokerId) {
   return out.sort((a, b) => b.score - a.score);
 }
 function createBroadcastRouter() {
-  const r = (0, import_express45.Router)();
+  const r = (0, import_express46.Router)();
   r.post("/", needs("requirement:create"), rateLimit("broadcast", 20, 36e5), (req, res) => {
-    const u = me21();
+    const u = me22();
     const s = st16();
     const rq = s.requirements.find((x) => x.id === String(req.body?.requirementId || ""));
     if (!rq || rq.assignedBrokerId !== u.id) return bad17(res, "Requirement not found", 404);
@@ -85805,7 +85864,7 @@ function createBroadcastRouter() {
       }
     }
     const b = {
-      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto28.randomInt(100, 999)}`,
+      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto29.randomInt(100, 999)}`,
       brokerId: u.id,
       requirementId: rq.id,
       summary: summaryOf(rq),
@@ -85824,7 +85883,7 @@ function createBroadcastRouter() {
     res.json({ success: true, broadcast: { id: b.id, sentTo: b.recipients.length, withListing: withListing.size, line } });
   });
   r.get("/inbox", needs("property:read"), (_req, res) => {
-    const u = me21();
+    const u = me22();
     const s = st16();
     const now = Date.now();
     const list = s.broadcasts.filter((b) => b.status === "OPEN" && Date.parse(b.closesAt) > now && b.recipients.includes(u.id)).slice(0, 60);
@@ -85840,7 +85899,7 @@ function createBroadcastRouter() {
   });
   const respondSchema = external_exports.object({ propertyId: external_exports.string().max(40).optional(), note: external_exports.string().trim().max(300).default("") });
   r.post("/:id/respond", needs("property:read"), rateLimit("bc-respond", 120, 36e5), (req, res) => {
-    const u = me21();
+    const u = me22();
     const s = st16();
     const b = s.broadcasts.find((x) => x.id === req.params.id);
     if (!b || !b.recipients.includes(u.id)) return bad17(res, "Not found", 404);
@@ -85850,7 +85909,7 @@ function createBroadcastRouter() {
     let prop;
     if (p.data.propertyId) {
       prop = db.byId("properties", p.data.propertyId);
-      if (!prop || prop.listingBrokerId !== u.id || !live(prop)) return bad17(res, "Choose one of your own live listings", 400);
+      if (!prop || prop.listingBrokerId !== u.id || !live2(prop)) return bad17(res, "Choose one of your own live listings", 400);
     } else if (p.data.note.length < 5) return bad17(res, "Choose your listing, or write a line about what you have (it is not on GENZ yet).");
     const key = prop?.id || "";
     if (b.responses.some((x) => x.brokerId === u.id && x.propertyId === key)) return res.json({ success: true, duplicate: true });
@@ -85860,7 +85919,7 @@ function createBroadcastRouter() {
     res.json({ success: true });
   });
   r.get("/mine", needs("requirement:create"), (_req, res) => {
-    const u = me21();
+    const u = me22();
     const s = st16();
     const list = s.broadcasts.filter((b) => b.brokerId === u.id).slice(0, 60);
     res.json({
@@ -85876,13 +85935,13 @@ function createBroadcastRouter() {
         responses: b.responses.map((x) => {
           const who = db.byId("users", x.brokerId);
           const prop = x.propertyId ? db.byId("properties", x.propertyId) : void 0;
-          return { at: x.at, note: x.note, broker: who ? { id: who.id, name: who.name, company: who.companyName || "", trustScore: who.trustScore ?? null } : null, property: prop && live(prop) ? { id: prop.id, title: prop.title, locality: prop.locality, price: prop.askingPrice } : null };
+          return { at: x.at, note: x.note, broker: who ? { id: who.id, name: who.name, company: who.companyName || "", trustScore: who.trustScore ?? null } : null, property: prop && live2(prop) ? { id: prop.id, title: prop.title, locality: prop.locality, price: prop.askingPrice } : null };
         })
       }))
     });
   });
   r.post("/:id/close", needs("requirement:create"), (req, res) => {
-    const u = me21();
+    const u = me22();
     const b = st16().broadcasts.find((x) => x.id === req.params.id && x.brokerId === u.id);
     if (!b) return bad17(res, "Not found", 404);
     b.status = "CLOSED";
@@ -85893,7 +85952,7 @@ function createBroadcastRouter() {
 }
 function alertNewListing(p) {
   try {
-    if (!live(p)) return 0;
+    if (!live2(p)) return 0;
     const s = st16();
     const told = /* @__PURE__ */ new Set();
     for (const rq of s.requirements) {
@@ -85934,16 +85993,16 @@ async function sweepDigestPush(now = /* @__PURE__ */ new Date()) {
 }
 
 // server/report.ts
-var import_express46 = __toESM(require_express2(), 1);
+var import_express47 = __toESM(require_express2(), 1);
 var REPORT_MIN_LISTINGS = 20;
 var NEED_MIN = 3;
 var esc8 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var live2 = (p) => p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus) && !p.heldAt;
+var live3 = (p) => p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus) && !p.heldAt;
 function cityReport(cityRaw) {
   const city = normCity(cityRaw);
   const s = db.getState();
   const props = s.properties.filter((p) => normCity(p.city) === city);
-  const liveProps = props.filter(live2);
+  const liveProps = props.filter(live3);
   const byType = /* @__PURE__ */ new Map();
   for (const p of liveProps) byType.set(p.propertyType, (byType.get(p.propertyType) || 0) + 1);
   const needs3 = /* @__PURE__ */ new Map();
@@ -85967,7 +86026,7 @@ function cityReport(cityRaw) {
   };
 }
 function createReportRouter() {
-  const r = (0, import_express46.Router)();
+  const r = (0, import_express47.Router)();
   r.get("/:city", rateLimit("report-view", 120, 6e4), (req, res) => {
     res.set("Cache-Control", "public, max-age=600");
     const rep = cityReport(decodeURIComponent(req.params.city).replace(/-/g, " "));
@@ -85994,7 +86053,7 @@ h2{font-size:14px;margin:0 0 8px}.row{display:flex;justify-content:space-between
 }
 
 // server/offers.ts
-var import_express47 = __toESM(require_express2(), 1);
+var import_express48 = __toESM(require_express2(), 1);
 var nowIso30 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st17 = () => db.getState();
 var bad18 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
@@ -86168,9 +86227,9 @@ function view4(o, u) {
   };
 }
 function createOffersRouter() {
-  const r = (0, import_express47.Router)();
-  const me25 = () => ctx().user;
-  const self = () => profile2(me25().id);
+  const r = (0, import_express48.Router)();
+  const me26 = () => ctx().user;
+  const self = () => profile2(me26().id);
   r.get("/", needs("offer:make", "offer:decide"), (_req, res) => {
     const u = self();
     const mine3 = st17().propertyOffers.filter((o) => o.brokerId === u.id);
@@ -86195,8 +86254,8 @@ function createOffersRouter() {
       if (!rq || rq.assignedBrokerId !== u.id) return bad18(res, "Requirement not found", 404);
     }
     const key = digits(d.buyerPhone).slice(-10);
-    const live4 = st17().propertyOffers.filter((o2) => isLiveOffer(o2.status));
-    if (live4.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId !== u.id)) return bad18(res, "This buyer already has an active offer on this property", 409, "BUYER_TAKEN");
+    const live5 = st17().propertyOffers.filter((o2) => isLiveOffer(o2.status));
+    if (live5.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId !== u.id)) return bad18(res, "This buyer already has an active offer on this property", 409, "BUYER_TAKEN");
     {
       const pb = partyBlock(d.buyerPhone, "buyer");
       if (pb) return res.status(403).json(pb);
@@ -86205,11 +86264,11 @@ function createOffersRouter() {
       const blocked = buyerBondBlock(u, p.id, d.buyerPhone);
       if (blocked) return res.status(409).json(blocked);
     }
-    if (live4.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId === u.id)) return bad18(res, "You already have an active offer for this buyer on this property \u2014 withdraw it to submit a new one", 409, "OFFER_EXISTS");
-    if (live4.filter((o2) => o2.propertyId === p.id && o2.brokerId === u.id).length >= MAX_LIVE_OFFERS_PER_PROPERTY) return bad18(res, `You can keep at most ${MAX_LIVE_OFFERS_PER_PROPERTY} live offers on one property`, 429, "OFFER_CAP");
+    if (live5.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId === u.id)) return bad18(res, "You already have an active offer for this buyer on this property \u2014 withdraw it to submit a new one", 409, "OFFER_EXISTS");
+    if (live5.filter((o2) => o2.propertyId === p.id && o2.brokerId === u.id).length >= MAX_LIVE_OFFERS_PER_PROPERTY) return bad18(res, `You can keep at most ${MAX_LIVE_OFFERS_PER_PROPERTY} live offers on one property`, 429, "OFFER_CAP");
     {
       const cap = liveOfferCap(u, MAX_LIVE_OFFERS_PER_BROKER, PROBATION_LIVE_OFFERS);
-      if (live4.filter((o2) => o2.brokerId === u.id).length >= cap) return bad18(res, `You can keep at most ${cap} live offers in total${cap < MAX_LIVE_OFFERS_PER_BROKER ? " during your 30-day probation" : ""}`, 429, "OFFER_CAP");
+      if (live5.filter((o2) => o2.brokerId === u.id).length >= cap) return bad18(res, `You can keep at most ${cap} live offers in total${cap < MAX_LIVE_OFFERS_PER_BROKER ? " during your 30-day probation" : ""}`, 429, "OFFER_CAP");
     }
     const ts = nowIso30();
     const seq2 = st17().propertyOffers.reduce((m, o2) => Math.max(m, Number(/OFR-(\d+)/.exec(o2.id)?.[1] ?? 0)), 0) + 1;
@@ -86431,8 +86490,8 @@ function createOffersRouter() {
 }
 
 // server/listings.ts
-var import_express48 = __toESM(require_express2(), 1);
-import crypto29 from "node:crypto";
+var import_express49 = __toESM(require_express2(), 1);
+import crypto30 from "node:crypto";
 var nowIso31 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st18 = () => db.getState();
 var bad19 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
@@ -86450,7 +86509,7 @@ function purgeBlocked(p) {
 function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
   const s = st18();
   s.marketRecords.push({
-    id: `MR-${crypto29.randomBytes(4).toString("hex")}`,
+    id: `MR-${crypto30.randomBytes(4).toString("hex")}`,
     city: p.city,
     locality: p.locality,
     propertyType: p.propertyType,
@@ -86521,9 +86580,9 @@ var relistSchema = external_exports.object({
   addressHidden: external_exports.string().trim().min(5).max(300).optional()
 });
 function createListingsRouter() {
-  const r = (0, import_express48.Router)();
-  const me25 = () => ctx().user;
-  const self = () => profile3(me25().id);
+  const r = (0, import_express49.Router)();
+  const me26 = () => ctx().user;
+  const self = () => profile3(me26().id);
   const audit8 = (u, p, action, d) => db.appendAuditEvent(u.id, u.role, "PROPERTY", p.id, action, d);
   const load2 = (req, res) => {
     const u = self();
@@ -86589,8 +86648,8 @@ function createListingsRouter() {
       return res.json({ success: true });
     }
     if (d.status === "withdrawn") {
-      const live4 = s.dealRooms.some((x) => x.propertyId === p.id && !["Settled"].includes(x.stage) && x.settlementStatus !== "PAID" && x.stage !== "Lead" && x.stage !== "Introduction");
-      if (live4 || held) return bad19(res, "Cannot withdraw: this property has live deals or a held token. Settle, refund or dispute them first.", 409);
+      const live5 = s.dealRooms.some((x) => x.propertyId === p.id && !["Settled"].includes(x.stage) && x.settlementStatus !== "PAID" && x.stage !== "Lead" && x.stage !== "Introduction");
+      if (live5 || held) return bad19(res, "Cannot withdraw: this property has live deals or a held token. Settle, refund or dispute them first.", 409);
       for (const o of offers.filter((o2) => isLiveOffer(o2.status))) {
         o.status = "CLOSED";
         o.reason = "Listing withdrawn";
@@ -86702,7 +86761,7 @@ function createListingsRouter() {
       listingStatus: "active",
       verificationStatus: "PENDING",
       priceHistory: [{ price: d.askingPrice, changedAt: ts, reason: `Relisted (resale of ${p.id})` }],
-      duplicateHash: crypto29.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
+      duplicateHash: crypto30.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
       soldAt: void 0,
       soldVia: void 0,
       soldPrice: void 0,
@@ -86733,7 +86792,7 @@ function createListingsRouter() {
     if (p.listingBrokerId !== u.id) return bad19(res, "Only the listing broker can make the site poster \u2014 it carries the broker's contact", 403);
     if (!PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad19(res, "Poster is available for verified, live listings", 409);
     if (!p.posterCode) {
-      p.posterCode = crypto29.randomBytes(5).toString("hex").toUpperCase();
+      p.posterCode = crypto30.randomBytes(5).toString("hex").toUpperCase();
       db.save();
       audit8(u, p, "POSTER_CREATED", `Site poster code created for ${p.id}`);
     }
@@ -86797,7 +86856,7 @@ function createListingsRouter() {
     res.json({ success: true, alerts: out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60) });
   });
   r.post("/admin/purge-now", needs(), (_req, res) => {
-    if (me25().role !== "SUPERADMIN") return bad19(res, "Only a super-admin can run this", 403);
+    if (me26().role !== "SUPERADMIN") return bad19(res, "Only a super-admin can run this", 403);
     res.json({ success: true, erased: sweepSoldPurge() });
   });
   r.get("/market", needs("property:read"), (req, res) => {
@@ -86808,7 +86867,7 @@ function createListingsRouter() {
   return r;
 }
 function createPublicPosterRouter() {
-  const r = (0, import_express48.Router)();
+  const r = (0, import_express49.Router)();
   const page2 = (title, body, code = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${esc9(title)}</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f2;color:#1b1b1b}.w{max-width:520px;margin:0 auto;padding:14px}
 .card{background:#fff;border-radius:16px;padding:16px;margin-top:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}h1{font-size:20px;margin:0 0 4px}.s{color:#555;font-size:13px}.price{font-size:24px;font-weight:800;margin:8px 0}
@@ -86835,14 +86894,14 @@ fetch('/p/'+c+'/enquiry',{method:'POST',headers:{'Content-Type':'application/jso
       db.save();
     }
     const sold = ["sold", "rented"].includes(p.listingStatus);
-    const live4 = PUBLIC2.includes(p.listingStatus) && p.verificationStatus === "VERIFIED" && !p.expiredAt && !p.heldAt;
+    const live5 = PUBLIC2.includes(p.listingStatus) && p.verificationStatus === "VERIFIED" && !p.expiredAt && !p.heldAt;
     const broker = profile3(p.listingBrokerId);
     const area = p.plotAreaSqFt || p.builtUpAreaSqFt || 0;
     const img = p.images.find((i) => /^https?:\/\//.test(i) || /^data:image\//.test(i));
     const phone = broker ? digits(broker.phone).slice(-10) : "";
-    const head = `<div class="card">${img && live4 ? `<img class="hero" src="${esc9(img)}" alt="">` : ""}<h1>${esc9(p.title)}</h1><div class="s">${esc9(p.propertyType)} \xB7 ${esc9(p.locality)}, ${esc9(p.city)}${area ? ` \xB7 ${Math.round(area).toLocaleString("en-IN")} sq ft` : ""}</div>`;
+    const head = `<div class="card">${img && live5 ? `<img class="hero" src="${esc9(img)}" alt="">` : ""}<h1>${esc9(p.title)}</h1><div class="s">${esc9(p.propertyType)} \xB7 ${esc9(p.locality)}, ${esc9(p.city)}${area ? ` \xB7 ${Math.round(area).toLocaleString("en-IN")} sq ft` : ""}</div>`;
     if (sold) return res.send(page2("Property closed", `${head}<div class="sold" style="margin-top:12px">${p.transactionType === "Sale" ? "This property has been sold." : "This property has been rented."}<br>\u092F\u0939 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 ${p.transactionType === "Sale" ? "\u092C\u093F\u0915" : "\u0915\u093F\u0930\u093E\u090F \u092A\u0930 \u091C\u093E"} \u091A\u0941\u0915\u0940 \u0939\u0948\u0964</div></div><p class="small">Listed via GENZ Broker Network</p>${joinFooter(broker)}`));
-    if (!live4) return res.status(404).send(page2("Not available", '<div class="card">This listing is not available right now.</div>'));
+    if (!live5) return res.status(404).send(page2("Not available", '<div class="card">This listing is not available right now.</div>'));
     const desc = String(p.description || "").slice(0, 400);
     res.send(page2(`${p.title} \u2014 GENZ`, `${head}<div class="price">${inr11(p.askingPrice)}${p.transactionType !== "Sale" ? " / month" : ""}</div>${(p.tags || []).slice(0, 8).map((t) => `<span class="tag">${esc9(t)}</span>`).join("")}${desc ? `<p class="s" style="margin-top:10px">${esc9(desc)}</p>` : ""}${p.listingStatus === "under_negotiation" ? '<div class="neg" style="margin-top:10px">Under negotiation \u2014 you can still enquire / \u092C\u093E\u0924\u091A\u0940\u0924 \u091C\u093E\u0930\u0940 \u0939\u0948, \u092B\u093F\u0930 \u092D\u0940 \u092A\u0942\u091B \u0938\u0915\u0924\u0947 \u0939\u0948\u0902</div>' : ""}</div>
 ${broker ? `<div class="card"><b>${esc9(broker.name)}</b>${broker.companyName ? `<div class="s">${esc9(broker.companyName)}</div>` : ""}${broker.reraNumber ? `<div class="s">RERA: ${esc9(broker.reraNumber)}</div>` : ""}${reputationHtml(broker)}<div class="btns"><a class="call" href="tel:+91${esc9(phone)}">Call</a><a class="wa" href="https://wa.me/91${esc9(phone)}?text=${encodeURIComponent(`Hello, I saw your board for ${p.title}`)}">WhatsApp</a></div></div>` : ""}
@@ -86869,7 +86928,7 @@ ${broker ? `<div class="card"><b>${esc9(broker.name)}</b>${broker.companyName ? 
     if (req.body?.consent !== true) return bad19(res, "Please tick the consent box so the broker may contact you");
     if (hit(`penq:${digits(ph.data).slice(-10)}:${p.id}`, 2, 24 * 36e5)) return bad19(res, "You have already sent an enquiry for this property today", 429);
     if (hit(`penq-prop:${p.id}`, 60, 24 * 36e5)) return bad19(res, "Too many enquiries for this listing today", 429);
-    st18().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto29.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso31(), status: "NEW", createdAt: nowIso31() });
+    st18().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto30.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso31(), status: "NEW", createdAt: nowIso31() });
     db.save();
     db.appendAuditEvent("public", "SUPERADMIN", "PROPERTY", p.id, "POSTER_ENQUIRY", `Enquiry received via site poster for ${p.id} (consent recorded)`);
     res.json({ success: true });
@@ -86878,15 +86937,15 @@ ${broker ? `<div class="card"><b>${esc9(broker.name)}</b>${broker.companyName ? 
 }
 
 // server/visitpass.ts
-var import_express51 = __toESM(require_express2(), 1);
+var import_express52 = __toESM(require_express2(), 1);
 var import_qrcode4 = __toESM(require_lib5(), 1);
-import crypto31 from "node:crypto";
+import crypto32 from "node:crypto";
 
 // server/visitack.ts
-var import_express49 = __toESM(require_express2(), 1);
 var import_express50 = __toESM(require_express2(), 1);
+var import_express51 = __toESM(require_express2(), 1);
 var import_qrcode3 = __toESM(require_lib5(), 1);
-import crypto30 from "crypto";
+import crypto31 from "crypto";
 
 // src/shared/visitAckRules.ts
 var ACK_VERSION = "v1";
@@ -86904,7 +86963,7 @@ var ACK_NOTE = {
 var st19 = () => db.getState();
 var nowIso32 = () => (/* @__PURE__ */ new Date()).toISOString();
 var esc10 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac3 = (tag, v) => crypto30.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hmac3 = (tag, v) => crypto31.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone106 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE6 = /^[6-9]\d{9}$/;
 var smsOn3 = () => !!process.env.SMS_WEBHOOK_URL;
@@ -86929,7 +86988,7 @@ function createAck(a) {
   if (old) return old;
   const broker = db.byId("users", a.brokerId);
   const ack = {
-    id: `VAK-${crypto30.randomBytes(5).toString("hex")}`,
+    id: `VAK-${crypto31.randomBytes(5).toString("hex")}`,
     kind: a.kind,
     refId: a.refId,
     phoneKey: hmac3("va-phone", phone),
@@ -86954,21 +87013,21 @@ var sweepVisitAcks = () => {
   s.visitAcks = s.visitAcks.filter((a) => a.status === "ACKED" || Date.parse(a.createdAt) > cut);
   if (s.visitAcks.length !== before) db.save();
 };
-var me22 = () => ctx().user;
+var me23 = () => ctx().user;
 function mayManage(a) {
-  const u = me22();
+  const u = me23();
   if (u.role === "SUPERADMIN" || u.role === "ADMIN") return true;
   if (a.brokerId === u.id) return true;
   if (u.role === "TEAM_MEMBER" && u.employerId === a.brokerId) return true;
   return false;
 }
 function createVisitAckRouter() {
-  const r = (0, import_express49.Router)();
+  const r = (0, import_express50.Router)();
   r.get("/:kind/:refId", (req, res) => {
     if (!ctx().user?.id) return bad20(res, "Sign in first", 401);
     const kind = String(req.params.kind).toUpperCase();
     if (!["PASS", "VISIT"].includes(kind)) return bad20(res, "Unknown kind", 404);
-    if (!(can(me22(), "visit:pass") || can(me22(), "sitevisit:read"))) return bad20(res, "Not allowed", 403);
+    if (!(can(me23(), "visit:pass") || can(me23(), "sitevisit:read"))) return bad20(res, "Not allowed", 403);
     const a = ackFor(kind, String(req.params.refId));
     if (!a || !mayManage(a)) return res.json({ success: true, ack: null });
     const pass = kind === "PASS" ? db.byId("visitPasses", a.refId) : void 0;
@@ -87029,8 +87088,8 @@ async function ackedView(a) {
   return shell2(`${done}${pass ? `<div class="card"><a class="btn" href="/v/${esc10(pass.code)}">\u0905\u092A\u0928\u093E \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u093E\u0938 \u0916\u094B\u0932\u0947\u0902 / Open my visit pass</a></div>` : ""}`);
 }
 function createVisitAckPageRouter() {
-  const r = (0, import_express49.Router)();
-  const form = import_express50.default.urlencoded({ extended: false, limit: "10kb" });
+  const r = (0, import_express50.Router)();
+  const form = import_express51.default.urlencoded({ extended: false, limit: "10kb" });
   const headers = (res) => {
     res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow" });
   };
@@ -87160,20 +87219,20 @@ var confirmSchema = external_exports.object({
 });
 var view5 = (p) => ({ ...p, timing: passTiming(p), payload: qrPayload(p.code), link: `/v/${p.code}`, ackStatus: ackStatus("PASS", p.id), scan: scanLine("PASS", p.scanAt) });
 function createVisitRouter() {
-  const r = (0, import_express51.Router)();
-  const me25 = () => ctx().user;
+  const r = (0, import_express52.Router)();
+  const me26 = () => ctx().user;
   const audit8 = (action, id, details) => {
-    const u = me25();
+    const u = me26();
     db.appendAuditEvent(u.id, u.role, "VISIT", id, action, details);
   };
   r.get("/me", (_req, res) => {
-    const u = profile4(me25().id);
+    const u = profile4(me26().id);
     const canIssue = can(u, "visit:pass");
     const canScan = can(u, "visit:scan") && canScanFor(u, ownerOf(u));
     res.json({ success: true, canIssue, canScan, role: u.role, id: u.id });
   });
   r.post("/passes", needs("visit:pass"), (req, res) => {
-    const u = profile4(me25().id);
+    const u = profile4(me26().id);
     const parsed = issueSchema.safeParse(req.body);
     if (!parsed.success) return bad21(res, parsed.error.issues[0]?.message || "Invalid pass");
     const d = parsed.data;
@@ -87199,11 +87258,11 @@ function createVisitRouter() {
     for (const o of st20().visitPasses) if (o.leadId === lead.id && o.status === "ACTIVE") o.status = "SUPERSEDED";
     let code = "";
     do {
-      code = makeCode((n2) => crypto31.randomInt(n2));
+      code = makeCode((n2) => crypto32.randomInt(n2));
     } while (st20().visitPasses.some((p) => p.code === code));
     const ts = nowIso33();
     const pass = {
-      id: `VP-${Date.now().toString(36)}${crypto31.randomInt(1296).toString(36)}`,
+      id: `VP-${Date.now().toString(36)}${crypto32.randomInt(1296).toString(36)}`,
       code,
       leadId: lead.id,
       projectId: project.id,
@@ -87246,7 +87305,7 @@ function createVisitRouter() {
   });
   r.get("/passes", needs("visit:pass"), (req, res) => {
     expireStale();
-    const u = profile4(me25().id);
+    const u = profile4(me26().id);
     const owner = ownerOf(u);
     const leadId = req.query.leadId ? String(req.query.leadId) : "";
     let list = st20().visitPasses.filter((p) => u.role === "DEVELOPER_BUILDER" || u.role === "TEAM_MEMBER" && profile4(owner)?.role === "DEVELOPER_BUILDER" ? p.builderId === owner && !p.associateId : p.associateId === owner);
@@ -87258,7 +87317,7 @@ function createVisitRouter() {
     res.json({ success: true, passes: list.slice(0, 200).map(view5) });
   });
   r.post("/passes/:id/cancel", needs("visit:pass"), (req, res) => {
-    const u = profile4(me25().id);
+    const u = profile4(me26().id);
     const p = st20().visitPasses.find((x) => x.id === req.params.id);
     const lead = p && db.byId("crmLeads", p.leadId);
     if (!p || !lead || !canIssueFor(u, lead)) return bad21(res, "Pass not found", 404);
@@ -87270,7 +87329,7 @@ function createVisitRouter() {
     res.json({ success: true });
   });
   const scanGate = (req, res) => {
-    const u = profile4(me25().id);
+    const u = profile4(me26().id);
     if (hit(`vscan-all:${u.id}`, 150, 6e5)) {
       bad21(res, "Too many scans \u2014 wait a few minutes", 429);
       return null;
@@ -87372,7 +87431,7 @@ function createVisitRouter() {
   });
   r.get("/board", needs("visit:scan"), (_req, res) => {
     expireStale();
-    const u = profile4(me25().id);
+    const u = profile4(me26().id);
     if (!canScanFor(u, ownerOf(u))) return res.json({ success: true, expected: [], done: [] });
     const owner = ownerOf(u);
     const day2 = startOfDayMs();
@@ -87392,7 +87451,7 @@ function createVisitRouter() {
   return r;
 }
 function createPublicVisitRouter() {
-  const r = (0, import_express51.Router)();
+  const r = (0, import_express52.Router)();
   r.get("/:code", rateLimit("visit-pass-view", 60, 6e4), async (req, res) => {
     res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
     const gone = () => res.status(404).send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Pass not found</title><body style="font-family:system-ui;padding:24px"><p>This visit pass was not found.</p></body>`);
@@ -87407,13 +87466,13 @@ function createPublicVisitRouter() {
     const proj = db.byId("builderProjects", p.projectId);
     const svg = await import_qrcode4.default.toString(qrPayload(p.code), { type: "svg", margin: 1, errorCorrectionLevel: "M", width: 240 });
     const when2 = new Date(p.scheduledAt).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", timeZone: "Asia/Kolkata" });
-    const live4 = p.status === "ACTIVE" && passTiming(p) !== "EXPIRED";
-    const label = p.status === "USED" ? "Visit verified \u2714" : p.status === "ACTIVE" ? live4 ? "Valid pass" : "Expired" : p.status === "CANCELLED" || p.status === "SUPERSEDED" ? "Pass cancelled / replaced" : "Expired";
+    const live5 = p.status === "ACTIVE" && passTiming(p) !== "EXPIRED";
+    const label = p.status === "USED" ? "Visit verified \u2714" : p.status === "ACTIVE" ? live5 ? "Valid pass" : "Expired" : p.status === "CANCELLED" || p.status === "SUPERSEDED" ? "Pass cancelled / replaced" : "Expired";
     res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Site visit pass \u2014 ${esc11(p.projectName)}</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f2;color:#1b1b1b}.w{max-width:440px;margin:0 auto;padding:16px}
 .c{background:#fff;border-radius:18px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}h1{font-size:19px;margin:0 0 2px}.s{color:#555;font-size:13px}
-.q{display:inline-block;margin:14px 0 4px;padding:8px;border:1px solid #eee;border-radius:12px;${live4 ? "" : "opacity:.25;"}}.q svg{display:block;width:230px;height:230px}.code{font-family:ui-monospace,Menlo,monospace;font-size:20px;letter-spacing:3px;font-weight:700}
-.st{display:inline-block;margin:6px 0;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:700;background:${p.status === "USED" ? "#dcfce7;color:#166534" : live4 ? "#dbeafe;color:#1e40af" : "#fee2e2;color:#991b1b"}}
+.q{display:inline-block;margin:14px 0 4px;padding:8px;border:1px solid #eee;border-radius:12px;${live5 ? "" : "opacity:.25;"}}.q svg{display:block;width:230px;height:230px}.code{font-family:ui-monospace,Menlo,monospace;font-size:20px;letter-spacing:3px;font-weight:700}
+.st{display:inline-block;margin:6px 0;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:700;background:${p.status === "USED" ? "#dcfce7;color:#166534" : live5 ? "#dbeafe;color:#1e40af" : "#fee2e2;color:#991b1b"}}
 .row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:8px 0;border-bottom:1px solid #eee;text-align:left}.row:last-child{border:0}.row b{text-align:right}.n{font-size:12px;color:#666;margin-top:12px;line-height:1.5}</style></head>
 <body><div class="w"><div class="c"><div class="s">GENZ \xB7 Site visit pass</div><h1>${esc11(p.projectName)}</h1>${proj?.locality ? `<div class="s">${esc11(proj.locality)}${proj.city ? ", " + esc11(proj.city) : ""}</div>` : ""}
 <div class="st">${esc11(label)}</div><br><div class="q">${svg}</div><div class="code">${esc11(p.code)}</div>
@@ -87481,9 +87540,9 @@ function checkCard(i) {
 }
 
 // server/clientroom.ts
-var import_express52 = __toESM(require_express2(), 1);
 var import_express53 = __toESM(require_express2(), 1);
-import crypto32 from "crypto";
+var import_express54 = __toESM(require_express2(), 1);
+import crypto33 from "crypto";
 
 // src/shared/roomMedia.ts
 var ROOM_MEDIA = { maxPhotos: 12, maxVideos: 2 };
@@ -87515,13 +87574,13 @@ function videoKind(url3) {
 // server/clientroom.ts
 var st21 = () => db.getState();
 var nowIso34 = () => (/* @__PURE__ */ new Date()).toISOString();
-var me23 = () => ctx().user;
+var me24 = () => ctx().user;
 var esc12 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha5 = (v) => crypto32.createHash("sha256").update(v).digest("hex");
-var hmac4 = (tag, v) => crypto32.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha5 = (v) => crypto33.createHash("sha256").update(v).digest("hex");
+var hmac4 = (tag, v) => crypto33.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone107 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE7 = /^[6-9]\d{9}$/;
-var newToken2 = () => crypto32.randomBytes(18).toString("base64url");
+var newToken2 = () => crypto33.randomBytes(18).toString("base64url");
 var smsOn4 = () => !!process.env.SMS_WEBHOOK_URL;
 var inr12 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad23 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
@@ -87529,8 +87588,8 @@ var ev = (r, text) => {
   r.events.push({ at: nowIso34(), text });
   r.updatedAt = nowIso34();
 };
-var rid3 = (p) => `${p}-${crypto32.randomBytes(5).toString("hex")}`;
-var live3 = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
+var rid3 = (p) => `${p}-${crypto33.randomBytes(5).toString("hex")}`;
+var live4 = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
 var goneText = (p) => !p ? "removed" : p.listingStatus === "sold" ? "sold" : p.listingStatus === "rented" ? "rented" : "not available now";
 function publicProperty(p) {
   const img = (p.images || []).find((x) => typeof x === "string" && (/^https?:\/\//.test(x) || x.startsWith("/")) && x.length < 400);
@@ -87547,14 +87606,14 @@ function publicProperty(p) {
     tags: (p.tags || []).slice(0, 8),
     description: stripPhones(p.description || "").slice(0, 500),
     image: img,
-    available: live3(p),
-    status: live3(p) ? "available" : goneText(p)
+    available: live4(p),
+    status: live4(p) ? "available" : goneText(p)
   };
 }
 function shareableMedia(u, p) {
   const s = st21();
   const principal2 = p.listingBrokerId === u.id || p.ownerId === u.id;
-  const listed = live3(p);
+  const listed = live4(p);
   const assets = (s.propertyMediaAssets || []).filter((a) => a.propertyId === p.id && a.status === "ACTIVE" && (principal2 || listed && a.sensitivity === "PUBLIC"));
   const photos = [];
   const videos = [];
@@ -87599,7 +87658,7 @@ function linkVisitToRoom(room, item, requestId, visit2) {
   }
   ev(room, `Visit booked for ${new Date(visit2.scheduledTime).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (${visit2.id})`);
 }
-var mine2 = (req) => st21().clientRooms.find((r) => r.id === req.params.id && r.brokerId === me23().id);
+var mine2 = (req) => st21().clientRooms.find((r) => r.id === req.params.id && r.brokerId === me24().id);
 var unread = (r) => r.messages.filter((m) => m.from === "CLIENT" && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 var openVisits = (r) => r.items.reduce((n2, i) => n2 + i.visitRequests.filter((v) => v.status === "REQUESTED").length, 0);
 function summary3(r) {
@@ -87645,14 +87704,14 @@ function detail(r) {
   };
 }
 function createClientRoomRouter() {
-  const r = (0, import_express52.Router)();
+  const r = (0, import_express53.Router)();
   r.use(needs("clientroom:use"));
   r.get("/", (_req, res) => {
-    const list = st21().clientRooms.filter((x) => x.brokerId === me23().id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const list = st21().clientRooms.filter((x) => x.brokerId === me24().id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     res.json({ success: true, rooms: list.map(summary3), counts: { active: list.filter((x) => x.status === "ACTIVE").length, unread: list.reduce((n2, x) => n2 + unread(x), 0), visits: list.reduce((n2, x) => n2 + openVisits(x), 0) } });
   });
   r.post("/", rateLimit("cr-create", 40, 36e5), (req, res) => {
-    const u = me23();
+    const u = me24();
     const name = String(req.body?.clientName || "").trim().slice(0, 80);
     const phone = phone107(req.body?.phone);
     const kind = ROOM_KINDS.find((k) => k.id === req.body?.kind)?.id || "BUYER";
@@ -87701,11 +87760,11 @@ function createClientRoomRouter() {
     if (!room) return bad23(res, "Room not found", 404);
     if (room.status !== "ACTIVE") return bad23(res, "This room is closed", 409);
     const p = st21().properties.find((x) => x.id === String(req.body?.propertyId || ""));
-    if (!p || !live3(p)) return bad23(res, "That property is not available to share", 404);
+    if (!p || !live4(p)) return bad23(res, "That property is not available to share", 404);
     if (room.items.some((i) => i.propertyId === p.id)) return bad23(res, "Already shared in this room", 409);
     if (room.items.length >= ROOM_LIMITS.items) return bad23(res, `A room can hold ${ROOM_LIMITS.items} properties`);
     const note5 = stripPhones(String(req.body?.note || "").trim()).slice(0, 200) || void 0;
-    const media = req.body?.withMedia === false ? void 0 : allMedia(me23(), p);
+    const media = req.body?.withMedia === false ? void 0 : allMedia(me24(), p);
     room.items.push({ id: rid3("CRI"), propertyId: p.id, sharedAt: nowIso34(), note: note5, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
     ev(room, `Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
     db.save();
@@ -87719,7 +87778,7 @@ function createClientRoomRouter() {
     if (!it) return bad23(res, "Not found", 404);
     const p = st21().properties.find((x) => x.id === it.propertyId);
     if (!p) return bad23(res, "Property not found", 404);
-    const avail = shareableMedia(me23(), p);
+    const avail = shareableMedia(me24(), p);
     res.json({ success: true, available: { photos: avail.photos, videos: avail.videos.map((url3) => ({ url: url3, kind: videoKind(url3) })) }, chosen: chosenMedia(room, it, p), limits: ROOM_MEDIA });
   });
   r.put("/:id/items/:itemId/media", rateLimit("cr-media", 120, 36e5), (req, res) => {
@@ -87729,12 +87788,12 @@ function createClientRoomRouter() {
     const it = room.items.find((i) => i.id === req.params.itemId);
     if (!it) return bad23(res, "Not found", 404);
     const p = st21().properties.find((x) => x.id === it.propertyId);
-    if (!p || !live3(p)) return bad23(res, "That property is not available to share", 404);
+    if (!p || !live4(p)) return bad23(res, "That property is not available to share", 404);
     const photos = Array.isArray(req.body?.photos) ? req.body.photos.map(String) : [];
     const videos = Array.isArray(req.body?.videos) ? req.body.videos.map(String) : [];
     if (photos.length > ROOM_MEDIA.maxPhotos) return bad23(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
     if (videos.length > ROOM_MEDIA.maxVideos) return bad23(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
-    const avail = shareableMedia(me23(), p);
+    const avail = shareableMedia(me24(), p);
     if (!photos.every((x) => avail.photos.includes(x)) || !videos.every((x) => avail.videos.includes(x))) return bad23(res, "You can share only this listing's own photos and videos", 400, { code: "MEDIA_NOT_SHAREABLE" });
     it.media = { photos: [...new Set(photos)], videos: [...new Set(videos)], at: nowIso34() };
     ev(room, `Photos & video of ${p.id}: ${it.media.photos.length} photo(s)${it.media.videos.length ? `, ${it.media.videos.length} video(s)` : ""}`);
@@ -87798,7 +87857,7 @@ function createClientRoomRouter() {
     room.expiresAt = new Date(Date.now() + ROOM_LIMITS.linkDays * 864e5).toISOString();
     ev(room, "New link made \u2014 the old link stopped working");
     db.save();
-    db.appendAuditEvent(me23().id, me23().role, "LEAD", room.id, "CLIENT_ROOM_LINK_RENEWED", "Client room link renewed");
+    db.appendAuditEvent(me24().id, me24().role, "LEAD", room.id, "CLIENT_ROOM_LINK_RENEWED", "Client room link renewed");
     res.json({ success: true, link: `/r/${token}`, room: detail(room) });
   });
   r.delete("/:id/devices/:dev", (req, res) => {
@@ -87809,7 +87868,7 @@ function createClientRoomRouter() {
     room.devices = (room.devices || []).filter((x) => x.id !== d.id);
     ev(room, `Broker removed a phone from the room (${d.label})`);
     db.save();
-    db.appendAuditEvent(me23().id, me23().role, "LEAD", room.id, "CLIENT_ROOM_DEVICE_REMOVED", `Client room phone removed (${d.label})`);
+    db.appendAuditEvent(me24().id, me24().role, "LEAD", room.id, "CLIENT_ROOM_DEVICE_REMOVED", `Client room phone removed (${d.label})`);
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/close", (req, res) => {
@@ -87817,14 +87876,14 @@ function createClientRoomRouter() {
     if (!room) return bad23(res, "Room not found", 404);
     room.status = "CLOSED";
     room.closedAt = nowIso34();
-    room.tokenHash = sha5(crypto32.randomBytes(8).toString("hex"));
+    room.tokenHash = sha5(crypto33.randomBytes(8).toString("hex"));
     room.sessVersion += 1;
     room.devices = [];
     room.otpHash = void 0;
     room.otpPlain = void 0;
     ev(room, "Room closed");
     db.save();
-    db.appendAuditEvent(me23().id, me23().role, "LEAD", room.id, "CLIENT_ROOM_CLOSED", "Client room closed");
+    db.appendAuditEvent(me24().id, me24().role, "LEAD", room.id, "CLIENT_ROOM_CLOSED", "Client room closed");
     res.json({ success: true, room: detail(room) });
   });
   return r;
@@ -87911,8 +87970,8 @@ var PAPER_WHY = {
 };
 var dayHi = (iso) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 function createClientRoomPageRouter() {
-  const r = (0, import_express52.Router)();
-  const form = import_express53.default.urlencoded({ extended: false, limit: "20kb" });
+  const r = (0, import_express53.Router)();
+  const form = import_express54.default.urlencoded({ extended: false, limit: "20kb" });
   const find = (token) => {
     if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return void 0;
     const h = sha5(token);
@@ -88002,7 +88061,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
         db.save();
         return gate(res, room, req.params.token, FULL_DEVICES, "phone", 403);
       }
-      dev = crypto32.randomBytes(6).toString("hex");
+      dev = crypto33.randomBytes(6).toString("hex");
       devices.push({ id: dev, label: deviceLabel(req.headers["user-agent"]), firstAt: nowIso34(), lastAt: nowIso34() });
       fresh = true;
     }
@@ -88055,7 +88114,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     if (!room) return;
     const it = room.items.find((i) => i.id === String(req.body?.item || ""));
     const p = it && st21().properties.find((x) => x.id === it.propertyId);
-    if (!it || !live3(p)) return render(req, res, room, "\u092F\u0939 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0905\u092C \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 / This property is no longer available.");
+    if (!it || !live4(p)) return render(req, res, room, "\u092F\u0939 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0905\u092C \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 / This property is no longer available.");
     const when2 = String(req.body?.when || "").trim().slice(0, 40);
     const note5 = stripPhones(String(req.body?.note || "").trim()).slice(0, 200) || void 0;
     if (!when2 || Number.isNaN(Date.parse(when2))) return render(req, res, room, "\u0935\u093F\u091C\u093C\u093F\u091F \u0915\u0947 \u0932\u093F\u090F \u0924\u093E\u0930\u0940\u0916\u093C \u0914\u0930 \u0938\u092E\u092F \u091A\u0941\u0928\u0947\u0902\u0964 / Pick a date and time for the visit.");
@@ -88199,9 +88258,9 @@ function sweepClientRooms() {
 }
 
 // server/dealclose.ts
-var import_express54 = __toESM(require_express2(), 1);
+var import_express55 = __toESM(require_express2(), 1);
 var nowIso35 = () => (/* @__PURE__ */ new Date()).toISOString();
-var me24 = () => ctx().user;
+var me25 = () => ctx().user;
 var bad24 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var str4 = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var autoMs = () => process.env.NODE_ENV !== "production" && Number(process.env.DEAL_CLOSE_AUTO_MS) || CLOSE_AUTO_DAYS * 864e5;
@@ -88217,7 +88276,7 @@ var ping = (uid3, d, title, body) => {
   if (uid3) void pushTo(uid3, { kind: "deals", title, body, url: `/?tab=deals&deal=${d.id}` });
 };
 var audit7 = (d, action, text) => {
-  const u = me24();
+  const u = me25();
   db.appendAuditEvent(u.id, u.role, "DEAL", d.id, action, text);
 };
 function sweepDealClosures(now = Date.now()) {
@@ -88236,9 +88295,9 @@ function sweepDealClosures(now = Date.now()) {
   return changed;
 }
 function createDealCloseRouter() {
-  const r = (0, import_express54.Router)();
+  const r = (0, import_express55.Router)();
   const load2 = (req, res, opts = {}) => {
-    const u = me24();
+    const u = me25();
     const d = db.byId("dealRooms", req.params.id);
     if (!d) {
       bad24(res, "Deal room not found", 404);
@@ -88398,7 +88457,7 @@ function createDealCloseRouter() {
 }
 
 // server/landrecords.ts
-var import_express55 = __toESM(require_express2(), 1);
+var import_express56 = __toESM(require_express2(), 1);
 
 // src/shared/redflags.ts
 var norm3 = (s) => (s || "").toLowerCase().replace(/\b(shri|smt|mr|mrs|ms|dr|late|sri)\b\.?/g, "").replace(/[^a-zऀ-ॿ ]/g, " ").replace(/\s+/g, " ").trim();
@@ -88474,8 +88533,8 @@ var bodySchema = external_exports.object({
   markVerified: external_exports.boolean().optional()
 });
 function createLandRecordsRouter() {
-  const r = (0, import_express55.Router)();
-  const me25 = () => ctx().user;
+  const r = (0, import_express56.Router)();
+  const me26 = () => ctx().user;
   r.use(needs("landrecord:manage"));
   const canSee = (u, rec2) => {
     if (isAdmin(u) || u.role === "LEGAL_COUNSEL" || rec2.createdBy === u.id) return true;
@@ -88485,20 +88544,20 @@ function createLandRecordsRouter() {
   const canEdit = (u, rec2) => isAdmin(u) || u.role === "LEGAL_COUNSEL" || rec2.createdBy === u.id;
   const view6 = (rec2) => ({ ...rec2, scan: scanRedFlags(rec2.fields) });
   const audit8 = (id, action, details) => {
-    const u = me25();
+    const u = me26();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
   };
   r.get("/", (_req, res) => {
-    const u = me25();
+    const u = me26();
     res.json({ success: true, records: db.getState().landRecords.filter((x) => canSee(u, x)).map(view6) });
   });
   r.get("/properties", (_req, res) => {
-    const u = me25();
+    const u = me26();
     const list = db.getState().properties.filter((p) => isAdmin(u) || u.role === "LEGAL_COUNSEL" || p.listingBrokerId === u.id || p.ownerId === u.id).map((p) => ({ id: p.id, title: p.title, locality: p.locality, city: p.city }));
     res.json({ success: true, properties: list });
   });
   r.post("/", (req, res) => {
-    const u = me25();
+    const u = me26();
     const p = bodySchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid record" });
     const d = p.data;
@@ -88533,7 +88592,7 @@ function createLandRecordsRouter() {
     res.json({ success: true, record: view6(rec2) });
   });
   r.put("/:id", (req, res) => {
-    const u = me25();
+    const u = me26();
     const rec2 = db.getState().landRecords.find((x) => x.id === req.params.id);
     if (!rec2 || !canSee(u, rec2)) return res.status(404).json({ error: "Record not found" });
     if (!canEdit(u, rec2)) return res.status(403).json({ error: "Only the person who created this record (or legal counsel / admin) can edit it" });
@@ -88548,7 +88607,7 @@ function createLandRecordsRouter() {
     res.json({ success: true, record: view6(rec2) });
   });
   r.delete("/:id", (req, res) => {
-    const u = me25();
+    const u = me26();
     const st22 = db.getState();
     const i = st22.landRecords.findIndex((x) => x.id === req.params.id);
     if (i < 0 || !canSee(u, st22.landRecords[i])) return res.status(404).json({ error: "Record not found" });
@@ -88562,8 +88621,8 @@ function createLandRecordsRouter() {
 }
 
 // server/connector.ts
-var import_express56 = __toESM(require_express2(), 1);
-import crypto33 from "crypto";
+var import_express57 = __toESM(require_express2(), 1);
+import crypto34 from "crypto";
 var DUP_WINDOW_DAYS = 60;
 var MAX_REWARD = 1e5;
 var upiRegex = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
@@ -88668,7 +88727,7 @@ function stats(list) {
   };
 }
 function createConnectorRouter() {
-  const r = (0, import_express56.Router)();
+  const r = (0, import_express57.Router)();
   r.get("/meta", needs("connector:self", "connector:manage", "connector:work", "connector:desk"), (_req, res) => {
     const s = db.getState().settings;
     res.json({
@@ -88892,7 +88951,7 @@ function createConnectorRouter() {
   };
   const maxPct = () => db.getState().settings.connectorMaxSharePct ?? DEFAULT_MAX_SHARE_PCT;
   const shareStep = (sh, side, action, pct2, note5) => {
-    sh.history.push({ id: "SS-" + crypto33.randomBytes(4).toString("hex"), at: nowIso36(), side, action, pct: pct2, note: note5 ? note5.slice(0, 200) : void 0 });
+    sh.history.push({ id: "SS-" + crypto34.randomBytes(4).toString("hex"), at: nowIso36(), side, action, pct: pct2, note: note5 ? note5.slice(0, 200) : void 0 });
     sh.updatedAt = nowIso36();
   };
   const ping2 = (x, toSide, title, body) => {
@@ -88924,7 +88983,7 @@ function createConnectorRouter() {
     let sh = x.share;
     if (sh && ["AGREED", "PAID", "CONFIRMED", "NOT_RECEIVED"].includes(sh.status)) return res.status(409).json({ error: "The share is already agreed and locked" });
     if (!sh || sh.status === "DECLINED") {
-      sh = x.share = { id: "SH-" + crypto33.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso36() };
+      sh = x.share = { id: "SH-" + crypto34.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso36() };
       shareStep(sh, side, "PROPOSED", pct2, note5);
     } else {
       const counter = sh.proposedBy !== side;
@@ -89107,7 +89166,7 @@ import path11 from "node:path";
 import { fileURLToPath } from "node:url";
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path11.dirname(__filename);
-var app = (0, import_express57.default)();
+var app = (0, import_express58.default)();
 var port = Number(process.env.PORT) || 3e3;
 var HOST = process.env.HOST || (IS_PROD ? "0.0.0.0" : "127.0.0.1");
 var HttpError = class extends Error {
@@ -89135,7 +89194,7 @@ app.use((req, res, next2) => {
   if (req.path.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
   next2();
 });
-var jsonParser = import_express57.default.json({ limit: "256kb" });
+var jsonParser = import_express58.default.json({ limit: "256kb" });
 app.use((req, res, next2) => req.method === "POST" && (req.path === "/api/pdocs" || req.path === "/api/property-docs" || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path)) ? next2() : jsonParser(req, res, next2));
 app.use("/api", (req, res, next2) => {
   const t0 = Date.now();
@@ -89467,29 +89526,29 @@ function sendCached(req, res, payload) {
 app.get("/api/auth/users", requireAuth, (req, res) => {
   const c = ctx();
   const state = db.getState();
-  const me25 = c.user;
-  if (me25.verificationStatus !== "VERIFIED") {
-    return res.json({ success: true, users: [enrichUserWithTrustScore(me25, state)], activeUserId: me25.id });
+  const me26 = c.user;
+  if (me26.verificationStatus !== "VERIFIED") {
+    return res.json({ success: true, users: [enrichUserWithTrustScore(me26, state)], activeUserId: me26.id });
   }
   let users;
-  if (me25.role === "TEAM_MEMBER") {
-    const emp = db.byId("users", me25.employerId);
-    users = [enrichUserWithTrustScore(me25, state), ...emp ? [directoryEntry(emp, state)] : []];
-    if (can(me25, "connector:desk")) {
+  if (me26.role === "TEAM_MEMBER") {
+    const emp = db.byId("users", me26.employerId);
+    users = [enrichUserWithTrustScore(me26, state), ...emp ? [directoryEntry(emp, state)] : []];
+    if (can(me26, "connector:desk")) {
       users.push(...state.users.filter((u) => (u.role === "BROKER" || u.role === "CONTRACTOR") && u.verificationStatus === "VERIFIED").map((u) => slimCard(u, state)));
     }
-  } else if (can(me25, "users:list")) {
+  } else if (can(me26, "users:list")) {
     if (!dirCacheAdmin || dirCacheAdmin.v !== db.version) dirCacheAdmin = { v: db.version, body: state.users.map((u) => enrichUserWithTrustScore(u, state)) };
-    return res.json({ success: true, users: dirCacheAdmin.body, activeUserId: me25.id });
+    return res.json({ success: true, users: dirCacheAdmin.body, activeUserId: me26.id });
   } else {
     const visibleRoles = ["BROKER", "DEVELOPER_BUILDER", "LEGAL_COUNSEL", "ADMIN", "SUPERADMIN"];
     if (!dirCache || dirCache.v !== db.version) {
       dirCache = { v: db.version, kind: "members", body: state.users.filter((u) => u.verificationStatus === "VERIFIED" && visibleRoles.includes(u.role)).map((u) => slimCard(u, state)) };
     }
-    users = [enrichUserWithTrustScore(me25, state), ...dirCache.body.filter((u) => u.id !== me25.id)];
-    return sendCached(req, res, { success: true, users, activeUserId: me25.id });
+    users = [enrichUserWithTrustScore(me26, state), ...dirCache.body.filter((u) => u.id !== me26.id)];
+    return sendCached(req, res, { success: true, users, activeUserId: me26.id });
   }
-  res.json({ success: true, users, activeUserId: me25.id });
+  res.json({ success: true, users, activeUserId: me26.id });
 });
 app.get("/api/auth/permission-matrix", needs("permissions:read_matrix"), (_req, res) => {
   res.json({ success: true, roles: ALL_ROLES, matrix: permissionMatrix() });
@@ -90224,8 +90283,8 @@ app.put("/api/properties/:id", needs("property:update"), (req, res) => {
     return res.status(409).json({ error: "The net amount is fixed by a signed mandate. Submit a new mandate for the listing broker to co-sign instead." });
   }
   if (data.listingStatus === "withdrawn") {
-    const live4 = state.dealRooms.some((d) => d.propertyId === prop.id && !["Settled", "Lead"].includes(d.stage) && d.settlementStatus !== "PAID");
-    if (live4) return res.status(409).json({ error: "Cannot withdraw: this property has live deal rooms. Settle or dispute them first." });
+    const live5 = state.dealRooms.some((d) => d.propertyId === prop.id && !["Settled", "Lead"].includes(d.stage) && d.settlementStatus !== "PAID");
+    if (live5) return res.status(409).json({ error: "Cannot withdraw: this property has live deal rooms. Settle or dispute them first." });
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const nextAsking = data.askingPrice ?? prop.askingPrice;
@@ -90299,8 +90358,8 @@ app.delete("/api/properties/:id", needs("property:withdraw"), (req, res) => {
   const state = db.getState();
   const prop = loadManageableProperty(req, res, currentUser2);
   if (!prop) return;
-  const live4 = state.dealRooms.some((d) => d.propertyId === prop.id && !["Settled"].includes(d.stage) && d.settlementStatus !== "PAID");
-  if (live4) {
+  const live5 = state.dealRooms.some((d) => d.propertyId === prop.id && !["Settled"].includes(d.stage) && d.settlementStatus !== "PAID");
+  if (live5) {
     return res.status(409).json({ error: "Cannot withdraw: this property has live deal rooms. Settle or dispute them first." });
   }
   prop.listingStatus = "withdrawn";
@@ -93743,7 +93802,7 @@ app.post("/api/deals/:id/messages", needs("deal:chat"), rateLimit("chat", 60, 6e
   if (audience === "BROKERS" && !isDealBroker(currentUser2, deal)) {
     return res.status(403).json({ error: "Only the deal brokers can use the brokers-only channel" });
   }
-  let card;
+  let card2;
   if (kind) {
     const property = db.byId("properties", deal.propertyId);
     const onProperty = ["PROPERTY", "LOCATION", "PHOTO", "DOCUMENT"].includes(kind);
@@ -93760,25 +93819,25 @@ app.post("/api/deals/:id/messages", needs("deal:chat"), rateLimit("chat", 60, 6e
       userId: currentUser2.id
     });
     if (!r.ok) return res.status(r.status).json({ error: r.error, code: r.code });
-    card = { kind, refId: r.refId, mediaUrl: r.mediaUrl, auto: r.auto };
+    card2 = { kind, refId: r.refId, mediaUrl: r.mediaUrl, auto: r.auto };
   }
-  if (isFlood(currentUser2.id, card ? `card:${card.kind}:${card.refId}:${text}` : text)) return res.status(429).json({ error: card ? "You already shared this a moment ago." : "You already sent this exact message a moment ago." });
+  if (isFlood(currentUser2.id, card2 ? `card:${card2.kind}:${card2.refId}:${text}` : text)) return res.status(429).json({ error: card2 ? "You already shared this a moment ago." : "You already sent this exact message a moment ago." });
   const newMsg = {
     id: `MSG-${deal.id}-${Date.now().toString(36)}`,
     dealRoomId: deal.id,
     senderId: currentUser2.id,
     senderName: currentUser2.name,
     senderRole: currentUser2.role,
-    text: card ? text || card.auto : text,
+    text: card2 ? text || card2.auto : text,
     audience,
-    mediaUrl: card ? card.mediaUrl : b.mediaUrl ? String(b.mediaUrl).slice(0, 500) : void 0,
-    mediaType: card ? card.mediaUrl ? "IMAGE" : void 0 : b.mediaUrl ? mediaType : void 0,
-    ...card ? { kind: card.kind, refId: card.refId, ...text ? {} : { auto: true } } : {},
+    mediaUrl: card2 ? card2.mediaUrl : b.mediaUrl ? String(b.mediaUrl).slice(0, 500) : void 0,
+    mediaType: card2 ? card2.mediaUrl ? "IMAGE" : void 0 : b.mediaUrl ? mediaType : void 0,
+    ...card2 ? { kind: card2.kind, refId: card2.refId, ...text ? {} : { auto: true } } : {},
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   };
   state.dealMessages.push(newMsg);
   db.save();
-  if (card) db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "CHAT_CARD_SENT", `${card.kind} card ${card.refId}${audience === "BROKERS" ? " (brokers only)" : ""}`);
+  if (card2) db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "CHAT_CARD_SENT", `${card2.kind} card ${card2.refId}${audience === "BROKERS" ? " (brokers only)" : ""}`);
   res.json({ success: true, message: newMsg });
 });
 app.use("/api/crm/money", createMoneyTrailRouter());
@@ -93825,6 +93884,7 @@ app.use("/api/party-watch", createPartyWatchRouter());
 app.use("/api/profile-photo", createProfilePhotoRouter());
 app.use("/api/deal-hub", createDealHubRouter());
 app.use("/api/chats", createChatsRouter());
+app.use("/api/saved", createSavedRouter());
 app.use("/api/deals", createSidesRouter());
 app.use("/api/deals", createDealCloseRouter());
 app.use("/api", createPaymentRequestRouter());
@@ -93912,7 +93972,7 @@ async function startServer() {
   } else {
     const distPath = process.env.DIST_DIR || path11.resolve(__dirname, "dist");
     app.use(
-      import_express57.default.static(distPath, {
+      import_express58.default.static(distPath, {
         index: false,
         setHeaders: (res, file2) => {
           const base = path11.basename(file2);

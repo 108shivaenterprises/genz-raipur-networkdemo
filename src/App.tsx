@@ -345,7 +345,7 @@ export default function App() {
   }
 
   if (authState === 'ready' && currentUser && currentUser.verificationStatus !== 'VERIFIED') {
-    return <PendingApprovalView status={currentUser.verificationStatus} name={currentUser.name} onLogout={handleLogout} />;
+    return <PendingApprovalView status={currentUser.verificationStatus} name={currentUser.name} role={currentUser.role} onLogout={handleLogout} />;
   }
 
   if (loading || !currentUser) {

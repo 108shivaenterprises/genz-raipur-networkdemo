@@ -120,6 +120,7 @@ import { verifySigningPassword } from './server/signing.js';
 import { createProfilePhotoRouter } from './server/profilephoto.js';
 import { createDealHubRouter } from './server/dealhub.js';
 import { createChatsRouter } from './server/chats.js';
+import { createSavedRouter } from './server/saved.js';
 import { createSidesRouter, shapeSideDeal, stripSideData } from './server/sides.js';
 import { allSidesDone, checkProposerSide, feeFor, isOwnSide, otherSide, undertakingDone } from './src/shared/sideFees.js';
 import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } from './server/partywatch.js';
@@ -5400,6 +5401,7 @@ app.use('/api/party-watch', createPartyWatchRouter());
 app.use('/api/profile-photo', createProfilePhotoRouter());
 app.use('/api/deal-hub', createDealHubRouter());
 app.use('/api/chats', createChatsRouter());
+app.use('/api/saved', createSavedRouter());
 app.use('/api/deals', createSidesRouter());
 app.use('/api/deals', createDealCloseRouter());
 // v48 — brokerage bills to the owner / buyer (+ the party's page /pay/:token)

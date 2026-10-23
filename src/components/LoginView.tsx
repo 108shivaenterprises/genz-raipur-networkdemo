@@ -5,6 +5,8 @@ import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { JoinView } from './JoinView.js';
 import { AccessRequest } from './AccessRequest.js';
 import { BrandMark } from './BrandMark.js';
+import { IdDocSlot } from './IdDocSlot.js';
+import { ID_DOC_NOTE } from '../shared/idRules.js';
 
 interface Props {
   onLoggedIn: (session: Awaited<ReturnType<typeof api.login>>) => void;
@@ -213,15 +215,62 @@ export const ChangePasswordView: React.FC<{ onDone: () => void; onLogout: () => 
   );
 };
 
-export const PendingApprovalView: React.FC<{ status: string; name: string; onLogout: () => void }> = ({ status, name, onLogout }) => {
+/**
+ * v56 — the waiting screen of a new member. It used to say only "verification in progress" with a Sign-out button: a dead end.
+ * Now a broker sees the state of his ID check (and what GENZ asked him to change), can add / replace the photo of his PAN and masked
+ * Aadhaar here (the same upload as in My ID — allowed while pending), and knows what happens next. Nothing about the review rules changed.
+ */
+export const PendingApprovalView: React.FC<{ status: string; name: string; role?: string; onLogout: () => void }> = ({ status, name, role, onLogout }) => {
   const { t, lang } = useI18n();
+  const tx = useTx();
+  const [mine, setMine] = useState<any>(null);
+  const [msg, setMsg] = useState('');
+  const isBroker = role === 'BROKER';
+  const load = () => api.idMine().then(setMine).catch(() => setMine({ docs: [], review: null, failed: true }));
+  useEffect(() => { if (isBroker && status === 'PENDING') void load(); }, [isBroker, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  const docOf = (k: string) => (mine?.docs || []).find((d: any) => d.kind === k);
+  const review = mine?.review;
+  const step = (n: number, done: boolean, en: string, hi: string) => (
+    <li className="flex items-start gap-2 text-left text-sm"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${done ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>{done ? '✓' : n}</span><span className={done ? 'text-slate-500' : 'text-slate-800'}>{tx(en, hi)}</span></li>
+  );
+  const both = !!docOf('PAN') && !!docOf('AADHAAR');
   return (
-  <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-8">
+    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm" data-testid="pending-view">
       <ShieldCheck className="mx-auto h-8 w-8 text-amber-500" />
       <h1 className="mt-3 text-base font-bold text-slate-900">{t('pending.title', 'Verification in progress')}</h1>
-      <p className="mt-2 text-sm text-slate-600">{lang === 'hi' ? <>{name}, आपका अकाउंट <b>{status.replace('_', ' ')}</b> है। GENZ ऑपरेशंस आपके KYC दस्तावेज़ सत्यापित कर दे, उसके बाद मार्केटप्लेस, डील रूम और CRM खुल जाएँगे।</> : <>{name}, your account is <b>{status.replace('_', ' ')}</b>. Marketplace, deal rooms and CRM unlock after GENZ Operations verifies your KYC documents.</>}</p>
-      <button onClick={onLogout} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{t('common.signOut', 'Sign out')}</button>
+      <p className="mt-2 text-sm text-slate-600">{lang === 'hi' ? <>{name}, आपका अकाउंट <b>{status.replace('_', ' ')}</b> है। GENZ ऑपरेशंस आपके KYC दस्तावेज़ सत्यापित कर दे, तब मार्केटप्लेस, डील रूम और CRM खुलेंगे।</> : <>{name}, your account is <b>{status.replace('_', ' ')}</b>. Marketplace, deal rooms and CRM unlock after GENZ Operations verifies your KYC documents.</>}</p>
+      {isBroker && status === 'PENDING' && (
+        <div className="mt-4 space-y-3 text-left">
+          {review?.status === 'CHANGES_ASKED' && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" data-testid="pending-changes">
+              <p className="font-bold">{tx('GENZ asked for a change', 'GENZ ने बदलाव माँगा है')}</p>
+              {review.note && <p className="mt-1">“{review.note}”</p>}
+              <p className="mt-1 text-xs">{tx('Upload the corrected photo below — the review opens again by itself.', 'नीचे सही फ़ोटो अपलोड करें — जाँच अपने आप फिर शुरू होगी।')}</p>
+            </div>
+          )}
+          <ol className="space-y-2 rounded-xl bg-slate-50 p-3" data-testid="pending-steps">
+            {step(1, true, 'Account made', 'अकाउंट बन गया')}
+            {step(2, both, 'Photo of your PAN card and masked Aadhaar added (below)', 'PAN कार्ड और मास्क्ड आधार की फ़ोटो जोड़ी (नीचे)')}
+            {step(3, false, 'GENZ team checks the cards — you get access as soon as it is done', 'GENZ टीम कार्ड जाँचती है — होते ही आपको एक्सेस मिल जाएगा')}
+          </ol>
+          {mine === null ? <div className="flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div> : mine.failed ? null : (
+            <div className="grid grid-cols-1 gap-2" data-testid="pending-id">
+              {(['PAN', 'AADHAAR'] as const).map(k => (
+                <IdDocSlot key={k} kind={k} doc={docOf(k)} canOpen
+                  onChoose={async p => { await api.idMineUpload({ kind: k, fileName: p.fileName, data: p.data }); setMsg(tx('Copy uploaded — the GENZ team will look at it.', 'कॉपी अपलोड हो गई — GENZ टीम देखेगी।')); await load(); }}
+                  onClear={async () => { const x = docOf(k); if (x) { await api.idMineDelete(x.id); await load(); } }} />
+              ))}
+              <p className="text-[11px] text-slate-500">{tx(ID_DOC_NOTE.en, ID_DOC_NOTE.hi)}</p>
+            </div>
+          )}
+          {msg && <p className="text-sm font-medium text-emerald-700" role="status">{msg}</p>}
+        </div>
+      )}
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
+        <button onClick={() => window.location.reload()} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" data-testid="pending-refresh">{tx('Check again', 'फिर देखें')}</button>
+        <button onClick={onLogout} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{t('common.signOut', 'Sign out')}</button>
+      </div>
     </div>
   </div>
   );

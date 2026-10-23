@@ -46,7 +46,9 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   const hi = useI18n().lang === 'hi';
   const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
   const [open, setOpen] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('room') || ''; } catch { return ''; } });
-  const [creating, setCreating] = useState(false);
+  // v56 — "Open a client room" from a shop-QR lead fills the new-room form (handed over in this tab's session storage, never in the URL)
+  const [prefill] = useState<any>(() => { try { const v = sessionStorage.getItem('genz.newroom'); if (v) { sessionStorage.removeItem('genz.newroom'); return JSON.parse(v); } } catch { /* blocked */ } return null; });
+  const [creating, setCreating] = useState(!!prefill);
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string } | null>(null);
   const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all');
   const load = () => api.crList().then(r => { setD(r); window.dispatchEvent(new Event('genz:rooms-changed')); }).catch(e => setErr(e.message));
@@ -120,7 +122,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
         </div>
         <button className={dark} onClick={() => setCreating(v => !v)} data-testid="room-new"><Plus className="h-4 w-4" />{tx('New room', 'नया रूम')}</button>
       </div>
-      {creating && <NewRoom onDone={(link, name, phone, id) => { setCreating(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
+      {creating && <NewRoom defaults={prefill || undefined} onDone={(link, name, phone, id) => { setCreating(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
 
       {active.length === 0 && !creating ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">{tx('No client room yet. Tap “New room” and add your client\'s name and mobile.', 'अभी कोई क्लाइंट रूम नहीं। “नया रूम” दबाएँ और अपने क्लाइंट का नाम और मोबाइल डालें।')}</p>
@@ -167,9 +169,9 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   );
 };
 
-const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id: string) => void }> = ({ onDone }) => {
+const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id: string) => void; defaults?: { clientName?: string; phone?: string; kind?: string; note?: string } }> = ({ onDone, defaults }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
-  const [f, setF] = useState({ clientName: '', phone: '', kind: 'BUYER', note: '', consent: false });
+  const [f, setF] = useState({ clientName: defaults?.clientName || '', phone: defaults?.phone || '', kind: defaults?.kind || 'BUYER', note: defaults?.note || '', consent: false });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const go = async () => {
     setBusy(true); setErr('');

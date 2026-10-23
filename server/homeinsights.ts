@@ -6,6 +6,7 @@
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
 import { activeMembership } from './billing.js';
+import { calculatePropertyMatch } from './matching.js';
 
 const DAY = 86400_000;
 const st = () => db.getState();
@@ -16,6 +17,7 @@ export function insightsFor(u: UserProfile): { role: string; [k: string]: unknow
   switch (u.role) {
     case 'PROPERTY_OWNER': {
       const mine = s.properties.filter(p => p.ownerId === u.id && !['draft'].includes(p.listingStatus)).slice(0, 20);
+      const openNeeds = s.requirements.filter(r => ['active', 'matching'].includes(String(r.status)));
       return {
         role: u.role,
         listings: mine.map(p => {
@@ -28,6 +30,8 @@ export function insightsFor(u: UserProfile): { role: string; [k: string]: unknow
             offers: s.propertyOffers.filter(o => o.propertyId === p.id).length,
             days: Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / DAY)),
             canMarkSold: ['active', 'under_negotiation'].includes(p.listingStatus),
+            // v56 — how many buyers / renters on GENZ want a home like this (a count only: no names, no numbers, no broker)
+            demand: ['active', 'under_negotiation'].includes(p.listingStatus) ? openNeeds.filter(r => calculatePropertyMatch(p, r).score >= 50).length : 0,
           };
         }),
       };
@@ -39,6 +43,11 @@ export function insightsFor(u: UserProfile): { role: string; [k: string]: unknow
         role: u.role,
         visits: visits.map(v => ({ id: v.id, propertyId: v.propertyId, title: s.properties.find(p => p.id === v.propertyId)?.title || v.propertyId, at: v.scheduledTime, verified: v.isVerified })),
         needs: s.requirements.filter(r => r.buyerId === u.id).length,
+        // v56 — the homes I saved (public facts only)
+        saved: (s.savedProperties || []).filter(x => x.userId === u.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10).map(x => {
+          const p = s.properties.find(q => q.id === x.propertyId);
+          return p ? { id: p.id, title: p.title, locality: p.locality, city: p.city, askingPrice: p.askingPrice, transactionType: p.transactionType, image: (p.images || [])[0], available: ['active', 'under_negotiation'].includes(p.listingStatus) } : null;
+        }).filter(Boolean),
       };
     }
     case 'LEGAL_COUNSEL': {

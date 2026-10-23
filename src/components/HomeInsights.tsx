@@ -3,7 +3,7 @@
  * the usual home. Every line opens the screen that holds the detail.
  */
 import React, { useEffect, useState } from 'react';
-import { Loader2, Eye, MessageSquare, CalendarCheck, Handshake, AlertTriangle, CheckCircle2, Scale, Hammer, Users, TrendingUp, Calculator, Clock, ArrowRight, Store } from 'lucide-react';
+import { Loader2, Eye, MessageSquare, CalendarCheck, Handshake, AlertTriangle, CheckCircle2, Scale, Hammer, Users, TrendingUp, Calculator, Clock, ArrowRight, Store, Heart } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR, formatDateTime } from '../lib/utils.js';
@@ -52,6 +52,7 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
                 <div><div className="text-sm font-semibold text-slate-900">{p.title}</div><div className="text-xs text-slate-500">{formatINR(p.askingPrice)} · {tx(`${p.days} days listed`, `${p.days} दिन से लिस्टेड`)} · {p.status.replace('_', ' ')}</div></div>
                 {p.canMarkSold && <button type="button" onClick={() => goto('desk', { sub: 'listings' }, onNavigate)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800" data-testid={`owner-sold-${p.id}`}>{tx('Mark sold / rented', 'बिकी / किराए पर दर्ज करें')}</button>}
               </div>
+              {p.demand > 0 && <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-900" data-testid={`owner-demand-${p.id}`}><Users className="h-4 w-4 shrink-0" aria-hidden />{tx(`${p.demand} buyer${p.demand > 1 ? 's' : ''} on GENZ ${p.demand > 1 ? 'are' : 'is'} looking for a home like this — brokers can show it to them`, `GENZ पर ${p.demand} खरीदार इस जैसी प्रॉपर्टी ढूँढ रहे हैं — ब्रोकर उन्हें दिखा सकते हैं`)}</p>}
               <div className="mt-2 grid grid-cols-4 gap-2 text-center text-xs">
                 <div className={stat}><Eye className="mx-auto h-3.5 w-3.5 text-slate-400" /><b>{p.views}</b><div className="text-[10px] text-slate-500">{tx('poster views', 'पोस्टर व्यू')}</div></div>
                 <div className={stat}><MessageSquare className="mx-auto h-3.5 w-3.5 text-slate-400" /><b>{p.enquiries}</b><div className="text-[10px] text-slate-500">{tx('enquiries', 'पूछताछ')}</div></div>
@@ -72,6 +73,20 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarCheck className="h-4 w-4 text-slate-500" />{tx('My site visits', 'मेरी साइट विज़िट')}</h3>
           {d.visits.length === 0 ? <p className="mt-2 text-xs text-slate-500">{tx('No visits yet. When a broker books a visit for you it shows here.', 'अभी कोई विज़िट नहीं। ब्रोकर आपके लिए विज़िट बुक करेगा तो यहाँ दिखेगी।')}</p> : (
             <ul className="mt-2 divide-y divide-slate-100 text-sm">{d.visits.map((v: any) => <li key={v.id} className="flex items-center justify-between gap-2 py-2"><span>{v.title}<span className="block text-xs text-slate-500">{formatDateTime(v.at)}</span></span><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${v.verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{v.verified ? tx('Visited ✔', 'देख ली ✔') : tx('Upcoming', 'आने वाली')}</span></li>)}</ul>
+          )}
+        </section>
+        {/* v56 — homes I saved (Properties / Magic Match → ♡ Save) */}
+        <section className={card} data-testid="buyer-saved">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Heart className="h-4 w-4 text-rose-500" />{tx('Saved homes', 'सेव किए घर')}{(d.saved || []).length > 0 && <span className="rounded-full bg-slate-100 px-2 text-xs text-slate-600">{d.saved.length}</span>}</h3>
+          {(d.saved || []).length === 0 ? <p className="mt-2 text-xs text-slate-500">{tx('Tap ♡ Save on a home in Properties or Magic Match to keep it here.', 'Properties या मैजिक मैच में किसी घर पर ♡ सेव दबाएँ — वह यहाँ रहेगा।')}</p> : (
+            <ul className="mt-2 divide-y divide-slate-100">
+              {d.saved.map((p: any) => (
+                <li key={p.id}><button type="button" onClick={() => goto('properties', { propertyId: p.id }, onNavigate)} className="flex min-h-12 w-full items-center gap-3 py-2 text-left">
+                  {p.image ? <img src={p.image} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-lg object-cover bg-slate-100" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-slate-100" />}
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-900">{p.title}</span><span className="block truncate text-xs text-slate-500">{p.locality}, {p.city} · {formatINR(p.askingPrice)}{p.available ? '' : ` · ${tx('no longer available', 'अब उपलब्ध नहीं')}`}</span></span>
+                </button></li>
+              ))}
+            </ul>
           )}
         </section>
         <section className={card}>
