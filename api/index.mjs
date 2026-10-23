@@ -43180,7 +43180,12 @@ process.chdir(work);
 
 // server.ts
 await init_bootstrap();
-var import_express59 = __toESM(require_express2(), 1);
+
+// server/webpush.ts
+var import_express = __toESM(require_express2(), 1);
+import crypto6 from "crypto";
+import fs4 from "fs";
+import path4 from "path";
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -67335,6 +67340,297 @@ var Database = class {
 var db = new Database();
 process.once("exit", () => db.flush());
 
+// server/webpush.ts
+var b64u = (b) => Buffer.from(b).toString("base64url");
+var unb64u = (s) => Buffer.from(String(s).replace(/=+$/, ""), "base64url");
+var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
+function hkdf(salt, ikm, info, len) {
+  const prk = crypto6.createHmac("sha256", salt).update(ikm).digest();
+  const out = [];
+  let prev = Buffer.alloc(0);
+  let n2 = 0;
+  while (Buffer.concat(out).length < len) {
+    n2++;
+    prev = crypto6.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
+    out.push(prev);
+  }
+  return Buffer.concat(out).subarray(0, len);
+}
+function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
+  const uaPublic = unb64u(uaPublicB64);
+  const authSecret = unb64u(authSecretB64);
+  if (uaPublic.length !== 65 || uaPublic[0] !== 4) throw new Error("PUSH_BAD_KEY");
+  if (authSecret.length < 16) throw new Error("PUSH_BAD_AUTH");
+  const ecdh = crypto6.createECDH("prime256v1");
+  if (opts.asPrivate) ecdh.setPrivateKey(opts.asPrivate);
+  else ecdh.generateKeys();
+  const asPublic = ecdh.getPublicKey();
+  const shared = ecdh.computeSecret(uaPublic);
+  const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0"), uaPublic, asPublic]);
+  const ikm = hkdf(authSecret, shared, keyInfo, 32);
+  const salt = opts.salt || crypto6.randomBytes(16);
+  const cek = hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12);
+  const rs = opts.rs || 4096;
+  const plain = Buffer.concat([payload, Buffer.from([2])]);
+  if (plain.length + 16 > rs) throw new Error("PUSH_TOO_BIG");
+  const cipher = crypto6.createCipheriv("aes-128-gcm", cek, nonce);
+  const ct = Buffer.concat([cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
+  const header = Buffer.alloc(21);
+  salt.copy(header, 0);
+  header.writeUInt32BE(rs, 16);
+  header[20] = asPublic.length;
+  return Buffer.concat([header, asPublic, ct]);
+}
+function generateVapidKeys() {
+  const e = crypto6.createECDH("prime256v1");
+  e.generateKeys();
+  return { publicKey: b64u(e.getPublicKey()), privateKey: b64u(e.getPrivateKey()) };
+}
+function privateKeyObject(k) {
+  const pub = unb64u(k.publicKey);
+  return crypto6.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u(pub.subarray(1, 33)), y: b64u(pub.subarray(33, 65)) }, format: "jwk" });
+}
+function vapidAuth(endpoint, k, subject2, expSec = Math.floor(Date.now() / 1e3) + 12 * 3600) {
+  const aud = new URL(endpoint).origin;
+  const head = b64u(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const body = b64u(Buffer.from(JSON.stringify({ aud, exp: expSec, sub: subject2 })));
+  const sig = crypto6.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
+  return `vapid t=${head}.${body}.${b64u(sig)}, k=${k.publicKey}`;
+}
+var cached2 = null;
+function vapidKeys() {
+  if (cached2) return cached2;
+  const pub = process.env.VAPID_PUBLIC_KEY, prv = process.env.VAPID_PRIVATE_KEY;
+  try {
+    if (pub && prv) {
+      const k2 = { publicKey: pub.trim(), privateKey: prv.trim() };
+      privateKeyObject(k2);
+      return cached2 = k2;
+    }
+    const file2 = process.env.VAPID_KEY_FILE === "" ? "" : process.env.VAPID_KEY_FILE || path4.resolve(process.cwd(), "data", ".vapid.json");
+    if (!file2) return null;
+    if (fs4.existsSync(file2)) {
+      const k2 = JSON.parse(fs4.readFileSync(file2, "utf8"));
+      privateKeyObject(k2);
+      return cached2 = k2;
+    }
+    const k = generateVapidKeys();
+    fs4.mkdirSync(path4.dirname(file2), { recursive: true });
+    fs4.writeFileSync(file2, JSON.stringify(k), { mode: 384 });
+    return cached2 = k;
+  } catch (e) {
+    console.error("[PUSH] VAPID key problem \u2014 push is off:", e.message);
+    return null;
+  }
+}
+var subject = () => process.env.VAPID_SUBJECT || (process.env.PUBLIC_URL ? process.env.PUBLIC_URL.replace(/\/+$/, "") : "mailto:support@genzbuildcon.com");
+var PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/, /^push\.services\.mozilla\.com$/];
+function allowedEndpoint(endpoint) {
+  try {
+    const u = new URL(endpoint);
+    return u.protocol === "https:" && !u.port && PUSH_HOSTS.some((re) => re.test(u.hostname)) && endpoint.length <= 1e3;
+  } catch {
+    return false;
+  }
+}
+var DAILY_CAP = 40;
+var pushLog = [];
+var fetchImpl = (...a) => fetch(...a);
+var istHour = (d = /* @__PURE__ */ new Date()) => (d.getUTCHours() + 5 + (d.getUTCMinutes() + 30 >= 60 ? 1 : 0)) % 24;
+var istDay = (d = /* @__PURE__ */ new Date()) => new Date(d.getTime() + 330 * 6e4).toISOString().slice(0, 10);
+function prefsOf(userId) {
+  const s = db.getState();
+  let p = s.pushPrefs.find((x) => x.userId === userId);
+  if (!p) {
+    p = { id: userId, userId, matches: true, deals: true, consent: true, broadcast: true, digest: true, quiet: true };
+    s.pushPrefs.push(p);
+  }
+  return p;
+}
+async function pushTo(userId, msg) {
+  try {
+    const s = db.getState();
+    const who = s.users.find((x) => x.id === userId);
+    if (!who || who.verificationStatus === "SUSPENDED" || who.verificationStatus === "BLACKLISTED") return 0;
+    if (who.verificationStatus !== "VERIFIED" && msg.kind !== "system") return 0;
+    const subs = s.pushSubs.filter((x) => x.userId === userId);
+    const p = prefsOf(userId);
+    if (msg.kind !== "system" && p[msg.kind] === false) return 0;
+    if (p.quiet && msg.kind !== "consent" && msg.kind !== "system") {
+      const h = istHour();
+      if (h >= 22 || h < 7) return 0;
+    }
+    const day2 = istDay();
+    if (!p.sentToday || p.sentToday.day !== day2) p.sentToday = { day: day2, n: 0 };
+    if (p.sentToday.n >= DAILY_CAP) return 0;
+    p.sentToday.n++;
+    pushLog.push({ userId, msg, endpoints: subs.length, at: nowIso() });
+    if (pushLog.length > 500) pushLog.shift();
+    const keys = vapidKeys();
+    if (!keys || !subs.length) return 0;
+    const words = p.lang === "hi" && msg.hi ? msg.hi : msg;
+    const payload = Buffer.from(JSON.stringify({ t: words.title.slice(0, 80), b: words.body.slice(0, 180), u: msg.url && msg.url.startsWith("/") ? msg.url : "/", g: msg.tag || msg.kind }));
+    let ok = 0;
+    await Promise.all(subs.map(async (sub2) => {
+      if (!allowedEndpoint(sub2.endpoint)) return;
+      try {
+        const body = encryptPayload(payload, sub2.p256dh, sub2.auth);
+        const r = await fetchImpl(sub2.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: msg.kind === "consent" ? "high" : "normal", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: vapidAuth(sub2.endpoint, keys, subject()) }, body, signal: AbortSignal.timeout(8e3) });
+        if (r.status === 404 || r.status === 410) {
+          s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
+          return;
+        }
+        if (r.ok) {
+          ok++;
+          sub2.lastOkAt = nowIso();
+          sub2.fails = 0;
+        } else sub2.fails = (sub2.fails || 0) + 1;
+      } catch {
+        sub2.fails = (sub2.fails || 0) + 1;
+      }
+      if (sub2.fails >= 8) s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
+    }));
+    db.save();
+    return ok;
+  } catch (e) {
+    console.error("[PUSH] send failed:", e.message);
+    return 0;
+  }
+}
+var subSchema = external_exports.object({ endpoint: external_exports.string().url().max(1e3), keys: external_exports.object({ p256dh: external_exports.string().min(80).max(120), auth: external_exports.string().min(16).max(40) }) });
+var prefSchema = external_exports.object({ matches: external_exports.boolean(), deals: external_exports.boolean(), consent: external_exports.boolean(), broadcast: external_exports.boolean(), digest: external_exports.boolean(), quiet: external_exports.boolean(), lang: external_exports.enum(["en", "hi"]) }).partial().strict();
+var prefView = (p) => ({ matches: p.matches, deals: p.deals, consent: p.consent, broadcast: p.broadcast, digest: p.digest, quiet: p.quiet, lang: p.lang || "en" });
+function createPushRouter() {
+  const r = (0, import_express.Router)();
+  const me26 = () => ctx().user;
+  r.get("/key", (_req, res) => {
+    const k = vapidKeys();
+    res.json({ success: true, publicKey: k?.publicKey || null });
+  });
+  r.get("/recent", requireAuth, (_req, res) => {
+    const id = me26().id;
+    res.json({ success: true, alerts: pushLog.filter((x) => x.userId === id).slice(-30).reverse().map((x) => ({ kind: x.msg.kind, title: x.msg.title, body: x.msg.body, ...x.msg.hi ? { hi: x.msg.hi } : {}, url: x.msg.url, at: x.at })) });
+  });
+  r.post("/subscribe", requireAuth, rateLimit("push-sub", 30, 36e5), (req, res) => {
+    const p = subSchema.safeParse(req.body);
+    if (!p.success) return res.status(400).json({ error: "This browser sent an unusable push address." });
+    if (!allowedEndpoint(p.data.endpoint)) return res.status(400).json({ error: "This browser\u2019s push service is not supported.", code: "PUSH_HOST" });
+    try {
+      encryptPayload(Buffer.from("x"), p.data.keys.p256dh, p.data.keys.auth);
+    } catch {
+      return res.status(400).json({ error: "The browser\u2019s push keys are not valid." });
+    }
+    const s = db.getState();
+    const u = me26();
+    const id = crypto6.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
+    s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
+    const mine3 = s.pushSubs.filter((x) => x.userId === u.id);
+    if (mine3.length >= 6) {
+      const oldest = mine3.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      s.pushSubs = s.pushSubs.filter((x) => x.id !== oldest.id);
+    }
+    s.pushSubs.push({ id, userId: u.id, endpoint: p.data.endpoint, p256dh: p.data.keys.p256dh, auth: p.data.keys.auth, ua: String(req.headers["user-agent"] || "").slice(0, 120), createdAt: nowIso(), fails: 0 });
+    prefsOf(u.id);
+    db.save();
+    res.json({ success: true, devices: s.pushSubs.filter((x) => x.userId === u.id).length, me: u.id });
+  });
+  r.post("/sync", requireAuth, rateLimit("push-sync", 60, 36e5), (req, res) => {
+    const p = subSchema.safeParse(req.body);
+    if (!p.success) return res.status(400).json({ error: "This browser sent an unusable push address." });
+    const s = db.getState();
+    const u = me26();
+    const id = crypto6.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
+    const cur = s.pushSubs.find((x) => x.id === id);
+    if (cur && cur.userId === u.id) {
+      if (cur.p256dh !== p.data.keys.p256dh || cur.auth !== p.data.keys.auth) {
+        cur.p256dh = p.data.keys.p256dh;
+        cur.auth = p.data.keys.auth;
+        db.save();
+      }
+      return res.json({ success: true, state: "mine" });
+    }
+    if (cur) {
+      s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
+      db.save();
+      return res.json({ success: true, state: "released" });
+    }
+    res.json({ success: true, state: "none" });
+  });
+  r.post("/unsubscribe", requireAuth, (req, res) => {
+    const s = db.getState();
+    const u = me26();
+    const ep = String(req.body?.endpoint || "");
+    s.pushSubs = s.pushSubs.filter((x) => !(x.userId === u.id && (!ep || x.endpoint === ep)));
+    db.save();
+    res.json({ success: true, devices: s.pushSubs.filter((x) => x.userId === u.id).length });
+  });
+  r.get("/prefs", requireAuth, (_req, res) => {
+    const u = me26();
+    const p = prefsOf(u.id);
+    res.json({ success: true, prefs: prefView(p), devices: db.getState().pushSubs.filter((x) => x.userId === u.id).length, ready: !!vapidKeys() });
+  });
+  r.put("/prefs", requireAuth, (req, res) => {
+    const v = prefSchema.safeParse(req.body);
+    if (!v.success) return res.status(400).json({ error: "Invalid choice" });
+    const p = prefsOf(me26().id);
+    Object.assign(p, v.data);
+    db.save();
+    res.json({ success: true, prefs: prefView(p) });
+  });
+  r.post("/test", requireAuth, rateLimit("push-test", 10, 36e5), async (_req, res) => {
+    const u = me26();
+    const body = {
+      BROKER: "You will get new matches, offers, owner consents and builder leads here.",
+      DEVELOPER_BUILDER: "You will get partner requests, leads, bookings and payments here.",
+      TEAM_MEMBER: "You will get the leads, deals and client messages of your work here.",
+      LEGAL_COUNSEL: "You will get new legal cases in your states and their messages here.",
+      CONTRACTOR: "You will get new construction leads in your city here."
+    }[u.role] || "You will get your GENZ updates here.";
+    const hiBody = {
+      BROKER: "\u0928\u090F \u092E\u0948\u091A, \u0911\u092B\u093C\u0930, \u092E\u093E\u0932\u093F\u0915 \u0915\u0940 \u092E\u0902\u091C\u093C\u0942\u0930\u0940 \u0914\u0930 \u092C\u093F\u0932\u094D\u0921\u0930 \u0932\u0940\u0921 \u092F\u0939\u0940\u0902 \u0906\u090F\u0901\u0917\u0947\u0964",
+      DEVELOPER_BUILDER: "\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u0940 \u092E\u093E\u0901\u0917, \u0932\u0940\u0921, \u092C\u0941\u0915\u093F\u0902\u0917 \u0914\u0930 \u092A\u0947\u092E\u0947\u0902\u091F \u092F\u0939\u0940\u0902 \u0906\u090F\u0901\u0917\u0947\u0964",
+      TEAM_MEMBER: "\u0906\u092A\u0915\u0947 \u0915\u093E\u092E \u0915\u0940 \u0932\u0940\u0921, \u0921\u0940\u0932 \u0914\u0930 \u0915\u094D\u0932\u093E\u0907\u0902\u091F \u0915\u0947 \u0938\u0902\u0926\u0947\u0936 \u092F\u0939\u0940\u0902 \u0906\u090F\u0901\u0917\u0947\u0964",
+      LEGAL_COUNSEL: "\u0906\u092A\u0915\u0947 \u0930\u093E\u091C\u094D\u092F\u094B\u0902 \u0915\u0947 \u0928\u090F \u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u0915\u0947\u0938 \u0914\u0930 \u0909\u0928\u0915\u0947 \u0938\u0902\u0926\u0947\u0936 \u092F\u0939\u0940\u0902 \u0906\u090F\u0901\u0917\u0947\u0964",
+      CONTRACTOR: "\u0906\u092A\u0915\u0947 \u0936\u0939\u0930 \u0915\u0940 \u0928\u0908 \u0915\u0902\u0938\u094D\u091F\u094D\u0930\u0915\u094D\u0936\u0928 \u0932\u0940\u0921 \u092F\u0939\u0940\u0902 \u0906\u090F\u0901\u0917\u0940\u0964"
+    }[u.role] || "GENZ \u0915\u0947 \u0905\u092A\u0921\u0947\u091F \u092F\u0939\u0940\u0902 \u0906\u090F\u0901\u0917\u0947\u0964";
+    const n2 = await pushTo(u.id, { kind: "system", title: "GENZ alerts are on \u2714", body, url: "/", hi: { title: "GENZ \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u2714", body: hiBody } });
+    res.json({ success: true, delivered: n2, devices: db.getState().pushSubs.filter((x) => x.userId === u.id).length });
+  });
+  return r;
+}
+
+// server/alerts.ts
+function alert(to, kind, title, body, url3 = "/", opts = {}) {
+  try {
+    const ids2 = [...new Set((Array.isArray(to) ? to : [to]).filter((x) => !!x && x !== opts.not))];
+    const hi = opts.hi ? { title: opts.hi[0].slice(0, 80), body: opts.hi[1].slice(0, 180) } : void 0;
+    for (const id of ids2) void pushTo(id, { kind, title: title.slice(0, 80), body: body.slice(0, 180), url: url3, ...opts.tag ? { tag: opts.tag } : {}, ...hi ? { hi } : {} });
+  } catch {
+  }
+}
+var firstName = (n2) => String(n2 || "").trim().split(/\s+/)[0] || "A customer";
+var inr = (n2) => "\u20B9" + Math.round(Number(n2) || 0).toLocaleString("en-IN");
+function staffWith(employerId, pred) {
+  if (!employerId) return [];
+  return db.getState().users.filter((m) => m.role === "TEAM_MEMBER" && m.employerId === employerId && m.verificationStatus === "VERIFIED" && !m.teamPolicy?.onLeave && pred(m)).map((m) => m.id);
+}
+var builderVerifiers = (builderId) => [builderId, ...staffWith(builderId, (m) => !!m.teamPolicy?.canVerify)];
+var moneyConfirmers = (ownerId) => [ownerId, ...staffWith(ownerId, (m) => !!m.teamPolicy?.canConfirmMoney)];
+var lastAt = /* @__PURE__ */ new Map();
+function once(key, ms) {
+  const now = Date.now();
+  if (now - (lastAt.get(key) || 0) < ms) return false;
+  lastAt.set(key, now);
+  if (lastAt.size > 5e3) {
+    for (const [k, t] of lastAt) if (now - t > ms) lastAt.delete(k);
+  }
+  return true;
+}
+
+// server.ts
+var import_express59 = __toESM(require_express2(), 1);
+
 // server/matching.ts
 function calculatePropertyMatch(property, requirement) {
   let score = 0;
@@ -67451,7 +67747,7 @@ function calculatePropertyMatch(property, requirement) {
 }
 
 // server/validation.ts
-import crypto6 from "node:crypto";
+import crypto7 from "node:crypto";
 var FIELD_NAMES = {
   exactAddressHidden: "Exact address",
   addressHidden: "Exact address",
@@ -67783,7 +68079,7 @@ function maskPhoneNumber(phone) {
 }
 function generateMandateHash(data) {
   const payload = `${data.propertyId}:${data.ownerId}:${data.approvedNetPrice}:${data.agreedCommissionPct ?? 0}:${data.remunerationBasis ?? "SURPLUS_ABOVE_NET"}:${data.fixedFeeAmount ?? 0}:${data.timestamp}`;
-  return crypto6.createHash("sha256").update(payload).digest("hex");
+  return crypto7.createHash("sha256").update(payload).digest("hex");
 }
 
 // server/notify.ts
@@ -67851,8 +68147,8 @@ function purgeDue(soldAtIso, now = Date.now(), days3 = SOLD_PURGE_DAYS) {
 function nextBackup(offers, now = Date.now()) {
   return offers.filter((o) => o.status === "BACKUP" && Date.parse(o.validUntil) > now).sort((a, b) => (a.queueNo ?? 1e9) - (b.queueNo ?? 1e9) || a.createdAt.localeCompare(b.createdAt))[0];
 }
-var firstName = (n2) => String(n2 || "").trim().split(/\s+/)[0] || "";
-var buyerShown = (name, status) => ["ACCEPTED", "TOKEN_HELD", "CLOSED"].includes(status) ? name : firstName(name);
+var firstName2 = (n2) => String(n2 || "").trim().split(/\s+/)[0] || "";
+var buyerShown = (name, status) => ["ACCEPTED", "TOKEN_HELD", "CLOSED"].includes(status) ? name : firstName2(name);
 var OWNER_VISIBLE_KINDS = ["AGREEMENT", "PAYMENT", "REGISTRY", "POSSESSION", "OTHER"];
 
 // server/access.ts
@@ -67978,10 +68274,10 @@ function partnerCard(u) {
 }
 
 // server/crm.ts
-var import_express3 = __toESM(require_express2(), 1);
+var import_express4 = __toESM(require_express2(), 1);
 
 // server/billing.ts
-var import_express = __toESM(require_express2(), 1);
+var import_express2 = __toESM(require_express2(), 1);
 
 // src/shared/networkRules.ts
 var PROBATION_DAYS = 30;
@@ -68245,12 +68541,12 @@ function computeFee(rules, memberPlan, event, p, base, atIso) {
   }
   return { fee: normalFee, normalFee, rule, plan: null };
 }
-var inr = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var inr2 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 function describeRule(r, lang = "en") {
   const ev2 = eventInfo(r.event);
-  if (r.mode === "FLAT") return lang === "hi" ? `\u0939\u0930 \u092C\u093E\u0930 ${inr(r.value)}` : `${inr(r.value)} each time`;
+  if (r.mode === "FLAT") return lang === "hi" ? `\u0939\u0930 \u092C\u093E\u0930 ${inr2(r.value)}` : `${inr2(r.value)} each time`;
   const base = lang === "hi" ? ev2?.baseHi : ev2?.baseEn;
-  const lim = [r.minFee !== void 0 ? lang === "hi" ? `\u0915\u092E \u0938\u0947 \u0915\u092E ${inr(r.minFee)}` : `min ${inr(r.minFee)}` : "", r.maxFee !== void 0 ? lang === "hi" ? `\u091C\u093C\u094D\u092F\u093E\u0926\u093E \u0938\u0947 \u091C\u093C\u094D\u092F\u093E\u0926\u093E ${inr(r.maxFee)}` : `max ${inr(r.maxFee)}` : ""].filter(Boolean).join(", ");
+  const lim = [r.minFee !== void 0 ? lang === "hi" ? `\u0915\u092E \u0938\u0947 \u0915\u092E ${inr2(r.minFee)}` : `min ${inr2(r.minFee)}` : "", r.maxFee !== void 0 ? lang === "hi" ? `\u091C\u093C\u094D\u092F\u093E\u0926\u093E \u0938\u0947 \u091C\u093C\u094D\u092F\u093E\u0926\u093E ${inr2(r.maxFee)}` : `max ${inr2(r.maxFee)}` : ""].filter(Boolean).join(", ");
   return lang === "hi" ? `${base} \u0915\u093E ${r.value}%${lim ? ` (${lim})` : ""}` : `${r.value}% of ${base}${lim ? ` (${lim})` : ""}`;
 }
 function describeBenefit(event, b, lang = "en") {
@@ -68259,7 +68555,7 @@ function describeBenefit(event, b, lang = "en") {
     case "FREE":
       return lang === "hi" ? "\u092E\u0941\u092B\u093C\u094D\u0924" : "free";
     case "FLAT":
-      return lang === "hi" ? `\u0939\u0930 \u092C\u093E\u0930 ${inr(b.value)}` : `${inr(b.value)} each time`;
+      return lang === "hi" ? `\u0939\u0930 \u092C\u093E\u0930 ${inr2(b.value)}` : `${inr2(b.value)} each time`;
     case "PERCENT":
       return lang === "hi" ? `${ev2?.baseHi} \u0915\u093E ${b.value}%` : `${b.value}% of ${ev2?.baseEn}`;
     case "DISCOUNT_PCT":
@@ -68289,10 +68585,10 @@ function addMonths(iso, months) {
 
 // server/billing.ts
 var st = () => db.getState();
-var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso2 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me = () => ctx().user;
 var bad = (res, msg, code = 400, extra = {}) => res.status(code).json({ error: msg, ...extra });
-var inr2 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
+var inr3 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
 var DAY2 = 864e5;
 var nextId = (prefix, ids2, pad3) => `${prefix}${String(ids2.reduce((m, id) => Math.max(m, Number(id.slice(prefix.length)) || 0), 0) + 1).padStart(pad3, "0")}`;
 var isStaff = (u) => u.role === "ADMIN" || u.role === "SUPERADMIN";
@@ -68314,7 +68610,7 @@ function ensureBilling() {
   for (const g of s.billingGates) if (!g.id) g.id = g.key;
   for (const p of s.legalProfiles) if (!p.id) p.id = p.userId;
   if (s.billingMigrated) return;
-  const t = nowIso();
+  const t = nowIso2();
   const legacy = { ...DEFAULT_LEGAL_SETTINGS, ...s.legalSettings || {} };
   const by = "SYSTEM";
   if (!s.billingRules.some((r) => r.event === "LEGAL_CASE")) {
@@ -68434,7 +68730,7 @@ function chargeEvent(i) {
   if (!payer || !eventInfo(i.event)?.payers.includes(payer.segment)) return { fee: 0, normalFee: 0, entry: null };
   const dup = s.billingLedger.find((e2) => e2.kind === "CHARGE" && e2.event === i.event && e2.refId === i.refId && e2.payerId === i.payerId && e2.status !== "CANCELLED");
   if (dup) return { fee: dup.amount, normalFee: dup.calc?.normalFee ?? dup.amount, entry: dup, planId: dup.calc?.planId };
-  const t = nowIso();
+  const t = nowIso2();
   const plan = memberPlanOf(u.id);
   const r = computeFee(s.billingRules, plan, i.event, payer, Math.max(0, i.base || 0), t);
   if (!r.rule || r.fee <= 0) return { fee: 0, normalFee: r.normalFee, entry: null, planId: r.plan?.id };
@@ -68455,14 +68751,14 @@ function chargeEvent(i) {
     status: "DUE",
     createdAt: t,
     updatedAt: t,
-    history: [{ at: t, by: "SYSTEM", what: `${eventInfo(i.event)?.en}: ${describeRule(r.rule)} = ${inr2(r.normalFee)}${r.plan ? ` \u2192 member (${r.plan.name}) ${inr2(r.fee)}` : ""}` }]
+    history: [{ at: t, by: "SYSTEM", what: `${eventInfo(i.event)?.en}: ${describeRule(r.rule)} = ${inr3(r.normalFee)}${r.plan ? ` \u2192 member (${r.plan.name}) ${inr3(r.fee)}` : ""}` }]
   };
   s.billingLedger.push(e);
-  db.appendAuditEvent("SYSTEM", "SUPERADMIN", "SYSTEM", e.id, "GENZ_FEE_CHARGED", `${eventInfo(i.event)?.en} \xB7 ${e.payerName} \xB7 ${inr2(e.amount)}`);
+  db.appendAuditEvent("SYSTEM", "SUPERADMIN", "SYSTEM", e.id, "GENZ_FEE_CHARGED", `${eventInfo(i.event)?.en} \xB7 ${e.payerName} \xB7 ${inr3(e.amount)}`);
   return { fee: r.fee, normalFee: r.normalFee, entry: e, planId: r.plan?.id };
 }
 function cancelCharges(event, refId, reason) {
-  const t = nowIso();
+  const t = nowIso2();
   let n2 = 0;
   for (const e of st().billingLedger) {
     if (e.kind !== "CHARGE" || e.event !== event || e.refId !== refId) continue;
@@ -68551,7 +68847,7 @@ function needAck(res, warnings, ack) {
   return false;
 }
 function createBillingRouter() {
-  const r = (0, import_express.Router)();
+  const r = (0, import_express2.Router)();
   const manage = needs("billing:manage");
   const self = needs("billing:self");
   ensureBilling();
@@ -68598,7 +68894,7 @@ function createBillingRouter() {
     const d = p.data;
     const u = me();
     const s = st();
-    const t = nowIso();
+    const t = nowIso2();
     const ev2 = eventInfo(d.event);
     const wrong = d.segments.filter((x) => !ev2.payers.includes(x));
     if (wrong.length) return bad(res, `${ev2.en} is paid only by: ${ev2.payers.map((x) => segmentInfo(x)?.en).join(", ")}.`);
@@ -68641,7 +68937,7 @@ function createBillingRouter() {
     const d = p.data;
     const u = me();
     const s = st();
-    const t = nowIso();
+    const t = nowIso2();
     if (!(d.monthly && d.monthly > 0) && !(d.yearly && d.yearly > 0) && d.monthly === void 0 && d.yearly === void 0) return bad(res, "Give a monthly or a yearly price (0 is allowed for a free plan).");
     for (const [ev2, b] of Object.entries(d.fees)) {
       if (!b) continue;
@@ -68666,7 +68962,7 @@ function createBillingRouter() {
       plan = { id: nextId("PLAN-", s.billingPlans.filter((x) => /^PLAN-\d+$/.test(x.id)).map((x) => x.id), 3), ...body, createdAt: t, createdBy: u.id, updatedAt: t, updatedBy: u.id, history: [{ at: t, by: u.id, what: "Created" }] };
       s.billingPlans.push(plan);
     }
-    audit(plan.id, existing ? "GENZ_PLAN_CHANGED" : "GENZ_PLAN_CREATED", `${plan.name} \xB7 ${plan.segments.join(", ")} \xB7 ${plan.monthly !== void 0 ? `${inr2(plan.monthly)}/mo ` : ""}${plan.yearly !== void 0 ? `${inr2(plan.yearly)}/yr` : ""}${plan.active ? "" : " \xB7 closed"}`);
+    audit(plan.id, existing ? "GENZ_PLAN_CHANGED" : "GENZ_PLAN_CREATED", `${plan.name} \xB7 ${plan.segments.join(", ")} \xB7 ${plan.monthly !== void 0 ? `${inr3(plan.monthly)}/mo ` : ""}${plan.yearly !== void 0 ? `${inr3(plan.yearly)}/yr` : ""}${plan.active ? "" : " \xB7 closed"}`);
     db.save();
     res.json({ success: true, plan });
   };
@@ -68681,7 +68977,7 @@ function createBillingRouter() {
     if (!p.success) return bad(res, p.error.issues[0]?.message || "Invalid");
     const s = st();
     const u = me();
-    const t = nowIso();
+    const t = nowIso2();
     for (const g of p.data.gates) {
       const info = GATES.find((x) => x.id === g.key);
       const segs = g.segments.filter((x) => info.segments.includes(x));
@@ -68710,7 +69006,7 @@ function createBillingRouter() {
     } else if (p.data.segment) payer = { userId: "-", segment: p.data.segment, state: findState(p.data.state)?.name || "" };
     if (!payer) return bad(res, "GENZ charges this person nothing (no billing group).");
     if (!eventInfo(p.data.event).payers.includes(payer.segment)) return res.json({ success: true, fee: 0, why: `${segmentInfo(payer.segment)?.en} do not pay for ${eventInfo(p.data.event)?.en}.` });
-    const r3 = computeFee(s.billingRules, plan, p.data.event, payer, p.data.base, nowIso());
+    const r3 = computeFee(s.billingRules, plan, p.data.event, payer, p.data.base, nowIso2());
     res.json({
       success: true,
       fee: r3.fee,
@@ -68720,7 +69016,7 @@ function createBillingRouter() {
       who,
       segment: payer.segment,
       state: payer.state,
-      why: !r3.rule ? "No fee rule applies \u2014 nothing is charged." : r3.plan ? `Normal fee ${inr2(r3.normalFee)}; as a member of ${r3.plan.name}: ${inr2(r3.fee)}` : `${describeRule(r3.rule)} = ${inr2(r3.fee)}`
+      why: !r3.rule ? "No fee rule applies \u2014 nothing is charged." : r3.plan ? `Normal fee ${inr3(r3.normalFee)}; as a member of ${r3.plan.name}: ${inr3(r3.fee)}` : `${describeRule(r3.rule)} = ${inr3(r3.fee)}`
     });
   });
   r.get("/ledger", manage, (req, res) => {
@@ -68736,7 +69032,7 @@ function createBillingRouter() {
     const u = me();
     const e = st().billingLedger.find((x) => x.id === req.params.id);
     if (!e) return bad(res, "Entry not found", 404);
-    const t = nowIso();
+    const t = nowIso2();
     if (name === "waive") {
       if (!["DUE", "REJECTED", "MARKED_PAID"].includes(e.status)) return bad(res, "Already settled.", 409);
       const p = external_exports.object({ note: external_exports.string().trim().min(5, "Say why (at least 5 characters).").max(300) }).safeParse(req.body);
@@ -68772,7 +69068,7 @@ function createBillingRouter() {
       }
     }
     e.updatedAt = t;
-    audit(e.id, `GENZ_FEE_${name.toUpperCase()}`, `${e.kind === "MEMBERSHIP" ? `Membership ${e.planName}` : eventInfo(e.event)?.en} \xB7 ${e.payerName}${e.event === "BROKER_DEAL" ? "" : ` \xB7 ${inr2(e.amount)}`}`);
+    audit(e.id, `GENZ_FEE_${name.toUpperCase()}`, `${e.kind === "MEMBERSHIP" ? `Membership ${e.planName}` : eventInfo(e.event)?.en} \xB7 ${e.payerName}${e.event === "BROKER_DEAL" ? "" : ` \xB7 ${inr3(e.amount)}`}`);
     db.save();
     res.json({ success: true, entry: shapeEntry(e, true) });
   });
@@ -68786,7 +69082,7 @@ function createBillingRouter() {
     const p = external_exports.object({ note: external_exports.string().trim().min(5, "Write what was done (at least 5 characters).").max(300) }).safeParse(req.body);
     if (!p.success) return bad(res, p.error.issues[0]?.message || "Invalid");
     e.needsRefund = false;
-    e.updatedAt = nowIso();
+    e.updatedAt = nowIso2();
     e.history.push({ at: e.updatedAt, by: u.id, what: `Refund settled: ${p.data.note}` });
     audit(e.id, "GENZ_FEE_REFUND_SETTLED", p.data.note);
     db.save();
@@ -68801,7 +69097,7 @@ function createBillingRouter() {
     const payer = payerOf(u);
     if (!payer || !plan.segments.includes(payer.segment)) return bad(res, `${u.name} is not in a group this plan is for.`);
     const s = st();
-    const t = nowIso();
+    const t = nowIso2();
     const l = lastValidTo(u.id);
     const from = l && l > t ? l : t;
     const e = { id: nextId("GZF-", s.billingLedger.map((x) => x.id), 6), kind: "MEMBERSHIP", payerId: u.id, payerName: u.companyName ? `${u.name} \u2014 ${u.companyName}` : u.name, payerSegment: payer.segment, amount: 0, planId: plan.id, planName: plan.name, months: p.data.months, comp: true, validFrom: from, validTo: addMonths(from, p.data.months), status: "WAIVED", note: p.data.note, createdAt: t, updatedAt: t, history: [{ at: t, by: me().id, what: `Given free for ${p.data.months} month(s): ${p.data.note}` }] };
@@ -68815,7 +69111,7 @@ function createBillingRouter() {
     if (!e || !e.validTo) return bad(res, "Membership not found", 404);
     const p = external_exports.object({ note: external_exports.string().trim().min(5, "Say why (at least 5 characters).").max(300) }).safeParse(req.body);
     if (!p.success) return bad(res, p.error.issues[0]?.message || "Invalid");
-    const t = nowIso();
+    const t = nowIso2();
     if (e.validTo <= t) return bad(res, "This membership has already ended.", 409);
     e.validTo = t;
     e.updatedAt = t;
@@ -68829,7 +69125,7 @@ function createBillingRouter() {
     const u = me();
     const s = st();
     const payer = payerOf(u);
-    const now = nowIso();
+    const now = nowIso2();
     if (!payer) return res.json({ success: true, segment: null, plans: [], rules: [], ledger: [], gates: [], membership: null });
     const mem2 = activeMembership(u.id);
     const plan = mem2 ? planById(mem2.planId) : null;
@@ -68856,9 +69152,9 @@ function createBillingRouter() {
     const price = p.data.period === "MONTHLY" ? plan.monthly : plan.yearly;
     if (price === void 0) return bad(res, `This plan has no ${p.data.period.toLowerCase()} price.`);
     if (s.billingLedger.some((e2) => e2.kind === "MEMBERSHIP" && e2.payerId === u.id && ["DUE", "MARKED_PAID", "REJECTED"].includes(e2.status))) return bad(res, "You already have a membership payment in progress.", 409);
-    const t = nowIso();
+    const t = nowIso2();
     const months = p.data.period === "YEARLY" ? 12 : 1;
-    const e = { id: nextId("GZF-", s.billingLedger.map((x) => x.id), 6), kind: "MEMBERSHIP", payerId: u.id, payerName: u.companyName ? `${u.name} \u2014 ${u.companyName}` : u.name, payerSegment: payer.segment, amount: Math.round(price), planId: plan.id, planName: plan.name, period: p.data.period, months, status: "DUE", createdAt: t, updatedAt: t, history: [{ at: t, by: u.id, what: `Asked for ${plan.name} (${p.data.period.toLowerCase()}, ${inr2(price)})` }] };
+    const e = { id: nextId("GZF-", s.billingLedger.map((x) => x.id), 6), kind: "MEMBERSHIP", payerId: u.id, payerName: u.companyName ? `${u.name} \u2014 ${u.companyName}` : u.name, payerSegment: payer.segment, amount: Math.round(price), planId: plan.id, planName: plan.name, period: p.data.period, months, status: "DUE", createdAt: t, updatedAt: t, history: [{ at: t, by: u.id, what: `Asked for ${plan.name} (${p.data.period.toLowerCase()}, ${inr3(price)})` }] };
     if (price === 0) {
       const l = lastValidTo(u.id);
       const from = l && l > t ? l : t;
@@ -68868,7 +69164,7 @@ function createBillingRouter() {
       e.history.push({ at: t, by: "SYSTEM", what: "Free plan \u2014 active at once" });
     }
     s.billingLedger.push(e);
-    audit(e.id, "GENZ_MEMBERSHIP_REQUESTED", `${plan.name} \xB7 ${u.name} \xB7 ${inr2(price)}`);
+    audit(e.id, "GENZ_MEMBERSHIP_REQUESTED", `${plan.name} \xB7 ${u.name} \xB7 ${inr3(price)}`);
     db.save();
     res.json({ success: true, entry: e });
   });
@@ -68888,7 +69184,7 @@ function createBillingRouter() {
     e.paidOn = p.data.paidOn || today;
     e.note = p.data.note;
     e.rejectNote = void 0;
-    e.updatedAt = nowIso();
+    e.updatedAt = nowIso2();
     e.history.push({ at: e.updatedAt, by: u.id, what: `Marked paid \xB7 ref ${e.ref}` });
     audit(e.id, "GENZ_FEE_MARKED_PAID", `${u.name} \xB7 ref ${e.ref}`);
     db.save();
@@ -68944,7 +69240,7 @@ function passTiming(p, now = Date.now()) {
   if (now > Date.parse(p.validUntil)) return "EXPIRED";
   return "OPEN";
 }
-var firstName2 = (n2) => String(n2 || "").trim().split(/\s+/)[0] || "";
+var firstName3 = (n2) => String(n2 || "").trim().split(/\s+/)[0] || "";
 var STAGES_BEFORE_VISIT = ["NEW", "CONTACTED", "SITE_VISIT_SCHEDULED"];
 var STAGES_NO_PASS = ["LOST", "BOOKED", "BOOKING_REQUESTED"];
 function needsVisitProof(project, lead) {
@@ -69137,7 +69433,7 @@ function staffCard(memberId, leads, now = Date.now()) {
 }
 
 // server/leadflow.ts
-var nowIso2 = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso3 = () => (/* @__PURE__ */ new Date()).toISOString();
 var isOpen = (l) => !["BOOKED", "LOST"].includes(l.stage);
 var ownerIdOf = (l) => l.associateId || l.builderId;
 var membersOf = (employerId) => db.getState().users.filter((u) => u.role === "TEAM_MEMBER" && u.employerId === employerId);
@@ -69173,7 +69469,7 @@ function autoAssign(owner, lead, byName = "Lead routing") {
   const m = staff.find((x) => x.id === pick2.id);
   lead.assignedMemberId = m.id;
   lead.assignedMemberName = m.name;
-  lead.activities.unshift({ id: `A-${Date.now().toString(36)}-r`, type: "SYSTEM", note: `Allotted to ${m.name} (auto: ${mode === "ROUND_ROBIN" ? "round-robin" : "least loaded"})`, byUserId: owner.id, byName, at: nowIso2() });
+  lead.activities.unshift({ id: `A-${Date.now().toString(36)}-r`, type: "SYSTEM", note: `Allotted to ${m.name} (auto: ${mode === "ROUND_ROBIN" ? "round-robin" : "least loaded"})`, byUserId: owner.id, byName, at: nowIso3() });
   owner.leadRouting = { mode, cursor: pick2.cursor };
   return true;
 }
@@ -69194,11 +69490,11 @@ function releaseMemberLeads(owner, member, actorId, actorName, toMemberId) {
       }
     } else if (autoAssign(owner, l, actorName)) {
       n2++;
-      l.updatedAt = nowIso2();
+      l.updatedAt = nowIso3();
       continue;
     }
-    l.activities.unshift({ id: `A-${Date.now().toString(36)}-h${n2}`, type: "SYSTEM", note: note5, byUserId: actorId, byName: actorName, at: nowIso2() });
-    l.updatedAt = nowIso2();
+    l.activities.unshift({ id: `A-${Date.now().toString(36)}-h${n2}`, type: "SYSTEM", note: note5, byUserId: actorId, byName: actorName, at: nowIso3() });
+    l.updatedAt = nowIso3();
     n2++;
   }
   return n2;
@@ -69298,7 +69594,7 @@ function applyVoucherStrikes(target, actorId, actorRole) {
 var liveOfferCap = (u, normal, probation) => inProbation(u) ? probation : normal;
 
 // server/inventory.ts
-var import_express2 = __toESM(require_express2(), 1);
+var import_express3 = __toESM(require_express2(), 1);
 
 // src/shared/slabs.ts
 function validateSlabs(slabs) {
@@ -69616,14 +69912,14 @@ var MAX_UNITS_PER_PROJECT = 1e3;
 var DEFAULT_HOLD_HOURS = 2;
 var DEFAULT_MIN_TOKEN = 21e3;
 var MAX_ACTIVE_HOLDS_PER_BROKER = 3;
-var nowIso3 = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso4 = () => (/* @__PURE__ */ new Date()).toISOString();
 function sweepHolds(now = Date.now()) {
   let n2 = 0;
   for (const u of db.getState().inventoryUnits) {
     if (u.status === "HOLD" && u.hold && u.hold.expiresAt && Date.parse(u.hold.expiresAt) <= now) {
       u.status = "AVAILABLE";
       u.hold = void 0;
-      u.updatedAt = nowIso3();
+      u.updatedAt = nowIso4();
       n2++;
     }
   }
@@ -69650,9 +69946,9 @@ function unitBookingRequested(unit, bookingId) {
     unit.hold.bookingId = bookingId;
   } else {
     unit.status = "HOLD";
-    unit.hold = { brokerId: "", brokerName: "", leadId: "", customerName: "", tokenAmount: 0, tokenRef: "", at: nowIso3(), expiresAt: null, bookingId };
+    unit.hold = { brokerId: "", brokerName: "", leadId: "", customerName: "", tokenAmount: 0, tokenRef: "", at: nowIso4(), expiresAt: null, bookingId };
   }
-  unit.updatedAt = nowIso3();
+  unit.updatedAt = nowIso4();
 }
 function unitBookingDecided(projectId, unitNo, bookingId, outcome) {
   const unit = findUnit(projectId, unitNo);
@@ -69666,7 +69962,7 @@ function unitBookingDecided(projectId, unitNo, bookingId, outcome) {
     unit.hold = void 0;
     unit.bookingId = void 0;
   }
-  unit.updatedAt = nowIso3();
+  unit.updatedAt = nowIso4();
 }
 var generateSchema = external_exports.object({
   kind: external_exports.enum(["TOWER", "PLOTS"]),
@@ -69717,7 +70013,7 @@ var importRowSchema = external_exports.object({
   floor: external_exports.number().int().min(0).max(200).optional()
 });
 function createInventoryRouter() {
-  const r = (0, import_express2.Router)();
+  const r = (0, import_express3.Router)();
   const me26 = () => ctx().user;
   const audit8 = (entity, id, action, details) => {
     const u = me26();
@@ -69812,7 +70108,7 @@ function createInventoryRouter() {
         areaSqft: d.areaSqft,
         price: Math.round(d.basePrice + (f - 1) * d.floorRise),
         status: "AVAILABLE",
-        updatedAt: nowIso3(),
+        updatedAt: nowIso4(),
         ...applyDetail({}, detail2)
       });
     }
@@ -69850,7 +70146,7 @@ function createInventoryRouter() {
     }
     if (p.data.price !== void 0 && p.data.price !== unit.price) {
       if (unit.status === "BOOKED" || unit.status === "HOLD") return res.status(409).json({ error: "The rate of a held or booked unit is locked" });
-      const at = nowIso3();
+      const at = nowIso4();
       unit.priceHistory = [{ price: p.data.price, at, by: u.name, reason: p.data.reason || void 0 }, ...unit.priceHistory || []].slice(0, PRICE_HISTORY_KEEP);
       audit8("SYSTEM", unit.id, "INVENTORY_RATE_CHANGED", `${u.name} changed the rate of ${unit.label} (${project.projectName}) from \u20B9${unit.price.toLocaleString("en-IN")} to \u20B9${p.data.price.toLocaleString("en-IN")}${p.data.reason ? ` \u2014 ${p.data.reason}` : ""}`);
       unit.price = p.data.price;
@@ -69862,7 +70158,7 @@ function createInventoryRouter() {
       if (vis === null) delete unit.vis;
       else unit.vis = vis;
     }
-    unit.updatedAt = nowIso3();
+    unit.updatedAt = nowIso4();
     db.save();
     audit8("SYSTEM", unit.id, "INVENTORY_UNIT_UPDATED", `${u.name} updated unit ${unit.label} (${unit.status})${vis !== void 0 ? " \u2014 visibility changed" : ""}`);
     res.json({ success: true });
@@ -69887,7 +70183,7 @@ function createInventoryRouter() {
     } else return res.status(400).json({ error: "Pick the units first" });
     const action = b.action;
     const reason = String(b.reason || "").trim().slice(0, 120);
-    const at = nowIso3();
+    const at = nowIso4();
     if (action === "RATE") {
       const rule = validateRule(b.rule);
       if (typeof rule === "string") return res.status(400).json({ error: rule });
@@ -69990,7 +70286,7 @@ function createInventoryRouter() {
         cleared++;
       }
     }
-    p.updatedAt = nowIso3();
+    p.updatedAt = nowIso4();
     db.save();
     audit8("SYSTEM", p.id, "INVENTORY_VISIBILITY_SET", `${u.name} set the default for ${p.projectName}: ${v.audience}${v.audience === "SELECTED" ? ` (${v.brokerIds.length} partners)` : ""}${v.priceHidden ? ", price hidden" : ""}${cleared ? `; ${cleared} unit override(s) cleared` : ""}`);
     res.json({ success: true, vis: v, cleared });
@@ -70010,7 +70306,7 @@ function createInventoryRouter() {
     if (!rows || rows.length === 0 || rows.length > 500) return res.status(400).json({ error: "Send between 1 and 500 rows" });
     sweepHolds();
     const st23 = db.getState();
-    const at = nowIso3();
+    const at = nowIso4();
     const existing = st23.inventoryUnits.filter((x) => x.projectId === p.id);
     const errors = [];
     const plan = [];
@@ -70109,7 +70405,7 @@ function createInventoryRouter() {
     }
     if (s.data.holdHours !== void 0) p.holdHours = s.data.holdHours;
     if (s.data.minToken !== void 0) p.minToken = s.data.minToken;
-    p.updatedAt = nowIso3();
+    p.updatedAt = nowIso4();
     db.save();
     audit8("COMMISSION", p.id, "CP_SLABS_UPDATED", `${u.name} updated hold window / token / escalator slabs on ${p.projectName} (${(p.cpSlabs || []).length} slabs). Applies to bookings approved from now on.`);
     res.json({ success: true });
@@ -70134,7 +70430,7 @@ function createInventoryRouter() {
     if (mine3.length >= MAX_ACTIVE_HOLDS_PER_BROKER) return res.status(409).json({ error: `You can keep ${MAX_ACTIVE_HOLDS_PER_BROKER} units on hold at a time` });
     if (mine3.some((x) => x.hold?.leadId === lead.id)) return res.status(409).json({ error: "This customer already has a unit on hold" });
     const hours = p.holdHours ?? DEFAULT_HOLD_HOURS;
-    const at = nowIso3();
+    const at = nowIso4();
     unit.status = "HOLD";
     unit.hold = { brokerId: u.id, brokerName: u.name, leadId: lead.id, customerName: lead.name, tokenAmount: d.tokenAmount, tokenRef: d.tokenRef, at, expiresAt: new Date(Date.now() + hours * 36e5).toISOString() };
     unit.updatedAt = at;
@@ -70154,7 +70450,7 @@ function createInventoryRouter() {
     const prev = unit.hold;
     unit.status = "AVAILABLE";
     unit.hold = void 0;
-    unit.updatedAt = nowIso3();
+    unit.updatedAt = nowIso4();
     db.save();
     audit8("LEAD", prev.leadId, "UNIT_HOLD_RELEASED", `${u.name} released the hold on unit ${unit.label} (token ${prev.tokenRef} is to be settled between ${prev.brokerName} and the builder)`);
     res.json({ success: true });
@@ -70735,7 +71031,7 @@ var scheduleSchema = external_exports.array(external_exports.object({
   pct: external_exports.number().positive().max(100),
   dueInDays: external_exports.number().int().min(0).max(1500)
 })).min(1).max(12);
-var nowIso4 = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso5 = () => (/* @__PURE__ */ new Date()).toISOString();
 function nextId2(prefix, ids2) {
   const re = new RegExp(`^${prefix}-(\\d+)$`);
   const max = ids2.reduce((m, id) => Math.max(m, Number(re.exec(id)?.[1] ?? 0)), 0);
@@ -70762,7 +71058,7 @@ function buildSchedule(agreementValue, tokenAmount, template) {
   if (tokenAmount > 0 && sched[0]) {
     if (tokenAmount >= sched[0].amount) {
       sched[0].paid = true;
-      sched[0].paidAt = nowIso4();
+      sched[0].paidAt = nowIso5();
       sched[0].receiptNo = "TOKEN";
     }
   }
@@ -70847,7 +71143,7 @@ function confirmToken(booking, user, received, note5, via) {
   const t = booking.token;
   if (!t) return { error: "No booking amount was claimed on this booking", status: 409 };
   if (t.status === "RECEIVED") return { error: "The booking amount is already confirmed", status: 409 };
-  const ts = nowIso4();
+  const ts = nowIso5();
   if (received) {
     if (booking.status !== "APPROVED") return { error: "Approve the booking first, then confirm that the booking amount arrived", status: 409 };
     let left = t.amount;
@@ -70928,7 +71224,7 @@ function registerLead(worker, d, opts = {}) {
     return fail(409, `This customer is already registered for ${project.projectName} and is under registration protection until ${new Date(clash.protectedUntil).toLocaleDateString("en-IN")}.${detail2}`, "LEAD_DUPLICATE");
   }
   const id = nextId2("CRM-L", state.crmLeads.map((l) => l.id));
-  const ts = nowIso4();
+  const ts = nowIso5();
   const manual = project.leadVerification === "MANUAL" && user.role === "BROKER";
   const lead = {
     id,
@@ -70964,6 +71260,7 @@ function registerLead(worker, d, opts = {}) {
   state.crmLeads.unshift(lead);
   db.save();
   db.appendAuditEvent(worker.id, worker.role, "LEAD", id, "CRM_LEAD_REGISTERED", `Lead ${d.name} registered for ${project.projectName} by ${worker.role === "TEAM_MEMBER" ? `${worker.name} (team of ${associateName})` : associateName} (protection until ${new Date(lead.protectedUntil).toLocaleDateString("en-IN")})${manual ? "; awaiting builder verification" : ""}${lead.assignedMemberName && worker.role !== "TEAM_MEMBER" ? `; auto-allotted to ${lead.assignedMemberName}` : ""}`);
+  if (user.role === "BROKER") alert(builderVerifiers(project.builderId), "deals", `New partner lead \xB7 ${project.projectName}`, `${associateName} registered ${firstName(d.name)}${manual ? " \u2014 check it within 48 h" : ""}`, "/?tab=crm", { not: worker.id, tag: `lead-${id}`, hi: [`\u0928\u0908 \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0932\u0940\u0921 \xB7 ${project.projectName}`, `${associateName} \u0928\u0947 ${firstName(d.name)} \u0915\u094B \u0930\u091C\u093F\u0938\u094D\u091F\u0930 \u0915\u093F\u092F\u093E${manual ? " \u2014 48 \u0918\u0902\u091F\u0947 \u092E\u0947\u0902 \u091C\u093E\u0901\u091A\u0947\u0902" : ""}`] });
   return { status: 200, body: { success: true, lead: viewLead(lead, worker) } };
 }
 function autoFollowUp(lead, stage, user) {
@@ -71013,7 +71310,7 @@ function cancelBooking(user, booking, reasonIn, b) {
   const project = db.byId("builderProjects", booking.projectId);
   const mandate = db.byId("associateMandates", booking.mandateId);
   if (project) reverseAssociateSale(mandate, project, booking.agreementValue, booking.brokerageAmount);
-  const ts = nowIso4();
+  const ts = nowIso5();
   booking.status = "CANCELLED";
   cancelCharges("BUILDER_BOOKING", booking.id, `Booking ${booking.id} cancelled`);
   closeOpenTrails(booking.trails, { id: user.id, name: user.name, side: "BUILDER_OWNER" }, `Booking cancelled \u2014 return this money to the customer`, ts);
@@ -71035,7 +71332,7 @@ function cancelBooking(user, booking, reasonIn, b) {
   return { status: 200, body: { success: true, booking: viewBooking(booking) } };
 }
 function createCrmRouter() {
-  const r = (0, import_express3.Router)();
+  const r = (0, import_express4.Router)();
   const me26 = currentUser;
   const leadsFor = leadsForUser;
   const bookingsFor = bookingsForUser;
@@ -71150,7 +71447,7 @@ function createCrmRouter() {
     const booking = lead.bookingId ? db.byId("crmBookings", lead.bookingId) : void 0;
     const ho = (lead.handoffs || [])[0];
     if (ho && !ho.seenAt && ho.toId === user.id) {
-      ho.seenAt = nowIso4();
+      ho.seenAt = nowIso5();
       db.save();
     }
     res.json({ success: true, lead: viewLead(lead, user), booking: booking ? user.role === "TEAM_MEMBER" ? bookingForMember(booking, user.id) : viewBooking(booking) : void 0 });
@@ -71170,7 +71467,7 @@ function createCrmRouter() {
     const d = parsed.data;
     if ((lead.optedOutAt || lead.erasedAt) && (d.profile !== void 0 || d.name !== void 0 || d.email !== void 0)) return res.status(409).json({ error: "This customer opted out of contact \u2014 their details can no longer be edited", code: "OPTED_OUT" });
     if ((d.source !== void 0 || d.sourceDetail !== void 0) && user.role === "TEAM_MEMBER") return res.status(403).json({ error: "Only your employer can change where a lead came from \u2014 it feeds the source report" });
-    const ts = nowIso4();
+    const ts = nowIso5();
     const note5 = (t) => lead.activities.unshift({ id: `A-${Date.now().toString(36)}${Math.floor(Math.random() * 99)}`, type: "SYSTEM", note: t, byUserId: user.id, byName: user.name, at: ts });
     if (d.source !== void 0 && d.source !== lead.source) note5(`Lead source changed: ${lead.source} \u2192 ${d.source}${d.sourceDetail ? ` (${d.sourceDetail})` : ""}`);
     if (d.profile !== void 0) {
@@ -71228,7 +71525,7 @@ function createCrmRouter() {
       lead.lostCode = void 0;
       lead.protectedUntil = new Date(Date.now() + regDays(db.byId("builderProjects", lead.projectId) || {}) * 864e5).toISOString();
     }
-    lead.updatedAt = nowIso4();
+    lead.updatedAt = nowIso5();
     lead.activities.unshift({
       id: `A-${Date.now().toString(36)}`,
       type: "STAGE_CHANGE",
@@ -71250,12 +71547,12 @@ function createCrmRouter() {
     if (!ACTIVITY_TYPES.includes(type)) return res.status(400).json({ error: "type must be " + ACTIVITY_TYPES.join(", ") });
     if (lead.optedOutAt && ["CALL", "WHATSAPP", "MEETING"].includes(type)) return res.status(409).json({ error: "Customer has opted out of contact \u2014 only notes are allowed.", code: "OPTED_OUT" });
     if (!note5 || String(note5).trim().length < 2 || String(note5).length > 1e3) return res.status(400).json({ error: "A note (2\u20131000 chars) is required" });
-    lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type, note: String(note5).trim(), byUserId: user.id, byName: user.name, at: nowIso4() });
+    lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type, note: String(note5).trim(), byUserId: user.id, byName: user.name, at: nowIso5() });
     if (lead.stage === "NEW" && (type === "CALL" || type === "WHATSAPP" || type === "MEETING")) {
       lead.stage = "CONTACTED";
       autoFollowUp(lead, "CONTACTED", user);
     }
-    lead.updatedAt = nowIso4();
+    lead.updatedAt = nowIso5();
     db.save();
     res.json({ success: true, lead: viewLead(lead, user) });
   });
@@ -71271,7 +71568,7 @@ function createCrmRouter() {
     lead.followUps.push({ id: `FU-${Date.now().toString(36)}`, dueAt: new Date(dueAt).toISOString(), note: String(note5).trim().slice(0, 300), channel, done: false, createdBy: user.id });
     const open2 = lead.followUps.filter((f) => !f.done).map((f) => f.dueAt).sort();
     lead.nextFollowUpAt = open2[0];
-    lead.updatedAt = nowIso4();
+    lead.updatedAt = nowIso5();
     db.save();
     res.json({ success: true, lead: viewLead(lead, user) });
   });
@@ -71282,7 +71579,7 @@ function createCrmRouter() {
     const fu = lead.followUps.find((f) => f.id === req.params.fid);
     if (!fu) return res.status(404).json({ error: "Follow-up not found" });
     fu.done = true;
-    fu.doneAt = nowIso4();
+    fu.doneAt = nowIso5();
     const open2 = lead.followUps.filter((f) => !f.done).map((f) => f.dueAt).sort();
     lead.nextFollowUpAt = open2[0];
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: fu.channel === "SITE_VISIT" ? "SITE_VISIT" : fu.channel, note: `Follow-up done: ${fu.note}`, byUserId: user.id, byName: user.name, at: fu.doneAt });
@@ -71307,8 +71604,8 @@ function createCrmRouter() {
     lead.mandateId = mandate.id;
     lead.assignedMemberId = void 0;
     lead.assignedMemberName = void 0;
-    lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: "SYSTEM", note: `Re-assigned ${prev} \u2192 ${mandate.brokerName}: ${String(reason).slice(0, 200)}`, byUserId: user.id, byName: user.name, at: nowIso4() });
-    lead.updatedAt = nowIso4();
+    lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: "SYSTEM", note: `Re-assigned ${prev} \u2192 ${mandate.brokerName}: ${String(reason).slice(0, 200)}`, byUserId: user.id, byName: user.name, at: nowIso5() });
+    lead.updatedAt = nowIso5();
     db.save();
     audit8("CRM_LEAD_REASSIGNED", lead.id, `${lead.name} re-assigned ${prev} \u2192 ${mandate.brokerName}. Reason: ${reason}`);
     res.json({ success: true, lead: viewLead(lead, user) });
@@ -71376,7 +71673,7 @@ function createCrmRouter() {
     if (!gridCheck.ok) return res.status(409).json({ error: gridCheck.error });
     const held = state.crmBookings.find((b) => b.projectId === project.id && b.unitNo.toLowerCase() === d.unitNo.toLowerCase() && (b.status === "REQUESTED" || b.status === "APPROVED"));
     if (held) return res.status(409).json({ error: `Unit ${d.unitNo} is already held by another booking in this project` });
-    const ts = nowIso4();
+    const ts = nowIso5();
     const booking = {
       id: nextId2("CRM-B", state.crmBookings.map((b) => b.id)),
       leadId: lead.id,
@@ -71426,6 +71723,7 @@ function createCrmRouter() {
     lead.updatedAt = ts;
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: "SYSTEM", note: `Booking requested: unit ${d.unitNo}, \u20B9${d.agreementValue.toLocaleString("en-IN")}${d.tokenAmount > 0 ? `, booking amount \u20B9${d.tokenAmount.toLocaleString("en-IN")} claimed (${d.tokenMode}${ref ? ` ${ref}` : ""})` : ""}${plan ? `, plan ${plan.planType}` : ""}${d.note ? ` \u2014 ${d.note}` : ""}`, byUserId: user.id, byName: user.name, at: ts });
     db.save();
+    if (!direct) alert(builderVerifiers(booking.builderId), "deals", `Booking request \xB7 ${booking.projectName}`, `${lead.associateName || "A partner"} asks to book unit ${d.unitNo} for ${firstName(lead.name)} \u2014 approve or reject`, "/?tab=crm", { not: user.id, tag: `bk-${booking.id}`, hi: [`\u092C\u0941\u0915\u093F\u0902\u0917 \u0915\u0940 \u092E\u093E\u0901\u0917 \xB7 ${booking.projectName}`, `${lead.associateName || "\u090F\u0915 \u092A\u093E\u0930\u094D\u091F\u0928\u0930"} ${firstName(lead.name)} \u0915\u0947 \u0932\u093F\u090F \u092F\u0942\u0928\u093F\u091F ${d.unitNo} \u092C\u0941\u0915 \u0915\u0930\u0928\u093E \u091A\u093E\u0939\u0924\u0947 \u0939\u0948\u0902 \u2014 \u092E\u0902\u091C\u093C\u0942\u0930 \u092F\u093E \u092E\u0928\u093E \u0915\u0930\u0947\u0902`] });
     audit8("CRM_BOOKING_REQUESTED", booking.id, `Booking requested for ${lead.name}: unit ${d.unitNo}, \u20B9${d.agreementValue.toLocaleString("en-IN")} by ${user.name}${onBehalfOf ? ` (for ${onBehalfOf})` : ""}${direct ? " \u2014 builder-desk sale" : ""}`, "COMMISSION");
     res.json({ success: true, booking: user.role === "TEAM_MEMBER" ? bookingForMember(booking, user.id) : viewBooking(booking), lead: viewLead(lead, user) });
   });
@@ -71443,7 +71741,7 @@ function createCrmRouter() {
     const project = db.byId("builderProjects", booking.projectId);
     const mandate = db.byId("associateMandates", booking.mandateId);
     if (!lead || !project) return res.status(409).json({ error: "Lead or project missing" });
-    const ts = nowIso4();
+    const ts = nowIso5();
     if (decision === "REJECT") {
       if (!note5 || String(note5).trim().length < 5) return res.status(400).json({ error: "A reason (min 5 chars) is required to reject" });
       booking.status = "REJECTED";
@@ -71491,6 +71789,7 @@ function createCrmRouter() {
     lead.updatedAt = ts;
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: "SYSTEM", note: `Booking ${booking.status.toLowerCase()} by ${user.name}${note5 ? `: ${String(note5).slice(0, 200)}` : ""}`, byUserId: user.id, byName: user.name, at: ts });
     db.save();
+    if (booking.associateId) alert([booking.associateId, lead.assignedMemberId], "deals", decision === "APPROVE" ? `Booking approved \u2714 \xB7 ${booking.projectName}` : `Booking not approved \xB7 ${booking.projectName}`, `Unit ${booking.unitNo} for ${firstName(booking.customerName)}${note5 ? ` \u2014 ${String(note5).slice(0, 80)}` : ""}`, "/?tab=crm", { not: user.id, tag: `bk-${booking.id}`, hi: [decision === "APPROVE" ? `\u092C\u0941\u0915\u093F\u0902\u0917 \u092E\u0902\u091C\u093C\u0942\u0930 \u2714 \xB7 ${booking.projectName}` : `\u092C\u0941\u0915\u093F\u0902\u0917 \u092E\u0902\u091C\u093C\u0942\u0930 \u0928\u0939\u0940\u0902 \xB7 ${booking.projectName}`, `${firstName(booking.customerName)} \u0915\u0947 \u0932\u093F\u090F \u092F\u0942\u0928\u093F\u091F ${booking.unitNo}${note5 ? ` \u2014 ${String(note5).slice(0, 80)}` : ""}`] });
     audit8(decision === "APPROVE" ? "CRM_BOOKING_APPROVED" : "CRM_BOOKING_REJECTED", booking.id, `Booking ${booking.id} (${booking.customerName}, unit ${booking.unitNo}) ${booking.status} by ${user.name}`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(booking), lead: viewLead(lead, user) });
   });
@@ -71505,7 +71804,7 @@ function createCrmRouter() {
     const c = confirmToken(booking, user, req.body.received, note5 || void 0);
     if ("error" in c) return res.status(c.status).json({ error: c.error });
     const lead = db.byId("crmLeads", booking.leadId);
-    if (lead) lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: "SYSTEM", note: `Booking amount \u20B9${booking.token.amount.toLocaleString("en-IN")} ${req.body.received ? "confirmed received" : "marked NOT received"} by ${user.name}${note5 ? `: ${note5.slice(0, 200)}` : ""}`, byUserId: user.id, byName: user.name, at: nowIso4() });
+    if (lead) lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: "SYSTEM", note: `Booking amount \u20B9${booking.token.amount.toLocaleString("en-IN")} ${req.body.received ? "confirmed received" : "marked NOT received"} by ${user.name}${note5 ? `: ${note5.slice(0, 200)}` : ""}`, byUserId: user.id, byName: user.name, at: nowIso5() });
     db.save();
     audit8("CRM_TOKEN_CONFIRMED", booking.id, `Booking amount \u20B9${booking.token.amount.toLocaleString("en-IN")} on ${booking.id} ${req.body.received ? "RECEIVED" : "NOT RECEIVED"} (${booking.token.mode || "\u2014"} ${booking.token.ref || ""}) \u2014 by ${user.name}`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(booking) });
@@ -71526,7 +71825,7 @@ function createCrmRouter() {
     if (!Number.isFinite(amount2) || amount2 <= 0) return res.status(400).json({ error: "Amount must be greater than zero" });
     if (amount2 > remaining) return res.status(400).json({ error: `Only \u20B9${remaining.toLocaleString("en-IN")} is pending on this milestone` });
     const mode = ["CASH", "CHEQUE", "UPI", "NEFT_RTGS", "DD", "LOAN", "OTHER"].includes(req.body?.mode) ? req.body.mode : "OTHER";
-    const ts = nowIso4();
+    const ts = nowIso5();
     m.receipts = [...m.receipts || (m.paid ? [] : []), { id: `RC-${Date.now().toString(36)}`, amount: amount2, mode, ref: receiptNo, at: ts, byId: user.id, byName: user.name }];
     m.paidAmount = paidOf(m) + amount2;
     if (m.paidAmount >= m.amount) {
@@ -71554,14 +71853,14 @@ function createCrmRouter() {
     const ref = String(req.body?.ref || "").trim();
     if (ref.length < 3 || ref.length > 40) return res.status(400).json({ error: "The payment reference (UTR / cheque no.) is required \u2014 the associate needs it as proof" });
     const mode = ["CASH", "CHEQUE", "UPI", "NEFT_RTGS", "OTHER"].includes(req.body?.mode) ? req.body.mode : "OTHER";
-    const paidOn = req.body?.paidOn && !Number.isNaN(Date.parse(req.body.paidOn)) ? new Date(req.body.paidOn).toISOString() : nowIso4();
+    const paidOn = req.body?.paidOn && !Number.isNaN(Date.parse(req.body.paidOn)) ? new Date(req.body.paidOn).toISOString() : nowIso5();
     if (Date.parse(paidOn) > Date.now() + 864e5) return res.status(400).json({ error: "Payment date cannot be in the future" });
     const assoc = db.byId("users", booking.associateId);
     const proj = db.byId("builderProjects", booking.projectId);
     const tdsPct = effectiveTdsPct(proj?.tdsPct ?? booking.tdsPct, !!assoc?.panNumber);
     const amt = Math.round(amount2);
     const tds = Math.round(amt * tdsPct / 100);
-    const ts = nowIso4();
+    const ts = nowIso5();
     booking.payouts = [...booking.payouts || [], { id: `PO-${Date.now().toString(36)}`, amount: amt, tdsPct, tds, net: amt - tds, mode, ref, paidOn, byId: user.id, byName: user.name, at: ts, status: "RECORDED" }];
     booking.brokeragePaidAmount += amt;
     booking.updatedAt = ts;
@@ -71571,6 +71870,7 @@ function createCrmRouter() {
       mandate.commissionPaid = all.length > 0 && all.every((b) => b.brokeragePaidAmount >= b.brokerageAmount);
     }
     db.save();
+    alert(booking.associateId, "deals", `Brokerage paid \xB7 ${booking.projectName}`, `${inr(amt - tds)} (after TDS) for unit ${booking.unitNo} \u2014 ${mode} ${ref}. Confirm when it reaches you.`, "/?tab=crm", { not: user.id, tag: `po-${booking.id}`, hi: [`\u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u092D\u0947\u091C\u0940 \u0917\u0908 \xB7 ${booking.projectName}`, `\u092F\u0942\u0928\u093F\u091F ${booking.unitNo} \u0915\u0947 \u0932\u093F\u090F ${inr(amt - tds)} (TDS \u0915\u0947 \u092C\u093E\u0926) \u2014 ${mode} ${ref}\u0964 \u092A\u0939\u0941\u0901\u091A\u0928\u0947 \u092A\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902\u0964`] });
     audit8("CRM_BROKERAGE_PAID", booking.id, `Brokerage \u20B9${amt.toLocaleString("en-IN")} released on ${booking.id} (${mode} ref ${ref}; TDS @${tdsPct}% = \u20B9${tds.toLocaleString("en-IN")}, net \u20B9${(amt - tds).toLocaleString("en-IN")}) \u2014 awaiting the associate's confirmation`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(booking), tds, net: amt - tds });
   });
@@ -71634,7 +71934,7 @@ function createCrmRouter() {
       slabs: d.slabs.map((s, i) => ({ id: `BS-${i + 1}`, level: s.level, minUnits: s.minUnits, kind: s.kind, value: s.value }))
     };
     project.bonusScheme = scheme;
-    project.updatedAt = nowIso4();
+    project.updatedAt = nowIso5();
     db.save();
     audit8("CRM_BONUS_SCHEME_UPDATED", project.id, `${user.name} ${scheme.enabled ? "set" : "switched off"} the volume-bonus scheme on ${project.projectName}: ${scheme.slabs.length} slab(s), qualify at ${scheme.qualifyCollectionPct}% collection${scheme.windowFrom ? `, window ${scheme.windowFrom} \u2192 ${scheme.windowTo || "open"}` : ""}`, "COMMISSION");
     res.json({ success: true, scheme });
@@ -71654,7 +71954,7 @@ function createCrmRouter() {
     if (amount2 > row.payable) return res.status(400).json({ error: `Only \u20B9${row.payable.toLocaleString("en-IN")} bonus is payable right now` });
     if (reference.length < 4) return res.status(400).json({ error: "Enter the bank / UPI payout reference (UTR)" });
     const mandate = db.byId("associateMandates", mandateId);
-    const rec2 = { id: `BP-${String(state.bonusPayouts.length + 1).padStart(4, "0")}`, projectId: project.id, mandateId, brokerId: mandate.brokerId, amount: amount2, tdsPct: 5, reference, paidBy: user.id, paidAt: nowIso4() };
+    const rec2 = { id: `BP-${String(state.bonusPayouts.length + 1).padStart(4, "0")}`, projectId: project.id, mandateId, brokerId: mandate.brokerId, amount: amount2, tdsPct: 5, reference, paidBy: user.id, paidAt: nowIso5() };
     state.bonusPayouts.push(rec2);
     db.save();
     const tds = Math.round(amount2 * rec2.tdsPct / 100);
@@ -71672,7 +71972,7 @@ function createCrmRouter() {
 }
 
 // server/targetbonus.ts
-var import_express4 = __toESM(require_express2(), 1);
+var import_express5 = __toESM(require_express2(), 1);
 
 // src/shared/targetBonus.ts
 var DAY5 = 864e5;
@@ -71752,10 +72052,10 @@ function validateTargetScheme(s) {
 }
 
 // server/targetbonus.ts
-var nowIso5 = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso6 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me2 = () => ctx().user;
 var LIVE = /* @__PURE__ */ new Set(["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED", "COMPLETED"]);
-var inr3 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
+var inr4 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
 var isoDay2 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-12-31");
 var reward = external_exports.object({ kind: external_exports.enum(["EXTRA_PCT", "LUMP_SUM"]), value: external_exports.number().min(0).max(1e8) });
 var schemeSchema = external_exports.object({
@@ -71805,7 +72105,7 @@ function sweepTargetBonus(now = Date.now()) {
   return n2;
 }
 function createTargetBonusRouter() {
-  const r = (0, import_express4.Router)();
+  const r = (0, import_express5.Router)();
   const own2 = (u, id) => {
     const p = db.byId("builderProjects", id);
     return p && (isSuper(u) || u.role === "DEVELOPER_BUILDER" && p.builderId === u.id) ? p : void 0;
@@ -71836,7 +72136,7 @@ function createTargetBonusRouter() {
       };
     });
     if (froze) db.save();
-    res.json({ success: true, projects: out, canManage: u.role === "DEVELOPER_BUILDER" || isSuper(u), now: nowIso5() });
+    res.json({ success: true, projects: out, canManage: u.role === "DEVELOPER_BUILDER" || isSuper(u), now: nowIso6() });
   });
   r.put("/projects/:id/target-bonus", needs("crm:bonus_manage"), (req, res) => {
     const u = me2();
@@ -71845,15 +72145,15 @@ function createTargetBonusRouter() {
     const parsed = schemeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid target bonus" });
     const d = parsed.data;
-    const scheme = { enabled: d.enabled, periodDays: d.periodDays, qualifyCollectionPct: d.qualifyCollectionPct, hit: d.hit, overPct: d.overPct, early: d.early, note: d.note || void 0, updatedAt: nowIso5() };
+    const scheme = { enabled: d.enabled, periodDays: d.periodDays, qualifyCollectionPct: d.qualifyCollectionPct, hit: d.hit, overPct: d.overPct, early: d.early, note: d.note || void 0, updatedAt: nowIso6() };
     const err = validateTargetScheme(scheme);
     if (err) return res.status(400).json({ error: err });
     const frozen = lockTargetTerms(p);
     p.targetBonus = scheme;
     if (scheme.early && scheme.early.kind === "EXTRA_PCT") p.earlyBirdIncentiveBonusPct = scheme.early.value;
-    p.updatedAt = nowIso5();
+    p.updatedAt = nowIso6();
     db.save();
-    auditCrm("CRM_TARGET_BONUS_UPDATED", p.id, `${u.name} ${scheme.enabled ? "set" : "switched off"} the target bonus on ${p.projectName}: ${scheme.periodDays}-day period, hit ${scheme.hit.kind === "LUMP_SUM" ? inr3(scheme.hit.value) : "+" + scheme.hit.value + "%"}, above target +${scheme.overPct}%/unit, early ${scheme.early ? `${scheme.early.kind === "LUMP_SUM" ? inr3(scheme.early.value) : "+" + scheme.early.value + "%"} within ${scheme.early.withinPct}%` : "off"}, counts at ${scheme.qualifyCollectionPct}% collection${frozen ? ` (${frozen} partner(s) keep their earlier terms)` : ""}`, "COMMISSION");
+    auditCrm("CRM_TARGET_BONUS_UPDATED", p.id, `${u.name} ${scheme.enabled ? "set" : "switched off"} the target bonus on ${p.projectName}: ${scheme.periodDays}-day period, hit ${scheme.hit.kind === "LUMP_SUM" ? inr4(scheme.hit.value) : "+" + scheme.hit.value + "%"}, above target +${scheme.overPct}%/unit, early ${scheme.early ? `${scheme.early.kind === "LUMP_SUM" ? inr4(scheme.early.value) : "+" + scheme.early.value + "%"} within ${scheme.early.withinPct}%` : "off"}, counts at ${scheme.qualifyCollectionPct}% collection${frozen ? ` (${frozen} partner(s) keep their earlier terms)` : ""}`, "COMMISSION");
     res.json({ success: true, scheme, frozen });
   });
   r.put("/projects/:id/target-bonus/partners/:mandateId", needs("crm:bonus_manage"), (req, res) => {
@@ -71880,7 +72180,7 @@ function createTargetBonusRouter() {
     m.targetUnitsQuota = target;
     m.targetBy = deadline || void 0;
     const after = `${target} by ${deadline || addDays(start, p.targetBonus.periodDays)}`;
-    m.termsHistory = [...m.termsHistory || [], { at: nowIso5(), by: u.name, commissionPct: m.agreedCommissionPct, quota: target, dailyLeadCap: m.dailyLeadCap, validUntil: m.validUntil, note: note5 || `Target ${after}` }];
+    m.termsHistory = [...m.termsHistory || [], { at: nowIso6(), by: u.name, commissionPct: m.agreedCommissionPct, quota: target, dailyLeadCap: m.dailyLeadCap, validUntil: m.validUntil, note: note5 || `Target ${after}` }];
     db.save();
     auditCrm("CRM_TARGET_SET", m.id, `${u.name}: target for ${m.brokerName} on ${p.projectName} ${before} \u2192 ${after}${note5 ? ` (${note5})` : ""}`, "COMMISSION");
     res.json({ success: true, row: targetRows(p).find((x) => x.mandateId === m.id) });
@@ -71895,27 +72195,27 @@ function createTargetBonusRouter() {
     const row = targetRows(p).find((x) => x.mandateId === mandateId);
     if (!row) return res.status(404).json({ error: "No target bonus record for this partner on this project" });
     if (!Number.isFinite(amount2) || amount2 <= 0) return res.status(400).json({ error: "A positive payout amount is required" });
-    if (amount2 > row.payable) return res.status(400).json({ error: `Only ${inr3(row.payable)} target bonus is payable right now` });
+    if (amount2 > row.payable) return res.status(400).json({ error: `Only ${inr4(row.payable)} target bonus is payable right now` });
     if (reference.length < 4) return res.status(400).json({ error: "Enter the bank / UPI payout reference (UTR)" });
     const s = db.getState();
     const m = s.associateMandates.find((x) => x.id === mandateId);
-    const rec2 = { id: `TBP-${String(s.targetBonusPayouts.length + 1).padStart(4, "0")}`, projectId: p.id, mandateId, brokerId: m.brokerId, amount: amount2, tdsPct: p.tdsPct ?? 5, reference, breakdown: { hit: row.hitAmount, over: row.overAmount, early: row.earlyAmount }, paidBy: u.id, paidAt: nowIso5() };
+    const rec2 = { id: `TBP-${String(s.targetBonusPayouts.length + 1).padStart(4, "0")}`, projectId: p.id, mandateId, brokerId: m.brokerId, amount: amount2, tdsPct: p.tdsPct ?? 5, reference, breakdown: { hit: row.hitAmount, over: row.overAmount, early: row.earlyAmount }, paidBy: u.id, paidAt: nowIso6() };
     s.targetBonusPayouts.push(rec2);
-    if (lockTargetTerms(p) === 0 && !m.targetLock && row.earned > 0) m.targetLock = { scheme: JSON.parse(JSON.stringify(p.targetBonus)), target: row.target, deadline: row.deadline, lockedAt: nowIso5() };
+    if (lockTargetTerms(p) === 0 && !m.targetLock && row.earned > 0) m.targetLock = { scheme: JSON.parse(JSON.stringify(p.targetBonus)), target: row.target, deadline: row.deadline, lockedAt: nowIso6() };
     db.save();
     const tds = Math.round(amount2 * rec2.tdsPct / 100);
-    auditCrm("CRM_TARGET_BONUS_PAID", p.id, `Target bonus ${inr3(amount2)} paid to ${m.brokerName} on ${p.projectName} (ref ${reference}; TDS @${rec2.tdsPct}% = ${inr3(tds)})`, "COMMISSION");
+    auditCrm("CRM_TARGET_BONUS_PAID", p.id, `Target bonus ${inr4(amount2)} paid to ${m.brokerName} on ${p.projectName} (ref ${reference}; TDS @${rec2.tdsPct}% = ${inr4(tds)})`, "COMMISSION");
     res.json({ success: true, payout: rec2, tds, net: amount2 - tds });
   });
   return r;
 }
 
 // server/crm2.ts
-var import_express6 = __toESM(require_express2(), 1);
+var import_express7 = __toESM(require_express2(), 1);
 
 // server/crm4.ts
-var import_express5 = __toESM(require_express2(), 1);
-var inr4 = (n2) => `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
+var import_express6 = __toESM(require_express2(), 1);
+var inr5 = (n2) => `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
 var NO_ACTOR = (id) => ({ id, side: null, canCollect: false, canConfirm: false });
 var SIDE_EN = { CP_OWNER: "partner", CP_STAFF: "partner's team", BUILDER_OWNER: "builder", BUILDER_STAFF: "builder's team" };
 function actorOn(u, b) {
@@ -71974,7 +72274,7 @@ function trailsFor(u) {
   return out.sort((x, y) => Date.parse(y.updatedAt) - Date.parse(x.updatedAt));
 }
 function createMoneyTrailRouter() {
-  const r = (0, import_express5.Router)();
+  const r = (0, import_express6.Router)();
   const me26 = () => ctx().user;
   const bad26 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
   const st23 = () => db.getState();
@@ -71983,8 +72283,8 @@ function createMoneyTrailRouter() {
     const l = leadOf(b);
     const u = me26();
     if (!l) return;
-    l.activities.unshift({ id: `A-${Date.now().toString(36)}${Math.floor(Math.random() * 99)}`, type: "SYSTEM", note: note5, byUserId: u.id, byName: u.name, at: nowIso4() });
-    l.updatedAt = nowIso4();
+    l.activities.unshift({ id: `A-${Date.now().toString(36)}${Math.floor(Math.random() * 99)}`, type: "SYSTEM", note: note5, byUserId: u.id, byName: u.name, at: nowIso5() });
+    l.updatedAt = nowIso5();
   };
   const open2 = (req, res) => {
     const u = me26();
@@ -72004,7 +72304,7 @@ function createMoneyTrailRouter() {
   };
   const step = (t, stage, a, extra = {}) => {
     const u = me26();
-    const ts = nowIso4();
+    const ts = nowIso5();
     t.steps.push({ stage, at: ts, byId: u.id, byName: u.name, side: a.side, ...extra.note ? { note: extra.note.slice(0, 200) } : {}, ...extra.ref ? { ref: extra.ref } : {}, ...extra.mode ? { mode: extra.mode } : {} });
     t.updatedAt = ts;
   };
@@ -72059,7 +72359,7 @@ function createMoneyTrailRouter() {
     let targetName;
     if (d.target === "TOKEN") {
       if (!b.token || b.token.status === "RECEIVED") return bad26(res, "There is no pending booking amount on this booking", 409);
-      if (d.amount !== b.token.amount) return bad26(res, `The booking amount on this request is ${inr4(b.token.amount)} \u2014 record exactly that`, 400);
+      if (d.amount !== b.token.amount) return bad26(res, `The booking amount on this request is ${inr5(b.token.amount)} \u2014 record exactly that`, 400);
       if (openTrailOn(b.trails, "TOKEN")) return bad26(res, "The booking amount is already travelling through the Money Trail", 409, "MONEY_TRAIL_OPEN");
       targetName = "Booking amount";
     } else {
@@ -72068,10 +72368,10 @@ function createMoneyTrailRouter() {
       if (!m) return bad26(res, "Instalment not found", 404);
       const pending = m.amount - paidOf(m) - reservedOn(b.trails, m.id);
       if (pending <= 0) return bad26(res, "Nothing is pending on this instalment", 409);
-      if (d.amount > pending) return bad26(res, `Only ${inr4(pending)} is pending on this instalment`, 400);
+      if (d.amount > pending) return bad26(res, `Only ${inr5(pending)} is pending on this instalment`, 400);
       targetName = m.name;
     }
-    const ts = nowIso4();
+    const ts = nowIso5();
     const t = {
       id: newTrailId(),
       bookingId: b.id,
@@ -72091,9 +72391,11 @@ function createMoneyTrailRouter() {
     b.trails = [t, ...b.trails || []];
     step(t, "COLLECTED", a, { note: d.note, ref: d.ref, mode: d.mode });
     b.updatedAt = ts;
-    lead(b, `${inr4(d.amount)} (${targetName}) collected by ${u.name} \u2014 with ${a.side === "CP_OWNER" ? "the partner" : u.name}`);
+    lead(b, `${inr5(d.amount)} (${targetName}) collected by ${u.name} \u2014 with ${a.side === "CP_OWNER" ? "the partner" : u.name}`);
     db.save();
-    auditCrm("MONEY_TRAIL_COLLECTED", t.id, `${inr4(d.amount)} for ${targetName} on ${b.id} (${b.customerName}) collected by ${u.name} (${SIDE_EN[a.side]}); ${d.mode}${d.ref ? ` ref ${d.ref}` : ""}`, "COMMISSION");
+    if (t.route === "CP") alert(moneyConfirmers(b.associateId), "deals", "Money to confirm", `${u.name} collected ${inr5(d.amount)} (${targetName}) from ${firstName(b.customerName)} \u2014 did it reach you?`, "/?tab=crm", { not: u.id, tag: `mt-${t.id}`, hi: ["\u092A\u0948\u0938\u093E \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902", `${u.name} \u0928\u0947 ${firstName(b.customerName)} \u0938\u0947 ${inr5(d.amount)} (${targetName}) \u0932\u093F\u090F \u2014 \u0915\u094D\u092F\u093E \u0906\u092A\u0915\u0947 \u092A\u093E\u0938 \u092A\u0939\u0941\u0901\u091A\u0947?`] });
+    else alert(moneyConfirmers(b.builderId), "deals", "Money to confirm", `${inr5(d.amount)} (${targetName}) for unit ${b.unitNo} recorded by ${u.name} \u2014 confirm when it is in the account`, "/?tab=crm", { not: u.id, tag: `mt-${t.id}`, hi: ["\u092A\u0948\u0938\u093E \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902", `\u092F\u0942\u0928\u093F\u091F ${b.unitNo} \u0915\u0947 \u0932\u093F\u090F ${inr5(d.amount)} (${targetName}) \u2014 ${u.name} \u0928\u0947 \u0926\u0930\u094D\u091C \u0915\u093F\u092F\u093E; \u0916\u093E\u0924\u0947 \u092E\u0947\u0902 \u0906\u0928\u0947 \u092A\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902`] });
+    auditCrm("MONEY_TRAIL_COLLECTED", t.id, `${inr5(d.amount)} for ${targetName} on ${b.id} (${b.customerName}) collected by ${u.name} (${SIDE_EN[a.side]}); ${d.mode}${d.ref ? ` ref ${d.ref}` : ""}`, "COMMISSION");
     res.json({ success: true, trail: rowOf(t, b, a) });
   });
   r.post("/trails/:id/cp-confirm", needs("crm:money_confirm"), (req, res) => {
@@ -72118,10 +72420,10 @@ function createMoneyTrailRouter() {
       t.status = "DISPUTED";
       step(t, "CP_NOT_RECEIVED", a, { note: note5 });
     }
-    b.updatedAt = nowIso4();
-    lead(b, `${inr4(t.amount)} (${t.targetName}): ${req.body.received ? "partner confirmed it received the money from" : "partner says it has NOT received the money from"} ${t.collector.name}${note5 ? ` \u2014 ${note5}` : ""}`);
+    b.updatedAt = nowIso5();
+    lead(b, `${inr5(t.amount)} (${t.targetName}): ${req.body.received ? "partner confirmed it received the money from" : "partner says it has NOT received the money from"} ${t.collector.name}${note5 ? ` \u2014 ${note5}` : ""}`);
     db.save();
-    auditCrm(req.body.received ? "MONEY_TRAIL_CP_CONFIRMED" : "MONEY_TRAIL_DISPUTED", t.id, `${inr4(t.amount)} on ${b.id}: ${u.name} (${SIDE_EN[a.side]}) ${req.body.received ? "confirmed receiving it from" : "says it was NOT received from"} ${t.collector.name}${note5 ? ` \u2014 ${note5}` : ""}`, "COMMISSION");
+    auditCrm(req.body.received ? "MONEY_TRAIL_CP_CONFIRMED" : "MONEY_TRAIL_DISPUTED", t.id, `${inr5(t.amount)} on ${b.id}: ${u.name} (${SIDE_EN[a.side]}) ${req.body.received ? "confirmed receiving it from" : "says it was NOT received from"} ${t.collector.name}${note5 ? ` \u2014 ${note5}` : ""}`, "COMMISSION");
     res.json({ success: true, trail: rowOf(t, b, a) });
   });
   r.post("/trails/:id/handover", needs("crm:money_collect"), (req, res) => {
@@ -72146,10 +72448,11 @@ function createMoneyTrailRouter() {
     const note5 = cleanNote(req.body?.note);
     t.status = "HANDED_OVER";
     step(t, "HANDED_OVER", a, { note: note5, mode, ref: ref || void 0 });
-    b.updatedAt = nowIso4();
-    lead(b, `${inr4(t.amount)} (${t.targetName}) handed over to the builder by ${u.name}${mode ? ` (${mode}${ref ? ` ${ref}` : ""})` : ""} \u2014 waiting for the builder's confirmation`);
+    b.updatedAt = nowIso5();
+    lead(b, `${inr5(t.amount)} (${t.targetName}) handed over to the builder by ${u.name}${mode ? ` (${mode}${ref ? ` ${ref}` : ""})` : ""} \u2014 waiting for the builder's confirmation`);
     db.save();
-    auditCrm("MONEY_TRAIL_HANDED_OVER", t.id, `${inr4(t.amount)} on ${b.id} handed to the builder by ${u.name}${mode ? ` \u2014 ${mode}${ref ? ` ${ref}` : ""}` : ""}${note5 ? ` \u2014 ${note5}` : ""}`, "COMMISSION");
+    alert(moneyConfirmers(b.builderId), "deals", `Money handed over \xB7 ${b.projectName}`, `${u.name} handed over ${inr5(t.amount)} (${t.targetName}) for unit ${b.unitNo} \u2014 confirm when it arrives`, "/?tab=crm", { not: u.id, tag: `mt-${t.id}`, hi: [`\u092A\u0948\u0938\u093E \u0938\u094C\u0902\u092A\u093E \u0917\u092F\u093E \xB7 ${b.projectName}`, `${u.name} \u0928\u0947 \u092F\u0942\u0928\u093F\u091F ${b.unitNo} \u0915\u0947 ${inr5(t.amount)} (${t.targetName}) \u0938\u094C\u0902\u092A\u0947 \u2014 \u092E\u093F\u0932\u0928\u0947 \u092A\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0947\u0902`] });
+    auditCrm("MONEY_TRAIL_HANDED_OVER", t.id, `${inr5(t.amount)} on ${b.id} handed to the builder by ${u.name}${mode ? ` \u2014 ${mode}${ref ? ` ${ref}` : ""}` : ""}${note5 ? ` \u2014 ${note5}` : ""}`, "COMMISSION");
     res.json({ success: true, trail: rowOf(t, b, a) });
   });
   r.post("/trails/:id/builder-confirm", needs("crm:money_confirm"), (req, res) => {
@@ -72169,7 +72472,7 @@ function createMoneyTrailRouter() {
     if (builderNeedsNote(t, received) && note5.length < TRAIL_NOTE_MIN) {
       return bad26(res, received ? 'This money has not been handed over yet \u2014 say why you are confirming it now (e.g. "customer paid our account directly")' : 'Say why \u2014 e.g. "cheque bounced" or "not in the bank yet"', 400, "NOTE_REQUIRED");
     }
-    const ts = nowIso4();
+    const ts = nowIso5();
     const hand = [...t.steps].reverse().find((s) => s.stage === "HANDED_OVER");
     const mode = hand?.mode || t.mode;
     const ref = hand?.mode ? hand.ref : t.ref;
@@ -72186,7 +72489,7 @@ function createMoneyTrailRouter() {
         const m = b.paymentSchedule.find((x) => x.id === t.target);
         if (!m) return bad26(res, "Instalment not found", 404);
         const pending = m.amount - paidOf(m);
-        if (t.amount > pending) return bad26(res, `Only ${inr4(pending)} is pending on this instalment now \u2014 cancel this entry or ask for a corrected amount`, 409);
+        if (t.amount > pending) return bad26(res, `Only ${inr5(pending)} is pending on this instalment now \u2014 cancel this entry or ask for a corrected amount`, 409);
         const rref = (rn || (ref && ref.length >= 3 ? ref : "CASH")).slice(0, 40);
         m.receipts = [...m.receipts || [], { id: `RC-${Date.now().toString(36)}-${m.id.slice(-2)}`, amount: t.amount, mode, ref: rref, at: ts, byId: u.id, byName: u.name, trailId: t.id }];
         m.paidAmount = paidOf(m) + t.amount;
@@ -72209,9 +72512,10 @@ function createMoneyTrailRouter() {
       step(t, "BUILDER_NOT_RECEIVED", a, { note: note5 });
     }
     b.updatedAt = ts;
-    lead(b, `${inr4(t.amount)} (${t.targetName}) ${received ? "confirmed received by the builder side" : "marked NOT received by the builder side"} (${u.name})${note5 ? ` \u2014 ${note5}` : ""}`);
+    lead(b, `${inr5(t.amount)} (${t.targetName}) ${received ? "confirmed received by the builder side" : "marked NOT received by the builder side"} (${u.name})${note5 ? ` \u2014 ${note5}` : ""}`);
     db.save();
-    auditCrm(received ? "MONEY_TRAIL_BUILDER_CONFIRMED" : "MONEY_TRAIL_NOT_RECEIVED", t.id, `${inr4(t.amount)} for ${t.targetName} on ${b.id}: ${u.name} (${SIDE_EN[a.side]}) ${received ? "confirmed it ARRIVED" : "says it did NOT arrive"}${note5 ? ` \u2014 ${note5}` : ""}`, "COMMISSION");
+    alert([b.associateId, t.collector.id], "deals", received ? `Builder confirmed the money \u2714` : `Builder says money NOT received`, `${inr5(t.amount)} (${t.targetName}) for unit ${b.unitNo}${note5 ? ` \u2014 ${note5.slice(0, 80)}` : ""}`, "/?tab=crm", { not: u.id, tag: `mt-${t.id}`, hi: [received ? "\u092C\u093F\u0932\u094D\u0921\u0930 \u0928\u0947 \u092A\u0948\u0938\u093E \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u093F\u092F\u093E \u2714" : "\u092C\u093F\u0932\u094D\u0921\u0930 \u0915\u0947 \u0905\u0928\u0941\u0938\u093E\u0930 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E", `\u092F\u0942\u0928\u093F\u091F ${b.unitNo} \u0915\u0947 \u0932\u093F\u090F ${inr5(t.amount)} (${t.targetName})${note5 ? ` \u2014 ${note5.slice(0, 80)}` : ""}`] });
+    auditCrm(received ? "MONEY_TRAIL_BUILDER_CONFIRMED" : "MONEY_TRAIL_NOT_RECEIVED", t.id, `${inr5(t.amount)} for ${t.targetName} on ${b.id}: ${u.name} (${SIDE_EN[a.side]}) ${received ? "confirmed it ARRIVED" : "says it did NOT arrive"}${note5 ? ` \u2014 ${note5}` : ""}`, "COMMISSION");
     res.json({ success: true, trail: rowOf(t, b, a) });
   });
   r.post("/trails/:id/cancel", needs("crm:money_collect"), (req, res) => {
@@ -72224,10 +72528,10 @@ function createMoneyTrailRouter() {
     if (reason.length < TRAIL_NOTE_MIN) return bad26(res, "Say why this entry is being cancelled");
     t.status = "CANCELLED";
     step(t, "CANCELLED", a, { note: reason });
-    b.updatedAt = nowIso4();
-    lead(b, `${inr4(t.amount)} (${t.targetName}) money entry cancelled by ${u.name} \u2014 ${reason}`);
+    b.updatedAt = nowIso5();
+    lead(b, `${inr5(t.amount)} (${t.targetName}) money entry cancelled by ${u.name} \u2014 ${reason}`);
     db.save();
-    auditCrm("MONEY_TRAIL_CANCELLED", t.id, `${inr4(t.amount)} on ${b.id} cancelled by ${u.name} (${SIDE_EN[a.side]}): ${reason}`, "COMMISSION");
+    auditCrm("MONEY_TRAIL_CANCELLED", t.id, `${inr5(t.amount)} on ${b.id} cancelled by ${u.name} (${SIDE_EN[a.side]}): ${reason}`, "COMMISSION");
     res.json({ success: true, trail: rowOf(t, b, a) });
   });
   return r;
@@ -72265,7 +72569,7 @@ function overdueMilestones(bks, now = Date.now()) {
   return out.sort((a, b) => b.days - a.days);
 }
 function createCrmPlusRouter() {
-  const r = (0, import_express6.Router)();
+  const r = (0, import_express7.Router)();
   r.use(needs("crm:read"));
   const loadLead = (req, res, opts = {}) => {
     const u = me3();
@@ -72278,8 +72582,8 @@ function createCrmPlusRouter() {
   };
   const activity = (l, type, note5) => {
     const u = me3();
-    l.activities.unshift({ id: aid("A"), type, note: note5, byUserId: u.id, byName: u.name, at: nowIso4() });
-    l.updatedAt = nowIso4();
+    l.activities.unshift({ id: aid("A"), type, note: note5, byUserId: u.id, byName: u.name, at: nowIso5() });
+    l.updatedAt = nowIso5();
   };
   const nextFu = (l) => {
     l.nextFollowUpAt = l.followUps.filter((f) => !f.done).map((f) => f.dueAt).sort()[0];
@@ -72378,7 +72682,7 @@ function createCrmPlusRouter() {
     if (!lead) return;
     if (lead.optedOutAt) return bad2(res, "Already opted out", 409);
     if (lead.stage === "BOOKED" || lead.stage === "BOOKING_REQUESTED") return bad2(res, "This customer already has a booking \u2014 manage contact preferences with the builder", 409);
-    lead.optedOutAt = nowIso4();
+    lead.optedOutAt = nowIso5();
     lead.stage = "LOST";
     lead.lostCode = "NOT_INTERESTED";
     lead.lostReason = "Customer asked not to be contacted";
@@ -72406,7 +72710,7 @@ function createCrmPlusRouter() {
     if (p.data.note) fu.note = p.data.note;
     if (p.data.channel) fu.channel = p.data.channel;
     nextFu(lead);
-    lead.updatedAt = nowIso4();
+    lead.updatedAt = nowIso5();
     db.save();
     res.json({ success: true, lead: viewLead(lead, u) });
   });
@@ -72419,7 +72723,7 @@ function createCrmPlusRouter() {
     if (fu.done) return bad2(res, "A completed follow-up cannot be removed", 409);
     lead.followUps = lead.followUps.filter((f) => f.id !== fu.id);
     nextFu(lead);
-    lead.updatedAt = nowIso4();
+    lead.updatedAt = nowIso5();
     db.save();
     res.json({ success: true, lead: viewLead(lead, u) });
   });
@@ -72432,7 +72736,7 @@ function createCrmPlusRouter() {
     if (!p.success) return bad2(res, p.error.issues[0]?.message || "Invalid feedback");
     if (!["SITE_VISITED", "NEGOTIATION", "BOOKING_REQUESTED", "BOOKED"].includes(lead.stage)) return bad2(res, "Visit feedback can be added after the customer has visited the site", 409);
     if ((lead.visitFeedback || []).length >= 5) return bad2(res, "At most 5 feedback entries per lead", 409);
-    lead.visitFeedback = [...lead.visitFeedback || [], { id: aid("VF"), at: nowIso4(), byId: u.id, byName: u.name, ...p.data }];
+    lead.visitFeedback = [...lead.visitFeedback || [], { id: aid("VF"), at: nowIso5(), byId: u.id, byName: u.name, ...p.data }];
     if (!lead.temperature) lead.temperature = p.data.rating >= 4 ? "HOT" : p.data.rating === 3 ? "WARM" : "COLD";
     activity(lead, "NOTE", `Visit feedback \u2605${p.data.rating}${p.data.liked.length ? ` \xB7 liked: ${p.data.liked.join(", ")}` : ""}${p.data.objection ? ` \xB7 objection: ${p.data.objection}` : ""}${p.data.nextStep ? ` \xB7 next: ${p.data.nextStep}` : ""}`);
     db.save();
@@ -72508,7 +72812,7 @@ function createCrmPlusRouter() {
     const lines = [head.join(",")].concat(leads.map((l) => [l.id, l.projectName, l.name, full ? l.phone : maskPhoneNumber(l.phone), l.email || "", l.source, l.sourceDetail || "", l.stage, l.temperature || "", (l.tags || []).join("|"), l.lostCode || "", l.createdAt.slice(0, 10), lastActivityAt(l).slice(0, 10), (l.nextFollowUpAt || "").slice(0, 10), l.associateName, l.protectedUntil.slice(0, 10)].map(csvCell).join(",")));
     auditCrm("CRM_LEADS_EXPORTED", "EXPORT", `${u.name} exported ${leads.length} leads (${full ? "full phone numbers" : "masked phone numbers"})`);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="genz-leads-${nowIso4().slice(0, 10)}.csv"`);
+    res.setHeader("Content-Disposition", `attachment; filename="genz-leads-${nowIso5().slice(0, 10)}.csv"`);
     res.setHeader("Cache-Control", "no-store");
     res.send("\uFEFF" + lines.join("\n"));
   });
@@ -72537,18 +72841,18 @@ function createCrmPlusRouter() {
         activity(l, "STAGE_CHANGE", `Stage \u2192 LOST (bulk): ${l.lostReason}`);
       } else if (action === "TEMPERATURE") {
         l.temperature = temp;
-        l.updatedAt = nowIso4();
+        l.updatedAt = nowIso5();
       } else if (action === "TAG") {
         const cur = l.tags || [];
         if (cur.includes(tag)) return { id, ok: true };
         if (cur.length >= MAX_TAGS) return { id, ok: false, error: `Already has ${MAX_TAGS} tags` };
         l.tags = [...cur, tag];
-        l.updatedAt = nowIso4();
+        l.updatedAt = nowIso5();
       } else {
         if (l.optedOutAt || !isOpenStage(l.stage)) return { id, ok: false, error: "Lead is closed or opted out" };
         l.followUps.push({ id: aid("FU"), dueAt: new Date(req.body.dueAt).toISOString(), note: String(req.body.note).trim().slice(0, 300), channel: req.body.channel, done: false, createdBy: u.id });
         nextFu(l);
-        l.updatedAt = nowIso4();
+        l.updatedAt = nowIso5();
       }
       return { id, ok: true };
     });
@@ -72577,8 +72881,8 @@ function createCrmPlusRouter() {
     if (m.claim?.status === "OPEN") return bad2(res, "A claim is already open on this milestone", 409);
     const note5 = String(req.body?.note || "").trim();
     if (note5.length < 5) return bad2(res, "Say what the customer told you (date, mode, reference) \u2014 min 5 chars");
-    m.claim = { id: aid("CL"), at: nowIso4(), byId: u.id, byName: u.name, note: note5.slice(0, 300), status: "OPEN" };
-    b.updatedAt = nowIso4();
+    m.claim = { id: aid("CL"), at: nowIso5(), byId: u.id, byName: u.name, note: note5.slice(0, 300), status: "OPEN" };
+    b.updatedAt = nowIso5();
     db.save();
     auditCrm("CRM_PAYMENT_CLAIMED", b.id, `${u.name} says the customer paid "${m.name}" on ${b.id}: ${note5.slice(0, 150)}. The builder must record it or reply.`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(b) });
@@ -72600,14 +72904,14 @@ function createCrmPlusRouter() {
     const newCollected = b.paymentSchedule.reduce((a, x) => a + (x.id === m.id ? live5 : paidOf(x)), 0);
     const supports = Math.round(b.brokerageAmount * Math.min(100, newCollected / total * 100) / 100);
     if (b.brokeragePaidAmount > supports) return bad2(res, `Brokerage already paid (\u20B9${b.brokeragePaidAmount.toLocaleString("en-IN")}) is more than the reduced collection supports (\u20B9${supports.toLocaleString("en-IN")}). Settle with the associate first.`, 409, "PAYOUT_EXCEEDS");
-    rc.reversed = { at: nowIso4(), byName: u.name, reason: reason.slice(0, 200) };
+    rc.reversed = { at: nowIso5(), byName: u.name, reason: reason.slice(0, 200) };
     m.paidAmount = live5;
     m.paid = live5 >= m.amount;
     if (!m.paid) {
       m.paidAt = void 0;
       m.receiptNo = void 0;
     }
-    b.updatedAt = nowIso4();
+    b.updatedAt = nowIso5();
     db.save();
     auditCrm("CRM_PAYMENT_REVERSED", b.id, `${u.name} reversed \u20B9${rc.amount.toLocaleString("en-IN")} (${m.name}, ref ${rc.ref}) on ${b.id}: ${reason}`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(b) });
@@ -72625,10 +72929,11 @@ function createCrmPlusRouter() {
     if (!["CONFIRM", "DISPUTE"].includes(action)) return bad2(res, "action must be CONFIRM or DISPUTE");
     if (action === "DISPUTE" && note5.length < 5) return bad2(res, "Say what is wrong (min 5 chars)");
     po.status = action === "CONFIRM" ? "CONFIRMED" : "DISPUTED";
-    po.ackAt = nowIso4();
+    po.ackAt = nowIso5();
     po.ackNote = note5.slice(0, 300) || void 0;
-    b.updatedAt = nowIso4();
+    b.updatedAt = nowIso5();
     db.save();
+    alert(b.builderId, "deals", action === "CONFIRM" ? `Partner confirmed brokerage \u2714 \xB7 ${b.projectName}` : `Partner disputes a payout \xB7 ${b.projectName}`, `${u.name}: ${inr(po.amount)} (${po.mode} ${po.ref}) for unit ${b.unitNo}${action === "DISPUTE" ? ` \u2014 ${note5.slice(0, 80)}` : ""}`, "/?tab=crm", { not: u.id, tag: `po-${b.id}`, hi: [action === "CONFIRM" ? `\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0940 \u2714 \xB7 ${b.projectName}` : `\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0928\u0947 \u092A\u0947\u092E\u0947\u0902\u091F \u092A\u0930 \u0906\u092A\u0924\u094D\u0924\u093F \u0915\u0940 \xB7 ${b.projectName}`, `${u.name}: \u092F\u0942\u0928\u093F\u091F ${b.unitNo} \u0915\u0947 \u0932\u093F\u090F ${inr(po.amount)} (${po.mode} ${po.ref})${action === "DISPUTE" ? ` \u2014 ${note5.slice(0, 80)}` : ""}`] });
     auditCrm(action === "CONFIRM" ? "CRM_PAYOUT_CONFIRMED" : "CRM_PAYOUT_DISPUTED", b.id, `${u.name} ${action === "CONFIRM" ? "confirmed receiving" : "disputes"} \u20B9${po.amount.toLocaleString("en-IN")} (${po.mode} ref ${po.ref}) on ${b.id}${note5 ? `: ${note5}` : ""}`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(b) });
   });
@@ -72674,7 +72979,7 @@ function createCrmPlusRouter() {
     if (b.settlement?.clawbackStatus !== "DUE") return bad2(res, "No clawback is due on this booking", 409);
     b.settlement.clawbackStatus = "RECOVERED";
     b.settlement.note = `${b.settlement.note}${b.settlement.note ? " \xB7 " : ""}Recovered: ${String(req.body?.note || "").slice(0, 120)}`;
-    b.updatedAt = nowIso4();
+    b.updatedAt = nowIso5();
     db.save();
     auditCrm("CRM_CLAWBACK_RECOVERED", b.id, `${u.name} marked the \u20B9${b.settlement.clawbackAmount.toLocaleString("en-IN")} clawback on ${b.id} as recovered`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(b) });
@@ -72688,8 +72993,8 @@ function createCrmPlusRouter() {
     if (b.cancelRequest?.status === "OPEN") return bad2(res, "A cancellation request is already open", 409);
     const reason = String(req.body?.reason || "").trim();
     if (reason.length < 5) return bad2(res, "A reason (min 5 chars) is required");
-    b.cancelRequest = { at: nowIso4(), byId: u.id, byName: u.name, reason: reason.slice(0, 300), status: "OPEN" };
-    b.updatedAt = nowIso4();
+    b.cancelRequest = { at: nowIso5(), byId: u.id, byName: u.name, reason: reason.slice(0, 300), status: "OPEN" };
+    b.updatedAt = nowIso5();
     db.save();
     auditCrm("CRM_CANCEL_REQUESTED", b.id, `${u.name} asked to cancel ${b.id} (${b.customerName}): ${reason}`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(b) });
@@ -72708,7 +73013,7 @@ function createCrmPlusRouter() {
     if (note5.length < 5) return bad2(res, "Give the associate a reason (min 5 chars)");
     b.cancelRequest.status = "REJECTED";
     b.cancelRequest.decisionNote = note5.slice(0, 300);
-    b.updatedAt = nowIso4();
+    b.updatedAt = nowIso5();
     db.save();
     auditCrm("CRM_CANCEL_REJECTED", b.id, `${u.name} declined the cancellation request on ${b.id}: ${note5}`, "COMMISSION");
     res.json({ success: true, booking: viewBooking(b) });
@@ -72721,7 +73026,7 @@ function createCrmPlusRouter() {
     if (!Number.isFinite(t) || t < 0 || t > 30) return bad2(res, "TDS % must be between 0 and 30");
     const was = p.tdsPct;
     p.tdsPct = t;
-    p.updatedAt = nowIso4();
+    p.updatedAt = nowIso5();
     db.save();
     auditCrm("CRM_TDS_RATE_SET", p.id, `${u.name}: TDS on brokerage for ${p.projectName} ${was ?? "default"} \u2192 ${t}% (applies to NEW payouts; confirm with your CA)`, "COMMISSION");
     res.json({ success: true, tdsPct: t });
@@ -72905,7 +73210,7 @@ function sweepCrm() {
     l.sourceDetail = void 0;
     l.handoffs = (l.handoffs || []).map((h) => ({ ...h, note: "" }));
     l.activities = l.activities.map((a) => a.type === "STAGE_CHANGE" ? { ...a, note: a.note.replace(/:.*$/, "") } : { ...a, note: "Entry removed (data retention)" });
-    l.erasedAt = nowIso4();
+    l.erasedAt = nowIso5();
     n2++;
   }
   if (n2) {
@@ -72916,13 +73221,13 @@ function sweepCrm() {
 }
 
 // server/crm3.ts
-var import_express7 = __toESM(require_express2(), 1);
+var import_express8 = __toESM(require_express2(), 1);
 var bad3 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
 var me4 = currentUser;
 var rid = (p) => `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1e3)}`;
 var DAY7 = 864e5;
 function createCrmSalesRouter() {
-  const r = (0, import_express7.Router)();
+  const r = (0, import_express8.Router)();
   r.use(needs("crm:read"));
   const loadLead = (req, res) => {
     const u = me4();
@@ -72958,7 +73263,7 @@ function createCrmSalesRouter() {
       if (t > Date.now() + 120 * DAY7) return bad3(res, "Pick a date within the next 120 days");
       when2 = new Date(t).toISOString();
     }
-    const ts = nowIso4();
+    const ts = nowIso5();
     const before = callStats(lead);
     const attempt = before.attempts + 1;
     const dur = b.durationMin === void 0 || b.durationMin === "" || b.durationMin === null ? void 0 : Number(b.durationMin);
@@ -73112,7 +73417,7 @@ function createCrmSalesRouter() {
     if (p.onLeave) return bad3(res, `${to.name} is on leave`, 409);
     if (p.maxOpenLeads && openLoad(to.id) >= p.maxOpenLeads) return bad3(res, `${to.name} has reached the open-lead limit`, 409);
     if (p.projectIds.length && !p.projectIds.includes(lead.projectId)) return bad3(res, `${to.name} is not assigned to this project`, 409);
-    const ts = nowIso4();
+    const ts = nowIso5();
     const fromId = lead.assignedMemberId || u.id;
     const fromName = lead.assignedMemberName || u.name;
     const ho = { id: rid("HO"), at: ts, fromId, fromName, toId: to.id, toName: to.name, purpose, note: note5 };
@@ -73129,7 +73434,7 @@ function createCrmSalesRouter() {
 }
 
 // server/pulse.ts
-var import_express8 = __toESM(require_express2(), 1);
+var import_express9 = __toESM(require_express2(), 1);
 
 // src/shared/pulseRules.ts
 var IST_OFFSET_MIN = 330;
@@ -73391,7 +73696,7 @@ var collectedOf = (b) => {
 };
 var person = (u) => ({ id: u.id, name: u.name, role: u.role, city: u.city || "", companyName: u.companyName || "", status: u.verificationStatus });
 function createPulseRouter() {
-  const r = (0, import_express8.Router)();
+  const r = (0, import_express9.Router)();
   r.use(needs("admin:control_center"));
   r.get("/", (_req, res) => {
     const now = Date.now();
@@ -73518,11 +73823,11 @@ var import_express18 = __toESM(require_express2(), 1);
 var import_express17 = __toESM(require_express2(), 1);
 
 // server/propdocs.ts
-var import_express9 = __toESM(require_express2(), 1);
 var import_express10 = __toESM(require_express2(), 1);
-import crypto8 from "node:crypto";
-import fs4 from "node:fs";
-import path4 from "node:path";
+var import_express11 = __toESM(require_express2(), 1);
+import crypto9 from "node:crypto";
+import fs5 from "node:fs";
+import path5 from "node:path";
 
 // server/pdfPages.ts
 import zlib from "node:zlib";
@@ -73767,16 +74072,16 @@ function scannedPages(buf, opts = {}) {
 }
 
 // server/viewToken.ts
-import crypto7 from "node:crypto";
+import crypto8 from "node:crypto";
 var TTL_MS = 5 * 6e4;
 var used = /* @__PURE__ */ new Map();
 setInterval(() => {
   const now = Date.now();
   for (const [k, exp] of used) if (exp < now) used.delete(k);
 }, 6e4).unref();
-var sign = (body) => crypto7.createHmac("sha256", secret()).update(`view-token|${body}`).digest("base64url");
+var sign = (body) => crypto8.createHmac("sha256", secret()).update(`view-token|${body}`).digest("base64url");
 function makeViewToken(kind, docId2, userId, page2, ttlMs = TTL_MS) {
-  const claim2 = { k: kind, d: docId2, u: userId, p: page2, e: Date.now() + ttlMs, n: crypto7.randomBytes(6).toString("base64url") };
+  const claim2 = { k: kind, d: docId2, u: userId, p: page2, e: Date.now() + ttlMs, n: crypto8.randomBytes(6).toString("base64url") };
   const body = Buffer.from(JSON.stringify(claim2)).toString("base64url");
   return `${body}.${sign(body)}`;
 }
@@ -73861,9 +74166,9 @@ var PHONE_IN_CHAT_MSG = {
 
 // server/propdocs.ts
 var me5 = () => ctx().user;
-var nowIso6 = () => (/* @__PURE__ */ new Date()).toISOString();
-var DIR = () => path4.resolve(process.cwd(), "data", "propdocs");
-var fileOf = (id) => path4.join(DIR(), `${id}.bin`);
+var nowIso7 = () => (/* @__PURE__ */ new Date()).toISOString();
+var DIR = () => path5.resolve(process.cwd(), "data", "propdocs");
+var fileOf = (id) => path5.join(DIR(), `${id}.bin`);
 var bad4 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
 var LOG_CAP = 5e3;
 var pageCache = /* @__PURE__ */ new Map();
@@ -73873,7 +74178,7 @@ function viewerPages(d, buf) {
   let b = buf;
   if (!b) {
     try {
-      b = fs4.readFileSync(fileOf(d.id));
+      b = fs5.readFileSync(fileOf(d.id));
     } catch {
       return null;
     }
@@ -73905,7 +74210,7 @@ function docAccess(st23, u, d, now = Date.now()) {
 }
 var log = (docId2, userId, action, ip, note5) => {
   const st23 = db.getState();
-  st23.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto8.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso6(), ip, note: note5 });
+  st23.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto9.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso7(), ip, note: note5 });
   if (st23.propertyDocLogs.length > LOG_CAP) st23.propertyDocLogs.splice(0, st23.propertyDocLogs.length - LOG_CAP);
 };
 var nameOf = (st23, id) => db.byId("users", id)?.name || "\u2014";
@@ -73919,7 +74224,7 @@ function ensureProtected(d, u) {
   const pp = viewerPages(d);
   if (!pp) return false;
   d.protect = true;
-  d.protectedAt = nowIso6();
+  d.protectedAt = nowIso7();
   d.pages = pp.length;
   db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_PROTECT", `\u201C${d.title}\u201D protected while sharing it from a chat: view-only, every viewer's name stamped, no download (except the uploader)`);
   return true;
@@ -73973,7 +74278,7 @@ function summary(st23, d, u, a) {
     protect: !!d.protect,
     pages: d.pages || 1,
     canDownload: mayHaveFile(d, a),
-    missing: !fs4.existsSync(fileOf(d.id)),
+    missing: !fs5.existsSync(fileOf(d.id)),
     shares: manage ? d.shares.filter((s) => !s.revoked).map((s) => ({ userId: s.userId, name: nameOf(st23, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now(), maxViews: s.maxViews || null, views: s.views || 0, dealId: s.dealId, clientShare: !!s.clientShare })) : void 0,
     // v55 — what I was given (opens left, until when, may I show my client) and to which of my clients I showed it
     myShare: a.via === "SHARED" ? (() => {
@@ -73999,7 +74304,7 @@ function uploadableProperties(st23, u) {
 }
 function eraseDocFile(id) {
   try {
-    fs4.unlinkSync(fileOf(id));
+    fs5.unlinkSync(fileOf(id));
   } catch {
   }
 }
@@ -74013,8 +74318,8 @@ function purgeUserDocs(st23, userId) {
 }
 var cleanTags2 = (t) => Array.isArray(t) ? [...new Set(t.map((x) => String(x).trim().toLowerCase().slice(0, 30)).filter(Boolean))].slice(0, 10) : [];
 function createPropDocsRouter() {
-  const r = (0, import_express9.Router)();
-  const big = import_express10.default.json({ limit: "15mb" });
+  const r = (0, import_express10.Router)();
+  const big = import_express11.default.json({ limit: "15mb" });
   const need = needs("propdoc:use");
   r.get("/meta", need, (_req, res) => {
     const u = me5();
@@ -74097,16 +74402,16 @@ function createPropDocsRouter() {
       if (!pp) return res.status(400).json(NOT_SCANNED);
       pages = pp.length;
     }
-    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto8.randomInt(1e3, 9999)}`;
+    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto9.randomInt(1e3, 9999)}`;
     try {
-      fs4.mkdirSync(DIR(), { recursive: true });
+      fs5.mkdirSync(DIR(), { recursive: true });
       const tmp = fileOf(id) + ".tmp";
-      fs4.writeFileSync(tmp, buf);
-      fs4.renameSync(tmp, fileOf(id));
+      fs5.writeFileSync(tmp, buf);
+      fs5.renameSync(tmp, fileOf(id));
     } catch {
       return bad4(res, "The file could not be saved on the server. Please try again.", 500);
     }
-    const ts = nowIso6();
+    const ts = nowIso7();
     const doc = {
       id,
       propertyId: prop.id,
@@ -74119,7 +74424,7 @@ function createPropDocsRouter() {
       fileName: b.data.fileName.replace(/[\\/\0\r\n]+/g, "_"),
       mime,
       size: buf.length,
-      sha256: crypto8.createHash("sha256").update(buf).digest("hex"),
+      sha256: crypto9.createHash("sha256").update(buf).digest("hex"),
       visibility: b.data.visibility,
       shares: [],
       ddItemId,
@@ -74162,7 +74467,7 @@ function createPropDocsRouter() {
     if (!x) return;
     const { u, d, a } = x;
     const pages = viewerPages(d);
-    if (!pages) return fs4.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
+    if (!pages) return fs5.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
     const s = a.via === "SHARED" ? shareOf(d, u.id) : void 0;
     if (s?.maxViews && (s.views || 0) >= s.maxViews) {
       log(d.id, u.id, "DENIED", req.ip || "", "all allowed opens used");
@@ -74219,7 +74524,7 @@ function createPropDocsRouter() {
     }
     let buf;
     try {
-      buf = fs4.readFileSync(fileOf(d.id));
+      buf = fs5.readFileSync(fileOf(d.id));
     } catch {
       return bad4(res, "The file is missing on the server. Please upload it again.", 404);
     }
@@ -74269,12 +74574,12 @@ function createPropDocsRouter() {
     const expiresAt = daysAhead(b.data.days);
     for (const t of targets2) {
       const ex = d.shares.find((s) => s.userId === t.id);
-      const fresh = { userId: t.id, grantedBy: u.id, grantedAt: nowIso6(), expiresAt, revoked: false, maxViews: b.data.maxViews || void 0, views: 0, dealId: deal.id, clientShare: b.data.clientShare };
+      const fresh = { userId: t.id, grantedBy: u.id, grantedAt: nowIso7(), expiresAt, revoked: false, maxViews: b.data.maxViews || void 0, views: 0, dealId: deal.id, clientShare: b.data.clientShare };
       if (ex) Object.assign(ex, fresh);
       else d.shares.push(fresh);
       log(d.id, t.id, "SHARE", req.ip || "", `from the deal chat by ${u.name} \u2014 ${b.data.days} day(s), ${b.data.maxViews || "unlimited"} open(s)${b.data.clientShare ? ", may show own client" : ""}`);
     }
-    d.updatedAt = nowIso6();
+    d.updatedAt = nowIso7();
     const names = targets2.map((t) => t.name).join(", ");
     const msg = {
       id: `MSG-${deal.id}-${Date.now().toString(36)}`,
@@ -74287,7 +74592,7 @@ function createPropDocsRouter() {
       kind: "PAPER",
       refId: d.id,
       ...b.data.note ? {} : { auto: true },
-      timestamp: nowIso6()
+      timestamp: nowIso7()
     };
     st23.dealMessages.push(msg);
     db.save();
@@ -74313,12 +74618,12 @@ function createPropDocsRouter() {
     }
     if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
     if (room.messages.length >= ROOM_LIMITS.messages) return bad4(res, "This chat is full \u2014 open a new room or close this one");
-    const cs = { id: `CPS-${crypto8.randomBytes(5).toString("hex")}`, roomId: room.id, brokerId: u.id, grantedAt: nowIso6(), expiresAt: new Date(until).toISOString(), maxViews: b.data.maxViews, views: 0 };
+    const cs = { id: `CPS-${crypto9.randomBytes(5).toString("hex")}`, roomId: room.id, brokerId: u.id, grantedAt: nowIso7(), expiresAt: new Date(until).toISOString(), maxViews: b.data.maxViews, views: 0 };
     (d.clientShares ||= []).push(cs);
-    room.messages.push({ id: `CRX-${crypto8.randomBytes(5).toString("hex")}`, from: "BROKER", text: `\u{1F4C4} ${d.title} \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F / view only`, at: nowIso6(), paper: { shareId: cs.id, docId: d.id, title: d.title } });
-    room.events.push({ at: nowIso6(), text: `Paper shown (view-only): ${d.title}` });
-    room.updatedAt = nowIso6();
-    room.lastBrokerSeenAt = nowIso6();
+    room.messages.push({ id: `CRX-${crypto9.randomBytes(5).toString("hex")}`, from: "BROKER", text: `\u{1F4C4} ${d.title} \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F / view only`, at: nowIso7(), paper: { shareId: cs.id, docId: d.id, title: d.title } });
+    room.events.push({ at: nowIso7(), text: `Paper shown (view-only): ${d.title}` });
+    room.updatedAt = nowIso7();
+    room.lastBrokerSeenAt = nowIso7();
     log(d.id, u.id, "SHARE", req.ip || "", `shown to his client ${room.clientName} (client room) \u2014 ${Math.ceil((until - Date.now()) / 864e5)} day(s), ${b.data.maxViews} open(s)`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "PROPDOC_CLIENT_SHARED", `Paper \u201C${d.title}\u201D (${d.id}) shown to the client of room ${room.id}: until ${cs.expiresAt.slice(0, 10)}, ${cs.maxViews} open(s), view-only`);
@@ -74332,7 +74637,7 @@ function createPropDocsRouter() {
     if (!cs) return bad4(res, "Not found", 404);
     if (cs.brokerId !== u.id && a.level !== "MANAGE") return bad4(res, "Only the broker who showed it can stop it.", 403);
     cs.revoked = true;
-    d.updatedAt = nowIso6();
+    d.updatedAt = nowIso7();
     log(d.id, cs.brokerId, "REVOKE", req.ip || "", `client showing stopped by ${u.name}`);
     db.save();
     res.json({ success: true, doc: summary(st23, d, u, a) });
@@ -74353,9 +74658,9 @@ function createPropDocsRouter() {
     if (!b.success) return bad4(res, b.error.issues[0]?.message || "Please check the details.");
     if (b.data.protect === true && !d.protect) {
       const pp = viewerPages(d);
-      if (!pp) return fs4.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
+      if (!pp) return fs5.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
       d.protect = true;
-      d.protectedAt = nowIso6();
+      d.protectedAt = nowIso7();
       d.pages = pp.length;
       db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_PROTECT", `\u201C${d.title}\u201D protected: view-only, every viewer's name stamped, no download (except the uploader)`);
     } else if (b.data.protect === false && d.protect) {
@@ -74369,7 +74674,7 @@ function createPropDocsRouter() {
     if (b.data.note !== void 0) d.note = b.data.note || void 0;
     const widened = b.data.visibility && b.data.visibility !== d.visibility;
     if (b.data.visibility) d.visibility = b.data.visibility;
-    d.updatedAt = nowIso6();
+    d.updatedAt = nowIso7();
     db.save();
     if (widened) db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_VISIBILITY", `Visibility of \u201C${d.title}\u201D set to ${d.visibility}`);
     res.json({ success: true, doc: summary(x.st, d, u, x.a) });
@@ -74398,14 +74703,14 @@ function createPropDocsRouter() {
       if (ex) {
         ex.revoked = false;
         ex.expiresAt = expiresAt;
-        ex.grantedAt = nowIso6();
+        ex.grantedAt = nowIso7();
         ex.grantedBy = u.id;
-      } else d.shares.push({ userId: uid3, grantedBy: u.id, grantedAt: nowIso6(), expiresAt });
+      } else d.shares.push({ userId: uid3, grantedBy: u.id, grantedAt: nowIso7(), expiresAt });
       log(d.id, uid3, "SHARE", req.ip || "", `by ${u.name}`);
       n2++;
     }
     if (!n2) return bad4(res, "None of the chosen members can receive papers.");
-    d.updatedAt = nowIso6();
+    d.updatedAt = nowIso7();
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_SHARED", `\u201C${d.title}\u201D shared with ${n2} member(s)${b.data.expiresInDays ? ` for ${b.data.expiresInDays} day(s)` : ""}`);
     res.json({ success: true, shared: n2, doc: summary(st23, d, u, x.a) });
@@ -74419,7 +74724,7 @@ function createPropDocsRouter() {
     if (!s) return bad4(res, "That member does not have a share on this paper.", 404);
     s.revoked = true;
     log(d.id, uid3, "REVOKE", req.ip || "", `by ${u.name}`);
-    d.updatedAt = nowIso6();
+    d.updatedAt = nowIso7();
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_REVOKED", `Share on \u201C${d.title}\u201D removed for one member`);
     res.json({ success: true, doc: summary(st23, d, u, x.a) });
@@ -74444,11 +74749,11 @@ function createPropDocsRouter() {
 }
 
 // server/idreview.ts
-var import_express13 = __toESM(require_express2(), 1);
 var import_express14 = __toESM(require_express2(), 1);
-import crypto11 from "node:crypto";
-import fs6 from "node:fs";
-import path6 from "node:path";
+var import_express15 = __toESM(require_express2(), 1);
+import crypto12 from "node:crypto";
+import fs7 from "node:fs";
+import path7 from "node:path";
 
 // src/shared/idRules.ts
 var PAN_RE = /^[A-Z]{3}[PCFHATBLJG][A-Z][0-9]{4}[A-Z]$/;
@@ -74545,11 +74850,11 @@ function isPlausibleRera(r) {
 var maskPan = (p) => p ? `${p.slice(0, 2)}\u2022\u2022\u2022\u2022\u2022${p.slice(-2)}` : p;
 
 // server/kycvault.ts
-var import_express12 = __toESM(require_express2(), 1);
+var import_express13 = __toESM(require_express2(), 1);
 
 // server/twofactor.ts
-var import_express11 = __toESM(require_express2(), 1);
-import crypto9 from "crypto";
+var import_express12 = __toESM(require_express2(), 1);
+import crypto10 from "crypto";
 var B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(buf) {
   let bits = 0, value = 0, out = "";
@@ -74567,7 +74872,7 @@ function base32Encode(buf) {
 function hotp(key, counter, digits2 = 6) {
   const c = Buffer.alloc(8);
   c.writeBigUInt64BE(BigInt(counter));
-  const h = crypto9.createHmac("sha1", key).update(c).digest();
+  const h = crypto10.createHmac("sha1", key).update(c).digest();
   const o = h[h.length - 1] & 15;
   const bin = (h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3];
   return String(bin % 10 ** digits2).padStart(digits2, "0");
@@ -74580,20 +74885,20 @@ function checkTotp(key, code, ms = Date.now()) {
   for (const s of [now, now - 1, now + 1]) if (safeEqual(hotp(key, s), c)) return s;
   return -1;
 }
-var encKey = () => crypto9.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
+var encKey = () => crypto10.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
 function seal(b) {
-  const iv = crypto9.randomBytes(12);
-  const c = crypto9.createCipheriv("aes-256-gcm", encKey(), iv);
+  const iv = crypto10.randomBytes(12);
+  const c = crypto10.createCipheriv("aes-256-gcm", encKey(), iv);
   const ct = Buffer.concat([c.update(b), c.final()]);
   return `t1.${iv.toString("base64url")}.${c.getAuthTag().toString("base64url")}.${ct.toString("base64url")}`;
 }
 function unseal(s) {
   const [, iv, tag, ct] = s.split(".");
-  const d = crypto9.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
+  const d = crypto10.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
   d.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]);
 }
-var recHash = (userId, code) => crypto9.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
+var recHash = (userId, code) => crypto10.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
 var rec = (userId) => db.getState().twoFactor.find((x) => x.userId === userId);
 var twoFactorOn = (userId) => !!rec(userId)?.enabledAt;
 var twoFactorRecommended = (u) => u.role === "SUPERADMIN" || u.role === "ADMIN";
@@ -74621,13 +74926,13 @@ function verifySecondFactor(userId, code) {
 }
 function makeTicket(u) {
   const body = Buffer.from(JSON.stringify({ uid: u.id, sv: u.sessionVersion || 1, exp: Date.now() + 5 * 6e4 })).toString("base64url");
-  const sig = crypto9.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const sig = crypto10.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   return `${body}.${sig}`;
 }
 function readTicket(t) {
   const [body, sig] = String(t || "").split(".");
   if (!body || !sig) return null;
-  const want = crypto9.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const want = crypto10.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   if (!safeEqual(want, sig)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString());
@@ -74637,7 +74942,7 @@ function readTicket(t) {
   }
 }
 function createTwoFactorRouter() {
-  const r = (0, import_express11.Router)();
+  const r = (0, import_express12.Router)();
   const me26 = () => ctx().user;
   r.get("/status", requireAuth, (_req, res) => {
     const u = me26();
@@ -74650,7 +74955,7 @@ function createTwoFactorRouter() {
     const s = db.getState();
     const x = rec(u.id);
     if (x?.enabledAt) return res.status(409).json({ error: "Two-step sign-in is already on. Turn it off first to move it to a new phone." });
-    const key = crypto9.randomBytes(20);
+    const key = crypto10.randomBytes(20);
     const row = { id: u.id, userId: u.id, secretEnc: seal(key), pendingSince: (/* @__PURE__ */ new Date()).toISOString(), recovery: [] };
     s.twoFactor = s.twoFactor.filter((t) => t.userId !== u.id);
     s.twoFactor.push(row);
@@ -74665,7 +74970,7 @@ function createTwoFactorRouter() {
     if (!x || x.enabledAt) return res.status(409).json({ error: "Start the setup first." });
     const step = checkTotp(unseal(x.secretEnc), String(req.body?.code || ""));
     if (step < 0) return res.status(400).json({ error: "The code is not correct. Check the time on your phone and try the newest code.", code: "BAD_CODE" });
-    const codes = Array.from({ length: 10 }, () => crypto9.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
+    const codes = Array.from({ length: 10 }, () => crypto10.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
     x.recovery = codes.map((c) => recHash(u.id, c));
     x.enabledAt = (/* @__PURE__ */ new Date()).toISOString();
     x.pendingSince = void 0;
@@ -74690,14 +74995,14 @@ function createTwoFactorRouter() {
 }
 
 // server/vaultCrypto.ts
-import crypto10 from "node:crypto";
-import fs5 from "node:fs";
-import path5 from "node:path";
+import crypto11 from "node:crypto";
+import fs6 from "node:fs";
+import path6 from "node:path";
 var keyCache;
 var keyProblem = "";
 var vaultKeyProblem = () => keyProblem;
-var keyFile = () => process.env.KYC_VAULT_KEY_FILE ? path5.resolve(process.env.KYC_VAULT_KEY_FILE) : path5.resolve(process.cwd(), "data", ".kyc-vault.key");
-var keyId = (k) => crypto10.createHash("sha256").update(k).digest("hex").slice(0, 8);
+var keyFile = () => process.env.KYC_VAULT_KEY_FILE ? path6.resolve(process.env.KYC_VAULT_KEY_FILE) : path6.resolve(process.cwd(), "data", ".kyc-vault.key");
+var keyId = (k) => crypto11.createHash("sha256").update(k).digest("hex").slice(0, 8);
 function parseKey(raw) {
   const t = raw.trim();
   if (/^[0-9a-fA-F]{64}$/.test(t)) return Buffer.from(t, "hex");
@@ -74722,17 +75027,17 @@ function vaultKey() {
   }
   try {
     const f = keyFile();
-    if (fs5.existsSync(f)) {
-      const k2 = parseKey(fs5.readFileSync(f, "utf8"));
+    if (fs6.existsSync(f)) {
+      const k2 = parseKey(fs6.readFileSync(f, "utf8"));
       if (!k2) {
         keyProblem = "the key file in data/ is damaged";
         return keyCache = null;
       }
       return keyCache = { key: k2, id: keyId(k2), mode: "file" };
     }
-    fs5.mkdirSync(path5.dirname(f), { recursive: true });
-    const k = crypto10.randomBytes(32);
-    fs5.writeFileSync(f, k.toString("hex") + "\n", { mode: 384, flag: "wx" });
+    fs6.mkdirSync(path6.dirname(f), { recursive: true });
+    const k = crypto11.randomBytes(32);
+    fs6.writeFileSync(f, k.toString("hex") + "\n", { mode: 384, flag: "wx" });
     return keyCache = { key: k, id: keyId(k), mode: "file" };
   } catch (e) {
     if (e?.code === "EEXIST") {
@@ -74744,15 +75049,15 @@ function vaultKey() {
   }
 }
 var vaultReady = () => !!vaultKey();
-var b64u = (b) => b.toString("base64url");
+var b64u2 = (b) => b.toString("base64url");
 function seal2(plain, aad) {
   const k = vaultKey();
   if (!k) throw new Error("VAULT_NO_KEY");
-  const iv = crypto10.randomBytes(12);
-  const c = crypto10.createCipheriv("aes-256-gcm", k.key, iv);
+  const iv = crypto11.randomBytes(12);
+  const c = crypto11.createCipheriv("aes-256-gcm", k.key, iv);
   c.setAAD(Buffer.from(aad));
   const ct = Buffer.concat([c.update(plain, "utf8"), c.final()]);
-  return `k1.${k.id}.${b64u(iv)}.${b64u(c.getAuthTag())}.${b64u(ct)}`;
+  return `k1.${k.id}.${b64u2(iv)}.${b64u2(c.getAuthTag())}.${b64u2(ct)}`;
 }
 function unseal2(sealed, aad) {
   const k = vaultKey();
@@ -74761,7 +75066,7 @@ function unseal2(sealed, aad) {
   if (v !== "k1" || !kid || !iv || !tag || !ct) throw new Error("VAULT_BAD_DATA");
   if (kid !== k.id) throw new Error("VAULT_WRONG_KEY");
   try {
-    const d = crypto10.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
+    const d = crypto11.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
     d.setAAD(Buffer.from(aad));
     d.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
@@ -74806,7 +75111,7 @@ var VIEW_LOG_CAP = 60;
 var VAULT_ORPHAN_DAYS = 14;
 
 // server/kycvault.ts
-var nowIso7 = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso8 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st2 = () => db.getState();
 var me6 = () => ctx().user;
 var bad5 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
@@ -74821,7 +75126,7 @@ function storeKyc(user, input2) {
   if (!vaultReady()) return { stored: false, why: "NO_KEY" };
   if (st2().settings.kycVaultOff) return { stored: false, why: "OFF" };
   const s = st2();
-  const at = nowIso7();
+  const at = nowIso8();
   let r = vaultOf(s, user.id);
   const isNew = !r;
   if (!r) {
@@ -74890,7 +75195,7 @@ function mineView(u) {
   };
 }
 function createKycVaultRouter() {
-  const r = (0, import_express12.Router)();
+  const r = (0, import_express13.Router)();
   const audit8 = (entityId, action, details) => {
     const u = me6();
     db.appendAuditEvent(u.id, u.role, "VERIFICATION", entityId, action, details);
@@ -74956,7 +75261,7 @@ function createKycVaultRouter() {
     if (!b.data.on !== !!s.settings.kycVaultOff) {
       s.settings.kycVaultOff = !b.data.on;
       s.settings.kycVaultChangedBy = a.id;
-      s.settings.kycVaultChangedAt = nowIso7();
+      s.settings.kycVaultChangedAt = nowIso8();
       db.save();
       audit8("KYC-VAULT-SETTINGS", "KYC_VAULT_SWITCH", `${a.name} switched the KYC vault ${b.data.on ? "ON" : "OFF"} (OFF = new sign-ups keep only the last 4 Aadhaar digits; what is already stored stays encrypted)`);
     }
@@ -75005,7 +75310,7 @@ function createKycVaultRouter() {
     } catch (e) {
       return bad5(res, e?.message === "VAULT_WRONG_KEY" ? "The encryption key on this server is not the one these details were saved with." : e?.message === "VAULT_NO_KEY" ? "The vault has no encryption key." : "These details could not be decrypted.", 500, e?.message || "VAULT_BAD_DATA");
     }
-    rec2.views.push({ at: nowIso7(), byId: a.id, byName: a.name, purpose: b.data.purpose, reason: b.data.reason, ref: b.data.ref || void 0 });
+    rec2.views.push({ at: nowIso8(), byId: a.id, byName: a.name, purpose: b.data.purpose, reason: b.data.reason, ref: b.data.ref || void 0 });
     if (rec2.views.length > VIEW_LOG_CAP) rec2.views.splice(0, rec2.views.length - VIEW_LOG_CAP);
     db.save();
     audit8(t.id, "KYC_REVEALED", `${a.name} opened the KYC of ${t.name} (Aadhaar ${maskAadhaar(rec2.aadhaarLast4)}) \u2014 ${REVEAL_PURPOSE_LABEL[b.data.purpose].en}${b.data.ref ? ` [${b.data.ref}]` : ""}: ${b.data.reason}`);
@@ -75034,18 +75339,18 @@ function readKycBody(body) {
 }
 
 // server/idreview.ts
-var nowIso8 = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso9 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st3 = () => db.getState();
 var me7 = () => ctx().user;
 var bad6 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
-var DIR2 = () => path6.resolve(process.cwd(), "data", "iddocs");
-var fileOf2 = (id) => path6.join(DIR2(), `${id}.bin`);
+var DIR2 = () => path7.resolve(process.cwd(), "data", "iddocs");
+var fileOf2 = (id) => path7.join(DIR2(), `${id}.bin`);
 var ACTIVE = ["OPEN", "CHANGES_ASKED"];
 var HISTORY_CAP = 40;
 var nameOf2 = (s, id) => id ? s.users.find((x) => x.id === id)?.name || "\u2014" : "";
 var eraseFile = (id) => {
   try {
-    fs6.unlinkSync(fileOf2(id));
+    fs7.unlinkSync(fileOf2(id));
   } catch {
   }
 };
@@ -75066,12 +75371,12 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
   if (buf.length > ID_DOC_MAX_BYTES) return { error: `The file is larger than ${ID_DOC_MAX_BYTES / 1024 / 1024} MB. Send a smaller photo.`, status: 413 };
   const mime = sniffMime(buf);
   if (!mime) return { error: "Only a PDF, JPEG, PNG or WebP file is accepted.", status: 415 };
-  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto11.randomInt(1e3, 9999)}`;
+  const id = `IDD-${Date.now().toString(36).toUpperCase()}${crypto12.randomInt(1e3, 9999)}`;
   try {
-    fs6.mkdirSync(DIR2(), { recursive: true });
+    fs7.mkdirSync(DIR2(), { recursive: true });
     const tmp = fileOf2(id) + ".tmp";
-    fs6.writeFileSync(tmp, buf);
-    fs6.renameSync(tmp, fileOf2(id));
+    fs7.writeFileSync(tmp, buf);
+    fs7.renameSync(tmp, fileOf2(id));
   } catch {
     return { error: "The file could not be saved on the server. Please try again.", status: 500 };
   }
@@ -75087,8 +75392,8 @@ function storeDoc(owner, kind, fileName, data, uploadedBy, uploaderId) {
     fileName: fileName.replace(/[\\/\0\r\n]+/g, "_").slice(0, 160),
     mime,
     size: buf.length,
-    sha256: crypto11.createHash("sha256").update(buf).digest("hex"),
-    createdAt: nowIso8()
+    sha256: crypto12.createHash("sha256").update(buf).digest("hex"),
+    createdAt: nowIso9()
   };
   s.idDocs.push(doc);
   return { doc };
@@ -75123,7 +75428,7 @@ function sweepIdDocs() {
   if (changed) db.save();
 }
 var push = (t, by, action, note5) => {
-  t.history.push({ at: nowIso8(), by, action, note: note5 });
+  t.history.push({ at: nowIso9(), by, action, note: note5 });
   if (t.history.length > HISTORY_CAP) t.history.splice(0, t.history.length - HISTORY_CAP);
 };
 var isReviewer = (u) => !!u && u.verificationStatus === "VERIFIED" && can(u, "users:review");
@@ -75138,7 +75443,7 @@ function openIdTask(userId, source, opts = {}) {
   const u = s.users.find((x) => x.id === userId);
   if (!u || u.role !== "BROKER") return null;
   const by = opts.by || "system";
-  const at = nowIso8();
+  const at = nowIso9();
   let t = s.idReviewTasks.find((x) => x.userId === userId);
   if (t) {
     if (!ACTIVE.includes(t.status)) {
@@ -75153,7 +75458,7 @@ function openIdTask(userId, source, opts = {}) {
     if (opts.autoVerified) t.autoVerified = true;
     t.updatedAt = at;
   } else {
-    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto11.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
+    t = { id: `IDR-${Date.now().toString(36).toUpperCase()}${crypto12.randomInt(100, 999)}`, userId, status: "OPEN", source, autoVerified: opts.autoVerified || void 0, createdAt: at, updatedAt: at, history: [] };
     push(t, by, source, opts.note);
     s.idReviewTasks.push(t);
   }
@@ -75183,7 +75488,7 @@ function ensureIdTasks() {
     const u = s.users.find((x) => x.id === t.userId);
     if (ACTIVE.includes(t.status) && (!u || !["PENDING", "VERIFIED"].includes(u.verificationStatus))) {
       t.status = "REJECTED";
-      t.doneAt = nowIso8();
+      t.doneAt = nowIso9();
       t.doneBy = "system";
       push(t, "system", "CLOSED", "account is no longer active");
       changed = true;
@@ -75194,7 +75499,7 @@ function ensureIdTasks() {
 }
 function recordIdTick(subject2, reviewer, checked, note5) {
   const s = st3();
-  const at = nowIso8();
+  const at = nowIso9();
   if (checked) {
     subject2.idCheckedAt = at;
     subject2.idCheckedBy = reviewer.id;
@@ -75219,7 +75524,7 @@ function recordIdTick(subject2, reviewer, checked, note5) {
 }
 function closeIdTaskOnAdverse(userId, byId, action, note5) {
   const s = st3();
-  const at = nowIso8();
+  const at = nowIso9();
   const t = s.idReviewTasks.find((x) => x.userId === userId);
   if (t && ACTIVE.includes(t.status)) {
     t.status = "REJECTED";
@@ -75319,8 +75624,8 @@ function counts(s, meId) {
   };
 }
 function createIdReviewRouter() {
-  const r = (0, import_express13.Router)();
-  const big = import_express14.default.json({ limit: "6mb" });
+  const r = (0, import_express14.Router)();
+  const big = import_express15.default.json({ limit: "6mb" });
   const uploadBody = external_exports.object({ kind: external_exports.enum(ID_DOC_KINDS), fileName: external_exports.string().trim().min(1).max(160), data: external_exports.string().min(8) });
   r.get("/mine", needs("self:read"), (_req, res) => {
     const u = me7();
@@ -75385,7 +75690,7 @@ function createIdReviewRouter() {
     if (!b.success) return bad6(res, "Choose the file and what it is (PAN or Aadhaar).");
     const out = storeDoc({ appId: x.a.id }, b.data.kind, b.data.fileName, b.data.data, "SPONSOR", x.u.id);
     if ("error" in out) return bad6(res, out.error, out.status);
-    x.a.updatedAt = nowIso8();
+    x.a.updatedAt = nowIso9();
     db.save();
     db.appendAuditEvent(x.u.id, x.u.role, "SYSTEM", x.a.id, "IDDOC_UPLOADED", `${x.u.name} attached a ${b.data.kind === "PAN" ? "PAN card" : "masked Aadhaar"} copy to the request for ${x.a.name} (${(out.doc.size / 1024).toFixed(0)} KB, SHA-256 ${out.doc.sha256.slice(0, 16)}\u2026)`);
     res.json({ success: true, doc: docMeta(out.doc), docs: docsOfApplication(x.s, x.a.id).map(docMeta) });
@@ -75408,7 +75713,7 @@ function createIdReviewRouter() {
     if (!d || !reviewer && !own2) return bad6(res, "Copy not found", 404);
     let buf;
     try {
-      buf = fs6.readFileSync(fileOf2(d.id));
+      buf = fs7.readFileSync(fileOf2(d.id));
     } catch {
       return bad6(res, "The file is missing on the server. Please upload it again.", 404);
     }
@@ -75485,8 +75790,8 @@ function createIdReviewRouter() {
     }
     t.assigneeId = to || void 0;
     t.assignedBy = to ? a.id : void 0;
-    t.assignedAt = to ? nowIso8() : void 0;
-    t.updatedAt = nowIso8();
+    t.assignedAt = to ? nowIso9() : void 0;
+    t.updatedAt = nowIso9();
     push(t, a.id, to ? "ASSIGNED" : "UNASSIGNED", to ? nameOf2(s, to) : void 0);
     db.save();
     db.appendAuditEvent(a.id, a.role, "VERIFICATION", t.userId, to ? "ID_TASK_ASSIGNED" : "ID_TASK_UNASSIGNED", to ? `${a.name} gave the ID check of ${nameOf2(s, t.userId)} to ${nameOf2(s, to)}` : `${a.name} took the ID check of ${nameOf2(s, t.userId)} off its reviewer`);
@@ -75502,8 +75807,8 @@ function createIdReviewRouter() {
     for (const t of s.idReviewTasks) if (t.status === "OPEN" && !t.assigneeId && t.userId !== to) {
       t.assigneeId = to;
       t.assignedBy = a.id;
-      t.assignedAt = nowIso8();
-      t.updatedAt = nowIso8();
+      t.assignedAt = nowIso9();
+      t.updatedAt = nowIso9();
       push(t, a.id, "ASSIGNED", nameOf2(s, to));
       n2++;
     }
@@ -75532,10 +75837,11 @@ function createIdReviewRouter() {
       if (subject2.idCheckedAt) recordIdTick(subject2, a, false, "");
       t.status = "CHANGES_ASKED";
       t.note = note5;
-      t.updatedAt = nowIso8();
+      t.updatedAt = nowIso9();
       push(t, a.id, "ASKED_AGAIN", note5);
       db.save();
       db.appendAuditEvent(a.id, a.role, "VERIFICATION", subject2.id, "ID_CHANGES_ASKED", `${a.name} asked ${subject2.name} for a clearer / corrected ID: ${note5}`);
+      alert(subject2.id, "system", "GENZ asked for a change in your ID copy", String(note5 || "").slice(0, 140), "/", { not: a.id, hi: ["GENZ \u0928\u0947 \u0906\u092A\u0915\u0940 ID \u0915\u0949\u092A\u0940 \u092E\u0947\u0902 \u092C\u0926\u0932\u093E\u0935 \u092E\u093E\u0901\u0917\u093E", String(note5 || "").slice(0, 140)] });
     }
     res.json({ success: true, task: taskRow(s, t) });
   });
@@ -75562,7 +75868,7 @@ function createIdReviewRouter() {
     if (b.data.autoVerify !== void 0 && b.data.autoVerify !== !!set2.autoVerifyReraReferrals) {
       set2.autoVerifyReraReferrals = b.data.autoVerify;
       set2.autoVerifyChangedBy = a.id;
-      set2.autoVerifyChangedAt = nowIso8();
+      set2.autoVerifyChangedAt = nowIso9();
       changes.push(`auto-verify RERA referrals ${b.data.autoVerify ? "ON" : "OFF"}`);
     }
     if (b.data.defaultAssigneeId !== void 0) {
@@ -75587,228 +75893,6 @@ var import_express16 = __toESM(require_express2(), 1);
 import crypto13 from "crypto";
 import fs8 from "fs";
 import path8 from "path";
-
-// server/webpush.ts
-var import_express15 = __toESM(require_express2(), 1);
-import crypto12 from "crypto";
-import fs7 from "fs";
-import path7 from "path";
-var b64u2 = (b) => Buffer.from(b).toString("base64url");
-var unb64u = (s) => Buffer.from(String(s).replace(/=+$/, ""), "base64url");
-var nowIso9 = () => (/* @__PURE__ */ new Date()).toISOString();
-function hkdf(salt, ikm, info, len) {
-  const prk = crypto12.createHmac("sha256", salt).update(ikm).digest();
-  const out = [];
-  let prev = Buffer.alloc(0);
-  let n2 = 0;
-  while (Buffer.concat(out).length < len) {
-    n2++;
-    prev = crypto12.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
-    out.push(prev);
-  }
-  return Buffer.concat(out).subarray(0, len);
-}
-function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
-  const uaPublic = unb64u(uaPublicB64);
-  const authSecret = unb64u(authSecretB64);
-  if (uaPublic.length !== 65 || uaPublic[0] !== 4) throw new Error("PUSH_BAD_KEY");
-  if (authSecret.length < 16) throw new Error("PUSH_BAD_AUTH");
-  const ecdh = crypto12.createECDH("prime256v1");
-  if (opts.asPrivate) ecdh.setPrivateKey(opts.asPrivate);
-  else ecdh.generateKeys();
-  const asPublic = ecdh.getPublicKey();
-  const shared = ecdh.computeSecret(uaPublic);
-  const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0"), uaPublic, asPublic]);
-  const ikm = hkdf(authSecret, shared, keyInfo, 32);
-  const salt = opts.salt || crypto12.randomBytes(16);
-  const cek = hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
-  const nonce = hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12);
-  const rs = opts.rs || 4096;
-  const plain = Buffer.concat([payload, Buffer.from([2])]);
-  if (plain.length + 16 > rs) throw new Error("PUSH_TOO_BIG");
-  const cipher = crypto12.createCipheriv("aes-128-gcm", cek, nonce);
-  const ct = Buffer.concat([cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
-  const header = Buffer.alloc(21);
-  salt.copy(header, 0);
-  header.writeUInt32BE(rs, 16);
-  header[20] = asPublic.length;
-  return Buffer.concat([header, asPublic, ct]);
-}
-function generateVapidKeys() {
-  const e = crypto12.createECDH("prime256v1");
-  e.generateKeys();
-  return { publicKey: b64u2(e.getPublicKey()), privateKey: b64u2(e.getPrivateKey()) };
-}
-function privateKeyObject(k) {
-  const pub = unb64u(k.publicKey);
-  return crypto12.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
-}
-function vapidAuth(endpoint, k, subject2, expSec = Math.floor(Date.now() / 1e3) + 12 * 3600) {
-  const aud = new URL(endpoint).origin;
-  const head = b64u2(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
-  const body = b64u2(Buffer.from(JSON.stringify({ aud, exp: expSec, sub: subject2 })));
-  const sig = crypto12.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
-  return `vapid t=${head}.${body}.${b64u2(sig)}, k=${k.publicKey}`;
-}
-var cached2 = null;
-function vapidKeys() {
-  if (cached2) return cached2;
-  const pub = process.env.VAPID_PUBLIC_KEY, prv = process.env.VAPID_PRIVATE_KEY;
-  try {
-    if (pub && prv) {
-      const k2 = { publicKey: pub.trim(), privateKey: prv.trim() };
-      privateKeyObject(k2);
-      return cached2 = k2;
-    }
-    const file2 = process.env.VAPID_KEY_FILE === "" ? "" : process.env.VAPID_KEY_FILE || path7.resolve(process.cwd(), "data", ".vapid.json");
-    if (!file2) return null;
-    if (fs7.existsSync(file2)) {
-      const k2 = JSON.parse(fs7.readFileSync(file2, "utf8"));
-      privateKeyObject(k2);
-      return cached2 = k2;
-    }
-    const k = generateVapidKeys();
-    fs7.mkdirSync(path7.dirname(file2), { recursive: true });
-    fs7.writeFileSync(file2, JSON.stringify(k), { mode: 384 });
-    return cached2 = k;
-  } catch (e) {
-    console.error("[PUSH] VAPID key problem \u2014 push is off:", e.message);
-    return null;
-  }
-}
-var subject = () => process.env.VAPID_SUBJECT || (process.env.PUBLIC_URL ? process.env.PUBLIC_URL.replace(/\/+$/, "") : "mailto:support@genzbuildcon.com");
-var PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/, /^push\.services\.mozilla\.com$/];
-function allowedEndpoint(endpoint) {
-  try {
-    const u = new URL(endpoint);
-    return u.protocol === "https:" && !u.port && PUSH_HOSTS.some((re) => re.test(u.hostname)) && endpoint.length <= 1e3;
-  } catch {
-    return false;
-  }
-}
-var DAILY_CAP = 40;
-var pushLog = [];
-var fetchImpl = (...a) => fetch(...a);
-var istHour = (d = /* @__PURE__ */ new Date()) => (d.getUTCHours() + 5 + (d.getUTCMinutes() + 30 >= 60 ? 1 : 0)) % 24;
-var istDay = (d = /* @__PURE__ */ new Date()) => new Date(d.getTime() + 330 * 6e4).toISOString().slice(0, 10);
-function prefsOf(userId) {
-  const s = db.getState();
-  let p = s.pushPrefs.find((x) => x.userId === userId);
-  if (!p) {
-    p = { id: userId, userId, matches: true, deals: true, consent: true, broadcast: true, digest: true, quiet: true };
-    s.pushPrefs.push(p);
-  }
-  return p;
-}
-async function pushTo(userId, msg) {
-  try {
-    const s = db.getState();
-    const subs = s.pushSubs.filter((x) => x.userId === userId);
-    const p = prefsOf(userId);
-    if (msg.kind !== "system" && p[msg.kind] === false) return 0;
-    if (p.quiet && msg.kind !== "consent" && msg.kind !== "system") {
-      const h = istHour();
-      if (h >= 22 || h < 7) return 0;
-    }
-    const day2 = istDay();
-    if (!p.sentToday || p.sentToday.day !== day2) p.sentToday = { day: day2, n: 0 };
-    if (p.sentToday.n >= DAILY_CAP) return 0;
-    p.sentToday.n++;
-    pushLog.push({ userId, msg, endpoints: subs.length, at: nowIso9() });
-    if (pushLog.length > 500) pushLog.shift();
-    const keys = vapidKeys();
-    if (!keys || !subs.length) return 0;
-    const payload = Buffer.from(JSON.stringify({ t: msg.title.slice(0, 80), b: msg.body.slice(0, 180), u: msg.url && msg.url.startsWith("/") ? msg.url : "/", g: msg.tag || msg.kind }));
-    let ok = 0;
-    await Promise.all(subs.map(async (sub2) => {
-      if (!allowedEndpoint(sub2.endpoint)) return;
-      try {
-        const body = encryptPayload(payload, sub2.p256dh, sub2.auth);
-        const r = await fetchImpl(sub2.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: msg.kind === "consent" ? "high" : "normal", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: vapidAuth(sub2.endpoint, keys, subject()) }, body, signal: AbortSignal.timeout(8e3) });
-        if (r.status === 404 || r.status === 410) {
-          s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
-          return;
-        }
-        if (r.ok) {
-          ok++;
-          sub2.lastOkAt = nowIso9();
-          sub2.fails = 0;
-        } else sub2.fails = (sub2.fails || 0) + 1;
-      } catch {
-        sub2.fails = (sub2.fails || 0) + 1;
-      }
-      if (sub2.fails >= 8) s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
-    }));
-    db.save();
-    return ok;
-  } catch (e) {
-    console.error("[PUSH] send failed:", e.message);
-    return 0;
-  }
-}
-var subSchema = external_exports.object({ endpoint: external_exports.string().url().max(1e3), keys: external_exports.object({ p256dh: external_exports.string().min(80).max(120), auth: external_exports.string().min(16).max(40) }) });
-var prefSchema = external_exports.object({ matches: external_exports.boolean(), deals: external_exports.boolean(), consent: external_exports.boolean(), broadcast: external_exports.boolean(), digest: external_exports.boolean(), quiet: external_exports.boolean() }).partial().strict();
-var prefView = (p) => ({ matches: p.matches, deals: p.deals, consent: p.consent, broadcast: p.broadcast, digest: p.digest, quiet: p.quiet });
-function createPushRouter() {
-  const r = (0, import_express15.Router)();
-  const me26 = () => ctx().user;
-  r.get("/key", (_req, res) => {
-    const k = vapidKeys();
-    res.json({ success: true, publicKey: k?.publicKey || null });
-  });
-  r.post("/subscribe", requireAuth, rateLimit("push-sub", 30, 36e5), (req, res) => {
-    const p = subSchema.safeParse(req.body);
-    if (!p.success) return res.status(400).json({ error: "This browser sent an unusable push address." });
-    if (!allowedEndpoint(p.data.endpoint)) return res.status(400).json({ error: "This browser\u2019s push service is not supported.", code: "PUSH_HOST" });
-    try {
-      encryptPayload(Buffer.from("x"), p.data.keys.p256dh, p.data.keys.auth);
-    } catch {
-      return res.status(400).json({ error: "The browser\u2019s push keys are not valid." });
-    }
-    const s = db.getState();
-    const u = me26();
-    const id = crypto12.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
-    s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
-    const mine3 = s.pushSubs.filter((x) => x.userId === u.id);
-    if (mine3.length >= 6) {
-      const oldest = mine3.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-      s.pushSubs = s.pushSubs.filter((x) => x.id !== oldest.id);
-    }
-    s.pushSubs.push({ id, userId: u.id, endpoint: p.data.endpoint, p256dh: p.data.keys.p256dh, auth: p.data.keys.auth, ua: String(req.headers["user-agent"] || "").slice(0, 120), createdAt: nowIso9(), fails: 0 });
-    prefsOf(u.id);
-    db.save();
-    res.json({ success: true, devices: s.pushSubs.filter((x) => x.userId === u.id).length });
-  });
-  r.post("/unsubscribe", requireAuth, (req, res) => {
-    const s = db.getState();
-    const u = me26();
-    const ep = String(req.body?.endpoint || "");
-    s.pushSubs = s.pushSubs.filter((x) => !(x.userId === u.id && (!ep || x.endpoint === ep)));
-    db.save();
-    res.json({ success: true, devices: s.pushSubs.filter((x) => x.userId === u.id).length });
-  });
-  r.get("/prefs", requireAuth, (_req, res) => {
-    const u = me26();
-    const p = prefsOf(u.id);
-    res.json({ success: true, prefs: prefView(p), devices: db.getState().pushSubs.filter((x) => x.userId === u.id).length, ready: !!vapidKeys() });
-  });
-  r.put("/prefs", requireAuth, (req, res) => {
-    const v = prefSchema.safeParse(req.body);
-    if (!v.success) return res.status(400).json({ error: "Invalid choice" });
-    const p = prefsOf(me26().id);
-    Object.assign(p, v.data);
-    db.save();
-    res.json({ success: true, prefs: prefView(p) });
-  });
-  r.post("/test", requireAuth, rateLimit("push-test", 10, 36e5), async (_req, res) => {
-    const u = me26();
-    const n2 = await pushTo(u.id, { kind: "system", title: "GENZ alerts are on \u2714", body: "You will get new matches, offers and owner consents here.", url: "/" });
-    res.json({ success: true, delivered: n2, devices: db.getState().pushSubs.filter((x) => x.userId === u.id).length });
-  });
-  return r;
-}
-
-// server/profilephoto.ts
 var PHOTO_MAX_BYTES = 150 * 1024;
 var st4 = () => db.getState();
 var nowIso10 = () => (/* @__PURE__ */ new Date()).toISOString();
@@ -76365,6 +76449,7 @@ function createTeamRouter() {
     lead.updatedAt = nowIso11();
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: "SYSTEM", note: to ? `Allotted to ${to.name}${prev ? ` (was ${prev})` : ""}` : `Taken back from ${prev || "team"}`, byUserId: u.id, byName: u.name, at: nowIso11() });
     db.save();
+    if (to) alert(to.id, "deals", "New lead for you", `${firstName(lead.name)} \xB7 ${lead.projectName} \u2014 allotted by ${u.name}`, "/?tab=crm", { not: u.id, tag: `lead-${lead.id}`, hi: ["\u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0928\u0908 \u0932\u0940\u0921", `${firstName(lead.name)} \xB7 ${lead.projectName} \u2014 ${u.name} \u0928\u0947 \u0926\u0940`] });
     audit8("LEAD", lead.id, to ? "CRM_LEAD_ALLOTTED" : "CRM_LEAD_TAKEN_BACK", `${u.name}: ${lead.name} ${to ? `allotted to ${to.name}` : `taken back from ${prev || "team"}`}`);
     res.json({ success: true, lead });
   });
@@ -76377,7 +76462,9 @@ function createTeamRouter() {
     const mineIds = new Set(mine3(u.id).map((m) => m.id));
     if (ids2.some((id) => !mineIds.has(id) || member(id, u.id)?.verificationStatus !== "VERIFIED")) return res.status(400).json({ error: "Pick only your own active team members" });
     const others = (deal.teamMemberIds || []).filter((id) => !mineIds.has(id));
+    const before = new Set(deal.teamMemberIds || []);
     deal.teamMemberIds = [.../* @__PURE__ */ new Set([...others, ...ids2])];
+    alert(ids2.filter((id) => !before.has(id)), "deals", "A deal room was opened for you", `${deal.id} \u2014 added by ${u.name}`, "/?tab=deals", { not: u.id, tag: `deal-${deal.id}`, hi: ["\u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0921\u0940\u0932 \u0930\u0942\u092E \u0916\u0941\u0932\u093E", `${deal.id} \u2014 ${u.name} \u0928\u0947 \u091C\u094B\u0921\u093C\u093E`] });
     db.save();
     audit8("DEAL", deal.id, "DEAL_TEAM_UPDATED", `${u.name} set ${ids2.length} team member(s) on deal ${deal.id}`);
     res.json({ success: true, teamMemberIds: deal.teamMemberIds.filter((id) => mineIds.has(id)) });
@@ -77246,7 +77333,7 @@ function reputationHtml(u) {
 
 // server/share.ts
 var esc3 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var inr5 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var inr6 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var SECTIONS = ["overview", "plans", "location"];
 var BOT = /bot|crawler|spider|preview|facebookexternalhit|whatsapp|telegram|slack|embedly|curl|wget|python|node-fetch/i;
 var brandSchema = external_exports.object({
@@ -77275,8 +77362,8 @@ function brandOf(u) {
 function sourcesFor(u) {
   const st23 = db.getState();
   const mandated = new Set(st23.associateMandates.filter((m) => m.brokerId === u.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status)).map((m) => m.projectId));
-  const projects = st23.builderProjects.filter((p) => u.role === "DEVELOPER_BUILDER" ? p.builderId === u.id : mandated.has(p.id) || p.status === "ACTIVE_LAUNCH" || p.status === "PRE_BOOKING").filter((p) => p.status !== "ARCHIVED").map((p) => ({ kind: "PROJECT", id: p.id, title: p.projectName, sub: `${p.locality}, ${p.city}`, price: `From ${inr5(p.priceStartingFrom)}`, lines: [p.projectType, ...(p.unitConfigurations || []).slice(0, 3), p.reraNumber ? `RERA ${p.reraNumber}` : ""].filter(Boolean) }));
-  const props = u.role === "BROKER" ? st23.properties.filter((p) => p.listingBrokerId === u.id && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus)).map((p) => ({ kind: "PROPERTY", id: p.id, title: p.title, sub: `${p.locality}, ${p.city}`, price: inr5(p.askingPrice), lines: [p.propertyType, p.transactionType, p.plotAreaSqFt ? `${p.plotAreaSqFt} sq ft` : ""].filter(Boolean) })) : [];
+  const projects = st23.builderProjects.filter((p) => u.role === "DEVELOPER_BUILDER" ? p.builderId === u.id : mandated.has(p.id) || p.status === "ACTIVE_LAUNCH" || p.status === "PRE_BOOKING").filter((p) => p.status !== "ARCHIVED").map((p) => ({ kind: "PROJECT", id: p.id, title: p.projectName, sub: `${p.locality}, ${p.city}`, price: `From ${inr6(p.priceStartingFrom)}`, lines: [p.projectType, ...(p.unitConfigurations || []).slice(0, 3), p.reraNumber ? `RERA ${p.reraNumber}` : ""].filter(Boolean) }));
+  const props = u.role === "BROKER" ? st23.properties.filter((p) => p.listingBrokerId === u.id && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus)).map((p) => ({ kind: "PROPERTY", id: p.id, title: p.title, sub: `${p.locality}, ${p.city}`, price: inr6(p.askingPrice), lines: [p.propertyType, p.transactionType, p.plotAreaSqFt ? `${p.plotAreaSqFt} sq ft` : ""].filter(Boolean) })) : [];
   return [...projects, ...props];
 }
 var canShare = (u, kind, refId) => sourcesFor(u).some((s) => s.kind === kind && s.id === refId);
@@ -77431,7 +77518,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
           for (const f of impliedFeatures(x)) chips.push(featureLabel(f, hi));
         }
         const facts = [x.config, x.areaSqft ? `${x.areaSqft} ${hi ? "\u0935\u0930\u094D\u0917 \u092B\u093C\u0941\u091F" : "sq ft"}` : "", x.dimensions].filter(Boolean).map(esc3).join(" \xB7 ");
-        cards.push(`<div style="padding:10px 0;border-bottom:1px solid #eee"><div style="display:flex;justify-content:space-between;gap:12px"><b>${esc3(x.label)}${x.group ? ` <span style="font-weight:400;color:#666;font-size:12px">${esc3(x.group)}</span>` : ""}</b><b>${showP ? inr5(x.price) : l.showPrice ? t.onReq : ""}</b></div>${facts ? `<div style="font-size:13px;color:#444;margin-top:2px">${facts}</div>` : ""}${chips.length ? `<div class="tags">${chips.map((c) => `<span>${esc3(c)}</span>`).join("")}</div>` : ""}${showF && x.note ? `<div style="font-size:12px;color:#555;margin-top:4px">${esc3(x.note)}</div>` : ""}</div>`);
+        cards.push(`<div style="padding:10px 0;border-bottom:1px solid #eee"><div style="display:flex;justify-content:space-between;gap:12px"><b>${esc3(x.label)}${x.group ? ` <span style="font-weight:400;color:#666;font-size:12px">${esc3(x.group)}</span>` : ""}</b><b>${showP ? inr6(x.price) : l.showPrice ? t.onReq : ""}</b></div>${facts ? `<div style="font-size:13px;color:#444;margin-top:2px">${facts}</div>` : ""}${chips.length ? `<div class="tags">${chips.map((c) => `<span>${esc3(c)}</span>`).join("")}</div>` : ""}${showF && x.note ? `<div style="font-size:12px;color:#555;margin-top:4px">${esc3(x.note)}</div>` : ""}</div>`);
       }
       overview = `<div class="row"><span>${t.type}</span><b>${esc3(p.projectType)}</b></div><div class="row"><span>${t.stage}</span><b>${esc3(p.projectStage)}</b></div><div class="row"><span>${t.possession}</span><b>${esc3(p.completionTarget)}</b></div>${p.reraNumber ? `<div class="row"><span>${t.rera}</span><b>${esc3(p.reraNumber)}</b></div>` : ""}`;
       plans = (cards.length ? `<div style="font-size:12px;color:#666;margin-bottom:2px">${t.units} (${cards.length})</div>${cards.join("")}` : `<p style="font-size:14px;margin:0">${t.none}</p>`) + (off && cards.length ? `<p class="small">${off} ${t.gone}.</p>` : "");
@@ -77443,7 +77530,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       sub2 = p.tagline || `${p.locality}, ${p.city}`;
       image = p.images?.find((i) => /^https:\/\//.test(i));
       overview = `<div class="row"><span>${t.type}</span><b>${esc3(p.projectType)}</b></div><div class="row"><span>${t.stage}</span><b>${esc3(p.projectStage)}</b></div><div class="row"><span>${t.possession}</span><b>${esc3(p.completionTarget)}</b></div>${p.reraNumber ? `<div class="row"><span>${t.rera}</span><b>${esc3(p.reraNumber)}</b></div>` : ""}`;
-      plans = `<div class="row"><span>${t.from}</span><b>${inr5(p.priceStartingFrom)}</b></div><div class="row"><span>${t.price}</span><b>${inr5(p.priceStartingFrom)} \u2013 ${inr5(p.priceMax)}</b></div><div class="tags">${(p.unitConfigurations || []).map((c) => `<span>${esc3(c)}</span>`).join("")}</div>`;
+      plans = `<div class="row"><span>${t.from}</span><b>${inr6(p.priceStartingFrom)}</b></div><div class="row"><span>${t.price}</span><b>${inr6(p.priceStartingFrom)} \u2013 ${inr6(p.priceMax)}</b></div><div class="tags">${(p.unitConfigurations || []).map((c) => `<span>${esc3(c)}</span>`).join("")}</div>`;
       location = `<div class="row"><span>${t.loc}</span><b>${esc3(p.locality)}, ${esc3(p.city)}</b></div><div class="tags">${(p.amenities || []).map((c) => `<span>${esc3(c)}</span>`).join("")}</div>`;
     } else {
       const p = db.byId("properties", l.refId);
@@ -77452,7 +77539,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       sub2 = `${p.locality}, ${p.city}`;
       image = p.images?.find((i) => /^https:\/\//.test(i));
       overview = `<p style="font-size:14px;line-height:1.5;margin:0">${esc3(p.description)}</p><div class="row"><span>${t.type}</span><b>${esc3(p.propertyType)} \xB7 ${esc3(p.transactionType)}</b></div>`;
-      plans = `<div class="row"><span>${t.price}</span><b>${inr5(p.askingPrice)}</b></div>${p.plotAreaSqFt ? `<div class="row"><span>${t.area}</span><b>${p.plotAreaSqFt} sq ft</b></div>` : ""}${p.builtUpAreaSqFt ? `<div class="row"><span>Built-up</span><b>${p.builtUpAreaSqFt} sq ft</b></div>` : ""}`;
+      plans = `<div class="row"><span>${t.price}</span><b>${inr6(p.askingPrice)}</b></div>${p.plotAreaSqFt ? `<div class="row"><span>${t.area}</span><b>${p.plotAreaSqFt} sq ft</b></div>` : ""}${p.builtUpAreaSqFt ? `<div class="row"><span>Built-up</span><b>${p.builtUpAreaSqFt} sq ft</b></div>` : ""}`;
       location = `<div class="row"><span>${t.loc}</span><b>${esc3(p.locality)}, ${esc3(p.city)}</b></div><div class="tags">${(p.tags || []).map((c) => `<span>${esc3(c)}</span>`).join("")}</div><p class="small">Exact address is shared after a verified site-visit.</p>`;
     }
     const ua = String(req.headers["user-agent"] || "");
@@ -78796,7 +78883,7 @@ var QR_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 var newQrCode = () => Array.from(crypto18.randomBytes(8), (b) => QR_ALPHA[b % QR_ALPHA.length]).join("");
 var rid2 = (p) => `${p}-${crypto18.randomBytes(5).toString("hex")}`;
 var smsOn = () => !!process.env.SMS_WEBHOOK_URL;
-var inr6 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var inr7 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad10 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var str = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var when = (iso) => iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
@@ -79096,7 +79183,7 @@ function createShopPartnerRouter() {
     l.lostReason = void 0;
     l.won = { at: nowIso17(), brokerage, amount: amount2, side };
     l.payout = { status: "DUE" };
-    hist(l, "BROKER", `Deal done \u2014 partner\u2019s share ${inr6(amount2)} (${cutText(cut)})`);
+    hist(l, "BROKER", `Deal done \u2014 partner\u2019s share ${inr7(amount2)} (${cutText(cut)})`);
     db.save();
     audit2(l.id, "SHOP_PARTNER_LEAD_WON", `Shop QR lead closed \u2014 partner share recorded (${cutText(cut)})`);
     res.json({ success: true, lead: leadView(l) });
@@ -79352,13 +79439,13 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
       return `<div class="lead"><b>${kind.hi}</b> \xB7 ${esc5(l.locality)} \xB7 \u2022\u2022${esc5(l.phoneLast4)} <small>(${when(l.createdAt)})</small><br>
 <span class="chip ${l.status === "WON" ? "ok" : l.status === "LOST" ? "x" : ""}">${stt.hi}</span>${links.map((x) => `<span class="chip">${esc5(x.hi)}</span>`).join("")}${flags.map((f) => `<span class="chip x">\u26A0 ${esc5(f.hi)}</span>`).join("")}
 ${l.status === "LOST" && l.lostReason ? `<br><small>\u0915\u093E\u0930\u0923: ${esc5(l.lostReason)}</small>` : ""}
-${l.won ? `<br><b>\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E: ${inr6(l.won.amount)}</b> ${pay ? `<span class="chip ${l.payout.status === "RECEIVED" ? "ok" : l.payout.status === "NOT_RECEIVED" ? "x" : "w"}">${pay.hi}</span>` : ""}` : ""}
+${l.won ? `<br><b>\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E: ${inr7(l.won.amount)}</b> ${pay ? `<span class="chip ${l.payout.status === "RECEIVED" ? "ok" : l.payout.status === "NOT_RECEIVED" ? "x" : "w"}">${pay.hi}</span>` : ""}` : ""}
 <br><small>${locked(l) ? `\u092F\u0939 \u0932\u0940\u0921 ${when(l.lockUntil)} \u0924\u0915 \u0906\u092A\u0915\u0940 \u0939\u0948` : "\u0938\u0941\u0930\u0915\u094D\u0937\u093E \u0915\u093E \u0938\u092E\u092F \u092A\u0942\u0930\u093E"}</small>${act}</div>`;
     }).join("");
     res.send(shell("QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930", `<div class="top"><h1>\u0928\u092E\u0938\u094D\u0924\u0947 ${esc5(p.personName.split(" ")[0])} \u{1F64F}</h1><p>${esc5(p.shopName)} \xB7 ${esc5(b?.name || "")} \u0915\u0947 \u0938\u093E\u0925 QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930</p></div>
 ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
 <div class="card"><div class="stats"><div><b>${p.scans}</b><small>\u0938\u094D\u0915\u0948\u0928</small></div><div><b>${leads.length}</b><small>\u0932\u0940\u0921</small></div><div><b>${leads.filter((l) => l.status === "WON").length}</b><small>\u0921\u0940\u0932</small></div></div>
-<div class="stats" style="margin-top:8px;grid-template-columns:1fr 1fr"><div><b>${inr6(due)}</b><small>\u092C\u093E\u0915\u0940 / due</small></div><div><b>${inr6(got)}</b><small>\u092E\u093F\u0932\u093E / received</small></div></div>
+<div class="stats" style="margin-top:8px;grid-template-columns:1fr 1fr"><div><b>${inr7(due)}</b><small>\u092C\u093E\u0915\u0940 / due</small></div><div><b>${inr7(got)}</b><small>\u092E\u093F\u0932\u093E / received</small></div></div>
 <div class="row"><a class="btn l" href="/q/${esc5(p.qrCode)}/poster" target="_blank" rel="noopener">\u{1F5A8} QR \u092A\u094B\u0938\u094D\u091F\u0930 / Poster</a></div></div>
 <h2>\u0906\u092A\u0915\u0947 QR \u0938\u0947 \u0906\u0908 \u0932\u0940\u0921 / Leads from your QR (${leads.length})</h2><div class="card">${rows || '<p class="t">\u0905\u092D\u0940 \u0915\u094B\u0908 \u0932\u0940\u0921 \u0928\u0939\u0940\u0902\u0964 / No leads yet.</p>'}<p class="small">\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0906\u092A\u0915\u094B \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0924\u093E \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915\u0964 \u0905\u0917\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0907\u0938\u0940 \u0928\u0902\u092C\u0930 \u092A\u0930 \u092C\u093E\u0926 \u092E\u0947\u0902 \u0915\u093E\u092E \u0915\u0930\u0924\u093E \u0939\u0948 \u0924\u094B \u0935\u0939 \u092F\u0939\u093E\u0901 \u0905\u092A\u0928\u0947 \u0906\u092A \u0926\u093F\u0916\u0924\u093E \u0939\u0948\u0964 / You see only the last 4 digits. If the broker works this number later, it shows here by itself.</p></div>
 <div class="card"><form method="post" action="/sp/${tok2}/ask"><label>\u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u0915\u0941\u091B \u0915\u0939\u0928\u093E \u0939\u0948? / Message the broker</label><textarea name="note" rows="2" maxlength="300" required></textarea><div class="row"><button type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
@@ -79485,7 +79572,7 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
     if (req.params.what === "received" && l.payout.status === "PAID") {
       l.payout = { ...l.payout, status: "RECEIVED", partnerAt: nowIso17() };
       hist(l, "PARTNER", "Partner confirmed: share received");
-      ping2(p, `${p.shopName} confirmed the payment`, `${inr6(l.won?.amount || 0)} received.`);
+      ping2(p, `${p.shopName} confirmed the payment`, `${inr7(l.won?.amount || 0)} received.`);
     } else if (req.params.what === "not-received" && ["DUE", "PAID"].includes(l.payout.status)) {
       const note5 = str(req.body?.note, 200);
       if (note5.length < 3) return render(req, res, p, "\u092C\u0924\u093E\u090F\u0901 \u0915\u094D\u092F\u093E \u0939\u0941\u0906\u0964 / Write what happened.");
@@ -79651,7 +79738,7 @@ var UPI_RE = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
 var GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 var bad11 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
 var str2 = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
-var inr7 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var inr8 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var day = (d) => d ? (/* @__PURE__ */ new Date(`${d.slice(0, 10)}T00:00:00+05:30`)).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
 var STAGES = ["Lead", "Introduction", "Site Visit Done", "Negotiation", "Agreement", "Handover", "Settled"];
 var BILL_FROM_STAGE = "Agreement";
@@ -79857,9 +79944,9 @@ function createPaymentPageRouter() {
 <div><div class="muted">To / \u092D\u0941\u0917\u0924\u093E\u0928 \u0915\u0930\u0928\u0947 \u0935\u093E\u0932\u0947</div><b>${esc6(x.partyName)}</b><br><span class="muted">${x.party === "OWNER" ? "\u092E\u093E\u0932\u093F\u0915 / Owner" : "\u0916\u0930\u0940\u0926\u093E\u0930 / Buyer"} \xB7 \u2022\u2022${esc6(x.partyPhone.slice(-4))}</span></div></div>
 <div style="margin-top:12px"><div class="muted">Property / \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940</div><b>${esc6(x.propertyTitle)}</b>${x.propertyPlace ? `, ${esc6(x.propertyPlace)}` : ""}</div>
 <table><thead><tr><th>\u0935\u093F\u0935\u0930\u0923 / Description</th><th class="r">\u20B9</th></tr></thead><tbody>
-${x.items.map((i) => `<tr><td>${esc6(i.text)}</td><td class="r">${inr7(i.amount)}</td></tr>`).join("")}
-${x.gstPct > 0 ? `<tr><td>GST ${x.gstPct}%</td><td class="r">${inr7(t.gst)}</td></tr>` : ""}
-<tr class="t"><td>\u0915\u0941\u0932 / Total</td><td class="r">${inr7(t.total)}</td></tr></tbody></table>
+${x.items.map((i) => `<tr><td>${esc6(i.text)}</td><td class="r">${inr8(i.amount)}</td></tr>`).join("")}
+${x.gstPct > 0 ? `<tr><td>GST ${x.gstPct}%</td><td class="r">${inr8(t.gst)}</td></tr>` : ""}
+<tr class="t"><td>\u0915\u0941\u0932 / Total</td><td class="r">${inr8(t.total)}</td></tr></tbody></table>
 <p class="muted">\u092D\u0941\u0917\u0924\u093E\u0928 \u0915\u0940 \u0906\u0916\u093C\u093F\u0930\u0940 \u0924\u093E\u0930\u0940\u0916\u093C / Due by: <b>${esc6(day(x.dueOn))}</b>${x.note ? `<br>${esc6(x.note)}` : ""}</p>
 ${x.status === "PAID" ? `<p class="muted">Received on ${esc6(day(x.paid?.at))} \xB7 ref ${esc6(x.paid?.ref)}</p>` : ""}
 ${upi ? `<div class="pay"><div>${qr}</div><div><b>UPI \u0938\u0947 \u092D\u0941\u0917\u0924\u093E\u0928 / Pay by UPI</b><br><span class="muted">UPI ID: ${esc6(x.upiId)}</span><br><a class="btn g np" style="margin-top:8px" href="${esc6(upi)}">UPI \u0910\u092A \u0916\u094B\u0932\u0947\u0902 / Open UPI app</a></div></div>` : ""}
@@ -81595,6 +81682,7 @@ function createPcontrolRouter() {
     const x = { id: uid2("PU"), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me26().id, createdAt: nowIso23() };
     state().projectUpdates.unshift(x);
     db.save();
+    alert(state().associateMandates.filter((mm) => mm.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(mm.status)).map((mm) => mm.brokerId), "broadcast", `${p.projectName}: ${x.title}`, String(x.body || "").slice(0, 160), "/?tab=pcontrol", { not: me26().id, tag: `pu-${x.id}` });
     audit8("SYSTEM", x.id, "PROJECT_NOTICE_POSTED", `${me26().name} posted "${x.title}" (${x.kind}) for ${p.projectName} to ${x.audience === "ASSOCIATES" ? "appointed partners" : "all brokers"}`);
     res.json({ success: true, update: x });
   });
@@ -81676,6 +81764,7 @@ function createPcontrolRouter() {
       m.decidedAt = nowIso23();
     } else return bad26(res, "Action must be APPROVE, SHORTLIST or DECLINE");
     db.save();
+    alert(m.brokerId, "deals", action === "APPROVE" ? `You are appointed \u2714 \xB7 ${p.projectName}` : action === "SHORTLIST" ? `Shortlisted \xB7 ${p.projectName}` : `Partner request declined \xB7 ${p.projectName}`, action === "APPROVE" ? `${m.agreedCommissionPct}% commission \xB7 register your clients now` : m.statusReason || "", "/?tab=pcontrol", { not: me26().id, tag: `mand-${m.id}`, hi: [action === "APPROVE" ? `\u0906\u092A \u0905\u092A\u0949\u0907\u0902\u091F \u0939\u0941\u090F \u2714 \xB7 ${p.projectName}` : action === "SHORTLIST" ? `\u0936\u0949\u0930\u094D\u091F\u0932\u093F\u0938\u094D\u091F \u0939\u0941\u090F \xB7 ${p.projectName}` : `\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u0940 \u092E\u093E\u0901\u0917 \u092E\u0928\u093E \xB7 ${p.projectName}`, action === "APPROVE" ? `${m.agreedCommissionPct}% \u0915\u092E\u0940\u0936\u0928 \xB7 \u0905\u092C \u0905\u092A\u0928\u0947 \u0915\u094D\u0932\u093E\u0907\u0902\u091F \u0930\u091C\u093F\u0938\u094D\u091F\u0930 \u0915\u0930\u0947\u0902` : m.statusReason || ""] });
     audit8("DEAL", m.id, `PARTNER_${action}`, `${me26().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${action === "APPROVE" ? ` (${m.agreedCommissionPct}%, quota ${m.targetUnitsQuota}${m.dailyLeadCap ? `, ${m.dailyLeadCap}/day` : ""}${m.validUntil ? `, until ${m.validUntil.slice(0, 10)}` : ""})` : m.statusReason ? `: ${m.statusReason}` : ""}`);
     res.json({ success: true, mandate: m });
   });
@@ -81801,6 +81890,7 @@ function createPcontrolRouter() {
     l.updatedAt = nowIso23();
     l.activities.unshift({ id: uid2("A"), type: "SYSTEM", note: `Builder ${decision === "ACCEPT" ? "accepted" : "rejected"} the lead${note5 ? `: ${String(note5).slice(0, 200)}` : ""}`, byUserId: u.id, byName: u.name, at: nowIso23() });
     db.save();
+    alert([l.associateId, l.assignedMemberId], "deals", decision === "ACCEPT" ? `Lead accepted \u2714 \xB7 ${l.projectName}` : `Lead not accepted \xB7 ${l.projectName}`, `${firstName(l.name)}${note5 ? ` \u2014 ${String(note5).slice(0, 80)}` : ""}`, "/?tab=crm", { not: u.id, tag: `lead-${l.id}`, hi: [decision === "ACCEPT" ? `\u0932\u0940\u0921 \u092E\u0902\u091C\u093C\u0942\u0930 \u2714 \xB7 ${l.projectName}` : `\u0932\u0940\u0921 \u092E\u0902\u091C\u093C\u0942\u0930 \u0928\u0939\u0940\u0902 \xB7 ${l.projectName}`, `${firstName(l.name)}${note5 ? ` \u2014 ${String(note5).slice(0, 80)}` : ""}`] });
     audit8("LEAD", l.id, decision === "ACCEPT" ? "CRM_LEAD_ACCEPTED" : "CRM_LEAD_REJECTED", `${u.name} ${decision === "ACCEPT" ? "accepted" : "rejected"} ${l.name} (${l.associateName}) on ${l.projectName}${note5 ? `: ${String(note5).slice(0, 100)}` : ""}`);
     res.json({ success: true, lead: maskLeadForViewer(l, u) });
   });
@@ -81951,6 +82041,7 @@ function createPcontrolRouter() {
     };
     st23.associateMandates.unshift(m);
     db.save();
+    alert(p.builderId, "deals", `Partner request \xB7 ${p.projectName}`, `${u.name}${u.companyName ? ` (${u.companyName})` : ""} wants to sell this project \u2014 appoint, shortlist or decline`, "/?tab=pcontrol", { not: u.id, tag: `mand-${m.id}`, hi: [`\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u0940 \u092E\u093E\u0901\u0917 \xB7 ${p.projectName}`, `${u.name}${u.companyName ? ` (${u.companyName})` : ""} \u092F\u0939 \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u092C\u0947\u091A\u0928\u093E \u091A\u093E\u0939\u0924\u0947 \u0939\u0948\u0902 \u2014 \u0905\u092A\u0949\u0907\u0902\u091F, \u0936\u0949\u0930\u094D\u091F\u0932\u093F\u0938\u094D\u091F \u092F\u093E \u092E\u0928\u093E \u0915\u0930\u0947\u0902`] });
     audit8("DEAL", m.id, "PARTNER_APPLIED", `${u.name} applied to partner on ${p.projectName}${note5 ? `: ${note5.slice(0, 100)}` : ""}`);
     res.json({ success: true, relation: "APPLIED" });
   });
@@ -82125,6 +82216,7 @@ function createPcontrolRouter() {
       n2++;
     }
     db.save();
+    if (to && n2) alert(to.id, "deals", `${n2} lead(s) allotted to you`, `by ${u.name} \u2014 open your call list`, "/?tab=dashboard", { not: u.id, hi: [`${n2} \u0932\u0940\u0921 \u0906\u092A\u0915\u094B \u0926\u0940 \u0917\u0908\u0902`, `${u.name} \u0928\u0947 \u0926\u0940\u0902 \u2014 \u0905\u092A\u0928\u0940 \u0915\u0949\u0932 \u0932\u093F\u0938\u094D\u091F \u0916\u094B\u0932\u0947\u0902`] });
     audit8("LEAD", u.id, "LEADS_BULK_ALLOTTED", `${u.name} ${to ? `allotted ${n2} lead(s) to ${to.name}` : `took back ${n2} lead(s)`}`);
     res.json({ success: true, moved: n2 });
   });
@@ -83299,7 +83391,7 @@ var audit4 = (id, action, details) => {
   const u = me17();
   db.appendAuditEvent(u.id, u.role, "LEGAL", id, action, details);
 };
-var inr8 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
+var inr9 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
 var nextId3 = (prefix, ids2, pad3) => `${prefix}${String(ids2.reduce((m, id) => Math.max(m, Number(id.slice(prefix.length)) || 0), 0) + 1).padStart(pad3, "0")}`;
 var DAY13 = 864e5;
 var FEE_GRACE_DAYS = 30;
@@ -83514,6 +83606,10 @@ function createLegalRouter() {
       updatedAt: t
     };
     s.legalRequests.push(row);
+    alert(s.users.filter((c) => c.role === "LEGAL_COUNSEL" && c.verificationStatus === "VERIFIED").filter((c) => {
+      const pp = profileOf(c);
+      return pp.states.includes(state) && !pp.removed;
+    }).map((c) => c.id), "deals", `New legal help request \xB7 ${state}`, `${helpTypeInfo(d.helpType)?.en || "Legal help"} \u2014 the first counsellor to take it gets it`, "/?tab=legal", { not: u.id, tag: `lgl-${row.id}`, hi: [`\u0928\u0908 \u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u092E\u0926\u0926 \u0915\u0940 \u092E\u093E\u0901\u0917 \xB7 ${state}`, `${helpTypeInfo(d.helpType)?.hi || "\u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u092E\u0926\u0926"} \u2014 \u091C\u094B \u0915\u093E\u0909\u0902\u0938\u0932\u0930 \u092A\u0939\u0932\u0947 \u0932\u0947\u0917\u093E, \u0915\u0947\u0938 \u0909\u0938\u0915\u093E`] });
     audit4(row.id, "LEGAL_REQUEST_RAISED", `${helpTypeInfo(d.helpType)?.en} \xB7 ${state} \xB7 ${docIds.length} paper(s) offered`);
     db.save();
     res.json({ success: true, request: shape(row, u), phoneMasked: m.masked });
@@ -83582,6 +83678,7 @@ function createLegalRouter() {
     row.claimedAt = nowIso26();
     row.updatedAt = row.claimedAt;
     row.history.push({ at: row.claimedAt, by: u.id, what: `${u.name} took the case \u2014 quote due within ${settings().claimHours} h` });
+    alert(row.requestedById, "deals", "A counsellor took your legal case", `${u.name} \u2014 the fee quote comes next`, "/?tab=deals", { not: u.id, tag: `lgl-${row.id}`, hi: ["\u090F\u0915 \u0915\u093E\u0909\u0902\u0938\u0932\u0930 \u0928\u0947 \u0906\u092A\u0915\u093E \u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u0915\u0947\u0938 \u0932\u093F\u092F\u093E", `${u.name} \u2014 \u0905\u092C \u092B\u093C\u0940\u0938 \u0915\u093E \u0915\u094B\u091F \u0906\u090F\u0917\u093E`] });
     audit4(row.id, "LEGAL_REQUEST_CLAIMED", `${u.name} claimed (${row.state})`);
     db.save();
     res.json({ success: true, request: shape(row, u) });
@@ -83597,8 +83694,9 @@ function createLegalRouter() {
     row.quote = { amount: clampMoney(p.data.amount, 5e6), days: p.data.days, note: p.data.note ? maskPhones(p.data.note).text : void 0, at: nowIso26() };
     row.status = "QUOTED";
     row.updatedAt = row.quote.at;
-    row.history.push({ at: row.quote.at, by: u.id, what: `Quoted ${inr8(row.quote.amount)}${p.data.days ? ` \xB7 ${p.data.days} day(s)` : ""}` });
-    audit4(row.id, "LEGAL_QUOTE_GIVEN", `${inr8(row.quote.amount)}`);
+    row.history.push({ at: row.quote.at, by: u.id, what: `Quoted ${inr9(row.quote.amount)}${p.data.days ? ` \xB7 ${p.data.days} day(s)` : ""}` });
+    alert(row.requestedById, "deals", `Legal fee quote: ${inr9(row.quote.amount)}`, `${u.name}${p.data.days ? ` \xB7 ${p.data.days} day(s)` : ""} \u2014 accept or decline in the deal room`, "/?tab=deals", { not: u.id, tag: `lgl-${row.id}`, hi: [`\u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u092B\u093C\u0940\u0938 \u0915\u093E \u0915\u094B\u091F: ${inr9(row.quote.amount)}`, `${u.name}${p.data.days ? ` \xB7 ${p.data.days} \u0926\u093F\u0928` : ""} \u2014 \u0921\u0940\u0932 \u0930\u0942\u092E \u092E\u0947\u0902 \u092E\u0902\u091C\u093C\u0942\u0930 \u092F\u093E \u092E\u0928\u093E \u0915\u0930\u0947\u0902`] });
+    audit4(row.id, "LEGAL_QUOTE_GIVEN", `${inr9(row.quote.amount)}`);
     db.save();
     res.json({ success: true, request: shape(row, u) });
   });
@@ -83623,7 +83721,7 @@ function createLegalRouter() {
     row.status = "ACCEPTED";
     row.acceptedAt = t;
     row.updatedAt = t;
-    row.history.push({ at: t, by: u.id, what: `Accepted the fee ${inr8(row.quote.amount)} \u2014 phones opened for both sides` });
+    row.history.push({ at: t, by: u.id, what: `Accepted the fee ${inr9(row.quote.amount)} \u2014 phones opened for both sides` });
     for (const id of row.sharedDocIds) {
       const d = db.byId("propertyDocs", id);
       if (!d || d.uploaderId !== u.id) continue;
@@ -83634,7 +83732,8 @@ function createLegalRouter() {
     const isMember = !!charge.planId;
     row.platformFee = fee;
     row.feeLedgerId = charge.entry?.id;
-    audit4(row.id, "LEGAL_QUOTE_ACCEPTED", `${inr8(row.quote.amount)} accepted \xB7 GENZ platform fee ${inr8(fee)}${isMember ? " (member)" : ""} \xB7 ${row.sharedDocIds.length} paper(s) shown \xB7 phones opened`);
+    alert(row.counsellorId, "deals", "Your fee was accepted \u2714", `${row.requestedByName} \u2014 the case is yours; the shared papers are open`, "/?tab=legal", { not: u.id, tag: `lgl-${row.id}`, hi: ["\u0906\u092A\u0915\u0940 \u092B\u093C\u0940\u0938 \u092E\u0902\u091C\u093C\u0942\u0930 \u2714", `${row.requestedByName} \u2014 \u0915\u0947\u0938 \u0906\u092A\u0915\u093E \u0939\u0948; \u0926\u093F\u0916\u093E\u090F \u0917\u090F \u0915\u093E\u0917\u093C\u091C\u093C \u0905\u092C \u0916\u0941\u0932\u0947 \u0939\u0948\u0902`] });
+    audit4(row.id, "LEGAL_QUOTE_ACCEPTED", `${inr9(row.quote.amount)} accepted \xB7 GENZ platform fee ${inr9(fee)}${isMember ? " (member)" : ""} \xB7 ${row.sharedDocIds.length} paper(s) shown \xB7 phones opened`);
     db.save();
     res.json({ success: true, request: shape(row, u) });
   });
@@ -83644,9 +83743,11 @@ function createLegalRouter() {
     const u = me17();
     if (row.requestedById !== u.id) return bad14(res, "Not your request", 403);
     if (row.status !== "QUOTED" && row.status !== "CLAIMED") return bad14(res, "Nothing to decline right now.", 409);
+    const was = row.counsellorId;
     reopen(row, "Broker declined the fee \u2014 back to the pool", u.id);
     audit4(row.id, "LEGAL_QUOTE_DECLINED", "Broker declined; case reopened");
     db.save();
+    alert(was, "deals", "Your fee quote was declined", `${row.requestedByName} \u2014 the case went back to the pool`, "/?tab=legal", { not: u.id, tag: `lgl-${row.id}`, hi: ["\u0906\u092A\u0915\u093E \u092B\u093C\u0940\u0938 \u0915\u094B\u091F \u092E\u0928\u093E \u0939\u0941\u0906", `${row.requestedByName} \u2014 \u0915\u0947\u0938 \u0935\u093E\u092A\u0938 \u092A\u0942\u0932 \u092E\u0947\u0902 \u0917\u092F\u093E`] });
     res.json({ success: true, request: shape(row, u) });
   });
   r.post("/requests/:id/cancel", broker, (req, res) => {
@@ -83674,6 +83775,7 @@ function createLegalRouter() {
     row.updatedAt = row.completedAt;
     closeShares(row);
     row.history.push({ at: row.completedAt, by: u.id, what: "Marked complete \u2014 papers closed to the counsellor" });
+    alert(row.requestedById === u.id ? row.counsellorId : row.requestedById, "deals", "Legal case marked complete", `${u.name} closed it \u2014 the papers are closed to the counsellor`, row.requestedById === u.id ? "/?tab=legal" : "/?tab=deals", { not: u.id, tag: `lgl-${row.id}`, hi: ["\u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u0915\u0947\u0938 \u092A\u0942\u0930\u093E \u0939\u0941\u0906", `${u.name} \u0928\u0947 \u092C\u0902\u0926 \u0915\u093F\u092F\u093E \u2014 \u0915\u093E\u0917\u093C\u091C\u093C \u0905\u092C \u0915\u093E\u0909\u0902\u0938\u0932\u0930 \u0915\u0947 \u0932\u093F\u090F \u092C\u0902\u0926`] });
     audit4(row.id, "LEGAL_REQUEST_COMPLETED", "Completed; paper access ended");
     db.save();
     res.json({ success: true, request: shape(row, u) });
@@ -83690,6 +83792,7 @@ function createLegalRouter() {
     row.messages.push({ at: nowIso26(), by: u.id, role: u.role, text: row.status === "ACCEPTED" || row.status === "COMPLETED" ? p.data.text : m.text });
     row.updatedAt = nowIso26();
     db.save();
+    alert(row.requestedById === u.id ? row.counsellorId : row.requestedById, "deals", "New message on a legal case", `${u.name}: ${String(row.messages.at(-1)?.text || "").slice(0, 80)}`, row.requestedById === u.id ? "/?tab=legal" : "/?tab=deals", { not: u.id, tag: `lgl-msg-${row.id}`, hi: ["\u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u0915\u0947\u0938 \u092A\u0930 \u0928\u092F\u093E \u0938\u0902\u0926\u0947\u0936", `${u.name}: ${String(row.messages.at(-1)?.text || "").slice(0, 80)}`] });
     res.json({ success: true, request: shape(row, u), phoneMasked: m.masked && !(row.status === "ACCEPTED" || row.status === "COMPLETED") });
   });
   r.post("/requests/:id/report-bypass", broker, (req, res) => {
@@ -84102,7 +84205,7 @@ var audit5 = (entity, id, action, details) => {
   const u = me18();
   db.appendAuditEvent(u.id, u.role, entity, id, action, details);
 };
-var inr9 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
+var inr10 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
 var nextId4 = (prefix, ids2, pad3) => `${prefix}${String(ids2.reduce((m, id) => Math.max(m, Number(id.slice(prefix.length)) || 0), 0) + 1).padStart(pad3, "0")}`;
 var agreementsMap = () => new Map(st14().masterCpAgreements.map((a) => [a.id, a]));
 function syncMasterCp(now = Date.now()) {
@@ -84438,7 +84541,7 @@ function createRevenueRouter() {
     if (e.brokerSharePct > e.genzRatePct) return bad15(res, "The broker share cannot be more than what the builder pays GENZ");
     s.masterCpEntries.push(e);
     db.save();
-    audit5("COMMISSION", e.id, "MASTER_CP_LINE_ADDED", `${a.builderName} \xB7 ${e.projectName} ${e.unitNo} \xB7 ${inr9(e.agreementValue)} \xB7 broker ${e.brokerName}`);
+    audit5("COMMISSION", e.id, "MASTER_CP_LINE_ADDED", `${a.builderName} \xB7 ${e.projectName} ${e.unitNo} \xB7 ${inr10(e.agreementValue)} \xB7 broker ${e.brokerName}`);
     res.json({ success: true, entry: shapeEntry2(e, a) });
   });
   r.put("/entries/:id", admin, (req, res) => {
@@ -84464,7 +84567,7 @@ function createRevenueRouter() {
         if (d.brokerSharePct !== void 0) e.brokerSharePct = clampPct(d.brokerSharePct);
         if (d.unitNo !== void 0) e.unitNo = d.unitNo;
         if (e.brokerSharePct > e.genzRatePct) return bad15(res, "The broker share cannot be more than what the builder pays GENZ");
-        what = `Edited: value ${inr9(e.agreementValue)}, GENZ ${e.genzRatePct}%, broker ${e.brokerSharePct}%`;
+        what = `Edited: value ${inr10(e.agreementValue)}, GENZ ${e.genzRatePct}%, broker ${e.brokerSharePct}%`;
         break;
       case "INVOICE":
         if (e.builder.status !== "EXPECTED") return bad15(res, "Already invoiced", 409);
@@ -84472,7 +84575,7 @@ function createRevenueRouter() {
         e.builder.invoiceNo = d.invoiceNo;
         e.builder.invoicedAt = when2;
         builderMoved("INVOICED");
-        what = `Invoiced to the builder: ${d.invoiceNo} (${inr9(m.expectedFromBuilder)} after TDS)`;
+        what = `Invoiced to the builder: ${d.invoiceNo} (${inr10(m.expectedFromBuilder)} after TDS)`;
         break;
       case "RECEIVE":
         if (e.builder.status === "RECEIVED" || e.builder.status === "WRITTEN_OFF") return bad15(res, "Already closed on the builder side", 409);
@@ -84481,7 +84584,7 @@ function createRevenueRouter() {
         e.builder.receivedAmount = Math.round(d.amount ?? m.expectedFromBuilder);
         e.builder.ref = d.ref;
         builderMoved("RECEIVED");
-        what = `Received from the builder: ${inr9(e.builder.receivedAmount)} (UTR ${d.ref})${e.builder.receivedAmount < m.expectedFromBuilder ? ` \u2014 ${inr9(m.expectedFromBuilder - e.builder.receivedAmount)} short` : ""}`;
+        what = `Received from the builder: ${inr10(e.builder.receivedAmount)} (UTR ${d.ref})${e.builder.receivedAmount < m.expectedFromBuilder ? ` \u2014 ${inr10(m.expectedFromBuilder - e.builder.receivedAmount)} short` : ""}`;
         break;
       case "WRITE_OFF":
         if (e.builder.status === "RECEIVED") return bad15(res, "Already received", 409);
@@ -84500,7 +84603,7 @@ function createRevenueRouter() {
         e.broker.paidAt = when2;
         e.broker.paidAmount = Math.round(d.amount ?? m.payableToBroker);
         e.broker.ref = d.ref;
-        what = `Paid to ${e.brokerName}: ${inr9(e.broker.paidAmount)} (UTR ${d.ref})${d.reason ? ` \u2014 ${d.reason}` : ""}`;
+        what = `Paid to ${e.brokerName}: ${inr10(e.broker.paidAmount)} (UTR ${d.ref})${d.reason ? ` \u2014 ${d.reason}` : ""}`;
         break;
       case "HOLD":
         if (e.broker.status === "PAID") return bad15(res, "Already paid", 409);
@@ -86384,14 +86487,14 @@ var BROADCAST_DAYS = 7;
 var BROADCAST_PER_DAY = 5;
 var BROADCAST_MAX_RECIPIENTS = 80;
 var MATCH_MIN = 60;
-var inr10 = (n2) => n2 >= 1e7 ? `\u20B9${+(n2 / 1e7).toFixed(2)} Cr` : n2 >= 1e5 ? `\u20B9${+(n2 / 1e5).toFixed(1)} L` : `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
+var inr11 = (n2) => n2 >= 1e7 ? `\u20B9${+(n2 / 1e7).toFixed(2)} Cr` : n2 >= 1e5 ? `\u20B9${+(n2 / 1e5).toFixed(1)} L` : `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
 var live2 = (p) => p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus) && !p.heldAt && !p.expiredAt;
 var verifiedBroker = (u) => !!u && u.role === "BROKER" && u.verificationStatus === "VERIFIED";
 var ck = (s) => String(s || "").trim().toLowerCase();
 function summaryOf(r) {
   return { transactionType: r.transactionType, propertyTypes: [r.propertyType], city: r.city || "", localities: (r.preferredLocalities || []).slice(0, 6), budgetMin: r.budgetMin, budgetMax: r.budgetMax };
 }
-var broadcastLine = (b) => `${b.propertyTypes.join(" / ")} ${b.transactionType === "Rent" ? "on rent" : b.transactionType === "Lease" ? "on lease" : "to buy"}${b.localities.length ? ` \xB7 ${b.localities.slice(0, 3).join(", ")}` : ""}${b.city ? ` \xB7 ${b.city}` : ""} \xB7 ${inr10(b.budgetMin)}\u2013${inr10(b.budgetMax)}`;
+var broadcastLine = (b) => `${b.propertyTypes.join(" / ")} ${b.transactionType === "Rent" ? "on rent" : b.transactionType === "Lease" ? "on lease" : "to buy"}${b.localities.length ? ` \xB7 ${b.localities.slice(0, 3).join(", ")}` : ""}${b.city ? ` \xB7 ${b.city}` : ""} \xB7 ${inr11(b.budgetMin)}\u2013${inr11(b.budgetMax)}`;
 function fits(r, excludeBrokerId) {
   const out = [];
   for (const p of st17().properties) {
@@ -86480,7 +86583,7 @@ function createBroadcastRouter() {
     if (b.responses.some((x) => x.brokerId === u.id && x.propertyId === key)) return res.json({ success: true, duplicate: true });
     b.responses.push({ brokerId: u.id, propertyId: key, note: p.data.note, at: nowIso30() });
     db.save();
-    void pushTo(b.brokerId, { kind: "broadcast", title: `${u.name} has a match for your client`, body: prop ? `${prop.title} \xB7 ${inr10(prop.askingPrice)}` : p.data.note.slice(0, 120), url: `/?tab=requirements&bcmine=${b.id}`, tag: `${b.id}-r` });
+    void pushTo(b.brokerId, { kind: "broadcast", title: `${u.name} has a match for your client`, body: prop ? `${prop.title} \xB7 ${inr11(prop.askingPrice)}` : p.data.note.slice(0, 120), url: `/?tab=requirements&bcmine=${b.id}`, tag: `${b.id}-r` });
     res.json({ success: true });
   });
   r.get("/mine", needs("requirement:create"), (_req, res) => {
@@ -86526,7 +86629,7 @@ function alertNewListing(p) {
       if (rq.transactionType !== p.transactionType || rq.city && ck(rq.city) !== ck(p.city)) continue;
       if (calculatePropertyMatch(p, rq).score < 70) continue;
       told.add(rq.assignedBrokerId);
-      void pushTo(rq.assignedBrokerId, { kind: "matches", title: "New match for one of your clients", body: `${p.title} \xB7 ${inr10(p.askingPrice)}`, url: "/?tab=matches", tag: `m-${p.id}` });
+      void pushTo(rq.assignedBrokerId, { kind: "matches", title: "New match for one of your clients", body: `${p.title} \xB7 ${inr11(p.askingPrice)}`, url: "/?tab=matches", tag: `m-${p.id}` });
     }
     return told.size;
   } catch {
@@ -86601,10 +86704,10 @@ function createReportRouter() {
       if (ref) sharer = findByCode(ref);
     } catch {
     }
-    const inr13 = (n2) => `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
+    const inr14 = (n2) => `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
     const title = `GENZ ${rep.city} Property Report \u2014 ${rep.month}`;
     const body = !rep.ready ? `<div class="card"><p>The ${esc9(rep.city)} report starts when GENZ has at least ${REPORT_MIN_LISTINGS} verified live listings there (now: ${rep.liveListings}).<br>\u092F\u0939 \u0930\u093F\u092A\u094B\u0930\u094D\u091F \u0924\u092C \u0936\u0941\u0930\u0942 \u0939\u094B\u0917\u0940 \u091C\u092C ${esc9(rep.city)} \u092E\u0947\u0902 \u0915\u092E \u0938\u0947 \u0915\u092E ${REPORT_MIN_LISTINGS} \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0932\u093E\u0907\u0935 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u0939\u094B\u0902\u0964</p></div>` : `<div class="card"><h2>Live verified listings / \u0932\u093E\u0907\u0935 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917: ${rep.liveListings}</h2>${rep.byType.map((t) => `<div class="row"><span>${esc9(t.type)}</span><b>${t.n}</b></div>`).join("")}</div>
-${rep.rates.length ? `<div class="card"><h2>Asking rate per sq ft (median) / \u092A\u094D\u0930\u0924\u093F \u0935\u0930\u094D\u0917 \u092B\u093C\u0941\u091F \u092E\u093E\u0901\u0917\u0940 \u0917\u0908 \u0926\u0930</h2>${rep.rates.map((x) => `<div class="row"><span>${esc9(x.locality)} \xB7 ${esc9(x.propertyType)}</span><b>${inr13(x.medianPerSqFt)} <small>(${x.sample})</small></b></div>`).join("")}<p class="small">Only localities with ${rep.minSample}+ listings in 90 days. Asking prices on GENZ, not registered sale values.</p></div>` : ""}
+${rep.rates.length ? `<div class="card"><h2>Asking rate per sq ft (median) / \u092A\u094D\u0930\u0924\u093F \u0935\u0930\u094D\u0917 \u092B\u093C\u0941\u091F \u092E\u093E\u0901\u0917\u0940 \u0917\u0908 \u0926\u0930</h2>${rep.rates.map((x) => `<div class="row"><span>${esc9(x.locality)} \xB7 ${esc9(x.propertyType)}</span><b>${inr14(x.medianPerSqFt)} <small>(${x.sample})</small></b></div>`).join("")}<p class="small">Only localities with ${rep.minSample}+ listings in 90 days. Asking prices on GENZ, not registered sale values.</p></div>` : ""}
 ${rep.hotLocalities.length ? `<div class="card"><h2>Where buyers are looking / \u0916\u093C\u0930\u0940\u0926\u093E\u0930 \u0915\u0939\u093E\u0901 \u0922\u0942\u0901\u0922 \u0930\u0939\u0947 \u0939\u0948\u0902</h2>${rep.hotLocalities.map((x) => `<div class="row"><span>${esc9(x.locality)}</span><b>${x.needs} needs</b></div>`).join("")}</div>` : ""}`;
     res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc9(title)}</title>
 <meta property="og:title" content="${esc9(title)}"><meta property="og:description" content="${esc9(`${rep.liveListings} verified listings \xB7 locality rates \xB7 buyer demand \u2014 ${rep.city}`)}">
@@ -87061,7 +87164,7 @@ var nowIso32 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st19 = () => db.getState();
 var bad20 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
 var esc10 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var inr11 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var inr12 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var profile3 = (id) => db.byId("users", id);
 var principal = (u, p) => p.ownerId === u.id || p.listingBrokerId === u.id;
 var PUBLIC2 = ["active", "under_negotiation"];
@@ -87104,16 +87207,16 @@ function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
   p.posterCode = void 0;
   p.purgedAt = nowIso32();
   for (const v of s.siteVisits.filter((x) => x.propertyId === p.id)) {
-    v.customerName = firstName(v.customerName);
+    v.customerName = firstName2(v.customerName);
     v.customerPhone = void 0;
     v.otpCode = "";
     v.qrToken = "";
   }
   for (const o of s.propertyOffers.filter((x) => x.propertyId === p.id)) {
-    o.buyerName = firstName(o.buyerName);
+    o.buyerName = firstName2(o.buyerName);
     o.buyerPhoneKey = "";
   }
-  for (const d of s.dealRooms.filter((x) => x.propertyId === p.id)) d.customerId = firstName(d.customerId);
+  for (const d of s.dealRooms.filter((x) => x.propertyId === p.id)) d.customerId = firstName2(d.customerId);
   s.posterEnquiries = s.posterEnquiries.filter((x) => x.propertyId !== p.id);
   db.appendAuditEvent(actor.id, actor.role, "PROPERTY", p.id, "PROPERTY_PERSONAL_DATA_ERASED", `Personal data erased ${SOLD_PURGE_DAYS} days after closing; anonymous market record kept, deal timeline and audit records retained.`);
 }
@@ -87468,7 +87571,7 @@ fetch('/p/'+c+'/enquiry',{method:'POST',headers:{'Content-Type':'application/jso
     if (sold) return res.send(page2("Property closed", `${head}<div class="sold" style="margin-top:12px">${p.transactionType === "Sale" ? "This property has been sold." : "This property has been rented."}<br>\u092F\u0939 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 ${p.transactionType === "Sale" ? "\u092C\u093F\u0915" : "\u0915\u093F\u0930\u093E\u090F \u092A\u0930 \u091C\u093E"} \u091A\u0941\u0915\u0940 \u0939\u0948\u0964</div></div><p class="small">Listed via GENZ Broker Network</p>${joinFooter(broker)}`));
     if (!live5) return res.status(404).send(page2("Not available", '<div class="card">This listing is not available right now.</div>'));
     const desc = String(p.description || "").slice(0, 400);
-    res.send(page2(`${p.title} \u2014 GENZ`, `${head}<div class="price">${inr11(p.askingPrice)}${p.transactionType !== "Sale" ? " / month" : ""}</div>${(p.tags || []).slice(0, 8).map((t) => `<span class="tag">${esc10(t)}</span>`).join("")}${desc ? `<p class="s" style="margin-top:10px">${esc10(desc)}</p>` : ""}${p.listingStatus === "under_negotiation" ? '<div class="neg" style="margin-top:10px">Under negotiation \u2014 you can still enquire / \u092C\u093E\u0924\u091A\u0940\u0924 \u091C\u093E\u0930\u0940 \u0939\u0948, \u092B\u093F\u0930 \u092D\u0940 \u092A\u0942\u091B \u0938\u0915\u0924\u0947 \u0939\u0948\u0902</div>' : ""}</div>
+    res.send(page2(`${p.title} \u2014 GENZ`, `${head}<div class="price">${inr12(p.askingPrice)}${p.transactionType !== "Sale" ? " / month" : ""}</div>${(p.tags || []).slice(0, 8).map((t) => `<span class="tag">${esc10(t)}</span>`).join("")}${desc ? `<p class="s" style="margin-top:10px">${esc10(desc)}</p>` : ""}${p.listingStatus === "under_negotiation" ? '<div class="neg" style="margin-top:10px">Under negotiation \u2014 you can still enquire / \u092C\u093E\u0924\u091A\u0940\u0924 \u091C\u093E\u0930\u0940 \u0939\u0948, \u092B\u093F\u0930 \u092D\u0940 \u092A\u0942\u091B \u0938\u0915\u0924\u0947 \u0939\u0948\u0902</div>' : ""}</div>
 ${broker ? `<div class="card"><b>${esc10(broker.name)}</b>${broker.companyName ? `<div class="s">${esc10(broker.companyName)}</div>` : ""}${broker.reraNumber ? `<div class="s">RERA: ${esc10(broker.reraNumber)}</div>` : ""}${reputationHtml(broker)}<div class="btns"><a class="call" href="tel:+91${esc10(phone)}">Call</a><a class="wa" href="https://wa.me/91${esc10(phone)}?text=${encodeURIComponent(`Hello, I saw your board for ${p.title}`)}">WhatsApp</a></div></div>` : ""}
 <div class="card"><b>Send an enquiry / \u092A\u0942\u091B\u0924\u093E\u091B \u092D\u0947\u091C\u0947\u0902</b><form id="enq"><label>Name / \u0928\u093E\u092E<input name="name" required maxlength="80" autocomplete="name"></label><label>Mobile / \u092E\u094B\u092C\u093E\u0907\u0932<input name="phone" required inputmode="numeric" maxlength="14" autocomplete="tel"></label><label>Message (optional)<textarea name="message" rows="2" maxlength="300"></textarea></label>
 <label class="ck"><input type="checkbox" name="consent" required><span>I agree that GENZ and this broker may contact me about this property. / \u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F \u0907\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0947 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902 \u092E\u0941\u091D\u0938\u0947 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u093F\u092F\u093E \u091C\u093E\u090F\u0964</span></label><button class="go" type="submit">Send enquiry</button></form><div id="enqmsg" class="ok"></div></div>
@@ -87991,6 +88094,7 @@ function createVisitRouter() {
     let points = false;
     if (pass.associateId) points = awardPoints(pass.associateId, "PROJECT_VISIT", pass.id, 3);
     db.save();
+    alert([pass.associateId, lead.assignedMemberId], "deals", `Site visit confirmed \u2714 \xB7 ${pass.projectName}`, `${firstName3(pass.customerName)} reached the site \u2014 checked by ${u.name}`, "/?tab=crm", { not: u.id, tag: `visit-${pass.id}`, hi: [`\u0938\u093E\u0907\u091F \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0915\u094D\u0915\u0940 \u2714 \xB7 ${pass.projectName}`, `${firstName3(pass.customerName)} \u0938\u093E\u0907\u091F \u092A\u0930 \u092A\u0939\u0941\u0901\u091A\u0947 \u2014 ${u.name} \u0928\u0947 \u091C\u093E\u0901\u091A\u093E`] });
     audit8("VISIT_PASS_SCANNED", pass.id, `${u.name} verified visit of ${pass.customerName} (${lead.id}) at ${pass.projectName}; referred by ${pass.associateName}`);
     res.json({ success: true, pointsAwarded: points, stage: lead.stage });
   });
@@ -88041,7 +88145,7 @@ function createPublicVisitRouter() {
 .row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:8px 0;border-bottom:1px solid #eee;text-align:left}.row:last-child{border:0}.row b{text-align:right}.n{font-size:12px;color:#666;margin-top:12px;line-height:1.5}</style></head>
 <body><div class="w"><div class="c"><div class="s">GENZ \xB7 Site visit pass</div><h1>${esc12(p.projectName)}</h1>${proj?.locality ? `<div class="s">${esc12(proj.locality)}${proj.city ? ", " + esc12(proj.city) : ""}</div>` : ""}
 <div class="st">${esc12(label)}</div><br><div class="q">${svg}</div><div class="code">${esc12(p.code)}</div>
-<div style="margin-top:14px"><div class="row"><span>Visitor</span><b>${esc12(firstName2(p.customerName))} \xB7 \u2022\u2022\u2022\u2022${esc12(p.phoneLast4)}</b></div><div class="row"><span>Visit slot</span><b>${esc12(when2)}</b></div>${p.partySize ? `<div class="row"><span>People</span><b>${p.partySize}</b></div>` : ""}<div class="row"><span>Referred by</span><b>${esc12(p.associateName)}</b></div><div class="row"><span>Scan at</span><b>${esc12(scanLine("PASS", p.scanAt).where.en)} \xB7 ${esc12(scanLine("PASS", p.scanAt).where.hi)}</b></div></div>
+<div style="margin-top:14px"><div class="row"><span>Visitor</span><b>${esc12(firstName3(p.customerName))} \xB7 \u2022\u2022\u2022\u2022${esc12(p.phoneLast4)}</b></div><div class="row"><span>Visit slot</span><b>${esc12(when2)}</b></div>${p.partySize ? `<div class="row"><span>People</span><b>${p.partySize}</b></div>` : ""}<div class="row"><span>Referred by</span><b>${esc12(p.associateName)}</b></div><div class="row"><span>Scan at</span><b>${esc12(scanLine("PASS", p.scanAt).where.en)} \xB7 ${esc12(scanLine("PASS", p.scanAt).where.hi)}</b></div></div>
 <p class="n">Show this QR (or the code) at the ${esc12(scanLine("PASS", p.scanAt).where.en.toLowerCase())} with a photo ID. It works once, only during the slot window, and only the builder's team can scan it.<br>\u0915\u0943\u092A\u092F\u093E \u092F\u0939 QR / \u0915\u094B\u0921 \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0911\u092B\u093C\u093F\u0938 \u092A\u0930 \u092B\u093C\u094B\u091F\u094B ID \u0915\u0947 \u0938\u093E\u0925 \u0926\u093F\u0916\u093E\u090F\u0901\u0964 \u092F\u0939 \u090F\u0915 \u0939\u0940 \u092C\u093E\u0930 \u092E\u093E\u0928\u094D\u092F \u0939\u0948\u0964</p></div></div></body></html>`);
   });
   return r;
@@ -88118,7 +88222,7 @@ var phone107 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE8 = /^[6-9]\d{9}$/;
 var newToken2 = () => crypto34.randomBytes(18).toString("base64url");
 var smsOn4 = () => !!process.env.SMS_WEBHOOK_URL;
-var inr12 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var inr13 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad24 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var ev = (r, text) => {
   r.events.push({ at: nowIso35(), text });
@@ -88760,7 +88864,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
         return k === "YOUTUBE" ? `<div class="vid"><iframe src="https://www.youtube-nocookie.com/embed/${esc13(yt)}" title="video" loading="lazy" allowfullscreen></iframe></div>` : k === "FILE" ? `<div class="vid"><video src="${esc13(u)}" controls preload="metadata" playsinline></video></div>` : `<div class="row"><a class="btn l" href="${esc13(u)}" target="_blank" rel="noopener noreferrer">\u25B6 \u0935\u0940\u0921\u093F\u092F\u094B \u0926\u0947\u0916\u0947\u0902 / Watch video</a></div>`;
       }).join("");
       const booked = (i.visits || []).filter((v) => Date.parse(v.when) > Date.now() - 6 * 36e5).sort((a, b2) => a.when.localeCompare(b2.when))[0];
-      return `<div class="card ${pub.available ? "" : "sold"}" id="p-${esc13(i.id)}"><div class="prop">${pub.image ? `<img src="${esc13(pub.image)}" alt="" loading="lazy">` : ""}<div><b>${esc13(pub.title)}</b><br><small>${esc13(pub.locality)}, ${esc13(pub.city)} \xB7 ${esc13(pub.type)} \xB7 ${esc13(pub.deal)}</small><div class="price">${esc13(inr12(pub.price))}${pub.deal === "Rent" ? " / \u092E\u093E\u0939" : ""}</div>${area ? `<small>${esc13(area)}</small>` : ""}</div></div>
+      return `<div class="card ${pub.available ? "" : "sold"}" id="p-${esc13(i.id)}"><div class="prop">${pub.image ? `<img src="${esc13(pub.image)}" alt="" loading="lazy">` : ""}<div><b>${esc13(pub.title)}</b><br><small>${esc13(pub.locality)}, ${esc13(pub.city)} \xB7 ${esc13(pub.type)} \xB7 ${esc13(pub.deal)}</small><div class="price">${esc13(inr13(pub.price))}${pub.deal === "Rent" ? " / \u092E\u093E\u0939" : ""}</div>${area ? `<small>${esc13(area)}</small>` : ""}</div></div>
 ${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">\u{1F5D3} <b>\u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F: ${esc13(new Date(booked.when).toLocaleString("hi-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }))}</b><br><small>Visit fixed \u2014 your broker will send the visit pass / code.</small></p></div>` : ""}
 ${gallery}${vids}
 ${i.note ? `<p class="t"><b>\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u094B\u091F:</b> ${esc13(i.note)}</p>` : ""}${pub.tags.length ? `<div>${pub.tags.map((t) => `<span class="tag">${esc13(t)}</span>`).join("")}</div>` : ""}
@@ -90384,6 +90488,8 @@ app.post("/api/auth/register-invite", rateLimit("register", 10, 60 * 6e4), (req,
     const setBy = db.byId("users", state.settings.autoVerifyChangedBy)?.name;
     db.appendAuditEvent(userId, newUser.role, "VERIFICATION", userId, "USER_AUTO_VERIFIED", `${name} was verified automatically at sign-up because RERA-registered ${sponsor.name} (${sponsor.id}) registered them and the "auto-verify RERA referrals" switch is ON${setBy ? ` (set by ${setBy})` : ""}. An ID-review task is open for the GENZ team.`);
   }
+  if (newUser.verificationStatus === "PENDING") alert(state.users.filter((a) => (a.role === "ADMIN" || a.role === "SUPERADMIN") && a.verificationStatus === "VERIFIED").slice(0, 20).map((a) => a.id), "deals", `New member waiting for KYC \xB7 ${newUser.role.replace(/_/g, " ").toLowerCase()}`, `${name}${newUser.city ? `, ${newUser.city}` : ""} \u2014 check the ID in Invite & KYC`, "/?tab=onboarding", { not: userId, tag: `kyc-${userId}`, hi: [`\u0928\u092F\u093E \u0938\u0926\u0938\u094D\u092F KYC \u0915\u0947 \u0907\u0902\u0924\u091C\u093C\u093E\u0930 \u092E\u0947\u0902 \xB7 ${newUser.role.replace(/_/g, " ").toLowerCase()}`, `${name}${newUser.city ? `, ${newUser.city}` : ""} \u2014 Invite & KYC \u092E\u0947\u0902 ID \u091C\u093E\u0901\u091A\u0947\u0902`] });
+  alert([invite.nominatedBy, invite.sponsorId, sponsor?.id], "deals", `${name} joined GENZ \u2714`, newUser.verificationStatus === "VERIFIED" ? "Verified already \u2014 say hello and share your first deal." : "GENZ is checking the ID \u2014 you will see them in the network once verified.", "/?tab=grow", { not: userId, tag: `join-${userId}`, hi: [`${name} GENZ \u0938\u0947 \u091C\u0941\u0921\u093C\u0947 \u2714`, newUser.verificationStatus === "VERIFIED" ? "\u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0908 \u0939\u094B \u091A\u0941\u0915\u0947 \u2014 \u0928\u092E\u0938\u094D\u0924\u0947 \u0915\u0939\u0947\u0902 \u0914\u0930 \u092A\u0939\u0932\u0940 \u0921\u0940\u0932 \u0936\u0947\u092F\u0930 \u0915\u0930\u0947\u0902\u0964" : "GENZ ID \u091C\u093E\u0901\u091A \u0930\u0939\u093E \u0939\u0948 \u2014 \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0908 \u0939\u094B\u0924\u0947 \u0939\u0940 \u0935\u0947 \u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u092E\u0947\u0902 \u0926\u093F\u0916\u0947\u0902\u0917\u0947\u0964"] });
   setSessionCookie(req, res, signSession(userId, 1));
   res.json({ success: true, autoVerified, vaultStored, user: publicUser(newUser), permissions: effectivePermissions(newUser) });
 });
@@ -90445,6 +90551,15 @@ app.post("/api/verifications/:userId/review", needs("users:review"), (req, res) 
   if (action !== "APPROVE") closeIdTaskOnAdverse(targetUser.id, currentUser2.id, action, typeof notes === "string" ? notes.slice(0, 200) : void 0);
   if (action !== "APPROVE") targetUser.sessionVersion = (targetUser.sessionVersion || 1) + 1;
   db.save();
+  if (action === "APPROVE") {
+    const w = {
+      BROKER: ["Welcome to the network \u2014 put your first listing or client need today.", "\u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u092E\u0947\u0902 \u0938\u094D\u0935\u093E\u0917\u0924 \u2014 \u0906\u091C \u0905\u092A\u0928\u0940 \u092A\u0939\u0932\u0940 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u092F\u093E \u0915\u094D\u0932\u093E\u0907\u0902\u091F \u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0921\u093E\u0932\u0947\u0902\u0964"],
+      DEVELOPER_BUILDER: ["Welcome \u2014 add your project and appoint channel partners.", "\u0938\u094D\u0935\u093E\u0917\u0924 \u2014 \u0905\u092A\u0928\u093E \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u091C\u094B\u0921\u093C\u0947\u0902 \u0914\u0930 \u091A\u0948\u0928\u0932 \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0905\u092A\u0949\u0907\u0902\u091F \u0915\u0930\u0947\u0902\u0964"],
+      LEGAL_COUNSEL: ["Welcome \u2014 choose the states you work in to see legal requests.", "\u0938\u094D\u0935\u093E\u0917\u0924 \u2014 \u091C\u093F\u0928 \u0930\u093E\u091C\u094D\u092F\u094B\u0902 \u092E\u0947\u0902 \u0906\u092A \u0915\u093E\u092E \u0915\u0930\u0924\u0947 \u0939\u0948\u0902 \u0935\u094B \u091A\u0941\u0928\u0947\u0902, \u092B\u093F\u0930 \u0915\u093C\u093E\u0928\u0942\u0928\u0940 \u092E\u093E\u0901\u0917\u0947\u0902 \u0926\u093F\u0916\u0947\u0902\u0917\u0940\u0964"],
+      CONTRACTOR: ["Welcome \u2014 construction leads from brokers will reach you here.", "\u0938\u094D\u0935\u093E\u0917\u0924 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930\u094B\u0902 \u0915\u0940 \u0915\u0902\u0938\u094D\u091F\u094D\u0930\u0915\u094D\u0936\u0928 \u0932\u0940\u0921 \u092F\u0939\u0940\u0902 \u0906\u090F\u0901\u0917\u0940\u0964"]
+    }[targetUser.role] || ["Welcome to GENZ \u2014 open the app to start.", "GENZ \u092E\u0947\u0902 \u0938\u094D\u0935\u093E\u0917\u0924 \u2014 \u0936\u0941\u0930\u0942 \u0915\u0930\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0910\u092A \u0916\u094B\u0932\u0947\u0902\u0964"];
+    alert(targetUser.id, "system", "Your GENZ account is verified \u2714", w[0], "/", { hi: ["\u0906\u092A\u0915\u093E GENZ \u0905\u0915\u093E\u0909\u0902\u091F \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0908 \u0939\u094B \u0917\u092F\u093E \u2714", w[1]] });
+  } else if (action === "REJECT") alert(targetUser.id, "system", "Your GENZ verification was not approved", notes ? String(notes).slice(0, 140) : "Open the app to see the reason.", "/", { hi: ["\u0906\u092A\u0915\u093E GENZ \u0935\u0947\u0930\u093F\u092B\u093C\u093F\u0915\u0947\u0936\u0928 \u092E\u0902\u091C\u093C\u0942\u0930 \u0928\u0939\u0940\u0902 \u0939\u0941\u0906", notes ? String(notes).slice(0, 140) : "\u0915\u093E\u0930\u0923 \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0910\u092A \u0916\u094B\u0932\u0947\u0902\u0964"] });
   db.appendAuditEvent(
     currentUser2.id,
     currentUser2.role,
@@ -92084,15 +92199,15 @@ app.post("/api/owner-mandates", needs("mandate:owner_create"), (req, res) => {
   };
   state.ownerMandates.unshift(newMandate);
   db.save();
-  const inr13 = (n2) => `\u20B9${n2.toLocaleString("en-IN")}`;
-  const terms = remunerationBasis === "PERCENTAGE" ? `commission ${commissionPct}% of the final price` : remunerationBasis === "FIXED_FEE" ? `fixed brokerage ${inr13(fixedFeeAmount)}` : `fixed net amount ${inr13(approvedNetPrice)} (everything above is the listing broker's remuneration)`;
+  const inr14 = (n2) => `\u20B9${n2.toLocaleString("en-IN")}`;
+  const terms = remunerationBasis === "PERCENTAGE" ? `commission ${commissionPct}% of the final price` : remunerationBasis === "FIXED_FEE" ? `fixed brokerage ${inr14(fixedFeeAmount)}` : `fixed net amount ${inr14(approvedNetPrice)} (everything above is the listing broker's remuneration)`;
   db.appendAuditEvent(
     currentUser2.id,
     currentUser2.role,
     "PROPERTY",
     mandateId,
     "OWNER_MANDATE_SIGNED_BY_OWNER",
-    `Owner signed a ${remunerationBasis} mandate: ${terms}; advertised ${inr13(advertisedPrice)}. Protection tail: ${newMandate.protectionPeriodDays} days. Awaiting listing broker.`
+    `Owner signed a ${remunerationBasis} mandate: ${terms}; advertised ${inr14(advertisedPrice)}. Protection tail: ${newMandate.protectionPeriodDays} days. Awaiting listing broker.`
   );
   if (broker.phone) void sendSms(broker.phone, `GENZ: a brokerage mandate ${mandateId} for property ${propertyId} is waiting for your review and signature.`);
   res.json({ success: true, mandate: mandateView(newMandate, state) });
@@ -92252,6 +92367,14 @@ app.post("/api/construction-leads", needs("lead:create"), (req, res) => {
   };
   state.constructionLeads.unshift(newLead);
   db.save();
+  alert(
+    state.users.filter((c) => c.role === "CONTRACTOR" && c.verificationStatus === "VERIFIED" && (!c.city || !currentUser2.city || c.city === currentUser2.city)).slice(0, 100).map((c) => c.id),
+    "deals",
+    `New construction lead \xB7 ${data.projectType}`,
+    `${data.approximateLocation} \xB7 budget ${inr(data.estimatedBudget)} \u2014 the first to accept the ${newLead.referralCommissionPct}% referral gets the contact`,
+    "/?tab=construction",
+    { not: currentUser2.id, tag: `cl-${leadId}`, hi: [`\u0928\u0908 \u0915\u0902\u0938\u094D\u091F\u094D\u0930\u0915\u094D\u0936\u0928 \u0932\u0940\u0921 \xB7 ${data.projectType}`, `${data.approximateLocation} \xB7 \u092C\u091C\u091F ${inr(data.estimatedBudget)} \u2014 ${newLead.referralCommissionPct}% \u0930\u0947\u092B\u093C\u0930\u0932 \u092A\u0939\u0932\u0947 \u092E\u093E\u0928\u0928\u0947 \u0935\u093E\u0932\u0947 \u0915\u094B \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u0938\u0902\u092A\u0930\u094D\u0915`] }
+  );
   db.appendAuditEvent(
     currentUser2.id,
     currentUser2.role,
@@ -92305,6 +92428,7 @@ app.post("/api/construction-leads/:id/request-access", needs("lead:claim"), (req
     state.contractorRequests.push(reqRecord);
     lead.assignedContractorId = currentUser2.id;
     lead.status = "ASSIGNED";
+    alert(lead.referringBrokerId, "deals", `${currentUser2.companyName || currentUser2.name} took your construction lead`, `${lead.title} \u2014 ${lead.referralCommissionPct}% referral agreed; your customer's contact is now shared with them`, "/?tab=construction", { not: currentUser2.id, tag: `cl-${lead.id}`, hi: [`${currentUser2.companyName || currentUser2.name} \u0928\u0947 \u0906\u092A\u0915\u0940 \u0915\u0902\u0938\u094D\u091F\u094D\u0930\u0915\u094D\u0936\u0928 \u0932\u0940\u0921 \u0932\u0940`, `${lead.title} \u2014 ${lead.referralCommissionPct}% \u0930\u0947\u092B\u093C\u0930\u0932 \u0924\u092F; \u0906\u092A\u0915\u0947 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u0938\u0902\u092A\u0930\u094D\u0915 \u0905\u092C \u0909\u0928\u0915\u0947 \u092A\u093E\u0938 \u0939\u0948`] });
   }
   db.save();
   db.appendAuditEvent(
@@ -92360,6 +92484,8 @@ app.post("/api/construction-leads/:id/settle-referral", needs("lead:settle"), (r
     }
   }
   db.save();
+  if (finalContractValue !== void 0 && Number(finalContractValue) > 0) alert(lead.referringBrokerId, "deals", `Contract value recorded \xB7 ${lead.title}`, `${inr(lead.finalContractValue || 0)} \u2014 your ${lead.referralCommissionPct}% referral: ${inr(lead.referralCommissionDue || 0)}. Mark it paid when you receive it.`, "/?tab=construction", { not: currentUser2.id, tag: `cl-${lead.id}`, hi: [`\u0915\u0949\u0928\u094D\u091F\u094D\u0930\u0948\u0915\u094D\u091F \u0935\u0948\u0932\u094D\u092F\u0942 \u0926\u0930\u094D\u091C \xB7 ${lead.title}`, `${inr(lead.finalContractValue || 0)} \u2014 \u0906\u092A\u0915\u093E ${lead.referralCommissionPct}% \u0930\u0947\u092B\u093C\u0930\u0932: ${inr(lead.referralCommissionDue || 0)}\u0964 \u092E\u093F\u0932\u0928\u0947 \u092A\u0930 paid \u0915\u0930\u0947\u0902\u0964`] });
+  if (paid === true || paid === "true") alert(lead.assignedContractorId, "deals", `Referral marked paid \u2714 \xB7 ${lead.title}`, `${currentUser2.name} confirmed ${inr(lead.referralCommissionDue || 0)} received`, "/?tab=construction", { not: currentUser2.id, tag: `cl-${lead.id}`, hi: [`\u0930\u0947\u092B\u093C\u0930\u0932 \u092A\u0947\u092E\u0947\u0902\u091F \u092E\u093F\u0932\u093E \u2714 \xB7 ${lead.title}`, `${currentUser2.name} \u0928\u0947 ${inr(lead.referralCommissionDue || 0)} \u092E\u093F\u0932\u0928\u0947 \u0915\u0940 \u092A\u0941\u0937\u094D\u091F\u093F \u0915\u0940`] });
   db.appendAuditEvent(
     currentUser2.id,
     currentUser2.role,
@@ -92420,6 +92546,7 @@ app.post("/api/disputes", needs("dispute:create"), (req, res) => {
     }
   }
   const newDispute = fileDispute(state, currentUser2, { dealRoomId: data.dealRoomId, leadId: data.leadId, counterparty, reason: data.reason, description: data.description, evidenceLinks: data.evidenceLinks }, deal);
+  alert(counterparty?.id, "deals", "A dispute was raised with you", `${currentUser2.name}${data.dealRoomId ? ` \xB7 ${data.dealRoomId}` : ""} \u2014 GENZ will look into it; you can reply in Disputes`, "/?tab=disputes", { not: currentUser2.id, tag: `dsp-${newDispute.id}`, hi: ["\u0906\u092A\u0915\u0947 \u0938\u093E\u0925 \u090F\u0915 \u0935\u093F\u0935\u093E\u0926 \u0926\u0930\u094D\u091C \u0939\u0941\u0906", `${currentUser2.name}${data.dealRoomId ? ` \xB7 ${data.dealRoomId}` : ""} \u2014 GENZ \u0926\u0947\u0916\u0947\u0917\u093E; \u0906\u092A Disputes \u092E\u0947\u0902 \u091C\u0935\u093E\u092C \u0926\u0947 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902`] });
   res.json({ success: true, dispute: newDispute });
 });
 function fileDispute(state, user, data, deal) {
@@ -94397,6 +94524,11 @@ app.post("/api/deals/:id/messages", needs("deal:chat"), rateLimit("chat", 60, 6e
   };
   state.dealMessages.push(newMsg);
   db.save();
+  {
+    const readers = audience === "BROKERS" ? [deal.introducingBrokerId, deal.closingBrokerId] : [deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId, ...deal.teamMemberIds || []];
+    const to = [...new Set(readers.filter((id) => !!id && id !== currentUser2.id))].filter((id) => once(`dm:${id}:${deal.id}`, 18e4));
+    alert(to, "deals", `${audience === "BROKERS" ? "\u{1F512} " : ""}${currentUser2.name} \xB7 ${deal.id}`, newMsg.text.slice(0, 100), `/?tab=deals&deal=${deal.id}`, { tag: `dm-${deal.id}` });
+  }
   if (card2) db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "CHAT_CARD_SENT", `${card2.kind} card ${card2.refId}${audience === "BROKERS" ? " (brokers only)" : ""}`);
   res.json({ success: true, message: newMsg });
 });

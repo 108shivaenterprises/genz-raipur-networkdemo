@@ -12,6 +12,7 @@
  *  • Staff only get what the employer allows (phone mode, scope, claim, caps) — and every reveal is logged.
  *  • No cash, no paid third party; everything is audited in the hash-chained trail.
  */
+import { alert, firstName } from './alerts.js';
 import { tier1Gate } from './tiers.js';
 import { tierOf } from '../src/shared/networkRules.js';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
@@ -233,6 +234,8 @@ export function createPcontrolRouter() {
     if (state().projectUpdates.filter(x => x.projectId === p.id).length >= 100) return bad(res, 'Notice board is full (100) — delete old notices first', 409);
     const x = { id: uid('PU'), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me().id, createdAt: nowIso() };
     state().projectUpdates.unshift(x); db.save();
+    // v59 — appointed partners get the notice on their phone (an "all brokers" notice stays on the board — no mass push)
+    alert(state().associateMandates.filter(mm => mm.projectId === p.id && ['ACTIVE_ASSOCIATE', 'TOP_PERFORMER'].includes(mm.status)).map(mm => mm.brokerId), 'broadcast', `${p.projectName}: ${x.title}`, String(x.body || '').slice(0, 160), '/?tab=pcontrol', { not: me().id, tag: `pu-${x.id}` });
     audit('SYSTEM', x.id, 'PROJECT_NOTICE_POSTED', `${me().name} posted "${x.title}" (${x.kind}) for ${p.projectName} to ${x.audience === 'ASSOCIATES' ? 'appointed partners' : 'all brokers'}`);
     res.json({ success: true, update: x });
   });
@@ -300,6 +303,7 @@ export function createPcontrolRouter() {
       m.status = 'DECLINED'; m.statusReason = String(note).slice(0, 200); m.decidedAt = nowIso();
     } else return bad(res, 'Action must be APPROVE, SHORTLIST or DECLINE');
     db.save();
+    alert(m.brokerId, 'deals', action === 'APPROVE' ? `You are appointed ✔ · ${p.projectName}` : action === 'SHORTLIST' ? `Shortlisted · ${p.projectName}` : `Partner request declined · ${p.projectName}`, action === 'APPROVE' ? `${m.agreedCommissionPct}% commission · register your clients now` : (m.statusReason || ''), '/?tab=pcontrol', { not: me().id, tag: `mand-${m.id}`, hi: [action === 'APPROVE' ? `आप अपॉइंट हुए ✔ · ${p.projectName}` : action === 'SHORTLIST' ? `शॉर्टलिस्ट हुए · ${p.projectName}` : `पार्टनर की माँग मना · ${p.projectName}`, action === 'APPROVE' ? `${m.agreedCommissionPct}% कमीशन · अब अपने क्लाइंट रजिस्टर करें` : (m.statusReason || '')] });
     audit('DEAL', m.id, `PARTNER_${action}`, `${me().name}: ${m.brokerName} on ${p.projectName} → ${m.status}${action === 'APPROVE' ? ` (${m.agreedCommissionPct}%, quota ${m.targetUnitsQuota}${m.dailyLeadCap ? `, ${m.dailyLeadCap}/day` : ''}${m.validUntil ? `, until ${m.validUntil.slice(0, 10)}` : ''})` : m.statusReason ? `: ${m.statusReason}` : ''}`);
     res.json({ success: true, mandate: m });
   });
@@ -387,6 +391,7 @@ export function createPcontrolRouter() {
     l.updatedAt = nowIso();
     l.activities.unshift({ id: uid('A'), type: 'SYSTEM', note: `Builder ${decision === 'ACCEPT' ? 'accepted' : 'rejected'} the lead${note ? `: ${String(note).slice(0, 200)}` : ''}`, byUserId: u.id, byName: u.name, at: nowIso() });
     db.save();
+    alert([l.associateId, l.assignedMemberId], 'deals', decision === 'ACCEPT' ? `Lead accepted ✔ · ${l.projectName}` : `Lead not accepted · ${l.projectName}`, `${firstName(l.name)}${note ? ` — ${String(note).slice(0, 80)}` : ''}`, '/?tab=crm', { not: u.id, tag: `lead-${l.id}`, hi: [decision === 'ACCEPT' ? `लीड मंज़ूर ✔ · ${l.projectName}` : `लीड मंज़ूर नहीं · ${l.projectName}`, `${firstName(l.name)}${note ? ` — ${String(note).slice(0, 80)}` : ''}`] });
     audit('LEAD', l.id, decision === 'ACCEPT' ? 'CRM_LEAD_ACCEPTED' : 'CRM_LEAD_REJECTED', `${u.name} ${decision === 'ACCEPT' ? 'accepted' : 'rejected'} ${l.name} (${l.associateName}) on ${l.projectName}${note ? `: ${String(note).slice(0, 100)}` : ''}`);
     res.json({ success: true, lead: maskLeadForViewer(l, u) });
   });
@@ -481,6 +486,7 @@ export function createPcontrolRouter() {
       marketingKitAccess: false, status: 'APPLIED', assignedAt: nowIso(), appliedNote: note,
     };
     st.associateMandates.unshift(m); db.save();
+    alert(p.builderId, 'deals', `Partner request · ${p.projectName}`, `${u.name}${u.companyName ? ` (${u.companyName})` : ''} wants to sell this project — appoint, shortlist or decline`, '/?tab=pcontrol', { not: u.id, tag: `mand-${m.id}`, hi: [`पार्टनर की माँग · ${p.projectName}`, `${u.name}${u.companyName ? ` (${u.companyName})` : ''} यह प्रोजेक्ट बेचना चाहते हैं — अपॉइंट, शॉर्टलिस्ट या मना करें`] });
     audit('DEAL', m.id, 'PARTNER_APPLIED', `${u.name} applied to partner on ${p.projectName}${note ? `: ${note.slice(0, 100)}` : ''}`);
     res.json({ success: true, relation: 'APPLIED' });
   });
@@ -641,6 +647,7 @@ export function createPcontrolRouter() {
       n++;
     }
     db.save();
+    if (to && n) alert(to.id, 'deals', `${n} lead(s) allotted to you`, `by ${u.name} — open your call list`, '/?tab=dashboard', { not: u.id, hi: [`${n} लीड आपको दी गईं`, `${u.name} ने दीं — अपनी कॉल लिस्ट खोलें`] });
     audit('LEAD', u.id, 'LEADS_BULK_ALLOTTED', `${u.name} ${to ? `allotted ${n} lead(s) to ${to.name}` : `took back ${n} lead(s)`}`);
     res.json({ success: true, moved: n });
   });

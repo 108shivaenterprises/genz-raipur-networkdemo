@@ -10,6 +10,7 @@
  *
  * GENZ never moves money: everything here RECORDS what the parties say, and makes the other side confirm it.
  */
+import { alert, inr } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { db } from './db.js';
@@ -321,6 +322,7 @@ export function createCrmPlusRouter() {
     if (!['CONFIRM', 'DISPUTE'].includes(action)) return bad(res, 'action must be CONFIRM or DISPUTE');
     if (action === 'DISPUTE' && note.length < 5) return bad(res, 'Say what is wrong (min 5 chars)');
     po.status = action === 'CONFIRM' ? 'CONFIRMED' : 'DISPUTED'; po.ackAt = nowIso(); po.ackNote = note.slice(0, 300) || undefined; b.updatedAt = nowIso(); db.save();
+    alert(b.builderId, 'deals', action === 'CONFIRM' ? `Partner confirmed brokerage ✔ · ${b.projectName}` : `Partner disputes a payout · ${b.projectName}`, `${u.name}: ${inr(po.amount)} (${po.mode} ${po.ref}) for unit ${b.unitNo}${action === 'DISPUTE' ? ` — ${note.slice(0, 80)}` : ''}`, '/?tab=crm', { not: u.id, tag: `po-${b.id}`, hi: [action === 'CONFIRM' ? `पार्टनर ने ब्रोकरेज कन्फ़र्म की ✔ · ${b.projectName}` : `पार्टनर ने पेमेंट पर आपत्ति की · ${b.projectName}`, `${u.name}: यूनिट ${b.unitNo} के लिए ${inr(po.amount)} (${po.mode} ${po.ref})${action === 'DISPUTE' ? ` — ${note.slice(0, 80)}` : ''}`] });
     auditCrm(action === 'CONFIRM' ? 'CRM_PAYOUT_CONFIRMED' : 'CRM_PAYOUT_DISPUTED', b.id, `${u.name} ${action === 'CONFIRM' ? 'confirmed receiving' : 'disputes'} ₹${po.amount.toLocaleString('en-IN')} (${po.mode} ref ${po.ref}) on ${b.id}${note ? `: ${note}` : ''}`, 'COMMISSION');
     res.json({ success: true, booking: viewBooking(b) });
   });

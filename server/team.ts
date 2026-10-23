@@ -12,6 +12,7 @@
  *  4. If the employer is suspended / blacklisted, every member is locked out too (checked on every request).
  *  5. Everything is in the hash-chained audit trail.
  */
+import { alert, firstName } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { db } from './db.js';
@@ -290,6 +291,7 @@ export function createTeamRouter() {
     lead.updatedAt = nowIso();
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: 'SYSTEM', note: to ? `Allotted to ${to.name}${prev ? ` (was ${prev})` : ''}` : `Taken back from ${prev || 'team'}`, byUserId: u.id, byName: u.name, at: nowIso() });
     db.save();
+    if (to) alert(to.id, 'deals', 'New lead for you', `${firstName(lead.name)} · ${lead.projectName} — allotted by ${u.name}`, '/?tab=crm', { not: u.id, tag: `lead-${lead.id}`, hi: ['आपके लिए नई लीड', `${firstName(lead.name)} · ${lead.projectName} — ${u.name} ने दी`] });
     audit('LEAD', lead.id, to ? 'CRM_LEAD_ALLOTTED' : 'CRM_LEAD_TAKEN_BACK', `${u.name}: ${lead.name} ${to ? `allotted to ${to.name}` : `taken back from ${prev || 'team'}`}`);
     res.json({ success: true, lead });
   });
@@ -304,7 +306,9 @@ export function createTeamRouter() {
     const mineIds = new Set(mine(u.id).map(m => m.id));
     if (ids.some(id => !mineIds.has(id) || member(id, u.id)?.verificationStatus !== 'VERIFIED')) return res.status(400).json({ error: 'Pick only your own active team members' });
     const others = (deal.teamMemberIds || []).filter(id => !mineIds.has(id)); // the other broker's employees stay untouched
+    const before = new Set(deal.teamMemberIds || []);
     deal.teamMemberIds = [...new Set([...others, ...ids])];
+    alert(ids.filter(id => !before.has(id)), 'deals', 'A deal room was opened for you', `${deal.id} — added by ${u.name}`, '/?tab=deals', { not: u.id, tag: `deal-${deal.id}`, hi: ['आपके लिए डील रूम खुला', `${deal.id} — ${u.name} ने जोड़ा`] });
     db.save();
     audit('DEAL', deal.id, 'DEAL_TEAM_UPDATED', `${u.name} set ${ids.length} team member(s) on deal ${deal.id}`);
     res.json({ success: true, teamMemberIds: deal.teamMemberIds.filter(id => mineIds.has(id)) });

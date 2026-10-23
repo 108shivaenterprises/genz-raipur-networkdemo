@@ -1073,7 +1073,7 @@ export interface OwnerConsent {
   createdAt: string; updatedAt: string;
 }
 export interface PushSub { id: string; userId: string; endpoint: string; p256dh: string; auth: string; ua: string; createdAt: string; lastOkAt?: string; fails: number }
-export interface PushPref { id: string; userId: string; matches: boolean; deals: boolean; consent: boolean; broadcast: boolean; digest: boolean; quiet: boolean; lastDigestDay?: string; sentToday?: { day: string; n: number } }
+export interface PushPref { id: string; userId: string; matches: boolean; deals: boolean; consent: boolean; broadcast: boolean; digest: boolean; quiet: boolean; lastDigestDay?: string; sentToday?: { day: string; n: number }; /** v59 — the app language on his phone: alerts that have a Hindi line use it */ lang?: 'en' | 'hi' }
 /** "Mere client ko ye chahiye" sent to the brokers who hold matching listings. */
 export interface Broadcast {
   id: string; brokerId: string; requirementId: string;

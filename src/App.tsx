@@ -14,9 +14,11 @@ import {
 } from './types/index.js';
 import { api, setUnauthorizedHandler, type PropertyFacets } from './lib/api.js';
 import { hasPerm } from './lib/permissions.js';
-import { useTx } from './lib/i18n.js';
+import { useTx, useI18n } from './lib/i18n.js';
 import { LoginView, ChangePasswordView, PendingApprovalView } from './components/LoginView.js';
 import { PrivacyCenter, PrivacyQueue } from './components/PrivacyCenter.js';
+import { AlertsNudge } from './components/AlertsCard.js';
+import { syncPush, disablePush } from './lib/push.js';
 import { Navbar } from './components/Navbar.js';
 import { NavigationTabs, TabType } from './components/NavigationTabs.js';
 import { useChatBadge } from './lib/useChatBadge.js';
@@ -293,7 +295,17 @@ export default function App() {
     await loadData();
   };
 
+  // v59 — this phone's alerts follow the person signed in on it (never while "viewing as" someone), in the language of his app
+  const { lang } = useI18n();
+  useEffect(() => { if (currentUser?.id && !impersonatedBy) void syncPush(currentUser.id); }, [currentUser?.id, impersonatedBy?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!currentUser?.id || impersonatedBy) return;
+    api.pushPrefs().then(r => { if ((r?.prefs?.lang || 'en') !== lang) return api.pushPrefsSave({ lang }); }).catch(() => { /* alerts stay in the last language */ });
+  }, [currentUser?.id, impersonatedBy?.id, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleLogout = async () => {
+    // v59 — signing out also stops this person's alerts on this phone (a shared office phone carries nobody's alerts after it)
+    if (!impersonatedBy) { try { await disablePush(); } catch { /* the browser refused: the server copy goes after failed sends */ } }
     try { await api.logout(); } catch { /* ignore */ }
     setCurrentUser(null);
     setPermissions([]);
@@ -410,6 +422,9 @@ export default function App() {
         )}
 
         {activeTab === 'dashboard' && currentUser.role === 'GENZ_CONNECTOR' && <HomeInsights role={currentUser.role} onNavigate={setActiveTab} />}
+
+        {/* v59 — every role gets its work alerts; the broker's home has this inside his first steps */}
+        {activeTab === 'dashboard' && currentUser.role !== 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && <AlertsNudge role={currentUser.role} />}
 
         {activeTab === 'dashboard' && currentUser.role === 'TEAM_MEMBER' && (
           <TeamHome currentUser={currentUser} deals={deals} onNavigate={setActiveTab} permissions={permissions} />
@@ -674,7 +689,7 @@ export default function App() {
         </div>
       </footer>
 
-      {showPrivacy && <PrivacyCenter onClose={() => setShowPrivacy(false)} />}
+      {showPrivacy && <PrivacyCenter role={currentUser?.role} onClose={() => setShowPrivacy(false)} />}
 
       {/* Interactive Modals (downloaded the first time one is opened) */}
       <TabErrorBoundary area="modal">

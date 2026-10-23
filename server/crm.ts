@@ -15,6 +15,7 @@
  *     agreement value actually collected from the customer.
  *  5. Scope — a builder sees only own projects; an associate sees only own leads/bookings; admins see all (phones masked).
  */
+import { alert, builderVerifiers, firstName, inr } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { db } from './db.js';
@@ -388,6 +389,8 @@ export function registerLead(worker: UserProfile, d: z.infer<typeof leadCreateSc
   state.crmLeads.unshift(lead);
   db.save();
   db.appendAuditEvent(worker.id, worker.role as any, 'LEAD', id, 'CRM_LEAD_REGISTERED', `Lead ${d.name} registered for ${project.projectName} by ${worker.role === 'TEAM_MEMBER' ? `${worker.name} (team of ${associateName})` : associateName} (protection until ${new Date(lead.protectedUntil).toLocaleDateString('en-IN')})${manual ? '; awaiting builder verification' : ''}${lead.assignedMemberName && worker.role !== 'TEAM_MEMBER' ? `; auto-allotted to ${lead.assignedMemberName}` : ''}`);
+  // v59 — the builder's desk hears about a partner's new lead at once (first name only, never the number)
+  if (user.role === 'BROKER') alert(builderVerifiers(project.builderId), 'deals', `New partner lead · ${project.projectName}`, `${associateName} registered ${firstName(d.name)}${manual ? ' — check it within 48 h' : ''}`, '/?tab=crm', { not: worker.id, tag: `lead-${id}`, hi: [`नई पार्टनर लीड · ${project.projectName}`, `${associateName} ने ${firstName(d.name)} को रजिस्टर किया${manual ? ' — 48 घंटे में जाँचें' : ''}`] });
   return { status: 200, body: { success: true, lead: viewLead(lead, worker) } };
 }
 
@@ -827,6 +830,7 @@ export function createCrmRouter() {
     lead.updatedAt = ts;
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: 'SYSTEM', note: `Booking requested: unit ${d.unitNo}, ₹${d.agreementValue.toLocaleString('en-IN')}${d.tokenAmount > 0 ? `, booking amount ₹${d.tokenAmount.toLocaleString('en-IN')} claimed (${d.tokenMode}${ref ? ` ${ref}` : ''})` : ''}${plan ? `, plan ${plan.planType}` : ''}${d.note ? ` — ${d.note}` : ''}`, byUserId: user.id, byName: user.name, at: ts });
     db.save();
+    if (!direct) alert(builderVerifiers(booking.builderId), 'deals', `Booking request · ${booking.projectName}`, `${lead.associateName || 'A partner'} asks to book unit ${d.unitNo} for ${firstName(lead.name)} — approve or reject`, '/?tab=crm', { not: user.id, tag: `bk-${booking.id}`, hi: [`बुकिंग की माँग · ${booking.projectName}`, `${lead.associateName || 'एक पार्टनर'} ${firstName(lead.name)} के लिए यूनिट ${d.unitNo} बुक करना चाहते हैं — मंज़ूर या मना करें`] });
     audit('CRM_BOOKING_REQUESTED', booking.id, `Booking requested for ${lead.name}: unit ${d.unitNo}, ₹${d.agreementValue.toLocaleString('en-IN')} by ${user.name}${onBehalfOf ? ` (for ${onBehalfOf})` : ''}${direct ? ' — builder-desk sale' : ''}`, 'COMMISSION');
     res.json({ success: true, booking: user.role === 'TEAM_MEMBER' ? bookingForMember(booking, user.id) : viewBooking(booking), lead: viewLead(lead, user) });
   });
@@ -897,6 +901,7 @@ export function createCrmRouter() {
     lead.updatedAt = ts;
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: 'SYSTEM', note: `Booking ${booking.status.toLowerCase()} by ${user.name}${note ? `: ${String(note).slice(0, 200)}` : ''}`, byUserId: user.id, byName: user.name, at: ts });
     db.save();
+    if (booking.associateId) alert([booking.associateId, lead.assignedMemberId], 'deals', decision === 'APPROVE' ? `Booking approved ✔ · ${booking.projectName}` : `Booking not approved · ${booking.projectName}`, `Unit ${booking.unitNo} for ${firstName(booking.customerName)}${note ? ` — ${String(note).slice(0, 80)}` : ''}`, '/?tab=crm', { not: user.id, tag: `bk-${booking.id}`, hi: [decision === 'APPROVE' ? `बुकिंग मंज़ूर ✔ · ${booking.projectName}` : `बुकिंग मंज़ूर नहीं · ${booking.projectName}`, `${firstName(booking.customerName)} के लिए यूनिट ${booking.unitNo}${note ? ` — ${String(note).slice(0, 80)}` : ''}`] });
     audit(decision === 'APPROVE' ? 'CRM_BOOKING_APPROVED' : 'CRM_BOOKING_REJECTED', booking.id, `Booking ${booking.id} (${booking.customerName}, unit ${booking.unitNo}) ${booking.status} by ${user.name}`, 'COMMISSION');
     res.json({ success: true, booking: viewBooking(booking), lead: viewLead(lead, user) });
   });
@@ -980,6 +985,7 @@ export function createCrmRouter() {
       mandate.commissionPaid = all.length > 0 && all.every(b => b.brokeragePaidAmount >= b.brokerageAmount);
     }
     db.save();
+    alert(booking.associateId, 'deals', `Brokerage paid · ${booking.projectName}`, `${inr(amt - tds)} (after TDS) for unit ${booking.unitNo} — ${mode} ${ref}. Confirm when it reaches you.`, '/?tab=crm', { not: user.id, tag: `po-${booking.id}`, hi: [`ब्रोकरेज भेजी गई · ${booking.projectName}`, `यूनिट ${booking.unitNo} के लिए ${inr(amt - tds)} (TDS के बाद) — ${mode} ${ref}। पहुँचने पर कन्फ़र्म करें।`] });
     audit('CRM_BROKERAGE_PAID', booking.id, `Brokerage ₹${amt.toLocaleString('en-IN')} released on ${booking.id} (${mode} ref ${ref}; TDS @${tdsPct}% = ₹${tds.toLocaleString('en-IN')}, net ₹${(amt - tds).toLocaleString('en-IN')}) — awaiting the associate's confirmation`, 'COMMISSION');
     res.json({ success: true, booking: viewBooking(booking), tds, net: amt - tds });
   });

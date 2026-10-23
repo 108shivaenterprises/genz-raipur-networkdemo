@@ -12,6 +12,7 @@
  *  GENZ does not hold the parties' money. GENZ's own fee is paid by the counsellor outside the app, marked paid with a reference and confirmed by an admin.
  *  GENZ takes a flat fee / membership, never a share of the advocate's fee (Bar Council fee-sharing rules).
  */
+import { alert } from './alerts.js';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { db, type DatabaseState, type UserProfile, type LegalRequest, type LegalProfile } from './db.js';
@@ -208,6 +209,9 @@ export function createLegalRouter() {
       createdAt: t, updatedAt: t,
     };
     s.legalRequests.push(row);
+    // v59 — the state's counsellors hear of a new case (no names, no deal: first come, first served)
+    // (a counsellor who has not opened the desk yet still works his home state — profileOf() gives it, as the desk would)
+    alert(s.users.filter(c => c.role === 'LEGAL_COUNSEL' && c.verificationStatus === 'VERIFIED').filter(c => { const pp = profileOf(c); return pp.states.includes(state) && !pp.removed; }).map(c => c.id), 'deals', `New legal help request · ${state}`, `${helpTypeInfo(d.helpType)?.en || 'Legal help'} — the first counsellor to take it gets it`, '/?tab=legal', { not: u.id, tag: `lgl-${row.id}`, hi: [`नई क़ानूनी मदद की माँग · ${state}`, `${helpTypeInfo(d.helpType)?.hi || 'क़ानूनी मदद'} — जो काउंसलर पहले लेगा, केस उसका`] });
     audit(row.id, 'LEGAL_REQUEST_RAISED', `${helpTypeInfo(d.helpType)?.en} · ${state} · ${docIds.length} paper(s) offered`);
     db.save();
     res.json({ success: true, request: shape(row, u), phoneMasked: m.masked });
@@ -258,6 +262,7 @@ export function createLegalRouter() {
     if (row.status !== 'OPEN') return bad(res, 'Another counsellor claimed this case first.', 409, { code: 'ALREADY_CLAIMED' });
     row.status = 'CLAIMED'; row.counsellorId = u.id; row.counsellorName = u.name; row.claimedAt = nowIso(); row.updatedAt = row.claimedAt;
     row.history.push({ at: row.claimedAt, by: u.id, what: `${u.name} took the case — quote due within ${settings().claimHours} h` });
+    alert(row.requestedById, 'deals', 'A counsellor took your legal case', `${u.name} — the fee quote comes next`, '/?tab=deals', { not: u.id, tag: `lgl-${row.id}`, hi: ['एक काउंसलर ने आपका क़ानूनी केस लिया', `${u.name} — अब फ़ीस का कोट आएगा`] });
     audit(row.id, 'LEGAL_REQUEST_CLAIMED', `${u.name} claimed (${row.state})`); db.save();
     res.json({ success: true, request: shape(row, u) });
   });
@@ -270,6 +275,7 @@ export function createLegalRouter() {
     row.quote = { amount: clampMoney(p.data.amount, 5_000_000), days: p.data.days, note: p.data.note ? maskPhones(p.data.note).text : undefined, at: nowIso() };
     row.status = 'QUOTED'; row.updatedAt = row.quote.at;
     row.history.push({ at: row.quote.at, by: u.id, what: `Quoted ${inr(row.quote.amount)}${p.data.days ? ` · ${p.data.days} day(s)` : ''}` });
+    alert(row.requestedById, 'deals', `Legal fee quote: ${inr(row.quote.amount)}`, `${u.name}${p.data.days ? ` · ${p.data.days} day(s)` : ''} — accept or decline in the deal room`, '/?tab=deals', { not: u.id, tag: `lgl-${row.id}`, hi: [`क़ानूनी फ़ीस का कोट: ${inr(row.quote.amount)}`, `${u.name}${p.data.days ? ` · ${p.data.days} दिन` : ''} — डील रूम में मंज़ूर या मना करें`] });
     audit(row.id, 'LEGAL_QUOTE_GIVEN', `${inr(row.quote.amount)}`); db.save();
     res.json({ success: true, request: shape(row, u) });
   });
@@ -299,6 +305,7 @@ export function createLegalRouter() {
     const charge = chargeEvent({ event: 'LEGAL_CASE', payerId: row.counsellorId, base: row.quote.amount, refId: row.id, refLabel: `Legal case ${row.id}`, state: row.state });
     const fee = charge.fee; const isMember = !!charge.planId;
     row.platformFee = fee; row.feeLedgerId = charge.entry?.id;
+    alert(row.counsellorId, 'deals', 'Your fee was accepted ✔', `${row.requestedByName} — the case is yours; the shared papers are open`, '/?tab=legal', { not: u.id, tag: `lgl-${row.id}`, hi: ['आपकी फ़ीस मंज़ूर ✔', `${row.requestedByName} — केस आपका है; दिखाए गए काग़ज़ अब खुले हैं`] });
     audit(row.id, 'LEGAL_QUOTE_ACCEPTED', `${inr(row.quote.amount)} accepted · GENZ platform fee ${inr(fee)}${isMember ? ' (member)' : ''} · ${row.sharedDocIds.length} paper(s) shown · phones opened`);
     db.save();
     res.json({ success: true, request: shape(row, u) });
@@ -308,7 +315,9 @@ export function createLegalRouter() {
     const row = loadRequest(req, res); if (!row) return; const u = me();
     if (row.requestedById !== u.id) return bad(res, 'Not your request', 403);
     if (row.status !== 'QUOTED' && row.status !== 'CLAIMED') return bad(res, 'Nothing to decline right now.', 409);
+    const was = row.counsellorId;
     reopen(row, 'Broker declined the fee — back to the pool', u.id); audit(row.id, 'LEGAL_QUOTE_DECLINED', 'Broker declined; case reopened'); db.save();
+    alert(was, 'deals', 'Your fee quote was declined', `${row.requestedByName} — the case went back to the pool`, '/?tab=legal', { not: u.id, tag: `lgl-${row.id}`, hi: ['आपका फ़ीस कोट मना हुआ', `${row.requestedByName} — केस वापस पूल में गया`] });
     res.json({ success: true, request: shape(row, u) });
   });
 
@@ -327,6 +336,7 @@ export function createLegalRouter() {
     if (row.status !== 'ACCEPTED') return bad(res, 'Only an accepted case can be completed.', 409);
     row.status = 'COMPLETED'; row.completedAt = nowIso(); row.updatedAt = row.completedAt; closeShares(row);
     row.history.push({ at: row.completedAt, by: u.id, what: 'Marked complete — papers closed to the counsellor' });
+    alert(row.requestedById === u.id ? row.counsellorId : row.requestedById, 'deals', 'Legal case marked complete', `${u.name} closed it — the papers are closed to the counsellor`, row.requestedById === u.id ? '/?tab=legal' : '/?tab=deals', { not: u.id, tag: `lgl-${row.id}`, hi: ['क़ानूनी केस पूरा हुआ', `${u.name} ने बंद किया — काग़ज़ अब काउंसलर के लिए बंद`] });
     audit(row.id, 'LEGAL_REQUEST_COMPLETED', 'Completed; paper access ended'); db.save();
     res.json({ success: true, request: shape(row, u) });
   });
@@ -340,6 +350,8 @@ export function createLegalRouter() {
     const m = maskPhones(p.data.text);
     row.messages.push({ at: nowIso(), by: u.id, role: u.role, text: row.status === 'ACCEPTED' || row.status === 'COMPLETED' ? p.data.text : m.text });
     row.updatedAt = nowIso(); db.save();
+    // the alert carries the text as stored — a number stays hidden on the lock screen too until the fee is accepted
+    alert(row.requestedById === u.id ? row.counsellorId : row.requestedById, 'deals', 'New message on a legal case', `${u.name}: ${String(row.messages.at(-1)?.text || '').slice(0, 80)}`, row.requestedById === u.id ? '/?tab=legal' : '/?tab=deals', { not: u.id, tag: `lgl-msg-${row.id}`, hi: ['क़ानूनी केस पर नया संदेश', `${u.name}: ${String(row.messages.at(-1)?.text || '').slice(0, 80)}`] });
     res.json({ success: true, request: shape(row, u), phoneMasked: m.masked && !(row.status === 'ACCEPTED' || row.status === 'COMPLETED') });
   });
 

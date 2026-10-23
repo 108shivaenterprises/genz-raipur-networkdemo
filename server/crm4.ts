@@ -10,6 +10,7 @@
  * Employees (TEAM_MEMBER) never get the booking itself (brokerage, agreement value, payouts stay with the employer): they see only trail rows —
  * the customer, the unit, the amount, the stages — and only as far as the employer's two switches allow (collect money / confirm money).
  */
+import { alert, firstName, moneyConfirmers } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
@@ -196,6 +197,9 @@ export function createMoneyTrailRouter() {
     b.updatedAt = ts;
     lead(b, `${inr(d.amount)} (${targetName}) collected by ${u.name} — with ${a.side === 'CP_OWNER' ? 'the partner' : u.name}`);
     db.save();
+    // v59 — the person who must confirm next: the partner (money his staff collected) or the builder's accounts side
+    if (t.route === 'CP') alert(moneyConfirmers(b.associateId), 'deals', 'Money to confirm', `${u.name} collected ${inr(d.amount)} (${targetName}) from ${firstName(b.customerName)} — did it reach you?`, '/?tab=crm', { not: u.id, tag: `mt-${t.id}`, hi: ['पैसा कन्फ़र्म करें', `${u.name} ने ${firstName(b.customerName)} से ${inr(d.amount)} (${targetName}) लिए — क्या आपके पास पहुँचे?`] });
+    else alert(moneyConfirmers(b.builderId), 'deals', 'Money to confirm', `${inr(d.amount)} (${targetName}) for unit ${b.unitNo} recorded by ${u.name} — confirm when it is in the account`, '/?tab=crm', { not: u.id, tag: `mt-${t.id}`, hi: ['पैसा कन्फ़र्म करें', `यूनिट ${b.unitNo} के लिए ${inr(d.amount)} (${targetName}) — ${u.name} ने दर्ज किया; खाते में आने पर कन्फ़र्म करें`] });
     auditCrm('MONEY_TRAIL_COLLECTED', t.id, `${inr(d.amount)} for ${targetName} on ${b.id} (${b.customerName}) collected by ${u.name} (${SIDE_EN[a.side]}); ${d.mode}${d.ref ? ` ref ${d.ref}` : ''}`, 'COMMISSION');
     res.json({ success: true, trail: rowOf(t, b, a) });
   });
@@ -246,6 +250,7 @@ export function createMoneyTrailRouter() {
     b.updatedAt = nowIso();
     lead(b, `${inr(t.amount)} (${t.targetName}) handed over to the builder by ${u.name}${mode ? ` (${mode}${ref ? ` ${ref}` : ''})` : ''} — waiting for the builder's confirmation`);
     db.save();
+    alert(moneyConfirmers(b.builderId), 'deals', `Money handed over · ${b.projectName}`, `${u.name} handed over ${inr(t.amount)} (${t.targetName}) for unit ${b.unitNo} — confirm when it arrives`, '/?tab=crm', { not: u.id, tag: `mt-${t.id}`, hi: [`पैसा सौंपा गया · ${b.projectName}`, `${u.name} ने यूनिट ${b.unitNo} के ${inr(t.amount)} (${t.targetName}) सौंपे — मिलने पर कन्फ़र्म करें`] });
     auditCrm('MONEY_TRAIL_HANDED_OVER', t.id, `${inr(t.amount)} on ${b.id} handed to the builder by ${u.name}${mode ? ` — ${mode}${ref ? ` ${ref}` : ''}` : ''}${note ? ` — ${note}` : ''}`, 'COMMISSION');
     res.json({ success: true, trail: rowOf(t, b, a) });
   });
@@ -300,6 +305,7 @@ export function createMoneyTrailRouter() {
     b.updatedAt = ts;
     lead(b, `${inr(t.amount)} (${t.targetName}) ${received ? 'confirmed received by the builder side' : 'marked NOT received by the builder side'} (${u.name})${note ? ` — ${note}` : ''}`);
     db.save();
+    alert([b.associateId, t.collector.id], 'deals', received ? `Builder confirmed the money ✔` : `Builder says money NOT received`, `${inr(t.amount)} (${t.targetName}) for unit ${b.unitNo}${note ? ` — ${note.slice(0, 80)}` : ''}`, '/?tab=crm', { not: u.id, tag: `mt-${t.id}`, hi: [received ? 'बिल्डर ने पैसा कन्फ़र्म किया ✔' : 'बिल्डर के अनुसार पैसा नहीं मिला', `यूनिट ${b.unitNo} के लिए ${inr(t.amount)} (${t.targetName})${note ? ` — ${note.slice(0, 80)}` : ''}`] });
     auditCrm(received ? 'MONEY_TRAIL_BUILDER_CONFIRMED' : 'MONEY_TRAIL_NOT_RECEIVED', t.id, `${inr(t.amount)} for ${t.targetName} on ${b.id}: ${u.name} (${SIDE_EN[a.side!]}) ${received ? 'confirmed it ARRIVED' : 'says it did NOT arrive'}${note ? ` — ${note}` : ''}`, 'COMMISSION');
     res.json({ success: true, trail: rowOf(t, b, a) });
   });

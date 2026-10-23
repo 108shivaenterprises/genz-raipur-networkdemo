@@ -11,6 +11,7 @@
  *    the ID check follows as an open task and the team is notified (badge on the ID Review tab) until it is done. Default OFF.
  *  • Scans are deleted 90 days after the decision, 14 days after a request that never became an account ended, and on DPDP erasure.
  */
+import { alert } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'node:crypto';
@@ -427,6 +428,7 @@ export function createIdReviewRouter() {
       t.status = 'CHANGES_ASKED'; t.note = note; t.updatedAt = nowIso(); push(t, a.id, 'ASKED_AGAIN', note);
       db.save();
       db.appendAuditEvent(a.id, a.role, 'VERIFICATION', subject.id, 'ID_CHANGES_ASKED', `${a.name} asked ${subject.name} for a clearer / corrected ID: ${note}`);
+      alert(subject.id, 'system', 'GENZ asked for a change in your ID copy', String(note || '').slice(0, 140), '/', { not: a.id, hi: ['GENZ ने आपकी ID कॉपी में बदलाव माँगा', String(note || '').slice(0, 140)] });
     }
     res.json({ success: true, task: taskRow(s, t) });
   });

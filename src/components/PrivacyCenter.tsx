@@ -58,7 +58,7 @@ const PasswordSection: React.FC = () => {
   );
 };
 
-export const PrivacyCenter: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string }> = ({ onClose, role }) => {
   const { t } = useI18n();
   const tx = useTx();
   const label = useLabel();
@@ -94,7 +94,7 @@ export const PrivacyCenter: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         {msg && <p className={`mt-3 text-xs font-medium ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>{msg.text}</p>}
         <PasswordSection />
         <TwoFactorCard />
-        <div className="mt-4"><AlertsCard /></div>
+        <div className="mt-4"><AlertsCard role={role} /></div>
         <ul className="mt-4 space-y-1.5">
           {reqs.map(r => (
             <li key={r.id} className="rounded border border-slate-200 p-2 text-xs">

@@ -1,4 +1,5 @@
 import './server/bootstrap.js';
+import { alert, inr as rupees, once } from './server/alerts.js';
 import express, { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { db, UserRole, UserProfile, sha256, type DatabaseState, type DealRoom, type BuyerRequirement as BuyerRequirementT, type AuditEvent as AuditEventT } from './server/db.js';
@@ -900,6 +901,10 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     db.appendAuditEvent(userId, newUser.role, 'VERIFICATION', userId, 'USER_AUTO_VERIFIED', `${name} was verified automatically at sign-up because RERA-registered ${sponsor.name} (${sponsor.id}) registered them and the "auto-verify RERA referrals" switch is ON${setBy ? ` (set by ${setBy})` : ''}. An ID-review task is open for the GENZ team.`);
   }
 
+  // v59 — the GENZ desk hears of a new member waiting for KYC; the member who nominated / sponsored him hears that he joined
+  if (newUser.verificationStatus === 'PENDING') alert(state.users.filter(a => (a.role === 'ADMIN' || a.role === 'SUPERADMIN') && a.verificationStatus === 'VERIFIED').slice(0, 20).map(a => a.id), 'deals', `New member waiting for KYC · ${newUser.role.replace(/_/g, ' ').toLowerCase()}`, `${name}${newUser.city ? `, ${newUser.city}` : ''} — check the ID in Invite & KYC`, '/?tab=onboarding', { not: userId, tag: `kyc-${userId}`, hi: [`नया सदस्य KYC के इंतज़ार में · ${newUser.role.replace(/_/g, ' ').toLowerCase()}`, `${name}${newUser.city ? `, ${newUser.city}` : ''} — Invite & KYC में ID जाँचें`] });
+  alert([invite.nominatedBy, invite.sponsorId, sponsor?.id], 'deals', `${name} joined GENZ ✔`, newUser.verificationStatus === 'VERIFIED' ? 'Verified already — say hello and share your first deal.' : 'GENZ is checking the ID — you will see them in the network once verified.', '/?tab=grow', { not: userId, tag: `join-${userId}`, hi: [`${name} GENZ से जुड़े ✔`, newUser.verificationStatus === 'VERIFIED' ? 'वेरिफ़ाई हो चुके — नमस्ते कहें और पहली डील शेयर करें।' : 'GENZ ID जाँच रहा है — वेरिफ़ाई होते ही वे नेटवर्क में दिखेंगे।'] });
+
   setSessionCookie(req, res, signSession(userId, 1));
   res.json({ success: true, autoVerified, vaultStored, user: publicUser(newUser), permissions: effectivePermissions(newUser) });
 });
@@ -972,6 +977,16 @@ app.post('/api/verifications/:userId/review', needs('users:review'), (req: Reque
 
   db.save();
 
+  // v59 — the person learns the decision on his phone (a suspended / blacklisted account cannot open the app anyway)
+  if (action === 'APPROVE') {
+    const w = ({
+      BROKER: ['Welcome to the network — put your first listing or client need today.', 'नेटवर्क में स्वागत — आज अपनी पहली लिस्टिंग या क्लाइंट की ज़रूरत डालें।'],
+      DEVELOPER_BUILDER: ['Welcome — add your project and appoint channel partners.', 'स्वागत — अपना प्रोजेक्ट जोड़ें और चैनल पार्टनर अपॉइंट करें।'],
+      LEGAL_COUNSEL: ['Welcome — choose the states you work in to see legal requests.', 'स्वागत — जिन राज्यों में आप काम करते हैं वो चुनें, फिर क़ानूनी माँगें दिखेंगी।'],
+      CONTRACTOR: ['Welcome — construction leads from brokers will reach you here.', 'स्वागत — ब्रोकरों की कंस्ट्रक्शन लीड यहीं आएँगी।'],
+    } as Record<string, [string, string]>)[targetUser.role] || ['Welcome to GENZ — open the app to start.', 'GENZ में स्वागत — शुरू करने के लिए ऐप खोलें।'];
+    alert(targetUser.id, 'system', 'Your GENZ account is verified ✔', w[0], '/', { hi: ['आपका GENZ अकाउंट वेरिफ़ाई हो गया ✔', w[1]] });
+  } else if (action === 'REJECT') alert(targetUser.id, 'system', 'Your GENZ verification was not approved', notes ? String(notes).slice(0, 140) : 'Open the app to see the reason.', '/', { hi: ['आपका GENZ वेरिफ़िकेशन मंज़ूर नहीं हुआ', notes ? String(notes).slice(0, 140) : 'कारण देखने के लिए ऐप खोलें।'] });
   db.appendAuditEvent(
     currentUser.id,
     currentUser.role,
@@ -3064,6 +3079,9 @@ app.post('/api/construction-leads', needs('lead:create'), (req: Request, res: Re
 
   state.constructionLeads.unshift(newLead);
   db.save();
+  // v59 — the city's verified contractors hear of it (first to accept the referral terms gets the customer's contact)
+  alert(state.users.filter(c => c.role === 'CONTRACTOR' && c.verificationStatus === 'VERIFIED' && (!c.city || !currentUser.city || c.city === currentUser.city)).slice(0, 100).map(c => c.id),
+    'deals', `New construction lead · ${data.projectType}`, `${data.approximateLocation} · budget ${rupees(data.estimatedBudget)} — the first to accept the ${newLead.referralCommissionPct}% referral gets the contact`, '/?tab=construction', { not: currentUser.id, tag: `cl-${leadId}`, hi: [`नई कंस्ट्रक्शन लीड · ${data.projectType}`, `${data.approximateLocation} · बजट ${rupees(data.estimatedBudget)} — ${newLead.referralCommissionPct}% रेफ़रल पहले मानने वाले को ग्राहक का संपर्क`] });
 
   db.appendAuditEvent(
     currentUser.id,
@@ -3128,6 +3146,7 @@ app.post('/api/construction-leads/:id/request-access', needs('lead:claim'), (req
     state.contractorRequests.push(reqRecord);
     lead.assignedContractorId = currentUser.id;
     lead.status = 'ASSIGNED';
+    alert(lead.referringBrokerId, 'deals', `${currentUser.companyName || currentUser.name} took your construction lead`, `${lead.title} — ${lead.referralCommissionPct}% referral agreed; your customer's contact is now shared with them`, '/?tab=construction', { not: currentUser.id, tag: `cl-${lead.id}`, hi: [`${currentUser.companyName || currentUser.name} ने आपकी कंस्ट्रक्शन लीड ली`, `${lead.title} — ${lead.referralCommissionPct}% रेफ़रल तय; आपके ग्राहक का संपर्क अब उनके पास है`] });
   }
 
   db.save();
@@ -3195,6 +3214,9 @@ app.post('/api/construction-leads/:id/settle-referral', needs('lead:settle'), (r
   }
 
   db.save();
+  // v59 — the other side hears of it: the value to the broker (his fee follows from it), the "paid" to the contractor
+  if (finalContractValue !== undefined && Number(finalContractValue) > 0) alert(lead.referringBrokerId, 'deals', `Contract value recorded · ${lead.title}`, `${rupees(lead.finalContractValue || 0)} — your ${lead.referralCommissionPct}% referral: ${rupees(lead.referralCommissionDue || 0)}. Mark it paid when you receive it.`, '/?tab=construction', { not: currentUser.id, tag: `cl-${lead.id}`, hi: [`कॉन्ट्रैक्ट वैल्यू दर्ज · ${lead.title}`, `${rupees(lead.finalContractValue || 0)} — आपका ${lead.referralCommissionPct}% रेफ़रल: ${rupees(lead.referralCommissionDue || 0)}। मिलने पर paid करें।`] });
+  if (paid === true || paid === 'true') alert(lead.assignedContractorId, 'deals', `Referral marked paid ✔ · ${lead.title}`, `${currentUser.name} confirmed ${rupees(lead.referralCommissionDue || 0)} received`, '/?tab=construction', { not: currentUser.id, tag: `cl-${lead.id}`, hi: [`रेफ़रल पेमेंट मिला ✔ · ${lead.title}`, `${currentUser.name} ने ${rupees(lead.referralCommissionDue || 0)} मिलने की पुष्टि की`] });
 
   db.appendAuditEvent(
     currentUser.id,
@@ -3270,6 +3292,7 @@ app.post('/api/disputes', needs('dispute:create'), (req: Request, res: Response)
   }
 
   const newDispute = fileDispute(state, currentUser, { dealRoomId: data.dealRoomId, leadId: data.leadId, counterparty, reason: data.reason, description: data.description, evidenceLinks: data.evidenceLinks }, deal);
+  alert(counterparty?.id, 'deals', 'A dispute was raised with you', `${currentUser.name}${data.dealRoomId ? ` · ${data.dealRoomId}` : ''} — GENZ will look into it; you can reply in Disputes`, '/?tab=disputes', { not: currentUser.id, tag: `dsp-${newDispute.id}`, hi: ['आपके साथ एक विवाद दर्ज हुआ', `${currentUser.name}${data.dealRoomId ? ` · ${data.dealRoomId}` : ''} — GENZ देखेगा; आप Disputes में जवाब दे सकते हैं`] });
 
   res.json({ success: true, dispute: newDispute });
 });
@@ -5351,6 +5374,13 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
   };
   state.dealMessages.push(newMsg);
   db.save();
+  // v59 — the others in the room hear of it on the phone: the brokers-only channel reaches only the two brokers; at most one alert
+  // per person per room every 3 minutes (the phone keeps showing the newest one under the same tag)
+  {
+    const readers = audience === 'BROKERS' ? [deal.introducingBrokerId, deal.closingBrokerId] : [deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId, ...(deal.teamMemberIds || [])];
+    const to = [...new Set(readers.filter((id): id is string => !!id && id !== currentUser.id))].filter(id => once(`dm:${id}:${deal.id}`, 180_000));
+    alert(to, 'deals', `${audience === 'BROKERS' ? '🔒 ' : ''}${currentUser.name} · ${deal.id}`, newMsg.text.slice(0, 100), `/?tab=deals&deal=${deal.id}`, { tag: `dm-${deal.id}` });
+  }
   // a card points at a document / photo / the stage: leave a trace (the chat text itself is not audited, as before)
   if (card) db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'CHAT_CARD_SENT', `${card.kind} card ${card.refId}${audience === 'BROKERS' ? ' (brokers only)' : ''}`);
   res.json({ success: true, message: newMsg });

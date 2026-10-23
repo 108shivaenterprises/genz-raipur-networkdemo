@@ -40,7 +40,8 @@ export async function enablePush(): Promise<PushState> {
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) as BufferSource });
   const j = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-  await api.pushSubscribe({ endpoint: j.endpoint, keys: j.keys });
+  const r = await api.pushSubscribe({ endpoint: j.endpoint, keys: j.keys });
+  setOwner(r?.me);
   return 'on';
 }
 
@@ -49,5 +50,32 @@ export async function disablePush(): Promise<PushState> {
   const reg = await navigator.serviceWorker.getRegistration('/');
   const sub = reg ? await reg.pushManager.getSubscription() : null;
   if (sub) { try { await api.pushUnsubscribe(sub.endpoint); } catch { /* server copy goes on its own after failures */ } await sub.unsubscribe(); }
+  setOwner(undefined);
   return 'off';
+}
+
+/** v59 — whose alerts this phone carries (kept only in this browser) */
+const OWNER_KEY = 'genz.push.owner';
+function setOwner(id?: string) { try { if (id) localStorage.setItem(OWNER_KEY, id); else localStorage.removeItem(OWNER_KEY); } catch { /* storage blocked */ } }
+function owner(): string | null { try { return localStorage.getItem(OWNER_KEY); } catch { return null; } }
+
+/**
+ * v59 — on app start: this phone's alerts follow the person signed in on it, and only if he turned them on himself.
+ *  - the push address is his → keys refreshed, nothing else;
+ *  - it was someone else's (a shared office phone; he did not sign out) → the server lets it go, this browser drops it,
+ *    and the new person sees "Turn on phone alerts";
+ *  - the server does not know it (data reset) → bound again only if this same person had turned alerts on here.
+ */
+export async function syncPush(userId: string): Promise<void> {
+  if (!pushSupported() || Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/');
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    if (!sub) return;
+    const j = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+    const r = await api.pushSync({ endpoint: j.endpoint, keys: j.keys });
+    if (r?.state === 'mine') { setOwner(userId); return; }
+    if (r?.state === 'none' && owner() === userId) { await api.pushSubscribe({ endpoint: j.endpoint, keys: j.keys }); return; }
+    await sub.unsubscribe(); setOwner(undefined);
+  } catch { /* offline: the next start tries again */ }
 }

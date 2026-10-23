@@ -7,6 +7,7 @@
  * (or the partner's allotted staff); only the builder (or staff the builder authorised) can scan.
  * Pass is single-use, time-boxed, tied to one lead; the scanner sees who is expected and confirms an ID check.
  */
+import { alert } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
@@ -233,6 +234,7 @@ export function createVisitRouter() {
     let points = false;
     if (pass.associateId) points = awardPoints(pass.associateId, 'PROJECT_VISIT', pass.id, 3);
     db.save();
+    alert([pass.associateId, lead.assignedMemberId], 'deals', `Site visit confirmed ✔ · ${pass.projectName}`, `${firstName(pass.customerName)} reached the site — checked by ${u.name}`, '/?tab=crm', { not: u.id, tag: `visit-${pass.id}`, hi: [`साइट विज़िट पक्की ✔ · ${pass.projectName}`, `${firstName(pass.customerName)} साइट पर पहुँचे — ${u.name} ने जाँचा`] });
     audit('VISIT_PASS_SCANNED', pass.id, `${u.name} verified visit of ${pass.customerName} (${lead.id}) at ${pass.projectName}; referred by ${pass.associateName}`);
     res.json({ success: true, pointsAwarded: points, stage: lead.stage });
   });
