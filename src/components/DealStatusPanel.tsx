@@ -3,7 +3,7 @@
  * and record a site visit that happened outside the app (the other side confirms; shown as NOT verified).
  */
 import React, { useState } from 'react';
-import { XCircle, RotateCcw, CalendarCheck, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { XCircle, RotateCcw, CalendarCheck, AlertTriangle, CheckCircle2, Loader2, MoreHorizontal } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { CLOSE_AUTO_DAYS, CLOSE_REASONS, isClosed, reasonText } from '../shared/dealClose.js';
@@ -18,7 +18,7 @@ export const DealStatusPanel: React.FC<{ deal: DealRoom; me: UserProfile; verifi
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [mode, setMode] = useState<'' | 'close' | 'no' | 'reopen' | 'visit' | 'decline'>('');
   const [reason, setReason] = useState<string>('BUYER_BACKED_OUT'); const [note, setNote] = useState(''); const [date, setDate] = useState('');
-  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [menu, setMenu] = useState(false);
   const isBroker = deal.introducingBrokerId === me.id || deal.closingBrokerId === me.id;
   const isOwner = deal.ownerId === me.id;
   if (!isBroker && !isOwner) return null;
@@ -91,11 +91,16 @@ export const DealStatusPanel: React.FC<{ deal: DealRoom; me: UserProfile; verifi
         </div>
       )}
 
-      {/* ── actions ── */}
-      {isBroker && !closed && (
-        <div className="flex flex-wrap gap-2">
-          {canVisitPath && !ov && mode !== 'visit' && <button className={`${btn} border border-sky-300 bg-sky-50 text-sky-900`} onClick={() => setMode('visit')} data-testid="offline-visit-open"><CalendarCheck className="h-3.5 w-3.5" />{tx('Visit already happened outside the app?', 'विज़िट ऐप के बाहर हो चुकी?')}</button>}
-          {deal.stage !== 'Settled' && !c && mode !== 'close' && <button className={`${btn} border border-slate-300 bg-white text-slate-700`} onClick={() => setMode('close')} data-testid="deal-close-open"><XCircle className="h-3.5 w-3.5" />{tx('Deal did not happen — close', 'डील नहीं हुई — बंद करें')}</button>}
+      {/* ── actions (v52: tucked behind one button so the top of the deal room stays calm) ── */}
+      {isBroker && !closed && ((canVisitPath && !ov && mode !== 'visit') || (deal.stage !== 'Settled' && !c && mode !== 'close')) && (
+        <div>
+          <button type="button" onClick={() => setMenu(o => !o)} aria-expanded={menu} className={`${btn} border border-slate-300 bg-white text-slate-700`} data-testid="deal-actions-more"><MoreHorizontal className="h-4 w-4" />{tx('More actions', 'और कार्रवाई')}</button>
+          {menu && (
+            <div className="mt-2 flex flex-wrap gap-2">
+          {canVisitPath && !ov && mode !== 'visit' && <button className={`${btn} border border-sky-300 bg-sky-50 text-sky-900`} onClick={() => { setMode('visit'); setMenu(false); }} data-testid="offline-visit-open"><CalendarCheck className="h-3.5 w-3.5" />{tx('Visit already happened outside the app?', 'विज़िट ऐप के बाहर हो चुकी?')}</button>}
+          {deal.stage !== 'Settled' && !c && mode !== 'close' && <button className={`${btn} border border-slate-300 bg-white text-slate-700`} onClick={() => { setMode('close'); setMenu(false); }} data-testid="deal-close-open"><XCircle className="h-3.5 w-3.5" />{tx('Deal did not happen — close', 'डील नहीं हुई — बंद करें')}</button>}
+            </div>
+          )}
         </div>
       )}
       {mode === 'visit' && (

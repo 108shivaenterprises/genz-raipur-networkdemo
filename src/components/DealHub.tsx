@@ -10,7 +10,7 @@ import { PropertyThumb } from './PropertyThumb.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, LayoutGrid, List as ListIcon, AlertTriangle, Clock, Wallet, Briefcase, Scale, CheckCircle2, ChevronRight, CalendarCheck,
-  FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle,
+  FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle, ChevronDown,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
@@ -68,8 +68,13 @@ export function nextText(n: { kind: string; n: number }, idleDays: number, tx: (
   return n.kind;
 }
 
+/**
+ * v52 — ONE "Next step" card instead of a stack of coloured bars. The most urgent item (the server already sorts them) is shown big;
+ * the rest sit behind "+N more", so the top of the deal room is calm. Every item still routes to the same deal-room tab with the same test-id.
+ */
 export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string) => void }> = ({ item, onGo }) => {
   const tx = useTx();
+  const [more, setMore] = useState(false);
   if (!item) return null;
   const list: any[] = item.next || [];
   if (!list.length) return (
@@ -77,20 +82,106 @@ export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string)
       <CheckCircle2 className="h-4 w-4" />{tx('Nothing waiting on you in this deal right now.', 'इस डील में अभी आपके लिए कुछ बाकी नहीं।')}
     </div>
   );
+  const row = (n: any, big: boolean) => {
+    const Icon = NEXT_ICON[n.kind] || ChevronRight;
+    return (
+      <button key={n.kind} type="button" onClick={() => onGo(n.tab, n.kind)} className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 text-left font-semibold ${big ? 'min-h-12 py-2 text-sm' : 'min-h-11 text-xs'} ${NEXT_TONE[n.kind] || ''}`} data-testid={`next-${n.kind}`}>
+        <span className="flex items-center gap-2"><Icon className={`shrink-0 ${big ? 'h-5 w-5' : 'h-4 w-4'}`} />{nextText(n, item.idleDays, tx)}</span>
+        <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
+      </button>
+    );
+  };
+  const [top, ...rest] = list;
   return (
     <div className="space-y-1.5" data-testid="next-steps">
-      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{tx('Next steps for you', 'आपके अगले कदम')}</div>
-      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-        {list.map((n: any) => {
-          const Icon = NEXT_ICON[n.kind] || ChevronRight;
+      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{tx('Your next step', 'आपका अगला कदम')}</div>
+      {row(top, true)}
+      {rest.length > 0 && (
+        <>
+          <button type="button" onClick={() => setMore((o) => !o)} aria-expanded={more} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-slate-100" data-testid="next-more">
+            {more ? tx('Show less', 'कम दिखाएँ') : tx(`+${rest.length} more`, `+${rest.length} और`)}
+            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${more ? '-rotate-90' : 'rotate-90'}`} />
+          </button>
+          {more && <div className="space-y-1.5" data-testid="next-rest">{rest.map((n) => row(n, false))}</div>}
+        </>
+      )}
+    </div>
+  );
+};
+
+/**
+ * v52 — the deal-room section tabs: the four you use all the time stay on the bar, everything else sits behind one "More" button.
+ * Nothing is removed: every tab keeps its id and content, the amber dot shows on "More" when something inside it needs you.
+ */
+export const SubTabBar: React.FC<{
+  tabs: { id: string; label: string; count?: number; icon: React.ElementType; primary?: boolean; dot?: boolean }[];
+  active: string;
+  onPick: (id: string) => void;
+}> = ({ tabs, active, onPick }) => {
+  const tx = useTx();
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(false); }, [active]);
+  const main = tabs.filter((t) => t.primary);
+  const rest = tabs.filter((t) => !t.primary);
+  const inRest = rest.find((t) => t.id === active);
+  const restDot = rest.some((t) => t.dot && t.id !== active);
+  return (
+    <div data-testid="deal-subtabs">
+      <div className="flex items-stretch gap-1 border-b border-slate-200 pb-1 text-xs">
+        {main.map((tab) => {
+          const Icon = tab.icon; const on = active === tab.id;
           return (
-            <button key={n.kind} type="button" onClick={() => onGo(n.tab, n.kind)} className={`flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 text-left text-xs font-semibold ${NEXT_TONE[n.kind] || ''}`} data-testid={`next-${n.kind}`}>
-              <span className="flex items-center gap-2"><Icon className="h-4 w-4 shrink-0" />{nextText(n, item.idleDays, tx)}</span>
-              <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
+            <button key={tab.id} type="button" onClick={() => onPick(tab.id)} aria-current={on ? 'page' : undefined} data-testid={`deal-tab-${tab.id}`}
+              className={`relative flex min-h-11 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-lg px-1.5 font-medium transition-colors sm:flex-none sm:px-3 ${on ? 'bg-slate-900 font-semibold text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+              <Icon className="hidden h-3.5 w-3.5 shrink-0 sm:block" />
+              <span className="truncate">{tab.label}{tab.count !== undefined && <span className="hidden sm:inline"> ({tab.count})</span>}</span>
+              {!on && tab.dot && <span className="absolute right-1 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}
             </button>
           );
         })}
+        {rest.length > 0 && (
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid="deal-tab-more"
+            className={`relative flex min-h-11 min-w-0 flex-auto items-center justify-center gap-1 rounded-lg px-1.5 font-medium transition-colors sm:flex-none sm:px-3 ${inRest ? 'bg-slate-900 font-semibold text-white' : open ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+            <span className="truncate">{inRest ? inRest.label : tx('More', 'और')}</span>
+            <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+            {restDot && <span className="absolute right-1 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}
+          </button>
+        )}
       </div>
+      {open && (
+        <div className="mt-1.5 grid grid-cols-1 gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm sm:grid-cols-2" data-testid="deal-tab-more-list">
+          {rest.map((tab) => {
+            const Icon = tab.icon; const on = active === tab.id;
+            return (
+              <button key={tab.id} type="button" onClick={() => onPick(tab.id)} data-testid={`deal-tab-${tab.id}`}
+                className={`relative flex min-h-11 items-center gap-2 rounded-lg px-3 text-left text-xs font-medium ${on ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
+                <Icon className="h-4 w-4 shrink-0" /><span className="flex-1">{tab.label}{tab.count !== undefined && ` (${tab.count})`}</span>
+                {!on && tab.dot && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** v52 — the deal id stays visible; the property / requirement ids (long codes nobody reads) open with one tap. */
+export const DealIds: React.FC<{ dealId: string; propertyId?: string; requirementId?: string }> = ({ dealId, propertyId, requirementId }) => {
+  const tx = useTx();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-500" data-testid="deal-ids">
+      <span>{dealId}</span>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid="deal-ids-toggle" className="-my-2 inline-flex min-h-11 items-center rounded-md px-1.5 font-sans text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
+        {open ? tx('Hide IDs', 'ID छुपाएँ') : tx('All IDs', 'सभी ID')}
+      </button>
+      {open && (
+        <>
+          <span className="font-semibold text-emerald-700" data-testid="deal-id-property">{propertyId}</span>
+          <span>{tx('Requirement', 'आवश्यकता')}: <span data-testid="deal-id-requirement">{requirementId}</span></span>
+        </>
+      )}
     </div>
   );
 };
@@ -202,30 +293,34 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
   }, [items, filter, role, q]);
   if (!hub) return <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;
   const k = hub.kpis;
-  const tiles: { id: Filter; en: string; hi: string; v: string | number; icon: React.ElementType; tone: string }[] = [
-    { id: 'live', en: 'Live deals', hi: 'चालू डील', v: k.live, icon: Briefcase, tone: 'text-slate-900' },
-    { id: 'needs', en: 'Need my action', hi: 'मेरा काम बाकी', v: k.needsMe, icon: AlertTriangle, tone: k.needsMe ? 'text-amber-700' : 'text-slate-900' },
-    ...(k.hasMoney ? [{ id: 'live' as Filter, en: 'My share in pipeline', hi: 'पाइपलाइन में मेरा हिस्सा', v: short(k.myPipeline), icon: Wallet, tone: 'text-emerald-700' }] : []),
-    { id: 'stalled', en: `Idle ${hub.stalledDays}+ days`, hi: `${hub.stalledDays}+ दिन रुकी`, v: k.stalled, icon: Hourglass, tone: k.stalled ? 'text-slate-700' : 'text-slate-900' },
-    { id: 'disputes', en: 'Disputes', hi: 'विवाद', v: k.disputes, icon: Scale, tone: k.disputes ? 'text-red-700' : 'text-slate-900' },
-    { id: 'settled', en: 'Settled', hi: 'निपटी', v: k.settled, icon: CheckCircle2, tone: 'text-emerald-700' },
-    ...(k.closed ? [{ id: 'closed' as Filter, en: 'Closed (did not happen)', hi: 'बंद (डील नहीं हुई)', v: k.closed, icon: XCircle, tone: 'text-slate-600' }] : []),
+  // v52 — two big tiles (what needs me, my money) and one row of filters, instead of seven tiles
+  const chips: { id: Filter; en: string; hi: string; v: number }[] = [
+    { id: 'live', en: 'Live', hi: 'चालू', v: k.live },
+    ...(k.stalled ? [{ id: 'stalled' as Filter, en: `Idle ${hub.stalledDays}+ days`, hi: `${hub.stalledDays}+ दिन रुकी`, v: k.stalled }] : []),
+    ...(k.disputes ? [{ id: 'disputes' as Filter, en: 'Disputes', hi: 'विवाद', v: k.disputes }] : []),
+    { id: 'settled', en: 'Settled', hi: 'निपटी', v: k.settled },
+    ...(k.closed ? [{ id: 'closed' as Filter, en: 'Closed', hi: 'बंद', v: k.closed }] : []),
   ];
   const wide = typeof window === 'undefined' || window.innerWidth >= 1024;
   const cols = [...STAGES, ...(shown.some(d => d.stage === 'Disputed') ? ['Disputed'] : [])].filter(s => filter !== 'live' || s !== 'Settled').filter(s => filter !== 'settled' || s === 'Settled')
     .filter(s => wide || shown.some(d => d.stage === s)); // on a small screen empty stages only take space
   return (
     <div className="space-y-4" data-testid="deal-pipeline">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
-        {tiles.map((t, i) => {
-          const Icon = t.icon; const on = filter === t.id && !(i > 0 && t.id === 'live');
-          return (
-            <button key={t.en} type="button" onClick={() => setFilter(t.id)} className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={`hub-kpi-${t.id}`}>
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500"><Icon className="h-3.5 w-3.5" />{tx(t.en, t.hi)}</div>
-              <div className={`mt-1 text-xl font-bold ${t.tone}`}>{t.v}</div>
-            </button>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => setFilter('needs')} aria-pressed={filter === 'needs'} className={`rounded-xl border p-3 text-left transition-colors ${filter === 'needs' ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid="hub-kpi-needs">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><AlertTriangle className="h-4 w-4" />{tx('Need my action', 'मेरा काम बाकी')}</div>
+          <div className={`mt-1 text-2xl font-bold ${k.needsMe ? 'text-amber-700' : 'text-slate-900'}`}>{k.needsMe}</div>
+        </button>
+        <button type="button" onClick={() => setFilter('live')} aria-pressed={filter === 'live'} className={`rounded-xl border p-3 text-left transition-colors ${filter === 'live' ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={k.hasMoney ? 'hub-kpi-money' : 'hub-kpi-live-tile'}>
+          {k.hasMoney
+            ? <><div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Wallet className="h-4 w-4" />{tx('My share in pipeline', 'पाइपलाइन में मेरा हिस्सा')}</div><div className="mt-1 text-2xl font-bold text-emerald-700">{short(k.myPipeline)}</div></>
+            : <><div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Briefcase className="h-4 w-4" />{tx('Live deals', 'चालू डील')}</div><div className="mt-1 text-2xl font-bold text-slate-900">{k.live}</div></>}
+        </button>
+      </div>
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" data-testid="hub-filters">
+        {chips.map(c => (
+          <button key={c.id} type="button" onClick={() => setFilter(c.id)} aria-pressed={filter === c.id} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === c.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`hub-kpi-${c.id}`}>{tx(c.en, c.hi)} <span className="ml-0.5 opacity-70">{c.v}</span></button>
+        ))}
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -234,13 +329,17 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
           <input className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, locality, deal ID, broker', 'प्रॉपर्टी, इलाका, डील ID, ब्रोकर खोजें')} data-testid="hub-search" />
           {q && <button type="button" onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" aria-label={tx('Clear', 'साफ़ करें')}><X className="h-4 w-4" /></button>}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {showRoles && ([['ALL', 'All', 'सभी'], ['INTRODUCING', 'I brought the buyer', 'खरीदार मैं लाया'], ['CLOSING', 'My listing', 'मेरी लिस्टिंग']] as const).map(([id, en, hi]) => (
-            <button key={id} type="button" onClick={() => setRole(id)} className={`min-h-9 rounded-full border px-3 text-[11px] font-semibold ${role === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{tx(en, hi)}</button>
-          ))}
-          <div className="ml-1 inline-flex rounded-lg border border-slate-300 bg-white p-0.5">
-            <button type="button" onClick={() => setView('board')} className={`inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold ${view === 'board' ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid="hub-view-board"><LayoutGrid className="h-3.5 w-3.5" />{tx('Board', 'बोर्ड')}</button>
-            <button type="button" onClick={() => setView('list')} className={`inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold ${view === 'list' ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid="hub-view-list"><ListIcon className="h-3.5 w-3.5" />{tx('List', 'लिस्ट')}</button>
+        <div className="flex items-center gap-2">
+          {showRoles && (
+            <select value={role} onChange={e => setRole(e.target.value as typeof role)} aria-label={tx('Which deals', 'कौन सी डील')} className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 sm:flex-none" data-testid="hub-role">
+              <option value="ALL">{tx('All deals', 'सभी डील')}</option>
+              <option value="INTRODUCING">{tx('I brought the buyer', 'खरीदार मैं लाया')}</option>
+              <option value="CLOSING">{tx('My listing', 'मेरी लिस्टिंग')}</option>
+            </select>
+          )}
+          <div className="inline-flex shrink-0 rounded-lg border border-slate-300 bg-white p-0.5">
+            <button type="button" onClick={() => setView('board')} aria-label={tx('Board', 'बोर्ड')} aria-pressed={view === 'board'} className={`inline-flex min-h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold ${view === 'board' ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid="hub-view-board"><LayoutGrid className="h-4 w-4" /><span className="hidden sm:inline">{tx('Board', 'बोर्ड')}</span></button>
+            <button type="button" onClick={() => setView('list')} aria-label={tx('List', 'लिस्ट')} aria-pressed={view === 'list'} className={`inline-flex min-h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold ${view === 'list' ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid="hub-view-list"><ListIcon className="h-4 w-4" /><span className="hidden sm:inline">{tx('List', 'लिस्ट')}</span></button>
           </div>
         </div>
       </div>
