@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { JoinView } from './JoinView.js';
 import { AccessRequest } from './AccessRequest.js';
+import { BrandMark } from './BrandMark.js';
 
 interface Props {
   onLoggedIn: (session: Awaited<ReturnType<typeof api.login>>) => void;
@@ -86,7 +87,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
           className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
         >
           <div className="flex items-center gap-3 mb-5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-amber-400 font-bold">GZ</div>
+            <BrandMark className="h-10 w-10" />
             <div>
               <h1 className="text-base font-bold text-slate-900">GENZ BROKER NETWORK</h1>
               <p className="text-xs text-slate-500">{t('login.tagline', 'Invite-only · India')}</p>

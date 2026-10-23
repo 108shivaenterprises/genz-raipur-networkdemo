@@ -4,6 +4,7 @@ import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, Messag
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { BrandMark } from './BrandMark.js';
 
 interface NavbarProps {
   currentUser: UserProfile;
@@ -51,7 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:px-6">
         {/* Brand */}
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 font-bold tracking-wider text-amber-400 shadow-sm">GZ</div>
+          <BrandMark className="h-10 w-10" />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg"><span className="sm:hidden">GENZ</span><span className="hidden sm:inline">GENZ BROKER NETWORK</span></div>
             <div className="truncate text-[11px] text-slate-500 sm:text-xs"><span className="sm:hidden">{tx('Broker Network', 'ब्रोकर नेटवर्क')}</span><span className="hidden sm:inline">{tx('Powered by GENZ BUILDCON', 'GENZ BUILDCON द्वारा संचालित')}</span></div>

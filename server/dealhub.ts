@@ -53,7 +53,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
   const stageIdx = Math.max(0, STAGES.indexOf(d.stage as typeof STAGES[number]));
   const base = {
     id: d.id, stage: d.stage, stageIndex: d.stage === 'Disputed' ? -1 : stageIdx,
-    propertyId: d.propertyId, propertyTitle: p?.title || d.propertyId, locality: p?.locality || '', city: p?.city || '', propertyType: p?.propertyType || '',
+    propertyId: d.propertyId, propertyTitle: p?.title || d.propertyId, locality: p?.locality || '', city: p?.city || '', propertyType: p?.propertyType || '', cover: p?.images?.[0] || undefined,
     transactionType: p?.transactionType, myRole, counterpartName: counterpart?.name, counterpartCompany: counterpart?.companyName,
     createdAt: d.createdAt, updatedAt: d.updatedAt, openDispute: !!dispute,
     // v47 — a deal that did not happen (closed) / a close request waiting

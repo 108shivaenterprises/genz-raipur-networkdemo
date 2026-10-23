@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { PageTitle } from './PageTitle.js';
 import { Property, UserProfile } from '../types/index.js';
 import { api, type PropertyFacets } from '../lib/api.js';
 import { formatINR, formatArea, getPropertyWhatsAppShareUrl } from '../lib/utils.js';
@@ -185,23 +186,13 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
       {/* Header and Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{remote ? tx(`${remote.list.length} of ${remote.total} shown`, `${remote.total} में से ${remote.list.length} दिख रही हैं`) : `${shownList.length} ${tx('properties displayed', 'प्रॉपर्टी दिख रही हैं')}`}</span>
-            <span aria-hidden="true">·</span>
-            <span className="font-semibold text-slate-700">
-              {tx('Valuation', 'कुल मूल्य')}: {formatINR(shownList.reduce((s, p) => s + (p.askingPrice || 0), 0))}
-            </span>
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {isOwner && ownershipFilter === 'my'
+          <PageTitle title={isOwner && ownershipFilter === 'my'
               ? tx('My properties', 'मेरी प्रॉपर्टी')
               : isBroker && ownershipFilter === 'my'
               ? tx('My listings', 'मेरी लिस्टिंग')
               : isBuyer
               ? tx('Verified Properties', 'वेरिफ़ाइड प्रॉपर्टी')
-              : tx('Properties on the network', 'नेटवर्क की प्रॉपर्टी')}
-          </h2>
-        </div>
+              : tx('Properties on the network', 'नेटवर्क की प्रॉपर्टी')} meta={remote ? tx(`${remote.list.length} of ${remote.total}`, `${remote.total} में से ${remote.list.length}`) : shownList.length} help={<>{tx('Total asking value of the properties shown', 'दिख रही प्रॉपर्टी का कुल मूल्य')}: {formatINR(shownList.reduce((s, p) => s + (p.askingPrice || 0), 0))}</>} /></div>
 
         {may('property:create') && (
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">

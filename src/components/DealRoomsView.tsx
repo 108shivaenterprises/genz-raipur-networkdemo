@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { PropertyThumb } from './PropertyThumb.js';
+import { PageTitle } from './PageTitle.js';
 import {
   DealRoom,
   SiteVisit,
@@ -547,7 +549,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   // v37 — Deal Hub data (pipeline cards, KPIs, next steps). If it cannot load, the cards are built from the deal list itself.
   const fallbackHub = () => ({
     stages, stalledDays: 14,
-    deals: deals.map((d) => ({ id: d.id, stage: d.stage, stageIndex: stages.indexOf(d.stage), propertyId: d.propertyId, propertyTitle: (properties || []).find((p: any) => p.id === d.propertyId)?.title || d.propertyId, locality: '', city: '', myRole: d.introducingBrokerId === currentUser.id ? 'INTRODUCING' : d.closingBrokerId === currentUser.id ? 'CLOSING' : d.ownerId === currentUser.id ? 'OWNER' : 'OTHER', next: [], needsMe: false, lastActivityAt: d.updatedAt, idleDays: 0, stalled: false, openDispute: d.stage === 'Disputed' })),
+    deals: deals.map((d) => ({ id: d.id, stage: d.stage, stageIndex: stages.indexOf(d.stage), propertyId: d.propertyId, propertyTitle: (properties || []).find((p: any) => p.id === d.propertyId)?.title || d.propertyId, cover: (properties || []).find((p: any) => p.id === d.propertyId)?.images?.[0], propertyType: (properties || []).find((p: any) => p.id === d.propertyId)?.propertyType, locality: '', city: '', myRole: d.introducingBrokerId === currentUser.id ? 'INTRODUCING' : d.closingBrokerId === currentUser.id ? 'CLOSING' : d.ownerId === currentUser.id ? 'OWNER' : 'OTHER', next: [], needsMe: false, lastActivityAt: d.updatedAt, idleDays: 0, stalled: false, openDispute: d.stage === 'Disputed' })),
     kpis: { total: deals.length, live: deals.filter((d) => d.stage !== 'Settled').length, settled: deals.filter((d) => d.stage === 'Settled').length, needsMe: 0, stalled: 0, disputes: 0, myPipeline: 0, hasMoney: false },
   });
   const loadHub = () => api.dealHub().then(setHub).catch(() => setHub(fallbackHub()));
@@ -783,27 +785,15 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       {/* v37 — Deal Hub header: title + one segmented switch for Pipeline / Deal room / Proposals / Mandates */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span>{tx('Broker-to-broker Deal Rooms', 'ब्रोकर-से-ब्रोकर डील रूम')}</span>
-            <span aria-hidden="true">·</span>
-            <span>{deals.length} {tx('deal rooms', 'डील रूम')}</span>
-            <span aria-hidden="true">·</span>
-            <span className="text-emerald-700 font-medium">{tx('anti-bypass rule applies', 'एंटी-बायपास नियम लागू')}</span>
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {mainMode === 'PIPELINE' ? tx('Deal pipeline', 'डील पाइपलाइन')
+          <PageTitle title={mainMode === 'PIPELINE' ? tx('Deal pipeline', 'डील पाइपलाइन')
               : mainMode === 'MANDATES' ? tx('Owners — brokerage terms', 'मालिक — ब्रोकरेज की शर्तें')
               : mainMode === 'ROOMS' ? tx('Client rooms', 'क्लाइंट रूम')
               : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Co-broking offers', 'को-ब्रोकिंग ऑफ़र')
-              : tx('Deal room', 'डील रूम')}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {mainMode === 'PIPELINE' ? tx('Every deal by stage — what needs you first. Tap a card to open its deal room.', 'हर डील स्टेज के हिसाब से — पहले वो जिसमें आपका काम बाकी है। डील रूम खोलने के लिए कार्ड दबाएँ।')
+              : tx('Deal room', 'डील रूम')} meta={mainMode === 'PIPELINE' && deals.length > 0 ? tx(`${deals.length} deal rooms`, `${deals.length} डील रूम`) : undefined} help={<>{mainMode === 'PIPELINE' ? tx('Every deal by stage — what needs you first. Tap a card to open its deal room.', 'हर डील स्टेज के हिसाब से — पहले वो जिसमें आपका काम बाकी है। डील रूम खोलने के लिए कार्ड दबाएँ।')
               : mainMode === 'MANDATES' ? tx('Brokerage mandates signed by owners — status, terms and protection days left.', 'मालिकों के साइन किए ब्रोकरेज मैंडेट — स्थिति, शर्तें और सुरक्षा के बचे दिन।')
               : mainMode === 'ROOMS' ? tx('Your buyers’ private rooms — share homes, chat, and book visits. A deal shows the rooms that have its property.', 'आपके खरीदारों के निजी रूम — प्रॉपर्टी भेजें, बात करें, विज़िट तय करें। हर डील में वो रूम दिखते हैं जिनमें उसकी प्रॉपर्टी है।')
               : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Offers other brokers sent on your listings, and the ones you sent. Accepting one opens a deal room.', 'आपकी लिस्टिंग पर दूसरे ब्रोकरों के ऑफ़र, और आपके भेजे ऑफ़र। मंज़ूर करते ही डील रूम खुलता है।')
-              : tx('Who does what, the brokerage agreement, title check and registry — all for this deal in one place.', 'कौन क्या करेगा, ब्रोकरेज समझौता, टाइटल जाँच और रजिस्ट्री — इस डील का सब एक जगह।')}
-          </p>
+              : tx('Who does what, the brokerage agreement, title check and registry — all for this deal in one place.', 'कौन क्या करेगा, ब्रोकरेज समझौता, टाइटल जाँच और रजिस्ट्री — इस डील का सब एक जगह।')} {tx('The anti-bypass rule applies in every deal room.', 'हर डील रूम में एंटी-बायपास नियम लागू है।')}</>} />
         </div>
       </div>
       <div className="-mt-2 flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" data-testid="deal-modes">
@@ -880,7 +870,14 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           ) : (
             <div className="space-y-5">
               {/* Deal Header Overview Card */}
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                {activeProperty?.images?.[0] && (
+                  <div className="relative h-36 w-full bg-slate-100 sm:h-44" data-testid="deal-cover">
+                    <img src={activeProperty.images[0]} alt="" className="h-full w-full object-cover" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/70 to-transparent px-4 pb-2 pt-8 text-sm font-semibold text-white">{[activeProperty.locality, activeProperty.city].filter(Boolean).join(', ')}</div>
+                  </div>
+                )}
+                <div className="p-5 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
@@ -955,6 +952,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       </button>
                     );
                   })}
+                </div>
                 </div>
               </div>
 
@@ -1383,7 +1381,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 return (
                   <ChatShell
                     onBack={() => setActiveSubTab('overview')} testId="deal-room-chat"
-                    avatar={<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white"><MessageSquare className="h-5 w-5" aria-hidden /></span>}
+                    avatar={<PropertyThumb src={activeProperty?.images?.[0]} type={activeProperty?.propertyType} seed={activeProperty?.title || activeDeal.propertyId} className="h-10 w-10 rounded-xl" />}
                     title={names.join(' · ') || tx('Deal chat', 'डील चैट')}
                     subtitle={`${activeProperty?.title || activeDeal.propertyId} · ${tx('saved in the deal record', 'डील रिकॉर्ड में सेव')}`}
                     actions={phone ? <a href={`tel:${phone.replace(/\s+/g, '')}`} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 text-sm font-semibold text-white" aria-label={tx('Call', 'कॉल करें')} data-testid="deal-chat-call"><Phone className="h-4 w-4" aria-hidden /><span className="hidden sm:inline">{tx('Call', 'कॉल')}</span></a> : undefined}

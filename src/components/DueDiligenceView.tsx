@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from './PageTitle.js';
 import {
   Property,
   DueDiligenceChecklistItem,
@@ -262,17 +263,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
       {/* Header and Property Selector */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{tx('Property Due Diligence', 'प्रॉपर्टी ड्यू डिलिजेंस')}</span>
-            <span aria-hidden="true">·</span>
-            <span>{tx('Common checks + checks for the property type', 'सामान्य जाँचें + प्रॉपर्टी के प्रकार की जाँचें')}</span>
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {tx('Evidence-Based Property Title Audit & Issue Register', 'सबूत-आधारित प्रॉपर्टी टाइटल जाँच और समस्या रजिस्टर')}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {tx('6-stage verification gates, 30-year title search at the Sub-Registrar, Khasra / land-record checks and tracking of critical issues.', '6 चरणों के सत्यापन गेट, उप-पंजीयक पर 30 साल की टाइटल खोज, खसरा / भूमि रिकॉर्ड की जाँच और गंभीर समस्याओं की ट्रैकिंग।')}
-          </p>
+          <PageTitle title={tx('Property title check', 'प्रॉपर्टी टाइटल जाँच')} help={<>{tx('6-stage verification gates, 30-year title search at the Sub-Registrar, Khasra / land-record checks and tracking of critical issues.', '6 चरणों के सत्यापन गेट, उप-पंजीयक पर 30 साल की टाइटल खोज, खसरा / भूमि रिकॉर्ड की जाँच और गंभीर समस्याओं की ट्रैकिंग।')} {tx('Common checks plus checks for the property type.', 'सामान्य जाँचें और प्रॉपर्टी के प्रकार की जाँचें।')}</>} />
         </div>
 
         {/* Property Selector */}

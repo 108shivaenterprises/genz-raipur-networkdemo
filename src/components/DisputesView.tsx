@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PageTitle } from './PageTitle.js';
 import { Dispute, UserProfile } from '../types/index.js';
 import { api } from '../lib/api.js';
 import { formatDate } from '../lib/utils.js';
@@ -65,17 +66,7 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{tx('Dispute Review Desk', 'विवाद समीक्षा डेस्क')}</span>
-            <span aria-hidden="true">·</span>
-            <span>{disputes.length} {tx('recorded complaints', 'दर्ज शिकायतें')}</span>
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {tx('Dispute Review & Anti-Bypass Desk', 'विवाद समीक्षा और एंटी-बायपास डेस्क')}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {tx('Evidence kept on record, commission holds and platform sanctions — decided by a GENZ admin under the platform rules.', 'सबूत रिकॉर्ड में रखना, कमीशन होल्ड और प्लेटफ़ॉर्म कार्रवाई — GENZ एडमिन प्लेटफ़ॉर्म नियमों के तहत तय करता है।')}
-          </p>
+          <PageTitle title={tx('Disputes', 'विवाद')} meta={disputes.length > 0 ? disputes.length : undefined} help={tx('Evidence kept on record, commission holds and platform sanctions — decided by a GENZ admin under the platform rules.', 'सबूत रिकॉर्ड में रखना, कमीशन होल्ड और प्लेटफ़ॉर्म कार्रवाई — GENZ एडमिन प्लेटफ़ॉर्म नियमों के तहत तय करता है।')} />
         </div>
 
         <button

@@ -64,7 +64,7 @@ export function createChatsRouter() {
       const withNames = [...new Set([d.introducingBrokerId, d.closingBrokerId, d.ownerId])]
         .filter(id => id && id !== u.id && id !== u.employerId).map(id => name(id as string)).filter(Boolean) as string[];
       return {
-        id: d.id, propertyId: d.propertyId, propertyTitle: p?.title || d.propertyId, locality: p?.locality || '', stage: d.stage, closed: isClosed(d),
+        id: d.id, propertyId: d.propertyId, propertyTitle: p?.title || d.propertyId, locality: p?.locality || '', propertyType: p?.propertyType || '', cover: p?.images?.[0] || undefined, stage: d.stage, closed: isClosed(d),
         with: withNames,
         count: ms.length, unread: unreadOf(u, d, ms, s),
         last: last ? { text: String(last.text || '').slice(0, 140), at: last.timestamp, mine: last.senderId === u.id, by: last.senderName, media: !!last.mediaUrl } : undefined,

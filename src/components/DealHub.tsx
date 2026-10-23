@@ -6,6 +6,7 @@
  *   MandatesBoard  every owner ⇄ broker brokerage mandate in one place: status, protection days left, terms, "open"
  * Data: GET /api/deal-hub (same visibility / money rules as /api/deals) and GET /api/owner-mandates.
  */
+import { PropertyThumb } from './PropertyThumb.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, LayoutGrid, List as ListIcon, AlertTriangle, Clock, Wallet, Briefcase, Scale, CheckCircle2, ChevronRight, CalendarCheck,
@@ -148,8 +149,13 @@ export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kin
         <span className={`font-mono text-[10px] font-bold ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{d.id}</span>
         {rl && <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${selected ? 'bg-white/15 text-white' : rc}`}>{rl}</span>}
       </div>
-      <div className="mt-1 line-clamp-2 text-xs font-bold leading-snug">{d.propertyTitle}</div>
-      <div className={`mt-0.5 truncate text-[11px] ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{[d.locality, d.city].filter(Boolean).join(', ')}{compact ? ` · ${label('dealStage', d.stage)}` : ''}</div>
+      <div className="mt-1.5 flex items-start gap-2.5">
+        <PropertyThumb src={d.cover} type={d.propertyType} seed={d.propertyTitle} className={compact ? 'h-10 w-10 rounded-lg' : 'h-12 w-12 rounded-lg'} />
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-xs font-bold leading-snug">{d.propertyTitle}</div>
+          <div className={`mt-0.5 truncate text-[11px] ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{[d.locality, d.city].filter(Boolean).join(', ')}{compact ? ` · ${label('dealStage', d.stage)}` : ''}</div>
+        </div>
+      </div>
       <div className="mt-2"><Progress i={d.stageIndex} dark={selected} /></div>
       {(d.money || d.counterpartName) && (
         <div className={`mt-2 flex items-center justify-between gap-2 text-[11px] ${selected ? 'text-slate-200' : 'text-slate-600'}`}>
@@ -272,9 +278,12 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
               return (
                 <li key={d.id}>
                   <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' ? first.tab : undefined, first?.kind)} className="grid w-full grid-cols-1 gap-2 px-3 py-3 text-left hover:bg-slate-50 sm:grid-cols-12 sm:items-center" data-testid={`hub-row-${d.id}`}>
-                    <div className="sm:col-span-4">
-                      <div className="truncate text-sm font-semibold text-slate-900">{d.propertyTitle}</div>
-                      <div className="truncate text-[11px] text-slate-500"><span className="font-mono">{d.id}</span> · {[d.locality, d.city].filter(Boolean).join(', ')}{d.counterpartName ? ` · ${d.counterpartName}` : ''}</div>
+                    <div className="flex items-center gap-2.5 sm:col-span-4">
+                      <PropertyThumb src={d.cover} type={d.propertyType} seed={d.propertyTitle} className="h-11 w-11 rounded-lg" />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">{d.propertyTitle}</div>
+                        <div className="truncate text-[11px] text-slate-500"><span className="font-mono">{d.id}</span> · {[d.locality, d.city].filter(Boolean).join(', ')}{d.counterpartName ? ` · ${d.counterpartName}` : ''}</div>
+                      </div>
                     </div>
                     <div className="sm:col-span-3">
                       <div className="mb-1 text-[11px] font-semibold text-slate-700">{label('dealStage', d.stage) || d.stage}{d.closed ? <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-700">{tx('Closed', 'बंद')}</span> : null}</div>

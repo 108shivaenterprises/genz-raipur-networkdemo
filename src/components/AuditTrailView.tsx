@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { PageTitle } from './PageTitle.js';
 import { AuditEvent } from '../types/index.js';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/utils.js';
@@ -47,17 +48,7 @@ export const AuditTrailView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{tx('Cryptographic Proof Ledger', 'क्रिप्टोग्राफ़िक प्रूफ़ लेजर')}</span>
-            <span aria-hidden="true">·</span>
-            <span>{tx(`${events.length} of ${total} shown`, `${total} में से ${events.length} दिख रहे`)}</span>
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {tx('Immutable Audit Trail & Hash Chain', 'अपरिवर्तनीय ऑडिट ट्रेल और हैश चेन')}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {tx('Append-only record of registrations, price revisions, site visit OTP stamps, and commission ratifications.', 'रजिस्ट्रेशन, कीमत बदलाव, साइट विज़िट OTP स्टैम्प और कमीशन मंज़ूरी का केवल-जोड़ने वाला रिकॉर्ड — इसमें कुछ मिटाया या बदला नहीं जा सकता।')}
-          </p>
+          <PageTitle title={tx('Audit trail', 'ऑडिट ट्रेल')} meta={tx(`${events.length} of ${total} shown`, `${total} में से ${events.length} दिख रहे`)} help={tx('Append-only record of registrations, price revisions, site visit OTP stamps, and commission ratifications.', 'रजिस्ट्रेशन, कीमत बदलाव, साइट विज़िट OTP स्टैम्प और कमीशन मंज़ूरी का केवल-जोड़ने वाला रिकॉर्ड — इसमें कुछ मिटाया या बदला नहीं जा सकता।')} />
         </div>
 
         <div className="flex items-center gap-3">

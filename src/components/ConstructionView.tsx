@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PageTitle } from './PageTitle.js';
 import { ConstructionLead, UserProfile } from '../types/index.js';
 import { api } from '../lib/api.js';
 import { formatINR } from '../lib/utils.js';
@@ -85,17 +86,7 @@ export const ConstructionView: React.FC<ConstructionViewProps> = ({
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{tx('GENZ BUILDCON Infrastructure Alliance', 'GENZ BUILDCON इंफ्रास्ट्रक्चर अलायंस')}</span>
-            <span aria-hidden="true">·</span>
-            <span>{leads.length} {tx('active construction opportunities', 'चालू कंस्ट्रक्शन अवसर')}</span>
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {isContractor ? tx('Construction Leads You Can Take', 'आप जो कंस्ट्रक्शन लीड ले सकते हैं') : tx('Construction Lead Marketplace & Referral Pipeline', 'कंस्ट्रक्शन लीड मार्केटप्लेस और रेफ़रल पाइपलाइन')}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {tx('Turnkey civil and interior opportunities across India with a referral fee agreed upfront for the broker.', 'पूरे भारत में सिविल और इंटीरियर के अवसर — ब्रोकर की रेफ़रल फ़ीस पहले से तय।')}
-          </p>
+          <PageTitle title={isContractor ? tx('Construction leads you can take', 'आप जो कंस्ट्रक्शन लीड ले सकते हैं') : tx('Construction leads', 'कंस्ट्रक्शन लीड')} meta={leads.length > 0 ? leads.length : undefined} help={tx('Turnkey civil and interior opportunities across India with a referral fee agreed upfront for the broker.', 'पूरे भारत में सिविल और इंटीरियर के अवसर — ब्रोकर की रेफ़रल फ़ीस पहले से तय।')} />
         </div>
 
         {canSubmitLead && (

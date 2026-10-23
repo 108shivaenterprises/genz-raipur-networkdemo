@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from './PageTitle.js';
 import { Property, BuyerRequirement } from '../types/index.js';
 import { api } from '../lib/api.js';
 import { formatINR } from '../lib/utils.js';
@@ -79,17 +80,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{tx('Deterministic Scoring Algorithm', 'तय नियमों वाला स्कोरिंग')}</span>
-            <span aria-hidden="true">·</span>
-            <span>{tx('City-aware Matching', 'शहर के हिसाब से मैचिंग')}</span>
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {canMatchByProperty ? tx('Property & Buyer Matching Engine', 'प्रॉपर्टी और खरीदार मैचिंग') : tx('Properties that match your needs', 'आपकी ज़रूरत से मेल खाती प्रॉपर्टी')}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {tx('Matches evaluated across geographic proximity, budget boundaries, category classification, and built-up tolerances.', 'मैच इलाके, बजट, प्रॉपर्टी के प्रकार और क्षेत्रफल की सीमा के आधार पर जाँचे जाते हैं।')}
-          </p>
+          <PageTitle title={canMatchByProperty ? tx('Matches', 'मैच') : tx('Properties for you', 'आपके लिए प्रॉपर्टी')} help={<>{tx('Matches evaluated across geographic proximity, budget boundaries, category classification, and built-up tolerances.', 'मैच इलाके, बजट, प्रॉपर्टी के प्रकार और क्षेत्रफल की सीमा के आधार पर जाँचे जाते हैं।')} {tx('Same scoring rules every time, city-aware.', 'हर बार वही तय नियम, शहर के हिसाब से।')}</>} />
         </div>
 
         {/* Mode Toggle */}
@@ -208,8 +199,13 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
               return (
                 <div
                   key={index}
-                  className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-xs hover:border-slate-300 transition-all"
+                  className="overflow-hidden rounded-xl border border-slate-200/90 bg-white p-5 shadow-xs hover:border-slate-300 transition-all"
                 >
+                  {isPropMatch && item.property.images?.[0] && (
+                    <div className="-mx-5 -mt-5 mb-4 h-32 bg-slate-100 sm:h-36" data-testid="match-cover">
+                      <img src={item.property.images[0]} alt="" loading="lazy" className="h-full w-full object-cover" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
+                    </div>
+                  )}
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     {/* Left: Score Badge & Title */}
                     <div className="space-y-2 lg:max-w-2xl">

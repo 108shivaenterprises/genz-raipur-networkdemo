@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { PageTitle } from './PageTitle.js';
 import { api } from '../lib/api.js';
 import { BuyerRequirement, UserProfile } from '../types/index.js';
 import { formatINR, formatArea, getRequirementWhatsAppShareUrl } from '../lib/utils.js';
@@ -81,25 +82,10 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>{isBuyer ? tx('Your needs', 'आपकी ज़रूरतें') : tx('Client Mandate Registry', 'क्लाइंट मैंडेट रजिस्ट्री')}</span>
-            <span aria-hidden="true">·</span>
-            <span>{remote ? tx(`${remote.list.length} of ${remote.total} shown`, `${remote.total} में से ${remote.list.length} दिख रही हैं`) : `${displayedRequirements.length} ${tx('buyer requirements', 'खरीदार की ज़रूरतें')}`}</span>
-            {searchReqId && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span className="text-amber-600 font-medium">{tx('Filtered by', 'फ़िल्टर')}: {searchReqId}</span>
-              </>
-            )}
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            {tx('Buyer & Tenant Requirements Desk', 'खरीदार और किरायेदार की ज़रूरतें')}
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {isBuyer
+          <PageTitle title={isBuyer ? tx('Your needs', 'आपकी ज़रूरतें') : tx('Buyer & tenant needs', 'खरीदार और किरायेदार की ज़रूरतें')} meta={remote ? tx(`${remote.list.length} of ${remote.total} shown`, `${remote.total} में से ${remote.list.length} दिख रही हैं`) : displayedRequirements.length} help={isBuyer
               ? tx('Tell us what you are looking for. Verified brokers can pick it up, and your best matches show in Match Center.', 'बताइए आप क्या ढूँढ रहे हैं। वेरिफ़ाइड ब्रोकर इसे उठा सकते हैं, और आपके सबसे अच्छे मैच मैच सेंटर में दिखते हैं।')
-              : tx('Customer entities are persistent. Deal protection is deal-scoped, allowing multiple independent requirements.', 'ग्राहक की पहचान स्थायी रहती है। डील सुरक्षा हर डील के लिए अलग है, इसलिए कई स्वतंत्र ज़रूरतें हो सकती हैं।')}
-          </p>
+              : tx('Customer entities are persistent. Deal protection is deal-scoped, allowing multiple independent requirements.', 'ग्राहक की पहचान स्थायी रहती है। डील सुरक्षा हर डील के लिए अलग है, इसलिए कई स्वतंत्र ज़रूरतें हो सकती हैं।')} />
+          {searchReqId && <p className="mt-1 text-xs font-medium text-amber-700">{tx('Filtered by', 'फ़िल्टर')}: {searchReqId}</p>}
         </div>
 
         <div className="flex items-center gap-2">

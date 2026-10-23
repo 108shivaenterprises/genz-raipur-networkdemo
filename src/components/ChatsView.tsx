@@ -4,8 +4,9 @@
  * count. Tap one → the whole screen is that chat (← back, messages, the message box at the bottom). Nothing about who may read what has changed:
  * the lists come from the same routes as before (/api/client-rooms and /api/chats/deals, which applies the deal-room chat rules).
  */
+import { PropertyThumb } from './PropertyThumb.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Briefcase, ExternalLink, Loader2, MessageSquare, Search } from 'lucide-react';
+import { ExternalLink, Loader2, MessageSquare, Search } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { ROOM_KINDS } from '../shared/clientRoomRules.js';
@@ -62,7 +63,7 @@ const DealChatPane: React.FC<{ row: Row; meId: string; onBack: () => void; onOpe
   return (
     <ChatShell
       onBack={onBack} testId="deal-chat"
-      avatar={<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white"><Briefcase className="h-5 w-5" aria-hidden /></span>}
+      avatar={<PropertyThumb src={row.deal?.cover} type={row.deal?.propertyType} seed={row.title} className="h-10 w-10 rounded-xl" />}
       title={row.title} subtitle={row.sub}
       actions={<button type="button" onClick={onOpenDeal} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50" data-testid="chat-open-deal"><ExternalLink className="h-4 w-4" aria-hidden />{tx('Deal', 'डील')}</button>}
     >
@@ -146,9 +147,9 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
 
   const renderRow = (r: Row) => (
     <button key={r.key} type="button" onClick={() => setOpenUrl(r.key)} className={`flex w-full items-center gap-3 px-3 py-3 text-left active:bg-slate-100 lg:hover:bg-slate-50 ${open === r.key ? 'bg-slate-100' : ''}`} data-testid={`chat-row-${r.key}`}>
-      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold text-white ${r.tone}`} aria-hidden>
-        {r.kind === 'DEAL' ? <Briefcase className="h-5 w-5" /> : initials(r.title)}
-      </span>
+      {r.kind === 'DEAL'
+        ? <PropertyThumb src={r.deal?.cover} type={r.deal?.propertyType} seed={r.title} className="h-12 w-12 rounded-xl" />
+        : <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold text-white ${r.tone}`} aria-hidden>{initials(r.title)}</span>}
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
           <span className={`truncate text-base ${r.unread > 0 ? 'font-bold' : 'font-semibold'} text-slate-900`}>{r.title}</span>

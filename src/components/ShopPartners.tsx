@@ -4,6 +4,7 @@
  * and gets the leads customers send by scanning it. The shopkeeper accepts the terms and follows his leads on his own page
  * (link + mobile code). Later work on a lead's mobile number by the same broker is linked automatically.
  */
+import { PageTitle } from './PageTitle.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -243,8 +244,7 @@ export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: b
     <div className="space-y-4" data-testid="shop-partners">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">{tx('Shop QR partners', 'दुकान QR पार्टनर')}</h2>
-          <p className="text-xs text-slate-600">{tx('Put your QR at a shop or society gate instead of pamphlets. Customers scan and send their need; the lead is yours, the shop gets the share you both agreed.', 'पैम्फ़लेट की जगह अपना QR दुकान या सोसाइटी गेट पर लगाएँ। ग्राहक स्कैन करके ज़रूरत भेजता है; लीड आपकी, दुकान को तय हिस्सा।')}</p>
+          <PageTitle title={tx('Shop QR partners', 'दुकान QR पार्टनर')} help={tx('Put your QR at a shop or society gate instead of pamphlets. Customers scan and send their need; the lead is yours, the shop gets the share you both agreed.', 'पैम्फ़लेट की जगह अपना QR दुकान या सोसाइटी गेट पर लगाएँ। ग्राहक स्कैन करके ज़रूरत भेजता है; लीड आपकी, दुकान को तय हिस्सा।')} />
         </div>
         {canManage && !adding && <button className={dark} onClick={() => { setAdding(true); setFresh(null); }} data-testid="sp-new"><Plus className="h-4 w-4" />{tx('New partner', 'नया पार्टनर')}</button>}
       </div>
