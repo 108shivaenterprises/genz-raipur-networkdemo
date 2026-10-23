@@ -1020,11 +1020,13 @@ function sanitizeProperty(p: any, user: UserProfile, state = db.getState()) {
   return out;
 }
 
+/** "Dr. Alok Pandey" → "D. A. P." — how another broker's client is shown */
+const clientInitials = (n: string) => String(n || '').split(/\s+/).filter(w => /^[A-Za-z\u0900-\u097F]/.test(w)).slice(0, 3).map(w => w[0].toUpperCase() + '.').join(' ') || 'Client';
+
 function sanitizeRequirement(r: any, user: UserProfile) {
   const full = isAdmin(user) || r.assignedBrokerId === user.id || (r.buyerId && r.buyerId === user.id);
   // v20: another broker's client is shown by initials only (name + phone together let anyone go around the broker)
-  const initials = (n: string) => String(n || '').split(/\s+/).filter(w => /^[A-Za-z\u0900-\u097F]/.test(w)).slice(0, 3).map(w => w[0].toUpperCase() + '.').join(' ') || 'Client';
-  return full ? r : { ...r, customerName: initials(r.customerName), customerPhone: maskPhoneNumber(r.customerPhone), buyerId: undefined, customerId: undefined };
+  return full ? r : { ...r, customerName: clientInitials(r.customerName), customerPhone: maskPhoneNumber(r.customerPhone), buyerId: undefined, customerId: undefined };
 }
 
 function nextSeq(ids: string[], re: RegExp, floor = 0) {
@@ -2425,6 +2427,14 @@ function sanitizeVisit(v: any, user: UserProfile, state = db.getState()) {
     (user.role === 'BUYER_TENANT' && customerMatchesUser(v.customerPhone, user)) ||
     (DEMO_MODE && v.brokerId === user.id);
   const out: any = { ...v, otpAttempts: undefined, otpExpiresAt: v.otpExpiresAt, ackStatus: visitAckStatus('VISIT', v.id) };
+  // v54.1 — the buyer's mobile and full name stay with the broker who brought him (his own staff), the buyer himself and GENZ admins.
+  // The owner and the other broker of the deal see initials and a masked number — the v20 anti-bypass rule, now also for site visits.
+  const clientSide = isAdmin(user) || v.brokerId === user.id || (!!user.employerId && user.employerId === v.brokerId) ||
+    (user.role === 'BUYER_TENANT' && customerMatchesUser(v.customerPhone, user));
+  if (!clientSide) {
+    out.customerName = clientInitials(v.customerName);
+    out.customerPhone = v.customerPhone ? maskPhoneNumber(v.customerPhone) : v.customerPhone;
+  }
   if (!secretVisible) {
     out.otpCode = '';
     out.qrToken = '';

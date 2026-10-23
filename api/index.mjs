@@ -89642,10 +89642,10 @@ function sanitizeProperty(p, user, state = db.getState()) {
   }
   return out;
 }
+var clientInitials = (n2) => String(n2 || "").split(/\s+/).filter((w) => /^[A-Za-z\u0900-\u097F]/.test(w)).slice(0, 3).map((w) => w[0].toUpperCase() + ".").join(" ") || "Client";
 function sanitizeRequirement(r, user) {
   const full = isAdmin(user) || r.assignedBrokerId === user.id || r.buyerId && r.buyerId === user.id;
-  const initials = (n2) => String(n2 || "").split(/\s+/).filter((w) => /^[A-Za-z\u0900-\u097F]/.test(w)).slice(0, 3).map((w) => w[0].toUpperCase() + ".").join(" ") || "Client";
-  return full ? r : { ...r, customerName: initials(r.customerName), customerPhone: maskPhoneNumber(r.customerPhone), buyerId: void 0, customerId: void 0 };
+  return full ? r : { ...r, customerName: clientInitials(r.customerName), customerPhone: maskPhoneNumber(r.customerPhone), buyerId: void 0, customerId: void 0 };
 }
 function nextSeq(ids2, re, floor = 0) {
   return ids2.reduce((m, id) => Math.max(m, Number(re.exec(id)?.[1] ?? 0)), floor) + 1;
@@ -90848,6 +90848,11 @@ function sanitizeVisit(v, user, state = db.getState()) {
   const prop = db.byId("properties", v.propertyId);
   const secretVisible = isAdmin(user) || !!prop && prop.ownerId === user.id || user.role === "BUYER_TENANT" && customerMatchesUser(v.customerPhone, user) || DEMO_MODE && v.brokerId === user.id;
   const out = { ...v, otpAttempts: void 0, otpExpiresAt: v.otpExpiresAt, ackStatus: ackStatus("VISIT", v.id) };
+  const clientSide = isAdmin(user) || v.brokerId === user.id || !!user.employerId && user.employerId === v.brokerId || user.role === "BUYER_TENANT" && customerMatchesUser(v.customerPhone, user);
+  if (!clientSide) {
+    out.customerName = clientInitials(v.customerName);
+    out.customerPhone = v.customerPhone ? maskPhoneNumber(v.customerPhone) : v.customerPhone;
+  }
   if (!secretVisible) {
     out.otpCode = "";
     out.qrToken = "";

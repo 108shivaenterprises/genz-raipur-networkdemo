@@ -382,7 +382,7 @@ export default function App() {
         onOpenBrokerQrModal={currentUser.role === 'BROKER' ? () => setShowQrMenu(true) : undefined}
         onOpenScan={currentUser.role !== 'BROKER' && hasPerm(permissions, 'sitevisit:verify', 'visit:scan') ? () => setShowQuickScan(true) : undefined}
         onOpenBrokerSafetyModal={() => setShowBrokerSafetyModal(true)}
-        onOpenChats={hasPerm(permissions, 'deal:chat', 'clientroom:use') ? () => setActiveTab('chats') : undefined}
+        onOpenChats={hasPerm(permissions, 'deal:chat', 'clientroom:use') && currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERADMIN' ? () => setActiveTab('chats') : undefined}
         chatCount={chatBadge}
       />
 

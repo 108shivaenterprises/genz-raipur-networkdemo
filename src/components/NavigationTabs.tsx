@@ -157,7 +157,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const tabs = [
     { id: 'dashboard', label: isMember ? t('nav.myWork', 'My Work') : isConnector ? t('nav.myReferrals', 'My Referrals') : t('nav.dashboard', 'Dashboard'), icon: LayoutDashboard },
     ...(has('legal:desk') && !has('legal:manage') ? [{ id: 'legal', label: t('nav.legal', 'Legal Desk'), icon: ScaleIcon, badge: legalBadge }] : []),
-    ...(has('deal:chat', 'clientroom:use') ? [{ id: 'chats', label: t('nav.chats', 'Chats'), icon: MessageCircle, badge: chatBadge }] : []),
+    // v54.1 — GENZ admins are never part of a deal chat (they read a deal room only through a dispute), so their Chats list is always empty
+    ...(has('deal:chat', 'clientroom:use') && currentUser?.role !== 'ADMIN' && currentUser?.role !== 'SUPERADMIN' ? [{ id: 'chats', label: t('nav.chats', 'Chats'), icon: MessageCircle, badge: chatBadge }] : []),
     ...(has('daily:use') ? [{ id: 'daily', label: t('nav.daily', 'Today & Clients'), icon: CalendarCheck }] : []),
     ...(has('pcontrol:manage', 'pcontrol:oversee') ? [{ id: 'pcontrol', label: t('nav.pcontrol', 'Project Control'), icon: SlidersHorizontal }] : has('pcontrol:partner') ? [{ id: 'pcontrol', label: t('nav.myprojects', 'My Projects'), icon: Layers }] : []),
     ...(has('offer:make', 'offer:decide', 'listing:lifecycle') ? [{ id: 'desk', label: t('nav.desk', 'Deal Desk'), icon: Handshake }] : []),

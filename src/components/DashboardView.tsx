@@ -69,6 +69,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const tx = useTx();
   const label = useLabel();
+  // v54.1 — the "a broker sent YOU an offer" banner is only for the broker who received it (GENZ admins cannot answer offers)
+  const myIncomingOffers = useMemo(() => (offers || []).filter((o) => o.receivingBrokerId === currentUser.id && o.status === 'PENDING'), [offers, currentUser]);
   const incomingPendingOffers = useMemo(() => {
     return (offers || []).filter(
       (o) =>
@@ -521,7 +523,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Incoming Collaboration Proposals Notification Banner */}
-      {incomingPendingOffers.length > 0 && (
+      {myIncomingOffers.length > 0 && (
         <div className="rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start sm:items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white font-bold shadow-xs">
@@ -533,7 +535,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   ⚡ {tx('A broker sent you a co-broking offer', 'किसी ब्रोकर ने को-ब्रोकिंग ऑफ़र भेजा है')}
                 </span>
                 <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                  {incomingPendingOffers.length} {tx('new', 'नया')}
+                  {myIncomingOffers.length} {tx('new', 'नया')}
                 </span>
               </div>
               <p className="text-xs text-slate-700 mt-0.5">
