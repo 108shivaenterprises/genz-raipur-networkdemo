@@ -33,6 +33,7 @@ import {
   MessagesSquare,
   MessageCircle,
   Store,
+  Globe,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -74,6 +75,7 @@ export type TabType =
   | 'network'
   | 'launchdesk'
   | 'partners'
+  | 'mypage'
   | 'chats';
 
 interface NavigationTabsProps {
@@ -149,6 +151,18 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     window.addEventListener('genz:rooms-changed', pull);
     return () => { live = false; window.clearInterval(timer); window.removeEventListener('genz:rooms-changed', pull); };
   }, [roomUser, activeTab]);
+  // v57: My Public Page — a badge for new enquiries from the broker's public page
+  const [pageBadge, setPageBadge] = useState(0);
+  const pageUser = permissions.includes('publicpage:use');
+  useEffect(() => {
+    if (!pageUser) { setPageBadge(0); return; }
+    let live = true;
+    const pull = () => { api.ppBadge().then(r => { if (live) setPageBadge(r.count || 0); }).catch(() => {}); };
+    pull();
+    const timer = window.setInterval(pull, 90_000);
+    window.addEventListener('genz:page-changed', pull);
+    return () => { live = false; window.clearInterval(timer); window.removeEventListener('genz:page-changed', pull); };
+  }, [pageUser, activeTab]);
   const isOwner = currentUser?.role === 'PROPERTY_OWNER';
   const isConnector = currentUser?.role === 'GENZ_CONNECTOR';
   const isMember = currentUser?.role === 'TEAM_MEMBER';
@@ -168,6 +182,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('connector:manage', 'connector:work', 'connector:desk') ? [{ id: 'connector', label: t('nav.connector', 'Connector Desk'), icon: Handshake }] : []),
     ...(has('partner:manage', 'partner:oversee') ? [{ id: 'partners', label: t('nav.partners', 'Shop QR Partners'), icon: Store }] : []),
     ...(has('team:manage') ? [{ id: 'team', label: t('nav.team', 'My Team'), icon: Users }] : []),
+    ...(has('publicpage:use') ? [{ id: 'mypage', label: t('nav.mypage', 'My Public Page'), icon: Globe, badge: pageBadge }] : []),
     ...(has('share:use') ? [{ id: 'share', label: t('nav.share', 'Share Kit'), icon: Share2 }] : []),
     ...(has('propdoc:use') ? [{ id: 'propdocs', label: t('nav.propdocs', 'Property Papers'), icon: FolderOpen }] : []),
     // v49: Protected Docs is a section of Property Papers for whoever has both
@@ -224,7 +239,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   // v31 — a broker's ~23 tabs in 6 groups, each in priority order (the order of `ids` is the order shown; a group opens on its first tab). Every tab is still reachable: a group lists the tabs below, and anything not named lands in “Other”.
   const GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'chats', 'daily', 'visits'] },
-    { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'share', 'propdocs', 'pdocs', 'landrecords'] },
+    { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'mypage', 'share', 'propdocs', 'pdocs', 'landrecords'] },
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
     { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'legal', 'due_diligence', 'disputes', 'audit'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'partners', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },

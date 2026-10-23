@@ -121,6 +121,7 @@ import { createProfilePhotoRouter } from './server/profilephoto.js';
 import { createDealHubRouter } from './server/dealhub.js';
 import { createChatsRouter } from './server/chats.js';
 import { createSavedRouter } from './server/saved.js';
+import { createPublicPageRouter, createBrokerPagePublicRouter, sweepPageEnquiries, seedDemoPage } from './server/publicPage.js';
 import { createSidesRouter, shapeSideDeal, stripSideData } from './server/sides.js';
 import { allSidesDone, checkProposerSide, feeFor, isOwnSide, otherSide, undertakingDone } from './src/shared/sideFees.js';
 import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } from './server/partywatch.js';
@@ -5378,6 +5379,8 @@ app.use('/q', createPartnerQrRouter());
 app.use('/sp', createPartnerPageRouter());
 app.use('/api/visit-acks', createVisitAckRouter());
 app.use('/a', createVisitAckPageRouter());
+// v57 — a broker's card is his public page (homes + enquiry form); other roles fall through to the plain visiting card
+app.use('/c', createBrokerPagePublicRouter());
 app.use('/c', createPublicCardRouter());
 app.use('/oc', createOwnerConsentPageRouter());
 app.use('/report', createReportRouter());
@@ -5402,6 +5405,7 @@ app.use('/api/profile-photo', createProfilePhotoRouter());
 app.use('/api/deal-hub', createDealHubRouter());
 app.use('/api/chats', createChatsRouter());
 app.use('/api/saved', createSavedRouter());
+app.use('/api/public-page', createPublicPageRouter());
 app.use('/api/deals', createSidesRouter());
 app.use('/api/deals', createDealCloseRouter());
 // v48 — brokerage bills to the owner / buyer (+ the party's page /pay/:token)
@@ -5485,6 +5489,7 @@ function assertProductionConfig() {
 async function startServer() {
   assertProductionConfig();
   try { seedDemoPartners(); } catch (e) { console.error('[DEMO] shop partners seed failed', e); }
+  try { seedDemoPage(); } catch (e) { console.error('[DEMO] public page seed failed', e); }
   // Unknown API paths must not fall through to the SPA shell.
   app.use('/api', (_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 
@@ -5540,10 +5545,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

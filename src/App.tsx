@@ -54,6 +54,7 @@ const TeamView = lazyView(() => import('./components/TeamView.js'), 'TeamView');
 const ShareKit = lazyView(() => import('./components/ShareKit.js'), 'ShareKit');
 const LandRecordsView = lazyView(() => import('./components/LandRecordsView.js'), 'LandRecordsView');
 const GrowthView = lazyView(() => import('./components/GrowthView.js'), 'GrowthView');
+const PublicPageView = lazyView(() => import('./components/PublicPageView.js'), 'PublicPageView');
 const DailyView = lazyView(() => import('./components/DailyView.js'), 'DailyView');
 const PropertyPapersView = lazyView(() => import('./components/PropertyPapersView.js'), 'PropertyPapersView');
 const ProtectedDocsView = lazyView(() => import('./components/ProtectedDocsView.js'), 'ProtectedDocsView');
@@ -84,7 +85,7 @@ const FileDisputeModal = lazyView(() => import('./components/Modals.js'), 'FileD
 const AddConstructionLeadModal = lazyView(() => import('./components/Modals.js'), 'AddConstructionLeadModal');
 
 const TAB_KEY = 'genz.tab';
-const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'chats'];
+const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'chats'];
 
 export default function App() {
   const tx = useTx();
@@ -602,6 +603,7 @@ export default function App() {
         {activeTab === 'community' && hasPerm(permissions, 'chapter:read', 'academy:read', 'loan:manage', 'report:manage') && <CommunityView perms={permissions} currentUser={currentUser} />}
 
         {activeTab === 'grow' && hasPerm(permissions, 'growth:nominate') && <GrowthView />}
+        {activeTab === 'mypage' && hasPerm(permissions, 'publicpage:use') && <PublicPageView />}
 
         {activeTab === 'citylaunch' && hasPerm(permissions, 'growth:manage') && <CityLaunch canReset={hasPerm(permissions, 'users:reset_password')} />}
 

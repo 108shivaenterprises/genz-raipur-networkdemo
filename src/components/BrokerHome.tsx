@@ -6,7 +6,7 @@
  * GENZ's own projects, this month's rank, his chapter's next meet, and the city report to share on WhatsApp.
  */
 import React, { useEffect, useState } from 'react';
-import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, ShieldCheck, Inbox, Clock, Handshake, Loader2, Lock, Plus, HardHat, Store } from 'lucide-react';
+import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, ShieldCheck, Inbox, Clock, Handshake, Loader2, Lock, Plus, HardHat, Store, Globe } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -61,6 +61,7 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
     { n: c.billsOverdue || 0, icon: Clock, en: 'Brokerage bills past due — send a reminder', hi: 'ब्रोकरेज बिल की तारीख़ निकल गई — रिमाइंडर भेजें', go: () => goto('deals', {}, onNavigate), tone: 'amber', testId: 'tile-bills-overdue' },
     { n: c.partnerCodes || 0, icon: Lock, en: 'A shop partner is waiting for his code — read it out', hi: 'दुकान पार्टनर कोड माँग रहे हैं — उन्हें बताएँ', go: () => goto('partners', { }, onNavigate), tone: 'amber', testId: 'tile-sp-codes' },
     { n: c.partnerNew || 0, icon: Store, en: 'New leads from your shop QR — call them', hi: 'दुकान QR से नई लीड — कॉल करें', go: () => onNavigate('partners'), tone: 'emerald', testId: 'tile-sp-new' },
+    { n: c.pageNew || 0, icon: Globe, en: 'New enquiries from your public page — reply to them', hi: 'आपके पब्लिक पेज से नई पूछताछ — जवाब दें', go: () => onNavigate('mypage'), tone: 'emerald', testId: 'tile-page-enq' },
     { n: c.partnerDue || 0, icon: Store, en: 'Shop partner’s share to pay', hi: 'दुकान पार्टनर का हिस्सा देना है', go: () => onNavigate('partners'), tone: 'amber', testId: 'tile-sp-due' },
     { n: c.roomCodes || 0, icon: Lock, en: 'A client is asking for his room code — read it out', hi: 'क्लाइंट रूम का कोड माँग रहा है — उसे बताएँ', go: () => onNavigate('clientroom'), tone: 'amber', testId: 'tile-room-codes' },
     { n: c.roomMsgs || 0, icon: MessageCircle, en: 'New messages from your clients', hi: 'आपके क्लाइंट के नए संदेश', go: () => onNavigate('clientroom'), tone: 'indigo', testId: 'tile-room-msgs' },
@@ -152,7 +153,15 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
         </button>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className={`grid gap-2 ${h.page ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
+        {h.page && (
+          <button onClick={() => onNavigate('mypage')} className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left" data-testid="home-mypage">
+            <Globe className="h-5 w-5 shrink-0 text-emerald-600" />
+            <span className="text-xs text-emerald-900">{h.page.on
+              ? tx(`Your public page: ${h.page.homes} homes · ${h.page.views} views — share it`, `आपका पब्लिक पेज: ${h.page.homes} घर · ${h.page.views} बार देखा गया — शेयर करें`)
+              : tx('Make your free public page — your homes and an enquiry form, no login for customers', 'अपना मुफ़्त पब्लिक पेज बनाएँ — आपके घर और पूछताछ फ़ॉर्म, ग्राहक को लॉगिन नहीं चाहिए')}</span>
+          </button>
+        )}
         <button onClick={() => onNavigate('community')} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left" data-testid="home-rank">
           <Trophy className="h-5 w-5 text-amber-500" />
           <span className="text-xs text-slate-700">{h.rank.position ? tx(`This month you are #${h.rank.position} of ${h.rank.of} (${h.rank.points} points)`, `इस महीने आप ${h.rank.of} में #${h.rank.position} हैं (${h.rank.points} अंक)`) : tx('Earn points: listings, consents, answers', 'अंक कमाएँ: लिस्टिंग, सहमति, जवाब')}

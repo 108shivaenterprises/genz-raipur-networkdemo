@@ -521,8 +521,9 @@ export interface UserProfile {
   /** personal invite code for the word-of-mouth loop (professionals), and the member who brought this user in */
   referralCode?: string;
   invitedById?: string;
-  /** opt-in public "digital visiting card" at /c/<referralCode> */
-  publicCard?: { enabled: boolean; showPhone: boolean; headline?: string; views?: number };
+  /** opt-in public "digital visiting card" at /c/<referralCode>; v57 — for a broker it is his public page: the homes he shows
+   *  (ids, in his order), the areas he works in, and when he promised that the owners of his own homes agreed (OWNER_OK_TEXT) */
+  publicCard?: { enabled: boolean; showPhone: boolean; headline?: string; views?: number; homes?: string[]; areas?: string[]; ownerOkAt?: string };
   /** TEAM_MEMBER only: share (%) of brokerage on their closed leads paid to them as incentive */
   incentivePct?: number;
   /** broker / builder branding for flyers and tracked links */
@@ -657,6 +658,9 @@ export interface Property {
   purgedAt?: string;
   /** set automatically when several members report the listing; hidden until GENZ reviews it */
   heldAt?: string;
+  /** v57 — the listing broker allows other GENZ brokers to show this home on their public pages (default: no) */
+  publicShareOk?: boolean;
+  publicShareAt?: string;
   images: string[];
   documents: Array<{ id: string; name: string; url: string; category: string }>;
   createdAt: string;
@@ -1151,6 +1155,24 @@ export interface ClientRoom {
 }
 /** v56 — a home a member saved (buyer shortlist) */
 export interface SavedProperty { id: string; userId: string; propertyId: string; at: string }
+/** v57 — an enquiry sent from a broker's public page (/c/<code>). It belongs to the PAGE broker only — also when it is about another
+ *  broker's listing shown on his page. Erased PAGE_LIMITS.keepDays after it came in (or earlier, when the broker deletes it). */
+export interface PageEnquiry {
+  id: string;
+  brokerId: string;
+  /** the home it is about (one of the homes on the page when it was sent); empty = a general enquiry */
+  propertyId?: string;
+  name: string;
+  /** 10 digits */
+  phone: string;
+  message?: string;
+  consentAt: string;
+  status: 'NEW' | 'CONTACTED' | 'CLOSED' | 'SPAM';
+  /** the number is on GENZ Network Watch (shown to the broker, never to the sender) */
+  watch?: 'CAUTION' | 'BLOCKED';
+  createdAt: string;
+  updatedAt?: string;
+}
 /** v50 — how far a person has read a deal-room chat (feeds the unread dot in the Chats inbox) */
 export interface ChatRead {
   id: string;                      // <userId>|<dealId>
@@ -1457,6 +1479,7 @@ export interface DatabaseState {
   chatReads: ChatRead[];
   /** v56 — homes a buyer saved to come back to (only the property id; nothing is shared with anyone) */
   savedProperties: SavedProperty[];
+  pageEnquiries: PageEnquiry[];
   shopPartners: ShopPartner[];
   paymentRequests: PaymentRequest[];
   partnerLeads: PartnerLead[];
@@ -2623,7 +2646,7 @@ function getInitialSeedData(): DatabaseState {
     resetRequests: [],
     privacyRequests: [],
     connectorReferrals: [],
-    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], shopPartners: [], partnerLeads: [], paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], shopPartners: [], partnerLeads: [], paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
   };
 }
 
@@ -2752,7 +2775,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'shopPartners', 'partnerLeads', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
+  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'shopPartners', 'partnerLeads', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
   (parsed as any).legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...((parsed as any).legalSettings || {}) };
   // v11: listings created before freshness tracking start their 30-day clock now (nothing expires on upgrade)
   for (const p of parsed.properties) p.confirmedAt ||= new Date().toISOString();

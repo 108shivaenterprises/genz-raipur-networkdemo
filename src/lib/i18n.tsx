@@ -9,7 +9,7 @@ const HI: Record<string, string> = {
   'nav.myProperties': 'मेरी प्रॉपर्टी', 'nav.requirements': 'खरीदार की ज़रूरतें', 'nav.matches': 'मैजिक मैच', 'nav.deals': 'मेरी डील',
   'nav.myDeals': 'मेरी प्रॉपर्टी डील', 'nav.dd': 'टाइटल जाँच', 'nav.construction': 'कंस्ट्रक्शन लीड', 'nav.disputes': 'विवाद',
   'nav.audit': 'गतिविधि रिकॉर्ड', 'nav.onboarding': 'इनवाइट और KYC', 'nav.idreview': 'ID जाँच', 'nav.revenue': 'कमाई और ग्रोथ', 'nav.legal': 'लीगल डेस्क', 'nav.legalAdmin': 'लीगल हेल्प', 'nav.plans': 'GENZ मेंबरशिप', 'nav.plansAdmin': 'प्लान और फ़ीस',
-  'nav.team': 'मेरी टीम', 'nav.share': 'शेयर किट', 'nav.landrecords': 'भूमि रिकॉर्ड', 'nav.myWork': 'मेरा काम', 'nav.connector': 'कनेक्टर डेस्क', 'nav.partners': 'दुकान QR पार्टनर', 'nav.myReferrals': 'मेरे रेफ़रल', 'nav.grow': 'नेटवर्क बढ़ाएँ', 'nav.citylaunch': 'सिटी लॉन्च',
+  'nav.team': 'मेरी टीम', 'nav.share': 'शेयर किट', 'nav.mypage': 'मेरा पब्लिक पेज', 'nav.landrecords': 'भूमि रिकॉर्ड', 'nav.myWork': 'मेरा काम', 'nav.connector': 'कनेक्टर डेस्क', 'nav.partners': 'दुकान QR पार्टनर', 'nav.myReferrals': 'मेरे रेफ़रल', 'nav.grow': 'नेटवर्क बढ़ाएँ', 'nav.citylaunch': 'सिटी लॉन्च',
   'nav.daily': 'आज और क्लाइंट', 'nav.pcontrol': 'प्रोजेक्ट कंट्रोल', 'nav.myprojects': 'मेरे प्रोजेक्ट', 'nav.desk': 'डील डेस्क', 'nav.network': 'टाई-अप और टियर',
   'nav.visits': 'विज़िट QR', 'nav.chats': 'चैट', 'nav.clientroom': 'क्लाइंट रूम', 'nav.pdocs': 'सुरक्षित दस्तावेज़', 'nav.propdocs': 'प्रॉपर्टी पेपर्स', 'nav.community': 'कम्युनिटी', 'nav.control': 'कंट्रोल सेंटर', 'nav.launchdesk': 'लॉन्च डेस्क',
   'common.signOut': 'साइन आउट', 'common.myData': 'मेरा डेटा', 'common.language': 'भाषा', 'common.verified': 'सत्यापित', 'common.cancel': 'रद्द करें', 'common.submit': 'जमा करें',

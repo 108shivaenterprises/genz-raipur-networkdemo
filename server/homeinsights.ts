@@ -6,6 +6,7 @@
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
 import { activeMembership } from './billing.js';
+import { pageEnquiryCount } from './publicPage.js';
 import { calculatePropertyMatch } from './matching.js';
 
 const DAY = 86400_000;
@@ -25,7 +26,7 @@ export function insightsFor(u: UserProfile): { role: string; [k: string]: unknow
           const views = s.shareLinks.filter(l => l.kind === 'PROPERTY' && l.refId === p.id).reduce((n, l) => n + (l.views || 0), 0);
           return {
             id: p.id, title: p.title, status: p.listingStatus, askingPrice: p.askingPrice,
-            views, enquiries: s.posterEnquiries.filter(e => e.propertyId === p.id).length,
+            views, enquiries: s.posterEnquiries.filter(e => e.propertyId === p.id).length + pageEnquiryCount(p.id),
             visits: visits.length, verifiedVisits: visits.filter(v => v.isVerified).length,
             offers: s.propertyOffers.filter(o => o.propertyId === p.id).length,
             days: Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / DAY)),

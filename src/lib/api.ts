@@ -825,6 +825,14 @@ export const api = {
   // v56 — saved homes (buyer shortlist)
   savedList: () => request<any>('/api/saved'),
   savedToggle: (propertyId: string) => request<any>(`/api/saved/${encodeURIComponent(propertyId)}`, { method: 'POST', body: '{}' }),
+  // v57 — My Public Page
+  ppGet: () => request<any>('/api/public-page'),
+  ppBadge: () => request<{ success: boolean; count: number }>('/api/public-page/badge'),
+  ppSettings: (b: { enabled?: boolean; showPhone?: boolean; headline?: string; areas?: string[] | string }) => request<any>('/api/public-page/settings', { method: 'PUT', body: JSON.stringify(b) }),
+  ppHomes: (ids: string[], ownerOk?: boolean) => request<any>('/api/public-page/homes', { method: 'PUT', body: JSON.stringify({ ids, ...(ownerOk ? { ownerOk: true } : {}) }) }),
+  ppOthers: (propertyId: string, on: boolean, ownerOk?: boolean) => request<any>(`/api/public-page/others/${encodeURIComponent(propertyId)}`, { method: 'POST', body: JSON.stringify({ on, ...(ownerOk ? { ownerOk: true } : {}) }) }),
+  ppEnqStatus: (id: string, status: string) => request<any>(`/api/public-page/enquiries/${encodeURIComponent(id)}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  ppEnqDelete: (id: string) => request<any>(`/api/public-page/enquiries/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   // v55 — papers in the deal chat, and shown to one's own client
   propDocForDeal: (dealId: string) => request<any>(`/api/property-docs/for-deal/${encodeURIComponent(dealId)}`),
   propDocChatShare: (id: string, b: { dealId: string; userIds: string[]; days: number; maxViews: number; clientShare: boolean; note?: string }) => request<any>(`/api/property-docs/${id}/chat-share`, { method: 'POST', body: JSON.stringify(b) }),

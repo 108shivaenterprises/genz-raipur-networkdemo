@@ -172,7 +172,7 @@ export function createGrowthRouter() {
       stats: { nominated: leads.length, joined: invitees.length, verified, pending: leads.filter(l => l.status === 'NEW').length },
       badges: badgesFor(verified), pipeline: leads, checklist,
       progress: Math.round((checklist.filter(c => c.done).length / checklist.length) * 100),
-      card: { enabled: !!u.publicCard?.enabled, showPhone: !!u.publicCard?.showPhone, headline: u.publicCard?.headline || '', views: u.publicCard?.views || 0, path: `/c/${code}` },
+      card: { enabled: !!u.publicCard?.enabled, showPhone: !!u.publicCard?.showPhone, headline: u.publicCard?.headline || '', views: u.publicCard?.views || 0, path: `/c/${code}`, page: u.role === 'BROKER' },
       city: normCity(u.city),
     });
   });
@@ -206,7 +206,8 @@ export function createGrowthRouter() {
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || 'Invalid' });
     const stored = db.byId('users', u.id)!;
     ensureReferralCode(stored);
-    stored.publicCard = { enabled: p.data.enabled, showPhone: p.data.showPhone, headline: p.data.headline || undefined, views: stored.publicCard?.views || 0 };
+    // v57 — keep the public page's homes, areas and the owners' promise (they are set on My Public Page)
+    stored.publicCard = { ...(stored.publicCard || {}), enabled: p.data.enabled, showPhone: p.data.showPhone, headline: p.data.headline || undefined, views: stored.publicCard?.views || 0 };
     db.save();
     db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, p.data.enabled ? 'PUBLIC_CARD_ENABLED' : 'PUBLIC_CARD_DISABLED', `Public visiting card ${p.data.enabled ? 'on' : 'off'}${p.data.showPhone ? ' (phone shown)' : ''}`);
     res.json({ success: true, card: { ...stored.publicCard, path: `/c/${stored.referralCode}` } });

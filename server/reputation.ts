@@ -16,6 +16,7 @@ import { pushTo } from './webpush.js';
 import { ensureReferralCode } from './growth.js';
 import { insightsFor } from './homeinsights.js';
 import { partnerCounts } from './shopPartners.js';
+import { pageCounts, pageSummary } from './publicPage.js';
 import { billCounts } from './payreq.js';
 
 const nowIso = () => new Date().toISOString();
@@ -106,9 +107,10 @@ export function createHomeRouter() {
         waitingOwner: drafts.filter(d => d.status === 'CONSENT_PENDING').length, protectedListings: myListings.filter(p => p.protectionUntil && Date.parse(p.protectionUntil) > now).length,
         requirements: reqs.length, clients: clients.length, followUps, inbox, answers, toConfirm: pendingFor(u).length,
         buyerBonds: myBonds.length,
-        ...roomCounts(s, u.id), ...shareCounts(s, u.id), ...partnerCounts(u.id), ...billCounts(u.id), bondAsks: myBonds.reduce((n, b) => n + b.asks.filter(x => Date.parse(x.at) > now - 14 * 86400_000).length, 0), bondAlerts: myBonds.filter(b => b.closedNotice).length,
+        ...roomCounts(s, u.id), ...shareCounts(s, u.id), ...partnerCounts(u.id), ...pageCounts(u.id), ...billCounts(u.id), bondAsks: myBonds.reduce((n, b) => n + b.asks.filter(x => Date.parse(x.at) > now - 14 * 86400_000).length, 0), bondAlerts: myBonds.filter(b => b.closedNotice).length,
       },
       reputation: reputationOf(u.id),
+      page: u.role === 'BROKER' ? pageSummary(u) : null,
       chapter: chapter ? { id: chapter.id, name: chapter.name, captain: (db.byId('users', chapter.captainId) as UserProfile | undefined)?.name || null, isCaptain: chapter.captainId === u.id, nextMeet: nextMeet ? { title: nextMeet.title, at: nextMeet.at, venue: nextMeet.venue } : null } : null,
       rank: { month, position: ranked.findIndex(x => x.id === u.id) + 1 || null, of: ranked.length, points: pts(u.id) },
       refCode: u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' ? ensureReferralCode(u) : null, city: u.city || '',

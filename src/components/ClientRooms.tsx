@@ -47,7 +47,9 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
   const [open, setOpen] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('room') || ''; } catch { return ''; } });
   // v56 — "Open a client room" from a shop-QR lead fills the new-room form (handed over in this tab's session storage, never in the URL)
-  const [prefill] = useState<any>(() => { try { const v = sessionStorage.getItem('genz.newroom'); if (v) { sessionStorage.removeItem('genz.newroom'); return JSON.parse(v); } } catch { /* blocked */ } return null; });
+  // v57 — read here, removed only after the screen is really shown: a render React throws away and redoes must still find it
+  const [prefill] = useState<any>(() => { try { const v = sessionStorage.getItem('genz.newroom'); if (v) return JSON.parse(v); } catch { /* blocked */ } return null; });
+  useEffect(() => { if (prefill) { try { sessionStorage.removeItem('genz.newroom'); } catch { /* blocked */ } } }, [prefill]);
   const [creating, setCreating] = useState(!!prefill);
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string } | null>(null);
   const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all');

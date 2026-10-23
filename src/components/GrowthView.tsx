@@ -105,6 +105,13 @@ export const GrowthView: React.FC = () => {
         <button disabled={busy || !f.consent} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-amber-300 disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{tx('Nominate', 'नामांकित करें')}</button>
       </form>
 
+      {d.card.page ? (
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'mypage' }))} className="block w-full rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left" data-testid="grow-mypage">
+          <div className="text-sm font-bold text-emerald-900">{tx('Your visiting card is now your public page →', 'आपका विज़िटिंग कार्ड अब आपका पब्लिक पेज है →')}</div>
+          <p className="mt-1 text-xs text-emerald-900">{tx('Same link and QR, now with the homes you pick and an enquiry form. Open My Public Page to switch it on and choose homes.', 'वही लिंक और QR, अब आपके चुने घर और पूछताछ फ़ॉर्म के साथ। चालू करने और घर चुनने के लिए “मेरा पब्लिक पेज” खोलें।')}</p>
+          {d.card.enabled && <p className="mt-1 text-xs text-emerald-800">{tx(`Live · ${d.card.views} views`, `चालू · ${d.card.views} बार देखा गया`)}</p>}
+        </button>
+      ) : (
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-sm font-bold text-slate-900">{tx('Public visiting card', 'पब्लिक विज़िटिंग कार्ड')}</div>
         <p className="mt-1 text-xs text-slate-500">{tx('A shareable page with your verified status and brand — put it on your WhatsApp status or visiting card. Nothing is shown unless you switch it on.', 'आपके सत्यापित स्टेटस और ब्रांड वाला शेयर करने योग्य पेज — WhatsApp स्टेटस या विज़िटिंग कार्ड पर लगाएँ। आप चालू करें तभी कुछ दिखता है।')}</p>
@@ -122,6 +129,8 @@ export const GrowthView: React.FC = () => {
           </div>
         )}
       </div>
+
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-sm font-bold text-slate-900">{tx('Your pipeline', 'आपकी पाइपलाइन')}</div>
