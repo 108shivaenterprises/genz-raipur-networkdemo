@@ -83,7 +83,7 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <PageTitle title={isBuyer ? tx('Your needs', 'आपकी ज़रूरतें') : tx('Buyer & tenant needs', 'खरीदार और किरायेदार की ज़रूरतें')} meta={remote ? tx(`${remote.list.length} of ${remote.total} shown`, `${remote.total} में से ${remote.list.length} दिख रही हैं`) : displayedRequirements.length} help={isBuyer
-              ? tx('Tell us what you are looking for. Verified brokers can pick it up, and your best matches show in Match Center.', 'बताइए आप क्या ढूँढ रहे हैं। वेरिफ़ाइड ब्रोकर इसे उठा सकते हैं, और आपके सबसे अच्छे मैच मैच सेंटर में दिखते हैं।')
+              ? tx('Tell us what you are looking for. Verified brokers can pick it up, and your best matches show in Magic Match.', 'बताइए आप क्या ढूँढ रहे हैं। वेरिफ़ाइड ब्रोकर इसे उठा सकते हैं, और आपके सबसे अच्छे मैच मैजिक मैच में दिखते हैं।')
               : tx('Customer entities are persistent. Deal protection is deal-scoped, allowing multiple independent requirements.', 'ग्राहक की पहचान स्थायी रहती है। डील सुरक्षा हर डील के लिए अलग है, इसलिए कई स्वतंत्र ज़रूरतें हो सकती हैं।')} />
           {searchReqId && <p className="mt-1 text-xs font-medium text-amber-700">{tx('Filtered by', 'फ़िल्टर')}: {searchReqId}</p>}
         </div>

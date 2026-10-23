@@ -182,7 +182,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
       ? [{ id: 'properties', label: isOwner ? t('nav.myProperties', 'My Properties') : t('nav.properties', 'Properties'), icon: Building }]
       : []),
     ...(has('requirement:read') ? [{ id: 'requirements', label: t('nav.requirements', 'Buyer Needs'), icon: UserCheck }] : []),
-    ...(has('matching:run') ? [{ id: 'matches', label: t('nav.matches', 'Matches'), icon: Sparkles, badge: unreadCount.matches }] : []),
+    ...(has('matching:run') ? [{ id: 'matches', label: t('nav.matches', 'Magic Match'), icon: Sparkles, badge: unreadCount.matches }] : []),
     ...(has('deal:read')
       ? [{ id: 'deals', label: isOwner ? t('nav.myDeals', 'My Property Deals') : t('nav.deals', 'My Deals'), icon: Briefcase, badge: unreadCount.deals }]
       : []),
@@ -303,7 +303,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               <button
                 key={tab.id}
                 onClick={() => onChangeTab(tab.id as TabType)}
-                className={`group flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                className={`group flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-all md:min-h-0 md:text-xs ${
                   isActive
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'

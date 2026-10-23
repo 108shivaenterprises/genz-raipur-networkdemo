@@ -21,7 +21,7 @@ const PERM_TAB: [RegExp, TabType, string][] = [
   [/^propdoc:/, 'propdocs', 'Property Papers|प्रॉपर्टी पेपर्स'],
   [/^(property|mandate)/, 'properties', 'Property Inventory|प्रॉपर्टी इन्वेंटरी'],
   [/^requirement/, 'requirements', 'Buyer Needs|खरीदार की ज़रूरतें'],
-  [/^matching/, 'matches', 'Match Center|मैच सेंटर'],
+  [/^matching/, 'matches', 'Magic Match|मैजिक मैच'],
   [/^(deal|commission|visit|collab|agreement)/, 'deals', 'Deal Rooms|डील रूम'],
   [/^dd:/, 'due_diligence', 'Due Diligence|ड्यू डिलिजेंस'],
   [/^lead:/, 'construction', 'Construction Leads|कंस्ट्रक्शन लीड'],

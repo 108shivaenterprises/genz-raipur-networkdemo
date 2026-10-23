@@ -148,7 +148,7 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
     <div className="space-y-6" data-testid="buyer-home">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile {...tp} testId="tile-buyer-reqs" tab="requirements" label={tx('My requirements', 'मेरी ज़रूरतें')} value={String(open.length)} sub={tx(`${mine.length} in total`, `कुल ${mine.length}`)} icon={<UserCheck className="h-4 w-4 text-slate-500" />} />
-        <Tile {...tp} testId="tile-buyer-matches" tab="matches" label={tx('Matching properties', 'मैच होती प्रॉपर्टी')} value={matchCounts ? String(totalMatches) : open.length ? '—' : '0'} sub={tx('Scored against your budget and area', 'आपके बजट और इलाके से मिलान')} tone={totalMatches ? 'ok' : undefined} icon={<Sparkles className="h-4 w-4 text-amber-500" />} />
+        <Tile {...tp} testId="tile-buyer-matches" tab="matches" label={tx('Magic Match homes', 'मैजिक मैच के घर')} value={matchCounts ? String(totalMatches) : open.length ? '—' : '0'} sub={tx('Scored against your budget and area', 'आपके बजट और इलाके से मिलान')} tone={totalMatches ? 'ok' : undefined} icon={<Sparkles className="h-4 w-4 text-amber-500" />} />
         <Tile {...tp} testId="tile-buyer-visits" tab="properties" label={tx('Site visits ahead', 'आने वाली साइट विज़िट')} value={visits ? String(nextVisits.length) : '—'} sub={nextVisits[0] ? tx(`Next: ${formatDateTime(nextVisits[0].scheduledTime)}`, `अगली: ${formatDateTime(nextVisits[0].scheduledTime)}`) : tx('None scheduled', 'कोई तय नहीं')} icon={<CalendarClock className="h-4 w-4 text-slate-500" />} />
         <Tile {...tp} testId="tile-buyer-browse" tab="properties" label={tx('Browse properties', 'प्रॉपर्टी देखें')} value={String(properties.length)} sub={tx('Verified listings (owner contact stays private)', 'वेरिफ़ाइड लिस्टिंग (मालिक का संपर्क निजी)')} icon={<Search className="h-4 w-4 text-slate-500" />} />
       </div>
@@ -172,7 +172,7 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
         </div>
         <LinkCard onNavigate={onNavigate} title={tx('What next?', 'आगे क्या?')} links={[
           { tab: 'requirements', label: tx('Tell us what you need', 'अपनी ज़रूरत बताएँ'), icon: <UserCheck className="h-3.5 w-3.5" />, show: true },
-          { tab: 'matches', label: tx('See my matches', 'मेरे मैच देखें'), icon: <Sparkles className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'matching:run') },
+          { tab: 'matches', label: tx('Magic Match', 'मैजिक मैच'), icon: <Sparkles className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'matching:run') },
           { tab: 'properties', label: tx('Browse properties', 'प्रॉपर्टी देखें'), icon: <Search className="h-3.5 w-3.5" />, show: true },
           { tab: 'audit', label: tx('My activity log', 'मेरा एक्टिविटी लॉग'), icon: <ShieldCheck className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'audit:read_own') },
         ]} />

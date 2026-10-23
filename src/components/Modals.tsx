@@ -791,7 +791,7 @@ export const AddRequirementModal: React.FC<{
         purpose,
         urgency,
       });
-      alert(hi ? 'ज़रूरत दर्ज हो गई! मैचिंग शुरू है।' : 'Buyer requirement registered! Match engine ready.');
+      alert(hi ? 'ज़रूरत दर्ज हो गई! मैचिंग शुरू है।' : 'Buyer requirement registered! Magic Match is looking for homes.');
       onSuccess();
       onClose();
     } catch (err: any) {

@@ -380,9 +380,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           {stats.map((x) => (
             <button key={x.testId} onClick={x.go} data-testid={x.testId} className="flex flex-col items-start rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-slate-900">
-              <span className="flex w-full items-center justify-between text-[11px] font-semibold text-slate-500">{tx(x.en, x.hi)}<x.icon className="h-4 w-4 text-slate-400" /></span>
+              <span className="flex w-full items-center justify-between text-xs font-semibold text-slate-500">{tx(x.en, x.hi)}<x.icon className="h-4 w-4 text-slate-400" /></span>
               <span className="mt-1 text-lg font-bold text-slate-900">{x.big}</span>
-              <span className="text-[11px] text-slate-500">{x.small}</span>
+              <span className="text-xs text-slate-500">{x.small}</span>
             </button>
           ))}
         </div>
@@ -391,7 +391,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="rounded-xl border border-slate-200 bg-white p-3" data-testid="lite-recent-deals">
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-slate-900">{tx('My latest deals', 'मेरी ताज़ा डील')}</p>
-              <button onClick={() => onNavigate('deals')} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900">{tx('All deals', 'सारी डील')} <ArrowRight className="h-3.5 w-3.5" /></button>
+              <button onClick={() => onNavigate('deals')} className="-my-2 inline-flex min-h-11 items-center gap-1 px-1 text-sm font-semibold text-slate-700 hover:text-slate-900">{tx('All deals', 'सारी डील')} <ArrowRight className="h-3.5 w-3.5" /></button>
             </div>
             <ul className="mt-2 divide-y divide-slate-100">
               {recent.map((d) => {
@@ -401,7 +401,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <button onClick={() => goto('deals', { deal: d.id }, onNavigate)} className="flex w-full items-center gap-3 py-2 text-left" data-testid="lite-deal">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-slate-900">{p ? p.title : d.propertyId}</span>
-                        <span className="block truncate text-[11px] text-slate-500">{p?.locality ? `${p.locality} · ` : ''}{label('dealStage', d.stage)}</span>
+                        <span className="block truncate text-xs text-slate-500">{p?.locality ? `${p.locality} · ` : ''}{label('dealStage', d.stage)}</span>
                       </span>
                       {d.totalCommissionExpected > 0 && <span className="shrink-0 text-xs font-bold text-emerald-700">{formatINR(d.totalCommissionExpected)}</span>}
                       <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
@@ -820,7 +820,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="rounded-xl border border-amber-200 bg-linear-to-br from-amber-50/70 to-white p-5 shadow-xs">
             <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
               <Sparkles className="h-4 w-4 text-amber-600" />
-              <span>{tx('Real Matching Engine Active', 'असली मैचिंग इंजन चालू')}</span>
+              <span>{tx('Magic Match', 'मैजिक मैच')}</span>
             </div>
             <p className="mt-2 text-xs text-slate-600 leading-relaxed">
               {tx('Deterministic scoring calculates location alignment (city + locality), budget overlap, property categories, and floor area tolerances.', 'तय नियमों वाला स्कोर इलाके का मेल (शहर + लोकैलिटी), बजट का ओवरलैप, प्रॉपर्टी का प्रकार और क्षेत्रफल की गुंजाइश नापता है।')}
@@ -830,7 +830,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 onClick={() => onNavigate('matches')}
                 className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-amber-300 hover:bg-slate-800 transition-colors shadow-xs"
               >
-                {tx('Launch Match Engine', 'मैच इंजन चलाएँ')} <ArrowRight className="h-3.5 w-3.5" />
+                {tx('Open Magic Match', 'मैजिक मैच खोलें')} <ArrowRight className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
