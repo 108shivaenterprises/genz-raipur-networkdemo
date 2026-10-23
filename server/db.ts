@@ -235,6 +235,11 @@ export interface TeamPolicy {
   scope: 'ASSIGNED' | 'PROJECTS';
   projectIds: string[];
   onLeave: boolean;
+  /** v58 — a BROKER's staff, resale / rent work (default off): listings read-only (+ the address of the employer's own listings),
+   *  the employer's client rooms, the employer's client list */
+  listings?: 'OFF' | 'READ' | 'ADDRESS';
+  rooms?: boolean;
+  clients?: boolean;
 }
 export interface LeadRouting { mode: 'OFF' | 'ROUND_ROBIN' | 'LEAST_LOADED'; cursor?: number }
 
@@ -1126,7 +1131,9 @@ export interface BuyerBond {
 /** v31 — a broker's private room with his OWN client (buyer / renter / tenant). Only the client (link + mobile OTP) and the broker who made it can read it. */
 export interface ClientRoom {
   id: string;                      // CRM-xxxxxxxx
-  brokerId: string;                // the introducing broker — the only staff-side reader
+  brokerId: string;                // the introducing broker — the room is his (v58: his office staff may work in it if he switched it on)
+  /** v58 — opened by one of the broker's office staff */
+  createdById?: string; createdByName?: string;
   clientName: string;
   kind: 'BUYER' | 'RENTER' | 'TENANT' | 'OTHER';
   note?: string;                   // the broker's own note, never shown to the client
@@ -1149,6 +1156,8 @@ export interface ClientRoom {
     /** v40 — site visits booked from this room for this home */
     visits?: { visitId: string; when: string; at: string }[] }[];
   messages: { id: string; from: 'CLIENT' | 'BROKER'; text: string; at: string; propertyId?: string;
+    /** v58 — written by the broker's office staff (shown to the client as "<name> (<broker>'s office)") */
+    byId?: string; byName?: string;
     /** v55 — a protected property paper the broker showed his client (opens view-only, with the client's name stamped) */
     paper?: { shareId: string; docId: string; title: string } }[];
   events: { at: string; text: string }[];

@@ -64464,7 +64464,7 @@ function permissionsForRole(role) {
 function roleHas(role, perm) {
   return permissionsForRole(role).includes(perm);
 }
-function memberPermissions(employerRole) {
+function memberPermissions(employerRole, sw) {
   const base = ["self:read", "self:update", "team:checkin", "task:read"];
   switch (employerRole) {
     case "ADMIN":
@@ -64474,12 +64474,19 @@ function memberPermissions(employerRole) {
       return [...base, "lead:read"];
     case "DEVELOPER_BUILDER":
     case "BROKER":
-    default:
-      return [...base, "crm:read", "crm:lead_create", "crm:lead_manage", "crm:booking_request", "crm:money_collect", "crm:money_confirm", "deal:read", "deal:chat", "task:manage", "pcontrol:staff", "visit:pass", "visit:scan", "inventory:read", "inventory:share"];
+    default: {
+      const out = [...base, "crm:read", "crm:lead_create", "crm:lead_manage", "crm:booking_request", "crm:money_collect", "crm:money_confirm", "deal:read", "deal:chat", "task:manage", "pcontrol:staff", "visit:pass", "visit:scan", "inventory:read", "inventory:share"];
+      if (employerRole === "BROKER" && sw) {
+        if (sw.listings === "READ" || sw.listings === "ADDRESS") out.push("property:read");
+        if (sw.rooms) out.push("clientroom:use");
+        if (sw.clients) out.push("daily:use");
+      }
+      return out;
+    }
   }
 }
 function effectivePermissions(user) {
-  const all = user.role === "TEAM_MEMBER" ? memberPermissions(user.employerRole) : permissionsForRole(user.role);
+  const all = user.role === "TEAM_MEMBER" ? memberPermissions(user.employerRole, user.teamPolicy) : permissionsForRole(user.role);
   if (user.verificationStatus === "VERIFIED") return all;
   if (user.verificationStatus === "PENDING" || user.verificationStatus === "SUSPENDED") {
     return all.filter((p) => UNVERIFIED_ALLOWED.includes(p));
@@ -67923,6 +67930,7 @@ var visitMemo = /* @__PURE__ */ new WeakMap();
 function canSeeProtectedPropertyData(state, u, p) {
   if (isAdmin(u) || p.ownerId === u.id || p.listingBrokerId === u.id) return true;
   if (u.role === "LEGAL_COUNSEL") return true;
+  if (u.role === "TEAM_MEMBER" && !!u.employerId && p.listingBrokerId === u.employerId && u.teamPolicy?.listings === "ADDRESS") return true;
   const now = Date.now();
   let m = visitMemo.get(u);
   if (!m || m.arr !== state.siteVisits || m.len !== state.siteVisits.length || now - m.at > 1e3) {
@@ -68983,7 +68991,10 @@ var DEFAULT_POLICY = {
   invShareOut: false,
   scope: "ASSIGNED",
   projectIds: [],
-  onLeave: false
+  onLeave: false,
+  listings: "OFF",
+  rooms: false,
+  clients: false
 };
 function policyOf(u) {
   return { ...DEFAULT_POLICY, ...u?.teamPolicy || {}, projectIds: [...u?.teamPolicy?.projectIds || []] };
@@ -69002,6 +69013,16 @@ function cleanPolicy(input2, current) {
   if (input2.invMode !== void 0) {
     if (!["OFF", "SHARED", "ALL"].includes(input2.invMode)) return "Unit access must be OFF, SHARED or ALL";
     out.invMode = input2.invMode;
+  }
+  if (input2.listings !== void 0) {
+    if (!["OFF", "READ", "ADDRESS"].includes(input2.listings)) return "Listings access must be OFF, READ or ADDRESS";
+    out.listings = input2.listings;
+  }
+  for (const k of ["rooms", "clients"]) {
+    if (input2[k] !== void 0) {
+      if (typeof input2[k] !== "boolean") return `${k} must be true or false`;
+      out[k] = input2[k];
+    }
   }
   for (const k of ["invPrice", "invFeatures", "invShareOut"]) {
     if (input2[k] !== void 0) {
@@ -80825,7 +80846,11 @@ var view3 = (st23, u, c, props, now = Date.now()) => {
   const sc = leadScore(c, { matchCount: matchCountFor(c, props), shareViews7d: shareViews7d(st23, u, c, now), now });
   return { ...c, lead: sc };
 };
-var findCard = (id) => db.getState().clientCards.find((c) => c.id === id && c.brokerId === me14().id);
+var cardOwner = (u) => u.role === "TEAM_MEMBER" && u.employerId ? db.byId("users", u.employerId) || u : u;
+var isStaff2 = (u) => u.role === "TEAM_MEMBER";
+var showPhone = (u) => !isStaff2(u) || policyOf(u).phoneMode === "FULL";
+var forViewer = (u, c) => showPhone(u) ? c : { ...c, phone: maskPhone(c.phone), phoneHidden: true };
+var findCard = (id) => db.getState().clientCards.find((c) => c.id === id && c.brokerId === cardOwner(me14()).id);
 function createDailyRouter() {
   const r = (0, import_express31.Router)();
   const audit8 = (action, entityId, details, entity = "SYSTEM") => db.appendAuditEvent(me14().id, me14().role, entity, entityId, action, details);
@@ -80874,20 +80899,23 @@ function createDailyRouter() {
     res.json({ success: true, muted: pr.muted, hour: pr.hour });
   });
   r.get("/clients", needs("daily:use"), (_req, res) => {
-    const u = me14();
+    const viewer = me14();
+    const u = cardOwner(viewer);
     const st23 = db.getState();
     const props = browsable(st23, u);
-    const list = st23.clientCards.filter((c) => c.brokerId === u.id).map((c) => view3(st23, u, c, props));
-    res.json({ success: true, clients: list, stages: CLIENT_STAGES });
+    const list = st23.clientCards.filter((c) => c.brokerId === u.id).map((c) => forViewer(viewer, view3(st23, u, c, props)));
+    res.json({ success: true, clients: list, stages: CLIENT_STAGES, staff: isStaff2(viewer) ? { employer: u.name, phones: showPhone(viewer) } : void 0 });
   });
   r.get("/clients/due", needs("daily:use"), (_req, res) => {
-    const u = me14();
+    const viewer = me14();
+    const u = cardOwner(viewer);
     const now = Date.now();
     const due = db.getState().clientCards.filter((c) => c.brokerId === u.id && c.followUpAt && c.stage !== "DEAL" && c.stage !== "LOST" && new Date(c.followUpAt).getTime() <= now);
-    res.json({ success: true, due: due.map((c) => ({ id: c.id, name: c.name, phone: c.phone, followUpAt: c.followUpAt, stage: c.stage })) });
+    res.json({ success: true, due: due.map((c) => forViewer(viewer, { id: c.id, name: c.name, phone: c.phone, followUpAt: c.followUpAt, stage: c.stage })) });
   });
   r.post("/clients", needs("daily:use"), rateLimit("clientadd", 120, 60 * 6e4), (req, res) => {
-    const u = me14();
+    const viewer = me14();
+    const u = cardOwner(viewer);
     const st23 = db.getState();
     const p = clientSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Please check the form" });
@@ -80917,14 +80945,14 @@ function createDailyRouter() {
       followUpAt: d.followUpAt,
       consent: true,
       clientRef: d.clientRef,
-      timeline: [{ at: now, kind: "CREATED", text: "Client added" }],
+      timeline: [{ at: now, kind: "CREATED", text: isStaff2(viewer) ? `Client added by ${viewer.name} (office team)` : "Client added" }],
       createdAt: now,
       updatedAt: now
     };
     st23.clientCards.unshift(card2);
     db.save();
-    audit8("CLIENT_CARD_CREATED", card2.id, `Client card created (consent recorded)`);
-    res.json({ success: true, client: view3(st23, u, card2, browsable(st23, u)) });
+    audit8("CLIENT_CARD_CREATED", card2.id, `Client card created (consent recorded)${isStaff2(viewer) ? ` by ${viewer.name} for ${u.name}` : ""}`);
+    res.json({ success: true, client: forViewer(viewer, view3(st23, u, card2, browsable(st23, u))) });
   });
   r.put("/clients/:id", needs("daily:use"), (req, res) => {
     const c = findCard(req.params.id);
@@ -80934,11 +80962,12 @@ function createDailyRouter() {
     const d = p.data;
     delete d.consent;
     delete d.clientRef;
+    if (!showPhone(me14())) delete d.phone;
     Object.assign(c, d);
     if (d.city) c.city = normCity(d.city);
     c.updatedAt = nowIso21();
     db.save();
-    res.json({ success: true, client: view3(db.getState(), me14(), c, browsable(db.getState(), me14())) });
+    res.json({ success: true, client: forViewer(me14(), view3(db.getState(), cardOwner(me14()), c, browsable(db.getState(), cardOwner(me14())))) });
   });
   r.post("/clients/:id/stage", needs("daily:use"), (req, res) => {
     const c = findCard(req.params.id);
@@ -80946,7 +80975,7 @@ function createDailyRouter() {
     const b = external_exports.object({ stage: external_exports.enum(CLIENT_STAGES), lostReason: external_exports.string().trim().max(200).optional(), followUpAt: external_exports.string().datetime().optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Invalid stage" });
     if (b.data.stage === "LOST" && !b.data.lostReason) return res.status(400).json({ error: "Please say why the lead was lost (one line)." });
-    if (c.stage === b.data.stage) return res.json({ success: true, client: view3(db.getState(), me14(), c, browsable(db.getState(), me14())) });
+    if (c.stage === b.data.stage) return res.json({ success: true, client: forViewer(me14(), view3(db.getState(), cardOwner(me14()), c, browsable(db.getState(), cardOwner(me14())))) });
     const now = nowIso21();
     c.timeline.unshift({ at: now, kind: "STAGE", text: `${c.stage} \u2192 ${b.data.stage}${b.data.lostReason ? ` (${b.data.lostReason})` : ""}` });
     c.stage = b.data.stage;
@@ -80956,7 +80985,7 @@ function createDailyRouter() {
     if (c.stage === "DEAL" || c.stage === "LOST") c.followUpAt = void 0;
     c.timeline = c.timeline.slice(0, 80);
     db.save();
-    res.json({ success: true, client: view3(db.getState(), me14(), c, browsable(db.getState(), me14())) });
+    res.json({ success: true, client: forViewer(me14(), view3(db.getState(), cardOwner(me14()), c, browsable(db.getState(), cardOwner(me14())))) });
   });
   r.post("/clients/:id/note", needs("daily:use"), (req, res) => {
     const c = findCard(req.params.id);
@@ -80964,15 +80993,16 @@ function createDailyRouter() {
     const b = external_exports.object({ text: external_exports.string().trim().min(1).max(500), kind: external_exports.enum(["NOTE", "CONTACT", "FOLLOWUP", "SHARE"]).default("NOTE"), followUpAt: external_exports.string().datetime().nullable().optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Write a short note" });
     const now = nowIso21();
-    c.timeline.unshift({ at: now, kind: b.data.kind, text: b.data.text });
+    c.timeline.unshift({ at: now, kind: b.data.kind, text: isStaff2(me14()) ? `${b.data.text} \u2014 ${me14().name}` : b.data.text });
     c.timeline = c.timeline.slice(0, 80);
     if (b.data.kind === "CONTACT") c.lastContactAt = now;
     if (b.data.followUpAt !== void 0) c.followUpAt = b.data.followUpAt || void 0;
     c.updatedAt = now;
     db.save();
-    res.json({ success: true, client: view3(db.getState(), me14(), c, browsable(db.getState(), me14())) });
+    res.json({ success: true, client: forViewer(me14(), view3(db.getState(), cardOwner(me14()), c, browsable(db.getState(), cardOwner(me14())))) });
   });
   r.delete("/clients/:id", needs("daily:use"), (req, res) => {
+    if (isStaff2(me14())) return res.status(403).json({ error: "Only the broker can delete a client", code: "STAFF_CANNOT_DELETE" });
     const st23 = db.getState();
     const i = st23.clientCards.findIndex((c) => c.id === req.params.id && c.brokerId === me14().id);
     if (i < 0) return res.status(404).json({ error: "Client not found" });
@@ -82055,6 +82085,7 @@ function createPcontrolRouter() {
     if (typeof clean === "string") return bad26(res, clean);
     if (clean.canVerify && u.role !== "DEVELOPER_BUILDER") return bad26(res, "Only a builder can let staff verify partner leads");
     if (clean.canScanVisits && u.role !== "DEVELOPER_BUILDER") return bad26(res, "Only a builder can let staff scan visit QR passes (a partner's staff cannot verify their own visits)");
+    if ((clean.listings !== "OFF" || clean.rooms || clean.clients) && u.role !== "BROKER") return bad26(res, "Listings, client rooms and the client list are for a broker's office staff");
     const mine3 = new Set(u.role === "DEVELOPER_BUILDER" ? state().builderProjects.filter((p) => p.builderId === u.id).map((p) => p.id) : state().associateMandates.filter((x) => x.brokerId === u.id).map((x) => x.projectId));
     if (clean.projectIds.some((id) => !mine3.has(id))) return bad26(res, "Pick only your own projects");
     const prev = policyOf(m);
@@ -82062,7 +82093,7 @@ function createPcontrolRouter() {
     let handed = 0;
     if (clean.onLeave && !prev.onLeave) handed = releaseMemberLeads(u, m, u.id, u.name);
     db.save();
-    audit8("VERIFICATION", m.id, "TEAM_POLICY_SET", `${u.name} set ${m.name}: phone ${clean.phoneMode}${clean.phoneMode === "REVEAL" ? `/${clean.revealCap}/day` : ""}, scope ${clean.scope}${clean.projectIds.length ? ` [${clean.projectIds.join(",")}]` : ""}, register ${clean.canRegister}, claim ${clean.canClaim}, mark-lost ${clean.canMarkLost}, forward ${clean.canForward}, request-booking ${clean.canRequestBooking}, collect-money ${clean.canCollectMoney}, confirm-money ${clean.canConfirmMoney}, units ${clean.invMode}${clean.invMode !== "OFF" ? ` (price ${clean.invPrice}, features ${clean.invFeatures}, share-out ${clean.invShareOut})` : ""}, verify ${clean.canVerify}, cap ${clean.maxOpenLeads ?? "\u221E"}, leave ${clean.onLeave}${handed ? `; ${handed} open lead(s) handed back` : ""}`);
+    audit8("VERIFICATION", m.id, "TEAM_POLICY_SET", `${u.name} set ${m.name}: phone ${clean.phoneMode}${clean.phoneMode === "REVEAL" ? `/${clean.revealCap}/day` : ""}, scope ${clean.scope}${clean.projectIds.length ? ` [${clean.projectIds.join(",")}]` : ""}, register ${clean.canRegister}, claim ${clean.canClaim}, mark-lost ${clean.canMarkLost}, forward ${clean.canForward}, request-booking ${clean.canRequestBooking}, collect-money ${clean.canCollectMoney}, confirm-money ${clean.canConfirmMoney}, units ${clean.invMode}${clean.invMode !== "OFF" ? ` (price ${clean.invPrice}, features ${clean.invFeatures}, share-out ${clean.invShareOut})` : ""}, verify ${clean.canVerify}, cap ${clean.maxOpenLeads ?? "\u221E"}, leave ${clean.onLeave}, listings ${clean.listings}, client rooms ${clean.rooms}, client list ${clean.clients}${handed ? `; ${handed} open lead(s) handed back` : ""}`);
     res.json({ success: true, policy: clean, handedBack: handed });
   });
   r.post("/team/handover", employerOnly, (req, res) => {
@@ -83273,7 +83304,7 @@ var nextId3 = (prefix, ids2, pad3) => `${prefix}${String(ids2.reduce((m, id) => 
 var DAY13 = 864e5;
 var FEE_GRACE_DAYS = 30;
 var SHARE_DAYS = 60;
-var isStaff2 = (u) => u.role === "ADMIN" || u.role === "SUPERADMIN";
+var isStaff3 = (u) => u.role === "ADMIN" || u.role === "SUPERADMIN";
 var settings = () => ({ ...DEFAULT_LEGAL_SETTINGS, ...st13().legalSettings || {} });
 function profileOf(u) {
   const s = st13();
@@ -83333,7 +83364,7 @@ function docsFor(r) {
 function shape(r, u, now = Date.now()) {
   const isOwner = r.requestedById === u.id;
   const isCounsellor = r.counsellorId === u.id;
-  const staff = isStaff2(u);
+  const staff = isStaff3(u);
   const prop = r.propertyId ? db.byId("properties", r.propertyId) : void 0;
   const base = {
     id: r.id,
@@ -83400,7 +83431,7 @@ function loadRequest(req, res) {
   return r;
 }
 function canOpen(u, r) {
-  if (isStaff2(u) || r.requestedById === u.id) return true;
+  if (isStaff3(u) || r.requestedById === u.id) return true;
   if (r.counsellorId === u.id) return true;
   if (u.role === "LEGAL_COUNSEL" && r.status === "OPEN" && !r.passedBy.includes(u.id)) return !!profileOf(u).states.includes(r.state);
   return false;
@@ -83494,7 +83525,7 @@ function createLegalRouter() {
     const dealId = String(req.query.dealId || "");
     let rows = s.legalRequests;
     if (u.role === "LEGAL_COUNSEL") rows = rows.filter((x) => x.counsellorId === u.id);
-    else if (!isStaff2(u)) rows = rows.filter((x) => x.requestedById === u.id);
+    else if (!isStaff3(u)) rows = rows.filter((x) => x.requestedById === u.id);
     if (dealId) rows = rows.filter((x) => x.dealRoomId === dealId);
     res.json({ success: true, requests: rows.slice().reverse().slice(0, 300).map((x) => shape(x, u)) });
   });
@@ -83798,7 +83829,7 @@ function createLegalRouter() {
       const p = profileOf(u);
       return res.json({ success: true, count: s.legalRequests.filter((x) => x.status === "OPEN" && p.states.includes(x.state) && !x.passedBy.includes(u.id)).length });
     }
-    if (isStaff2(u)) return res.json({ success: true, count: s.legalRequests.filter((x) => x.bypassReport?.status === "OPEN").length });
+    if (isStaff3(u)) return res.json({ success: true, count: s.legalRequests.filter((x) => x.bypassReport?.status === "OPEN").length });
     res.json({ success: true, count: s.legalRequests.filter((x) => x.requestedById === u.id && x.status === "QUOTED").length });
   });
   return r;
@@ -88163,7 +88194,11 @@ function linkVisitToRoom(room, item, requestId, visit2) {
   }
   ev(room, `Visit booked for ${new Date(visit2.scheduledTime).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (${visit2.id})`);
 }
-var mine2 = (req) => st22().clientRooms.find((r) => r.id === req.params.id && r.brokerId === me24().id);
+var roomOwnerOf = (u) => u.role === "TEAM_MEMBER" && u.employerId ? u.employerId : u.id;
+var isStaff4 = (u) => u.role === "TEAM_MEMBER";
+var actingAs = () => ({ id: roomOwnerOf(me24()) });
+var mine2 = (req) => st22().clientRooms.find((r) => r.id === req.params.id && r.brokerId === roomOwnerOf(me24()));
+var roomTeam = (brokerId) => st22().users.filter((m) => m.role === "TEAM_MEMBER" && m.employerId === brokerId && m.verificationStatus === "VERIFIED" && !!m.teamPolicy?.rooms);
 var unread = (r) => r.messages.filter((m) => m.from === "CLIENT" && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 var openVisits = (r) => r.items.reduce((n2, i) => n2 + i.visitRequests.filter((v) => v.status === "REQUESTED").length, 0);
 function summary3(r) {
@@ -88205,15 +88240,24 @@ function detail(r) {
     smsOn: smsOn4(),
     /** v46 — the phones signed in to this room (labels only: "Android · Chrome") */
     devices: (r.devices || []).map((d) => ({ id: d.id, label: d.label, firstAt: d.firstAt, lastAt: d.lastAt })),
-    maxDevices: ROOM_LIMITS.devices
+    maxDevices: ROOM_LIMITS.devices,
+    /** v58 — the reader is the broker's office staff (no closing, no papers, no visit booking) */
+    staff: ctx().user?.role === "TEAM_MEMBER",
+    createdByName: r.createdByName
   };
 }
 function createClientRoomRouter() {
   const r = (0, import_express54.Router)();
   r.use(needs("clientroom:use"));
   r.get("/", (_req, res) => {
-    const list = st22().clientRooms.filter((x) => x.brokerId === me24().id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    res.json({ success: true, rooms: list.map(summary3), counts: { active: list.filter((x) => x.status === "ACTIVE").length, unread: list.reduce((n2, x) => n2 + unread(x), 0), visits: list.reduce((n2, x) => n2 + openVisits(x), 0) } });
+    const list = st22().clientRooms.filter((x) => x.brokerId === roomOwnerOf(me24())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const u = me24();
+    res.json({
+      success: true,
+      rooms: list.map(summary3),
+      counts: { active: list.filter((x) => x.status === "ACTIVE").length, unread: list.reduce((n2, x) => n2 + unread(x), 0), visits: list.reduce((n2, x) => n2 + openVisits(x), 0) },
+      ...isStaff4(u) ? { staffOf: db.byId("users", roomOwnerOf(u))?.name || "" } : {}
+    });
   });
   r.post("/", rateLimit("cr-create", 40, 36e5), (req, res) => {
     const u = me24();
@@ -88223,20 +88267,22 @@ function createClientRoomRouter() {
     if (name.length < 2) return bad24(res, "Enter your client's name");
     if (!PHONE_RE8.test(phone)) return bad24(res, "Enter your client's 10-digit mobile number");
     if (req.body?.consent !== true) return bad24(res, "Confirm that your client agreed to receive properties and chat in this room");
-    if (st22().clientRooms.filter((x) => x.brokerId === u.id && x.status === "ACTIVE").length >= ROOM_LIMITS.activeRooms) return bad24(res, `You can keep ${ROOM_LIMITS.activeRooms} client rooms open \u2014 close some old ones`);
+    const owner = roomOwnerOf(u);
+    if (st22().clientRooms.filter((x) => x.brokerId === owner && x.status === "ACTIVE").length >= ROOM_LIMITS.activeRooms) return bad24(res, `You can keep ${ROOM_LIMITS.activeRooms} client rooms open \u2014 close some old ones`);
     {
       const pb = partyBlock(phone, "buyer");
       if (pb) return res.status(403).json(pb);
     }
     const phoneKey = hmac4("cr-phone", phone);
-    if (st22().clientRooms.some((x) => x.brokerId === u.id && x.status === "ACTIVE" && x.phoneKey === phoneKey)) return bad24(res, "You already have an open room for this mobile number", 409);
+    if (st22().clientRooms.some((x) => x.brokerId === owner && x.status === "ACTIVE" && x.phoneKey === phoneKey)) return bad24(res, "You already have an open room for this mobile number", 409);
     const token = newToken2();
     const room = {
       id: rid3("CRM"),
-      brokerId: u.id,
+      brokerId: owner,
       clientName: name,
       kind,
       note: String(req.body?.note || "").trim().slice(0, 300) || void 0,
+      ...isStaff4(u) ? { createdById: u.id, createdByName: u.name } : {},
       phoneKey,
       phoneLast4: phone.slice(-4),
       tokenHash: sha5(token),
@@ -88249,7 +88295,7 @@ function createClientRoomRouter() {
       messages: [],
       events: []
     };
-    ev(room, "Room opened");
+    ev(room, isStaff4(u) ? `Room opened by ${u.name} (office team)` : "Room opened");
     st22().clientRooms.push(room);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "CLIENT_ROOM_OPENED", `Client room opened (${kind}), mobile ending ${room.phoneLast4}`);
@@ -88269,9 +88315,9 @@ function createClientRoomRouter() {
     if (room.items.some((i) => i.propertyId === p.id)) return bad24(res, "Already shared in this room", 409);
     if (room.items.length >= ROOM_LIMITS.items) return bad24(res, `A room can hold ${ROOM_LIMITS.items} properties`);
     const note5 = stripPhones(String(req.body?.note || "").trim()).slice(0, 200) || void 0;
-    const media = req.body?.withMedia === false ? void 0 : allMedia(me24(), p);
+    const media = req.body?.withMedia === false ? void 0 : allMedia(actingAs(), p);
     room.items.push({ id: rid3("CRI"), propertyId: p.id, sharedAt: nowIso35(), note: note5, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
-    ev(room, `Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
+    ev(room, `${isStaff4(me24()) ? `${me24().name}: ` : ""}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
     db.save();
     void pushIfSeen(room);
     res.json({ success: true, room: detail(room) });
@@ -88283,7 +88329,7 @@ function createClientRoomRouter() {
     if (!it) return bad24(res, "Not found", 404);
     const p = st22().properties.find((x) => x.id === it.propertyId);
     if (!p) return bad24(res, "Property not found", 404);
-    const avail = shareableMedia(me24(), p);
+    const avail = shareableMedia(actingAs(), p);
     res.json({ success: true, available: { photos: avail.photos, videos: avail.videos.map((url3) => ({ url: url3, kind: videoKind(url3) })) }, chosen: chosenMedia(room, it, p), limits: ROOM_MEDIA });
   });
   r.put("/:id/items/:itemId/media", rateLimit("cr-media", 120, 36e5), (req, res) => {
@@ -88298,7 +88344,7 @@ function createClientRoomRouter() {
     const videos = Array.isArray(req.body?.videos) ? req.body.videos.map(String) : [];
     if (photos.length > ROOM_MEDIA.maxPhotos) return bad24(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
     if (videos.length > ROOM_MEDIA.maxVideos) return bad24(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
-    const avail = shareableMedia(me24(), p);
+    const avail = shareableMedia(actingAs(), p);
     if (!photos.every((x) => avail.photos.includes(x)) || !videos.every((x) => avail.videos.includes(x))) return bad24(res, "You can share only this listing's own photos and videos", 400, { code: "MEDIA_NOT_SHAREABLE" });
     it.media = { photos: [...new Set(photos)], videos: [...new Set(videos)], at: nowIso35() };
     ev(room, `Photos & video of ${p.id}: ${it.media.photos.length} photo(s)${it.media.videos.length ? `, ${it.media.videos.length} video(s)` : ""}`);
@@ -88324,9 +88370,10 @@ function createClientRoomRouter() {
     if (text.length > ROOM_LIMITS.textChars) return bad24(res, `Keep it under ${ROOM_LIMITS.textChars} characters`);
     if (containsPhone(text)) return bad24(res, PHONE_IN_CHAT_MSG.en, 400, { code: "PHONE_IN_CHAT", hi: PHONE_IN_CHAT_MSG.hi });
     if (room.messages.length >= ROOM_LIMITS.messages) return bad24(res, "This chat is full \u2014 open a new room or close this one");
-    room.messages.push({ id: rid3("CRX"), from: "BROKER", text, at: nowIso35(), propertyId: validPropRef(room, req.body?.propertyId) });
+    const u = me24();
+    room.messages.push({ id: rid3("CRX"), from: "BROKER", text, at: nowIso35(), propertyId: validPropRef(room, req.body?.propertyId), ...isStaff4(u) ? { byId: u.id, byName: u.name } : {} });
     room.lastBrokerSeenAt = nowIso35();
-    ev(room, "Broker wrote");
+    ev(room, isStaff4(u) ? `${u.name} (office team) wrote` : "Broker wrote");
     db.save();
     res.json({ success: true, room: detail(room) });
   });
@@ -88379,6 +88426,7 @@ function createClientRoomRouter() {
   r.post("/:id/close", (req, res) => {
     const room = mine2(req);
     if (!room) return bad24(res, "Room not found", 404);
+    if (isStaff4(me24())) return bad24(res, "Only the broker can close a client room", 403, { code: "STAFF_CANNOT_CLOSE" });
     room.status = "CLOSED";
     room.closedAt = nowIso35();
     room.tokenHash = sha5(crypto34.randomBytes(8).toString("hex"));
@@ -88399,7 +88447,10 @@ var validPropRef = (room, id) => {
 };
 function pushIfSeen(_room) {
 }
-var pingBroker = (room, title, body) => void pushTo(room.brokerId, { kind: "deals", title, body, url: "/?tab=clientroom" });
+var pingBroker = (room, title, body) => {
+  void pushTo(room.brokerId, { kind: "deals", title, body, url: "/?tab=clientroom" });
+  for (const m of roomTeam(room.brokerId)) void pushTo(m.id, { kind: "deals", title, body, url: "/?tab=clientroom" });
+};
 var SESS_COOKIE = "genz_cr";
 var sessSig = (r, dev, exp) => hmac4("cr-sess", `${r.id}|${r.sessVersion}|${dev}|${exp}`);
 var cookieOf = (req, r) => {
@@ -88724,7 +88775,7 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok2}/react
       const left = Math.max(0, x.cs.maxViews - x.cs.views);
       return `<div class="row" style="margin-top:6px"><a class="btn g" href="/r/${tok2}/paper/${esc13(pp.shareId)}">\u{1F4C4} \u0916\u094B\u0932\u0947\u0902 / Open</a></div><small>${left} \u092C\u093E\u0930 \u0914\u0930 \xB7 ${esc13(dayHi(x.cs.expiresAt))} \u0924\u0915 / ${left} more open(s) \xB7 till ${esc13(dayHi(x.cs.expiresAt))}</small>`;
     };
-    const chat = room.messages.map((m) => `<div class="m ${m.from === "CLIENT" ? "mc" : "mb"}">${esc13(m.text)}${m.paper ? paperLine(m.paper) : ""}${m.propertyId ? `<small>\u21B3 ${esc13(m.propertyId)}</small>` : ""}<small>${m.from === "CLIENT" ? "\u0906\u092A" : esc13(b?.name || "Broker")} \xB7 ${new Date(m.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></div>`).join("");
+    const chat = room.messages.map((m) => `<div class="m ${m.from === "CLIENT" ? "mc" : "mb"}">${esc13(m.text)}${m.paper ? paperLine(m.paper) : ""}${m.propertyId ? `<small>\u21B3 ${esc13(m.propertyId)}</small>` : ""}<small>${m.from === "CLIENT" ? "\u0906\u092A" : m.byName ? `${esc13(m.byName)} (${esc13(b?.name || "Broker")} \u0915\u093E \u0911\u092B\u093C\u093F\u0938 / office)` : esc13(b?.name || "Broker")} \xB7 ${new Date(m.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></div>`).join("");
     db.save();
     const mark = esc13(`${room.clientName} \u2022\u2022${room.phoneLast4} \xB7 ${b?.name || "GENZ"}`);
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join("")}</div>`;
@@ -88734,7 +88785,7 @@ ${brokerCard2(b)}
 <p class="small" style="margin:10px 4px">\u{1F4CC} \u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 / \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u0930\u0916 \u0932\u0947\u0902 \u2014 \u0907\u0938\u0940 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0917\u0932\u0940 \u092C\u093E\u0930 \u092C\u093F\u0928\u093E \u0915\u094B\u0921 \u0915\u0947 \u0916\u0941\u0932\u0947\u0917\u093E (${ROOM_LIMITS.sessionDays} \u0926\u093F\u0928 \u092E\u0947\u0902 \u090F\u0915 \u092C\u093E\u0930 \u0916\u094B\u0932\u0924\u0947 \u0930\u0939\u0947\u0902)\u0964 \u092F\u0939 \u092A\u0947\u091C \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0939\u0948, \u0907\u0938\u0915\u093E \u0932\u093F\u0902\u0915 \u092F\u093E \u0938\u094D\u0915\u094D\u0930\u0940\u0928\u0936\u0949\u091F \u0906\u0917\u0947 \u0928 \u092D\u0947\u091C\u0947\u0902\u0964<br>Bookmark this page or add it to your home screen \u2014 on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
 <h2>\u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">\u0905\u092D\u0940 \u0915\u094B\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0928\u0939\u0940\u0902 \u092D\u0947\u091C\u0940 \u0917\u0908\u0964 / Nothing shared yet \u2014 your broker will add some.</p></div>'}
 <h2 id="chat">\u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u092C\u093E\u0924 / Chat with your broker</h2>
-<div class="card"><p class="small">\u092F\u0939 \u091A\u0948\u091F \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A \u0914\u0930 \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0926\u0947\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u091A\u0948\u091F \u092E\u0947\u0902 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 / Only you and your broker can read this chat. Please do not type phone numbers.</p>
+<div class="card"><p class="small">${roomTeam(room.brokerId).length ? "\u092F\u0939 \u091A\u0948\u091F \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A, \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0914\u0930 \u0909\u0928\u0915\u0940 \u0911\u092B\u093C\u093F\u0938 \u091F\u0940\u092E \u0926\u0947\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u091A\u0948\u091F \u092E\u0947\u0902 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 / Only you, your broker and his office team can read this chat. Please do not type phone numbers." : "\u092F\u0939 \u091A\u0948\u091F \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A \u0914\u0930 \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0926\u0947\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u091A\u0948\u091F \u092E\u0947\u0902 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 / Only you and your broker can read this chat. Please do not type phone numbers."}</p>
 <div class="chat" id="chat-box">${chat || "<small>\u0905\u092D\u0940 \u0915\u094B\u0908 \u0938\u0902\u0926\u0947\u0936 \u0928\u0939\u0940\u0902\u0964 / No messages yet.</small>"}</div>
 <form method="post" action="/r/${tok2}/msg"><textarea name="text" id="msgtext" rows="2" maxlength="${ROOM_LIMITS.textChars}" placeholder="\u0938\u0902\u0926\u0947\u0936 \u0932\u093F\u0916\u0947\u0902 / Write a message" required></textarea>
 ${room.items.length ? `<label>\u0915\u093F\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0947 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902? (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915) / About which property?</label><select name="item" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px"><option value="">\u2014</option>${room.items.map((i) => `<option value="${esc13(i.id)}">${esc13(props.find((x) => x.id === i.propertyId)?.title || i.propertyId)}</option>`).join("")}</select>` : ""}<div class="row"><button class="g" type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
@@ -90432,6 +90483,10 @@ function sanitizeProperty(p, user, state = db.getState()) {
     out.locationPrecision = p.locationPrecision === "EXACT_PIN" ? "GENERAL_AREA" : p.locationPrecision;
     out.documents = [];
   }
+  if (user.role === "TEAM_MEMBER") {
+    out.documents = [];
+    delete out.ownerConsentId;
+  }
   return out;
 }
 var clientInitials = (n2) => String(n2 || "").split(/\s+/).filter((w) => /^[A-Za-z\u0900-\u097F]/.test(w)).slice(0, 3).map((w) => w[0].toUpperCase() + ".").join(" ") || "Client";
@@ -91926,7 +91981,7 @@ function remunerationAtAsking(m) {
   else broker = Math.max(0, adv - m.approvedNetPrice);
   return { brokerRemunerationAtAsking: broker, ownerReceivesAtAsking: Math.max(0, adv - broker) };
 }
-var showPhone = (raw) => {
+var showPhone2 = (raw) => {
   const d = String(raw ?? "").replace(/\D/g, "").slice(-10);
   return d.length === 10 ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : "";
 };
@@ -91945,7 +92000,7 @@ function mandateView(m, state = db.getState()) {
   const party = !!viewer && (isAdmin(viewer) || viewer.id === m.brokerId || !!m.ownerId && viewer.id === m.ownerId);
   const ownerName = owner?.name || prop?.ownerName || consent?.ownerName || m.offPlatformOwner?.name;
   const signedAs = consent?.ownerTypedName || m.offPlatformOwner?.name;
-  const ownerPhone = showPhone(owner?.phone || prop?.ownerPhone);
+  const ownerPhone = showPhone2(owner?.phone || prop?.ownerPhone);
   const last42 = (ownerPhone ? ownerPhone.replace(/\D/g, "") : "").slice(-4) || m.offPlatformOwner?.phoneLast4 || consent?.ownerPhoneLast4 || "";
   return {
     ...rest,
@@ -91958,7 +92013,7 @@ function mandateView(m, state = db.getState()) {
     brokerCode: broker?.brokerId,
     brokerCompany: broker?.companyName || void 0,
     brokerRera: broker?.reraNumber || void 0,
-    brokerPhone: party ? showPhone(broker?.phone) || void 0 : void 0,
+    brokerPhone: party ? showPhone2(broker?.phone) || void 0 : void 0,
     propertyTitle: prop?.title,
     ...remunerationAtAsking(m)
   };

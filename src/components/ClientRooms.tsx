@@ -132,7 +132,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
           {/* rooms list — hidden on a phone while a room is open */}
           <div className={`space-y-2 lg:col-span-2 ${openRoom ? 'hidden lg:block' : ''}`}>
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{tx(`My client rooms (${active.length})`, `मेरे क्लाइंट रूम (${active.length})`)}{shown.length !== active.length ? ` · ${tx(`${shown.length} shown`, `${shown.length} दिख रहे`)}` : ''}</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{d.staffOf ? tx(`${d.staffOf}'s client rooms (${active.length})`, `${d.staffOf} के क्लाइंट रूम (${active.length})`) : tx(`My client rooms (${active.length})`, `मेरे क्लाइंट रूम (${active.length})`)}{shown.length !== active.length ? ` · ${tx(`${shown.length} shown`, `${shown.length} दिख रहे`)}` : ''}</h3>
             {shown.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-500">{tx('No room in this filter.', 'इस फ़िल्टर में कोई रूम नहीं।')} <button type="button" className="font-semibold underline" onClick={() => { setF('all'); setKind('ALL'); setQ(''); }}>{tx('Show all', 'सभी दिखाएँ')}</button></p>}
             <div className="space-y-2 lg:max-h-[75vh] lg:overflow-y-auto lg:pr-1">
               {shown.map((r: any) => (
@@ -204,6 +204,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
   const [menu, setMenu] = useState(false);                                   // v50 — the ⋮ menu (new link, close room)
   const [aboutOpen, setAboutOpen] = useState(false);                         // v50 — the "about which property" picker under the message box
   const [paperPick, setPaperPick] = useState(false);                         // v55 — "+" → show a paper to this client
+  const [noListings, setNoListings] = useState(false);                       // v58 — office staff without "see listings": chat only
   const [papers, setPapers] = useState<any[] | null>(null);                  // v55 — my papers, for the status of the ones shown here
   const hasPaper = !!r?.messages?.some((m: any) => m.paper);
   const loadPapers = () => api.propDocs({ scope: 'all' }).then(x => setPapers(x.docs || [])).catch(() => setPapers([]));
@@ -213,7 +214,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
   useEffect(() => {
     const t = setTimeout(() => {
       const live = (x: any) => setProps(x.properties.filter((p: any) => ['active', 'under_negotiation'].includes(p.listingStatus)));
-      (pq.trim().length >= 2 ? api.getProperties({ q: pq.trim(), limit: 30 }) : api.getProperties({ scope: 'boot' })).then(live).catch(() => undefined);
+      (pq.trim().length >= 2 ? api.getProperties({ q: pq.trim(), limit: 30 }) : api.getProperties({ scope: 'boot' })).then(x => { setNoListings(false); live(x); }).catch((e: any) => { if (e?.status === 403) setNoListings(true); });
     }, pq ? 300 : 0);
     return () => clearTimeout(t);
   }, [pq]);
@@ -248,7 +249,9 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
       </div>
     );
   };
-  const msgs: ThreadMsg[] = r.messages.map((m: any) => ({ id: m.id, mine: m.from === 'BROKER', who: r.clientName, text: m.text, at: m.at, ref: m.propertyId, ...(m.paper ? { card: paperCard(m), hideText: true } : {}) }));
+  const msgs: ThreadMsg[] = r.messages.map((m: any) => ({ id: m.id, mine: m.from === 'BROKER', who: r.clientName, text: m.text, at: m.at, ref: m.propertyId, ...(m.byName ? { by: m.byName } : {}), ...(m.paper ? { card: paperCard(m), hideText: true } : {}) }));
+  // v58 — the broker's office staff work in his rooms: no closing, no papers, no visit booking (those stay with the broker)
+  const staff = !!r.staff;
   const sendMsg = async (text: string) => {
     setErr('');
     try { const x = await api.crSend(id, text, about || undefined); if (x?.room) setR(x.room); onChange(); return true; } catch (e: any) { setErr(e.message); return false; }
@@ -270,7 +273,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
               <div className="fixed inset-0 z-10" onClick={() => setMenu(false)} />
               <div className="absolute right-0 top-12 z-20 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
                 <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={newLink} data-testid="room-newlink"><Link2 className="h-4 w-4" />{tx('New link', 'नया लिंक')}</button>
-                <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50" onClick={closeRoom} data-testid="room-close"><X className="h-4 w-4" />{tx('Close room', 'रूम बंद करें')}</button>
+                {!staff && <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50" onClick={closeRoom} data-testid="room-close"><X className="h-4 w-4" />{tx('Close room', 'रूम बंद करें')}</button>}
               </div>
             </>
           )}
@@ -321,10 +324,10 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
             if (paperPick) return <ClientPaperPicker room={{ id: r.id, clientName: r.clientName }} onCancel={() => setPaperPick(false)} onDone={() => { setPaperPick(false); close(); void load(); void loadPapers(); }} />;
             return (
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4" data-testid="room-plus">
-                <button type="button" className={tile} data-testid="room-plus-paper" onClick={() => setPaperPick(true)}>{dot('bg-amber-100 text-amber-800', FileLock2)}{tx('Show a paper', 'कागज़ दिखाएँ')}</button>
+                {!staff && <button type="button" className={tile} data-testid="room-plus-paper" onClick={() => setPaperPick(true)}>{dot('bg-amber-100 text-amber-800', FileLock2)}{tx('Show a paper', 'कागज़ दिखाएँ')}</button>}
                 {r.items.length > 0 && <button type="button" className={tile} data-testid="room-about" aria-pressed={!!about} onClick={() => { setAboutOpen(true); close(); }}>{dot('bg-emerald-100 text-emerald-700', Home)}{tx('About a home', 'प्रॉपर्टी चुनें')}</button>}
                 <button type="button" className={tile} data-testid="room-plus-share" onClick={() => { setTab('homes'); close(); setTimeout(() => document.querySelector('[data-testid="room-pick"]')?.scrollIntoView({ block: 'center' }), 80); }}>{dot('bg-indigo-100 text-indigo-700', Plus)}{tx('Share a home', 'प्रॉपर्टी जोड़ें')}</button>
-                {r.items.length > 0 && <button type="button" className={tile} data-testid="room-plus-visit" onClick={() => { if (live.length === 1) setBook({ item: live[0] }); else setTab('homes'); close(); }}>{dot('bg-sky-100 text-sky-700', CalendarPlus)}{tx('Book a visit', 'विज़िट तय करें')}</button>}
+                {r.items.length > 0 && !staff && <button type="button" className={tile} data-testid="room-plus-visit" onClick={() => { if (live.length === 1) setBook({ item: live[0] }); else setTab('homes'); close(); }}>{dot('bg-sky-100 text-sky-700', CalendarPlus)}{tx('Book a visit', 'विज़िट तय करें')}</button>}
                 {withMedia.length > 0 && <button type="button" className={tile} data-testid="room-plus-photos" onClick={() => { if (withMedia.length === 1) setMediaFor(withMedia[0].id); setTab('homes'); close(); }}>{dot('bg-violet-100 text-violet-700', ImageIcon)}{tx('Photos to show', 'फ़ोटो दिखाएँ')}</button>}
               </div>
             );
@@ -370,7 +373,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
                   <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{tx('Wants to visit', 'देखने आना चाहता है')}: <b>{when(v.preferred)}</b>{v.note ? ` — ${v.note}` : ''}</span>
                   {v.status === 'REQUESTED'
                     ? <span className="inline-flex gap-1">
-                        {i.property?.available && <button className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white" onClick={() => setBook({ item: i, req: v })} data-testid={`room-book-req-${v.id}`}>{tx('Book this visit', 'यह विज़िट तय करें')}</button>}
+                        {i.property?.available && !staff && <button className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white" onClick={() => setBook({ item: i, req: v })} data-testid={`room-book-req-${v.id}`}>{tx('Book this visit', 'यह विज़िट तय करें')}</button>}
                         <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, i.id, v.id))}>{tx('Done', 'हो गया')}</button>
                       </span>
                     : <span>✔ {v.visitId ? `${tx('booked', 'तय')} · ${v.visitId}` : tx('handled', 'निपटा')}</span>}
@@ -378,7 +381,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
               ))}
               {i.property?.available && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <button className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-900 px-2.5 text-[11px] font-semibold text-white" onClick={() => setBook({ item: i })} data-testid={`room-book-${i.id}`}><CalendarPlus className="h-3.5 w-3.5" />{tx('Book a visit', 'विज़िट तय करें')}</button>
+                  {!staff && <button className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-900 px-2.5 text-[11px] font-semibold text-white" onClick={() => setBook({ item: i })} data-testid={`room-book-${i.id}`}><CalendarPlus className="h-3.5 w-3.5" />{tx('Book a visit', 'विज़िट तय करें')}</button>}
                   {(i.mediaAvailable?.photos > 0 || i.mediaAvailable?.videos > 0) && (
                     <button className={`inline-flex min-h-8 items-center gap-1 rounded-lg border px-2.5 text-[11px] font-semibold ${mediaFor === i.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} onClick={() => setMediaFor(mediaFor === i.id ? '' : i.id)} data-testid={`room-media-${i.id}`}>
                       <ImageIcon className="h-3.5 w-3.5" />{tx('Photos & video', 'फ़ोटो और वीडियो')} ({(i.media?.photos?.length || 0) + (i.media?.videos?.length || 0)}/{i.mediaAvailable.photos + i.mediaAvailable.videos})
@@ -390,13 +393,13 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
             </div>
           ))}
         </div>
-        <div className="mt-2 space-y-1.5 rounded-lg bg-slate-50 p-2">
+        {noListings ? <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900" data-testid="room-no-listings">{tx('Your broker has not switched on “See listings” for you — you can chat, but adding homes needs that switch.', 'आपके ब्रोकर ने आपके लिए “लिस्टिंग देखे” चालू नहीं किया है — आप चैट कर सकते हैं, पर घर जोड़ने के लिए वह स्विच चाहिए।')}</p> : <div className="mt-2 space-y-1.5 rounded-lg bg-slate-50 p-2">
           <input className={inp} value={pq} onChange={e => setPq(e.target.value)} placeholder={tx('Find a property to share — title, locality, city or ID', 'शेयर करने के लिए प्रॉपर्टी खोजें — नाम, इलाका, शहर या ID')} aria-label={tx('Find a property to share', 'शेयर करने के लिए प्रॉपर्टी खोजें')} />
           <select className={inp} value={pick} onChange={e => setPick(e.target.value)} data-testid="room-pick"><option value="">{tx('Choose a property…', 'प्रॉपर्टी चुनें…')}</option>{props.filter(p => !shared.has(p.id)).map(p => <option key={p.id} value={p.id}>{p.title} — {p.locality}, {p.city} · {formatINR(p.askingPrice)}</option>)}</select>
           <input className={inp} maxLength={200} value={pnote} onChange={e => setPnote(e.target.value)} placeholder={tx('A line for your client (optional) — no phone numbers', 'क्लाइंट के लिए एक लाइन (वैकल्पिक) — फ़ोन नंबर नहीं')} />
           <button className={dark} disabled={!pick} onClick={() => run(() => api.crAddItem(id, pick, pnote || undefined), () => { setPick(''); setPnote(''); })} data-testid="room-add-prop"><Home className="h-4 w-4" />{tx('Share with client', 'क्लाइंट को दिखाएँ')}</button>
           <p className="text-[10px] text-slate-500">{tx('The listing\'s photos and video go with it — change them with "Photos & video".', 'लिस्टिंग की फ़ोटो और वीडियो साथ जाते हैं — "फ़ोटो और वीडियो" से बदलें।')}</p>
-        </div>
+        </div>}
       </section>
       )}
 
@@ -410,7 +413,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
                 <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{tx('Wants to visit', 'देखने आना चाहता है')}: <b>{when(v.preferred)}</b>{v.note ? ` — ${v.note}` : ''}</span>
                 {v.status === 'REQUESTED'
                   ? <span className="inline-flex gap-1">
-                      {v.item.property?.available && <button className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white" onClick={() => setBook({ item: v.item, req: v })} data-testid={`room-visits-book-${v.id}`}>{tx('Book this visit', 'यह विज़िट तय करें')}</button>}
+                      {v.item.property?.available && !staff && <button className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white" onClick={() => setBook({ item: v.item, req: v })} data-testid={`room-visits-book-${v.id}`}>{tx('Book this visit', 'यह विज़िट तय करें')}</button>}
                       <button className="rounded border border-amber-400 bg-white px-2 py-1 font-semibold" onClick={() => run(() => api.crVisitHandled(id, v.item.id, v.id))}>{tx('Done', 'हो गया')}</button>
                     </span>
                   : <span>✔ {v.visitId ? `${tx('booked', 'तय')} · ${v.visitId}` : tx('handled', 'हो गया')}</span>}

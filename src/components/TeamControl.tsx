@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Shuffle, Eye, EyeOff, ShieldAlert, ArrowRightLeft, Palmtree, Building2, Wallet } from 'lucide-react';
+import { Loader2, Shuffle, Eye, EyeOff, ShieldAlert, ArrowRightLeft, Palmtree, Building2, Wallet, Home } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -59,7 +59,7 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
   const [to, setTo] = useState('');
   const others = active.filter((x: any) => x.id !== m.id);
   const toggle = (label: string, hi: string, key: string, hint?: string) => (
-    <label className="flex min-h-11 items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-1" checked={!!p[key]} onChange={e => set({ [key]: e.target.checked })} /><span><b>{tx(label, hi)}</b>{hint && <span className="block text-[10px] text-slate-500">{hint}</span>}</span></label>
+    <label className="flex min-h-11 items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-1" checked={!!p[key]} onChange={e => set({ [key]: e.target.checked })} data-testid={`tc-${key}-${m.id}`} /><span><b>{tx(label, hi)}</b>{hint && <span className="block text-[10px] text-slate-500">{hint}</span>}</span></label>
   );
   return (
     <section className={`rounded-xl border bg-white p-4 ${m.status !== 'VERIFIED' ? 'border-red-200 opacity-80' : p.onLeave ? 'border-amber-300' : 'border-slate-200'}`}>
@@ -74,6 +74,9 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
             {p.canConfirmMoney && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800">{tx('confirms money', 'पैसा कन्फ़र्म')}</span>}
             {p.canCollectMoney && !p.canConfirmMoney && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">{tx('collects money', 'पैसा वसूलता')}</span>}
             {p.scope === 'PROJECTS' && <span className="rounded bg-slate-100 px-1.5 py-0.5">{tx('sees project leads', 'प्रोजेक्ट की सारी लीड')}</span>}
+            {!isBuilder && (p.listings || 'OFF') !== 'OFF' && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-800">{p.listings === 'ADDRESS' ? tx('listings + address', 'लिस्टिंग + पता') : tx('listings', 'लिस्टिंग')}</span>}
+            {!isBuilder && p.rooms && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-800">{tx('client rooms', 'क्लाइंट रूम')}</span>}
+            {!isBuilder && p.clients && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-800">{tx('client list', 'क्लाइंट लिस्ट')}</span>}
           </div></div>
         <span className="text-xs text-slate-400">{open ? '▲' : '▼'}</span>
       </button>
@@ -94,6 +97,22 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
             {p.phoneMode === 'REVEAL' && <label className="mt-2 block text-[11px] text-slate-600">{tx('Max numbers per day', 'रोज़ अधिकतम नंबर')} ({m.revealsToday} {tx('used today', 'आज इस्तेमाल')}, {m.reveals7d} {tx('this week', 'इस हफ़्ते')})<input defaultValue={p.revealCap} inputMode="numeric" onBlur={e => { const v = Number(e.target.value); if (v !== p.revealCap) set({ revealCap: v }); }} className={inp} /></label>}
             <p className="mt-1 text-[10px] text-slate-500">{tx('With “tap to reveal” or “never”, staff cannot search by number or read it from the list — this is what stops a leaving employee from copying your customers.', '“टैप करके” या “कभी नहीं” पर स्टाफ नंबर से सर्च या लिस्ट से कॉपी नहीं कर सकता — इसी से नौकरी छोड़ने वाला कर्मचारी आपके ग्राहक कॉपी नहीं कर पाता।')}</p>
           </div>
+          {!isBuilder && (
+            <div className="rounded-lg bg-indigo-50/60 p-3" data-testid={`tc-office-${m.id}`}>
+              <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-800"><Home className="h-3.5 w-3.5" />{tx('Office work — resale / rent (all off until you switch on)', 'ऑफ़िस का काम — रीसेल / किराया (जब तक आप चालू न करें, बंद)')}</div>
+              <div className="mb-1 text-[11px] font-semibold text-slate-700">{tx('Listings', 'लिस्टिंग')}</div>
+              <div className="grid grid-cols-3 gap-2">
+                {([['OFF', 'Off', 'बंद'], ['READ', 'See listings', 'लिस्टिंग देखे'], ['ADDRESS', '+ address of mine', '+ मेरी का पता']] as const).map(([k, en, hi]) => (
+                  <button key={k} onClick={() => set({ listings: k })} data-testid={`tc-listings-${k}`} className={`min-h-11 rounded-lg px-2 text-[11px] font-semibold ${(p.listings || 'OFF') === k ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>{tx(en, hi)}</button>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">{tx('He sees the network listings just as you do (read-only). With “+ address” he also sees the exact address of YOUR OWN listings, to take clients there. Never the owner’s name or number, never papers.', 'वह नेटवर्क की लिस्टिंग वैसे ही देखेगा जैसे आप (सिर्फ़ पढ़ने)। “+ पता” से उसे आपकी अपनी लिस्टिंग का पूरा पता भी दिखेगा, ताकि क्लाइंट को ले जा सके। मालिक का नाम-नंबर और कागज़ कभी नहीं।')}</p>
+              <div className="mt-2 grid gap-x-4 sm:grid-cols-2">
+                {toggle('Can work in my client rooms', 'मेरे क्लाइंट रूम में काम कर सकता', 'rooms', tx('Chat, share homes, read the sign-in code, open rooms. Only you can close a room. The client is told your office team can read the chat.', 'चैट, घर भेजना, कोड बताना, रूम खोलना। रूम सिर्फ़ आप बंद कर सकते हैं। क्लाइंट को बताया जाता है कि आपकी ऑफ़िस टीम चैट पढ़ सकती है।'))}
+                {toggle('Can work my client list (Today & Clients)', 'मेरी क्लाइंट लिस्ट (आज और क्लाइंट) पर काम कर सकता', 'clients', tx('Add clients, notes, follow-ups, stages. Only you can delete. Numbers show only with “Always visible” above.', 'क्लाइंट जोड़ना, नोट, फ़ॉलो-अप, स्टेज। हटाना सिर्फ़ आप। नंबर तभी दिखेंगे जब ऊपर “हमेशा दिखे” हो।'))}
+              </div>
+            </div>
+          )}
           <div className="grid gap-x-4 sm:grid-cols-2">
             {toggle('Can register new leads', 'नई लीड रजिस्टर कर सकता', 'canRegister')}
             {toggle('Can mark a lead lost', 'लीड “लॉस्ट” कर सकता', 'canMarkLost', tx('Off = only you can close a lead as lost', 'बंद = सिर्फ़ आप लीड लॉस्ट कर सकते हैं'))}

@@ -129,6 +129,8 @@ const visitMemo = new WeakMap<object, { arr: unknown; len: number; at: number; s
 export function canSeeProtectedPropertyData(state: DatabaseState, u: U, p: Property) {
   if (isAdmin(u) || p.ownerId === u.id || p.listingBrokerId === u.id) return true;
   if (u.role === 'LEGAL_COUNSEL') return true; // legal review needs the title/address
+  // v58 — a broker's office staff with "listings + address" may take clients to HIS EMPLOYER's own listings (never another broker's)
+  if (u.role === 'TEAM_MEMBER' && !!u.employerId && p.listingBrokerId === u.employerId && u.teamPolicy?.listings === 'ADDRESS') return true;
   const now = Date.now();
   let m = visitMemo.get(u);
   if (!m || m.arr !== state.siteVisits || m.len !== state.siteVisits.length || now - m.at > 1000) {

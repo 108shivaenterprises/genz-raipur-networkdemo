@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useTx } from '../lib/i18n.js';
-import { Contact, Briefcase, Loader2, Phone, MessageCircle, PhoneCall } from 'lucide-react';
+import { Contact, Briefcase, Loader2, Phone, MessageCircle, PhoneCall, Building, MessagesSquare, Users } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { UserProfile, DealRoom } from '../types/index.js';
 import { CheckinModal } from './CheckinModal.js';
 import { StaffDesk } from './StaffDesk.js';
 import type { TabType } from './NavigationTabs.js';
 
-export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; onNavigate: (t: TabType) => void }> = ({ currentUser, deals, onNavigate }) => {
+export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; onNavigate: (t: TabType) => void; permissions?: string[] }> = ({ currentUser, deals, onNavigate, permissions = [] }) => {
   const tx = useTx();
   const [leads, setLeads] = useState<any[] | null>(null);
   const [checkin, setCheckin] = useState(false);
@@ -28,7 +28,7 @@ export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; o
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-bold text-slate-900">{tx('Namaste', 'नमस्ते')}, {currentUser.name}</h2>
-        <p className="text-xs text-slate-500">{currentUser.teamTitle || tx('Team member', 'टीम सदस्य')} · {tx('only the leads and deal rooms allotted to you appear here.','आपको आवंटित लीड और डील रूम ही यहाँ दिखते हैं।')}</p>
+        <p className="text-xs text-slate-500">{currentUser.teamTitle || tx('Team member', 'टीम सदस्य')} · {tx('only the work your broker allotted or switched on for you appears here.', 'यहाँ सिर्फ़ वही काम दिखता है जो आपके ब्रोकर ने आपको दिया या चालू किया।')}</p>
       </div>
       <button onClick={() => setCheckin(true)} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white">{tx('📍 Site check-in (GPS + selfie)', '📍 साइट चेक-इन (GPS + सेल्फ़ी)')}</button>
       {checkin && <CheckinModal onClose={() => setCheckin(false)} />}
@@ -36,6 +36,14 @@ export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; o
         <button onClick={() => onNavigate(er === 'CONTRACTOR' ? 'construction' : 'connector')} className="block w-full rounded-xl border border-slate-200 bg-white p-4 text-left text-sm font-semibold hover:border-slate-400">
           {er === 'CONTRACTOR' ? tx('Open my assigned construction jobs →', 'मेरे सौंपे गए निर्माण कार्य खोलें →') : tx('Open the Connector Desk →', 'कनेक्टर डेस्क खोलें →')}
         </button>
+      )}
+      {/* v58 — office work the broker switched on: his client rooms, his client list, the listings */}
+      {(permissions.includes('clientroom:use') || permissions.includes('daily:use') || permissions.includes('property:read')) && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="team-office">
+          {permissions.includes('clientroom:use') && <button type="button" onClick={() => onNavigate('clientroom')} className="flex min-h-14 items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-left text-sm font-semibold text-indigo-900" data-testid="team-office-rooms"><MessagesSquare className="h-5 w-5" />{tx('Client rooms', 'क्लाइंट रूम')}</button>}
+          {permissions.includes('daily:use') && <button type="button" onClick={() => onNavigate('daily')} className="flex min-h-14 items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-left text-sm font-semibold text-indigo-900" data-testid="team-office-clients"><Users className="h-5 w-5" />{tx('Clients & follow-ups', 'क्लाइंट और फ़ॉलो-अप')}</button>}
+          {permissions.includes('property:read') && <button type="button" onClick={() => onNavigate('properties')} className="flex min-h-14 items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-left text-sm font-semibold text-indigo-900" data-testid="team-office-listings"><Building className="h-5 w-5" />{tx('Listings', 'लिस्टिंग')}</button>}
+        </div>
       )}
       {crmSide && <StaffDesk />}
       {crmSide && leads !== null && (

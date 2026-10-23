@@ -602,6 +602,8 @@ export function createPcontrolRouter() {
     if (typeof clean === 'string') return bad(res, clean);
     if (clean.canVerify && u.role !== 'DEVELOPER_BUILDER') return bad(res, 'Only a builder can let staff verify partner leads');
     if (clean.canScanVisits && u.role !== 'DEVELOPER_BUILDER') return bad(res, 'Only a builder can let staff scan visit QR passes (a partner\'s staff cannot verify their own visits)');
+    // v58 — listings / client rooms / client list are a resale-rent broker's office work
+    if ((clean.listings !== 'OFF' || clean.rooms || clean.clients) && u.role !== 'BROKER') return bad(res, 'Listings, client rooms and the client list are for a broker\'s office staff');
     const mine = new Set(u.role === 'DEVELOPER_BUILDER' ? state().builderProjects.filter(p => p.builderId === u.id).map(p => p.id) : state().associateMandates.filter(x => x.brokerId === u.id).map(x => x.projectId));
     if (clean.projectIds.some(id => !mine.has(id))) return bad(res, 'Pick only your own projects');
     const prev = policyOf(m);
@@ -609,7 +611,7 @@ export function createPcontrolRouter() {
     let handed = 0;
     if (clean.onLeave && !prev.onLeave) handed = releaseMemberLeads(u, m, u.id, u.name);
     db.save();
-    audit('VERIFICATION', m.id, 'TEAM_POLICY_SET', `${u.name} set ${m.name}: phone ${clean.phoneMode}${clean.phoneMode === 'REVEAL' ? `/${clean.revealCap}/day` : ''}, scope ${clean.scope}${clean.projectIds.length ? ` [${clean.projectIds.join(',')}]` : ''}, register ${clean.canRegister}, claim ${clean.canClaim}, mark-lost ${clean.canMarkLost}, forward ${clean.canForward}, request-booking ${clean.canRequestBooking}, collect-money ${clean.canCollectMoney}, confirm-money ${clean.canConfirmMoney}, units ${clean.invMode}${clean.invMode !== 'OFF' ? ` (price ${clean.invPrice}, features ${clean.invFeatures}, share-out ${clean.invShareOut})` : ''}, verify ${clean.canVerify}, cap ${clean.maxOpenLeads ?? '∞'}, leave ${clean.onLeave}${handed ? `; ${handed} open lead(s) handed back` : ''}`);
+    audit('VERIFICATION', m.id, 'TEAM_POLICY_SET', `${u.name} set ${m.name}: phone ${clean.phoneMode}${clean.phoneMode === 'REVEAL' ? `/${clean.revealCap}/day` : ''}, scope ${clean.scope}${clean.projectIds.length ? ` [${clean.projectIds.join(',')}]` : ''}, register ${clean.canRegister}, claim ${clean.canClaim}, mark-lost ${clean.canMarkLost}, forward ${clean.canForward}, request-booking ${clean.canRequestBooking}, collect-money ${clean.canCollectMoney}, confirm-money ${clean.canConfirmMoney}, units ${clean.invMode}${clean.invMode !== 'OFF' ? ` (price ${clean.invPrice}, features ${clean.invFeatures}, share-out ${clean.invShareOut})` : ''}, verify ${clean.canVerify}, cap ${clean.maxOpenLeads ?? '∞'}, leave ${clean.onLeave}, listings ${clean.listings}, client rooms ${clean.rooms}, client list ${clean.clients}${handed ? `; ${handed} open lead(s) handed back` : ''}`);
     res.json({ success: true, policy: clean, handedBack: handed });
   });
 

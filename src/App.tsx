@@ -412,7 +412,7 @@ export default function App() {
         {activeTab === 'dashboard' && currentUser.role === 'GENZ_CONNECTOR' && <HomeInsights role={currentUser.role} onNavigate={setActiveTab} />}
 
         {activeTab === 'dashboard' && currentUser.role === 'TEAM_MEMBER' && (
-          <TeamHome currentUser={currentUser} deals={deals} onNavigate={setActiveTab} />
+          <TeamHome currentUser={currentUser} deals={deals} onNavigate={setActiveTab} permissions={permissions} />
         )}
 
         {activeTab === 'dashboard' && currentUser.role === 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && (

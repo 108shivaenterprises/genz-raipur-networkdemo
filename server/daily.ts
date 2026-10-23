@@ -24,6 +24,7 @@ import { approxPoint } from '../src/shared/geo.js';
 import { normCity } from '../src/shared/cities.js';
 import { leadScore, digestScore, rateCard, parseLeadText, RATE_MIN_SAMPLE } from '../src/shared/dailyRules.js';
 import { sameCity } from '../src/shared/india.js';
+import { policyOf, maskPhone } from '../src/shared/pcontrolRules.js';
 
 const nowIso = () => new Date().toISOString();
 const DAY = 86_400_000;
@@ -195,7 +196,13 @@ const view = (st: DatabaseState, u: UserProfile, c: ClientCard, props: Property[
   const sc = leadScore(c, { matchCount: matchCountFor(c, props), shareViews7d: shareViews7d(st, u, c, now), now });
   return { ...c, lead: sc };
 };
-const findCard = (id: string) => db.getState().clientCards.find(c => c.id === id && c.brokerId === me().id);
+/** v58 — a broker's office staff with the "client list" switch works the EMPLOYER's client cards (they stay his) */
+const cardOwner = (u: UserProfile): UserProfile => (u.role === 'TEAM_MEMBER' && u.employerId ? (db.byId('users', u.employerId) as UserProfile) || u : u);
+const isStaff = (u: UserProfile) => u.role === 'TEAM_MEMBER';
+/** staff see a client's number only when the broker gave them "sees numbers" (FULL) */
+const showPhone = (u: UserProfile) => !isStaff(u) || policyOf(u).phoneMode === 'FULL';
+const forViewer = <T extends { phone: string }>(u: UserProfile, c: T): T => (showPhone(u) ? c : { ...c, phone: maskPhone(c.phone), phoneHidden: true });
+const findCard = (id: string) => db.getState().clientCards.find(c => c.id === id && c.brokerId === cardOwner(me()).id);
 
 export function createDailyRouter() {
   const r = Router();
@@ -247,17 +254,17 @@ export function createDailyRouter() {
 
   // ── F3 clients ──
   r.get('/clients', needs('daily:use'), (_req, res) => {
-    const u = me(); const st = db.getState(); const props = browsable(st, u);
-    const list = st.clientCards.filter(c => c.brokerId === u.id).map(c => view(st, u, c, props));
-    res.json({ success: true, clients: list, stages: CLIENT_STAGES });
+    const viewer = me(); const u = cardOwner(viewer); const st = db.getState(); const props = browsable(st, u);
+    const list = st.clientCards.filter(c => c.brokerId === u.id).map(c => forViewer(viewer, view(st, u, c, props)));
+    res.json({ success: true, clients: list, stages: CLIENT_STAGES, staff: isStaff(viewer) ? { employer: u.name, phones: showPhone(viewer) } : undefined });
   });
   r.get('/clients/due', needs('daily:use'), (_req, res) => {
-    const u = me(); const now = Date.now();
+    const viewer = me(); const u = cardOwner(viewer); const now = Date.now();
     const due = db.getState().clientCards.filter(c => c.brokerId === u.id && c.followUpAt && c.stage !== 'DEAL' && c.stage !== 'LOST' && new Date(c.followUpAt).getTime() <= now);
-    res.json({ success: true, due: due.map(c => ({ id: c.id, name: c.name, phone: c.phone, followUpAt: c.followUpAt, stage: c.stage })) });
+    res.json({ success: true, due: due.map(c => forViewer(viewer, { id: c.id, name: c.name, phone: c.phone, followUpAt: c.followUpAt, stage: c.stage })) });
   });
   r.post('/clients', needs('daily:use'), rateLimit('clientadd', 120, 60 * 60_000), (req: Request, res: Response) => {
-    const u = me(); const st = db.getState();
+    const viewer = me(); const u = cardOwner(viewer); const st = db.getState();
     const p = clientSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || 'Please check the form' });
     const d = p.data;
@@ -269,46 +276,48 @@ export function createDailyRouter() {
     const card: ClientCard = {
       id: nextClientId(st.clientCards), brokerId: u.id, name: d.name, phone: d.phone, budgetMin: d.budgetMin, budgetMax: Math.max(d.budgetMax, d.budgetMin),
       city: normCity(d.city || u.city), areas: d.areas, propertyType: d.propertyType, transactionType: d.transactionType, tags: d.tags, notes: d.notes,
-      stage: 'NEW', followUpAt: d.followUpAt, consent: true, clientRef: d.clientRef, timeline: [{ at: now, kind: 'CREATED', text: 'Client added' }], createdAt: now, updatedAt: now,
+      stage: 'NEW', followUpAt: d.followUpAt, consent: true, clientRef: d.clientRef, timeline: [{ at: now, kind: 'CREATED', text: isStaff(viewer) ? `Client added by ${viewer.name} (office team)` : 'Client added' }], createdAt: now, updatedAt: now,
     };
     st.clientCards.unshift(card); db.save();
-    audit('CLIENT_CARD_CREATED', card.id, `Client card created (consent recorded)`);
-    res.json({ success: true, client: view(st, u, card, browsable(st, u)) });
+    audit('CLIENT_CARD_CREATED', card.id, `Client card created (consent recorded)${isStaff(viewer) ? ` by ${viewer.name} for ${u.name}` : ''}`);
+    res.json({ success: true, client: forViewer(viewer, view(st, u, card, browsable(st, u))) });
   });
   r.put('/clients/:id', needs('daily:use'), (req: Request, res: Response) => {
     const c = findCard(req.params.id); if (!c) return res.status(404).json({ error: 'Client not found' });
     const p = clientSchema.partial().safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || 'Please check the form' });
     const d = p.data as any; delete d.consent; delete d.clientRef;
+    if (!showPhone(me())) delete d.phone; // a masked number cannot be edited by someone who cannot see it
     Object.assign(c, d); if (d.city) c.city = normCity(d.city); c.updatedAt = nowIso();
-    db.save(); res.json({ success: true, client: view(db.getState(), me(), c, browsable(db.getState(), me())) });
+    db.save(); res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
   });
   r.post('/clients/:id/stage', needs('daily:use'), (req: Request, res: Response) => {
     const c = findCard(req.params.id); if (!c) return res.status(404).json({ error: 'Client not found' });
     const b = z.object({ stage: z.enum(CLIENT_STAGES as [ClientStage, ...ClientStage[]]), lostReason: z.string().trim().max(200).optional(), followUpAt: z.string().datetime().optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: 'Invalid stage' });
     if (b.data.stage === 'LOST' && !b.data.lostReason) return res.status(400).json({ error: 'Please say why the lead was lost (one line).' });
-    if (c.stage === b.data.stage) return res.json({ success: true, client: view(db.getState(), me(), c, browsable(db.getState(), me())) });
+    if (c.stage === b.data.stage) return res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
     const now = nowIso();
     c.timeline.unshift({ at: now, kind: 'STAGE', text: `${c.stage} → ${b.data.stage}${b.data.lostReason ? ` (${b.data.lostReason})` : ''}` });
     c.stage = b.data.stage; c.lostReason = b.data.stage === 'LOST' ? b.data.lostReason : undefined; c.updatedAt = now;
     if (b.data.followUpAt) c.followUpAt = b.data.followUpAt;
     if (c.stage === 'DEAL' || c.stage === 'LOST') c.followUpAt = undefined;
     c.timeline = c.timeline.slice(0, 80);
-    db.save(); res.json({ success: true, client: view(db.getState(), me(), c, browsable(db.getState(), me())) });
+    db.save(); res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
   });
   r.post('/clients/:id/note', needs('daily:use'), (req: Request, res: Response) => {
     const c = findCard(req.params.id); if (!c) return res.status(404).json({ error: 'Client not found' });
     const b = z.object({ text: z.string().trim().min(1).max(500), kind: z.enum(['NOTE', 'CONTACT', 'FOLLOWUP', 'SHARE']).default('NOTE'), followUpAt: z.string().datetime().nullable().optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: 'Write a short note' });
     const now = nowIso();
-    c.timeline.unshift({ at: now, kind: b.data.kind, text: b.data.text }); c.timeline = c.timeline.slice(0, 80);
+    c.timeline.unshift({ at: now, kind: b.data.kind, text: isStaff(me()) ? `${b.data.text} — ${me().name}` : b.data.text }); c.timeline = c.timeline.slice(0, 80);
     if (b.data.kind === 'CONTACT') c.lastContactAt = now;
     if (b.data.followUpAt !== undefined) c.followUpAt = b.data.followUpAt || undefined;
     c.updatedAt = now; db.save();
-    res.json({ success: true, client: view(db.getState(), me(), c, browsable(db.getState(), me())) });
+    res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
   });
   r.delete('/clients/:id', needs('daily:use'), (req: Request, res: Response) => {
+    if (isStaff(me())) return res.status(403).json({ error: 'Only the broker can delete a client', code: 'STAFF_CANNOT_DELETE' });
     const st = db.getState(); const i = st.clientCards.findIndex(c => c.id === req.params.id && c.brokerId === me().id);
     if (i < 0) return res.status(404).json({ error: 'Client not found' });
     st.clientCards.splice(i, 1); db.save();

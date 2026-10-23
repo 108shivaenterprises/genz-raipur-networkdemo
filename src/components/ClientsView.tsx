@@ -35,6 +35,8 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
   const [tpl, setTpl] = useState(() => { try { return { ...DEFAULT_TPL, ...JSON.parse(localStorage.getItem(TPL_KEY) || '{}') }; } catch { return DEFAULT_TPL; } });
   const [editTpl, setEditTpl] = useState(false);
   const link = currentUser.referralCode ? `${location.origin}/c/${currentUser.referralCode}` : '';
+  // v58 — the broker's office staff work his client list: no deleting, and the number only when the broker lets them see numbers
+  const staff = currentUser.role === 'TEAM_MEMBER';
 
   const load = useCallback(async () => {
     try { const r = await api.clients(); setList(r.clients); setErr(''); } catch (e: any) { if (!isNetworkError(e)) setErr(e.message); else setList(prev => prev ?? []); }
@@ -116,8 +118,9 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
                 </div>
                 {c.followUpAt && <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${new Date(c.followUpAt) <= new Date() ? 'font-bold text-red-700' : 'text-slate-500'}`}><Clock className="h-3 w-3" aria-hidden />{tx('Follow-up', 'फॉलो-अप')}: {new Date(c.followUpAt).toLocaleDateString('en-IN')}</div>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {c.phoneHidden ? <span className="text-xs text-slate-500" data-testid="client-phone-hidden">{c.phone} · {tx('number hidden by your broker', 'नंबर आपके ब्रोकर ने छुपाया है')}</span> : <>
                   <a href={`tel:+91${digits10(c.phone)}`} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 px-3 text-slate-700" aria-label={tx('Call', 'कॉल')}><Phone className="h-4 w-4" /></a>
-                  <button onClick={() => wa(c, 'follow')} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"><MessageCircle className="h-4 w-4" aria-hidden />WhatsApp</button>
+                  <button onClick={() => wa(c, 'follow')} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"><MessageCircle className="h-4 w-4" aria-hidden />WhatsApp</button></>}
                   {next && <button onClick={() => move(c, next)} className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-800">{tx(...STAGE_LABEL[next])}<ChevronRight className="h-4 w-4" aria-hidden /></button>}
                 </div>
               </div>
@@ -127,7 +130,7 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
       )}
 
       {adding && <AddClient currentUser={currentUser} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load(); setPending(pendingCount()); }} />}
-      {open && <ClientDetail c={open} onClose={() => setOpen(null)} onMove={move} onChanged={(c2: any) => { setOpen(c2); setList(prev => (prev || []).map(x => (x.id === c2.id ? c2 : x))); }} onDelete={async () => { if (!window.confirm(tx('Delete this client permanently?', 'इस क्लाइंट को हमेशा के लिए हटाएँ?'))) return; await api.clientDelete(open.id); setOpen(null); load(); }} wa={wa} />}
+      {open && <ClientDetail c={open} onClose={() => setOpen(null)} onMove={move} onChanged={(c2: any) => { setOpen(c2); setList(prev => (prev || []).map(x => (x.id === c2.id ? c2 : x))); }} onDelete={staff ? undefined : async () => { if (!window.confirm(tx('Delete this client permanently?', 'इस क्लाइंट को हमेशा के लिए हटाएँ?'))) return; await api.clientDelete(open.id); setOpen(null); load(); }} wa={wa} />}
       {editTpl && (
         <Sheet title={tx('WhatsApp templates', 'WhatsApp टेम्पलेट')} onClose={() => setEditTpl(false)}>
           <p className="text-xs text-slate-500">{tx('Use {client_name}, {property_title}, {link}. Saved on this phone.', '{client_name}, {property_title}, {link} इस्तेमाल करें। इसी फ़ोन में सेव होगा।')}</p>
@@ -208,7 +211,7 @@ const AddClient: React.FC<{ currentUser: UserProfile; onClose: () => void; onSav
   );
 };
 
-const ClientDetail: React.FC<{ c: any; onClose: () => void; onMove: (c: any, to: string) => void; onChanged: (c: any) => void; onDelete: () => void; wa: (c: any, k: 'follow' | 'visit') => void }> = ({ c, onClose, onMove, onChanged, onDelete, wa }) => {
+const ClientDetail: React.FC<{ c: any; onClose: () => void; onMove: (c: any, to: string) => void; onChanged: (c: any) => void; onDelete?: () => void; wa: (c: any, k: 'follow' | 'visit') => void }> = ({ c, onClose, onMove, onChanged, onDelete, wa }) => {
   const tx = useTx();
   const [note, setNote] = useState(''); const [err, setErr] = useState('');
   const addNote = async () => { if (!note.trim()) return; try { const r = await api.clientNote(c.id, { text: note.trim(), kind: 'NOTE' }); setNote(''); onChanged(r.client); } catch (e: any) { setErr(e.message); } };
@@ -223,14 +226,14 @@ const ClientDetail: React.FC<{ c: any; onClose: () => void; onMove: (c: any, to:
         <div className="flex flex-wrap gap-1.5">{STAGES.map(s => <button key={s} onClick={() => onMove(c, s)} className={`min-h-10 rounded-full px-3 text-xs font-semibold ${c.stage === s ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-300'}`}>{tx(...STAGE_LABEL[s])}</button>)}</div>
         {c.lostReason && <p className="text-xs text-slate-500">{tx('Lost because', 'खत्म होने का कारण')}: {c.lostReason}</p>}
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => wa(c, 'visit')} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"><MessageCircle className="h-4 w-4" aria-hidden />{tx('Invite to site visit', 'साइट विज़िट बुलाएँ')}</button>
+          {!c.phoneHidden && <button onClick={() => wa(c, 'visit')} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"><MessageCircle className="h-4 w-4" aria-hidden />{tx('Invite to site visit', 'साइट विज़िट बुलाएँ')}</button>}
           {[1, 3, 7].map(d => <button key={d} onClick={() => setFollow(d)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold">{tx(`Remind in ${d}d`, `${d} दिन में याद दिलाएँ`)}</button>)}
         </div>
         <div className="flex gap-2"><input value={note} onChange={e => setNote(e.target.value)} placeholder={tx('Add a note', 'नोट जोड़ें')} maxLength={500} className={field} /><button onClick={addNote} className="min-h-12 shrink-0 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">{tx('Add', 'जोड़ें')}</button></div>
         {err && <p className="text-xs text-red-700">{err}</p>}
         <div><div className="mb-1 text-xs font-bold text-slate-700">{tx('Timeline', 'टाइमलाइन')}</div>
           <ul className="max-h-48 space-y-1.5 overflow-y-auto text-xs text-slate-600">{c.timeline.map((t: any, i: number) => <li key={i} className="flex gap-2"><span className="shrink-0 text-slate-400">{new Date(t.at).toLocaleDateString('en-IN')}</span><span>{t.text}</span></li>)}</ul></div>
-        <button onClick={onDelete} className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-red-700"><Trash2 className="h-4 w-4" aria-hidden />{tx('Delete client', 'क्लाइंट हटाएँ')}</button>
+        {onDelete && <button onClick={onDelete} className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-red-700"><Trash2 className="h-4 w-4" aria-hidden />{tx('Delete client', 'क्लाइंट हटाएँ')}</button>}
       </div>
     </Sheet>
   );

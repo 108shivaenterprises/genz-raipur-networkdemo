@@ -7,7 +7,8 @@
  *
  * What the client sees of a property: marketing facts only (title, locality + city, type, price, areas, tags, first photo, a cleaned
  * description). Never the exact address, the owner's name or number, the net price or anything from deal rooms.
- * The chat belongs to the client and the introducing broker ONLY: not the listing broker, a co-broker, the team, or GENZ staff.
+ * The chat belongs to the client and the introducing broker ONLY: not the listing broker, a co-broker, or GENZ staff. v58: the broker may
+ * switch on "client rooms" for his own office staff — they then work in his rooms (never close one), the client page says so.
  * Phone numbers cannot be typed in the chat (the owner's number is only passed through a verified visit).
  * Messages are kept while the room is open; a closed room's chat is erased after 90 days.
  */
@@ -105,7 +106,13 @@ export function linkVisitToRoom(room: ClientRoom, item: ClientRoom['items'][numb
 }
 
 // ───────────────────────────── broker API ─────────────────────────────
-const mine = (req: Request) => st().clientRooms.find(r => r.id === req.params.id && r.brokerId === me().id);
+/** v58 — whose rooms: a broker's own, or — for his office staff with the "client rooms" switch — the employer's (the rooms stay his) */
+export const roomOwnerOf = (u: UserProfile) => (u.role === 'TEAM_MEMBER' && u.employerId ? u.employerId : u.id);
+const isStaff = (u: UserProfile) => u.role === 'TEAM_MEMBER';
+const actingAs = () => ({ id: roomOwnerOf(me()) });
+const mine = (req: Request) => st().clientRooms.find(r => r.id === req.params.id && r.brokerId === roomOwnerOf(me()));
+/** the employer's staff who may read his rooms (the client is told the office team can read the chat) */
+export const roomTeam = (brokerId: string) => st().users.filter(m => m.role === 'TEAM_MEMBER' && m.employerId === brokerId && m.verificationStatus === 'VERIFIED' && !!m.teamPolicy?.rooms);
 const unread = (r: ClientRoom) => r.messages.filter(m => m.from === 'CLIENT' && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 const openVisits = (r: ClientRoom) => r.items.reduce((n, i) => n + i.visitRequests.filter(v => v.status === 'REQUESTED').length, 0);
 
@@ -131,6 +138,8 @@ function detail(r: ClientRoom) {
     codeForClient: awaiting, smsOn: smsOn(),
     /** v46 — the phones signed in to this room (labels only: "Android · Chrome") */
     devices: (r.devices || []).map(d => ({ id: d.id, label: d.label, firstAt: d.firstAt, lastAt: d.lastAt })), maxDevices: L.devices,
+    /** v58 — the reader is the broker's office staff (no closing, no papers, no visit booking) */
+    staff: (ctx().user as UserProfile | null)?.role === 'TEAM_MEMBER', createdByName: r.createdByName,
   };
 }
 
@@ -139,8 +148,10 @@ export function createClientRoomRouter() {
   r.use(needs('clientroom:use'));
 
   r.get('/', (_req, res) => {
-    const list = st().clientRooms.filter(x => x.brokerId === me().id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    res.json({ success: true, rooms: list.map(summary), counts: { active: list.filter(x => x.status === 'ACTIVE').length, unread: list.reduce((n, x) => n + unread(x), 0), visits: list.reduce((n, x) => n + openVisits(x), 0) } });
+    const list = st().clientRooms.filter(x => x.brokerId === roomOwnerOf(me())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const u = me();
+    res.json({ success: true, rooms: list.map(summary), counts: { active: list.filter(x => x.status === 'ACTIVE').length, unread: list.reduce((n, x) => n + unread(x), 0), visits: list.reduce((n, x) => n + openVisits(x), 0) },
+      ...(isStaff(u) ? { staffOf: (db.byId('users', roomOwnerOf(u)) as UserProfile | undefined)?.name || '' } : {}) });
   });
 
   r.post('/', rateLimit('cr-create', 40, 3600_000), (req: Request, res: Response) => {
@@ -151,18 +162,20 @@ export function createClientRoomRouter() {
     if (name.length < 2) return bad(res, 'Enter your client\'s name');
     if (!PHONE_RE.test(phone)) return bad(res, 'Enter your client\'s 10-digit mobile number');
     if (req.body?.consent !== true) return bad(res, 'Confirm that your client agreed to receive properties and chat in this room');
-    if (st().clientRooms.filter(x => x.brokerId === u.id && x.status === 'ACTIVE').length >= L.activeRooms) return bad(res, `You can keep ${L.activeRooms} client rooms open — close some old ones`);
+    const owner = roomOwnerOf(u);
+    if (st().clientRooms.filter(x => x.brokerId === owner && x.status === 'ACTIVE').length >= L.activeRooms) return bad(res, `You can keep ${L.activeRooms} client rooms open — close some old ones`);
     { const pb = partyBlock(phone, 'buyer'); if (pb) return res.status(403).json(pb); } // v35 — Network Watch
     const phoneKey = hmac('cr-phone', phone);
-    if (st().clientRooms.some(x => x.brokerId === u.id && x.status === 'ACTIVE' && x.phoneKey === phoneKey)) return bad(res, 'You already have an open room for this mobile number', 409);
+    if (st().clientRooms.some(x => x.brokerId === owner && x.status === 'ACTIVE' && x.phoneKey === phoneKey)) return bad(res, 'You already have an open room for this mobile number', 409);
     const token = newToken();
     const room: ClientRoom = {
-      id: rid('CRM'), brokerId: u.id, clientName: name, kind, note: String(req.body?.note || '').trim().slice(0, 300) || undefined,
+      id: rid('CRM'), brokerId: owner, clientName: name, kind, note: String(req.body?.note || '').trim().slice(0, 300) || undefined,
+      ...(isStaff(u) ? { createdById: u.id, createdByName: u.name } : {}),
       phoneKey, phoneLast4: phone.slice(-4), tokenHash: sha(token), sessVersion: 1, status: 'ACTIVE',
       createdAt: nowIso(), updatedAt: nowIso(), expiresAt: new Date(Date.now() + L.linkDays * 86400_000).toISOString(),
       items: [], messages: [], events: [],
     };
-    ev(room, 'Room opened');
+    ev(room, isStaff(u) ? `Room opened by ${u.name} (office team)` : 'Room opened');
     st().clientRooms.push(room);
     db.save();
     db.appendAuditEvent(u.id, u.role, 'LEAD', room.id, 'CLIENT_ROOM_OPENED', `Client room opened (${kind}), mobile ending ${room.phoneLast4}`);
@@ -182,9 +195,9 @@ export function createClientRoomRouter() {
     if (room.items.some(i => i.propertyId === p.id)) return bad(res, 'Already shared in this room', 409);
     if (room.items.length >= L.items) return bad(res, `A room can hold ${L.items} properties`);
     const note = stripPhones(String(req.body?.note || '').trim()).slice(0, 200) || undefined;
-    const media = req.body?.withMedia === false ? undefined : allMedia(me(), p);
+    const media = req.body?.withMedia === false ? undefined : allMedia(actingAs(), p);
     room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note, visitRequests: [], ...(media && (media.photos.length || media.videos.length) ? { media } : {}) });
-    ev(room, `Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? ' + video' : ''}` : ''}`);
+    ev(room, `${isStaff(me()) ? `${me().name}: ` : ''}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? ' + video' : ''}` : ''}`);
     db.save();
     void pushIfSeen(room);
     res.json({ success: true, room: detail(room) });
@@ -195,7 +208,7 @@ export function createClientRoomRouter() {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     const it = room.items.find(i => i.id === req.params.itemId); if (!it) return bad(res, 'Not found', 404);
     const p = st().properties.find(x => x.id === it.propertyId); if (!p) return bad(res, 'Property not found', 404);
-    const avail = shareableMedia(me(), p);
+    const avail = shareableMedia(actingAs(), p);
     res.json({ success: true, available: { photos: avail.photos, videos: avail.videos.map(url => ({ url, kind: videoKind(url) })) }, chosen: chosenMedia(room, it, p), limits: ROOM_MEDIA });
   });
   r.put('/:id/items/:itemId/media', rateLimit('cr-media', 120, 3600_000), (req: Request, res: Response) => {
@@ -207,7 +220,7 @@ export function createClientRoomRouter() {
     const videos = Array.isArray(req.body?.videos) ? req.body.videos.map(String) : [];
     if (photos.length > ROOM_MEDIA.maxPhotos) return bad(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
     if (videos.length > ROOM_MEDIA.maxVideos) return bad(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
-    const avail = shareableMedia(me(), p);
+    const avail = shareableMedia(actingAs(), p);
     if (!photos.every((x: string) => avail.photos.includes(x)) || !videos.every((x: string) => avail.videos.includes(x))) return bad(res, 'You can share only this listing\'s own photos and videos', 400, { code: 'MEDIA_NOT_SHAREABLE' });
     it.media = { photos: [...new Set<string>(photos)], videos: [...new Set<string>(videos)], at: nowIso() };
     ev(room, `Photos & video of ${p.id}: ${it.media.photos.length} photo(s)${it.media.videos.length ? `, ${it.media.videos.length} video(s)` : ''}`);
@@ -231,8 +244,9 @@ export function createClientRoomRouter() {
     if (text.length > L.textChars) return bad(res, `Keep it under ${L.textChars} characters`);
     if (containsPhone(text)) return bad(res, PHONE_IN_CHAT_MSG.en, 400, { code: 'PHONE_IN_CHAT', hi: PHONE_IN_CHAT_MSG.hi });
     if (room.messages.length >= L.messages) return bad(res, 'This chat is full — open a new room or close this one');
-    room.messages.push({ id: rid('CRX'), from: 'BROKER', text, at: nowIso(), propertyId: validPropRef(room, req.body?.propertyId) });
-    room.lastBrokerSeenAt = nowIso(); ev(room, 'Broker wrote');
+    const u = me();
+    room.messages.push({ id: rid('CRX'), from: 'BROKER', text, at: nowIso(), propertyId: validPropRef(room, req.body?.propertyId), ...(isStaff(u) ? { byId: u.id, byName: u.name } : {}) });
+    room.lastBrokerSeenAt = nowIso(); ev(room, isStaff(u) ? `${u.name} (office team) wrote` : 'Broker wrote');
     db.save();
     res.json({ success: true, room: detail(room) });
   });
@@ -276,6 +290,7 @@ export function createClientRoomRouter() {
 
   r.post('/:id/close', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    if (isStaff(me())) return bad(res, 'Only the broker can close a client room', 403, { code: 'STAFF_CANNOT_CLOSE' });
     room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPlain = undefined;
     ev(room, 'Room closed'); db.save();
     db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_CLOSED', 'Client room closed');
@@ -287,7 +302,10 @@ export function createClientRoomRouter() {
 const validPropRef = (room: ClientRoom, id: unknown) => { const s = String(id || ''); return room.items.some(i => i.propertyId === s) ? s : undefined; };
 /** broker pushes: only when the client has an account-free session already; the push is to the BROKER, so it never carries chat text */
 function pushIfSeen(_room: ClientRoom) { /* the client has no app: the broker sends the link on WhatsApp */ }
-const pingBroker = (room: ClientRoom, title: string, body: string) => void pushTo(room.brokerId, { kind: 'deals', title, body, url: '/?tab=clientroom' });
+const pingBroker = (room: ClientRoom, title: string, body: string) => {
+  void pushTo(room.brokerId, { kind: 'deals', title, body, url: '/?tab=clientroom' });
+  for (const m of roomTeam(room.brokerId)) void pushTo(m.id, { kind: 'deals', title, body, url: '/?tab=clientroom' }); // v58 — his office staff who work the rooms
+};
 
 // ───────────────────────────── the client's page (no login: link + mobile OTP) ─────────────────────────────
 const SESS_COOKIE = 'genz_cr';
@@ -599,7 +617,7 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
       const left = Math.max(0, x.cs.maxViews - x.cs.views);
       return `<div class="row" style="margin-top:6px"><a class="btn g" href="/r/${tok}/paper/${esc(pp.shareId)}">📄 खोलें / Open</a></div><small>${left} बार और · ${esc(dayHi(x.cs.expiresAt))} तक / ${left} more open(s) · till ${esc(dayHi(x.cs.expiresAt))}</small>`;
     };
-    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text)}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : esc(b?.name || 'Broker')} · ${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
+    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text)}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)` : esc(b?.name || 'Broker')} · ${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
     db.save();
     // v46 — the client's own name over the page: a screenshot forwarded to someone else still shows whose room it was
     const mark = esc(`${room.clientName} ••${room.phoneLast4} · ${b?.name || 'GENZ'}`);
@@ -610,7 +628,7 @@ ${brokerCard(b)}
 <p class="small" style="margin:10px 4px">📌 इस पेज को बुकमार्क / होम स्क्रीन पर रख लें — इसी फ़ोन पर अगली बार बिना कोड के खुलेगा (${L.sessionDays} दिन में एक बार खोलते रहें)। यह पेज सिर्फ़ आपके लिए है, इसका लिंक या स्क्रीनशॉट आगे न भेजें।<br>Bookmark this page or add it to your home screen — on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
 <h2>आपके लिए प्रॉपर्टी / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">अभी कोई प्रॉपर्टी नहीं भेजी गई। / Nothing shared yet — your broker will add some.</p></div>'}
 <h2 id="chat">ब्रोकर से बात / Chat with your broker</h2>
-<div class="card"><p class="small">यह चैट सिर्फ़ आप और आपके ब्रोकर देख सकते हैं। फ़ोन नंबर चैट में न लिखें। / Only you and your broker can read this chat. Please do not type phone numbers.</p>
+<div class="card"><p class="small">${roomTeam(room.brokerId).length ? 'यह चैट सिर्फ़ आप, आपके ब्रोकर और उनकी ऑफ़िस टीम देख सकते हैं। फ़ोन नंबर चैट में न लिखें। / Only you, your broker and his office team can read this chat. Please do not type phone numbers.' : 'यह चैट सिर्फ़ आप और आपके ब्रोकर देख सकते हैं। फ़ोन नंबर चैट में न लिखें। / Only you and your broker can read this chat. Please do not type phone numbers.'}</p>
 <div class="chat" id="chat-box">${chat || '<small>अभी कोई संदेश नहीं। / No messages yet.</small>'}</div>
 <form method="post" action="/r/${tok}/msg"><textarea name="text" id="msgtext" rows="2" maxlength="${L.textChars}" placeholder="संदेश लिखें / Write a message" required></textarea>
 ${room.items.length ? `<label>किस प्रॉपर्टी के बारे में? (वैकल्पिक) / About which property?</label><select name="item" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px"><option value="">—</option>${room.items.map(i => `<option value="${esc(i.id)}">${esc(props.find(x => x.id === i.propertyId)?.title || i.propertyId)}</option>`).join('')}</select>` : ''}<div class="row"><button class="g" type="submit">भेजें / Send</button></div></form></div>

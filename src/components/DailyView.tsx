@@ -19,8 +19,12 @@ export const HelpLink: React.FC<{ lesson: string; onNavigate: (t: any) => void }
 
 export const DailyView: React.FC<{ currentUser: UserProfile; onNavigate: (t: any) => void; initial?: Sub }> = ({ currentUser, onNavigate, initial = 'today' }) => {
   const tx = useTx();
-  const [sub, setSub] = useState<Sub>(initial);
-  const tabs: [Sub, string, string, React.ElementType][] = [
+  // v58 — a broker's office staff gets only his employer's client list (+ map and rate card); digest, trust and points are the broker's own
+  const staff = currentUser.role === 'TEAM_MEMBER';
+  const [sub, setSub] = useState<Sub>(staff ? 'clients' : initial);
+  const tabs: [Sub, string, string, React.ElementType][] = staff ? [
+    ['clients', 'Clients', 'क्लाइंट', Users], ['map', 'Map', 'नक्शा', MapIcon], ['rates', 'Rate card', 'रेट कार्ड', BarChart3],
+  ] : [
     ['today', 'Today', 'आज', Sun], ['clients', 'Clients', 'क्लाइंट', Users], ['listings', 'My listings & trust', 'मेरी लिस्टिंग और ट्रस्ट', ShieldCheck],
     ['map', 'Map', 'नक्शा', MapIcon], ['rates', 'Rate card', 'रेट कार्ड', BarChart3], ['points', 'Points', 'पॉइंट्स', Award],
   ];

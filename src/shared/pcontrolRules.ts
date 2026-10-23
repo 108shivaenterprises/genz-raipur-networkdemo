@@ -33,6 +33,12 @@ export interface PolicyLike {
   scope: 'ASSIGNED' | 'PROJECTS';
   projectIds: string[];
   onLeave: boolean;
+  /** v58 — a BROKER's staff, resale / rent work (all off by default):
+   *  listings: OFF · READ = network listings read-only like the employer sees them · ADDRESS = and the address of the employer's OWN listings
+   *  (never an owner's name / number, never papers); rooms = work in the employer's client rooms; clients = the employer's client list */
+  listings: 'OFF' | 'READ' | 'ADDRESS';
+  rooms: boolean;
+  clients: boolean;
 }
 
 /** Legacy behaviour — an employee without a stored policy keeps exactly what they had before v12. */
@@ -40,6 +46,7 @@ export const DEFAULT_POLICY: PolicyLike = {
   phoneMode: 'FULL', revealCap: 30, canRegister: true, canMarkLost: true, canClaim: false, canVerify: false, canScanVisits: false, canForward: true, canRequestBooking: false, canCollectMoney: false, canConfirmMoney: false,
   invMode: 'OFF', invPrice: false, invFeatures: true, invShareOut: false,
   scope: 'ASSIGNED', projectIds: [], onLeave: false,
+  listings: 'OFF', rooms: false, clients: false,
 };
 
 export function policyOf(u: { teamPolicy?: Partial<PolicyLike> } | undefined | null): PolicyLike {
@@ -61,6 +68,13 @@ export function cleanPolicy(input: any, current: PolicyLike): PolicyLike | strin
   if (input.invMode !== undefined) {
     if (!['OFF', 'SHARED', 'ALL'].includes(input.invMode)) return 'Unit access must be OFF, SHARED or ALL';
     out.invMode = input.invMode;
+  }
+  if (input.listings !== undefined) {
+    if (!['OFF', 'READ', 'ADDRESS'].includes(input.listings)) return 'Listings access must be OFF, READ or ADDRESS';
+    out.listings = input.listings;
+  }
+  for (const k of ['rooms', 'clients'] as const) {
+    if (input[k] !== undefined) { if (typeof input[k] !== 'boolean') return `${k} must be true or false`; out[k] = input[k]; }
   }
   for (const k of ['invPrice', 'invFeatures', 'invShareOut'] as const) {
     if (input[k] !== undefined) { if (typeof input[k] !== 'boolean') return `${k} must be true or false`; out[k] = input[k]; }

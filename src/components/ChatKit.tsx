@@ -28,6 +28,8 @@ export interface ThreadMsg {
   hideText?: boolean;
   /** v53 — sent in the brokers-only channel: marked with a small lock */
   priv?: boolean;
+  /** v58 — written on my side by someone else (the broker's office staff): a small "— name" under the bubble */
+  by?: string;
 }
 
 const timeOf = (iso: string) => { try { return new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
@@ -103,7 +105,7 @@ export const ChatThread: React.FC<{
                   {!m.hideText && m.text}
                   {m.ref && <div className="mt-0.5 text-xs text-slate-500">↳ {m.ref}</div>}
                   {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-semibold text-blue-700 underline">{tx('Attached file', 'संलग्न फ़ाइल')}</a>}
-                  <div className="mt-0.5 text-right text-xs text-slate-400">{timeOf(m.at)}</div>
+                  <div className="mt-0.5 text-right text-xs text-slate-400">{m.by ? <span className="mr-1 font-semibold text-slate-500" data-testid="msg-by">— {m.by}</span> : null}{timeOf(m.at)}</div>
                 </div>
               </div>
             </React.Fragment>

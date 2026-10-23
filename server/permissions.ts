@@ -365,26 +365,38 @@ export function roleHas(role: UserRole, perm: Permission): boolean {
   return permissionsForRole(role).includes(perm);
 }
 
+/** v58 — the resale / rent switches a BROKER gives one of his staff (see TeamPolicy) */
+export interface StaffSwitches { listings?: 'OFF' | 'READ' | 'ADDRESS'; rooms?: boolean; clients?: boolean }
+
 /** An employee's powers depend on who employs them: always a subset of the employer's own. */
-export function memberPermissions(employerRole?: UserRole): Permission[] {
+export function memberPermissions(employerRole?: UserRole, sw?: StaffSwitches): Permission[] {
   const base: Permission[] = ['self:read', 'self:update', 'team:checkin', 'task:read'];
   switch (employerRole) {
     case 'ADMIN': case 'SUPERADMIN': return [...base, 'connector:desk'];
     case 'CONTRACTOR': return [...base, 'lead:read'];
-    case 'DEVELOPER_BUILDER': case 'BROKER': default:
-      return [...base, 'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm', 'deal:read', 'deal:chat', 'task:manage', 'pcontrol:staff', 'visit:pass', 'visit:scan', 'inventory:read', 'inventory:share'];
+    case 'DEVELOPER_BUILDER': case 'BROKER': default: {
+      const out: Permission[] = [...base, 'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm', 'deal:read', 'deal:chat', 'task:manage', 'pcontrol:staff', 'visit:pass', 'visit:scan', 'inventory:read', 'inventory:share'];
+      // v58 — a broker's office staff: only what the broker switched on for this person (the data stays the broker's — see the routers)
+      if (employerRole === 'BROKER' && sw) {
+        if (sw.listings === 'READ' || sw.listings === 'ADDRESS') out.push('property:read');
+        if (sw.rooms) out.push('clientroom:use');
+        if (sw.clients) out.push('daily:use');
+      }
+      return out;
+    }
   }
 }
 
 export interface AccountLike {
   role: UserRole;
   employerRole?: UserRole;
+  teamPolicy?: StaffSwitches;
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | 'BLACKLISTED';
 }
 
 /** Effective permission list for an account, honouring its verification state. */
 export function effectivePermissions(user: AccountLike): Permission[] {
-  const all = user.role === 'TEAM_MEMBER' ? memberPermissions(user.employerRole) : permissionsForRole(user.role);
+  const all = user.role === 'TEAM_MEMBER' ? memberPermissions(user.employerRole, user.teamPolicy) : permissionsForRole(user.role);
   if (user.verificationStatus === 'VERIFIED') return all;
   if (user.verificationStatus === 'PENDING' || user.verificationStatus === 'SUSPENDED') {
     return all.filter(p => UNVERIFIED_ALLOWED.includes(p));

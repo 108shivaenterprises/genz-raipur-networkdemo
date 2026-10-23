@@ -112,7 +112,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> =
         <p className="text-xs text-slate-500">{tx('Add employees such as telecallers / site executives. They see only the leads and deal rooms you allot — commission, split and payout stay hidden from them.','टेलीकॉलर / साइट एक्ज़ीक्यूटिव जैसे कर्मचारी जोड़ें। वे केवल वही लीड और डील रूम देखते हैं जो आप आवंटित करते हैं — कमीशन, स्प्लिट और पेआउट उन्हें नहीं दिखता।')} ({members.length}/{max})</p>
       </div>
       <div className="flex gap-1 border-b border-slate-200">
-        {(['members', 'control', 'activity'] as const).filter(t => t !== 'control' || canControl).map(t => <button key={t} onClick={() => setTab(t)} className={`min-h-11 px-3 py-2 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500'}`}>{t === 'members' ? tx('Members', 'सदस्य') : t === 'control' ? tx('Lead control', 'लीड कंट्रोल') : tx('Activity & incentives', 'गतिविधि और इंसेंटिव')}</button>)}
+        {(['members', 'control', 'activity'] as const).filter(t => t !== 'control' || canControl).map(t => <button key={t} onClick={() => setTab(t)} data-testid={`team-tab-${t}`} className={`min-h-11 px-3 py-2 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500'}`}>{t === 'members' ? tx('Members', 'सदस्य') : t === 'control' ? (isBuilder ? tx('Lead control', 'लीड कंट्रोल') : tx('Access & leads', 'पहुँच और लीड')) : tx('Activity & incentives', 'गतिविधि और इंसेंटिव')}</button>)}
       </div>
       {tab === 'activity' && <ActivityTab />}
       {tab === 'control' && <TeamControl isBuilder={isBuilder} />}

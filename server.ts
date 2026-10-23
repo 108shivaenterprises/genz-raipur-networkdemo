@@ -1019,6 +1019,8 @@ function sanitizeProperty(p: any, user: UserProfile, state = db.getState()) {
     out.locationPrecision = p.locationPrecision === 'EXACT_PIN' ? 'GENERAL_AREA' : p.locationPrecision;
     out.documents = [];
   }
+  // v58 — a broker's office staff never gets papers (the address alone, if the broker allowed it)
+  if (user.role === 'TEAM_MEMBER') { out.documents = []; delete out.ownerConsentId; }
   return out;
 }
 
