@@ -94750,6 +94750,26 @@ function filterItemForUser(item, user, property, state = db.getState()) {
   });
   return { ...item, evidenceReferences };
 }
+app.get("/api/due-diligence/mine", needs("dd:read"), (_req, res) => {
+  const u = getCurrentUser();
+  const state = db.getState();
+  const props = new Map(state.properties.map((p) => [p.id, p]));
+  const ok = (pid) => {
+    const p = props.get(pid);
+    return !!p && canAccessPropertyWorkspace(state, u, p);
+  };
+  const titleOf = (pid) => props.get(pid)?.title || pid;
+  const now = Date.now();
+  const review = state.dueDiligenceItems.filter((i) => i.isApplicable && i.responsibleVerifierId === u.id && i.status === "UNDER_REVIEW" && ok(i.propertyId)).map((i) => ({ kind: "REVIEW", id: i.id, propertyId: i.propertyId, propertyTitle: titleOf(i.propertyId), title: i.title, status: i.status }));
+  const rank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFORMATIONAL: 4 };
+  const issues = state.dueDiligenceIssues.filter((x) => x.responsibleResolverId === u.id && ["OPEN", "IN_PROGRESS", "REOPENED"].includes(x.status) && ok(x.propertyId)).map((x) => ({ kind: "ISSUE", id: x.id, propertyId: x.propertyId, propertyTitle: titleOf(x.propertyId), title: x.title, severity: x.severity, deadline: x.deadline, overdue: !!x.deadline && Date.parse(x.deadline) < now })).sort((a, b) => Number(b.overdue) - Number(a.overdue) || (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9));
+  const live5 = new Set(state.dealRooms.filter((d) => ["Negotiation", "Agreement", "Handover"].includes(d.stage)).map((d) => d.propertyId));
+  const mine3 = new Set(state.properties.filter((p) => (p.listingBrokerId === u.id || p.ownerId === u.id) && live5.has(p.id)).map((p) => p.id));
+  const papers = state.dueDiligenceItems.filter((i) => i.isApplicable && mine3.has(i.propertyId) && ["NOT_STARTED", "PENDING_DOCUMENT", "REJECTED"].includes(i.status) && i.responsibleVerifierId !== u.id).map((i) => ({ kind: "PAPER", id: i.id, propertyId: i.propertyId, propertyTitle: titleOf(i.propertyId), title: i.title, status: i.status, requiredDocument: i.requiredDocument }));
+  const started = new Set(state.dueDiligenceItems.map((i) => i.propertyId));
+  const start = [...mine3].filter((pid) => !started.has(pid) && ok(pid)).map((pid) => ({ kind: "START", id: `start-${pid}`, propertyId: pid, propertyTitle: titleOf(pid), title: "Title check not started \u2014 the deal is live" }));
+  res.json({ success: true, items: [...issues, ...review, ...start, ...papers].slice(0, 200), counts: { issues: issues.length, overdue: issues.filter((x) => x.overdue).length, review: review.length, papers: papers.length, start: start.length } });
+});
 app.get("/api/due-diligence/property/:propertyId", needs("dd:read"), (req, res) => {
   const currentUser2 = getCurrentUser();
   const { state, property } = loadPropertyWorkspace(currentUser2, req.params.propertyId);

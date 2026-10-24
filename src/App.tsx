@@ -415,7 +415,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className={`flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 ${currentUser.role === 'BROKER' ? 'pb-24 md:pb-6' : ''}`}>
+      <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6 md:pb-6">
         <TabErrorBoundary key={activeTab} area={activeTab}>
         <Suspense fallback={<TabLoading />}>
         {activeTab === 'dashboard' && currentUser.role === 'GENZ_CONNECTOR' && (

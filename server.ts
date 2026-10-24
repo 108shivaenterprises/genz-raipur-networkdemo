@@ -4703,6 +4703,34 @@ function filterItemForUser(item: any, user: UserProfile, property: any, state = 
   return { ...item, evidenceReferences };
 }
 
+/**
+ * v62 — Title Check "my open items": what waits on ME across properties —
+ *   REVIEW: checks I verify whose papers are in (UNDER_REVIEW); ISSUE: issues I must resolve (overdue / critical first);
+ *   PAPER: papers still missing on my own listings that are in a live deal (negotiation, agreement, handover).
+ * Only properties whose workspace I may open; never another member's evidence.
+ */
+app.get('/api/due-diligence/mine', needs('dd:read'), (_req: Request, res: Response) => {
+  const u = getCurrentUser(); const state = db.getState();
+  const props = new Map(state.properties.map(p => [p.id, p]));
+  const ok = (pid: string) => { const p = props.get(pid); return !!p && canAccessPropertyWorkspace(state, u, p); };
+  const titleOf = (pid: string) => props.get(pid)?.title || pid;
+  const now = Date.now();
+  const review = state.dueDiligenceItems.filter(i => i.isApplicable && i.responsibleVerifierId === u.id && i.status === 'UNDER_REVIEW' && ok(i.propertyId))
+    .map(i => ({ kind: 'REVIEW' as const, id: i.id, propertyId: i.propertyId, propertyTitle: titleOf(i.propertyId), title: i.title, status: i.status }));
+  const rank: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFORMATIONAL: 4 };
+  const issues = state.dueDiligenceIssues.filter(x => x.responsibleResolverId === u.id && ['OPEN', 'IN_PROGRESS', 'REOPENED'].includes(x.status) && ok(x.propertyId))
+    .map(x => ({ kind: 'ISSUE' as const, id: x.id, propertyId: x.propertyId, propertyTitle: titleOf(x.propertyId), title: x.title, severity: x.severity, deadline: x.deadline, overdue: !!x.deadline && Date.parse(x.deadline) < now }))
+    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9));
+  const live = new Set(state.dealRooms.filter(d => ['Negotiation', 'Agreement', 'Handover'].includes(d.stage)).map(d => d.propertyId));
+  const mine = new Set(state.properties.filter(p => (p.listingBrokerId === u.id || p.ownerId === u.id) && live.has(p.id)).map(p => p.id));
+  const papers = state.dueDiligenceItems.filter(i => i.isApplicable && mine.has(i.propertyId) && ['NOT_STARTED', 'PENDING_DOCUMENT', 'REJECTED'].includes(i.status) && i.responsibleVerifierId !== u.id)
+    .map(i => ({ kind: 'PAPER' as const, id: i.id, propertyId: i.propertyId, propertyTitle: titleOf(i.propertyId), title: i.title, status: i.status, requiredDocument: i.requiredDocument }));
+  // my listing in a live deal whose title check nobody has opened yet → one row to start it
+  const started = new Set(state.dueDiligenceItems.map(i => i.propertyId));
+  const start = [...mine].filter(pid => !started.has(pid) && ok(pid)).map(pid => ({ kind: 'START' as const, id: `start-${pid}`, propertyId: pid, propertyTitle: titleOf(pid), title: 'Title check not started — the deal is live' }));
+  res.json({ success: true, items: [...issues, ...review, ...start, ...papers].slice(0, 200), counts: { issues: issues.length, overdue: issues.filter(x => x.overdue).length, review: review.length, papers: papers.length, start: start.length } });
+});
+
 app.get('/api/due-diligence/property/:propertyId', needs('dd:read'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { state, property } = loadPropertyWorkspace(currentUser, req.params.propertyId);

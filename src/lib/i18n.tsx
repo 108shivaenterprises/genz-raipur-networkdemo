@@ -4,7 +4,7 @@ export type Lang = 'en' | 'hi';
 
 const HI: Record<string, string> = {
   // shell
-  'nav.home': 'होम', 'nav.propShort': 'प्रॉपर्टी', 'nav.buyersShort': 'खरीदार', 'nav.dealsShort': 'डील', 'nav.more': 'और', 'nav.g.today': 'आज', 'nav.g.property': 'प्रॉपर्टी और खरीदार', 'nav.g.deals': 'डील', 'nav.g.sales': 'सेल्स और टीम', 'nav.g.grow': 'नेटवर्क और ग्रोथ', 'nav.g.other': 'अन्य',
+  'nav.home': 'होम', 'nav.propShort': 'प्रॉपर्टी', 'nav.buyersShort': 'खरीदार', 'nav.dealsShort': 'डील', 'nav.more': 'और', 'nav.g.today': 'आज', 'nav.g.property': 'प्रॉपर्टी और खरीदार', 'nav.g.deals': 'डील', 'nav.g.sales': 'सेल्स और टीम', 'nav.g.grow': 'नेटवर्क और ग्रोथ', 'nav.g.other': 'अन्य', 'nav.g.money': 'पैसा और बढ़त', 'nav.g.market': 'लिस्टिंग और डील', 'nav.g.control': 'कंट्रोल और रिकॉर्ड', 'nav.projectsShort': 'प्रोजेक्ट', 'nav.crmShort': 'CRM', 'nav.kycShort': 'KYC', 'nav.disputesShort': 'विवाद', 'nav.feesShort': 'फ़ीस', 'nav.controlShort': 'कंट्रोल', 'nav.legalShort': 'लीगल', 'nav.ddShort': 'टाइटल', 'nav.papersShort': 'कागज़', 'nav.leadsShort': 'लीड', 'nav.teamShort': 'टीम',
   'nav.dashboard': 'डैशबोर्ड', 'nav.builder': 'बिल्डर लॉन्चपैड', 'nav.crm': 'एसोसिएट्स CRM', 'nav.properties': 'प्रॉपर्टी',
   'nav.myProperties': 'मेरी प्रॉपर्टी', 'nav.requirements': 'खरीदार की ज़रूरतें', 'nav.matches': 'मैजिक मैच', 'nav.deals': 'मेरी डील',
   'nav.myDeals': 'मेरी प्रॉपर्टी डील', 'nav.dd': 'टाइटल जाँच', 'nav.construction': 'कंस्ट्रक्शन लीड', 'nav.disputes': 'विवाद',

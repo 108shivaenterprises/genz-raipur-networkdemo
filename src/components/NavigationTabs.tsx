@@ -170,7 +170,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const isMember = currentUser?.role === 'TEAM_MEMBER';
 
   // Tabs are derived from the server-issued permission list; the API enforces the same rules independently.
-  const tabs = [
+  const allTabs = [
     { id: 'dashboard', label: isMember ? t('nav.myWork', 'My Work') : isConnector ? t('nav.myReferrals', 'My Referrals') : t('nav.dashboard', 'Dashboard'), icon: LayoutDashboard },
     ...(has('legal:desk') && !has('legal:manage') ? [{ id: 'legal', label: t('nav.legal', 'Legal Desk'), icon: ScaleIcon, badge: legalBadge }] : []),
     // v54.1 — GENZ admins are never part of a deal chat (they read a deal room only through a dispute), so their Chats list is always empty
@@ -216,9 +216,13 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('admin:control_center') ? [{ id: 'revenue', label: t('nav.revenue', 'Revenue & Growth'), icon: IndianRupee }] : []),
     ...(has('admin:control_center') ? [{ id: 'control', label: t('nav.control', 'Control Center'), icon: Settings2 }] : []),
   ];
+  // v62 — the super admin holds every permission, but a broker's own workspace (his clients, rooms, page, rent desk, offers, passes) is empty
+  // for him: those tabs are left out of his menu (he sees a member's screens with "view as"; the routes still work for a direct link)
+  const PERSONAL_TABS = ['daily', 'clientroom', 'visits', 'mypage', 'rentdesk', 'share', 'desk'];
+  const tabs = currentUser?.role === 'SUPERADMIN' ? allTabs.filter(x => !PERSONAL_TABS.includes(x.id)) : allTabs;
 
   // A remembered or linked tab this user may not open (permissions changed, someone else's link) → dashboard, never an empty page.
-  const allowed = tabs.some(x => x.id === activeTab);
+  const allowed = allTabs.some(x => x.id === activeTab);
   useEffect(() => {
     if (!currentUser || allowed) return;
     // v49: an old Protected Docs link / shortcut opens that section inside Property Papers
@@ -226,21 +230,29 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     onChangeTab('dashboard');
   }, [allowed, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // v26 — on a phone a broker gets 5 big buttons at the bottom instead of ~20 tabs; “More” opens the full list
-  const simple = currentUser?.role === 'BROKER';
+  // v26 — on a phone a broker gets 5 big buttons at the bottom instead of ~20 tabs; “More” opens the full list.
+  // v62 — every role with more than 6 tabs gets the same (admin 25, super admin 28, builder 14, legal 11…), with its own 4 buttons.
+  const role = currentUser?.role || '';
+  const simple = role === 'BROKER' || tabs.length > 6;
   const [more, setMore] = useState(false);
   // v44: the first id that exists wins (so “Deals” opens the deal pipeline; Deal Desk stays one tap away in More)
   const pick = (ids: string[]) => ids.map(id => tabs.find(x => x.id === id)).find(Boolean);
-  const bottom = simple ? [
-    { tab: pick(['dashboard']), label: t('nav.home', 'Home') },
-    { tab: pick(['properties']), label: t('nav.propShort', 'Property') },
-    { tab: pick(['requirements']), label: t('nav.buyersShort', 'Buyers') },
-    { tab: pick(['deals', 'desk']), label: t('nav.dealsShort', 'Deals') },
-  ].filter(x => x.tab) : [];
+  const HOME = { ids: ['dashboard'], key: 'nav.home', en: 'Home' };
+  const BOTTOM: Record<string, Array<{ ids: string[]; key: string; en: string }>> = {
+    BROKER: [HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['requirements'], key: 'nav.buyersShort', en: 'Buyers' }, { ids: ['deals', 'desk'], key: 'nav.dealsShort', en: 'Deals' }],
+    DEVELOPER_BUILDER: [HOME, { ids: ['pcontrol'], key: 'nav.projectsShort', en: 'Projects' }, { ids: ['crm'], key: 'nav.crmShort', en: 'CRM' }, { ids: ['chats'], key: 'nav.chats', en: 'Chats' }],
+    ADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['plans'], key: 'nav.feesShort', en: 'Fees' }],
+    SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'plans'], key: 'nav.controlShort', en: 'Control' }],
+    LEGAL_COUNSEL: [HOME, { ids: ['legal'], key: 'nav.legalShort', en: 'Legal' }, { ids: ['due_diligence'], key: 'nav.ddShort', en: 'Title' }, { ids: ['propdocs', 'pdocs'], key: 'nav.papersShort', en: 'Papers' }],
+    PROPERTY_OWNER: [HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
+    CONTRACTOR: [HOME, { ids: ['construction'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['team'], key: 'nav.teamShort', en: 'Team' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }],
+  };
+  const bottom = simple ? (BOTTOM[role] || [HOME, ...tabs.filter(x => x.id !== 'dashboard').slice(0, 3).map(x => ({ ids: [x.id], key: '', en: '' }))])
+    .map(b => { const tab = pick(b.ids); return { tab, label: b.key ? t(b.key, b.en) : (tab?.label || '') }; }).filter(x => x.tab) : [];
   const inBottom = bottom.some(b => b.tab!.id === activeTab);
 
   // v31 — a broker's ~23 tabs in 6 groups, each in priority order (the order of `ids` is the order shown; a group opens on its first tab). Every tab is still reachable: a group lists the tabs below, and anything not named lands in “Other”.
-  const GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
+  const BROKER_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'chats', 'daily', 'visits'] },
     { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'mypage', 'share', 'propdocs', 'pdocs', 'landrecords'] },
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
@@ -248,6 +260,15 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'partners', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },
     { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['network', 'community', 'grow', 'plans', 'launchdesk', 'citylaunch'] },
   ];
+  // v62 — GENZ staff: the day's checks first, then money & growth, the market, sales, and the controls & records
+  const ADMIN_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
+    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'onboarding', 'idreview', 'disputes', 'legal'] },
+    { id: 'money', key: 'nav.g.money', en: 'Money & Growth', ids: ['plans', 'revenue', 'citylaunch', 'launchdesk', 'grow', 'network', 'community'] },
+    { id: 'market', key: 'nav.g.market', en: 'Listings & Deals', ids: ['properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'landrecords', 'propdocs', 'pdocs'] },
+    { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'partners', 'team'] },
+    { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'audit'] },
+  ];
+  const GROUP_DEFS = role === 'ADMIN' || role === 'SUPERADMIN' ? ADMIN_GROUP_DEFS : BROKER_GROUP_DEFS;
   const groups = (() => {
     const placed = new Set<string>();
     const g = GROUP_DEFS.map(d => ({ ...d, label: t(d.key, d.en), tabs: d.ids.map(id => tabs.find(x => x.id === id)).filter(Boolean) as typeof tabs })).filter(d => d.tabs.length > 0);

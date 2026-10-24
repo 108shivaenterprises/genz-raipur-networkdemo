@@ -827,6 +827,8 @@ export const api = {
   savedToggle: (propertyId: string) => request<any>(`/api/saved/${encodeURIComponent(propertyId)}`, { method: 'POST', body: '{}' }),
   // v57 — My Public Page
   ppGet: () => request<any>('/api/public-page'),
+  // v62 — Title Check: what waits on me across properties
+  ddMine: () => request<any>('/api/due-diligence/mine'),
   // v61 — builder ↔ partner chat
   pchatList: () => request<any>('/api/partner-chats'),
   pchatOpen: (withId: string) => request<any>('/api/partner-chats/open', { method: 'POST', body: JSON.stringify({ withId }) }),

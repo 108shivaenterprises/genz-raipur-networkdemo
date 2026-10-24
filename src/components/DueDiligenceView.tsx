@@ -94,6 +94,11 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('ALL');
+  // v62 — "my open items" across properties: tap one → its property opens and the row is brought into view
+  const [mine, setMine] = useState<any>(null);
+  const [focusId, setFocusId] = useState('');
+  const [extraProp, setExtraProp] = useState<{ id: string; title: string } | null>(null);
+  useEffect(() => { api.ddMine().then(setMine).catch(() => setMine(null)); }, []);
 
   // Secure Document Upload Modal state
   const [secureUploadItem, setSecureUploadItem] = useState<DueDiligenceChecklistItem | null>(null);
@@ -140,6 +145,18 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
       loadDueDiligence(selectedPropertyId);
     }
   }, [selectedPropertyId]);
+  // bring the picked open item into view once its property's checklist is on screen
+  useEffect(() => {
+    if (!focusId || loading) return;
+    const el = document.getElementById(`dd-item-${focusId}`);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); const t = window.setTimeout(() => setFocusId(''), 4000); return () => window.clearTimeout(t); }
+  }, [focusId, loading, items, issues]);
+  const openMine = (row: any) => {
+    setActiveCategory('ALL'); setActiveStatusFilter('ALL'); setFocusId(row.kind === 'START' ? '' : row.id);
+    if (row.kind === 'START') window.setTimeout(() => api.ddMine().then(setMine).catch(() => undefined), 1500);
+    if (!properties.some(p => p.id === row.propertyId)) setExtraProp({ id: row.propertyId, title: row.propertyTitle });
+    if (row.propertyId === selectedPropertyId) loadDueDiligence(row.propertyId); else setSelectedPropertyId(row.propertyId);
+  };
 
   // Advance approval gate handler
   const handleAdvanceGate = async (e: React.FormEvent) => {
@@ -249,7 +266,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
     { id: 'READINESS_APPROVED', label: tx('6. Transaction Readiness Approved', '6. लेन-देन की तैयारी मंज़ूर') },
   ].filter((g) => allow(DD_GATE_PERM[g.id]));
 
-  if (!properties.length) {
+  if (!properties.length && !(mine?.items?.length)) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600" data-testid="dd-empty">
         <p className="font-semibold text-slate-900">{tx('Property Due Diligence', 'प्रॉपर्टी ड्यू डिलिजेंस')}</p>
@@ -280,6 +297,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                   {p.id} — {p.title.slice(0, 36)}... ({label('propertyType', p.propertyType)})
                 </option>
               ))}
+              {extraProp && !properties.some((p) => p.id === extraProp.id) && <option value={extraProp.id}>{extraProp.id} — {extraProp.title.slice(0, 36)}</option>}
             </select>
           </div>
           <button
@@ -292,6 +310,32 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* v62 — what waits on me across properties */}
+      {mine && mine.items.length > 0 && (
+        <details className="rounded-xl border border-amber-300 bg-amber-50/60 p-3" open data-testid="dd-mine">
+          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-sm font-bold text-slate-900">
+            {tx('My open items', 'मेरे खुले काम')} ({mine.items.length})
+            {mine.counts.overdue > 0 && <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">{tx(`${mine.counts.overdue} overdue`, `${mine.counts.overdue} देर से`)}</span>}
+            <span className="text-xs font-medium text-slate-600">{tx(`${mine.counts.issues} issues · ${mine.counts.review} to review · ${mine.counts.papers} papers missing${mine.counts.start ? ` · ${mine.counts.start} to start` : ''}`, `${mine.counts.issues} समस्या · ${mine.counts.review} जाँचना · ${mine.counts.papers} काग़ज़ बाक़ी${mine.counts.start ? ` · ${mine.counts.start} शुरू करना` : ''}`)}</span>
+          </summary>
+          <ul className="mt-2 max-h-72 space-y-1.5 overflow-y-auto">
+            {mine.items.map((row: any) => (
+              <li key={row.kind + row.id}>
+                <button type="button" onClick={() => openMine(row)} className="flex w-full items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-left hover:border-slate-400" data-testid={`dd-mine-${row.id}`}>
+                  <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${row.kind === 'ISSUE' ? (row.overdue || row.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' : 'bg-rose-50 text-rose-800') : row.kind === 'REVIEW' ? 'bg-indigo-50 text-indigo-800' : 'bg-amber-100 text-amber-900'}`}>
+                    {row.kind === 'ISSUE' ? tx('Issue', 'समस्या') : row.kind === 'REVIEW' ? tx('Review', 'जाँचें') : row.kind === 'START' ? tx('Start', 'शुरू करें') : tx('Paper', 'काग़ज़')}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-900">{row.kind === 'START' ? tx('Title check not started — the deal is live', 'टाइटल जाँच शुरू नहीं हुई — डील चल रही है') : th(row.title)}</span>
+                    <span className="block truncate text-xs text-slate-500">{row.propertyTitle}{row.kind === 'ISSUE' && row.deadline ? ` · ${row.overdue ? tx('overdue since', 'देर — ') : tx('by', 'तक')} ${new Date(row.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}{row.kind === 'PAPER' && row.requiredDocument ? ` · ${th(row.requiredDocument)}` : ''}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {/* Selected Property Header Card */}
       {currentProperty && (
@@ -473,7 +517,8 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             return (
               <div
                 key={item.id}
-                className={`bg-white border rounded-xl p-4 transition-all ${
+                id={`dd-item-${item.id}`}
+                className={`bg-white border rounded-xl p-4 transition-all ${focusId === item.id ? 'ring-2 ring-amber-400 ' : ''}${
                   isIssue
                     ? 'border-rose-300 bg-rose-50/20'
                     : isVerified
@@ -721,7 +766,8 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             {issues.map((iss) => (
               <div
                 key={iss.id}
-                className={`border rounded-lg p-4 space-y-2 ${
+                id={`dd-item-${iss.id}`}
+                className={`border rounded-lg p-4 space-y-2 ${focusId === iss.id ? 'ring-2 ring-amber-400 ' : ''}${
                   iss.severity === 'CRITICAL'
                     ? 'border-rose-300 bg-rose-50/30'
                     : 'border-slate-200 bg-white'
