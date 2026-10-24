@@ -756,6 +756,8 @@ export interface DealRoom {
   agreementHash?: string; // Cryptographic SHA-256 seal of deal terms
   /** v21: what the deal is worth — set from the signed commission agreement (the brokers type it); falls back to the asking price for sale listings */
   dealValue?: number;
+  /** v66 — where dealValue came from: an accepted offer, the signed commission agreement, or typed by a deal broker (none = the asking price is used) */
+  dealValueSource?: 'OFFER' | 'AGREEMENT' | 'MANUAL';
   /** v41 — OWN_SIDE: no shared brokerage; each broker keeps the fee of his own client. SPLIT / missing = the usual % split. */
   feeMode?: 'SPLIT' | 'OWN_SIDE';
   sellerBrokerId?: string;

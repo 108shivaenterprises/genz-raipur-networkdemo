@@ -35,6 +35,7 @@ const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const day = (d?: string) => (d ? new Date(`${d.slice(0, 10)}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const STAGES = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'];
 export const BILL_FROM_STAGE = 'Agreement';
+import { mandateShareAt } from '../src/shared/mandateShare.js';
 const MAX_AMOUNT = 10_00_00_000;
 
 const fy = (d = new Date()) => { const y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; return `${y}-${String((y + 1) % 100).padStart(2, '0')}`; };
@@ -61,7 +62,7 @@ function prefillFor(d: DealRoom, u: UserProfile) {
   } else if (iList) {
     const m = s.ownerMandates.filter(x => x.propertyId === d.propertyId && x.status === 'ACTIVE').sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     const price = d.dealValue || m?.advertisedPrice || p?.askingPrice || 0;
-    if (m && price) ownerHint = m.remunerationBasis === 'PERCENTAGE' ? Math.round(price * (m.agreedCommissionPct || 0) / 100) : m.remunerationBasis === 'FIXED_FEE' ? m.fixedFeeAmount : Math.max(0, price - (m.approvedNetPrice || 0));
+    if (m && price) ownerHint = mandateShareAt(m, price).broker;
   }
   const last = s.paymentRequests.filter(x => x.brokerId === u.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   return {

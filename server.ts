@@ -143,6 +143,7 @@ import { createOffersRouter, sweepOffers } from './server/offers.js';
 import { createListingsRouter, createPublicPosterRouter, sweepSoldPurge } from './server/listings.js';
 import { createVisitRouter, createPublicVisitRouter, sweepVisitPasses } from './server/visitpass.js';
 import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
+import { mandateShareAt } from './src/shared/mandateShare.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
@@ -2234,6 +2235,23 @@ app.get('/api/deals', needs('deal:read'), (_req: Request, res: Response) => {
   res.json({ success: true, deals });
 });
 
+/**
+ * v66 — the owner's mandate applied to the deal's FINAL price. Only the owner and the listing broker see it (the net amount is confidential);
+ * the other deal broker, employees and GENZ get nothing from here.
+ */
+function brokerageFor(deal: DealRoom, user: any, state: any) {
+  const prop = state.properties.find((x: any) => x.id === deal.propertyId);
+  if (!prop || !(prop.listingBrokerId === user.id || prop.ownerId === user.id || deal.ownerId === user.id)) return undefined;
+  const m = state.ownerMandates.filter((x: any) => x.propertyId === deal.propertyId && x.status === 'ACTIVE').sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+  if (!m) return { mandate: false as const };
+  const asking = prop.transactionType === 'Sale' ? prop.askingPrice : prop.askingPrice;
+  const price = deal.dealValue && deal.dealValue > 0 ? deal.dealValue : asking;
+  const source = deal.dealValue && deal.dealValue > 0 ? (deal.dealValueSource || 'MANUAL') : 'ASKING';
+  const r = mandateShareAt(m, price);
+  const atAsking = mandateShareAt(m, asking);
+  return { mandate: true as const, mandateId: m.id, basis: m.remunerationBasis, pct: m.agreedCommissionPct || 0, fee: m.fixedFeeAmount || 0, net: m.remunerationBasis === 'SURPLUS_ABOVE_NET' ? m.approvedNetPrice : 0, price, source, asking, broker: r.broker, owner: r.owner, belowNet: r.belowNet, brokerAtAsking: atAsking.broker, canSetPrice: isDealBroker(user, deal) || user.id === prop.listingBrokerId };
+}
+
 app.get('/api/deals/:id', needs('deal:read'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { id } = req.params;
@@ -2267,6 +2285,7 @@ app.get('/api/deals/:id', needs('deal:read'), (req: Request, res: Response) => {
   res.json({
     success: true,
     deal: shapeDealFor(deal, currentUser, state),
+    brokerage: summaryOnly ? undefined : brokerageFor(deal, currentUser, state),
     // what this viewer may read inside the room, and whether GENZ may read it right now (shown as a notice to the brokers)
     access: { level: summaryOnly ? 'SUMMARY' : 'FULL', via, adminCanSee: !!liveDispute, openDisputeId: liveDispute?.id },
     property: property ? sanitizeProperty(property, currentUser, state) : undefined,
@@ -4491,7 +4510,7 @@ function activateAgreement(state: ReturnType<typeof db.getState>, deal: any, agr
   if (prev && prev.status === 'ACTIVE') prev.status = 'AMENDED';
   agreement.status = 'ACTIVE';
   deal.totalCommissionExpected = agreement.totalAgreedBrokerage;
-  if (agreement.dealValue) deal.dealValue = agreement.dealValue;
+  if (agreement.dealValue) { deal.dealValue = agreement.dealValue; deal.dealValueSource = 'AGREEMENT'; }
   const intro = agreement.allocations.find((a: any) => a.participantId === deal.introducingBrokerId);
   const close = agreement.allocations.find((a: any) => a.participantId === deal.closingBrokerId);
   if (intro) deal.introducingBrokerSharePct = intro.allocationPct;
@@ -5338,6 +5357,23 @@ app.post('/api/properties/:id/location', needs('property:update'), (req: Request
   db.appendAuditEvent(currentUser.id, currentUser.role, 'PROPERTY', property.id, 'LOCATION_METADATA_UPDATED',
     `Location updated: ${property.locality}, ${property.state || 'N/A'}, Pincode: ${property.pincode || 'N/A'}, Precision: ${property.locationPrecision}`);
   res.json({ success: true, property: sanitizeProperty(property, currentUser) });
+});
+
+// v66 — the final price of the deal, when it did not come from an accepted offer or the signed commission agreement
+app.post('/api/deals/:id/final-price', needs('deal:chat'), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const state = db.getState();
+  const deal = db.byId('dealRooms', req.params.id);
+  if (!deal) return res.status(404).json({ error: 'Deal Room not found' });
+  if (!isDealBroker(currentUser, deal)) return res.status(403).json({ error: 'Only the deal brokers can set the final price' });
+  const price = Number(req.body?.price);
+  if (!Number.isFinite(price) || price <= 0 || price > 100_000_000_000) return res.status(400).json({ error: 'Enter the final price in rupees' });
+  if (deal.dealValueSource === 'AGREEMENT') return res.status(409).json({ error: 'The price is fixed by the signed commission agreement — change it by a new agreement version', code: 'PRICE_FROM_AGREEMENT' });
+  const before = deal.dealValue;
+  deal.dealValue = Math.round(price); deal.dealValueSource = 'MANUAL'; deal.updatedAt = new Date().toISOString();
+  db.save();
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'FINAL_PRICE_SET', `Final price set to ₹${deal.dealValue.toLocaleString('en-IN')}${before ? ` (was ₹${before.toLocaleString('en-IN')})` : ''}`);
+  res.json({ success: true, dealValue: deal.dealValue, brokerage: brokerageFor(deal, currentUser, state) });
 });
 
 // ==========================================

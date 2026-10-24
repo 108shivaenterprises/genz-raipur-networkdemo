@@ -254,7 +254,10 @@ export const api = {
       participants: any;
       /** v21: what the viewer may read inside the room; `adminCanSee` = a dispute is open, so GENZ may read it right now */
       access?: { level: 'FULL' | 'SUMMARY'; via: string; adminCanSee: boolean; openDisputeId?: string };
+      /** v66 — the owner's mandate at the deal's final price (owner and listing broker only) */
+      brokerage?: any;
     }>(`/api/deals/${id}`),
+  setFinalPrice: (id: string, price: number) => request<any>(`/api/deals/${id}/final-price`, { method: 'POST', body: JSON.stringify({ price }) }),
   updateDealStage: (id: string, stage: string, notes?: string) =>
     request<{ success: boolean; deal: DealRoom }>(`/api/deals/${id}/stage`, {
       method: 'POST',

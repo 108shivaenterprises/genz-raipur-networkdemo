@@ -80439,6 +80439,17 @@ var reasonText = (id, hi = false) => {
   return r ? hi ? r.hi : r.en : id;
 };
 
+// src/shared/mandateShare.ts
+function mandateShareAt(m, price) {
+  const p = Math.max(0, Math.round(price));
+  const net = m.approvedNetPrice || 0;
+  let broker = m.remunerationBasis === "PERCENTAGE" ? Math.round(p * (m.agreedCommissionPct || 0) / 100) : m.remunerationBasis === "FIXED_FEE" ? Math.round(m.fixedFeeAmount || 0) : Math.max(0, p - net);
+  broker = Math.min(broker, p);
+  const owner = Math.max(0, p - broker);
+  const belowNet = m.remunerationBasis === "SURPLUS_ABOVE_NET" && p < net;
+  return { broker, owner, belowNet };
+}
+
 // server/payreq.ts
 var st10 = () => db.getState();
 var nowIso19 = () => (/* @__PURE__ */ new Date()).toISOString();
@@ -80486,7 +80497,7 @@ function prefillFor(d, u) {
   } else if (iList) {
     const m = s.ownerMandates.filter((x) => x.propertyId === d.propertyId && x.status === "ACTIVE").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     const price = d.dealValue || m?.advertisedPrice || p?.askingPrice || 0;
-    if (m && price) ownerHint = m.remunerationBasis === "PERCENTAGE" ? Math.round(price * (m.agreedCommissionPct || 0) / 100) : m.remunerationBasis === "FIXED_FEE" ? m.fixedFeeAmount : Math.max(0, price - (m.approvedNetPrice || 0));
+    if (m && price) ownerHint = mandateShareAt(m, price).broker;
   }
   const last = s.paymentRequests.filter((x) => x.brokerId === u.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   return {
@@ -87701,7 +87712,13 @@ function notifyOffer(byId, o, action) {
 function provisionDeal(o, p) {
   const s = st20();
   const exist = s.dealRooms.find((d) => d.propertyId === p.id && d.introducingBrokerId === o.brokerId && d.customerId === o.buyerName);
-  if (exist) return exist.id;
+  if (exist) {
+    if (!exist.dealValue || exist.dealValueSource !== "AGREEMENT") {
+      exist.dealValue = o.amount;
+      exist.dealValueSource = "OFFER";
+    }
+    return exist.id;
+  }
   const seq2 = s.dealRooms.reduce((m, d) => Math.max(m, Number(/DEAL-2026-(\d+)/.exec(d.id)?.[1] ?? 0)), 0) + 1;
   const id = `DEAL-2026-${String(seq2).padStart(3, "0")}`;
   const days3 = daysFor();
@@ -87731,6 +87748,8 @@ function provisionDeal(o, p) {
     settlementStatus: "PROPOSED",
     siteVisitsCount: 0,
     ownerRemunerationConfirmed: mandate,
+    dealValue: o.amount,
+    dealValueSource: "OFFER",
     notes: `Opened automatically when offer ${o.id} was accepted.`,
     createdAt: ts,
     updatedAt: ts
@@ -92632,6 +92651,18 @@ app.get("/api/deals", needs("deal:read"), (_req, res) => {
   const deals = state.dealRooms.filter((d) => dealVisibleTo(currentUser2, d)).map((d) => shapeDealFor(d, currentUser2, state, open2));
   res.json({ success: true, deals });
 });
+function brokerageFor(deal, user, state) {
+  const prop = state.properties.find((x) => x.id === deal.propertyId);
+  if (!prop || !(prop.listingBrokerId === user.id || prop.ownerId === user.id || deal.ownerId === user.id)) return void 0;
+  const m = state.ownerMandates.filter((x) => x.propertyId === deal.propertyId && x.status === "ACTIVE").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+  if (!m) return { mandate: false };
+  const asking = prop.transactionType === "Sale" ? prop.askingPrice : prop.askingPrice;
+  const price = deal.dealValue && deal.dealValue > 0 ? deal.dealValue : asking;
+  const source = deal.dealValue && deal.dealValue > 0 ? deal.dealValueSource || "MANUAL" : "ASKING";
+  const r = mandateShareAt(m, price);
+  const atAsking = mandateShareAt(m, asking);
+  return { mandate: true, mandateId: m.id, basis: m.remunerationBasis, pct: m.agreedCommissionPct || 0, fee: m.fixedFeeAmount || 0, net: m.remunerationBasis === "SURPLUS_ABOVE_NET" ? m.approvedNetPrice : 0, price, source, asking, broker: r.broker, owner: r.owner, belowNet: r.belowNet, brokerAtAsking: atAsking.broker, canSetPrice: isDealBroker(user, deal) || user.id === prop.listingBrokerId };
+}
 app.get("/api/deals/:id", needs("deal:read"), (req, res) => {
   const currentUser2 = getCurrentUser();
   const { id } = req.params;
@@ -92658,6 +92689,7 @@ app.get("/api/deals/:id", needs("deal:read"), (req, res) => {
   res.json({
     success: true,
     deal: shapeDealFor(deal, currentUser2, state),
+    brokerage: summaryOnly ? void 0 : brokerageFor(deal, currentUser2, state),
     // what this viewer may read inside the room, and whether GENZ may read it right now (shown as a notice to the brokers)
     access: { level: summaryOnly ? "SUMMARY" : "FULL", via, adminCanSee: !!liveDispute, openDisputeId: liveDispute?.id },
     property: property ? sanitizeProperty(property, currentUser2, state) : void 0,
@@ -94631,7 +94663,10 @@ function activateAgreement(state, deal, agreement, prev) {
   if (prev && prev.status === "ACTIVE") prev.status = "AMENDED";
   agreement.status = "ACTIVE";
   deal.totalCommissionExpected = agreement.totalAgreedBrokerage;
-  if (agreement.dealValue) deal.dealValue = agreement.dealValue;
+  if (agreement.dealValue) {
+    deal.dealValue = agreement.dealValue;
+    deal.dealValueSource = "AGREEMENT";
+  }
   const intro = agreement.allocations.find((a) => a.participantId === deal.introducingBrokerId);
   const close = agreement.allocations.find((a) => a.participantId === deal.closingBrokerId);
   if (intro) deal.introducingBrokerSharePct = intro.allocationPct;
@@ -95467,6 +95502,23 @@ app.post("/api/properties/:id/location", needs("property:update"), (req, res) =>
     `Location updated: ${property.locality}, ${property.state || "N/A"}, Pincode: ${property.pincode || "N/A"}, Precision: ${property.locationPrecision}`
   );
   res.json({ success: true, property: sanitizeProperty(property, currentUser2) });
+});
+app.post("/api/deals/:id/final-price", needs("deal:chat"), (req, res) => {
+  const currentUser2 = getCurrentUser();
+  const state = db.getState();
+  const deal = db.byId("dealRooms", req.params.id);
+  if (!deal) return res.status(404).json({ error: "Deal Room not found" });
+  if (!isDealBroker(currentUser2, deal)) return res.status(403).json({ error: "Only the deal brokers can set the final price" });
+  const price = Number(req.body?.price);
+  if (!Number.isFinite(price) || price <= 0 || price > 1e11) return res.status(400).json({ error: "Enter the final price in rupees" });
+  if (deal.dealValueSource === "AGREEMENT") return res.status(409).json({ error: "The price is fixed by the signed commission agreement \u2014 change it by a new agreement version", code: "PRICE_FROM_AGREEMENT" });
+  const before = deal.dealValue;
+  deal.dealValue = Math.round(price);
+  deal.dealValueSource = "MANUAL";
+  deal.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  db.save();
+  db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "FINAL_PRICE_SET", `Final price set to \u20B9${deal.dealValue.toLocaleString("en-IN")}${before ? ` (was \u20B9${before.toLocaleString("en-IN")})` : ""}`);
+  res.json({ success: true, dealValue: deal.dealValue, brokerage: brokerageFor(deal, currentUser2, state) });
 });
 function ensureVisitCards(state, dealId) {
   let added = false;

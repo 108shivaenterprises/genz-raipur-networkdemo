@@ -72,7 +72,7 @@ function notifyOffer(byId: string, o: PropertyOffer, action: string) {
 function provisionDeal(o: PropertyOffer, p: Property): string {
   const s = st();
   const exist = s.dealRooms.find(d => d.propertyId === p.id && d.introducingBrokerId === o.brokerId && d.customerId === o.buyerName);
-  if (exist) return exist.id;
+  if (exist) { if (!(exist as any).dealValue || exist.dealValueSource !== 'AGREEMENT') { exist.dealValue = o.amount; exist.dealValueSource = 'OFFER'; } return exist.id; }
   const seq = s.dealRooms.reduce((m, d) => Math.max(m, Number(/DEAL-2026-(\d+)/.exec(d.id)?.[1] ?? 0)), 0) + 1;
   const id = `DEAL-2026-${String(seq).padStart(3, '0')}`;
   const days = daysFor();
@@ -87,7 +87,7 @@ function provisionDeal(o: PropertyOffer, p: Property): string {
     antiBypassTailDays: days, antiBypassExpiresAt: new Date(Date.now() + days * 86400_000).toISOString(),
     ownerProtectionExpiresAt: new Date(Date.now() + days * 86400_000).toISOString(),
     settlementStatus: 'PROPOSED', siteVisitsCount: 0, ownerRemunerationConfirmed: mandate,
-    notes: `Opened automatically when offer ${o.id} was accepted.`, createdAt: ts, updatedAt: ts,
+    dealValue: o.amount, dealValueSource: 'OFFER', notes: `Opened automatically when offer ${o.id} was accepted.`, createdAt: ts, updatedAt: ts,
   } as any);
   return id;
 }
