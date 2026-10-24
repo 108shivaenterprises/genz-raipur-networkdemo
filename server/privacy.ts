@@ -135,6 +135,7 @@ export function createPrivacyRouter() {
       for (const a of s.tier2Applications) if (a.userId === target.id) { a.panNumber = undefined; a.aadhaarLast4 = undefined; a.companyName = undefined; } // what the sponsor typed about this person
       // v60 — his Rent desk: the owners' and tenants' names and numbers he kept for his own work go with him
       s.tenancies = (s.tenancies || []).filter(t => t.brokerId !== target.id);
+      for (const cr of s.clientRooms || []) if (cr.brokerId === target.id) cr.phoneSealed = undefined; // v63 — the clients' saved mobiles go with the broker's account
       // v61 — builder ↔ partner chat: his name on his messages becomes the anonymous one; photos he sent are deleted
       const gone = new Set((s.workPhotos || []).filter(p => p.byId === target.id).map(p => p.id));
       for (const id of gone) erasePhoto(id);

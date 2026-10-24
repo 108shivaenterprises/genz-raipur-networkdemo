@@ -16,6 +16,7 @@ import type { CrmLead, CrmBooking } from '../src/types/crm.js';
 import type { UserRole } from './permissions.js';
 import { secret } from './auth.js';
 import { RENT_TASK_OVERRIDES } from './dealTemplates.js';
+import { seal, vaultReady } from './vaultCrypto.js';
 
 const DAY = 86_400_000;
 const MARK = 'USR-BRK-005';
@@ -500,6 +501,7 @@ export function seedDemoBulk(s: DatabaseState, sharedPasswordHash: string) {
       lastClientSeenAt: ago(0, 2), lastBrokerSeenAt: i % 2 ? ago(opened - 2) : ago(0, 1), items, messages: msgs, events: [{ at: ago(opened), text: 'Room opened' }, { at: ago(opened - 1), text: `${items.length} home(s) shared` }],
     } as ClientRoom;
     if (!room.note) delete room.note;
+    if (room.status === 'ACTIVE') { try { if (vaultReady()) room.phoneSealed = seal(phone, `clientroom:${room.id}:phone`); } catch { /* no key: last 4 only */ } }
     S.clientRooms.push(room);
   }
 

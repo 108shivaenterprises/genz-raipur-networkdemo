@@ -27,6 +27,8 @@ import { partyBlock, partyCaution } from './partywatch.js';
 import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId } from '../src/shared/roomMedia.js';
 import { clientPaperState, viewerPages, logDocOpen } from './propdocs.js';
 import { makeViewToken, useViewToken, stampFor } from './viewToken.js';
+import { seal, unseal, vaultReady } from './vaultCrypto.js';
+import { policyOf } from '../src/shared/pcontrolRules.js';
 
 const st = () => db.getState();
 const nowIso = () => new Date().toISOString();
@@ -116,10 +118,16 @@ export const roomTeam = (brokerId: string) => st().users.filter(m => m.role === 
 const unread = (r: ClientRoom) => r.messages.filter(m => m.from === 'CLIENT' && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 const openVisits = (r: ClientRoom) => r.items.reduce((n, i) => n + i.visitRequests.filter(v => v.status === 'REQUESTED').length, 0);
 
+/** v63 — the client's full mobile: the broker who owns the room always; his office staff by the same "customer numbers" switch the client list uses */
+const phoneAad = (r: ClientRoom) => `clientroom:${r.id}:phone`;
+const sealPhone = (r: ClientRoom, phone: string) => { try { if (vaultReady()) r.phoneSealed = seal(phone, phoneAad(r)); } catch { /* no vault key: the room works with the last 4 only */ } };
+const openPhone = (r: ClientRoom): string | undefined => { try { return r.phoneSealed ? unseal(r.phoneSealed, phoneAad(r)) : undefined; } catch { return undefined; } };
+const phoneAccess = (u: UserProfile): 'FULL' | 'REVEAL' | 'HIDDEN' => !isStaff(u) ? 'FULL' : policyOf(db.byId('users', u.id) as UserProfile).phoneMode;
+
 function summary(r: ClientRoom) {
   const last = r.messages[r.messages.length - 1];
   return {
-    id: r.id, clientName: r.clientName, kind: r.kind, phoneLast4: r.phoneLast4, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt, expiresAt: r.expiresAt,
+    id: r.id, clientName: r.clientName, kind: r.kind, phoneLast4: r.phoneLast4, phoneSaved: !!r.phoneSealed && r.status === 'ACTIVE', createdById: r.createdById, createdByName: r.createdByName, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt, expiresAt: r.expiresAt,
     items: r.items.length, propertyIds: r.items.map(i => i.propertyId), codeAsk: !!(r.status === 'ACTIVE' && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now()), unread: unread(r), openVisits: openVisits(r), liked: r.items.filter(i => i.reaction === 'LIKE').length,
     lastMessage: last ? { from: last.from, text: last.text.slice(0, 80), at: last.at } : null, lastClientSeenAt: r.lastClientSeenAt,
   };
@@ -140,6 +148,9 @@ function detail(r: ClientRoom) {
     devices: (r.devices || []).map(d => ({ id: d.id, label: d.label, firstAt: d.firstAt, lastAt: d.lastAt })), maxDevices: L.devices,
     /** v58 — the reader is the broker's office staff (no closing, no papers, no visit booking) */
     staff: (ctx().user as UserProfile | null)?.role === 'TEAM_MEMBER', createdByName: r.createdByName,
+    /** v63 — FULL: `phone` is here; REVEAL: one tap (counted per day); HIDDEN: never. `phoneSaved` false = an older room (broker can add it once) */
+    ...(() => { const u = ctx().user as UserProfile | null; const acc = u ? phoneAccess(u) : 'HIDDEN'; const has = !!r.phoneSealed && r.status === 'ACTIVE';
+      return { phoneAccess: acc, phoneSaved: has, ...(acc === 'FULL' && has ? { phone: openPhone(r) } : {}) }; })(),
   };
 }
 
@@ -175,6 +186,7 @@ export function createClientRoomRouter() {
       createdAt: nowIso(), updatedAt: nowIso(), expiresAt: new Date(Date.now() + L.linkDays * 86400_000).toISOString(),
       items: [], messages: [], events: [],
     };
+    sealPhone(room, phone);
     ev(room, isStaff(u) ? `Room opened by ${u.name} (office team)` : 'Room opened');
     st().clientRooms.push(room);
     db.save();
@@ -288,10 +300,46 @@ export function createClientRoomRouter() {
     res.json({ success: true, room: detail(room) });
   });
 
+  /** v63 — office staff on "tap to reveal": one number at a time, counted against the same daily cap as the client list */
+  r.post('/:id/phone/reveal', rateLimit('cr-phone-reveal', 200, 24 * 3600_000), (req: Request, res: Response) => {
+    const u = me(); const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    const acc = phoneAccess(u);
+    if (acc === 'HIDDEN') return bad(res, 'Your employer has not allowed you to see customer numbers', 403);
+    const phone = room.status === 'ACTIVE' ? openPhone(room) : undefined;
+    if (!phone) return bad(res, 'The full number is not saved for this room', 404, { code: 'NO_PHONE' });
+    if (acc === 'REVEAL') {
+      const pol = policyOf(db.byId('users', u.id) as UserProfile); const s = st();
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const today = s.leadReveals.filter(x => x.userId === u.id && Date.parse(x.at) >= start.getTime());
+      if (!today.some(x => x.leadId === room.id)) {
+        if (today.length >= pol.revealCap) return bad(res, `Daily limit of ${pol.revealCap} number reveals reached — ask your employer`, 429);
+        s.leadReveals.unshift({ id: rid('RV'), employerId: u.employerId!, userId: u.id, userName: u.name, leadId: room.id, at: nowIso() } as any);
+        if (s.leadReveals.length > 5000) s.leadReveals.length = 5000;
+        db.save();
+        db.appendAuditEvent(u.id, u.role, 'LEAD', room.id, 'CLIENT_ROOM_PHONE_REVEALED', `${u.name} revealed the mobile of a client room (ending ${room.phoneLast4})`);
+      }
+    }
+    res.json({ success: true, phone });
+  });
+
+  /** v63 — older rooms (opened before v63) only know the last 4: the broker types the number once; it must match the room's key */
+  r.put('/:id/phone', rateLimit('cr-phone-save', 60, 3600_000), (req: Request, res: Response) => {
+    const u = me(); if (isStaff(u)) return bad(res, 'Only the broker can add the number', 403);
+    const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    if (room.status !== 'ACTIVE') return bad(res, 'This room is closed', 409);
+    const phone = phone10(req.body?.phone);
+    if (!PHONE_RE.test(phone)) return bad(res, 'Enter your client\'s 10-digit mobile number');
+    if (!safeEqual(hmac('cr-phone', phone), room.phoneKey)) return bad(res, `This is not the number of this room (it ends with ${room.phoneLast4})`, 400, { code: 'ROOM_PHONE_MISMATCH' });
+    if (!vaultReady()) return bad(res, 'The server has no key to keep the number safely', 503);
+    sealPhone(room, phone); db.save();
+    db.appendAuditEvent(u.id, u.role, 'LEAD', room.id, 'CLIENT_ROOM_PHONE_SAVED', `Client room mobile saved (ending ${room.phoneLast4})`);
+    res.json({ success: true, room: detail(room) });
+  });
+
   r.post('/:id/close', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     if (isStaff(me())) return bad(res, 'Only the broker can close a client room', 403, { code: 'STAFF_CANNOT_CLOSE' });
-    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPlain = undefined;
+    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPlain = undefined; room.phoneSealed = undefined;
     ev(room, 'Room closed'); db.save();
     db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_CLOSED', 'Client room closed');
     res.json({ success: true, room: detail(room) });
@@ -642,7 +690,7 @@ ${joinFooter(b, b?.city)}`).replace('<body>', '<body data-live="1">'));
 export function sweepClientRooms() {
   const s = st(); const now = Date.now(); let n = 0;
   for (const r of s.clientRooms) {
-    if (r.status === 'ACTIVE' && Date.parse(r.expiresAt) < now) { r.status = 'CLOSED'; r.closedAt = nowIso(); ev(r, 'Closed — the link ran out'); n++; }
+    if (r.status === 'ACTIVE' && Date.parse(r.expiresAt) < now) { r.status = 'CLOSED'; r.closedAt = nowIso(); r.phoneSealed = undefined; ev(r, 'Closed — the link ran out'); n++; }
   }
   const before = s.clientRooms.length;
   s.clientRooms = s.clientRooms.filter(r => !(r.status === 'CLOSED' && r.closedAt && Date.parse(r.closedAt) + L.purgeClosedDays * 86400_000 < now));

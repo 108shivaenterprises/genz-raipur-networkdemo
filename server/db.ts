@@ -1141,6 +1141,8 @@ export interface ClientRoom {
   note?: string;                   // the broker's own note, never shown to the client
   /** client's mobile: HMAC + last 4 only (the client types it on the link to get the code) */
   phoneKey: string; phoneLast4: string;
+  /** v63 — the full mobile, AES-sealed (vault key), so the broker who opened the room can call / WhatsApp him; erased when the room closes. Never in lists, audit or GENZ screens. */
+  phoneSealed?: string;
   tokenHash: string; sessVersion: number;
   status: 'ACTIVE' | 'CLOSED';
   createdAt: string; updatedAt: string; expiresAt: string; closedAt?: string;

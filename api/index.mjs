@@ -43183,9 +43183,9 @@ await init_bootstrap();
 
 // server/webpush.ts
 var import_express = __toESM(require_express2(), 1);
-import crypto6 from "crypto";
-import fs4 from "fs";
-import path4 from "path";
+import crypto7 from "crypto";
+import fs5 from "fs";
+import path5 from "path";
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -62905,9 +62905,9 @@ function date4(params) {
 }
 
 // server/db.ts
-import fs3 from "node:fs";
-import path3 from "node:path";
-import crypto5 from "node:crypto";
+import fs4 from "node:fs";
+import path4 from "node:path";
+import crypto6 from "node:crypto";
 
 // server/dealTemplates.ts
 var RENT_TASK_OVERRIDES = {
@@ -64005,7 +64005,7 @@ function buildConnectorDemo(existing = [], now = /* @__PURE__ */ new Date()) {
 }
 
 // server/demoBulk.ts
-import crypto4 from "node:crypto";
+import crypto5 from "node:crypto";
 
 // server/auth.ts
 import crypto3 from "node:crypto";
@@ -64741,6 +64741,87 @@ function digits(s) {
   return String(s ?? "").replace(/\D/g, "").slice(-10);
 }
 
+// server/vaultCrypto.ts
+import crypto4 from "node:crypto";
+import fs3 from "node:fs";
+import path3 from "node:path";
+var keyCache;
+var keyProblem = "";
+var vaultKeyProblem = () => keyProblem;
+var keyFile = () => process.env.KYC_VAULT_KEY_FILE ? path3.resolve(process.env.KYC_VAULT_KEY_FILE) : path3.resolve(process.cwd(), "data", ".kyc-vault.key");
+var keyId = (k) => crypto4.createHash("sha256").update(k).digest("hex").slice(0, 8);
+function parseKey(raw) {
+  const t = raw.trim();
+  if (/^[0-9a-fA-F]{64}$/.test(t)) return Buffer.from(t, "hex");
+  try {
+    const b = Buffer.from(t, "base64");
+    if (b.length === 32 && b.toString("base64").replace(/=+$/, "") === t.replace(/=+$/, "").replace(/-/g, "+").replace(/_/g, "/")) return b;
+  } catch {
+  }
+  return null;
+}
+function vaultKey() {
+  if (keyCache !== void 0) return keyCache;
+  keyProblem = "";
+  const env = process.env.KYC_VAULT_KEY;
+  if (env && env.trim()) {
+    const k = parseKey(env);
+    if (!k) {
+      keyProblem = "KYC_VAULT_KEY is set but is not 32 bytes (use 64 hex characters or base64 of 32 bytes)";
+      return keyCache = null;
+    }
+    return keyCache = { key: k, id: keyId(k), mode: "env" };
+  }
+  try {
+    const f = keyFile();
+    if (fs3.existsSync(f)) {
+      const k2 = parseKey(fs3.readFileSync(f, "utf8"));
+      if (!k2) {
+        keyProblem = "the key file in data/ is damaged";
+        return keyCache = null;
+      }
+      return keyCache = { key: k2, id: keyId(k2), mode: "file" };
+    }
+    fs3.mkdirSync(path3.dirname(f), { recursive: true });
+    const k = crypto4.randomBytes(32);
+    fs3.writeFileSync(f, k.toString("hex") + "\n", { mode: 384, flag: "wx" });
+    return keyCache = { key: k, id: keyId(k), mode: "file" };
+  } catch (e) {
+    if (e?.code === "EEXIST") {
+      keyCache = void 0;
+      return vaultKey();
+    }
+    keyProblem = "a key file could not be created in data/";
+    return keyCache = null;
+  }
+}
+var vaultReady = () => !!vaultKey();
+var b64u = (b) => b.toString("base64url");
+function seal(plain, aad) {
+  const k = vaultKey();
+  if (!k) throw new Error("VAULT_NO_KEY");
+  const iv = crypto4.randomBytes(12);
+  const c = crypto4.createCipheriv("aes-256-gcm", k.key, iv);
+  c.setAAD(Buffer.from(aad));
+  const ct = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+  return `k1.${k.id}.${b64u(iv)}.${b64u(c.getAuthTag())}.${b64u(ct)}`;
+}
+function unseal(sealed, aad) {
+  const k = vaultKey();
+  if (!k) throw new Error("VAULT_NO_KEY");
+  const [v, kid, iv, tag, ct] = sealed.split(".");
+  if (v !== "k1" || !kid || !iv || !tag || !ct) throw new Error("VAULT_BAD_DATA");
+  if (kid !== k.id) throw new Error("VAULT_WRONG_KEY");
+  try {
+    const d = crypto4.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
+    d.setAAD(Buffer.from(aad));
+    d.setAuthTag(Buffer.from(tag, "base64url"));
+    return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
+  } catch {
+    throw new Error("VAULT_BAD_DATA");
+  }
+}
+
 // server/demoBulk.ts
 var DAY = 864e5;
 var MARK = "USR-BRK-005";
@@ -64762,7 +64843,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
   const now = Date.now();
   const ago = (d, h = 0) => new Date(now - d * DAY - h * 36e5).toISOString();
   const ahead = (d, h = 0) => new Date(now + d * DAY + h * 36e5).toISOString();
-  const sha7 = (v) => crypto4.createHash("sha256").update(v).digest("hex");
+  const sha7 = (v) => crypto5.createHash("sha256").update(v).digest("hex");
   const tok2 = (n2 = 12) => sha7(String(r())).slice(0, n2);
   const pad3 = (n2, w = 3) => String(n2).padStart(w, "0");
   const lakh = (n2) => Math.round(n2 / 1e4) * 1e4;
@@ -65403,7 +65484,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
       if (j === 1) m.targetBy = ahead(int2(10, 40)).slice(0, 10);
     });
   });
-  const hm2 = (tag, v) => crypto4.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+  const hm2 = (tag, v) => crypto5.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
   const KINDS_R = ["BUYER", "BUYER", "RENTER", "TENANT", "BUYER", "OTHER"];
   const live5 = props.filter((p) => p.listingStatus === "active");
   for (let i = 0; i < 14; i++) {
@@ -65441,6 +65522,12 @@ function seedDemoBulk(s, sharedPasswordHash) {
       events: [{ at: ago(opened), text: "Room opened" }, { at: ago(opened - 1), text: `${items.length} home(s) shared` }]
     };
     if (!room.note) delete room.note;
+    if (room.status === "ACTIVE") {
+      try {
+        if (vaultReady()) room.phoneSealed = seal(phone, `clientroom:${room.id}:phone`);
+      } catch {
+      }
+    }
     S.clientRooms.push(room);
   }
   const LST = ["OPEN", "OPEN", "CLAIMED", "QUOTED", "ACCEPTED", "COMPLETED", "OPEN"];
@@ -65491,7 +65578,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
 await init_bootstrap();
 init_pgstore();
 var CLIENT_STAGES = ["NEW", "CONTACTED", "SITE_VISIT", "NEGOTIATION", "DEAL", "LOST"];
-var DB_FILE = path3.resolve(process.cwd(), "data", "database.json");
+var DB_FILE = path4.resolve(process.cwd(), "data", "database.json");
 var SEED_DEMO = (process.env.SEED_DEMO_DATA ?? "false").toLowerCase() === "true";
 var SEED_DEMO_BULK = (process.env.SEED_DEMO_BULK ?? "false").toLowerCase() === "true";
 function productionSeed() {
@@ -65509,7 +65596,7 @@ function productionSeed() {
   return empty;
 }
 function sha256(data) {
-  return crypto5.createHash("sha256").update(data).digest("hex");
+  return crypto6.createHash("sha256").update(data).digest("hex");
 }
 function getInitialSeedData() {
   const now = (/* @__PURE__ */ new Date("2026-10-10T10:00:00.000Z")).toISOString();
@@ -66999,7 +67086,7 @@ function migrateState(parsed, seed2) {
     delete m.otpChallenge;
   }
   for (const v2 of parsed.siteVisits || []) {
-    if (!v2.qrToken) v2.qrToken = crypto5.randomBytes(12).toString("base64url");
+    if (!v2.qrToken) v2.qrToken = crypto6.randomBytes(12).toString("base64url");
   }
   for (const d of parsed.dealRooms || []) {
     const confirmed = (parsed.ownerMandates || []).some((m) => m.propertyId === d.propertyId && m.isConfirmed);
@@ -67169,8 +67256,8 @@ var Database = class {
   initFromPostgres(loaded) {
     let state = loaded;
     if (!state) {
-      if (process.env.IMPORT_JSON === "true" && fs3.existsSync(DB_FILE)) {
-        state = JSON.parse(fs3.readFileSync(DB_FILE, "utf-8"));
+      if (process.env.IMPORT_JSON === "true" && fs4.existsSync(DB_FILE)) {
+        state = JSON.parse(fs4.readFileSync(DB_FILE, "utf-8"));
         console.log("[DB] Imported legacy data/database.json into PostgreSQL");
       } else {
         state = SEED_DEMO ? getInitialSeedData() : productionSeed();
@@ -67181,15 +67268,15 @@ var Database = class {
     return state;
   }
   ensureDataDir() {
-    const dir = path3.dirname(DB_FILE);
-    if (!fs3.existsSync(dir)) {
-      fs3.mkdirSync(dir, { recursive: true });
+    const dir = path4.dirname(DB_FILE);
+    if (!fs4.existsSync(dir)) {
+      fs4.mkdirSync(dir, { recursive: true });
     }
   }
   loadState() {
     try {
-      if (fs3.existsSync(DB_FILE)) {
-        const data = fs3.readFileSync(DB_FILE, "utf-8");
+      if (fs4.existsSync(DB_FILE)) {
+        const data = fs4.readFileSync(DB_FILE, "utf-8");
         const parsed = JSON.parse(data);
         const seed3 = SEED_DEMO ? getInitialSeedData() : productionSeed();
         if (!parsed.builderProjects || parsed.builderProjects.length === 0) {
@@ -67252,8 +67339,8 @@ var Database = class {
   }
   writeNow(state) {
     const tmp = `${DB_FILE}.${process.pid}.tmp`;
-    fs3.writeFileSync(tmp, JSON.stringify(state), { encoding: "utf-8", mode: 384 });
-    fs3.renameSync(tmp, DB_FILE);
+    fs4.writeFileSync(tmp, JSON.stringify(state), { encoding: "utf-8", mode: 384 });
+    fs4.renameSync(tmp, DB_FILE);
   }
   byId(key, id) {
     if (!id) return void 0;
@@ -67372,17 +67459,17 @@ var db = new Database();
 process.once("exit", () => db.flush());
 
 // server/webpush.ts
-var b64u = (b) => Buffer.from(b).toString("base64url");
+var b64u2 = (b) => Buffer.from(b).toString("base64url");
 var unb64u = (s) => Buffer.from(String(s).replace(/=+$/, ""), "base64url");
 var nowIso = () => (/* @__PURE__ */ new Date()).toISOString();
 function hkdf(salt, ikm, info, len) {
-  const prk = crypto6.createHmac("sha256", salt).update(ikm).digest();
+  const prk = crypto7.createHmac("sha256", salt).update(ikm).digest();
   const out = [];
   let prev = Buffer.alloc(0);
   let n2 = 0;
   while (Buffer.concat(out).length < len) {
     n2++;
-    prev = crypto6.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
+    prev = crypto7.createHmac("sha256", prk).update(Buffer.concat([prev, info, Buffer.from([n2])])).digest();
     out.push(prev);
   }
   return Buffer.concat(out).subarray(0, len);
@@ -67392,20 +67479,20 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   const authSecret = unb64u(authSecretB64);
   if (uaPublic.length !== 65 || uaPublic[0] !== 4) throw new Error("PUSH_BAD_KEY");
   if (authSecret.length < 16) throw new Error("PUSH_BAD_AUTH");
-  const ecdh = crypto6.createECDH("prime256v1");
+  const ecdh = crypto7.createECDH("prime256v1");
   if (opts.asPrivate) ecdh.setPrivateKey(opts.asPrivate);
   else ecdh.generateKeys();
   const asPublic = ecdh.getPublicKey();
   const shared = ecdh.computeSecret(uaPublic);
   const keyInfo = Buffer.concat([Buffer.from("WebPush: info\0"), uaPublic, asPublic]);
   const ikm = hkdf(authSecret, shared, keyInfo, 32);
-  const salt = opts.salt || crypto6.randomBytes(16);
+  const salt = opts.salt || crypto7.randomBytes(16);
   const cek = hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16);
   const nonce = hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12);
   const rs = opts.rs || 4096;
   const plain = Buffer.concat([payload, Buffer.from([2])]);
   if (plain.length + 16 > rs) throw new Error("PUSH_TOO_BIG");
-  const cipher = crypto6.createCipheriv("aes-128-gcm", cek, nonce);
+  const cipher = crypto7.createCipheriv("aes-128-gcm", cek, nonce);
   const ct = Buffer.concat([cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
   const header = Buffer.alloc(21);
   salt.copy(header, 0);
@@ -67414,20 +67501,20 @@ function encryptPayload(payload, uaPublicB64, authSecretB64, opts = {}) {
   return Buffer.concat([header, asPublic, ct]);
 }
 function generateVapidKeys() {
-  const e = crypto6.createECDH("prime256v1");
+  const e = crypto7.createECDH("prime256v1");
   e.generateKeys();
-  return { publicKey: b64u(e.getPublicKey()), privateKey: b64u(e.getPrivateKey()) };
+  return { publicKey: b64u2(e.getPublicKey()), privateKey: b64u2(e.getPrivateKey()) };
 }
 function privateKeyObject(k) {
   const pub = unb64u(k.publicKey);
-  return crypto6.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u(pub.subarray(1, 33)), y: b64u(pub.subarray(33, 65)) }, format: "jwk" });
+  return crypto7.createPrivateKey({ key: { kty: "EC", crv: "P-256", d: k.privateKey.replace(/=+$/, ""), x: b64u2(pub.subarray(1, 33)), y: b64u2(pub.subarray(33, 65)) }, format: "jwk" });
 }
 function vapidAuth(endpoint, k, subject2, expSec = Math.floor(Date.now() / 1e3) + 12 * 3600) {
   const aud = new URL(endpoint).origin;
-  const head = b64u(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
-  const body = b64u(Buffer.from(JSON.stringify({ aud, exp: expSec, sub: subject2 })));
-  const sig = crypto6.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
-  return `vapid t=${head}.${body}.${b64u(sig)}, k=${k.publicKey}`;
+  const head = b64u2(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const body = b64u2(Buffer.from(JSON.stringify({ aud, exp: expSec, sub: subject2 })));
+  const sig = crypto7.sign("sha256", Buffer.from(`${head}.${body}`), { key: privateKeyObject(k), dsaEncoding: "ieee-p1363" });
+  return `vapid t=${head}.${body}.${b64u2(sig)}, k=${k.publicKey}`;
 }
 var cached2 = null;
 function vapidKeys() {
@@ -67439,16 +67526,16 @@ function vapidKeys() {
       privateKeyObject(k2);
       return cached2 = k2;
     }
-    const file2 = process.env.VAPID_KEY_FILE === "" ? "" : process.env.VAPID_KEY_FILE || path4.resolve(process.cwd(), "data", ".vapid.json");
+    const file2 = process.env.VAPID_KEY_FILE === "" ? "" : process.env.VAPID_KEY_FILE || path5.resolve(process.cwd(), "data", ".vapid.json");
     if (!file2) return null;
-    if (fs4.existsSync(file2)) {
-      const k2 = JSON.parse(fs4.readFileSync(file2, "utf8"));
+    if (fs5.existsSync(file2)) {
+      const k2 = JSON.parse(fs5.readFileSync(file2, "utf8"));
       privateKeyObject(k2);
       return cached2 = k2;
     }
     const k = generateVapidKeys();
-    fs4.mkdirSync(path4.dirname(file2), { recursive: true });
-    fs4.writeFileSync(file2, JSON.stringify(k), { mode: 384 });
+    fs5.mkdirSync(path5.dirname(file2), { recursive: true });
+    fs5.writeFileSync(file2, JSON.stringify(k), { mode: 384 });
     return cached2 = k;
   } catch (e) {
     console.error("[PUSH] VAPID key problem \u2014 push is off:", e.message);
@@ -67554,7 +67641,7 @@ function createPushRouter() {
     }
     const s = db.getState();
     const u = me28();
-    const id = crypto6.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
+    const id = crypto7.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
     const mine3 = s.pushSubs.filter((x) => x.userId === u.id);
     if (mine3.length >= 6) {
@@ -67571,7 +67658,7 @@ function createPushRouter() {
     if (!p.success) return res.status(400).json({ error: "This browser sent an unusable push address." });
     const s = db.getState();
     const u = me28();
-    const id = crypto6.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
+    const id = crypto7.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     const cur = s.pushSubs.find((x) => x.id === id);
     if (cur && cur.userId === u.id) {
       if (cur.p256dh !== p.data.keys.p256dh || cur.auth !== p.data.keys.auth) {
@@ -67783,7 +67870,7 @@ function calculatePropertyMatch(property, requirement) {
 }
 
 // server/validation.ts
-import crypto7 from "node:crypto";
+import crypto8 from "node:crypto";
 var FIELD_NAMES = {
   exactAddressHidden: "Exact address",
   addressHidden: "Exact address",
@@ -68115,7 +68202,7 @@ function maskPhoneNumber(phone) {
 }
 function generateMandateHash(data) {
   const payload = `${data.propertyId}:${data.ownerId}:${data.approvedNetPrice}:${data.agreedCommissionPct ?? 0}:${data.remunerationBasis ?? "SURPLUS_ABOVE_NET"}:${data.fixedFeeAmount ?? 0}:${data.timestamp}`;
-  return crypto7.createHash("sha256").update(payload).digest("hex");
+  return crypto8.createHash("sha256").update(payload).digest("hex");
 }
 
 // server/notify.ts
@@ -73861,9 +73948,9 @@ var import_express17 = __toESM(require_express2(), 1);
 // server/propdocs.ts
 var import_express10 = __toESM(require_express2(), 1);
 var import_express11 = __toESM(require_express2(), 1);
-import crypto9 from "node:crypto";
-import fs5 from "node:fs";
-import path5 from "node:path";
+import crypto10 from "node:crypto";
+import fs6 from "node:fs";
+import path6 from "node:path";
 
 // server/pdfPages.ts
 import zlib from "node:zlib";
@@ -74108,16 +74195,16 @@ function scannedPages(buf, opts = {}) {
 }
 
 // server/viewToken.ts
-import crypto8 from "node:crypto";
+import crypto9 from "node:crypto";
 var TTL_MS = 5 * 6e4;
 var used = /* @__PURE__ */ new Map();
 setInterval(() => {
   const now = Date.now();
   for (const [k, exp] of used) if (exp < now) used.delete(k);
 }, 6e4).unref();
-var sign = (body) => crypto8.createHmac("sha256", secret()).update(`view-token|${body}`).digest("base64url");
+var sign = (body) => crypto9.createHmac("sha256", secret()).update(`view-token|${body}`).digest("base64url");
 function makeViewToken(kind, docId2, userId, page2, ttlMs = TTL_MS) {
-  const claim2 = { k: kind, d: docId2, u: userId, p: page2, e: Date.now() + ttlMs, n: crypto8.randomBytes(6).toString("base64url") };
+  const claim2 = { k: kind, d: docId2, u: userId, p: page2, e: Date.now() + ttlMs, n: crypto9.randomBytes(6).toString("base64url") };
   const body = Buffer.from(JSON.stringify(claim2)).toString("base64url");
   return `${body}.${sign(body)}`;
 }
@@ -74203,8 +74290,8 @@ var PHONE_IN_CHAT_MSG = {
 // server/propdocs.ts
 var me5 = () => ctx().user;
 var nowIso7 = () => (/* @__PURE__ */ new Date()).toISOString();
-var DIR = () => path5.resolve(process.cwd(), "data", "propdocs");
-var fileOf = (id) => path5.join(DIR(), `${id}.bin`);
+var DIR = () => path6.resolve(process.cwd(), "data", "propdocs");
+var fileOf = (id) => path6.join(DIR(), `${id}.bin`);
 var bad4 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
 var LOG_CAP = 5e3;
 var pageCache = /* @__PURE__ */ new Map();
@@ -74214,7 +74301,7 @@ function viewerPages(d, buf) {
   let b = buf;
   if (!b) {
     try {
-      b = fs5.readFileSync(fileOf(d.id));
+      b = fs6.readFileSync(fileOf(d.id));
     } catch {
       return null;
     }
@@ -74246,7 +74333,7 @@ function docAccess(st25, u, d, now = Date.now()) {
 }
 var log = (docId2, userId, action, ip, note5) => {
   const st25 = db.getState();
-  st25.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto9.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso7(), ip, note: note5 });
+  st25.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto10.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso7(), ip, note: note5 });
   if (st25.propertyDocLogs.length > LOG_CAP) st25.propertyDocLogs.splice(0, st25.propertyDocLogs.length - LOG_CAP);
 };
 var nameOf = (st25, id) => db.byId("users", id)?.name || "\u2014";
@@ -74314,7 +74401,7 @@ function summary(st25, d, u, a) {
     protect: !!d.protect,
     pages: d.pages || 1,
     canDownload: mayHaveFile(d, a),
-    missing: !fs5.existsSync(fileOf(d.id)),
+    missing: !fs6.existsSync(fileOf(d.id)),
     shares: manage ? d.shares.filter((s) => !s.revoked).map((s) => ({ userId: s.userId, name: nameOf(st25, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now(), maxViews: s.maxViews || null, views: s.views || 0, dealId: s.dealId, clientShare: !!s.clientShare })) : void 0,
     // v55 — what I was given (opens left, until when, may I show my client) and to which of my clients I showed it
     myShare: a.via === "SHARED" ? (() => {
@@ -74340,7 +74427,7 @@ function uploadableProperties(st25, u) {
 }
 function eraseDocFile(id) {
   try {
-    fs5.unlinkSync(fileOf(id));
+    fs6.unlinkSync(fileOf(id));
   } catch {
   }
 }
@@ -74438,12 +74525,12 @@ function createPropDocsRouter() {
       if (!pp) return res.status(400).json(NOT_SCANNED);
       pages = pp.length;
     }
-    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto9.randomInt(1e3, 9999)}`;
+    const id = `PD-${Date.now().toString(36).toUpperCase()}${crypto10.randomInt(1e3, 9999)}`;
     try {
-      fs5.mkdirSync(DIR(), { recursive: true });
+      fs6.mkdirSync(DIR(), { recursive: true });
       const tmp = fileOf(id) + ".tmp";
-      fs5.writeFileSync(tmp, buf);
-      fs5.renameSync(tmp, fileOf(id));
+      fs6.writeFileSync(tmp, buf);
+      fs6.renameSync(tmp, fileOf(id));
     } catch {
       return bad4(res, "The file could not be saved on the server. Please try again.", 500);
     }
@@ -74460,7 +74547,7 @@ function createPropDocsRouter() {
       fileName: b.data.fileName.replace(/[\\/\0\r\n]+/g, "_"),
       mime,
       size: buf.length,
-      sha256: crypto9.createHash("sha256").update(buf).digest("hex"),
+      sha256: crypto10.createHash("sha256").update(buf).digest("hex"),
       visibility: b.data.visibility,
       shares: [],
       ddItemId,
@@ -74503,7 +74590,7 @@ function createPropDocsRouter() {
     if (!x) return;
     const { u, d, a } = x;
     const pages = viewerPages(d);
-    if (!pages) return fs5.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
+    if (!pages) return fs6.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
     const s = a.via === "SHARED" ? shareOf(d, u.id) : void 0;
     if (s?.maxViews && (s.views || 0) >= s.maxViews) {
       log(d.id, u.id, "DENIED", req.ip || "", "all allowed opens used");
@@ -74560,7 +74647,7 @@ function createPropDocsRouter() {
     }
     let buf;
     try {
-      buf = fs5.readFileSync(fileOf(d.id));
+      buf = fs6.readFileSync(fileOf(d.id));
     } catch {
       return bad4(res, "The file is missing on the server. Please upload it again.", 404);
     }
@@ -74654,9 +74741,9 @@ function createPropDocsRouter() {
     }
     if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
     if (room.messages.length >= ROOM_LIMITS.messages) return bad4(res, "This chat is full \u2014 open a new room or close this one");
-    const cs = { id: `CPS-${crypto9.randomBytes(5).toString("hex")}`, roomId: room.id, brokerId: u.id, grantedAt: nowIso7(), expiresAt: new Date(until).toISOString(), maxViews: b.data.maxViews, views: 0 };
+    const cs = { id: `CPS-${crypto10.randomBytes(5).toString("hex")}`, roomId: room.id, brokerId: u.id, grantedAt: nowIso7(), expiresAt: new Date(until).toISOString(), maxViews: b.data.maxViews, views: 0 };
     (d.clientShares ||= []).push(cs);
-    room.messages.push({ id: `CRX-${crypto9.randomBytes(5).toString("hex")}`, from: "BROKER", text: `\u{1F4C4} ${d.title} \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F / view only`, at: nowIso7(), paper: { shareId: cs.id, docId: d.id, title: d.title } });
+    room.messages.push({ id: `CRX-${crypto10.randomBytes(5).toString("hex")}`, from: "BROKER", text: `\u{1F4C4} ${d.title} \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F / view only`, at: nowIso7(), paper: { shareId: cs.id, docId: d.id, title: d.title } });
     room.events.push({ at: nowIso7(), text: `Paper shown (view-only): ${d.title}` });
     room.updatedAt = nowIso7();
     room.lastBrokerSeenAt = nowIso7();
@@ -74694,7 +74781,7 @@ function createPropDocsRouter() {
     if (!b.success) return bad4(res, b.error.issues[0]?.message || "Please check the details.");
     if (b.data.protect === true && !d.protect) {
       const pp = viewerPages(d);
-      if (!pp) return fs5.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
+      if (!pp) return fs6.existsSync(fileOf(d.id)) ? res.status(400).json(NOT_SCANNED) : bad4(res, "The file is missing on the server. Please upload it again.", 404);
       d.protect = true;
       d.protectedAt = nowIso7();
       d.pages = pp.length;
@@ -74890,7 +74977,7 @@ var import_express13 = __toESM(require_express2(), 1);
 
 // server/twofactor.ts
 var import_express12 = __toESM(require_express2(), 1);
-import crypto10 from "crypto";
+import crypto11 from "crypto";
 var B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(buf) {
   let bits = 0, value = 0, out = "";
@@ -74908,7 +74995,7 @@ function base32Encode(buf) {
 function hotp(key, counter, digits2 = 6) {
   const c = Buffer.alloc(8);
   c.writeBigUInt64BE(BigInt(counter));
-  const h = crypto10.createHmac("sha1", key).update(c).digest();
+  const h = crypto11.createHmac("sha1", key).update(c).digest();
   const o = h[h.length - 1] & 15;
   const bin = (h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3];
   return String(bin % 10 ** digits2).padStart(digits2, "0");
@@ -74921,20 +75008,20 @@ function checkTotp(key, code, ms = Date.now()) {
   for (const s of [now, now - 1, now + 1]) if (safeEqual(hotp(key, s), c)) return s;
   return -1;
 }
-var encKey = () => crypto10.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
-function seal(b) {
-  const iv = crypto10.randomBytes(12);
-  const c = crypto10.createCipheriv("aes-256-gcm", encKey(), iv);
+var encKey = () => crypto11.createHmac("sha256", secret()).update("genz-2fa-v1").digest();
+function seal2(b) {
+  const iv = crypto11.randomBytes(12);
+  const c = crypto11.createCipheriv("aes-256-gcm", encKey(), iv);
   const ct = Buffer.concat([c.update(b), c.final()]);
   return `t1.${iv.toString("base64url")}.${c.getAuthTag().toString("base64url")}.${ct.toString("base64url")}`;
 }
-function unseal(s) {
+function unseal2(s) {
   const [, iv, tag, ct] = s.split(".");
-  const d = crypto10.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
+  const d = crypto11.createDecipheriv("aes-256-gcm", encKey(), Buffer.from(iv, "base64url"));
   d.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]);
 }
-var recHash = (userId, code) => crypto10.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
+var recHash = (userId, code) => crypto11.createHmac("sha256", secret()).update(`2fa-rec|${userId}|${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`).digest("hex");
 var rec = (userId) => db.getState().twoFactor.find((x) => x.userId === userId);
 var twoFactorOn = (userId) => !!rec(userId)?.enabledAt;
 var twoFactorRecommended = (u) => u.role === "SUPERADMIN" || u.role === "ADMIN";
@@ -74942,7 +75029,7 @@ function verifySecondFactor(userId, code) {
   const r = rec(userId);
   if (!r?.enabledAt) return "OFF";
   if (hit(`2fa:${userId}`, 8, 15 * 6e4, 15 * 6e4)) return "LOCKED";
-  const step = checkTotp(unseal(r.secretEnc), code);
+  const step = checkTotp(unseal2(r.secretEnc), code);
   if (step >= 0) {
     if (r.lastStep !== void 0 && step <= r.lastStep) return "BAD";
     r.lastStep = step;
@@ -74962,13 +75049,13 @@ function verifySecondFactor(userId, code) {
 }
 function makeTicket(u) {
   const body = Buffer.from(JSON.stringify({ uid: u.id, sv: u.sessionVersion || 1, exp: Date.now() + 5 * 6e4 })).toString("base64url");
-  const sig = crypto10.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const sig = crypto11.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   return `${body}.${sig}`;
 }
 function readTicket(t) {
   const [body, sig] = String(t || "").split(".");
   if (!body || !sig) return null;
-  const want = crypto10.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
+  const want = crypto11.createHmac("sha256", secret()).update(`2fa-ticket|${body}`).digest("base64url");
   if (!safeEqual(want, sig)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString());
@@ -74991,8 +75078,8 @@ function createTwoFactorRouter() {
     const s = db.getState();
     const x = rec(u.id);
     if (x?.enabledAt) return res.status(409).json({ error: "Two-step sign-in is already on. Turn it off first to move it to a new phone." });
-    const key = crypto10.randomBytes(20);
-    const row = { id: u.id, userId: u.id, secretEnc: seal(key), pendingSince: (/* @__PURE__ */ new Date()).toISOString(), recovery: [] };
+    const key = crypto11.randomBytes(20);
+    const row = { id: u.id, userId: u.id, secretEnc: seal2(key), pendingSince: (/* @__PURE__ */ new Date()).toISOString(), recovery: [] };
     s.twoFactor = s.twoFactor.filter((t) => t.userId !== u.id);
     s.twoFactor.push(row);
     db.save();
@@ -75004,9 +75091,9 @@ function createTwoFactorRouter() {
     const u = me28();
     const x = rec(u.id);
     if (!x || x.enabledAt) return res.status(409).json({ error: "Start the setup first." });
-    const step = checkTotp(unseal(x.secretEnc), String(req.body?.code || ""));
+    const step = checkTotp(unseal2(x.secretEnc), String(req.body?.code || ""));
     if (step < 0) return res.status(400).json({ error: "The code is not correct. Check the time on your phone and try the newest code.", code: "BAD_CODE" });
-    const codes = Array.from({ length: 10 }, () => crypto10.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
+    const codes = Array.from({ length: 10 }, () => crypto11.randomBytes(6).toString("hex").toUpperCase().replace(/(.{4})(?=.)/g, "$1-"));
     x.recovery = codes.map((c) => recHash(u.id, c));
     x.enabledAt = (/* @__PURE__ */ new Date()).toISOString();
     x.pendingSince = void 0;
@@ -75028,87 +75115,6 @@ function createTwoFactorRouter() {
     res.json({ success: true });
   });
   return r;
-}
-
-// server/vaultCrypto.ts
-import crypto11 from "node:crypto";
-import fs6 from "node:fs";
-import path6 from "node:path";
-var keyCache;
-var keyProblem = "";
-var vaultKeyProblem = () => keyProblem;
-var keyFile = () => process.env.KYC_VAULT_KEY_FILE ? path6.resolve(process.env.KYC_VAULT_KEY_FILE) : path6.resolve(process.cwd(), "data", ".kyc-vault.key");
-var keyId = (k) => crypto11.createHash("sha256").update(k).digest("hex").slice(0, 8);
-function parseKey(raw) {
-  const t = raw.trim();
-  if (/^[0-9a-fA-F]{64}$/.test(t)) return Buffer.from(t, "hex");
-  try {
-    const b = Buffer.from(t, "base64");
-    if (b.length === 32 && b.toString("base64").replace(/=+$/, "") === t.replace(/=+$/, "").replace(/-/g, "+").replace(/_/g, "/")) return b;
-  } catch {
-  }
-  return null;
-}
-function vaultKey() {
-  if (keyCache !== void 0) return keyCache;
-  keyProblem = "";
-  const env = process.env.KYC_VAULT_KEY;
-  if (env && env.trim()) {
-    const k = parseKey(env);
-    if (!k) {
-      keyProblem = "KYC_VAULT_KEY is set but is not 32 bytes (use 64 hex characters or base64 of 32 bytes)";
-      return keyCache = null;
-    }
-    return keyCache = { key: k, id: keyId(k), mode: "env" };
-  }
-  try {
-    const f = keyFile();
-    if (fs6.existsSync(f)) {
-      const k2 = parseKey(fs6.readFileSync(f, "utf8"));
-      if (!k2) {
-        keyProblem = "the key file in data/ is damaged";
-        return keyCache = null;
-      }
-      return keyCache = { key: k2, id: keyId(k2), mode: "file" };
-    }
-    fs6.mkdirSync(path6.dirname(f), { recursive: true });
-    const k = crypto11.randomBytes(32);
-    fs6.writeFileSync(f, k.toString("hex") + "\n", { mode: 384, flag: "wx" });
-    return keyCache = { key: k, id: keyId(k), mode: "file" };
-  } catch (e) {
-    if (e?.code === "EEXIST") {
-      keyCache = void 0;
-      return vaultKey();
-    }
-    keyProblem = "a key file could not be created in data/";
-    return keyCache = null;
-  }
-}
-var vaultReady = () => !!vaultKey();
-var b64u2 = (b) => b.toString("base64url");
-function seal2(plain, aad) {
-  const k = vaultKey();
-  if (!k) throw new Error("VAULT_NO_KEY");
-  const iv = crypto11.randomBytes(12);
-  const c = crypto11.createCipheriv("aes-256-gcm", k.key, iv);
-  c.setAAD(Buffer.from(aad));
-  const ct = Buffer.concat([c.update(plain, "utf8"), c.final()]);
-  return `k1.${k.id}.${b64u2(iv)}.${b64u2(c.getAuthTag())}.${b64u2(ct)}`;
-}
-function unseal2(sealed, aad) {
-  const k = vaultKey();
-  if (!k) throw new Error("VAULT_NO_KEY");
-  const [v, kid, iv, tag, ct] = sealed.split(".");
-  if (v !== "k1" || !kid || !iv || !tag || !ct) throw new Error("VAULT_BAD_DATA");
-  if (kid !== k.id) throw new Error("VAULT_WRONG_KEY");
-  try {
-    const d = crypto11.createDecipheriv("aes-256-gcm", k.key, Buffer.from(iv, "base64url"));
-    d.setAAD(Buffer.from(aad));
-    d.setAuthTag(Buffer.from(tag, "base64url"));
-    return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
-  } catch {
-    throw new Error("VAULT_BAD_DATA");
-  }
 }
 
 // src/shared/kycRules.ts
@@ -75171,11 +75177,11 @@ function storeKyc(user, input2) {
   }
   const aad = normAadhaar(input2.aadhaar);
   if (aad) {
-    r.aadhaarEnc = seal2(aad, `${r.id}|aadhaar`);
+    r.aadhaarEnc = seal(aad, `${r.id}|aadhaar`);
     r.aadhaarLast4 = aad.slice(-4);
   }
   const addr = normAddress(input2.address);
-  if (addr) r.addressEnc = seal2(JSON.stringify({ a: addr, p: normPin(input2.pincode) || void 0 }), `${r.id}|address`);
+  if (addr) r.addressEnc = seal(JSON.stringify({ a: addr, p: normPin(input2.pincode) || void 0 }), `${r.id}|address`);
   if (input2.source) r.source = !isNew && r.source !== input2.source ? "MIXED" : input2.source;
   r.consentAt = at;
   r.consentVersion = KYC_VAULT_VERSION;
@@ -75208,7 +75214,7 @@ function mineView(u) {
   let broken = "";
   if (r?.addressEnc) {
     try {
-      const j = JSON.parse(unseal2(r.addressEnc, `${r.id}|address`));
+      const j = JSON.parse(unseal(r.addressEnc, `${r.id}|address`));
       address = j.a || "";
       pincode = j.p || "";
     } catch (e) {
@@ -75337,9 +75343,9 @@ function createKycVaultRouter() {
     let address = "";
     let pincode = "";
     try {
-      if (rec2.aadhaarEnc) aadhaar = unseal2(rec2.aadhaarEnc, `${rec2.id}|aadhaar`);
+      if (rec2.aadhaarEnc) aadhaar = unseal(rec2.aadhaarEnc, `${rec2.id}|aadhaar`);
       if (rec2.addressEnc) {
-        const j = JSON.parse(unseal2(rec2.addressEnc, `${rec2.id}|address`));
+        const j = JSON.parse(unseal(rec2.addressEnc, `${rec2.id}|address`));
         address = j.a || "";
         pincode = j.p || "";
       }
@@ -76226,6 +76232,7 @@ function createPrivacyRouter() {
         a.companyName = void 0;
       }
       s.tenancies = (s.tenancies || []).filter((t) => t.brokerId !== target.id);
+      for (const cr of s.clientRooms || []) if (cr.brokerId === target.id) cr.phoneSealed = void 0;
       const gone = new Set((s.workPhotos || []).filter((p) => p.byId === target.id).map((p) => p.id));
       for (const id of gone) erasePhoto(id);
       for (const t of s.partnerThreads || []) for (const m of t.messages) {
@@ -89181,6 +89188,21 @@ var mine2 = (req) => st24().clientRooms.find((r) => r.id === req.params.id && r.
 var roomTeam = (brokerId) => st24().users.filter((m) => m.role === "TEAM_MEMBER" && m.employerId === brokerId && m.verificationStatus === "VERIFIED" && !!m.teamPolicy?.rooms);
 var unread = (r) => r.messages.filter((m) => m.from === "CLIENT" && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 var openVisits = (r) => r.items.reduce((n2, i) => n2 + i.visitRequests.filter((v) => v.status === "REQUESTED").length, 0);
+var phoneAad = (r) => `clientroom:${r.id}:phone`;
+var sealPhone = (r, phone) => {
+  try {
+    if (vaultReady()) r.phoneSealed = seal(phone, phoneAad(r));
+  } catch {
+  }
+};
+var openPhone = (r) => {
+  try {
+    return r.phoneSealed ? unseal(r.phoneSealed, phoneAad(r)) : void 0;
+  } catch {
+    return void 0;
+  }
+};
+var phoneAccess = (u) => !isStaff4(u) ? "FULL" : policyOf(db.byId("users", u.id)).phoneMode;
 function summary3(r) {
   const last = r.messages[r.messages.length - 1];
   return {
@@ -89188,6 +89210,9 @@ function summary3(r) {
     clientName: r.clientName,
     kind: r.kind,
     phoneLast4: r.phoneLast4,
+    phoneSaved: !!r.phoneSealed && r.status === "ACTIVE",
+    createdById: r.createdById,
+    createdByName: r.createdByName,
     status: r.status,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -89223,7 +89248,14 @@ function detail(r) {
     maxDevices: ROOM_LIMITS.devices,
     /** v58 — the reader is the broker's office staff (no closing, no papers, no visit booking) */
     staff: ctx().user?.role === "TEAM_MEMBER",
-    createdByName: r.createdByName
+    createdByName: r.createdByName,
+    /** v63 — FULL: `phone` is here; REVEAL: one tap (counted per day); HIDDEN: never. `phoneSaved` false = an older room (broker can add it once) */
+    ...(() => {
+      const u = ctx().user;
+      const acc = u ? phoneAccess(u) : "HIDDEN";
+      const has = !!r.phoneSealed && r.status === "ACTIVE";
+      return { phoneAccess: acc, phoneSaved: has, ...acc === "FULL" && has ? { phone: openPhone(r) } : {} };
+    })()
   };
 }
 function createClientRoomRouter() {
@@ -89275,6 +89307,7 @@ function createClientRoomRouter() {
       messages: [],
       events: []
     };
+    sealPhone(room, phone);
     ev(room, isStaff4(u) ? `Room opened by ${u.name} (office team)` : "Room opened");
     st24().clientRooms.push(room);
     db.save();
@@ -89403,6 +89436,45 @@ function createClientRoomRouter() {
     db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_ROOM_DEVICE_REMOVED", `Client room phone removed (${d.label})`);
     res.json({ success: true, room: detail(room) });
   });
+  r.post("/:id/phone/reveal", rateLimit("cr-phone-reveal", 200, 24 * 36e5), (req, res) => {
+    const u = me26();
+    const room = mine2(req);
+    if (!room) return bad26(res, "Room not found", 404);
+    const acc = phoneAccess(u);
+    if (acc === "HIDDEN") return bad26(res, "Your employer has not allowed you to see customer numbers", 403);
+    const phone = room.status === "ACTIVE" ? openPhone(room) : void 0;
+    if (!phone) return bad26(res, "The full number is not saved for this room", 404, { code: "NO_PHONE" });
+    if (acc === "REVEAL") {
+      const pol = policyOf(db.byId("users", u.id));
+      const s = st24();
+      const start = /* @__PURE__ */ new Date();
+      start.setHours(0, 0, 0, 0);
+      const today = s.leadReveals.filter((x) => x.userId === u.id && Date.parse(x.at) >= start.getTime());
+      if (!today.some((x) => x.leadId === room.id)) {
+        if (today.length >= pol.revealCap) return bad26(res, `Daily limit of ${pol.revealCap} number reveals reached \u2014 ask your employer`, 429);
+        s.leadReveals.unshift({ id: rid3("RV"), employerId: u.employerId, userId: u.id, userName: u.name, leadId: room.id, at: nowIso37() });
+        if (s.leadReveals.length > 5e3) s.leadReveals.length = 5e3;
+        db.save();
+        db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "CLIENT_ROOM_PHONE_REVEALED", `${u.name} revealed the mobile of a client room (ending ${room.phoneLast4})`);
+      }
+    }
+    res.json({ success: true, phone });
+  });
+  r.put("/:id/phone", rateLimit("cr-phone-save", 60, 36e5), (req, res) => {
+    const u = me26();
+    if (isStaff4(u)) return bad26(res, "Only the broker can add the number", 403);
+    const room = mine2(req);
+    if (!room) return bad26(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad26(res, "This room is closed", 409);
+    const phone = phone108(req.body?.phone);
+    if (!PHONE_RE8.test(phone)) return bad26(res, "Enter your client's 10-digit mobile number");
+    if (!safeEqual(hmac4("cr-phone", phone), room.phoneKey)) return bad26(res, `This is not the number of this room (it ends with ${room.phoneLast4})`, 400, { code: "ROOM_PHONE_MISMATCH" });
+    if (!vaultReady()) return bad26(res, "The server has no key to keep the number safely", 503);
+    sealPhone(room, phone);
+    db.save();
+    db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "CLIENT_ROOM_PHONE_SAVED", `Client room mobile saved (ending ${room.phoneLast4})`);
+    res.json({ success: true, room: detail(room) });
+  });
   r.post("/:id/close", (req, res) => {
     const room = mine2(req);
     if (!room) return bad26(res, "Room not found", 404);
@@ -89414,6 +89486,7 @@ function createClientRoomRouter() {
     room.devices = [];
     room.otpHash = void 0;
     room.otpPlain = void 0;
+    room.phoneSealed = void 0;
     ev(room, "Room closed");
     db.save();
     db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_ROOM_CLOSED", "Client room closed");
@@ -89782,6 +89855,7 @@ function sweepClientRooms() {
     if (r.status === "ACTIVE" && Date.parse(r.expiresAt) < now) {
       r.status = "CLOSED";
       r.closedAt = nowIso37();
+      r.phoneSealed = void 0;
       ev(r, "Closed \u2014 the link ran out");
       n2++;
     }

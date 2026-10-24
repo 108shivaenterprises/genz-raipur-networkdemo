@@ -94,6 +94,7 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
                 <button key={k} onClick={() => set({ phoneMode: k })} className={`min-h-11 rounded-lg px-2 text-[11px] font-semibold ${p.phoneMode === k ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>{tx(en, hi)}</button>
               ))}
             </div>
+            {!isBuilder && <p className="mt-1 text-[10px] font-semibold text-emerald-800">{tx('This also decides who sees your clients\' numbers inside client rooms (call / WhatsApp buttons).', 'यही स्विच तय करता है कि क्लाइंट रूम में आपके क्लाइंट का नंबर (कॉल / WhatsApp) किसे दिखे।')}</p>}
             {p.phoneMode === 'REVEAL' && <label className="mt-2 block text-[11px] text-slate-600">{tx('Max numbers per day', 'रोज़ अधिकतम नंबर')} ({m.revealsToday} {tx('used today', 'आज इस्तेमाल')}, {m.reveals7d} {tx('this week', 'इस हफ़्ते')})<input defaultValue={p.revealCap} inputMode="numeric" onBlur={e => { const v = Number(e.target.value); if (v !== p.revealCap) set({ revealCap: v }); }} className={inp} /></label>}
             <p className="mt-1 text-[10px] text-slate-500">{tx('With “tap to reveal” or “never”, staff cannot search by number or read it from the list — this is what stops a leaving employee from copying your customers.', '“टैप करके” या “कभी नहीं” पर स्टाफ नंबर से सर्च या लिस्ट से कॉपी नहीं कर सकता — इसी से नौकरी छोड़ने वाला कर्मचारी आपके ग्राहक कॉपी नहीं कर पाता।')}</p>
           </div>

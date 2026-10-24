@@ -60,7 +60,8 @@ describe('client room', () => {
     expect(made.status, await made.clone().text()).toBe(200);
     const b = await j(made); roomId = b.room.id; link = b.link;
     expect(link).toMatch(/^\/r\/[A-Za-z0-9_-]{20,}$/);
-    expect(JSON.stringify(b.room)).not.toContain(phone);                                                         // only the last 4 digits are kept
+    expect(b.room.phone).toBe(phone);                                                                            // v63: the broker sees his own client's number (sealed on the server)
+    expect(JSON.stringify((await j(await call(jar.BRK2, 'GET', '/api/client-rooms'))).rooms)).not.toContain(phone); // lists keep only the last 4 digits
     expect((await call(jar.BRK2, 'POST', '/api/client-rooms', { clientName: 'Sunil Again', phone, kind: 'BUYER', consent: true })).status).toBe(409);
   });
 

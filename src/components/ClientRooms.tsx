@@ -5,7 +5,7 @@
  * phone, and inside a room: Chat (auto-scroll, quick replies) · Homes · Visits · Info.
  */
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check, MoreVertical, FileLock2 } from 'lucide-react';
+import { Phone, Eye, Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check, MoreVertical, FileLock2 } from 'lucide-react';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { ClientPaperPicker } from './PaperShare.js';
 import { api } from '../lib/api.js';
@@ -52,7 +52,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   useEffect(() => { if (prefill) { try { sessionStorage.removeItem('genz.newroom'); } catch { /* blocked */ } } }, [prefill]);
   const [creating, setCreating] = useState(!!prefill);
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string } | null>(null);
-  const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all');
+  const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all'); const [who, setWho] = useState('ALL'); // v63 — broker: whose rooms (his own / one team member's)
   const load = () => api.crList().then(r => { setD(r); window.dispatchEvent(new Event('genz:rooms-changed')); }).catch(e => setErr(e.message));
   useEffect(() => { load(); }, [tick]);
   // a client waiting for his code → open that room so the broker can read the code out at once
@@ -65,11 +65,12 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   const active: any[] = useMemo(() => (d?.rooms || []).filter((r: any) => r.status === 'ACTIVE'), [d]);
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return active.filter(r => (kind === 'ALL' || r.kind === kind)
+    return active.filter(r => (kind === 'ALL' || r.kind === kind) && (who === 'ALL' || (who === 'ME' ? !r.createdById : r.createdById === who))
       && (f === 'all' || (f === 'unread' && r.unread > 0) || (f === 'visits' && r.openVisits > 0) || (f === 'code' && r.codeAsk) || (f === 'liked' && r.liked > 0))
       && (!s || r.clientName.toLowerCase().includes(s) || String(r.phoneLast4).includes(s)))
       .sort((a, b) => (Number(!!b.codeAsk) - Number(!!a.codeAsk)) || (b.unread - a.unread) || String(b.lastMessage?.at || b.updatedAt).localeCompare(String(a.lastMessage?.at || a.updatedAt)));
-  }, [active, q, kind, f]);
+  }, [active, q, kind, f, who]);
+  const makers: { id: string; name: string; n: number }[] = useMemo(() => { const m = new Map<string, { id: string; name: string; n: number }>(); for (const r of active) if (r.createdById) { const x = m.get(r.createdById) || { id: r.createdById, name: r.createdByName || '', n: 0 }; x.n++; m.set(r.createdById, x); } return [...m.values()]; }, [active]);
   if (err) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
   if (!d) return <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />;
   const closed = d.rooms.filter((r: any) => r.status !== 'ACTIVE');
@@ -122,6 +123,11 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
         <div className="flex gap-1.5 overflow-x-auto">
           {[{ id: 'ALL', en: 'All', hi: 'सभी' }, ...ROOM_KINDS].map(k => <button key={k.id} type="button" onClick={() => setKind(k.id)} className={`min-h-9 shrink-0 rounded-full border px-3 text-[11px] font-semibold ${kind === k.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? k.hi : k.en}</button>)}
         </div>
+        {makers.length > 0 && !d.staffOf && (
+          <div className="flex gap-1.5 overflow-x-auto" data-testid="room-who">
+            {[{ id: 'ALL', label: tx('Whole team', 'पूरी टीम') }, { id: 'ME', label: tx('Mine', 'मेरे') }, ...makers.map(m => ({ id: m.id, label: `${m.name.split(' ')[0]} (${m.n})` }))].map(k => <button key={k.id} type="button" onClick={() => setWho(k.id)} className={`min-h-9 shrink-0 rounded-full border px-3 text-[11px] font-semibold ${who === k.id ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{k.label}</button>)}
+          </div>
+        )}
         <button className={dark} onClick={() => setCreating(v => !v)} data-testid="room-new"><Plus className="h-4 w-4" />{tx('New room', 'नया रूम')}</button>
       </div>
       {creating && <NewRoom defaults={prefill || undefined} onDone={(link, name, phone, id) => { setCreating(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
@@ -143,7 +149,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
                       <span className="truncate text-sm font-semibold text-slate-900">{r.clientName}</span>
                       <span className="shrink-0 text-[10px] text-slate-400">{ago(r.lastMessage?.at || r.updatedAt, hi)}</span>
                     </span>
-                    <span className="block text-[11px] text-slate-500">{kindLabel(r.kind)} · ••{r.phoneLast4} · {tx(`${r.items} homes`, `${r.items} प्रॉपर्टी`)}{r.liked ? ` · 👍 ${r.liked}` : ''}</span>
+                    <span className="block text-[11px] text-slate-500">{kindLabel(r.kind)} · ••{r.phoneLast4} · {tx(`${r.items} homes`, `${r.items} प्रॉपर्टी`)}{r.liked ? ` · 👍 ${r.liked}` : ''}{r.createdByName && !d.staffOf ? ` · ${tx('by', 'द्वारा')} ${r.createdByName.split(' ')[0]}` : ''}</span>
                     {r.lastMessage && <span className={`mt-0.5 block truncate text-xs ${r.unread > 0 ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>{r.lastMessage.from === 'CLIENT' ? '↩ ' : tx('You: ', 'आप: ')}{r.lastMessage.text}</span>}
                     <span className="mt-1 flex flex-wrap gap-1">
                       {r.codeAsk && <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-bold text-white" data-testid={`room-codeask-${r.id}`}>{tx('asking for code', 'कोड माँग रहा है')}</span>}
@@ -190,6 +196,39 @@ const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id
       <label className="flex items-start gap-2 text-[11px] font-semibold"><input type="checkbox" className="mt-0.5 h-5 w-5" checked={f.consent} onChange={e => setF({ ...f, consent: e.target.checked })} data-testid="room-consent" />{tx('My client agreed to get properties from me and chat in this room. His mobile is kept only as a one-way hash plus its last 4 digits.', 'मेरे क्लाइंट ने मुझसे प्रॉपर्टी पाने और इस रूम में चैट करने की सहमति दी है। उसका मोबाइल सिर्फ़ एक-तरफ़ा हैश और आख़िरी 4 अंकों के रूप में रखा जाता है।')}</label>
       {err && <p className="text-xs font-medium text-red-700" role="alert">{err}</p>}
       <button className={dark + ' w-full'} disabled={busy || !f.consent || f.clientName.trim().length < 2 || f.phone.replace(/\D/g, '').length < 10} onClick={go} data-testid="room-create">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}{tx('Make the room & link', 'रूम और लिंक बनाएँ')}</button>
+    </div>
+  );
+};
+
+
+/** v63 — the client's mobile inside his room: the broker always; office staff by the "customer numbers" switch (full / tap to reveal / hidden) */
+const ClientPhone: React.FC<{ r: any; id: string; onRoom: (r: any) => void }> = ({ r, id, onRoom }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [shown, setShown] = useState<string>(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [typed, setTyped] = useState('');
+  const phone: string = r.phone || shown;
+  const fmt = (p: string) => `${p.slice(0, 5)} ${p.slice(5)}`;
+  if (r.status !== 'ACTIVE' || r.phoneAccess === 'HIDDEN') return null;
+  const wa = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(hi ? `नमस्ते ${r.clientName}, ` : `Hello ${r.clientName}, `)}` : '';
+  const act = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); } catch (e: any) { setErr(e.message || 'Error'); } finally { setBusy(false); } };
+  return (
+    <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 text-sm" data-testid="room-phone">
+      {phone ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-sm font-bold text-slate-900" data-testid="room-phone-num">+91 {fmt(phone)}</span>
+          <a className={light} href={`tel:+91${phone}`} data-testid="room-call"><Phone className="h-4 w-4" />{tx('Call', 'कॉल')}</a>
+          <a className={light} target="_blank" rel="noreferrer" href={wa}><MessageCircle className="h-4 w-4" />WhatsApp</a>
+          <button type="button" className={light} aria-label={tx('Copy number', 'नंबर कॉपी')} onClick={() => navigator.clipboard?.writeText(phone)}><Copy className="h-4 w-4" /></button>
+        </div>
+      ) : r.phoneSaved && r.phoneAccess === 'REVEAL' ? (
+        <button type="button" disabled={busy} className={light} data-testid="room-reveal" onClick={() => act(async () => { const x = await api.crPhoneReveal(id); setShown(x.phone); })}><Eye className="h-4 w-4" />{tx(`Show number (••${r.phoneLast4})`, `नंबर देखें (••${r.phoneLast4})`)}</button>
+      ) : !r.phoneSaved && !r.staff ? (
+        <div className="flex flex-wrap items-center gap-2" data-testid="room-phone-add">
+          <span className="text-xs text-slate-600">{tx(`Number not saved (ends ${r.phoneLast4}).`, `नंबर सेव नहीं है (आख़िरी अंक ${r.phoneLast4})।`)}</span>
+          <input className="min-h-10 w-36 rounded-lg border border-slate-300 px-2 text-sm" inputMode="numeric" maxLength={10} value={typed} onChange={e => setTyped(e.target.value.replace(/\D/g, ''))} placeholder={tx('10-digit mobile', '10 अंक का मोबाइल')} data-testid="room-phone-input" />
+          <button type="button" disabled={busy || typed.length !== 10} className={light} data-testid="room-phone-save" onClick={() => act(async () => { const x = await api.crPhoneSave(id, typed); if (x?.room) onRoom(x.room); })}>{tx('Save', 'सेव')}</button>
+        </div>
+      ) : <span className="text-xs text-slate-500">{tx(`Number: ••${r.phoneLast4}`, `नंबर: ••${r.phoneLast4}`)}</span>}
+      {err && <p className="mt-1 text-xs text-red-700">{err}</p>}
     </div>
   );
 };
@@ -293,6 +332,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
               </div>
             </div>
           )}
+          <ClientPhone r={r} id={id} onRoom={setR} />
           {r.codeForClient && (
             <div className="shrink-0 border-b border-amber-400 bg-amber-50 p-3 text-center" data-testid="room-code">
               <p className="text-xs font-semibold text-amber-900">{tx('Your client is opening the room. Tell him this code (valid 10 minutes):', 'आपका क्लाइंट रूम खोल रहा है। उसे यह कोड बताएँ (10 मिनट तक वैध):')}</p>
