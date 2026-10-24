@@ -2625,6 +2625,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
     deal.updatedAt = new Date().toISOString();
   }
 
+  if (deal) ensureVisitCards(state, deal.id);
   db.save();
 
   db.appendAuditEvent(
@@ -5342,9 +5343,26 @@ app.post('/api/properties/:id/location', needs('property:update'), (req: Request
 // ==========================================
 // 12.7 DEAL ROOM CHAT
 // ==========================================
+// A scheduled site visit always leaves a card in the deal chat (so every visit of the same client shows up, not only the one a broker shared by hand).
+function ensureVisitCards(state: any, dealId: string): boolean {
+  let added = false;
+  for (const v of state.siteVisits || []) {
+    if (v.dealRoomId !== dealId) continue;
+    if (state.dealMessages.some((m: any) => m.dealRoomId === dealId && m.kind === 'VISIT' && m.refId === v.id)) continue;
+    const u: any = db.byId('users', v.brokerId);
+    let when = '';
+    try { when = new Date(v.scheduledTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { /* */ }
+    state.dealMessages.push({ id: `MSG-${dealId}-${v.id}`, dealRoomId: dealId, senderId: v.brokerId, senderName: u?.name || 'Broker', senderRole: u?.role || 'BROKER', text: `Site visit${when ? ` on ${when}` : ''}`, audience: 'ALL', kind: 'VISIT', refId: v.id, auto: true, timestamp: v.createdAt || new Date().toISOString() } as any);
+    added = true;
+  }
+  if (added) state.dealMessages.sort((a: any, b: any) => String(a.timestamp).localeCompare(String(b.timestamp)));
+  return added;
+}
+
 app.get('/api/deals/:id/messages', needs('deal:chat'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { state, deal } = loadDealFor(req, currentUser); // legal counsel is deliberately not a chat reader
+  if (ensureVisitCards(state, deal.id)) db.save();
   const brokersChannel = canSeeDealCommercials(currentUser, deal, state); // the brokers — and GENZ while a dispute is open — may read the brokers-only channel
   res.json({ success: true, messages: state.dealMessages.filter(m => m.dealRoomId === deal.id && (brokersChannel || (m.audience || 'ALL') === 'ALL')) });
 });

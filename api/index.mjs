@@ -92946,6 +92946,7 @@ app.post("/api/site-visits", needs("sitevisit:create"), (req, res) => {
     deal.siteVisitsCount = (deal.siteVisitsCount || 0) + 1;
     deal.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
   }
+  if (deal) ensureVisitCards(state, deal.id);
   db.save();
   db.appendAuditEvent(
     currentUser2.id,
@@ -95467,9 +95468,27 @@ app.post("/api/properties/:id/location", needs("property:update"), (req, res) =>
   );
   res.json({ success: true, property: sanitizeProperty(property, currentUser2) });
 });
+function ensureVisitCards(state, dealId) {
+  let added = false;
+  for (const v of state.siteVisits || []) {
+    if (v.dealRoomId !== dealId) continue;
+    if (state.dealMessages.some((m) => m.dealRoomId === dealId && m.kind === "VISIT" && m.refId === v.id)) continue;
+    const u = db.byId("users", v.brokerId);
+    let when2 = "";
+    try {
+      when2 = new Date(v.scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+    } catch {
+    }
+    state.dealMessages.push({ id: `MSG-${dealId}-${v.id}`, dealRoomId: dealId, senderId: v.brokerId, senderName: u?.name || "Broker", senderRole: u?.role || "BROKER", text: `Site visit${when2 ? ` on ${when2}` : ""}`, audience: "ALL", kind: "VISIT", refId: v.id, auto: true, timestamp: v.createdAt || (/* @__PURE__ */ new Date()).toISOString() });
+    added = true;
+  }
+  if (added) state.dealMessages.sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
+  return added;
+}
 app.get("/api/deals/:id/messages", needs("deal:chat"), (req, res) => {
   const currentUser2 = getCurrentUser();
   const { state, deal } = loadDealFor(req, currentUser2);
+  if (ensureVisitCards(state, deal.id)) db.save();
   const brokersChannel = canSeeDealCommercials(currentUser2, deal, state);
   res.json({ success: true, messages: state.dealMessages.filter((m) => m.dealRoomId === deal.id && (brokersChannel || (m.audience || "ALL") === "ALL")) });
 });
