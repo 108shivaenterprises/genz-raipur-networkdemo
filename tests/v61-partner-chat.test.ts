@@ -53,6 +53,10 @@ describe('who may use it', () => {
     expect(PERMISSION_HI['pchat:use']).toMatch(/बिल्डर ↔ पार्टनर चैट/);
     for (const k of ['OWN', 'ADMIN', 'BT']) expect((await call(jar[k], 'GET', '/api/partner-chats')).status, k).toBe(403);
     expect((await call(undefined, 'GET', '/api/partner-chats')).status).toBe(401);
+    // the super admin holds every permission but speaks for neither side: an empty list (no error on every page), and no thread to open
+    const sup = await login(cfg.demoAccounts.find((a: any) => a.role === 'SUPERADMIN').id);
+    const l = await call(sup, 'GET', '/api/partner-chats'); expect(l.status).toBe(200); expect((await j(l)).threads).toEqual([]);
+    expect((await call(sup, 'POST', '/api/partner-chats/open', { withId: BLD })).status).toBe(403);
   });
   it('a broker sees only the builders he is linked with; an unlinked one cannot open a chat', async () => {
     const l1 = await j(await call(jar.B1, 'GET', '/api/partner-chats'));

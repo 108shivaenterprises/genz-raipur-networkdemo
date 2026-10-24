@@ -77,7 +77,9 @@ export function createPartnerChatRouter() {
   };
 
   r.get('/', (_req, res) => {
-    const u = me(); const sd = side(res); if (!sd) return;
+    const u = me(); const sd = sideOf(u);
+    // someone who holds the permission but speaks for neither side (the super admin) simply has no partner chats
+    if (!sd) return res.json({ success: true, side: null, threads: [], unread: 0 });
     const s = st();
     // everyone I am linked with through a project, plus any thread that already exists
     const others = new Set<string>();

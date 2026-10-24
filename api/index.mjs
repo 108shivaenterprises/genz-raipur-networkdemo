@@ -85924,8 +85924,8 @@ function createPartnerChatRouter() {
   };
   r.get("/", (_req, res) => {
     const u = me21();
-    const sd = side(res);
-    if (!sd) return;
+    const sd = sideOf2(u);
+    if (!sd) return res.json({ success: true, side: null, threads: [], unread: 0 });
     const s = st16();
     const others = /* @__PURE__ */ new Set();
     if (sd.side === "BUILDER") {
