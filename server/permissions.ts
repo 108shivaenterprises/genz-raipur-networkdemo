@@ -151,6 +151,7 @@ export const PERMISSION_CATALOG = {
   'clientroom:use': 'Client Rooms: a private room (link + mobile OTP) to share properties and chat with your own client',
   'partner:manage': 'Shop QR partners: put your QR at a shop / society gate, agree the shopkeeper’s share, and get the leads customers send by scanning it',
   'publicpage:use': 'My public page: show the homes you choose on your public page (no login, no owner details) and get customers’ enquiries',
+  'pchat:use': 'Builder ↔ partner chat: talk with your builder / channel partners about leads, units, bookings and payouts — messages, cards and photos',
   'rent:use': 'Rent desk: keep the tenancies you closed — terms, tenant police verification, renewal reminders, vacating and re-letting (GENZ never holds rent or deposit)',
   'partner:oversee': 'Shop QR partners — GENZ desk: see partner shares marked “not received” and leads worked after being marked lost',
   'landrecord:manage': 'Record land / khasra details and run the title red-flag scanner',
@@ -266,7 +267,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'tier2:vouch', 'tieup:manage', 'network:use',
     'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm',
     'connector:work', 'connector:sponsor', 'team:manage', 'growth:nominate',
-    'inventory:read', 'inventory:hold', 'inventory:share', 'launch:read', 'team:checkin', 'share:use', 'clientroom:use', 'partner:manage', 'publicpage:use', 'rent:use', 'partywatch:report', 'landrecord:manage',
+    'inventory:read', 'inventory:hold', 'inventory:share', 'launch:read', 'team:checkin', 'share:use', 'clientroom:use', 'partner:manage', 'publicpage:use', 'rent:use', 'pchat:use', 'partywatch:report', 'landrecord:manage',
     'daily:use', 'pdoc:use', 'propdoc:use', 'report:create', 'chapter:read', 'loan:submit', 'academy:read',
     'legal:request', 'billing:self',
   ],
@@ -313,7 +314,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'audit:read_own',
     'builder:projects_read', 'builder:project_create', 'builder:associates_read',
     'builder:appoint_associate', 'builder:record_sale',
-    'pcontrol:manage', 'network:use',
+    'pcontrol:manage', 'network:use', 'pchat:use',
     'visit:pass', 'visit:scan',
     'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:booking_decide', 'crm:payout', 'crm:money_collect', 'crm:money_confirm', 'crm:assign', 'crm:bonus_manage', 'team:manage',
     'inventory:read', 'inventory:manage', 'inventory:share', 'share:use', 'growth:nominate',
@@ -367,7 +368,7 @@ export function roleHas(role: UserRole, perm: Permission): boolean {
 }
 
 /** v58 — the resale / rent switches a BROKER gives one of his staff (see TeamPolicy) */
-export interface StaffSwitches { listings?: 'OFF' | 'READ' | 'ADDRESS'; rooms?: boolean; clients?: boolean }
+export interface StaffSwitches { listings?: 'OFF' | 'READ' | 'ADDRESS'; rooms?: boolean; clients?: boolean; canVerify?: boolean }
 
 /** An employee's powers depend on who employs them: always a subset of the employer's own. */
 export function memberPermissions(employerRole?: UserRole, sw?: StaffSwitches): Permission[] {
@@ -383,6 +384,8 @@ export function memberPermissions(employerRole?: UserRole, sw?: StaffSwitches): 
         if (sw.rooms) out.push('clientroom:use');
         if (sw.clients) out.push('daily:use');
       }
+      // v61 — a builder's sales manager (the one who checks partner leads) also talks with the partners
+      if (employerRole === 'DEVELOPER_BUILDER' && sw?.canVerify) out.push('pchat:use');
       return out;
     }
   }

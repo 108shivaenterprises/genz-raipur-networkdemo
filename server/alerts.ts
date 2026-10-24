@@ -21,8 +21,13 @@ export function alert(to: Who | Who[], kind: PushKind, title: string, body: stri
   } catch { /* an alert never breaks the action */ }
 }
 
-/** "Sunita Yadav" → "Sunita" (a customer is named by first name only) */
-export const firstName = (n?: string) => String(n || '').trim().split(/\s+/)[0] || 'A customer';
+/** "Sunita Yadav" → "Sunita", "Dr. Alok Pandey" → "Dr. Alok" (a customer is named by first name only; a title stays with it) */
+const TITLE = /^(dr|mr|mrs|ms|miss|shri|smt|sri|er|adv|prof|capt|col|km|kumari|sushri)\.?$/i;
+export const firstName = (n?: string) => {
+  const w = String(n || '').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return 'A customer';
+  return TITLE.test(w[0]) && w[1] ? `${w[0]} ${w[1]}` : w[0];
+};
 export const inr = (n: number) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
 
 /** an employer's active staff who have a given switch on */

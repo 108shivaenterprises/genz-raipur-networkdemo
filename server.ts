@@ -124,6 +124,7 @@ import { createChatsRouter } from './server/chats.js';
 import { createSavedRouter } from './server/saved.js';
 import { createPublicPageRouter, createBrokerPagePublicRouter, sweepPageEnquiries, seedDemoPage } from './server/publicPage.js';
 import { createRentRouter, sweepRent, seedDemoRent } from './server/rentdesk.js';
+import { createPartnerChatRouter } from './server/partnerchat.js';
 import { createSidesRouter, shapeSideDeal, stripSideData } from './server/sides.js';
 import { allSidesDone, checkProposerSide, feeFor, isOwnSide, otherSide, undertakingDone } from './src/shared/sideFees.js';
 import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } from './server/partywatch.js';
@@ -199,7 +200,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Protected-document and property-paper uploads need a larger body; those routes parse their own JSON with their own limit.
 const jsonParser = express.json({ limit: '256kb' });
-app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path)) ? next() : jsonParser(req, res, next)));
+app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path)) ? next() : jsonParser(req, res, next)));
 
 // Structured one-line access log for /api (no bodies, no cookies, no query strings -> no PII in logs).
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -5408,6 +5409,8 @@ app.use('/s', createPublicShareRouter());
 app.use('/api/client-rooms', createClientRoomRouter());
 // v60 — Rent desk: the broker's tenancies after the deal (terms, police verification, renewal, vacating)
 app.use('/api/rent', createRentRouter());
+// v61 — builder ↔ channel partner chat (text, lead / booking / unit cards, photos)
+app.use('/api/partner-chats', createPartnerChatRouter());
 app.use('/r', createClientRoomPageRouter());
 // v46 — shop QR partners: broker API, the customer's scan form + poster, the shopkeeper's own page
 app.use('/api/shop-partners', createShopPartnerRouter());

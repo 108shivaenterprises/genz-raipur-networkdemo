@@ -11,6 +11,7 @@ import { purgeUserDocs } from './propdocs.js';
 import { purgeUserIdDocs } from './idreview.js';
 import { purgeUserPhotos } from './profilephoto.js';
 import { purgeKyc, kycFlags } from './kycvault.js';
+import { erasePhoto } from './workphotos.js';
 
 export const POLICY_VERSION = '2026-10-17';
 
@@ -51,6 +52,9 @@ export function createPrivacyRouter() {
       crmBookings: mine(s.crmBookings, 'associateId', 'builderId'),
       disputes: s.disputes.filter(d => (d as any).raisedBy === u.id || (d as any).againstUserId === u.id),
       privacyRequests: mine(s.privacyRequests, 'userId'),
+      // v60 / v61 — his Rent desk records and the messages he wrote in builder ↔ partner chats
+      tenancies: mine(s.tenancies || [], 'brokerId'),
+      partnerChatMessages: (s.partnerThreads || []).flatMap(t => t.messages.filter(m => m.byId === u.id).map(m => ({ thread: t.id, at: m.at, text: m.text, card: m.card ? { kind: m.card.kind, label: m.card.label } : undefined }))),
       // v25: the encrypted vault is summarised (what is kept, when, and who opened it) — the number itself is never put in an export file
       kycVault: (() => { const r = s.kycVault.find(x => x.userId === u.id); return r ? { ...kycFlags(u.id), openedBy: r.views.map(v => ({ at: v.at, by: v.byName, purpose: v.purpose, reason: v.reason })) } : null; })(),
       auditEventsByYou: s.auditEvents.filter(e => e.actorId === u.id),
@@ -129,6 +133,15 @@ export function createPrivacyRouter() {
       purgeKyc(s, target.id); // v25: the encrypted full Aadhaar + address
       target.autoVerifiedAt = undefined; target.autoVerifiedBy = undefined;
       for (const a of s.tier2Applications) if (a.userId === target.id) { a.panNumber = undefined; a.aadhaarLast4 = undefined; a.companyName = undefined; } // what the sponsor typed about this person
+      // v60 — his Rent desk: the owners' and tenants' names and numbers he kept for his own work go with him
+      s.tenancies = (s.tenancies || []).filter(t => t.brokerId !== target.id);
+      // v61 — builder ↔ partner chat: his name on his messages becomes the anonymous one; photos he sent are deleted
+      const gone = new Set((s.workPhotos || []).filter(p => p.byId === target.id).map(p => p.id));
+      for (const id of gone) erasePhoto(id);
+      for (const t of s.partnerThreads || []) for (const m of t.messages) {
+        if (m.byId === target.id) m.byName = target.name;
+        if (m.card?.kind === 'PHOTO' && gone.has(m.card.refId)) { m.card = undefined; m.text = m.text || '(photo removed)'; }
+      }
     }
     pr.status = decision === 'COMPLETE' ? 'COMPLETED' : 'REJECTED';
     pr.resolvedAt = new Date().toISOString();

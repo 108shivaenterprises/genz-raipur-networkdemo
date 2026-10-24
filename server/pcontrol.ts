@@ -13,6 +13,8 @@
  *  • No cash, no paid third party; everything is audited in the hash-chained trail.
  */
 import { alert, firstName } from './alerts.js';
+import { savePhoto, photoById, sendPhoto, erasePhoto } from './workphotos.js';
+import express from 'express';
 import { tier1Gate } from './tiers.js';
 import { tierOf } from '../src/shared/networkRules.js';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
@@ -226,13 +228,21 @@ export function createPcontrolRouter() {
   });
 
   // ── notices & collateral ──
-  r.post('/builder/projects/:id/updates', needs('pcontrol:manage'), rateLimit('pc-update', 60, 24 * 3600_000), (req, res) => {
+  r.post('/builder/projects/:id/updates', express.json({ limit: '1mb' }), needs('pcontrol:manage'), rateLimit('pc-update', 60, 24 * 3600_000), (req, res) => {
     const p = projectFor(req.params.id, true);
     if (!p) return bad(res, 'Project not found', 404);
-    const parsed = updateSchema.safeParse(req.body);
+    const { photo, ...rest } = (req.body || {}) as Record<string, unknown>;
+    const parsed = updateSchema.safeParse(rest);
     if (!parsed.success) return bad(res, parsed.error.issues[0]?.message || 'Invalid notice');
     if (state().projectUpdates.filter(x => x.projectId === p.id).length >= 100) return bad(res, 'Notice board is full (100) — delete old notices first', 409);
-    const x = { id: uid('PU'), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me().id, createdAt: nowIso() };
+    const x: any = { id: uid('PU'), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me().id, createdAt: nowIso() };
+    // v61 — one photo with the notice (an offer poster, the site's progress)
+    if (photo !== undefined && photo !== null && photo !== '') {
+      if (typeof photo !== 'string' || photo.length > 900_000) return bad(res, 'The photo is too big — pick a smaller one.', 413);
+      const sp = savePhoto(photo, { kind: 'NOTICE', id: x.id, byId: me().id });
+      if (!sp.ok) return bad(res, sp.error, sp.status);
+      x.photoId = sp.photo.id;
+    }
     state().projectUpdates.unshift(x); db.save();
     // v59 — appointed partners get the notice on their phone (an "all brokers" notice stays on the board — no mass push)
     alert(state().associateMandates.filter(mm => mm.projectId === p.id && ['ACTIVE_ASSOCIATE', 'TOP_PERFORMER'].includes(mm.status)).map(mm => mm.brokerId), 'broadcast', `${p.projectName}: ${x.title}`, String(x.body || '').slice(0, 160), '/?tab=pcontrol', { not: me().id, tag: `pu-${x.id}` });
@@ -242,7 +252,9 @@ export function createPcontrolRouter() {
   r.delete('/builder/updates/:uid', needs('pcontrol:manage'), (req, res) => {
     const x = state().projectUpdates.find(y => y.id === req.params.uid);
     if (!x || !projectFor(x.projectId, true)) return bad(res, 'Notice not found', 404);
-    state().projectUpdates = state().projectUpdates.filter(y => y.id !== x.id); db.save();
+    state().projectUpdates = state().projectUpdates.filter(y => y.id !== x.id);
+    if (x.photoId) erasePhoto(x.photoId);
+    db.save();
     audit('SYSTEM', x.id, 'PROJECT_NOTICE_DELETED', `${me().name} deleted notice "${x.title}"`);
     res.json({ success: true });
   });
@@ -415,6 +427,19 @@ export function createPcontrolRouter() {
   };
   const audienceOk = (aud: string, rel: string) => aud === 'ALL_CPS' || ['ACTIVE', 'PAUSED', 'COMPLETED'].includes(rel);
 
+  /** v61 — a notice's photo: the builder (and his staff, GENZ oversight) and the brokers who may read that notice */
+  r.get('/notice-photo/:pid', needs('pcontrol:manage', 'pcontrol:oversee', 'pcontrol:partner', 'pcontrol:staff'), rateLimit('pc-photo', 600, 3600_000), (req, res) => {
+    const u = me(); const ph = photoById(req.params.pid);
+    const n = ph && ph.ownerKind === 'NOTICE' ? state().projectUpdates.find(y => y.id === ph.ownerId) : undefined;
+    const p = n ? state().builderProjects.find(y => y.id === n.projectId) : undefined;
+    if (!ph || !n || !p) return bad(res, 'Photo not found', 404);
+    const ok = !!projectFor(p.id, false)
+      || (u.role === 'TEAM_MEMBER' && u.employerId === p.builderId)
+      || (u.role === 'BROKER' && visibleTo(p, u.id) && audienceOk(n.audience, relationOf(myMandate(p.id, u.id))));
+    if (!ok) return bad(res, 'Photo not found', 404);
+    sendPhoto(res, ph);
+  });
+
   r.get('/partner/projects', partnerOnly, (_req, res) => {
     const u = me(); const st = state();
     const order: Record<string, number> = { ACTIVE: 0, PAUSED: 1, SHORTLISTED: 2, APPLIED: 3, INVITED: 4, NONE: 5, COMPLETED: 6, DECLINED: 7, REVOKED: 8 };
@@ -448,7 +473,7 @@ export function createPcontrolRouter() {
     res.json({
       success: true,
       project: {
-        id: p.id, projectName: p.projectName, builderName: p.builderName, tagline: p.tagline, city: p.city, locality: p.locality, status: p.status, projectStage: p.projectStage,
+        id: p.id, projectName: p.projectName, builderName: p.builderName, builderId: p.builderId, tagline: p.tagline, city: p.city, locality: p.locality, status: p.status, projectStage: p.projectStage,
         priceStartingFrom: p.priceStartingFrom, priceMax: p.priceMax, unitConfigurations: p.unitConfigurations, amenities: p.amenities, completionTarget: p.completionTarget,
         availableUnits: p.availableUnits, totalUnits: p.totalUnits, defaultCommissionPct: p.channelPartnerCommissionPct,
         leadIntake: p.leadIntake || 'OPEN', intakeNote: p.intakeNote || '', leadVerification: p.leadVerification || 'AUTO', registrationDays: p.registrationDays || 60,

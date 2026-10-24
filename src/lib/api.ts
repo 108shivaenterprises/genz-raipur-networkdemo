@@ -827,6 +827,12 @@ export const api = {
   savedToggle: (propertyId: string) => request<any>(`/api/saved/${encodeURIComponent(propertyId)}`, { method: 'POST', body: '{}' }),
   // v57 — My Public Page
   ppGet: () => request<any>('/api/public-page'),
+  // v61 — builder ↔ partner chat
+  pchatList: () => request<any>('/api/partner-chats'),
+  pchatOpen: (withId: string) => request<any>('/api/partner-chats/open', { method: 'POST', body: JSON.stringify({ withId }) }),
+  pchatGet: (id: string) => request<any>(`/api/partner-chats/${encodeURIComponent(id)}`),
+  pchatCards: (id: string) => request<any>(`/api/partner-chats/${encodeURIComponent(id)}/cards`),
+  pchatSend: (id: string, b: { text?: string; card?: { kind: string; refId: string }; photo?: string }) => request<any>(`/api/partner-chats/${encodeURIComponent(id)}/messages`, { method: 'POST', body: JSON.stringify(b) }),
   // v60 — Rent desk
   rentList: () => request<any>('/api/rent'),
   rentCreate: (b: any) => request<any>('/api/rent', { method: 'POST', body: JSON.stringify(b) }),

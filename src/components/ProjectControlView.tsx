@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { BuilderLaunchPanel } from './LaunchDesk.js';
-import { Loader2, ArrowLeft, PauseCircle, PlayCircle, Ban, CheckCircle2, XCircle, Megaphone, FileText, Settings, UserCheck, Users, Trash2, ShieldCheck, Lock, Unlock } from 'lucide-react';
+import { Loader2, ArrowLeft, PauseCircle, PlayCircle, Ban, CheckCircle2, XCircle, Megaphone, FileText, Settings, UserCheck, Users, Trash2, ShieldCheck, Lock, Unlock, MessageCircle, Camera, X } from 'lucide-react';
+import { openPartnerChat } from './PartnerChat.js';
+import { preparePhoto } from '../lib/photoFile.js';
 import { api } from '../lib/api.js';
-import { useTx } from '../lib/i18n.js';
+import { useTx, useI18n } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import type { UserProfile } from '../types/index.js';
@@ -11,6 +13,18 @@ const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-s
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-semibold disabled:opacity-50';
 const dark = `${btn} bg-slate-900 text-white`;
 const ghost = `${btn} border border-slate-300 bg-white text-slate-700`;
+/** v61 — open the chat with this partner (made on first use) */
+const ChatBtn: React.FC<{ withId: string }> = ({ withId }) => {
+  const tx = useTx(); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  return (
+    <>
+      <button type="button" className={ghost} disabled={busy} data-testid={`pcv-chat-${withId}`} onClick={async () => { setBusy(true); setErr(''); try { await openPartnerChat(withId); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}{tx('Chat', 'चैट')}
+      </button>
+      {err && <span className="text-xs text-red-700">{err}</span>}
+    </>
+  );
+};
 const days = (iso?: string) => (iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86400000)) : null);
 
 const Chip: React.FC<{ tone: 'green' | 'amber' | 'red' | 'slate' | 'blue'; children: React.ReactNode }> = ({ tone, children }) => {
@@ -164,6 +178,7 @@ const PartnersTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
                   <button onClick={() => openFor(m, 'approve')} className={dark}><CheckCircle2 className="h-4 w-4" />{tx('Approve', 'मंज़ूर')}</button>
                   {m.status === 'APPLIED' && <button onClick={() => openFor(m, 'shortlist')} className={ghost}>★ {tx('Shortlist', 'शॉर्टलिस्ट')}</button>}
                   <button onClick={() => openFor(m, 'decline')} className={ghost}><XCircle className="h-4 w-4" />{tx('Decline', 'मना करें')}</button>
+                  <ChatBtn withId={m.brokerId} />
                 </div>
               )}
               {open?.id === m.id && open?.mode === 'approve' && (
@@ -203,6 +218,7 @@ const PartnersTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
                   {m.status === 'PAUSED'
                     ? <button className={ghost} onClick={() => act(() => api.pcStatus(m.id, { action: 'RESUME' }), tx('Resumed', 'फिर से चालू')).catch(() => undefined)}><PlayCircle className="h-4 w-4" />{tx('Resume', 'चालू करें')}</button>
                     : <button className={ghost} onClick={() => openFor(m, 'pause')}><PauseCircle className="h-4 w-4" />{tx('Pause', 'रोकें')}</button>}
+                  <ChatBtn withId={m.brokerId} />
                   <button className={ghost} onClick={() => openFor(m, 'terms')}>{tx('Edit terms', 'शर्तें बदलें')}</button>
                   <button className={`${ghost} !text-red-700`} onClick={() => openFor(m, 'revoke')}><Ban className="h-4 w-4" />{tx('End partnership', 'साझेदारी खत्म')}</button>
                 </div>
@@ -255,6 +271,9 @@ const VerifyTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
 const NoticesTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
   const tx = useTx();
   const [n, setN] = useState({ kind: 'OFFER', title: '', body: '', audience: 'ASSOCIATES', validUntil: '' });
+  const [photo, setPhoto] = useState<{ data: string; preview: string } | null>(null);
+  const [photoErr, setPhotoErr] = useState('');
+  const hi = useI18n().lang === 'hi';
   const [c, setC] = useState({ title: '', kind: 'BROCHURE', url: '', audience: 'ASSOCIATES' });
   const KIND = ['OFFER', 'UPDATE', 'PRICE', 'LAUNCH', 'NOTICE'];
   const FK = ['BROCHURE', 'PRICE_LIST', 'PAYMENT_PLAN', 'RERA', 'LAYOUT', 'OTHER'];
@@ -272,13 +291,22 @@ const NoticesTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
             <input placeholder={tx('Title (e.g. Diwali offer: free parking)', 'शीर्षक (जैसे: दिवाली ऑफ़र)')} value={n.title} onChange={e => setN({ ...n, title: e.target.value })} className={inp} maxLength={120} />
             <textarea placeholder={tx('Details', 'विवरण')} value={n.body} onChange={e => setN({ ...n, body: e.target.value })} className={`${inp} min-h-20`} maxLength={1000} />
             <label className="block text-[11px] text-slate-600">{tx('Valid until (optional)', 'कब तक मान्य (वैकल्पिक)')}<input type="date" value={n.validUntil} onChange={e => setN({ ...n, validUntil: e.target.value })} className={inp} /></label>
-            <button disabled={n.title.trim().length < 3} className={dark} onClick={() => act(() => api.pcNotice(d.project.id, { ...n, validUntil: n.validUntil || undefined }), tx('Notice posted', 'सूचना भेजी')).then(() => setN({ ...n, title: '', body: '', validUntil: '' })).catch(() => undefined)}>{tx('Post notice', 'सूचना डालें')}</button>
+            {/* v61 — one photo with the notice (offer poster, site progress) */}
+            {photo ? (
+              <div className="relative inline-block"><img src={photo.preview} alt="" className="max-h-40 rounded-lg" data-testid="pcv-notice-preview" /><button type="button" aria-label={tx('Remove the photo', 'फ़ोटो हटाएँ')} onClick={() => setPhoto(null)} className="absolute right-1 top-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow"><X className="h-4 w-4" /></button></div>
+            ) : (
+              <label className={`${ghost} cursor-pointer`} data-testid="pcv-notice-photo"><Camera className="h-4 w-4" />{tx('Add a photo (optional)', 'फ़ोटो जोड़ें (वैकल्पिक)')}
+                <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; setPhotoErr(''); try { setPhoto(await preparePhoto(f, hi)); } catch (x: any) { setPhotoErr(x.message); } }} />
+              </label>
+            )}
+            {photoErr && <p className="text-xs text-red-700" role="alert">{photoErr}</p>}
+            <button disabled={n.title.trim().length < 3} className={dark} onClick={() => act(() => api.pcNotice(d.project.id, { ...n, validUntil: n.validUntil || undefined, ...(photo ? { photo: photo.data } : {}) }), tx('Notice posted', 'सूचना भेजी')).then(() => { setN({ ...n, title: '', body: '', validUntil: '' }); setPhoto(null); }).catch(() => undefined)}>{tx('Post notice', 'सूचना डालें')}</button>
           </div>
         )}
         {d.updates.length === 0 && <p className="text-xs text-slate-500">{tx('No notices yet.', 'अभी कोई सूचना नहीं।')}</p>}
         {d.updates.map((u: any) => (
           <div key={u.id} className="flex items-start justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3">
-            <div className="min-w-0"><div className="flex flex-wrap items-center gap-1.5"><Chip tone="blue">{u.kind}</Chip><Chip tone="slate">{aud(u.audience)}</Chip>{u.validUntil && <span className="text-[10px] text-slate-500">{tx('till', 'तक')} {u.validUntil.slice(0, 10)}</span>}</div><div className="mt-1 text-sm font-semibold">{u.title}</div>{u.body && <p className="text-xs text-slate-600">{u.body}</p>}</div>
+            <div className="min-w-0"><div className="flex flex-wrap items-center gap-1.5"><Chip tone="blue">{u.kind}</Chip><Chip tone="slate">{aud(u.audience)}</Chip>{u.validUntil && <span className="text-[10px] text-slate-500">{tx('till', 'तक')} {u.validUntil.slice(0, 10)}</span>}</div><div className="mt-1 text-sm font-semibold">{u.title}</div>{u.body && <p className="text-xs text-slate-600">{u.body}</p>}{u.photoId && <img src={`/api/pcontrol/notice-photo/${u.photoId}`} alt="" loading="lazy" className="mt-2 max-h-48 rounded-lg" data-testid="pcv-notice-img" />}</div>
             {canWrite && <button aria-label={tx('Delete', 'हटाएँ')} className="min-h-11 min-w-11 text-slate-400 hover:text-red-600" onClick={() => act(() => api.pcNoticeDelete(u.id), tx('Deleted', 'हटाया')).catch(() => undefined)}><Trash2 className="mx-auto h-4 w-4" /></button>}
           </div>
         ))}

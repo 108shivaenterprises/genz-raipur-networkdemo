@@ -14,9 +14,12 @@ import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { useDealChatKit } from './ChatPlus.js';
 import { RoomDetail } from './ClientRooms.js';
 import { goto } from '../lib/goto.js';
+import { PartnerChatPane } from './PartnerChat.js';
 
 const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600' };
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+/** "Er. Alok Singhania" → "Alok" (the name before a message preview) */
+const firstOf = (n: string) => { const w = n.split(/\s+/).filter(Boolean); return w.length > 1 && /^(dr|mr|mrs|ms|miss|shri|smt|sri|er|adv|prof)\.?$/i.test(w[0]) ? w[1] : (w[0] || ''); };
 
 /** WhatsApp-style time: today → clock time, yesterday → "Yesterday", this week → day name, older → date */
 export const chatTime = (iso: string | undefined, hi: boolean) => {
@@ -31,13 +34,15 @@ export const chatTime = (iso: string | undefined, hi: boolean) => {
 };
 
 type Row = {
-  key: string; kind: 'CLIENT' | 'DEAL'; id: string;
+  key: string; kind: 'CLIENT' | 'DEAL' | 'PARTNER'; id: string;
   title: string; sub: string; lastText?: string; lastMine?: boolean; lastBy?: string; lastAt?: string;
   unread: number; tone: string; badge?: string; closed?: boolean;
   /** a client waiting for his code / asking for a visit — shown as small tags under the message */
   tags: { text: string; cls: string }[];
   /** deal chat: the deal room's chat data */
   deal?: any;
+  /** v61 — partner chat: the builder / broker on the other side (a thread not made yet opens on tap) */
+  withId?: string;
 };
 
 /** one deal-room chat on its own screen (loads, polls, sends, and tells the server how far I have read) */
@@ -89,11 +94,14 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
   const hi = useI18n().lang === 'hi';
   const canClients = permissions.includes('clientroom:use');
   const canDeals = permissions.includes('deal:chat');
+  const canPartners = permissions.includes('pchat:use');
   const [rooms, setRooms] = useState<any[] | null>(null);
   const [deals, setDeals] = useState<any[] | null>(null);
+  const [partners, setPartners] = useState<any[] | null>(null);
+  const [pside, setPside] = useState('');
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
-  const [f, setF] = useState<'all' | 'unread' | 'clients' | 'brokers'>('all');
+  const [f, setF] = useState<'all' | 'unread' | 'clients' | 'brokers' | 'partners'>('all');
   const [open, setOpen] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('chat') || ''; } catch { return ''; } });
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string; id: string } | null>(null);
 
@@ -104,8 +112,9 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     Promise.all([
       canClients ? api.crList().then(r => setRooms((r.rooms || []).filter((x: any) => x.status === 'ACTIVE'))) : Promise.resolve(setRooms([])),
       canDeals ? api.chatDeals().then(r => setDeals(r.deals || [])) : Promise.resolve(setDeals([])),
+      canPartners ? api.pchatList().then(r => { setPartners(r.threads || []); setPside(r.side || ''); }) : Promise.resolve(setPartners([])),
     ]).catch(e => setErr(e.message));
-  }, [canClients, canDeals]);
+  }, [canClients, canDeals, canPartners]);
   useEffect(() => {
     load();
     const t = setInterval(() => { if (!document.hidden) load(); }, 30000);
@@ -134,21 +143,36 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
         unread: d.unread || 0, tone: 'bg-amber-500', tags: [], closed: d.closed, deal: d,
       });
     }
+    for (const t of partners || []) {
+      out.push({
+        key: t.id ? 'p:' + t.id : 'pn:' + t.withId, kind: 'PARTNER', id: t.id || '', withId: t.withId, title: t.with,
+        sub: [pside === 'BUILDER' ? tx('Partner', 'पार्टनर') : tx('Builder', 'बिल्डर'), (t.projects || []).join(', ')].filter(Boolean).join(' · '),
+        lastText: t.last ? (t.last.photo && !t.last.text ? tx('📷 Photo', '📷 फ़ोटो') : t.last.text) : undefined, lastMine: t.last?.mine, lastBy: t.last?.by, lastAt: t.last?.at,
+        unread: t.unread || 0, tone: 'bg-indigo-600', tags: t.open ? [] : [{ text: tx('ended', 'ख़त्म'), cls: 'bg-slate-200 text-slate-600' }], closed: !t.open,
+      });
+    }
     return out;
-  }, [rooms, deals, hi]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rooms, deals, partners, pside, hi]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const s = q.trim().toLowerCase();
   const match = (r: Row) => (!s || r.title.toLowerCase().includes(s) || r.sub.toLowerCase().includes(s) || (r.lastText || '').toLowerCase().includes(s))
-    && (f === 'all' || (f === 'unread' && r.unread > 0) || (f === 'clients' && r.kind === 'CLIENT') || (f === 'brokers' && r.kind === 'DEAL'));
+    && (f === 'all' || (f === 'unread' && r.unread > 0) || (f === 'clients' && r.kind === 'CLIENT') || (f === 'brokers' && r.kind === 'DEAL') || (f === 'partners' && r.kind === 'PARTNER'));
   const talking = rows.filter(r => r.lastText || r.kind === 'CLIENT').filter(match)
     .sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
-  const silent = rows.filter(r => r.kind === 'DEAL' && !r.lastText && !r.closed).filter(match);
+  const silent = rows.filter(r => (r.kind === 'DEAL' || r.kind === 'PARTNER') && !r.lastText && !r.closed).filter(match);
   const unreadTotal = rows.reduce((n, r) => n + r.unread, 0);
-  const both = canClients && canDeals;
+  const both = [canClients, canDeals, canPartners].filter(Boolean).length > 1;
   const cur = rows.find(r => r.key === open);
+  // v61 — a partner chat that does not exist yet is made when it is opened
+  useEffect(() => {
+    if (!open.startsWith('pn:')) return;
+    const row = rows.find(r => r.key === open);
+    if (!row?.withId) return;
+    api.pchatOpen(row.withId).then(r => { setOpen('p:' + r.id); load(); }).catch(e => { setErr(e.message); setOpen(''); });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (err) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
-  if (rooms === null || deals === null) return <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />;
+  if (rooms === null || deals === null || partners === null) return <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />;
 
   const renderRow = (r: Row) => (
     <button key={r.key} type="button" onClick={() => setOpenUrl(r.key)} className={`flex w-full items-center gap-3 px-3 py-3 text-left active:bg-slate-100 lg:hover:bg-slate-50 ${open === r.key ? 'bg-slate-100' : ''}`} data-testid={`chat-row-${r.key}`}>
@@ -162,7 +186,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
         </span>
         <span className="flex items-center justify-between gap-2">
           <span className={`truncate text-sm ${r.unread > 0 ? 'font-semibold text-slate-800' : 'text-slate-500'}`}>
-            {r.lastText ? <>{r.lastMine ? tx('You: ', 'आप: ') : (r.kind === 'DEAL' && r.lastBy ? `${r.lastBy.split(' ')[0]}: ` : '')}{r.lastText}</> : <span className="italic text-slate-400">{r.kind === 'CLIENT' ? tx('No messages yet', 'अभी कोई संदेश नहीं') : tx('Tap to start the chat', 'चैट शुरू करने के लिए दबाएँ')}</span>}
+            {r.lastText ? <>{r.lastMine ? tx('You: ', 'आप: ') : ((r.kind === 'DEAL' || r.kind === 'PARTNER') && r.lastBy ? `${firstOf(r.lastBy)}: ` : '')}{r.lastText}</> : <span className="italic text-slate-400">{r.kind === 'CLIENT' ? tx('No messages yet', 'अभी कोई संदेश नहीं') : tx('Tap to start the chat', 'चैट शुरू करने के लिए दबाएँ')}</span>}
           </span>
           {r.unread > 0 && <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-xs font-bold text-white" aria-label={tx(`${r.unread} unread`, `${r.unread} नए`)}>{r.unread}</span>}
         </span>
@@ -173,6 +197,8 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
 
   const pane = !cur ? (
     <div className="hidden h-[max(28rem,calc(100vh-19rem))] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400 lg:flex">{tx('Pick a chat on the left.', 'बाईं ओर से कोई चैट चुनें।')}</div>
+  ) : cur.kind === 'PARTNER' ? (
+    cur.id ? <PartnerChatPane key={cur.id} id={cur.id} fallbackTitle={cur.title} onBack={() => { setOpenUrl(''); load(); }} /> : <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />
   ) : cur.kind === 'CLIENT' ? (
     <RoomDetail key={cur.id} id={cur.id} onChange={load} onBack={() => setOpenUrl('')}
       fresh={fresh && fresh.id === cur.id ? fresh : null} onFreshDone={() => setFresh(null)}
@@ -199,15 +225,15 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
           )}
           {both && (
             <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1" role="tablist">
-              {([['all', 'All', 'सभी'], ['unread', unreadTotal ? `Unread ${unreadTotal}` : 'Unread', unreadTotal ? `नए ${unreadTotal}` : 'नए'], ['clients', 'Clients', 'क्लाइंट'], ['brokers', 'Brokers', 'ब्रोकर']] as const).map(([id, en, hiT]) => (
-                <button key={id} type="button" role="tab" aria-selected={f === id} onClick={() => setF(id)} className={`min-h-9 shrink-0 rounded-full border px-3.5 text-sm font-semibold ${f === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`chats-filter-${id}`}>{tx(en, hiT)}</button>
+              {([['all', 'All', 'सभी'], ['unread', unreadTotal ? `Unread ${unreadTotal}` : 'Unread', unreadTotal ? `नए ${unreadTotal}` : 'नए'], ...(canClients ? [['clients', 'Clients', 'क्लाइंट']] : []), ...(canDeals ? [['brokers', 'Brokers', 'ब्रोकर']] : []), ...(canPartners ? [['partners', pside === 'BUILDER' ? 'Partners' : 'Builders', pside === 'BUILDER' ? 'पार्टनर' : 'बिल्डर']] : [])] as const as ReadonlyArray<readonly [string, string, string]>).map(([id, en, hiT]) => (
+                <button key={id} type="button" role="tab" aria-selected={f === id} onClick={() => setF(id as typeof f)} className={`min-h-9 shrink-0 rounded-full border px-3.5 text-sm font-semibold ${f === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`chats-filter-${id}`}>{tx(en, hiT)}</button>
               ))}
             </div>
           )}
           {talking.length === 0 && silent.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500" data-testid="chats-empty">
               <MessageSquare className="mx-auto mb-2 h-8 w-8 text-slate-300" aria-hidden />
-              {s || f !== 'all' ? tx('No chat matches.', 'कोई चैट नहीं मिली।') : tx('No chats yet. Your client rooms and deal chats will appear here.', 'अभी कोई चैट नहीं। आपके क्लाइंट रूम और डील की चैट यहीं दिखेंगी।')}
+              {s || f !== 'all' ? tx('No chat matches.', 'कोई चैट नहीं मिली।') : canClients || canDeals ? tx('No chats yet. Your client rooms and deal chats will appear here.', 'अभी कोई चैट नहीं। आपके क्लाइंट रूम और डील की चैट यहीं दिखेंगी।') : tx('No chats yet. Your channel partners will appear here once they apply or are appointed.', 'अभी कोई चैट नहीं। चैनल पार्टनर अप्लाई या अपॉइंट होते ही यहाँ दिखेंगे।')}
             </div>
           ) : (
             <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white lg:max-h-[max(24rem,calc(100vh-24rem))] lg:overflow-y-auto">
@@ -216,7 +242,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
           )}
           {silent.length > 0 && (
             <details className="mt-3 rounded-xl border border-slate-200 bg-white" data-testid="chats-silent">
-              <summary className="min-h-11 cursor-pointer list-none px-3 py-3 text-sm font-semibold text-slate-600">{tx(`Deals with no chat yet (${silent.length})`, `जिन डील में अभी चैट नहीं (${silent.length})`)}</summary>
+              <summary className="min-h-11 cursor-pointer list-none px-3 py-3 text-sm font-semibold text-slate-600">{tx(`No chat yet (${silent.length})`, `अभी चैट नहीं (${silent.length})`)}</summary>
               <div className="divide-y divide-slate-100 border-t border-slate-100">{silent.map(renderRow)}</div>
             </details>
           )}

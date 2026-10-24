@@ -396,7 +396,7 @@ export default function App() {
         onOpenBrokerQrModal={currentUser.role === 'BROKER' ? () => setShowQrMenu(true) : undefined}
         onOpenScan={currentUser.role !== 'BROKER' && hasPerm(permissions, 'sitevisit:verify', 'visit:scan') ? () => setShowQuickScan(true) : undefined}
         onOpenBrokerSafetyModal={() => setShowBrokerSafetyModal(true)}
-        onOpenChats={hasPerm(permissions, 'deal:chat', 'clientroom:use') && currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERADMIN' ? () => setActiveTab('chats') : undefined}
+        onOpenChats={hasPerm(permissions, 'deal:chat', 'clientroom:use', 'pchat:use') && currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERADMIN' ? () => setActiveTab('chats') : undefined}
         chatCount={chatBadge}
       />
 
@@ -632,7 +632,7 @@ export default function App() {
         {activeTab === 'desk' && hasPerm(permissions, 'offer:make', 'offer:decide', 'listing:lifecycle') && <DealDesk currentUser={currentUser} permissions={permissions} />}
 
         {activeTab === 'clientroom' && hasPerm(permissions, 'clientroom:use') && <ClientRoomsTab />}
-        {activeTab === 'chats' && hasPerm(permissions, 'deal:chat', 'clientroom:use') && <ChatsView meId={currentUser.id} permissions={permissions} />}
+        {activeTab === 'chats' && hasPerm(permissions, 'deal:chat', 'clientroom:use', 'pchat:use') && <ChatsView meId={currentUser.id} permissions={permissions} />}
 
         {activeTab === 'partners' && hasPerm(permissions, 'partner:manage', 'partner:oversee') && <ShopPartnersView currentUser={currentUser} canManage={hasPerm(permissions, 'partner:manage')} canOversee={hasPerm(permissions, 'partner:oversee')} />}
         {activeTab === 'visits' && hasPerm(permissions, 'visit:pass', 'visit:scan') && <VisitsView currentUser={currentUser} />}

@@ -1380,7 +1380,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports, module) {
     "use strict";
-    var crypto37 = require_utils2();
+    var crypto39 = require_utils2();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -1398,7 +1398,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto37.randomBytes(18).toString("base64");
+      const clientNonce = crypto39.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -1440,20 +1440,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto37.hashByName(hashName, peerCert);
+        const certHash = await crypto39.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto37.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto37.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto37.sha256(clientKey);
-      const clientSignature = await crypto37.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto39.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto39.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto39.sha256(clientKey);
+      const clientSignature = await crypto39.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto37.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto37.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto39.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto39.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -1656,15 +1656,15 @@ var require_pg_connection_string = __commonJS({
       if (config2.sslnegotiation === "direct" && config2.ssl === void 0) {
         config2.ssl = true;
       }
-      const fs12 = config2.sslcert || config2.sslkey || config2.sslrootcert ? __require("fs") : null;
+      const fs13 = config2.sslcert || config2.sslkey || config2.sslrootcert ? __require("fs") : null;
       if (config2.sslcert) {
-        config2.ssl.cert = fs12.readFileSync(config2.sslcert).toString();
+        config2.ssl.cert = fs13.readFileSync(config2.sslcert).toString();
       }
       if (config2.sslkey) {
-        config2.ssl.key = fs12.readFileSync(config2.sslkey).toString();
+        config2.ssl.key = fs13.readFileSync(config2.sslkey).toString();
       }
       if (config2.sslrootcert) {
-        config2.ssl.ca = fs12.readFileSync(config2.sslrootcert).toString();
+        config2.ssl.ca = fs13.readFileSync(config2.sslrootcert).toString();
       }
       if (options.useLibpqCompat && config2.uselibpqcompat) {
         throw new Error("Both useLibpqCompat and uselibpqcompat are set. Please use only one of them.");
@@ -3492,7 +3492,7 @@ var require_split2 = __commonJS({
 var require_helper = __commonJS({
   "node_modules/pgpass/lib/helper.js"(exports, module) {
     "use strict";
-    var path13 = __require("path");
+    var path14 = __require("path");
     var Stream = __require("stream").Stream;
     var split = require_split2();
     var util = __require("util");
@@ -3531,7 +3531,7 @@ var require_helper = __commonJS({
     };
     module.exports.getFileName = function(rawEnv) {
       var env = rawEnv || process.env;
-      var file2 = env.PGPASSFILE || (isWin ? path13.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path13.join(env.HOME || "./", ".pgpass"));
+      var file2 = env.PGPASSFILE || (isWin ? path14.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path14.join(env.HOME || "./", ".pgpass"));
       return file2;
     };
     module.exports.usePgPass = function(stats2, fname) {
@@ -3663,17 +3663,17 @@ var require_helper = __commonJS({
 var require_lib = __commonJS({
   "node_modules/pgpass/lib/index.js"(exports, module) {
     "use strict";
-    var path13 = __require("path");
-    var fs12 = __require("fs");
+    var path14 = __require("path");
+    var fs13 = __require("fs");
     var helper = require_helper();
     module.exports = function(connInfo, cb) {
       var file2 = helper.getFileName();
-      fs12.stat(file2, function(err, stat) {
+      fs13.stat(file2, function(err, stat) {
         if (err || !helper.usePgPass(stat, file2)) {
           return cb(void 0);
         }
-        var st24 = fs12.createReadStream(file2);
-        helper.getPassword(connInfo, st24, cb);
+        var st25 = fs13.createReadStream(file2);
+        helper.getPassword(connInfo, st25, cb);
       });
     };
     module.exports.warnTo = helper.warnTo;
@@ -3692,7 +3692,7 @@ var require_client = __commonJS({
     var Query2 = require_query();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto37 = require_utils2();
+    var crypto39 = require_utils2();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -3947,7 +3947,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto37.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto39.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e) {
             this.emit("error", e);
@@ -5689,19 +5689,19 @@ CREATE TABLE IF NOT EXISTS ${T_FILES} (
         const { rows } = await this.pool.query(`SELECT path, sha, deleted FROM ${T_FILES}`);
         return rows;
       }
-      async fileGet(path13) {
-        const { rows } = await this.pool.query(`SELECT data FROM ${T_FILES} WHERE path=$1 AND NOT deleted`, [path13]);
+      async fileGet(path14) {
+        const { rows } = await this.pool.query(`SELECT data FROM ${T_FILES} WHERE path=$1 AND NOT deleted`, [path14]);
         return rows.length ? rows[0].data : null;
       }
-      async filePut(path13, sha7, data) {
-        await this.pool.query(`INSERT INTO ${T_FILES}(path, sha, data, deleted) VALUES ($1,$2,$3,false) ON CONFLICT (path) DO UPDATE SET sha=$2, data=$3, deleted=false, updated_at=now()`, [path13, sha7, data]);
+      async filePut(path14, sha7, data) {
+        await this.pool.query(`INSERT INTO ${T_FILES}(path, sha, data, deleted) VALUES ($1,$2,$3,false) ON CONFLICT (path) DO UPDATE SET sha=$2, data=$3, deleted=false, updated_at=now()`, [path14, sha7, data]);
       }
       /** tests only: empty the file table */
       async pool_query_clear() {
         await this.pool.query(`DELETE FROM ${T_FILES}`);
       }
-      async fileDel(path13) {
-        await this.pool.query(`UPDATE ${T_FILES} SET deleted=true, data=NULL, sha='-', updated_at=now() WHERE path=$1`, [path13]);
+      async fileDel(path14) {
+        await this.pool.query(`UPDATE ${T_FILES} SET deleted=true, data=NULL, sha='-', updated_at=now() WHERE path=$1`, [path14]);
       }
       async close() {
         await this.flush().catch(() => {
@@ -7024,8 +7024,8 @@ var require_node = __commonJS({
           }
           break;
         case "FILE":
-          var fs12 = __require("fs");
-          stream2 = new fs12.SyncWriteStream(fd2, { autoClose: false });
+          var fs13 = __require("fs");
+          stream2 = new fs13.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -19812,11 +19812,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path13) {
-      if (!path13 || typeof path13 !== "string") {
+    function lookup(path14) {
+      if (!path14 || typeof path14 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path13).toLowerCase().substr(1);
+      var extension2 = extname("x." + path14).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -23429,7 +23429,7 @@ var require_path_to_regexp = __commonJS({
   "node_modules/path-to-regexp/index.js"(exports, module) {
     module.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path13, keys, options) {
+    function pathToRegexp(path14, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -23443,8 +23443,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path13 instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path13.source)) {
+      if (path14 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path14.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -23452,18 +23452,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path13;
+        return path14;
       }
-      if (Array.isArray(path13)) {
-        path13 = path13.map(function(value) {
+      if (Array.isArray(path14)) {
+        path14 = path14.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path13.join("|"), flags);
+        return new RegExp(path14.join("|"), flags);
       }
-      if (typeof path13 !== "string") {
+      if (typeof path14 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path13 = path13.replace(
+      path14 = path14.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format, key, capture, star, optional2, offset) {
           if (match[0] === "\\") {
@@ -23480,7 +23480,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format) {
             backtrack = "";
           } else {
-            backtrack += path13.slice(pos, offset);
+            backtrack += path14.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -23510,7 +23510,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path13)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path14)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i === keys.length || keys[keysOffset + i].offset > m.index) {
           keys.splice(keysOffset + i, 0, {
@@ -23522,13 +23522,13 @@ var require_path_to_regexp = __commonJS({
         }
         i++;
       }
-      path13 += strict ? "" : path13[path13.length - 1] === "/" ? "?" : "/?";
+      path14 += strict ? "" : path14[path14.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path13 += "$";
-      } else if (path13[path13.length - 1] !== "/") {
-        path13 += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path14 += "$";
+      } else if (path14[path14.length - 1] !== "/") {
+        path14 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path13, flags);
+      return new RegExp("^" + path14, flags);
     }
   }
 });
@@ -23541,19 +23541,19 @@ var require_layer = __commonJS({
     var debug = require_src()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module.exports = Layer;
-    function Layer(path13, options, fn) {
+    function Layer(path14, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path13, options, fn);
+        return new Layer(path14, options, fn);
       }
-      debug("new %o", path13);
+      debug("new %o", path14);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path13, this.keys = [], opts);
-      this.regexp.fast_star = path13 === "*";
-      this.regexp.fast_slash = path13 === "/" && opts.end === false;
+      this.regexp = pathRegexp(path14, this.keys = [], opts);
+      this.regexp.fast_star = path14 === "*";
+      this.regexp.fast_slash = path14 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error62, req, res, next2) {
       var fn = this.handle;
@@ -23577,20 +23577,20 @@ var require_layer = __commonJS({
         next2(err);
       }
     };
-    Layer.prototype.match = function match(path13) {
+    Layer.prototype.match = function match(path14) {
       var match2;
-      if (path13 != null) {
+      if (path14 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path13) };
-          this.path = path13;
+          this.params = { "0": decode_param(path14) };
+          this.path = path14;
           return true;
         }
-        match2 = this.regexp.exec(path13);
+        match2 = this.regexp.exec(path14);
       }
       if (!match2) {
         this.params = void 0;
@@ -23683,10 +23683,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString = Object.prototype.toString;
     module.exports = Route;
-    function Route(path13) {
-      this.path = path13;
+    function Route(path14) {
+      this.path = path14;
       this.stack = [];
-      debug("new %o", path13);
+      debug("new %o", path14);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -23898,8 +23898,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next2, err);
         }
-        var path13 = getPathname(req);
-        if (path13 == null) {
+        var path14 = getPathname(req);
+        if (path14 == null) {
           return done(layerError);
         }
         var layer;
@@ -23907,7 +23907,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path13);
+          match = matchLayer(layer, path14);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -23945,18 +23945,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next2);
           } else {
-            trim_prefix(layer, layerError, layerPath, path13);
+            trim_prefix(layer, layerError, layerPath, path14);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path13) {
+      function trim_prefix(layer, layerError, layerPath, path14) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path13.slice(0, layerPath.length)) {
+          if (layerPath !== path14.slice(0, layerPath.length)) {
             next2(layerError);
             return;
           }
-          var c = path13[layerPath.length];
+          var c = path14[layerPath.length];
           if (c && c !== "/" && c !== ".") return next2(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -24034,7 +24034,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path13 = "/";
+      var path14 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -24042,7 +24042,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path13 = fn;
+          path14 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -24054,8 +24054,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path13, fn.name || "<anonymous>");
-        var layer = new Layer(path13, {
+        debug("use %o %s", path14, fn.name || "<anonymous>");
+        var layer = new Layer(path14, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -24065,9 +24065,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path13) {
-      var route2 = new Route(path13);
-      var layer = new Layer(path13, {
+    proto.route = function route(path14) {
+      var route2 = new Route(path14);
+      var layer = new Layer(path14, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -24077,8 +24077,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path13) {
-        var route = this.route(path13);
+      proto[method] = function(path14) {
+        var route = this.route(path14);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -24114,9 +24114,9 @@ var require_router = __commonJS({
       }
       return toString.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path13) {
+    function matchLayer(layer, path14) {
       try {
-        return layer.match(path13);
+        return layer.match(path14);
       } catch (err) {
         return err;
       }
@@ -24234,13 +24234,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports, module) {
     "use strict";
     var debug = require_src()("express:view");
-    var path13 = __require("path");
-    var fs12 = __require("fs");
-    var dirname = path13.dirname;
-    var basename = path13.basename;
-    var extname = path13.extname;
-    var join = path13.join;
-    var resolve = path13.resolve;
+    var path14 = __require("path");
+    var fs13 = __require("fs");
+    var dirname = path14.dirname;
+    var basename = path14.basename;
+    var extname = path14.extname;
+    var join = path14.join;
+    var resolve = path14.resolve;
     module.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -24269,17 +24269,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path14;
+      var path15;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i = 0; i < roots.length && !path14; i++) {
+      for (var i = 0; i < roots.length && !path15; i++) {
         var root2 = roots[i];
         var loc = resolve(root2, name);
         var dir = dirname(loc);
         var file2 = basename(loc);
-        path14 = this.resolve(dir, file2);
+        path15 = this.resolve(dir, file2);
       }
-      return path14;
+      return path15;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -24287,21 +24287,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file2) {
       var ext = this.ext;
-      var path14 = join(dir, file2);
-      var stat = tryStat(path14);
+      var path15 = join(dir, file2);
+      var stat = tryStat(path15);
       if (stat && stat.isFile()) {
-        return path14;
+        return path15;
       }
-      path14 = join(dir, basename(file2, ext), "index" + ext);
-      stat = tryStat(path14);
+      path15 = join(dir, basename(file2, ext), "index" + ext);
+      stat = tryStat(path15);
       if (stat && stat.isFile()) {
-        return path14;
+        return path15;
       }
     };
-    function tryStat(path14) {
-      debug('stat "%s"', path14);
+    function tryStat(path15) {
+      debug('stat "%s"', path15);
       try {
-        return fs12.statSync(path14);
+        return fs13.statSync(path15);
       } catch (e) {
         return void 0;
       }
@@ -24535,14 +24535,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto37 = __require("crypto");
+    var crypto39 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash3 = crypto37.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash3 = crypto39.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash3 + '"';
     }
@@ -24655,8 +24655,8 @@ var require_types = __commonJS({
 // node_modules/mime/mime.js
 var require_mime = __commonJS({
   "node_modules/mime/mime.js"(exports, module) {
-    var path13 = __require("path");
-    var fs12 = __require("fs");
+    var path14 = __require("path");
+    var fs13 = __require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
       this.extensions = /* @__PURE__ */ Object.create(null);
@@ -24677,7 +24677,7 @@ var require_mime = __commonJS({
     };
     Mime.prototype.load = function(file2) {
       this._loading = file2;
-      var map2 = {}, content = fs12.readFileSync(file2, "ascii"), lines = content.split(/[\r\n]+/);
+      var map2 = {}, content = fs13.readFileSync(file2, "ascii"), lines = content.split(/[\r\n]+/);
       lines.forEach(function(line) {
         var fields = line.replace(/\s*#.*|^\s*|\s*$/g, "").split(/\s+/);
         map2[fields.shift()] = fields;
@@ -24685,8 +24685,8 @@ var require_mime = __commonJS({
       this.define(map2);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path14, fallback) {
-      var ext = path14.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path15, fallback) {
+      var ext = path15.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -24915,33 +24915,33 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs12 = __require("fs");
+    var fs13 = __require("fs");
     var mime = require_mime();
     var ms = require_ms2();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path13 = __require("path");
+    var path14 = __require("path");
     var statuses = require_statuses();
     var Stream = __require("stream");
     var util = __require("util");
-    var extname = path13.extname;
-    var join = path13.join;
-    var normalize = path13.normalize;
-    var resolve = path13.resolve;
-    var sep = path13.sep;
+    var extname = path14.extname;
+    var join = path14.join;
+    var normalize = path14.normalize;
+    var resolve = path14.resolve;
+    var sep = path14.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module.exports = send;
     module.exports.mime = mime;
-    function send(req, path14, options) {
-      return new SendStream(req, path14, options);
+    function send(req, path15, options) {
+      return new SendStream(req, path15, options);
     }
-    function SendStream(req, path14, options) {
+    function SendStream(req, path15, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path14;
+      this.path = path15;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -24987,8 +24987,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root2(path14) {
-      this._root = resolve(String(path14));
+    SendStream.prototype.root = function root2(path15) {
+      this._root = resolve(String(path15));
       debug("root %s", this._root);
       return this;
     };
@@ -25101,10 +25101,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path14) {
+    SendStream.prototype.redirect = function redirect(path15) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path14);
+        this.emit("directory", res, path15);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -25124,42 +25124,42 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe2(res) {
       var root2 = this._root;
       this.res = res;
-      var path14 = decode3(this.path);
-      if (path14 === -1) {
+      var path15 = decode3(this.path);
+      if (path15 === -1) {
         this.error(400);
         return res;
       }
-      if (~path14.indexOf("\0")) {
+      if (~path15.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root2 !== null) {
-        if (path14) {
-          path14 = normalize("." + sep + path14);
+        if (path15) {
+          path15 = normalize("." + sep + path15);
         }
-        if (UP_PATH_REGEXP.test(path14)) {
-          debug('malicious path "%s"', path14);
+        if (UP_PATH_REGEXP.test(path15)) {
+          debug('malicious path "%s"', path15);
           this.error(403);
           return res;
         }
-        parts = path14.split(sep);
-        path14 = normalize(join(root2, path14));
+        parts = path15.split(sep);
+        path15 = normalize(join(root2, path15));
       } else {
-        if (UP_PATH_REGEXP.test(path14)) {
-          debug('malicious path "%s"', path14);
+        if (UP_PATH_REGEXP.test(path15)) {
+          debug('malicious path "%s"', path15);
           this.error(403);
           return res;
         }
-        parts = normalize(path14).split(sep);
-        path14 = resolve(path14);
+        parts = normalize(path15).split(sep);
+        path15 = resolve(path15);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path14);
+        debug('%s dotfile "%s"', access, path15);
         switch (access) {
           case "allow":
             break;
@@ -25173,13 +25173,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path14);
+        this.sendIndex(path15);
         return res;
       }
-      this.sendFile(path14);
+      this.sendFile(path15);
       return res;
     };
-    SendStream.prototype.send = function send2(path14, stat) {
+    SendStream.prototype.send = function send2(path15, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -25191,9 +25191,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path14);
-      this.setHeader(path14, stat);
-      this.type(path14);
+      debug('pipe "%s"', path15);
+      this.setHeader(path15, stat);
+      this.type(path15);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -25242,28 +25242,28 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path14, opts);
+      this.stream(path15, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path14) {
+    SendStream.prototype.sendFile = function sendFile(path15) {
       var i = 0;
       var self = this;
-      debug('stat "%s"', path14);
-      fs12.stat(path14, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path14) && path14[path14.length - 1] !== sep) {
+      debug('stat "%s"', path15);
+      fs13.stat(path15, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path15) && path15[path15.length - 1] !== sep) {
           return next2(err);
         }
         if (err) return self.onStatError(err);
-        if (stat.isDirectory()) return self.redirect(path14);
-        self.emit("file", path14, stat);
-        self.send(path14, stat);
+        if (stat.isDirectory()) return self.redirect(path15);
+        self.emit("file", path15, stat);
+        self.send(path15, stat);
       });
       function next2(err) {
         if (self._extensions.length <= i) {
           return err ? self.onStatError(err) : self.error(404);
         }
-        var p = path14 + "." + self._extensions[i++];
+        var p = path15 + "." + self._extensions[i++];
         debug('stat "%s"', p);
-        fs12.stat(p, function(err2, stat) {
+        fs13.stat(p, function(err2, stat) {
           if (err2) return next2(err2);
           if (stat.isDirectory()) return next2();
           self.emit("file", p, stat);
@@ -25271,7 +25271,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path14) {
+    SendStream.prototype.sendIndex = function sendIndex(path15) {
       var i = -1;
       var self = this;
       function next2(err) {
@@ -25279,9 +25279,9 @@ var require_send = __commonJS({
           if (err) return self.onStatError(err);
           return self.error(404);
         }
-        var p = join(path14, self._index[i]);
+        var p = join(path15, self._index[i]);
         debug('stat "%s"', p);
-        fs12.stat(p, function(err2, stat) {
+        fs13.stat(p, function(err2, stat) {
           if (err2) return next2(err2);
           if (stat.isDirectory()) return next2();
           self.emit("file", p, stat);
@@ -25290,10 +25290,10 @@ var require_send = __commonJS({
       }
       next2();
     };
-    SendStream.prototype.stream = function stream(path14, options) {
+    SendStream.prototype.stream = function stream(path15, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs12.createReadStream(path14, options);
+      var stream2 = fs13.createReadStream(path15, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -25308,10 +25308,10 @@ var require_send = __commonJS({
         self.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path14) {
+    SendStream.prototype.type = function type(path15) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path14);
+      var type2 = mime.lookup(path15);
       if (!type2) {
         debug("no content-type");
         return;
@@ -25320,9 +25320,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path14, stat) {
+    SendStream.prototype.setHeader = function setHeader(path15, stat) {
       var res = this.res;
-      this.emit("headers", res, path14, stat);
+      this.emit("headers", res, path15, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -25381,9 +25381,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode3(path14) {
+    function decode3(path15) {
       try {
-        return decodeURIComponent(path14);
+        return decodeURIComponent(path15);
       } catch (err) {
         return -1;
       }
@@ -26308,10 +26308,10 @@ var require_utils4 = __commonJS({
     var querystring = __require("querystring");
     exports.etag = createETagGenerator({ weak: false });
     exports.wetag = createETagGenerator({ weak: true });
-    exports.isAbsolute = function(path13) {
-      if ("/" === path13[0]) return true;
-      if (":" === path13[1] && ("\\" === path13[2] || "/" === path13[2])) return true;
-      if ("\\\\" === path13.substring(0, 2)) return true;
+    exports.isAbsolute = function(path14) {
+      if ("/" === path14[0]) return true;
+      if (":" === path14[1] && ("\\" === path14[2] || "/" === path14[2])) return true;
+      if ("\\\\" === path14.substring(0, 2)) return true;
     };
     exports.flatten = deprecate.function(
       flatten,
@@ -26435,7 +26435,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports, module) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router53 = require_router();
+    var Router54 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query3();
@@ -26500,7 +26500,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router53({
+        this._router = new Router54({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -26523,7 +26523,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path13 = "/";
+      var path14 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -26531,7 +26531,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path13 = fn;
+          path14 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -26542,12 +26542,12 @@ var require_application = __commonJS({
       var router = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path13, fn2);
+          return router.use(path14, fn2);
         }
-        debug(".use app under %s", path13);
-        fn2.mountpath = path13;
+        debug(".use app under %s", path14);
+        fn2.mountpath = path14;
         fn2.parent = this;
-        router.use(path13, function mounted_app(req, res, next2) {
+        router.use(path14, function mounted_app(req, res, next2) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -26559,9 +26559,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path13) {
+    app2.route = function route(path14) {
       this.lazyrouter();
-      return this._router.route(path13);
+      return this._router.route(path14);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -26612,7 +26612,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path13() {
+    app2.path = function path14() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -26628,19 +26628,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path13) {
+      app2[method] = function(path14) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path13);
+          return this.set(path14);
         }
         this.lazyrouter();
-        var route = this._router.route(path13);
+        var route = this._router.route(path14);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path13) {
+    app2.all = function all(path14) {
       this.lazyrouter();
-      var route = this._router.route(path13);
+      var route = this._router.route(path14);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
         route[methods[i]].apply(route, args);
@@ -26654,7 +26654,7 @@ var require_application = __commonJS({
       var engines = this.engines;
       var opts = options;
       var renderOptions = {};
-      var view7;
+      var view8;
       if (typeof options === "function") {
         done = options;
         opts = {};
@@ -26668,26 +26668,26 @@ var require_application = __commonJS({
         renderOptions.cache = this.enabled("view cache");
       }
       if (renderOptions.cache) {
-        view7 = cache[name];
+        view8 = cache[name];
       }
-      if (!view7) {
+      if (!view8) {
         var View2 = this.get("view");
-        view7 = new View2(name, {
+        view8 = new View2(name, {
           defaultEngine: this.get("view engine"),
           root: this.get("views"),
           engines
         });
-        if (!view7.path) {
-          var dirs = Array.isArray(view7.root) && view7.root.length > 1 ? 'directories "' + view7.root.slice(0, -1).join('", "') + '" or "' + view7.root[view7.root.length - 1] + '"' : 'directory "' + view7.root + '"';
+        if (!view8.path) {
+          var dirs = Array.isArray(view8.root) && view8.root.length > 1 ? 'directories "' + view8.root.slice(0, -1).join('", "') + '" or "' + view8.root[view8.root.length - 1] + '"' : 'directory "' + view8.root + '"';
           var err = new Error('Failed to lookup view "' + name + '" in views ' + dirs);
-          err.view = view7;
+          err.view = view8;
           return done(err);
         }
         if (renderOptions.cache) {
-          cache[name] = view7;
+          cache[name] = view8;
         }
       }
-      tryRender(view7, renderOptions, done);
+      tryRender(view8, renderOptions, done);
     };
     app2.listen = function listen() {
       var server = http.createServer(this);
@@ -26696,9 +26696,9 @@ var require_application = __commonJS({
     function logerror(err) {
       if (this.get("env") !== "test") console.error(err.stack || err.toString());
     }
-    function tryRender(view7, options, callback) {
+    function tryRender(view8, options, callback) {
       try {
-        view7.render(options, callback);
+        view8.render(options, callback);
       } catch (err) {
         callback(err);
       }
@@ -27399,7 +27399,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname3) ? hostname3.split(".").reverse() : [hostname3];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path13() {
+    defineGetter(req, "path", function path14() {
       return parse3(this).pathname;
     });
     defineGetter(req, "hostname", function hostname3() {
@@ -27451,11 +27451,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto37 = __require("crypto");
+    var crypto39 = __require("crypto");
     exports.sign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret2) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto37.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto39.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -27464,7 +27464,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac3) == sha1(val) ? str6 : false;
     };
     function sha1(str6) {
-      return crypto37.createHash("sha1").update(str6).digest("hex");
+      return crypto39.createHash("sha1").update(str6).digest("hex");
     }
   }
 });
@@ -27721,7 +27721,7 @@ var require_response = __commonJS({
     var http = __require("http");
     var isAbsolute = require_utils4().isAbsolute;
     var onFinished = require_on_finished();
-    var path13 = __require("path");
+    var path14 = __require("path");
     var statuses = require_statuses();
     var merge2 = require_utils_merge();
     var sign3 = require_cookie_signature().sign;
@@ -27730,9 +27730,9 @@ var require_response = __commonJS({
     var setCharset = require_utils4().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path13.extname;
+    var extname = path14.extname;
     var mime = send.mime;
-    var resolve = path13.resolve;
+    var resolve = path14.resolve;
     var vary = require_vary();
     var res = Object.create(http.ServerResponse.prototype);
     module.exports = res;
@@ -27909,26 +27909,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path14, options, callback) {
+    res.sendFile = function sendFile(path15, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next2 = req.next;
       var opts = options || {};
-      if (!path14) {
+      if (!path15) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path14 !== "string") {
+      if (typeof path15 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path14)) {
+      if (!opts.root && !isAbsolute(path15)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path14);
+      var pathname = encodeURI(path15);
       var file2 = send(req, pathname, opts);
       sendfile(res2, file2, opts, function(err) {
         if (done) return done(err);
@@ -27938,7 +27938,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path14, options, callback) {
+    res.sendfile = function(path15, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -27948,7 +27948,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file2 = send(req, path14, opts);
+      var file2 = send(req, path15, opts);
       sendfile(res2, file2, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next2();
@@ -27961,7 +27961,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path14, filename, options, callback) {
+    res.download = function download(path15, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -27978,7 +27978,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path14)
+        "Content-Disposition": contentDisposition(name || path15)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -27991,7 +27991,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path14) : path14;
+      var fullPath = !opts.root ? resolve(path15) : path15;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -28146,7 +28146,7 @@ var require_response = __commonJS({
       vary(this, field);
       return this;
     };
-    res.render = function render(view7, options, callback) {
+    res.render = function render(view8, options, callback) {
       var app2 = this.req.app;
       var done = callback;
       var opts = options || {};
@@ -28161,7 +28161,7 @@ var require_response = __commonJS({
         if (err) return req.next(err);
         self.send(str6);
       };
-      app2.render(view7, opts, done);
+      app2.render(view8, opts, done);
     };
     function sendfile(res2, file2, options, callback) {
       var done = false;
@@ -28292,11 +28292,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path13 = parseUrl(req).pathname;
-        if (path13 === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path13 = "";
+        var path14 = parseUrl(req).pathname;
+        if (path14 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path14 = "";
         }
-        var stream = send(req, path13, opts);
+        var stream = send(req, path14, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -28364,7 +28364,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router53 = require_router();
+    var Router54 = require_router();
     var req = require_request();
     var res = require_response();
     exports = module.exports = createApplication;
@@ -28387,7 +28387,7 @@ var require_express = __commonJS({
     exports.request = req;
     exports.response = res;
     exports.Route = Route;
-    exports.Router = Router53;
+    exports.Router = Router54;
     exports.json = bodyParser.json;
     exports.query = require_query3();
     exports.raw = bodyParser.raw;
@@ -29973,10 +29973,10 @@ var require_segments = __commonJS({
       const segs = getSegmentsFromString(data, Utils.isKanjiModeEnabled());
       const nodes = buildNodes(segs);
       const graph = buildGraph(nodes, version2);
-      const path13 = dijkstra.find_path(graph.map, "start", "end");
+      const path14 = dijkstra.find_path(graph.map, "start", "end");
       const optimizedSegs = [];
-      for (let i = 1; i < path13.length - 1; i++) {
-        optimizedSegs.push(graph.table[path13[i]].node);
+      for (let i = 1; i < path14.length - 1; i++) {
+        optimizedSegs.push(graph.table[path14[i]].node);
       }
       return exports.fromArray(mergeSegments(optimizedSegs));
     };
@@ -32412,7 +32412,7 @@ var require_utils6 = __commonJS({
 // node_modules/qrcode/lib/renderer/png.js
 var require_png2 = __commonJS({
   "node_modules/qrcode/lib/renderer/png.js"(exports) {
-    var fs12 = __require("fs");
+    var fs13 = __require("fs");
     var PNG = require_png().PNG;
     var Utils = require_utils6();
     exports.render = function render(qrData, options) {
@@ -32453,7 +32453,7 @@ var require_png2 = __commonJS({
       });
       png.pack();
     };
-    exports.renderToFile = function renderToFile(path13, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path14, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
@@ -32464,7 +32464,7 @@ var require_png2 = __commonJS({
         called = true;
         cb.apply(null, args);
       };
-      const stream = fs12.createWriteStream(path13);
+      const stream = fs13.createWriteStream(path14);
       stream.on("error", done);
       stream.on("close", done);
       exports.renderToFileStream(stream, qrData, options);
@@ -32526,14 +32526,14 @@ var require_utf8 = __commonJS({
       }
       return output2;
     };
-    exports.renderToFile = function renderToFile(path13, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path14, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
       }
-      const fs12 = __require("fs");
+      const fs13 = __require("fs");
       const utf8 = exports.render(qrData, options);
-      fs12.writeFile(path13, utf8, cb);
+      fs13.writeFile(path14, utf8, cb);
     };
   }
 });
@@ -32654,7 +32654,7 @@ var require_svg_tag = __commonJS({
       return str6;
     }
     function qrToPath(data, size, margin) {
-      let path13 = "";
+      let path14 = "";
       let moveBy = 0;
       let newRow = false;
       let lineLength = 0;
@@ -32665,19 +32665,19 @@ var require_svg_tag = __commonJS({
         if (data[i]) {
           lineLength++;
           if (!(i > 0 && col > 0 && data[i - 1])) {
-            path13 += newRow ? svgCmd("M", col + margin, 0.5 + row + margin) : svgCmd("m", moveBy, 0);
+            path14 += newRow ? svgCmd("M", col + margin, 0.5 + row + margin) : svgCmd("m", moveBy, 0);
             moveBy = 0;
             newRow = false;
           }
           if (!(col + 1 < size && data[i + 1])) {
-            path13 += svgCmd("h", lineLength);
+            path14 += svgCmd("h", lineLength);
             lineLength = 0;
           }
         } else {
           moveBy++;
         }
       }
-      return path13;
+      return path14;
     }
     exports.render = function render(qrData, options, cb) {
       const opts = Utils.getOptions(options);
@@ -32685,10 +32685,10 @@ var require_svg_tag = __commonJS({
       const data = qrData.modules.data;
       const qrcodesize = size + opts.margin * 2;
       const bg = !opts.color.light.a ? "" : "<path " + getColorAttrib(opts.color.light, "fill") + ' d="M0 0h' + qrcodesize + "v" + qrcodesize + 'H0z"/>';
-      const path13 = "<path " + getColorAttrib(opts.color.dark, "stroke") + ' d="' + qrToPath(data, size, opts.margin) + '"/>';
+      const path14 = "<path " + getColorAttrib(opts.color.dark, "stroke") + ' d="' + qrToPath(data, size, opts.margin) + '"/>';
       const viewBox = 'viewBox="0 0 ' + qrcodesize + " " + qrcodesize + '"';
       const width = !opts.width ? "" : 'width="' + opts.width + '" height="' + opts.width + '" ';
-      const svgTag = '<svg xmlns="http://www.w3.org/2000/svg" ' + width + viewBox + ' shape-rendering="crispEdges">' + bg + path13 + "</svg>\n";
+      const svgTag = '<svg xmlns="http://www.w3.org/2000/svg" ' + width + viewBox + ' shape-rendering="crispEdges">' + bg + path14 + "</svg>\n";
       if (typeof cb === "function") {
         cb(null, svgTag);
       }
@@ -32702,15 +32702,15 @@ var require_svg = __commonJS({
   "node_modules/qrcode/lib/renderer/svg.js"(exports) {
     var svgTagRenderer = require_svg_tag();
     exports.render = svgTagRenderer.render;
-    exports.renderToFile = function renderToFile(path13, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path14, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
       }
-      const fs12 = __require("fs");
+      const fs13 = __require("fs");
       const svgTag = exports.render(qrData, options);
       const xmlStr = '<?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">' + svgTag;
-      fs12.writeFile(path13, xmlStr, cb);
+      fs13.writeFile(path14, xmlStr, cb);
     };
   }
 });
@@ -32868,8 +32868,8 @@ var require_server = __commonJS({
         cb
       };
     }
-    function getTypeFromFilename(path13) {
-      return path13.slice((path13.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
+    function getTypeFromFilename(path14) {
+      return path14.slice((path14.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
     }
     function getRendererFromType(type) {
       switch (type) {
@@ -32933,17 +32933,17 @@ var require_server = __commonJS({
       const renderer = getRendererFromType(params.opts.type);
       return render(renderer.renderToBuffer, text, params);
     };
-    exports.toFile = function toFile(path13, text, opts, cb) {
-      if (typeof path13 !== "string" || !(typeof text === "string" || typeof text === "object")) {
+    exports.toFile = function toFile(path14, text, opts, cb) {
+      if (typeof path14 !== "string" || !(typeof text === "string" || typeof text === "object")) {
         throw new Error("Invalid argument");
       }
       if (arguments.length < 3 && !canPromise()) {
         throw new Error("Too few arguments provided");
       }
       const params = checkParams(text, opts, cb);
-      const type = params.opts.type || getTypeFromFilename(path13);
+      const type = params.opts.type || getTypeFromFilename(path14);
       const renderer = getRendererFromType(type);
-      const renderToFile = renderer.renderToFile.bind(null, path13);
+      const renderToFile = renderer.renderToFile.bind(null, path14);
       return render(renderToFile, text, params);
     };
     exports.toFileStream = function toFileStream(stream, text, opts) {
@@ -43155,7 +43155,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 for (const k of ["DEMO_MODE", "PUBLIC_DEMO", "SEED_DEMO_DATA", "SEED_DEMO_BULK", "ALLOW_FILE_DB", "TRUST_PROXY"]) process.env[k] ||= "true";
 var seed = process.env.DATABASE_URL || (process.env.VERCEL_PROJECT_ID || "") + (process.env.VERCEL_ORG_ID || "") + (process.env.VERCEL_GIT_REPO_ID || "");
-var derive = (label) => seed ? crypto.createHash("sha256").update(`genz-demo:${label}:${seed}`).digest() : crypto.randomBytes(32);
+var derive = (label2) => seed ? crypto.createHash("sha256").update(`genz-demo:${label2}:${seed}`).digest() : crypto.randomBytes(32);
 if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) {
   process.env.AUTH_SECRET = process.env.DATABASE_URL ? derive("auth").toString("hex") : seed ? crypto.createHash("sha256").update("genz-demo:" + seed).digest("hex") : crypto.randomBytes(32).toString("hex");
 }
@@ -44004,10 +44004,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path13) {
-  if (!path13)
+function getElementAtPath(obj, path14) {
+  if (!path14)
     return obj;
-  return path13.reduce((acc, key) => acc?.[key], obj);
+  return path14.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -44347,11 +44347,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path13, issues) {
+function prefixIssues(path14, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path13);
+    iss.path.unshift(path14);
     return iss;
   });
 }
@@ -44813,16 +44813,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path13 = []) => {
+  const processError = (error63, path14 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else {
-        const fullpath = [...path13, ...issue2.path];
+        const fullpath = [...path14, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -44861,17 +44861,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path13 = []) => {
+  const processError = (error63, path14 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else {
-        const fullpath = [...path13, ...issue2.path];
+        const fullpath = [...path14, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -44910,8 +44910,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path13 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path13) {
+  const path14 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path14) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -56408,9 +56408,9 @@ function codePointLengthVar(doc, ctx3, accessor, inDoubt) {
   doc.write(`const ${v} = typeof ${accessor} === "string" && ${inDoubt} ? ${cpLen}(${accessor}) : ${accessor}.length;`);
   return v;
 }
-function numericOperand(value, label) {
+function numericOperand(value, label2) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new ZodCompileUnsupportedError(`${label} bound of type ${typeof value}`);
+    throw new ZodCompileUnsupportedError(`${label2} bound of type ${typeof value}`);
   }
   return `${value}`;
 }
@@ -62049,13 +62049,13 @@ function resolveRef(ref, ctx3) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path13 = ref.slice(1).split("/").filter(Boolean);
-  if (path13.length === 0) {
+  const path14 = ref.slice(1).split("/").filter(Boolean);
+  if (path14.length === 0) {
     return ctx3.rootSchema;
   }
   const defsKey = ctx3.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path13[0] === defsKey) {
-    const key = path13[1] === void 0 ? void 0 : decodeJSONPointerSegment(path13[1]);
+  if (path14[0] === defsKey) {
+    const key = path14[1] === void 0 ? void 0 : decodeJSONPointerSegment(path14[1]);
     if (!key || !ctx3.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -63958,9 +63958,9 @@ function buildConnectorDemo(existing = [], now = /* @__PURE__ */ new Date()) {
     const assigned = !["SUBMITTED", "DUPLICATE", "REJECTED"].includes(status);
     const events = [{ at: created, byId: p.id, byName: p.name, byRole: "GENZ_CONNECTOR", action: "SUBMITTED" }];
     if (assigned) events.push({ at: iso(59 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "ASSIGNED", note: `Assigned to ${worker.name}` });
-    const path13 = ["CONTACTED", "QUALIFIED", "IN_PROGRESS", "CLOSED_WON"];
+    const path14 = ["CONTACTED", "QUALIFIED", "IN_PROGRESS", "CLOSED_WON"];
     const upto = status === "CLOSED_WON" ? 4 : { CONTACTED: 1, QUALIFIED: 2, IN_PROGRESS: 3 }[status] ?? 0;
-    for (let k = 0; k < upto; k++) events.push({ at: iso(58 - i + k), byId: worker.id, byName: worker.name, byRole: worker.role, action: `STATUS:${path13[k]}` });
+    for (let k = 0; k < upto; k++) events.push({ at: iso(58 - i + k), byId: worker.id, byName: worker.name, byRole: worker.role, action: `STATUS:${path14[k]}` });
     if (status === "CLOSED_LOST") events.push({ at: iso(40 - i % 10), byId: worker.id, byName: worker.name, byRole: worker.role, action: "STATUS:CLOSED_LOST", note: "Customer postponed the decision" });
     if (status === "DUPLICATE") events.push({ at: iso(55 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "STATUS:DUPLICATE", note: "Already registered by another partner" });
     if (status === "REJECTED") events.push({ at: iso(55 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "STATUS:REJECTED", note: "Customer could not be reached / not interested" });
@@ -64129,6 +64129,7 @@ var PERMISSION_CATALOG = {
   "clientroom:use": "Client Rooms: a private room (link + mobile OTP) to share properties and chat with your own client",
   "partner:manage": "Shop QR partners: put your QR at a shop / society gate, agree the shopkeeper\u2019s share, and get the leads customers send by scanning it",
   "publicpage:use": "My public page: show the homes you choose on your public page (no login, no owner details) and get customers\u2019 enquiries",
+  "pchat:use": "Builder \u2194 partner chat: talk with your builder / channel partners about leads, units, bookings and payouts \u2014 messages, cards and photos",
   "rent:use": "Rent desk: keep the tenancies you closed \u2014 terms, tenant police verification, renewal reminders, vacating and re-letting (GENZ never holds rent or deposit)",
   "partner:oversee": "Shop QR partners \u2014 GENZ desk: see partner shares marked \u201Cnot received\u201D and leads worked after being marked lost",
   "landrecord:manage": "Record land / khasra details and run the title red-flag scanner",
@@ -64317,6 +64318,7 @@ var ROLE_PERMISSIONS = {
     "partner:manage",
     "publicpage:use",
     "rent:use",
+    "pchat:use",
     "partywatch:report",
     "landrecord:manage",
     "daily:use",
@@ -64399,6 +64401,7 @@ var ROLE_PERMISSIONS = {
     "builder:record_sale",
     "pcontrol:manage",
     "network:use",
+    "pchat:use",
     "visit:pass",
     "visit:scan",
     "crm:read",
@@ -64503,6 +64506,7 @@ function memberPermissions(employerRole, sw) {
         if (sw.rooms) out.push("clientroom:use");
         if (sw.clients) out.push("daily:use");
       }
+      if (employerRole === "DEVELOPER_BUILDER" && sw?.canVerify) out.push("pchat:use");
       return out;
     }
   }
@@ -65165,8 +65169,8 @@ function seedDemoBulk(s, sharedPasswordHash) {
     if (to.id !== p.listingBrokerId) p.listingBrokerId = to.id;
     let from = user(q.assignedBrokerId);
     if (from.id === to.id) from = brokers.find((b) => b.id !== to.id);
-    const st24 = ["PENDING", "PENDING", "COUNTERED", "PENDING", "REJECTED"][i % 5];
-    S.offers.push({ id: `OFFER-DMO-P${pad3(i + 1, 2)}`, propertyId: p.id, requirementId: q.id, proposingBrokerId: from.id, receivingBrokerId: to.id, proposedIntroducingShare: 50, proposedClosingShare: 50, terms: st24 === "COUNTERED" ? "Counter: 40/60 because the listing broker handles registry. Demo." : "Mere paas verified buyer hai, 50/50 split par kaam karte hain. Demo.", status: st24, lastActorId: st24 === "COUNTERED" ? to.id : from.id, createdAt: ago(int2(1, 9)), ...st24 === "REJECTED" ? { respondedAt: ago(1) } : {} });
+    const st25 = ["PENDING", "PENDING", "COUNTERED", "PENDING", "REJECTED"][i % 5];
+    S.offers.push({ id: `OFFER-DMO-P${pad3(i + 1, 2)}`, propertyId: p.id, requirementId: q.id, proposingBrokerId: from.id, receivingBrokerId: to.id, proposedIntroducingShare: 50, proposedClosingShare: 50, terms: st25 === "COUNTERED" ? "Counter: 40/60 because the listing broker handles registry. Demo." : "Mere paas verified buyer hai, 50/50 split par kaam karte hain. Demo.", status: st25, lastActorId: st25 === "COUNTERED" ? to.id : from.id, createdAt: ago(int2(1, 9)), ...st25 === "REJECTED" ? { respondedAt: ago(1) } : {} });
   }
   const disputed = deals.find((d) => d.stage === "Disputed");
   const handover = deals.find((d) => d.stage === "Handover");
@@ -65206,7 +65210,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
   s.ownerMandates.push(...mand);
   const CL_TYPES = ["Turnkey Residential", "Commercial Interior Fitout", "Renovation & Remodel", "Structural Expansion", "Architectural Sanction"];
   const CL_ST = ["OPEN", "OPEN", "OPEN", "ASSIGNED", "IN_PROGRESS", "COMPLETED", "OPEN", "IN_PROGRESS", "OPEN", "ASSIGNED", "CANCELLED", "OPEN"];
-  const leads = CL_ST.map((st24, i) => {
+  const leads = CL_ST.map((st25, i) => {
     const brk = brokers[i * 3 % brokers.length];
     const t = CL_TYPES[i % CL_TYPES.length];
     const loc = LOC[(i * 3 + 2) % LOC.length][0];
@@ -65226,14 +65230,14 @@ function seedDemoBulk(s, sharedPasswordHash) {
       referralCommissionPct: 1,
       customerNameMasked: `${pick2(["Mahesh", "Sunita", "Rakesh", "Jyoti", "Anil", "Farida"])} ${pick2(["K.", "S.", "V.", "T."])} (Masked)`,
       customerPhoneHidden: ph(1008, i + 1),
-      status: st24,
+      status: st25,
       createdAt: ago(int2(2, 50))
     };
-    if (st24 !== "OPEN" && st24 !== "CANCELLED") {
+    if (st25 !== "OPEN" && st25 !== "CANCELLED") {
       l.assignedContractorId = ctr.id;
       l.finalContractValue = lakh(budget * 0.95);
       l.referralCommissionDue = Math.round(l.finalContractValue * 0.01);
-      l.referralCommissionPaid = st24 === "COMPLETED";
+      l.referralCommissionPaid = st25 === "COMPLETED";
     }
     return l;
   });
@@ -65299,9 +65303,9 @@ function seedDemoBulk(s, sharedPasswordHash) {
   projs.forEach((p) => {
     for (let k = 0; k < 10; k++) {
       const cfg = p.unitConfigurations[k % p.unitConfigurations.length];
-      const st24 = k % 4 === 1 ? "BOOKED" : k === 6 ? "RESERVED" : "AVAILABLE";
+      const st25 = k % 4 === 1 ? "BOOKED" : k === 6 ? "RESERVED" : "AVAILABLE";
       const plotted = p.projectType === "Gated Plotted Enclave";
-      units.push({ id: `UNIT-${p.id}-${plotted ? "P" : "A"}-${100 + k + 1}`, projectId: p.id, builderId: p.builderId, group: plotted ? "Block A" : "Tower A", label: plotted ? `P-${k + 1}` : `A-${100 + k + 1}`, ...plotted ? {} : { floor: Math.floor(k / 2) + 1 }, config: cfg.split(" (")[0], areaSqft: Number((cfg.match(/[\d,]+(?= sq)/)?.[0] || "1200").replace(/,/g, "")), price: lakh(p.priceStartingFrom * (1 + k * 0.06)), status: st24, facing: pick2(["NORTH", "EAST", "WEST", "SOUTH"]), features: k % 3 === 0 ? ["PARK_FACING"] : ["COVERED_PARKING"], updatedAt: ago(int2(0, 15)) });
+      units.push({ id: `UNIT-${p.id}-${plotted ? "P" : "A"}-${100 + k + 1}`, projectId: p.id, builderId: p.builderId, group: plotted ? "Block A" : "Tower A", label: plotted ? `P-${k + 1}` : `A-${100 + k + 1}`, ...plotted ? {} : { floor: Math.floor(k / 2) + 1 }, config: cfg.split(" (")[0], areaSqft: Number((cfg.match(/[\d,]+(?= sq)/)?.[0] || "1200").replace(/,/g, "")), price: lakh(p.priceStartingFrom * (1 + k * 0.06)), status: st25, facing: pick2(["NORTH", "EAST", "WEST", "SOUTH"]), features: k % 3 === 0 ? ["PARK_FACING"] : ["COVERED_PARKING"], updatedAt: ago(int2(0, 15)) });
     }
   });
   S.inventoryUnits.push(...units);
@@ -65311,9 +65315,9 @@ function seedDemoBulk(s, sharedPasswordHash) {
     const team = [user(featured[i % 4]), brokers[(i * 3 + 5) % brokers.length], brokers[(i * 3 + 7) % brokers.length]].filter((b, j, a) => a.findIndex((x) => x.id === b.id) === j);
     team.forEach((b, j) => {
       if (!tplMand) return;
-      const st24 = MST[(i + j) % MST.length];
-      const sold = st24 === "TOP_PERFORMER" ? int2(4, 9) : st24 === "ACTIVE_ASSOCIATE" ? int2(0, 3) : 0;
-      mands.push({ ...JSON.parse(JSON.stringify(tplMand)), id: `MAND-DMO-${pad3(i + 1, 2)}-${j + 1}`, projectId: p.id, projectName: p.projectName, builderId: p.builderId, builderName: p.builderName, brokerId: b.id, brokerName: b.name, brokerCompany: b.companyName, brokerReraNumber: b.reraNumber, agreedCommissionPct: p.channelPartnerCommissionPct, targetUnitsQuota: int2(5, 12), unitsSold: sold, grossSalesDelivered: sold * p.priceStartingFrom, commissionEarned: Math.round(sold * p.priceStartingFrom * p.channelPartnerCommissionPct / 100), commissionPaid: sold > 0 && j === 0, status: st24, assignedAt: ago(int2(5, 60)), ...st24 === "APPLIED" ? { appliedNote: "Mere paas is area ke 20+ active buyers hain." } : {} });
+      const st25 = MST[(i + j) % MST.length];
+      const sold = st25 === "TOP_PERFORMER" ? int2(4, 9) : st25 === "ACTIVE_ASSOCIATE" ? int2(0, 3) : 0;
+      mands.push({ ...JSON.parse(JSON.stringify(tplMand)), id: `MAND-DMO-${pad3(i + 1, 2)}-${j + 1}`, projectId: p.id, projectName: p.projectName, builderId: p.builderId, builderName: p.builderName, brokerId: b.id, brokerName: b.name, brokerCompany: b.companyName, brokerReraNumber: b.reraNumber, agreedCommissionPct: p.channelPartnerCommissionPct, targetUnitsQuota: int2(5, 12), unitsSold: sold, grossSalesDelivered: sold * p.priceStartingFrom, commissionEarned: Math.round(sold * p.priceStartingFrom * p.channelPartnerCommissionPct / 100), commissionPaid: sold > 0 && j === 0, status: st25, assignedAt: ago(int2(5, 60)), ...st25 === "APPLIED" ? { appliedNote: "Mere paas is area ke 20+ active buyers hain." } : {} });
     });
     p.assignedAssociatesCount = mands.filter((m) => m.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status)).length;
   });
@@ -65444,7 +65448,7 @@ function seedDemoBulk(s, sharedPasswordHash) {
   deals.filter((d) => STAGE_IX[d.stage] >= 2).slice(0, LST.length).forEach((d, i) => {
     const by = user(d.closingBrokerId);
     const c = legals[[0, 3, 0, 2, 1, 0, 4][i] % legals.length];
-    const st24 = LST[i];
+    const st25 = LST[i];
     const p = s.properties.find((x) => x.id === d.propertyId);
     S.legalRequests.push({
       id: `LGL-DMO-${pad3(i + 1)}`,
@@ -65458,13 +65462,13 @@ function seedDemoBulk(s, sharedPasswordHash) {
       sharedDocIds: [],
       requestedById: by.id,
       requestedByName: by.name,
-      status: st24,
-      ...st24 !== "OPEN" ? { counsellorId: c.id, counsellorName: c.name, claimedAt: st24 === "CLAIMED" ? ago(0, 3) : ago(3) } : {},
-      ...["QUOTED", "ACCEPTED", "COMPLETED"].includes(st24) ? { quote: { amount: pick2([5e3, 7500, 11e3, 15e3]), days: pick2([3, 5, 7]), note: "Includes one site-office visit.", at: ago(2) } } : {},
-      ...["ACCEPTED", "COMPLETED"].includes(st24) ? { acceptedAt: ago(2) } : {},
-      ...st24 === "COMPLETED" ? { completedAt: ago(1) } : {},
+      status: st25,
+      ...st25 !== "OPEN" ? { counsellorId: c.id, counsellorName: c.name, claimedAt: st25 === "CLAIMED" ? ago(0, 3) : ago(3) } : {},
+      ...["QUOTED", "ACCEPTED", "COMPLETED"].includes(st25) ? { quote: { amount: pick2([5e3, 7500, 11e3, 15e3]), days: pick2([3, 5, 7]), note: "Includes one site-office visit.", at: ago(2) } } : {},
+      ...["ACCEPTED", "COMPLETED"].includes(st25) ? { acceptedAt: ago(2) } : {},
+      ...st25 === "COMPLETED" ? { completedAt: ago(1) } : {},
       passedBy: [],
-      messages: st24 === "OPEN" ? [] : [{ at: ago(2), by: c.id, role: "LEGAL_COUNSEL", text: "Papers ki list bhej di hai, kal tak opinion de dunga." }],
+      messages: st25 === "OPEN" ? [] : [{ at: ago(2), by: c.id, role: "LEGAL_COUNSEL", text: "Papers ki list bhej di hai, kal tak opinion de dunga." }],
       history: [{ at: ago(4), by: by.id, what: "Case opened" }],
       createdAt: ago(4),
       updatedAt: ago(1)
@@ -66655,6 +66659,8 @@ function getInitialSeedData() {
     savedProperties: [],
     pageEnquiries: [],
     tenancies: [],
+    partnerThreads: [],
+    workPhotos: [],
     shopPartners: [],
     partnerLeads: [],
     paymentRequests: [],
@@ -66835,7 +66841,7 @@ function migrateState(parsed, seed2) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ["clientCards", "projectUpdates", "projectShortlists", "leadReveals", "visitPasses", "propertyOffers", "tier2Applications", "tieups", "deskRequests", "dealMilestones", "brokerNotes", "posterEnquiries", "marketRecords", "digestPrefs", "listingReports", "pointEvents", "chapters", "chapterMeets", "loanReferrals", "protectedDocs", "docAccessLogs", "propertyDocs", "propertyDocLogs", "idDocs", "idReviewTasks", "kycVault", "listingDrafts", "ownerConsents", "pushSubs", "pushPrefs", "broadcasts", "peerConfirms", "buyerBonds", "partyAlerts", "profilePhotos", "clientRooms", "chatReads", "savedProperties", "pageEnquiries", "tenancies", "shopPartners", "partnerLeads", "paymentRequests", "visitAcks", "twoFactor", "academyProgress", "activityDays", "masterCpAgreements", "masterCpEntries", "strengthLinks", "legalRequests", "legalProfiles", "legalLedger", "billingRules", "billingPlans", "billingLedger", "billingGates"]) parsed[k] ||= [];
+  for (const k of ["clientCards", "projectUpdates", "projectShortlists", "leadReveals", "visitPasses", "propertyOffers", "tier2Applications", "tieups", "deskRequests", "dealMilestones", "brokerNotes", "posterEnquiries", "marketRecords", "digestPrefs", "listingReports", "pointEvents", "chapters", "chapterMeets", "loanReferrals", "protectedDocs", "docAccessLogs", "propertyDocs", "propertyDocLogs", "idDocs", "idReviewTasks", "kycVault", "listingDrafts", "ownerConsents", "pushSubs", "pushPrefs", "broadcasts", "peerConfirms", "buyerBonds", "partyAlerts", "profilePhotos", "clientRooms", "chatReads", "savedProperties", "pageEnquiries", "tenancies", "partnerThreads", "workPhotos", "shopPartners", "partnerLeads", "paymentRequests", "visitAcks", "twoFactor", "academyProgress", "activityDays", "masterCpAgreements", "masterCpEntries", "strengthLinks", "legalRequests", "legalProfiles", "legalLedger", "billingRules", "billingPlans", "billingLedger", "billingGates"]) parsed[k] ||= [];
   parsed.legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...parsed.legalSettings || {} };
   for (const p of parsed.properties) p.confirmedAt ||= (/* @__PURE__ */ new Date()).toISOString();
   parsed.settings.connectorProgramEnabled ??= true;
@@ -67035,12 +67041,12 @@ function migrateState(parsed, seed2) {
   if (!sealedBefore) parsed.settings.auditChainSealedAt = (/* @__PURE__ */ new Date()).toISOString();
   if (SEED_DEMO && parsed.inventoryUnits.length === 0) {
     const ts = (/* @__PURE__ */ new Date()).toISOString();
-    const mk = (projectId, group, label, floor, config2, area, price, status) => ({
-      id: `UNIT-${projectId}-${label}`,
+    const mk = (projectId, group, label2, floor, config2, area, price, status) => ({
+      id: `UNIT-${projectId}-${label2}`,
       projectId,
       builderId: "USR-BUILDER-001",
       group,
-      label,
+      label: label2,
       floor,
       config: config2,
       areaSqft: area,
@@ -67052,9 +67058,9 @@ function migrateState(parsed, seed2) {
     const p2 = parsed.builderProjects.find((p) => p.id === "PROJ-RAI-02");
     if (p1) {
       for (let f = 1; f <= 5; f++) for (let n2 = 1; n2 <= 4; n2++) {
-        const label = `A-${f}${String(n2).padStart(2, "0")}`;
-        const st24 = f === 1 && n2 <= 2 ? "BOOKED" : f === 5 && n2 === 4 ? "RESERVED" : "AVAILABLE";
-        parsed.inventoryUnits.push(mk(p1.id, "Tower A", label, f, n2 % 2 ? "3 BHK" : "2 BHK", n2 % 2 ? 1650 : 1180, 85e5 + f * 15e4 + n2 * 1e5, st24));
+        const label2 = `A-${f}${String(n2).padStart(2, "0")}`;
+        const st25 = f === 1 && n2 <= 2 ? "BOOKED" : f === 5 && n2 === 4 ? "RESERVED" : "AVAILABLE";
+        parsed.inventoryUnits.push(mk(p1.id, "Tower A", label2, f, n2 % 2 ? "3 BHK" : "2 BHK", n2 % 2 ? 1650 : 1180, 85e5 + f * 15e4 + n2 * 1e5, st25));
       }
     }
     if (p2) {
@@ -67528,13 +67534,13 @@ var prefSchema = external_exports.object({ matches: external_exports.boolean(), 
 var prefView = (p) => ({ matches: p.matches, deals: p.deals, consent: p.consent, broadcast: p.broadcast, digest: p.digest, quiet: p.quiet, lang: p.lang || "en" });
 function createPushRouter() {
   const r = (0, import_express.Router)();
-  const me27 = () => ctx().user;
+  const me28 = () => ctx().user;
   r.get("/key", (_req, res) => {
     const k = vapidKeys();
     res.json({ success: true, publicKey: k?.publicKey || null });
   });
   r.get("/recent", requireAuth, (_req, res) => {
-    const id = me27().id;
+    const id = me28().id;
     res.json({ success: true, alerts: pushLog.filter((x) => x.userId === id).slice(-30).reverse().map((x) => ({ kind: x.msg.kind, title: x.msg.title, body: x.msg.body, ...x.msg.hi ? { hi: x.msg.hi } : {}, url: x.msg.url, at: x.at })) });
   });
   r.post("/subscribe", requireAuth, rateLimit("push-sub", 30, 36e5), (req, res) => {
@@ -67547,7 +67553,7 @@ function createPushRouter() {
       return res.status(400).json({ error: "The browser\u2019s push keys are not valid." });
     }
     const s = db.getState();
-    const u = me27();
+    const u = me28();
     const id = crypto6.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
     const mine3 = s.pushSubs.filter((x) => x.userId === u.id);
@@ -67564,7 +67570,7 @@ function createPushRouter() {
     const p = subSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: "This browser sent an unusable push address." });
     const s = db.getState();
-    const u = me27();
+    const u = me28();
     const id = crypto6.createHash("sha256").update(p.data.endpoint).digest("hex").slice(0, 32);
     const cur = s.pushSubs.find((x) => x.id === id);
     if (cur && cur.userId === u.id) {
@@ -67584,27 +67590,27 @@ function createPushRouter() {
   });
   r.post("/unsubscribe", requireAuth, (req, res) => {
     const s = db.getState();
-    const u = me27();
+    const u = me28();
     const ep = String(req.body?.endpoint || "");
     s.pushSubs = s.pushSubs.filter((x) => !(x.userId === u.id && (!ep || x.endpoint === ep)));
     db.save();
     res.json({ success: true, devices: s.pushSubs.filter((x) => x.userId === u.id).length });
   });
   r.get("/prefs", requireAuth, (_req, res) => {
-    const u = me27();
+    const u = me28();
     const p = prefsOf(u.id);
     res.json({ success: true, prefs: prefView(p), devices: db.getState().pushSubs.filter((x) => x.userId === u.id).length, ready: !!vapidKeys() });
   });
   r.put("/prefs", requireAuth, (req, res) => {
     const v = prefSchema.safeParse(req.body);
     if (!v.success) return res.status(400).json({ error: "Invalid choice" });
-    const p = prefsOf(me27().id);
+    const p = prefsOf(me28().id);
     Object.assign(p, v.data);
     db.save();
     res.json({ success: true, prefs: prefView(p) });
   });
   r.post("/test", requireAuth, rateLimit("push-test", 10, 36e5), async (_req, res) => {
-    const u = me27();
+    const u = me28();
     const body = {
       BROKER: "You will get new matches, offers, owner consents and builder leads here.",
       DEVELOPER_BUILDER: "You will get partner requests, leads, bookings and payments here.",
@@ -67634,7 +67640,12 @@ function alert(to, kind, title, body, url3 = "/", opts = {}) {
   } catch {
   }
 }
-var firstName = (n2) => String(n2 || "").trim().split(/\s+/)[0] || "A customer";
+var TITLE = /^(dr|mr|mrs|ms|miss|shri|smt|sri|er|adv|prof|capt|col|km|kumari|sushri)\.?$/i;
+var firstName = (n2) => {
+  const w = String(n2 || "").trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return "A customer";
+  return TITLE.test(w[0]) && w[1] ? `${w[0]} ${w[1]}` : w[0];
+};
 var inr = (n2) => "\u20B9" + Math.round(Number(n2) || 0).toLocaleString("en-IN");
 function staffWith(employerId, pred) {
   if (!employerId) return [];
@@ -67654,7 +67665,7 @@ function once(key, ms) {
 }
 
 // server.ts
-var import_express60 = __toESM(require_express2(), 1);
+var import_express63 = __toESM(require_express2(), 1);
 
 // server/matching.ts
 function calculatePropertyMatch(property, requirement) {
@@ -68213,24 +68224,24 @@ function canViewDeal(u, deal, opts = {}) {
   return isAdmin(u) || isDealParticipant(u, deal) || !!opts.allowLegal && u.role === "LEGAL_COUNSEL";
 }
 var LIVE_DISPUTE = /* @__PURE__ */ new Set(["OPEN", "UNDER_REVIEW", "MEDIATION"]);
-function openDisputeOf(st24, dealId) {
-  return st24.disputes.find((d) => d.dealRoomId === dealId && LIVE_DISPUTE.has(d.status));
+function openDisputeOf(st25, dealId) {
+  return st25.disputes.find((d) => d.dealRoomId === dealId && LIVE_DISPUTE.has(d.status));
 }
-function openDisputeDeals(st24) {
+function openDisputeDeals(st25) {
   const out = /* @__PURE__ */ new Set();
-  for (const d of st24.disputes) if (d.dealRoomId && LIVE_DISPUTE.has(d.status)) out.add(d.dealRoomId);
+  for (const d of st25.disputes) if (d.dealRoomId && LIVE_DISPUTE.has(d.status)) out.add(d.dealRoomId);
   return out;
 }
-function dealDetailVia(u, deal, st24, opts = {}, open2) {
+function dealDetailVia(u, deal, st25, opts = {}, open2) {
   if (isDealParticipant(u, deal)) return "PARTICIPANT";
   if (u.role === "LEGAL_COUNSEL" && opts.allowLegal) return "LEGAL";
-  if (isAdmin(u)) return (open2 ? open2.has(deal.id) : !!openDisputeOf(st24, deal.id)) ? "DISPUTE" : "NONE";
+  if (isAdmin(u)) return (open2 ? open2.has(deal.id) : !!openDisputeOf(st25, deal.id)) ? "DISPUTE" : "NONE";
   return "NONE";
 }
-function canSeeDealCommercials(u, deal, st24, open2) {
+function canSeeDealCommercials(u, deal, st25, open2) {
   if (isDealBroker(u, deal)) return true;
   if (!isAdmin(u)) return false;
-  return deal.ownerId === u.id || (open2 ? open2.has(deal.id) : !!openDisputeOf(st24, deal.id));
+  return deal.ownerId === u.id || (open2 ? open2.has(deal.id) : !!openDisputeOf(st25, deal.id));
 }
 function canBrowseProperty(u, p) {
   if (isAdmin(u)) return true;
@@ -69592,11 +69603,11 @@ function onVerified(u) {
 }
 function assignBrokerId(u) {
   if (u.role !== "BROKER" || u.brokerId) return;
-  const st24 = db.getState();
+  const st25 = db.getState();
   let id = "";
   do {
     id = `GZ-BRK-${492e3 + Math.floor(Math.random() * 9999)}`;
-  } while (st24.users.some((x) => x.brokerId === id));
+  } while (st25.users.some((x) => x.brokerId === id));
   u.brokerId = id;
 }
 function sponsorOf(u) {
@@ -69605,7 +69616,7 @@ function sponsorOf(u) {
   return db.getState().tier2Applications.find((a) => a.userId === u.id)?.proposerId || "";
 }
 function applyVoucherStrikes(target, actorId, actorRole) {
-  const st24 = db.getState();
+  const st25 = db.getState();
   const sp = sponsorOf(target);
   for (const vid of /* @__PURE__ */ new Set([...target.vouchedBy || [], ...sp ? [sp] : []])) {
     const v = db.byId("users", vid);
@@ -69852,7 +69863,7 @@ function partnerHasMandate(brokerId, projectId) {
   return db.getState().associateMandates.some((m) => m.projectId === projectId && m.brokerId === brokerId && mandateIsActive(m));
 }
 function actorFor(u, projectId) {
-  const st24 = db.getState();
+  const st25 = db.getState();
   const project = db.byId("builderProjects", projectId);
   if (!project) return null;
   if (isAdmin(u)) return { project, actor: { kind: "ADMIN", user: u } };
@@ -69952,7 +69963,7 @@ function sweepHolds(now = Date.now()) {
   return n2;
 }
 var norm2 = (s) => s.trim().toLowerCase();
-var findUnit = (projectId, label) => db.getState().inventoryUnits.find((u) => u.projectId === projectId && norm2(u.label) === norm2(label));
+var findUnit = (projectId, label2) => db.getState().inventoryUnits.find((u) => u.projectId === projectId && norm2(u.label) === norm2(label2));
 function checkBookingUnit(project, unitNo, brokerId) {
   sweepHolds();
   const unit = findUnit(project.id, unitNo);
@@ -70039,9 +70050,9 @@ var importRowSchema = external_exports.object({
 });
 function createInventoryRouter() {
   const r = (0, import_express3.Router)();
-  const me27 = () => ctx().user;
+  const me28 = () => ctx().user;
   const audit9 = (entity, id, action, details) => {
-    const u = me27();
+    const u = me28();
     db.appendAuditEvent(u.id, u.role, entity, id, action, details);
   };
   const access = (u, id) => actorFor(u, id);
@@ -70056,10 +70067,10 @@ function createInventoryRouter() {
   };
   r.get("/projects", (_req, res) => {
     sweepHolds();
-    const u = me27();
-    const st24 = db.getState();
+    const u = me28();
+    const st25 = db.getState();
     const list = [];
-    for (const p of st24.builderProjects) {
+    for (const p of st25.builderProjects) {
       const a = access(u, p.id);
       if (!a) continue;
       const units = unitsFor(p, a.actor);
@@ -70079,7 +70090,7 @@ function createInventoryRouter() {
   });
   r.get("/projects/:id", (req, res) => {
     sweepHolds();
-    const u = me27();
+    const u = me28();
     const a = access(u, req.params.id);
     if (!a) return res.status(404).json({ error: "Project not found" });
     const { project: p, actor } = a;
@@ -70104,7 +70115,7 @@ function createInventoryRouter() {
     });
   });
   r.post("/projects/:id/units/generate", needs("inventory:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const parsed = generateSchema.safeParse(req.body);
@@ -70112,22 +70123,22 @@ function createInventoryRouter() {
     const detail2 = cleanUnitDetail(req.body || {});
     if (typeof detail2 === "string") return res.status(400).json({ error: detail2 });
     const d = parsed.data;
-    const st24 = db.getState();
-    const existing = st24.inventoryUnits.filter((x) => x.projectId === p.id);
+    const st25 = db.getState();
+    const existing = st25.inventoryUnits.filter((x) => x.projectId === p.id);
     const floors = d.kind === "PLOTS" ? 1 : d.floors;
     if (existing.length + floors * d.perFloor > MAX_UNITS_PER_PROJECT) return res.status(409).json({ error: `A project can have at most ${MAX_UNITS_PER_PROJECT} units` });
     const made = [];
     for (let f = 1; f <= floors; f++) for (let n2 = 1; n2 <= d.perFloor; n2++) {
-      const label = d.kind === "PLOTS" ? `${d.prefix}${n2}` : `${d.prefix}${f}${String(n2).padStart(2, "0")}`;
-      if (existing.some((x) => norm2(x.label) === norm2(label) && norm2(x.group) === norm2(d.group)) || made.some((x) => norm2(x.label) === norm2(label))) {
-        return res.status(409).json({ error: `Unit ${label} already exists in ${d.group}` });
+      const label2 = d.kind === "PLOTS" ? `${d.prefix}${n2}` : `${d.prefix}${f}${String(n2).padStart(2, "0")}`;
+      if (existing.some((x) => norm2(x.label) === norm2(label2) && norm2(x.group) === norm2(d.group)) || made.some((x) => norm2(x.label) === norm2(label2))) {
+        return res.status(409).json({ error: `Unit ${label2} already exists in ${d.group}` });
       }
       made.push({
-        id: `UNIT-${p.id}-${d.group.replace(/\W+/g, "").slice(0, 6)}-${label}`.replace(/\s+/g, ""),
+        id: `UNIT-${p.id}-${d.group.replace(/\W+/g, "").slice(0, 6)}-${label2}`.replace(/\s+/g, ""),
         projectId: p.id,
         builderId: p.builderId,
         group: d.group,
-        label,
+        label: label2,
         floor: d.kind === "TOWER" ? f : void 0,
         config: d.config,
         areaSqft: d.areaSqft,
@@ -70139,14 +70150,14 @@ function createInventoryRouter() {
     }
     const clash = made.find((m) => existing.some((x) => norm2(x.label) === norm2(m.label)));
     if (clash) return res.status(409).json({ error: `Unit label ${clash.label} already exists in this project (labels must be unique across groups \u2014 use a prefix)` });
-    st24.inventoryUnits.push(...made);
+    st25.inventoryUnits.push(...made);
     p.availableUnits = Math.max(p.availableUnits, 0);
     db.save();
     audit9("SYSTEM", p.id, "INVENTORY_GENERATED", `${u.name} added ${made.length} units to ${p.projectName} (${d.group})`);
     res.json({ success: true, added: made.length });
   });
   r.put("/units/:uid", needs("inventory:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const unit = db.byId("inventoryUnits", req.params.uid);
     if (!unit || unit.builderId !== u.id) return res.status(404).json({ error: "Unit not found" });
     const p = patchSchema.safeParse(req.body);
@@ -70189,21 +70200,21 @@ function createInventoryRouter() {
     res.json({ success: true });
   });
   r.post("/projects/:id/units/bulk", needs("inventory:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     sweepHolds();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const b = req.body || {};
     let picked;
     if (Array.isArray(b.unitIds)) {
       if (b.unitIds.length === 0 || b.unitIds.length > MAX_UNITS_PER_PROJECT) return res.status(400).json({ error: "Pick between 1 and 1000 units" });
       const ids2 = new Set(b.unitIds.map(String));
-      picked = st24.inventoryUnits.filter((x) => x.projectId === p.id && ids2.has(x.id));
+      picked = st25.inventoryUnits.filter((x) => x.projectId === p.id && ids2.has(x.id));
       if (picked.length !== ids2.size) return res.status(400).json({ error: "Some units are not part of this project" });
     } else if (b.filter && typeof b.filter === "object") {
       const f = b.filter;
-      picked = st24.inventoryUnits.filter((x) => x.projectId === p.id && (!f.group || x.group === f.group) && (!f.status || x.status === f.status) && (!f.config || x.config === f.config));
+      picked = st25.inventoryUnits.filter((x) => x.projectId === p.id && (!f.group || x.group === f.group) && (!f.status || x.status === f.status) && (!f.config || x.config === f.config));
       if (picked.length === 0) return res.status(400).json({ error: "No unit matches this selection" });
     } else return res.status(400).json({ error: "Pick the units first" });
     const action = b.action;
@@ -70223,7 +70234,7 @@ function createInventoryRouter() {
         unit.updatedAt = at;
       }
       if (b.notify === true) {
-        st24.projectUpdates.unshift({
+        st25.projectUpdates.unshift({
           id: `UPD-${Date.now().toString(36)}`,
           projectId: p.id,
           builderId: p.builderId,
@@ -70294,7 +70305,7 @@ function createInventoryRouter() {
     return res.status(400).json({ error: "Unknown action" });
   });
   r.put("/projects/:id/visibility", needs("inventory:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const v = cleanVis(req.body || {}, p.invVis || DEFAULT_VIS);
@@ -70317,22 +70328,22 @@ function createInventoryRouter() {
     res.json({ success: true, vis: v, cleared });
   });
   r.get("/projects/:id/partners", needs("inventory:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const rows = db.getState().associateMandates.filter((m) => m.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"].includes(m.status)).map((m) => ({ brokerId: m.brokerId, name: m.brokerName, company: m.brokerCompany, status: m.status }));
     res.json({ success: true, partners: rows });
   });
   r.post("/projects/:id/units/import", needs("inventory:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
     if (!rows || rows.length === 0 || rows.length > 500) return res.status(400).json({ error: "Send between 1 and 500 rows" });
     sweepHolds();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const at = nowIso4();
-    const existing = st24.inventoryUnits.filter((x) => x.projectId === p.id);
+    const existing = st25.inventoryUnits.filter((x) => x.projectId === p.id);
     const errors = [];
     const plan = [];
     const seen2 = /* @__PURE__ */ new Set();
@@ -70408,7 +70419,7 @@ function createInventoryRouter() {
           updatedAt: at
         };
         applyDetail(unit, x.detail);
-        st24.inventoryUnits.push(unit);
+        st25.inventoryUnits.push(unit);
         created++;
       }
     }
@@ -70417,7 +70428,7 @@ function createInventoryRouter() {
     res.json({ success: true, created, updated });
   });
   r.put("/projects/:id/settings", needs("inventory:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = ownerAccess(u, req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
     const s = settingsSchema.safeParse(req.body);
@@ -70436,8 +70447,8 @@ function createInventoryRouter() {
     res.json({ success: true });
   });
   r.post("/units/:uid/hold", needs("inventory:hold"), tier1Gate, (req, res) => {
-    const u = me27();
-    const st24 = db.getState();
+    const u = me28();
+    const st25 = db.getState();
     sweepHolds();
     const unit = db.byId("inventoryUnits", req.params.uid);
     const a = unit && access(u, unit.projectId);
@@ -70451,7 +70462,7 @@ function createInventoryRouter() {
     const minToken = p.minToken ?? DEFAULT_MIN_TOKEN;
     if (d.tokenAmount < minToken) return res.status(400).json({ error: `Minimum token to hold a unit is \u20B9${minToken.toLocaleString("en-IN")}` });
     if (unit.status !== "AVAILABLE") return res.status(409).json({ error: unit.status === "HOLD" ? "This unit was just put on hold by someone else" : `Unit is ${unit.status.toLowerCase()}` });
-    const mine3 = st24.inventoryUnits.filter((x) => x.status === "HOLD" && x.hold?.brokerId === u.id);
+    const mine3 = st25.inventoryUnits.filter((x) => x.status === "HOLD" && x.hold?.brokerId === u.id);
     if (mine3.length >= MAX_ACTIVE_HOLDS_PER_BROKER) return res.status(409).json({ error: `You can keep ${MAX_ACTIVE_HOLDS_PER_BROKER} units on hold at a time` });
     if (mine3.some((x) => x.hold?.leadId === lead.id)) return res.status(409).json({ error: "This customer already has a unit on hold" });
     const hours = p.holdHours ?? DEFAULT_HOLD_HOURS;
@@ -70466,7 +70477,7 @@ function createInventoryRouter() {
     res.json({ success: true, unit: shapeUnit(unit, p, a.actor, seenBy(a.actor, p, unit)) });
   });
   r.post("/units/:uid/release", (req, res) => {
-    const u = me27();
+    const u = me28();
     const unit = db.byId("inventoryUnits", req.params.uid);
     if (!unit || unit.status !== "HOLD" || !unit.hold) return res.status(404).json({ error: "No active hold on this unit" });
     const allowed = isAdmin(u) || unit.builderId === u.id || unit.hold.brokerId === u.id;
@@ -70481,14 +70492,14 @@ function createInventoryRouter() {
     res.json({ success: true });
   });
   r.get("/projects/:id/leaderboard", (req, res) => {
-    const u = me27();
-    const st24 = db.getState();
+    const u = me28();
+    const st25 = db.getState();
     const a = access(u, req.params.id);
     if (!a || a.actor.kind === "MEMBER") return res.status(404).json({ error: "Project not found" });
     const p = a.project;
     const owner = isAdmin(u) || u.id === p.builderId;
-    const rows = st24.associateMandates.filter((m) => m.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "COMPLETED"].includes(m.status)).map((m) => {
-      const bs = st24.crmBookings.filter((b) => b.mandateId === m.id && b.status === "APPROVED");
+    const rows = st25.associateMandates.filter((m) => m.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "COMPLETED"].includes(m.status)).map((m) => {
+      const bs = st25.crmBookings.filter((b) => b.mandateId === m.id && b.status === "APPROVED");
       const units = bs.length;
       const value = bs.reduce((a2, b) => a2 + b.agreementValue, 0);
       const prog = slabProgress(p.cpSlabs, units);
@@ -70770,12 +70781,12 @@ function trailActions(t, a) {
   const cpAuth = a.side === "CP_OWNER" || a.side === "CP_STAFF" && a.canConfirm;
   const bAuth = a.side === "BUILDER_OWNER" || a.side === "BUILDER_STAFF" && a.canConfirm;
   const other = a.id !== t.collector.id;
-  const st24 = t.status;
+  const st25 = t.status;
   return {
-    cpConfirm: t.route === "CP" && cpAuth && other && (st24 === "WITH_COLLECTOR" || st24 === "DISPUTED"),
-    handover: t.route === "CP" && cpAuth && (st24 === "WITH_CP" || st24 === "NOT_RECEIVED"),
-    builderConfirm: bAuth && other && st24 !== "CONFIRMED",
-    cancel: a.id === t.collector.id && (st24 === "WITH_COLLECTOR" || st24 === "DISPUTED") || t.route === "CP" && cpAuth && ["WITH_COLLECTOR", "WITH_CP", "DISPUTED", "NOT_RECEIVED"].includes(st24) || bAuth
+    cpConfirm: t.route === "CP" && cpAuth && other && (st25 === "WITH_COLLECTOR" || st25 === "DISPUTED"),
+    handover: t.route === "CP" && cpAuth && (st25 === "WITH_CP" || st25 === "NOT_RECEIVED"),
+    builderConfirm: bAuth && other && st25 !== "CONFIRMED",
+    cancel: a.id === t.collector.id && (st25 === "WITH_COLLECTOR" || st25 === "DISPUTED") || t.route === "CP" && cpAuth && ["WITH_COLLECTOR", "WITH_CP", "DISPUTED", "NOT_RECEIVED"].includes(st25) || bAuth
   };
 }
 function builderNeedsNote(t, received) {
@@ -71358,7 +71369,7 @@ function cancelBooking(user, booking, reasonIn, b) {
 }
 function createCrmRouter() {
   const r = (0, import_express4.Router)();
-  const me27 = currentUser;
+  const me28 = currentUser;
   const leadsFor = leadsForUser;
   const bookingsFor = bookingsForUser;
   const findLead = (id, user) => leadsFor(user).find((l) => l.id === id);
@@ -71372,7 +71383,7 @@ function createCrmRouter() {
   };
   r.use(needs("crm:read"));
   r.get("/overview", (_req, res) => {
-    const user = me27();
+    const user = me28();
     const leads = leadsFor(user);
     const bookings = bookingsFor(user);
     const now = Date.now();
@@ -71408,7 +71419,7 @@ function createCrmRouter() {
     });
   });
   r.get("/projects", (_req, res) => {
-    const user = employerOf(me27());
+    const user = employerOf(me28());
     const state = db.getState();
     let projects = state.builderProjects || [];
     let mandates = state.associateMandates || [];
@@ -71439,7 +71450,7 @@ function createCrmRouter() {
     });
   });
   r.get("/leads", (req, res) => {
-    const user = me27();
+    const user = me28();
     const { projectId, stage, q, temperature, source, associateId, from, to } = req.query;
     let leads = leadsFor(user);
     if (projectId) leads = leads.filter((l) => l.projectId === String(projectId));
@@ -71466,7 +71477,7 @@ function createCrmRouter() {
     res.json({ success: true, total, offset, limit, leads: leads.slice(offset, offset + limit).map((l) => viewLead(l, user)) });
   });
   r.get("/leads/:id", (req, res) => {
-    const user = me27();
+    const user = me28();
     const lead = findLead(req.params.id, user);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
     const booking = lead.bookingId ? db.byId("crmBookings", lead.bookingId) : void 0;
@@ -71480,11 +71491,11 @@ function createCrmRouter() {
   r.post("/leads", needs("crm:lead_create"), (req, res) => {
     const parsed = leadCreateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid lead" });
-    const out = registerLead(me27(), parsed.data);
+    const out = registerLead(me28(), parsed.data);
     res.status(out.status).json(out.body);
   });
   r.patch("/leads/:id", needs("crm:lead_manage"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const parsed = leadPatchSchema.safeParse(req.body);
@@ -71511,7 +71522,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/stage", needs("crm:lead_manage"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const { stage, note: note5, lostReason } = req.body || {};
@@ -71530,9 +71541,9 @@ function createCrmRouter() {
     if (stage === "LOST") {
       const code = req.body?.lostCode;
       if (code !== void 0 && !lostCodeOk(code)) return res.status(400).json({ error: "Pick a valid lost reason: " + LOST_CODES.map((c) => c.id).join(", ") });
-      const label = LOST_CODES.find((c) => c.id === code)?.en;
-      if ((!lostReason || String(lostReason).trim().length < 3) && !label) return res.status(400).json({ error: "A reason is required to mark a lead lost" });
-      if (!lostReason || String(lostReason).trim().length < 3) req.body.lostReason = label;
+      const label2 = LOST_CODES.find((c) => c.id === code)?.en;
+      if ((!lostReason || String(lostReason).trim().length < 3) && !label2) return res.status(400).json({ error: "A reason is required to mark a lead lost" });
+      if (!lostReason || String(lostReason).trim().length < 3) req.body.lostReason = label2;
     } else if (!FORWARD_STAGES.includes(stage)) {
       return res.status(400).json({ error: "Stage must be one of " + [...FORWARD_STAGES, "LOST"].join(", ") + ". Booking stages are driven by the booking workflow." });
     }
@@ -71565,7 +71576,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/activity", needs("crm:lead_manage"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const { type, note: note5 } = req.body || {};
@@ -71582,7 +71593,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/followups", needs("crm:lead_manage"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     if (lead.optedOutAt) return res.status(409).json({ error: "Customer has opted out of contact \u2014 no follow-ups can be scheduled.", code: "OPTED_OUT" });
@@ -71598,7 +71609,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/followups/:fid/done", needs("crm:lead_manage"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const lead = findLead(req.params.id, user);
     if (!lead || !canWorkLead(user, lead)) return res.status(404).json({ error: "Lead not found" });
     const fu = lead.followUps.find((f) => f.id === req.params.fid);
@@ -71613,7 +71624,7 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.post("/leads/:id/assign", needs("crm:assign"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const lead = findLead(req.params.id, user);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
     if (user.role === "DEVELOPER_BUILDER" && lead.builderId !== user.id) return res.status(403).json({ error: "Not your project" });
@@ -71636,10 +71647,10 @@ function createCrmRouter() {
     res.json({ success: true, lead: viewLead(lead, user) });
   });
   r.get("/bookings", (_req, res) => {
-    res.json({ success: true, bookings: bookingsFor(me27()).map(viewBooking) });
+    res.json({ success: true, bookings: bookingsFor(me28()).map(viewBooking) });
   });
   r.post("/leads/:id/booking-request", needs("crm:booking_request"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const state = db.getState();
     const lead = findLead(req.params.id, user);
     if (!lead) return res.status(404).json({ error: "Lead not found" });
@@ -71753,7 +71764,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: user.role === "TEAM_MEMBER" ? bookingForMember(booking, user.id) : viewBooking(booking), lead: viewLead(lead, user) });
   });
   r.post("/bookings/:id/decision", needs("crm:booking_decide"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const state = db.getState();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
@@ -71819,7 +71830,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: viewBooking(booking), lead: viewLead(lead, user) });
   });
   r.post("/bookings/:id/token", needs("crm:booking_decide"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
     if (typeof req.body?.received !== "boolean") return res.status(400).json({ error: "received must be true or false" });
@@ -71835,7 +71846,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: viewBooking(booking) });
   });
   r.post("/bookings/:id/payments/:mid/receive", needs("crm:booking_decide"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
     if (booking.status !== "APPROVED") return res.status(409).json({ error: "Collections can be recorded only on approved bookings" });
@@ -71865,7 +71876,7 @@ function createCrmRouter() {
     res.json({ success: true, booking: viewBooking(booking) });
   });
   r.post("/bookings/:id/payout", needs("crm:payout"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const state = db.getState();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
@@ -71917,7 +71928,7 @@ function createCrmRouter() {
     return { mandates, status };
   };
   r.get("/bonus", (_req, res) => {
-    const user = me27();
+    const user = me28();
     if (user.role === "TEAM_MEMBER") return res.status(403).json({ error: "Bonus details are visible to your employer only" });
     const state = db.getState();
     let projects = state.builderProjects || [];
@@ -71943,7 +71954,7 @@ function createCrmRouter() {
     res.json({ success: true, projects: out, canManage: user.role === "DEVELOPER_BUILDER" || isSuper(user) });
   });
   r.put("/projects/:id/bonus-scheme", needs("crm:bonus_manage"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const state = db.getState();
     const project = db.byId("builderProjects", req.params.id);
     if (!project || user.role === "DEVELOPER_BUILDER" && project.builderId !== user.id) return res.status(404).json({ error: "Project not found" });
@@ -71965,7 +71976,7 @@ function createCrmRouter() {
     res.json({ success: true, scheme });
   });
   r.post("/projects/:id/bonus/pay", needs("crm:payout"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const state = db.getState();
     const project = db.byId("builderProjects", req.params.id);
     if (!project || user.role === "DEVELOPER_BUILDER" && project.builderId !== user.id) return res.status(404).json({ error: "Project not found" });
@@ -71987,7 +71998,7 @@ function createCrmRouter() {
     res.json({ success: true, payout: rec2, tds, net: amount2 - tds });
   });
   r.post("/bookings/:id/cancel", needs("crm:booking_decide"), (req, res) => {
-    const user = me27();
+    const user = me28();
     const booking = findBooking(req.params.id, user);
     if (!booking || user.role === "DEVELOPER_BUILDER" && booking.builderId !== user.id) return res.status(404).json({ error: "Booking not found" });
     const out = cancelBooking(user, booking, String(req.body?.reason || ""), req.body || {});
@@ -72300,42 +72311,42 @@ function trailsFor(u) {
 }
 function createMoneyTrailRouter() {
   const r = (0, import_express6.Router)();
-  const me27 = () => ctx().user;
-  const bad27 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
-  const st24 = () => db.getState();
+  const me28 = () => ctx().user;
+  const bad28 = (res, error62, status = 400, code) => res.status(status).json(code ? { error: error62, code } : { error: error62 });
+  const st25 = () => db.getState();
   const leadOf = (b) => db.byId("crmLeads", b.leadId);
   const lead = (b, note5) => {
     const l = leadOf(b);
-    const u = me27();
+    const u = me28();
     if (!l) return;
     l.activities.unshift({ id: `A-${Date.now().toString(36)}${Math.floor(Math.random() * 99)}`, type: "SYSTEM", note: note5, byUserId: u.id, byName: u.name, at: nowIso5() });
     l.updatedAt = nowIso5();
   };
   const open2 = (req, res) => {
-    const u = me27();
-    const b = st24().crmBookings.find((x) => (x.trails || []).some((t2) => t2.id === req.params.id));
+    const u = me28();
+    const b = st25().crmBookings.find((x) => (x.trails || []).some((t2) => t2.id === req.params.id));
     const t = b?.trails?.find((x) => x.id === req.params.id);
     if (!b || !t) {
-      bad27(res, "Money entry not found", 404);
+      bad28(res, "Money entry not found", 404);
       return null;
     }
     const a = actorOn(u, b);
     const seen2 = trailsFor(u).some((x) => x.id === t.id);
     if (!a.side || !seen2) {
-      bad27(res, "Money entry not found", 404);
+      bad28(res, "Money entry not found", 404);
       return null;
     }
     return { b, t, a };
   };
   const step = (t, stage, a, extra = {}) => {
-    const u = me27();
+    const u = me28();
     const ts = nowIso5();
     t.steps.push({ stage, at: ts, byId: u.id, byName: u.name, side: a.side, ...extra.note ? { note: extra.note.slice(0, 200) } : {}, ...extra.ref ? { ref: extra.ref } : {}, ...extra.mode ? { mode: extra.mode } : {} });
     t.updatedAt = ts;
   };
   const cleanNote = (v) => String(v ?? "").trim().slice(0, 200);
   r.get("/trails", needs("crm:read"), (req, res) => {
-    const u = me27();
+    const u = me28();
     let rows = trailsFor(u);
     const bookingId = typeof req.query.bookingId === "string" ? req.query.bookingId : "";
     if (bookingId) rows = rows.filter((x) => x.bookingId === bookingId);
@@ -72351,9 +72362,9 @@ function createMoneyTrailRouter() {
     });
   });
   r.get("/collectables", needs("crm:money_collect"), (_req, res) => {
-    const u = me27();
+    const u = me28();
     const out = [];
-    for (const b of st24().crmBookings) {
+    for (const b of st25().crmBookings) {
       if (b.status !== "REQUESTED" && b.status !== "APPROVED") continue;
       const a = actorOn(u, b);
       if (!a.side || !a.canCollect || !staffMayCollect(a, b, leadOf(b))) continue;
@@ -72370,30 +72381,30 @@ function createMoneyTrailRouter() {
     res.json({ success: true, bookings: out });
   });
   r.post("/trails", needs("crm:money_collect"), rateLimit("money-trail-start", 300, 24 * 36e5), (req, res) => {
-    const u = me27();
-    if (isAdmin(u)) return bad27(res, "The platform only watches the money trail \u2014 the partner and the builder record it", 403);
-    const b = st24().crmBookings.find((x) => x.id === String(req.body?.bookingId || ""));
+    const u = me28();
+    if (isAdmin(u)) return bad28(res, "The platform only watches the money trail \u2014 the partner and the builder record it", 403);
+    const b = st25().crmBookings.find((x) => x.id === String(req.body?.bookingId || ""));
     const a = b ? actorOn(u, b) : NO_ACTOR(u.id);
-    if (!b || !a.side) return bad27(res, "Booking not found", 404);
-    if (!a.canCollect) return bad27(res, "Your employer has not allowed you to record collected money", 403, "MONEY_NOT_ALLOWED");
-    if (!staffMayCollect(a, b, leadOf(b))) return bad27(res, "You can record money only for customers you work with", 403);
-    if (b.status !== "REQUESTED" && b.status !== "APPROVED") return bad27(res, `This booking is ${b.status.toLowerCase()} \u2014 no money can be recorded on it`, 409);
+    if (!b || !a.side) return bad28(res, "Booking not found", 404);
+    if (!a.canCollect) return bad28(res, "Your employer has not allowed you to record collected money", 403, "MONEY_NOT_ALLOWED");
+    if (!staffMayCollect(a, b, leadOf(b))) return bad28(res, "You can record money only for customers you work with", 403);
+    if (b.status !== "REQUESTED" && b.status !== "APPROVED") return bad28(res, `This booking is ${b.status.toLowerCase()} \u2014 no money can be recorded on it`, 409);
     const c = cleanNewTrail(req.body);
-    if ("error" in c) return bad27(res, c.error);
+    if ("error" in c) return bad28(res, c.error);
     const d = c.ok;
     let targetName;
     if (d.target === "TOKEN") {
-      if (!b.token || b.token.status === "RECEIVED") return bad27(res, "There is no pending booking amount on this booking", 409);
-      if (d.amount !== b.token.amount) return bad27(res, `The booking amount on this request is ${inr5(b.token.amount)} \u2014 record exactly that`, 400);
-      if (openTrailOn(b.trails, "TOKEN")) return bad27(res, "The booking amount is already travelling through the Money Trail", 409, "MONEY_TRAIL_OPEN");
+      if (!b.token || b.token.status === "RECEIVED") return bad28(res, "There is no pending booking amount on this booking", 409);
+      if (d.amount !== b.token.amount) return bad28(res, `The booking amount on this request is ${inr5(b.token.amount)} \u2014 record exactly that`, 400);
+      if (openTrailOn(b.trails, "TOKEN")) return bad28(res, "The booking amount is already travelling through the Money Trail", 409, "MONEY_TRAIL_OPEN");
       targetName = "Booking amount";
     } else {
-      if (b.status !== "APPROVED") return bad27(res, "Instalments can be recorded only after the builder approves the booking", 409);
+      if (b.status !== "APPROVED") return bad28(res, "Instalments can be recorded only after the builder approves the booking", 409);
       const m = b.paymentSchedule.find((x) => x.id === d.target);
-      if (!m) return bad27(res, "Instalment not found", 404);
+      if (!m) return bad28(res, "Instalment not found", 404);
       const pending = m.amount - paidOf(m) - reservedOn(b.trails, m.id);
-      if (pending <= 0) return bad27(res, "Nothing is pending on this instalment", 409);
-      if (d.amount > pending) return bad27(res, `Only ${inr5(pending)} is pending on this instalment`, 400);
+      if (pending <= 0) return bad28(res, "Nothing is pending on this instalment", 409);
+      if (d.amount > pending) return bad28(res, `Only ${inr5(pending)} is pending on this instalment`, 400);
       targetName = m.name;
     }
     const ts = nowIso5();
@@ -72427,17 +72438,17 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me27();
-    if (typeof req.body?.received !== "boolean") return bad27(res, "received must be true or false");
+    const u = me28();
+    if (typeof req.body?.received !== "boolean") return bad28(res, "received must be true or false");
     const can2 = trailActions(t, a);
     if (!can2.cpConfirm) {
-      if (t.route !== "CP") return bad27(res, "This money was collected on the builder's side \u2014 the builder confirms it", 409);
-      if (a.id === t.collector.id) return bad27(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
-      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad27(res, "Only the partner or a team member he has authorised can confirm this", 403, "MONEY_NOT_ALLOWED");
-      return bad27(res, "This money is not waiting for the partner's confirmation", 409);
+      if (t.route !== "CP") return bad28(res, "This money was collected on the builder's side \u2014 the builder confirms it", 409);
+      if (a.id === t.collector.id) return bad28(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
+      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad28(res, "Only the partner or a team member he has authorised can confirm this", 403, "MONEY_NOT_ALLOWED");
+      return bad28(res, "This money is not waiting for the partner's confirmation", 409);
     }
     const note5 = cleanNote(req.body?.note);
-    if (!req.body.received && note5.length < TRAIL_NOTE_MIN) return bad27(res, `Say why \u2014 e.g. "${t.collector.name} has not given it to me yet"`);
+    if (!req.body.received && note5.length < TRAIL_NOTE_MIN) return bad28(res, `Say why \u2014 e.g. "${t.collector.name} has not given it to me yet"`);
     if (req.body.received) {
       t.status = "WITH_CP";
       step(t, "CP_CONFIRMED", a, { note: note5 });
@@ -72455,20 +72466,20 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me27();
+    const u = me28();
     const can2 = trailActions(t, a);
     if (!can2.handover) {
-      if (t.route !== "CP") return bad27(res, "This money was collected on the builder's side \u2014 there is no hand-over", 409);
-      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad27(res, "Only the partner or a team member he has authorised can hand money over to the builder", 403, "MONEY_NOT_ALLOWED");
-      return bad27(res, t.status === "WITH_COLLECTOR" ? "The partner must first confirm that he received this money from his team member" : "This money is not with the partner right now", 409);
+      if (t.route !== "CP") return bad28(res, "This money was collected on the builder's side \u2014 there is no hand-over", 409);
+      if (a.side !== "CP_OWNER" && !(a.side === "CP_STAFF" && a.canConfirm)) return bad28(res, "Only the partner or a team member he has authorised can hand money over to the builder", 403, "MONEY_NOT_ALLOWED");
+      return bad28(res, t.status === "WITH_COLLECTOR" ? "The partner must first confirm that he received this money from his team member" : "This money is not with the partner right now", 409);
     }
     let mode;
     let ref;
     if (req.body?.mode !== void 0 && req.body.mode !== "") {
       mode = String(req.body.mode);
-      if (!TRAIL_MODE_IDS.includes(mode)) return bad27(res, "Pick how it was handed over \u2014 cash / cheque / UPI / NEFT \u2026");
+      if (!TRAIL_MODE_IDS.includes(mode)) return bad28(res, "Pick how it was handed over \u2014 cash / cheque / UPI / NEFT \u2026");
       ref = String(req.body?.ref ?? "").trim().slice(0, 40);
-      if (mode !== "CASH" && ref.length < 3) return bad27(res, "Give the cheque number / UTR of the hand-over (min 3 characters) \u2014 the builder's accounts need it to match");
+      if (mode !== "CASH" && ref.length < 3) return bad28(res, "Give the cheque number / UTR of the hand-over (min 3 characters) \u2014 the builder's accounts need it to match");
     }
     const note5 = cleanNote(req.body?.note);
     t.status = "HANDED_OVER";
@@ -72484,37 +72495,37 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me27();
-    if (typeof req.body?.received !== "boolean") return bad27(res, "received must be true or false");
+    const u = me28();
+    if (typeof req.body?.received !== "boolean") return bad28(res, "received must be true or false");
     const received = req.body.received;
     const can2 = trailActions(t, a);
     if (!can2.builderConfirm) {
-      if (a.id === t.collector.id) return bad27(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
-      if (a.side !== "BUILDER_OWNER" && !(a.side === "BUILDER_STAFF" && a.canConfirm)) return bad27(res, "Only the builder or the accounts person he has authorised can confirm that the money arrived", 403, "MONEY_NOT_ALLOWED");
-      return bad27(res, "This money is already settled", 409);
+      if (a.id === t.collector.id) return bad28(res, "You cannot confirm money you collected yourself \u2014 someone else must", 403);
+      if (a.side !== "BUILDER_OWNER" && !(a.side === "BUILDER_STAFF" && a.canConfirm)) return bad28(res, "Only the builder or the accounts person he has authorised can confirm that the money arrived", 403, "MONEY_NOT_ALLOWED");
+      return bad28(res, "This money is already settled", 409);
     }
     const note5 = cleanNote(req.body?.note);
     if (builderNeedsNote(t, received) && note5.length < TRAIL_NOTE_MIN) {
-      return bad27(res, received ? 'This money has not been handed over yet \u2014 say why you are confirming it now (e.g. "customer paid our account directly")' : 'Say why \u2014 e.g. "cheque bounced" or "not in the bank yet"', 400, "NOTE_REQUIRED");
+      return bad28(res, received ? 'This money has not been handed over yet \u2014 say why you are confirming it now (e.g. "customer paid our account directly")' : 'Say why \u2014 e.g. "cheque bounced" or "not in the bank yet"', 400, "NOTE_REQUIRED");
     }
     const ts = nowIso5();
     const hand = [...t.steps].reverse().find((s) => s.stage === "HANDED_OVER");
     const mode = hand?.mode || t.mode;
     const ref = hand?.mode ? hand.ref : t.ref;
     const rn = String(req.body?.receiptNo ?? "").trim();
-    if (rn && (rn.length < 3 || rn.length > 40)) return bad27(res, "The receipt number must be 3\u201340 characters");
+    if (rn && (rn.length < 3 || rn.length > 40)) return bad28(res, "The receipt number must be 3\u201340 characters");
     if (received) {
-      if (b.status !== "APPROVED") return bad27(res, "Approve the booking first, then confirm that the money arrived", 409);
+      if (b.status !== "APPROVED") return bad28(res, "Approve the booking first, then confirm that the money arrived", 409);
       if (t.target === "TOKEN") {
-        if (!b.token || b.token.status === "RECEIVED") return bad27(res, "The booking amount is already confirmed", 409);
+        if (!b.token || b.token.status === "RECEIVED") return bad28(res, "The booking amount is already confirmed", 409);
         b.token = { ...b.token, mode, ...ref ? { ref } : {}, ...t.paidOn ? { paidOn: t.paidOn } : {} };
         const c = confirmToken(b, u, true, note5 || void 0, { trailId: t.id, ...rn ? { receiptNo: rn } : {} });
-        if ("error" in c) return bad27(res, c.error, c.status);
+        if ("error" in c) return bad28(res, c.error, c.status);
       } else {
         const m = b.paymentSchedule.find((x) => x.id === t.target);
-        if (!m) return bad27(res, "Instalment not found", 404);
+        if (!m) return bad28(res, "Instalment not found", 404);
         const pending = m.amount - paidOf(m);
-        if (t.amount > pending) return bad27(res, `Only ${inr5(pending)} is pending on this instalment now \u2014 cancel this entry or ask for a corrected amount`, 409);
+        if (t.amount > pending) return bad28(res, `Only ${inr5(pending)} is pending on this instalment now \u2014 cancel this entry or ask for a corrected amount`, 409);
         const rref = (rn || (ref && ref.length >= 3 ? ref : "CASH")).slice(0, 40);
         m.receipts = [...m.receipts || [], { id: `RC-${Date.now().toString(36)}-${m.id.slice(-2)}`, amount: t.amount, mode, ref: rref, at: ts, byId: u.id, byName: u.name, trailId: t.id }];
         m.paidAmount = paidOf(m) + t.amount;
@@ -72531,7 +72542,7 @@ function createMoneyTrailRouter() {
     } else {
       if (t.target === "TOKEN" && b.token && b.token.status !== "RECEIVED") {
         const c = confirmToken(b, u, false, note5 || void 0);
-        if ("error" in c) return bad27(res, c.error, c.status);
+        if ("error" in c) return bad28(res, c.error, c.status);
       }
       t.status = "NOT_RECEIVED";
       step(t, "BUILDER_NOT_RECEIVED", a, { note: note5 });
@@ -72547,10 +72558,10 @@ function createMoneyTrailRouter() {
     const o = open2(req, res);
     if (!o) return;
     const { b, t, a } = o;
-    const u = me27();
-    if (!trailActions(t, a).cancel) return bad27(res, isOpenTrail(t) ? "You cannot cancel this entry at this stage" : "This money is already settled", isOpenTrail(t) ? 403 : 409);
+    const u = me28();
+    if (!trailActions(t, a).cancel) return bad28(res, isOpenTrail(t) ? "You cannot cancel this entry at this stage" : "This money is already settled", isOpenTrail(t) ? 403 : 409);
     const reason = cleanNote(req.body?.reason);
-    if (reason.length < TRAIL_NOTE_MIN) return bad27(res, "Say why this entry is being cancelled");
+    if (reason.length < TRAIL_NOTE_MIN) return bad28(res, "Say why this entry is being cancelled");
     t.status = "CANCELLED";
     step(t, "CANCELLED", a, { note: reason });
     b.updatedAt = nowIso5();
@@ -72966,7 +72977,7 @@ function createCrmPlusRouter() {
     const u = me3();
     const b = loadBooking(req, res);
     if (!b) return;
-    const st24 = stateOf();
+    const st25 = stateOf();
     const assoc = db.byId("users", b.associateId);
     const proj = db.byId("builderProjects", b.projectId);
     const pays = b.payouts || [];
@@ -73094,9 +73105,9 @@ function createCrmPlusRouter() {
       ["BOOKED", "Booked", (l) => l.stage === "BOOKED"]
     ];
     let prev = leads.length;
-    const funnel = steps.map(([id, label, f]) => {
+    const funnel = steps.map(([id, label2, f]) => {
       const c = leads.filter(f).length;
-      const row = { id, label, count: c, pctOfPrev: pct2(c, prev) };
+      const row = { id, label: label2, count: c, pctOfPrev: pct2(c, prev) };
       prev = c || prev;
       return row;
     });
@@ -73121,9 +73132,9 @@ function createCrmPlusRouter() {
     }).sort((a, b) => b.booked - a.booked || b.leads - a.leads) : [];
     const bySource = [...group((l) => l.source).entries()].map(([id, ls]) => ({ id, leads: ls.length, booked: ls.filter((l) => l.stage === "BOOKED").length, convPct: pct2(ls.filter((l) => l.stage === "BOOKED").length, ls.length) })).sort((a, b) => b.leads - a.leads);
     const inWindow = (at) => Date.parse(at) >= since;
-    const st24 = stateOf();
-    const teamIds = u.role === "TEAM_MEMBER" ? [u.id] : st24.users.filter((x) => x.role === "TEAM_MEMBER" && (u.role === "BROKER" || u.role === "DEVELOPER_BUILDER" ? x.employerId === u.id : true)).map((x) => x.id);
-    const pool = u.role === "TEAM_MEMBER" ? st24.crmLeads.filter((l) => (l.associateId || l.builderId) === db.byId("users", u.id)?.employerId) : all;
+    const st25 = stateOf();
+    const teamIds = u.role === "TEAM_MEMBER" ? [u.id] : st25.users.filter((x) => x.role === "TEAM_MEMBER" && (u.role === "BROKER" || u.role === "DEVELOPER_BUILDER" ? x.employerId === u.id : true)).map((x) => x.id);
+    const pool = u.role === "TEAM_MEMBER" ? st25.crmLeads.filter((l) => (l.associateId || l.builderId) === db.byId("users", u.id)?.employerId) : all;
     const agg = /* @__PURE__ */ new Map();
     const A = (id) => {
       let x = agg.get(id);
@@ -73214,10 +73225,10 @@ function createCrmPlusRouter() {
   return r;
 }
 function sweepCrm() {
-  const st24 = db.getState();
+  const st25 = db.getState();
   const now = Date.now();
   let n2 = 0;
-  for (const l of st24.crmLeads) {
+  for (const l of st25.crmLeads) {
     if (l.erasedAt || l.stage !== "LOST" || l.bookingId) continue;
     const age = (now - Date.parse(l.updatedAt)) / DAY6;
     if (!(l.optedOutAt && age >= OPTOUT_RETENTION_DAYS || age >= LOST_RETENTION_DAYS)) continue;
@@ -73652,14 +73663,14 @@ var lastPrune = "";
 function recordActivity(userId, kind, nowMs = Date.now()) {
   if (!userId) return;
   const day3 = dayKey(nowMs);
-  const st24 = db.getState();
-  st24.activityDays ||= [];
+  const st25 = db.getState();
+  st25.activityDays ||= [];
   const hydrate = (k) => {
     const key = `${day3}|${k}`;
     let s = mem.get(key);
     if (!s) {
       for (const old of mem.keys()) if (!old.startsWith(day3)) mem.delete(old);
-      s = new Set(st24.activityDays.find((d) => d.day === day3)?.[k] || []);
+      s = new Set(st25.activityDays.find((d) => d.day === day3)?.[k] || []);
       mem.set(key, s);
     }
     return s;
@@ -73669,10 +73680,10 @@ function recordActivity(userId, kind, nowMs = Date.now()) {
   if (seen2.has(userId) && (!acted || acted.has(userId))) return;
   seen2.add(userId);
   acted?.add(userId);
-  if (addActivity(st24.activityDays, day3, userId, kind)) {
+  if (addActivity(st25.activityDays, day3, userId, kind)) {
     if (lastPrune !== day3) {
       lastPrune = day3;
-      pruneActivity(st24.activityDays, nowMs);
+      pruneActivity(st25.activityDays, nowMs);
     }
     db.save();
   }
@@ -73700,16 +73711,16 @@ function activityMiddleware(req, res, next2) {
   next2();
 }
 function activityInput(nowMs) {
-  const st24 = db.getState();
-  const roleById = new Map(st24.users.map((u) => [u.id, u.role]));
+  const st25 = db.getState();
+  const roleById = new Map(st25.users.map((u) => [u.id, u.role]));
   const cutoff = nowMs - 31 * 864e5;
   const recent = [];
-  for (let i = st24.auditEvents.length - 1; i >= 0; i--) {
-    const e = st24.auditEvents[i];
+  for (let i = st25.auditEvents.length - 1; i >= 0; i--) {
+    const e = st25.auditEvents[i];
     if (Date.parse(e.timestamp) < cutoff) break;
     recent.push(e);
   }
-  return { days: st24.activityDays || [], audit: auditActivity(recent, new Set(roleById.keys())), roleOf: (id) => roleById.get(id) };
+  return { days: st25.activityDays || [], audit: auditActivity(recent, new Set(roleById.keys())), roleOf: (id) => roleById.get(id) };
 }
 var allTrails = () => db.getState().crmBookings.flatMap((b) => (b.trails || []).map((t) => ({ ...t, projectName: b.projectName })));
 var collectedOf = (b) => {
@@ -73725,9 +73736,9 @@ function createPulseRouter() {
   r.use(needs("admin:control_center"));
   r.get("/", (_req, res) => {
     const now = Date.now();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const inp = activityInput(now);
-    const people = st24.users.filter((u) => !ADMIN_ROLES.includes(u.role));
+    const people = st25.users.filter((u) => !ADMIN_ROLES.includes(u.role));
     const brokers = people.filter((u) => u.role === "BROKER");
     const win = Object.fromEntries(WINDOWS.map((w) => [w, windowCounts(windowDays(w, now), inp)]));
     const signups = Object.fromEntries(WINDOWS.map((w) => {
@@ -73736,7 +73747,7 @@ function createPulseRouter() {
       return [w, { people: mine3.length, brokers: mine3.filter((u) => u.role === "BROKER").length }];
     }));
     const series = activitySeries(lastDays(30, now), inp);
-    const bk = bookingStats(st24.crmBookings, collectedOf, now);
+    const bk = bookingStats(st25.crmBookings, collectedOf, now);
     const trails = allTrails();
     const ht = holderTotals(trails);
     const open2 = trails.filter(isOpenTrail);
@@ -73744,7 +73755,7 @@ function createPulseRouter() {
       success: true,
       asOf: new Date(now).toISOString(),
       today: dayKey(now),
-      trackingSince: trackingSince(st24.activityDays || []),
+      trackingSince: trackingSince(st25.activityDays || []),
       activity: { windows: win, signups, series },
       network: {
         people: people.length,
@@ -73756,7 +73767,7 @@ function createPulseRouter() {
         }, {}),
         brokers: { total: brokers.length, verified: brokers.filter((u) => u.verificationStatus === "VERIFIED").length, rera: brokers.filter((u) => !!u.reraNumber).length }
       },
-      projects: projectStats(st24.builderProjects || []),
+      projects: projectStats(st25.builderProjects || []),
       bookings: bk,
       money: {
         collectedNetwork: bk.network.collected,
@@ -73769,12 +73780,12 @@ function createPulseRouter() {
   });
   r.get("/drill", (req, res) => {
     const now = Date.now();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const kind = String(req.query.kind || "");
     const wq = String(req.query.window || "today");
     const win = wq === "all" ? "all" : isWindow(wq) ? wq : "today";
     const inp = activityInput(now);
-    const byId = new Map(st24.users.map((u) => [u.id, u]));
+    const byId = new Map(st25.users.map((u) => [u.id, u]));
     const LIMIT2 = 300;
     if (["people", "brokers", "acted", "actedBrokers"].includes(kind)) {
       const days3 = windowDays(win === "all" ? "d30" : win, now);
@@ -73785,14 +73796,14 @@ function createPulseRouter() {
     }
     if (kind === "signups") {
       const set2 = new Set(windowDays(win === "all" ? "d30" : win, now));
-      const rows = st24.users.filter((u) => !ADMIN_ROLES.includes(u.role) && set2.has(dayOfIso(u.createdAt))).map((u) => ({ ...person(u), createdAt: u.createdAt }));
+      const rows = st25.users.filter((u) => !ADMIN_ROLES.includes(u.role) && set2.has(dayOfIso(u.createdAt))).map((u) => ({ ...person(u), createdAt: u.createdAt }));
       return res.json({ success: true, kind, window: win, total: rows.length, rows: rows.slice(0, LIMIT2) });
     }
     if (kind === "bookings") {
       const status = String(req.query.status || "ALL").toUpperCase();
       const scope = String(req.query.scope || "all");
       const set2 = win === "all" ? null : new Set(windowDays(win, now));
-      const rows = st24.crmBookings.filter((b) => (status === "ALL" || b.status === status) && (scope === "all" || scope === "direct" === !!b.direct)).filter((b) => !set2 || set2.has(b.status === "APPROVED" ? soldDay(b) : dayOfIso(b.createdAt))).map((b) => {
+      const rows = st25.crmBookings.filter((b) => (status === "ALL" || b.status === status) && (scope === "all" || scope === "direct" === !!b.direct)).filter((b) => !set2 || set2.has(b.status === "APPROVED" ? soldDay(b) : dayOfIso(b.createdAt))).map((b) => {
         const c = b.status === "APPROVED" ? collectedPct(b) : null;
         return {
           id: b.id,
@@ -73812,7 +73823,7 @@ function createPulseRouter() {
     }
     if (kind === "projects") {
       const liveOnly = String(req.query.live || "1") !== "0";
-      const rows = (st24.builderProjects || []).filter((p) => !liveOnly || isLiveProject(p)).map((p) => ({
+      const rows = (st25.builderProjects || []).filter((p) => !liveOnly || isLiveProject(p)).map((p) => ({
         id: p.id,
         projectName: p.projectName,
         builderName: p.builderName,
@@ -73820,7 +73831,7 @@ function createPulseRouter() {
         stage: p.projectStage,
         totalUnits: p.totalUnits,
         availableUnits: p.availableUnits,
-        partners: (st24.associateMandates || []).filter((m) => m.projectId === p.id).length
+        partners: (st25.associateMandates || []).filter((m) => m.projectId === p.id).length
       }));
       return res.json({ success: true, kind, total: rows.length, rows: rows.slice(0, LIMIT2) });
     }
@@ -73894,14 +73905,14 @@ function readObjects(buf) {
     while (j < heads.length && heads[j].at < skipUntil) j++;
     const end = j < heads.length ? heads[j].at : s.length;
     const chunk = s.slice(at, end);
-    const st24 = /\bstream\r?\n/.exec(chunk);
-    if (!st24) {
+    const st25 = /\bstream\r?\n/.exec(chunk);
+    if (!st25) {
       const e = chunk.indexOf("endobj");
       objs.set(num2, { dict: e >= 0 ? chunk.slice(0, e) : chunk });
       continue;
     }
-    const dict = chunk.slice(0, st24.index);
-    const start = at + st24.index + st24[0].length;
+    const dict = chunk.slice(0, st25.index);
+    const start = at + st25.index + st25[0].length;
     let len = lengthOf(dict);
     if (len == null || start + len > buf.length) {
       const e = s.indexOf("endstream", start);
@@ -74221,7 +74232,7 @@ var NOT_SCANNED = {
 };
 var mayHaveFile = (d, a) => !d.protect || a.via === "UPLOADER" || a.via === "PRINCIPAL";
 var activeShare = (d, userId, now = Date.now()) => d.shares.find((s) => s.userId === userId && !s.revoked && (!s.expiresAt || new Date(s.expiresAt).getTime() > now));
-function docAccess(st24, u, d, now = Date.now()) {
+function docAccess(st25, u, d, now = Date.now()) {
   const prop = db.byId("properties", d.propertyId);
   if (isAdmin(u)) return { ok: true, level: "MANAGE", via: "ADMIN" };
   if (d.uploaderId === u.id) return { ok: true, level: "MANAGE", via: "UPLOADER" };
@@ -74229,16 +74240,16 @@ function docAccess(st24, u, d, now = Date.now()) {
   if (u.verificationStatus !== "VERIFIED") return { ok: false };
   if (activeShare(d, u.id, now)) return { ok: true, level: "VIEW", via: "SHARED" };
   if (u.role === "LEGAL_COUNSEL" && d.ddItemId) return { ok: true, level: "VIEW", via: "LEGAL_DD" };
-  if (prop && d.visibility === "DEAL_PARTICIPANTS" && u.role !== "TEAM_MEMBER" && st24.dealRooms.some((r) => r.propertyId === prop.id && isDealParticipant(u, r))) return { ok: true, level: "VIEW", via: "DEAL" };
+  if (prop && d.visibility === "DEAL_PARTICIPANTS" && u.role !== "TEAM_MEMBER" && st25.dealRooms.some((r) => r.propertyId === prop.id && isDealParticipant(u, r))) return { ok: true, level: "VIEW", via: "DEAL" };
   if (prop && d.visibility === "VERIFIED_BROKERS" && u.role === "BROKER") return { ok: true, level: "VIEW", via: "NETWORK" };
   return { ok: false };
 }
 var log = (docId2, userId, action, ip, note5) => {
-  const st24 = db.getState();
-  st24.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto9.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso7(), ip, note: note5 });
-  if (st24.propertyDocLogs.length > LOG_CAP) st24.propertyDocLogs.splice(0, st24.propertyDocLogs.length - LOG_CAP);
+  const st25 = db.getState();
+  st25.propertyDocLogs.push({ id: `PDL-${Date.now().toString(36)}${crypto9.randomInt(1e3, 9999)}`, docId: docId2, userId, action, at: nowIso7(), ip, note: note5 });
+  if (st25.propertyDocLogs.length > LOG_CAP) st25.propertyDocLogs.splice(0, st25.propertyDocLogs.length - LOG_CAP);
 };
-var nameOf = (st24, id) => db.byId("users", id)?.name || "\u2014";
+var nameOf = (st25, id) => db.byId("users", id)?.name || "\u2014";
 var logDocOpen = log;
 var shareOf = (d, userId) => d.shares.find((s) => s.userId === userId && !s.revoked);
 var shareLive = (s, now = Date.now()) => !s.revoked && (!s.expiresAt || Date.parse(s.expiresAt) > now);
@@ -74254,16 +74265,16 @@ function ensureProtected(d, u) {
   db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_PROTECT", `\u201C${d.title}\u201D protected while sharing it from a chat: view-only, every viewer's name stamped, no download (except the uploader)`);
   return true;
 }
-function clientPaperState(st24, shareId, roomId, ignoreViews = false, now = Date.now()) {
-  const doc = st24.propertyDocs.find((d) => (d.clientShares || []).some((c) => c.id === shareId));
+function clientPaperState(st25, shareId, roomId, ignoreViews = false, now = Date.now()) {
+  const doc = st25.propertyDocs.find((d) => (d.clientShares || []).some((c) => c.id === shareId));
   const cs = doc?.clientShares?.find((c) => c.id === shareId && c.roomId === roomId);
   if (!doc || !cs) return { ok: false, reason: "GONE" };
   if (cs.revoked || !doc.protect) return { ok: false, reason: "STOPPED" };
   if (Date.parse(cs.expiresAt) <= now) return { ok: false, reason: "EXPIRED" };
   if (!ignoreViews && cs.views >= cs.maxViews) return { ok: false, reason: "USED" };
-  const broker = st24.users.find((x) => x.id === cs.brokerId);
+  const broker = st25.users.find((x) => x.id === cs.brokerId);
   if (!broker) return { ok: false, reason: "STOPPED" };
-  const a = docAccess(st24, broker, doc, now);
+  const a = docAccess(st25, broker, doc, now);
   if (!a.ok) return { ok: false, reason: "STOPPED" };
   if (a.level !== "MANAGE") {
     const own2 = shareOf(doc, broker.id);
@@ -74274,7 +74285,7 @@ function clientPaperState(st24, shareId, roomId, ignoreViews = false, now = Date
 function propLine(p) {
   return p ? { propertyTitle: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType } : { propertyTitle: "\u2014", locality: "", city: "", propertyType: "" };
 }
-function summary(st24, d, u, a) {
+function summary(st25, d, u, a) {
   const prop = db.byId("properties", d.propertyId);
   const manage = a.level === "MANAGE";
   return {
@@ -74295,7 +74306,7 @@ function summary(st24, d, u, a) {
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
     uploaderId: d.uploaderId,
-    uploaderName: nameOf(st24, d.uploaderId),
+    uploaderName: nameOf(st25, d.uploaderId),
     mine: d.uploaderId === u.id,
     access: a.level,
     via: a.via,
@@ -74304,28 +74315,28 @@ function summary(st24, d, u, a) {
     pages: d.pages || 1,
     canDownload: mayHaveFile(d, a),
     missing: !fs5.existsSync(fileOf(d.id)),
-    shares: manage ? d.shares.filter((s) => !s.revoked).map((s) => ({ userId: s.userId, name: nameOf(st24, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now(), maxViews: s.maxViews || null, views: s.views || 0, dealId: s.dealId, clientShare: !!s.clientShare })) : void 0,
+    shares: manage ? d.shares.filter((s) => !s.revoked).map((s) => ({ userId: s.userId, name: nameOf(st25, s.userId), expiresAt: s.expiresAt, expired: !!s.expiresAt && new Date(s.expiresAt).getTime() < Date.now(), maxViews: s.maxViews || null, views: s.views || 0, dealId: s.dealId, clientShare: !!s.clientShare })) : void 0,
     // v55 — what I was given (opens left, until when, may I show my client) and to which of my clients I showed it
     myShare: a.via === "SHARED" ? (() => {
       const s = shareOf(d, u.id);
       return s ? { expiresAt: s.expiresAt, viewsLeft: viewsLeft(s), maxViews: s.maxViews || null, clientShare: !!s.clientShare, dealId: s.dealId } : void 0;
     })() : void 0,
     clientShares: (d.clientShares || []).filter((c) => c.brokerId === u.id && !c.revoked).map((c) => {
-      const room = st24.clientRooms.find((r) => r.id === c.roomId);
+      const room = st25.clientRooms.find((r) => r.id === c.roomId);
       return { id: c.id, roomId: c.roomId, clientName: room?.clientName || "\u2014", expiresAt: c.expiresAt, maxViews: c.maxViews, views: c.views, lastAt: c.lastAt };
     })
   };
 }
-function haystack(st24, d, a) {
+function haystack(st25, d, a) {
   const prop = db.byId("properties", d.propertyId);
   const t = PROP_DOC_TYPES.find((x) => x.id === d.type);
   const parts = [d.title, d.refNo, d.tags.join(" "), d.note, d.fileName, t?.en, t?.hi, t?.words, prop?.title, prop?.locality, prop?.city, prop?.pincode, d.id, d.propertyId];
-  if (a.level === "MANAGE" && prop) parts.push(prop.village, prop.tehsil, prop.district, nameOf(st24, prop.ownerId), nameOf(st24, d.uploaderId));
+  if (a.level === "MANAGE" && prop) parts.push(prop.village, prop.tehsil, prop.district, nameOf(st25, prop.ownerId), nameOf(st25, d.uploaderId));
   return parts.filter(Boolean).join(" ");
 }
-var usedBytes = (st24, userId) => st24.propertyDocs.filter((d) => d.uploaderId === userId).reduce((a, d) => a + d.size, 0);
-function uploadableProperties(st24, u) {
-  return st24.properties.filter((p) => isAdmin(u) || isPropertyPrincipal(u, p));
+var usedBytes = (st25, userId) => st25.propertyDocs.filter((d) => d.uploaderId === userId).reduce((a, d) => a + d.size, 0);
+function uploadableProperties(st25, u) {
+  return st25.properties.filter((p) => isAdmin(u) || isPropertyPrincipal(u, p));
 }
 function eraseDocFile(id) {
   try {
@@ -74333,12 +74344,12 @@ function eraseDocFile(id) {
   } catch {
   }
 }
-function purgeUserDocs(st24, userId) {
-  const owned = new Set(st24.properties.filter((p) => p.ownerId === userId).map((p) => p.id));
-  const doomed = st24.propertyDocs.filter((d) => d.uploaderId === userId || owned.has(d.propertyId));
+function purgeUserDocs(st25, userId) {
+  const owned = new Set(st25.properties.filter((p) => p.ownerId === userId).map((p) => p.id));
+  const doomed = st25.propertyDocs.filter((d) => d.uploaderId === userId || owned.has(d.propertyId));
   for (const d of doomed) eraseDocFile(d.id);
-  st24.propertyDocs = st24.propertyDocs.filter((d) => !doomed.includes(d));
-  for (const d of st24.propertyDocs) for (const s of d.shares) if (s.userId === userId) s.revoked = true;
+  st25.propertyDocs = st25.propertyDocs.filter((d) => !doomed.includes(d));
+  for (const d of st25.propertyDocs) for (const s of d.shares) if (s.userId === userId) s.revoked = true;
   return doomed.length;
 }
 var cleanTags2 = (t) => Array.isArray(t) ? [...new Set(t.map((x) => String(x).trim().toLowerCase().slice(0, 30)).filter(Boolean))].slice(0, 10) : [];
@@ -74348,13 +74359,13 @@ function createPropDocsRouter() {
   const need = needs("propdoc:use");
   r.get("/meta", need, (_req, res) => {
     const u = me5();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const counts4 = /* @__PURE__ */ new Map();
-    for (const d of st24.propertyDocs) counts4.set(d.propertyId, (counts4.get(d.propertyId) || 0) + 1);
+    for (const d of st25.propertyDocs) counts4.set(d.propertyId, (counts4.get(d.propertyId) || 0) + 1);
     res.json({
       success: true,
-      properties: uploadableProperties(st24, u).slice(0, 400).map((p) => ({ id: p.id, title: p.title, locality: p.locality, city: p.city, docs: counts4.get(p.id) || 0 })),
-      usedBytes: usedBytes(st24, u.id),
+      properties: uploadableProperties(st25, u).slice(0, 400).map((p) => ({ id: p.id, title: p.title, locality: p.locality, city: p.city, docs: counts4.get(p.id) || 0 })),
+      usedBytes: usedBytes(st25, u.id),
       maxBytes: PROP_DOC_MAX_USER_BYTES,
       maxFileBytes: PROP_DOC_MAX_BYTES,
       maxPerProperty: PROP_DOC_MAX_PER_PROPERTY
@@ -74362,29 +74373,29 @@ function createPropDocsRouter() {
   });
   r.get("/", need, (req, res) => {
     const u = me5();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const now = Date.now();
     const q = String(req.query.q || "").slice(0, 120);
     const propertyId = String(req.query.propertyId || "");
     const type = String(req.query.type || "");
     const scope = String(req.query.scope || "all");
     const out = [];
-    for (const d of st24.propertyDocs.slice().reverse()) {
+    for (const d of st25.propertyDocs.slice().reverse()) {
       if (propertyId && d.propertyId !== propertyId) continue;
       if (type && d.type !== type) continue;
-      const a = docAccess(st24, u, d, now);
+      const a = docAccess(st25, u, d, now);
       if (!a.ok) continue;
       if (scope === "mine" && a.level !== "MANAGE") continue;
       if (scope === "shared" && a.level !== "VIEW") continue;
-      if (q && !matchesQuery(haystack(st24, d, a), q)) continue;
-      out.push(summary(st24, d, u, a));
+      if (q && !matchesQuery(haystack(st25, d, a), q)) continue;
+      out.push(summary(st25, d, u, a));
       if (out.length >= 300) break;
     }
     res.json({ success: true, docs: out });
   });
   r.post("/", need, rateLimit("propdocup", 80, 60 * 6e4), big, (req, res) => {
     const u = me5();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const b = external_exports.object({
       propertyId: external_exports.string().min(2).max(60),
       type: external_exports.enum(PROP_DOC_TYPE_IDS),
@@ -74405,14 +74416,14 @@ function createPropDocsRouter() {
     let ddItemId;
     const principal2 = isAdmin(u) || isPropertyPrincipal(u, prop);
     if (b.data.ddItemId) {
-      const item = st24.dueDiligenceItems.find((i) => i.id === b.data.ddItemId && i.propertyId === prop.id);
+      const item = st25.dueDiligenceItems.find((i) => i.id === b.data.ddItemId && i.propertyId === prop.id);
       if (!item) return bad4(res, "That due-diligence item does not belong to this property.", 404);
-      if (!can(u, "dd:upload") || !canAccessPropertyWorkspace(st24, u, prop)) return bad4(res, "You cannot add evidence to this property.", 403);
+      if (!can(u, "dd:upload") || !canAccessPropertyWorkspace(st25, u, prop)) return bad4(res, "You cannot add evidence to this property.", 403);
       ddItemId = item.id;
     } else if (!principal2) {
       return bad4(res, "Only the property owner or listing broker can keep papers here.", 403);
     }
-    if (st24.propertyDocs.filter((d) => d.propertyId === prop.id).length >= PROP_DOC_MAX_PER_PROPERTY) return bad4(res, `This property already has ${PROP_DOC_MAX_PER_PROPERTY} papers. Delete old ones first.`);
+    if (st25.propertyDocs.filter((d) => d.propertyId === prop.id).length >= PROP_DOC_MAX_PER_PROPERTY) return bad4(res, `This property already has ${PROP_DOC_MAX_PER_PROPERTY} papers. Delete old ones first.`);
     const raw = b.data.data.replace(/^data:[^;]+;base64,/, "");
     if (!/^[A-Za-z0-9+/=\r\n]+$/.test(raw)) return bad4(res, "The file could not be read. Please choose it again.");
     const buf = Buffer.from(raw, "base64");
@@ -74420,7 +74431,7 @@ function createPropDocsRouter() {
     if (buf.length > PROP_DOC_MAX_BYTES) return bad4(res, `The file is larger than ${PROP_DOC_MAX_BYTES / 1024 / 1024} MB. Send a smaller / compressed copy.`, 413);
     const mime = sniffMime(buf);
     if (!mime) return bad4(res, "Only PDF, JPEG, PNG or WebP files are accepted.", 415);
-    if (usedBytes(st24, u.id) + buf.length > PROP_DOC_MAX_USER_BYTES) return bad4(res, "Your storage is full. Delete old papers first.", 413);
+    if (usedBytes(st25, u.id) + buf.length > PROP_DOC_MAX_USER_BYTES) return bad4(res, "Your storage is full. Delete old papers first.", 413);
     let pages = 1;
     if (b.data.protect && mime === "application/pdf") {
       const pp = scannedPages(buf);
@@ -74458,16 +74469,16 @@ function createPropDocsRouter() {
       updatedAt: ts,
       ...b.data.protect ? { protect: true, protectedAt: ts, pages } : {}
     };
-    st24.propertyDocs.push(doc);
+    st25.propertyDocs.push(doc);
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, "PROPDOC_UPLOADED", `Paper \u201C${doc.title}\u201D (${doc.type}, ${(doc.size / 1024).toFixed(0)} KB, SHA-256 ${doc.sha256.slice(0, 16)}\u2026) added to ${prop.id}${ddItemId ? ` as evidence for ${ddItemId}` : ""}${doc.protect ? " \u2014 protected (view-only, watermarked)" : ""}`);
-    res.json({ success: true, doc: summary(st24, doc, u, docAccess(st24, u, doc)) });
+    res.json({ success: true, doc: summary(st25, doc, u, docAccess(st25, u, doc)) });
   });
   const load2 = (req, res) => {
     const u = me5();
-    const st24 = db.getState();
-    const d = st24.propertyDocs.find((x) => x.id === req.params.id);
-    const a = d ? docAccess(st24, u, d) : { ok: false };
+    const st25 = db.getState();
+    const d = st25.propertyDocs.find((x) => x.id === req.params.id);
+    const a = d ? docAccess(st25, u, d) : { ok: false };
     if (!d || !a.ok) {
       if (d) {
         log(d.id, u.id, "DENIED", req.ip || "");
@@ -74476,7 +74487,7 @@ function createPropDocsRouter() {
       res.status(404).json({ error: "Paper not found" });
       return null;
     }
-    return { u, st: st24, d, a };
+    return { u, st: st25, d, a };
   };
   const loadManage = (req, res) => {
     const x = load2(req, res);
@@ -74524,9 +74535,9 @@ function createPropDocsRouter() {
       db.save();
       return res.status(403).end();
     }
-    const st24 = db.getState();
-    const d = st24.propertyDocs.find((v) => v.id === c.d);
-    if (!d || !docAccess(st24, u, d).ok) return res.status(403).end();
+    const st25 = db.getState();
+    const d = st25.propertyDocs.find((v) => v.id === c.d);
+    if (!d || !docAccess(st25, u, d).ok) return res.status(403).end();
     const pages = viewerPages(d);
     const page2 = pages?.[c.p];
     if (!page2) return res.status(404).end();
@@ -74566,21 +74577,21 @@ function createPropDocsRouter() {
   });
   r.get("/for-deal/:dealId", need, (req, res) => {
     const u = me5();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const now = Date.now();
-    const deal = st24.dealRooms.find((x) => x.id === req.params.dealId);
+    const deal = st25.dealRooms.find((x) => x.id === req.params.dealId);
     if (!deal || !isDealParticipant(u, deal)) return bad4(res, "Deal room not found", 404);
-    const docs = st24.propertyDocs.filter((d) => d.propertyId === deal.propertyId).map((d) => {
-      const a = docAccess(st24, u, d, now);
-      return a.ok ? summary(st24, d, u, a) : null;
+    const docs = st25.propertyDocs.filter((d) => d.propertyId === deal.propertyId).map((d) => {
+      const a = docAccess(st25, u, d, now);
+      return a.ok ? summary(st25, d, u, a) : null;
     }).filter(Boolean);
-    const people = [.../* @__PURE__ */ new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId])].filter((id) => id && id !== u.id).map((id) => st24.users.find((x) => x.id === id)).filter((x) => !!x && x.verificationStatus === "VERIFIED" && can(x, "propdoc:use") && !isAdmin(x)).map((x) => ({ id: x.id, name: x.name, role: x.role }));
+    const people = [.../* @__PURE__ */ new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId])].filter((id) => id && id !== u.id).map((id) => st25.users.find((x) => x.id === id)).filter((x) => !!x && x.verificationStatus === "VERIFIED" && can(x, "propdoc:use") && !isAdmin(x)).map((x) => ({ id: x.id, name: x.name, role: x.role }));
     res.json({ success: true, docs, people, canClientShare: can(u, "clientroom:use") });
   });
   r.post("/:id/chat-share", need, rateLimit("propdocchat", 60, 60 * 6e4), (req, res) => {
     const x = loadManage(req, res);
     if (!x) return;
-    const { u, st: st24, d } = x;
+    const { u, st: st25, d } = x;
     const b = external_exports.object({
       dealId: external_exports.string().min(3).max(60),
       userIds: external_exports.array(external_exports.string()).min(1).max(5),
@@ -74590,10 +74601,10 @@ function createPropDocsRouter() {
       note: external_exports.string().trim().max(200).optional()
     }).safeParse(req.body);
     if (!b.success) return bad4(res, "Choose who may see it, for how many days and how many times.");
-    const deal = st24.dealRooms.find((r22) => r22.id === b.data.dealId);
+    const deal = st25.dealRooms.find((r22) => r22.id === b.data.dealId);
     if (!deal || deal.propertyId !== d.propertyId || !isDealParticipant(u, deal)) return bad4(res, "This paper does not belong to that deal room.", 400);
     const inDeal = new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId].filter(Boolean));
-    const targets2 = [...new Set(b.data.userIds)].map((id) => st24.users.find((p) => p.id === id)).filter((p) => !!p && inDeal.has(p.id) && p.id !== u.id && p.verificationStatus === "VERIFIED" && can(p, "propdoc:use") && !isAdmin(p));
+    const targets2 = [...new Set(b.data.userIds)].map((id) => st25.users.find((p) => p.id === id)).filter((p) => !!p && inDeal.has(p.id) && p.id !== u.id && p.verificationStatus === "VERIFIED" && can(p, "propdoc:use") && !isAdmin(p));
     if (!targets2.length) return bad4(res, "Choose someone of this deal room to share with.");
     if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
     const expiresAt = daysAhead(b.data.days);
@@ -74619,19 +74630,19 @@ function createPropDocsRouter() {
       ...b.data.note ? {} : { auto: true },
       timestamp: nowIso7()
     };
-    st24.dealMessages.push(msg);
+    st25.dealMessages.push(msg);
     db.save();
     db.appendAuditEvent(u.id, u.role, "DEAL", deal.id, "PROPDOC_CHAT_SHARED", `Paper \u201C${d.title}\u201D (${d.id}) shared in the deal chat with ${names}: ${b.data.days} day(s), ${b.data.maxViews || "unlimited"} open(s), view-only${b.data.clientShare ? ", may show own client" : ""}`);
-    res.json({ success: true, message: msg, doc: summary(st24, d, u, x.a) });
+    res.json({ success: true, message: msg, doc: summary(st25, d, u, x.a) });
   });
   r.post("/:id/client-share", need, rateLimit("propdocclient", 60, 60 * 6e4), (req, res) => {
     const x = load2(req, res);
     if (!x) return;
-    const { u, st: st24, d, a } = x;
+    const { u, st: st25, d, a } = x;
     if (!can(u, "clientroom:use")) return bad4(res, "Client Rooms are not part of your account.", 403);
     const b = external_exports.object({ roomId: external_exports.string().min(3).max(40), days: external_exports.coerce.number().int().min(1).max(30), maxViews: external_exports.coerce.number().int().min(1).max(10) }).safeParse(req.body);
     if (!b.success) return bad4(res, "Choose the client room, for how many days and how many times.");
-    const room = st24.clientRooms.find((r22) => r22.id === b.data.roomId && r22.brokerId === u.id);
+    const room = st25.clientRooms.find((r22) => r22.id === b.data.roomId && r22.brokerId === u.id);
     if (!room) return bad4(res, "Client room not found", 404);
     if (room.status !== "ACTIVE") return bad4(res, "This client room is closed", 409);
     let until = Date.now() + b.data.days * 864e5;
@@ -74652,12 +74663,12 @@ function createPropDocsRouter() {
     log(d.id, u.id, "SHARE", req.ip || "", `shown to his client ${room.clientName} (client room) \u2014 ${Math.ceil((until - Date.now()) / 864e5)} day(s), ${b.data.maxViews} open(s)`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "PROPDOC_CLIENT_SHARED", `Paper \u201C${d.title}\u201D (${d.id}) shown to the client of room ${room.id}: until ${cs.expiresAt.slice(0, 10)}, ${cs.maxViews} open(s), view-only`);
-    res.json({ success: true, share: cs, doc: summary(st24, d, u, a) });
+    res.json({ success: true, share: cs, doc: summary(st25, d, u, a) });
   });
   r.post("/:id/client-revoke", need, (req, res) => {
     const x = load2(req, res);
     if (!x) return;
-    const { u, st: st24, d, a } = x;
+    const { u, st: st25, d, a } = x;
     const cs = (d.clientShares || []).find((c) => c.id === String(req.body?.shareId || "") && !c.revoked);
     if (!cs) return bad4(res, "Not found", 404);
     if (cs.brokerId !== u.id && a.level !== "MANAGE") return bad4(res, "Only the broker who showed it can stop it.", 403);
@@ -74665,7 +74676,7 @@ function createPropDocsRouter() {
     d.updatedAt = nowIso7();
     log(d.id, cs.brokerId, "REVOKE", req.ip || "", `client showing stopped by ${u.name}`);
     db.save();
-    res.json({ success: true, doc: summary(st24, d, u, a) });
+    res.json({ success: true, doc: summary(st25, d, u, a) });
   });
   r.patch("/:id", need, (req, res) => {
     const x = loadManage(req, res);
@@ -74707,21 +74718,21 @@ function createPropDocsRouter() {
   r.get("/:id/people", need, (req, res) => {
     const x = loadManage(req, res);
     if (!x) return;
-    const { u, st: st24, d } = x;
+    const { u, st: st25, d } = x;
     const inDeal = /* @__PURE__ */ new Set();
-    for (const r22 of st24.dealRooms.filter((r3) => r3.propertyId === d.propertyId)) for (const id of [r22.introducingBrokerId, r22.closingBrokerId, r22.ownerId]) if (id) inDeal.add(id);
-    const people = st24.users.filter((p) => p.id !== u.id && p.id !== d.uploaderId && p.verificationStatus === "VERIFIED" && can(p, "propdoc:use") && !isAdmin(p)).map((p) => ({ id: p.id, name: p.name, role: p.role, company: p.companyName || "", city: p.city || "", inDeal: inDeal.has(p.id) })).sort((a, b) => Number(b.inDeal) - Number(a.inDeal) || a.name.localeCompare(b.name)).slice(0, 500);
+    for (const r22 of st25.dealRooms.filter((r3) => r3.propertyId === d.propertyId)) for (const id of [r22.introducingBrokerId, r22.closingBrokerId, r22.ownerId]) if (id) inDeal.add(id);
+    const people = st25.users.filter((p) => p.id !== u.id && p.id !== d.uploaderId && p.verificationStatus === "VERIFIED" && can(p, "propdoc:use") && !isAdmin(p)).map((p) => ({ id: p.id, name: p.name, role: p.role, company: p.companyName || "", city: p.city || "", inDeal: inDeal.has(p.id) })).sort((a, b) => Number(b.inDeal) - Number(a.inDeal) || a.name.localeCompare(b.name)).slice(0, 500);
     res.json({ success: true, people });
   });
   r.post("/:id/share", need, (req, res) => {
     const x = loadManage(req, res);
     if (!x) return;
-    const { u, st: st24, d } = x;
+    const { u, st: st25, d } = x;
     const b = external_exports.object({ userIds: external_exports.array(external_exports.string()).min(1).max(30), expiresInDays: external_exports.coerce.number().int().min(1).max(365).optional() }).safeParse(req.body);
     if (!b.success) return bad4(res, "Choose who to share with (and optionally for how many days).");
     let n2 = 0;
     for (const uid3 of new Set(b.data.userIds)) {
-      const t = st24.users.find((p) => p.id === uid3 && p.verificationStatus === "VERIFIED" && can(p, "propdoc:use") && p.id !== d.uploaderId && !isAdmin(p));
+      const t = st25.users.find((p) => p.id === uid3 && p.verificationStatus === "VERIFIED" && can(p, "propdoc:use") && p.id !== d.uploaderId && !isAdmin(p));
       if (!t) continue;
       const expiresAt = b.data.expiresInDays ? new Date(Date.now() + b.data.expiresInDays * 864e5).toISOString() : void 0;
       const ex = d.shares.find((s) => s.userId === uid3);
@@ -74738,12 +74749,12 @@ function createPropDocsRouter() {
     d.updatedAt = nowIso7();
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_SHARED", `\u201C${d.title}\u201D shared with ${n2} member(s)${b.data.expiresInDays ? ` for ${b.data.expiresInDays} day(s)` : ""}`);
-    res.json({ success: true, shared: n2, doc: summary(st24, d, u, x.a) });
+    res.json({ success: true, shared: n2, doc: summary(st25, d, u, x.a) });
   });
   r.post("/:id/revoke", need, (req, res) => {
     const x = loadManage(req, res);
     if (!x) return;
-    const { u, st: st24, d } = x;
+    const { u, st: st25, d } = x;
     const uid3 = String(req.body?.userId || "");
     const s = d.shares.find((v) => v.userId === uid3 && !v.revoked);
     if (!s) return bad4(res, "That member does not have a share on this paper.", 404);
@@ -74752,19 +74763,19 @@ function createPropDocsRouter() {
     d.updatedAt = nowIso7();
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_REVOKED", `Share on \u201C${d.title}\u201D removed for one member`);
-    res.json({ success: true, doc: summary(st24, d, u, x.a) });
+    res.json({ success: true, doc: summary(st25, d, u, x.a) });
   });
   r.get("/:id/log", need, (req, res) => {
     const x = loadManage(req, res);
     if (!x) return;
-    const { st: st24, d } = x;
-    res.json({ success: true, log: st24.propertyDocLogs.filter((l) => l.docId === d.id).slice(-150).reverse().map((l) => ({ at: l.at, action: l.action, name: nameOf(st24, l.userId), note: l.note })) });
+    const { st: st25, d } = x;
+    res.json({ success: true, log: st25.propertyDocLogs.filter((l) => l.docId === d.id).slice(-150).reverse().map((l) => ({ at: l.at, action: l.action, name: nameOf(st25, l.userId), note: l.note })) });
   });
   r.delete("/:id", need, (req, res) => {
     const x = loadManage(req, res);
     if (!x) return;
-    const { u, st: st24, d } = x;
-    st24.propertyDocs = st24.propertyDocs.filter((v) => v !== d);
+    const { u, st: st25, d } = x;
+    st25.propertyDocs = st25.propertyDocs.filter((v) => v !== d);
     eraseDocFile(d.id);
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", d.id, "PROPDOC_DELETED", `Paper \u201C${d.title}\u201D deleted (file removed from the server)`);
@@ -74968,14 +74979,14 @@ function readTicket(t) {
 }
 function createTwoFactorRouter() {
   const r = (0, import_express12.Router)();
-  const me27 = () => ctx().user;
+  const me28 = () => ctx().user;
   r.get("/status", requireAuth, (_req, res) => {
-    const u = me27();
+    const u = me28();
     const x = rec(u.id);
     res.json({ success: true, enabled: !!x?.enabledAt, enabledAt: x?.enabledAt || null, recommended: twoFactorRecommended(u), recoveryLeft: x?.enabledAt ? x.recovery.length : 0 });
   });
   r.post("/setup", requireAuth, rateLimit("2fa-setup", 10, 36e5), (req, res) => {
-    const u = me27();
+    const u = me28();
     if (!verifyPassword(String(req.body?.password || ""), u.passwordHash)) return res.status(400).json({ error: "Password is not correct", code: "BAD_PASSWORD" });
     const s = db.getState();
     const x = rec(u.id);
@@ -74985,12 +74996,12 @@ function createTwoFactorRouter() {
     s.twoFactor = s.twoFactor.filter((t) => t.userId !== u.id);
     s.twoFactor.push(row);
     db.save();
-    const label = encodeURIComponent(`GENZ:${u.email || u.phone}`);
+    const label2 = encodeURIComponent(`GENZ:${u.email || u.phone}`);
     const b32 = base32Encode(key);
-    res.json({ success: true, secret: b32, otpauth: `otpauth://totp/${label}?secret=${b32}&issuer=GENZ&algorithm=SHA1&digits=6&period=30` });
+    res.json({ success: true, secret: b32, otpauth: `otpauth://totp/${label2}?secret=${b32}&issuer=GENZ&algorithm=SHA1&digits=6&period=30` });
   });
   r.post("/enable", requireAuth, rateLimit("2fa-enable", 20, 36e5), (req, res) => {
-    const u = me27();
+    const u = me28();
     const x = rec(u.id);
     if (!x || x.enabledAt) return res.status(409).json({ error: "Start the setup first." });
     const step = checkTotp(unseal(x.secretEnc), String(req.body?.code || ""));
@@ -75005,7 +75016,7 @@ function createTwoFactorRouter() {
     res.json({ success: true, recoveryCodes: codes });
   });
   r.post("/disable", requireAuth, rateLimit("2fa-disable", 10, 36e5), (req, res) => {
-    const u = me27();
+    const u = me28();
     if (!verifyPassword(String(req.body?.password || ""), u.passwordHash)) return res.status(400).json({ error: "Password is not correct", code: "BAD_PASSWORD" });
     const v = verifySecondFactor(u.id, String(req.body?.code || ""));
     if (v === "LOCKED") return res.status(429).json({ error: "Too many wrong codes. Wait 15 minutes." });
@@ -75305,8 +75316,8 @@ function createKycVaultRouter() {
     if (!b.success) return bad5(res, b.error.issues[0]?.message || "Choose a purpose and write the reason", 400, "REVEAL_FIELDS");
     const t = s.users.find((x) => x.id === req.params.userId);
     if (!t) return bad5(res, "Member not found", 404);
-    const me27 = s.users.find((x) => x.id === a.id);
-    if (!verifyPassword(b.data.password, me27?.passwordHash)) {
+    const me28 = s.users.find((x) => x.id === a.id);
+    if (!verifyPassword(b.data.password, me28?.passwordHash)) {
       audit9(t.id, "KYC_REVEAL_DENIED", `${a.name} tried to open the KYC of ${t.name} with a wrong password`);
       return bad5(res, "Your password is not correct.", 403, "BAD_PASSWORD");
     }
@@ -76041,6 +76052,51 @@ function createProfilePhotoRouter() {
   return r;
 }
 
+// server/workphotos.ts
+import crypto14 from "node:crypto";
+import fs9 from "node:fs";
+import path9 from "node:path";
+var PHOTO_LIMIT = 600 * 1024;
+var DIR4 = () => path9.resolve(process.cwd(), "data", "workphotos");
+var fileOf4 = (id) => path9.join(DIR4(), `${id}.bin`);
+function savePhoto(data, owner) {
+  const raw = String(data ?? "").replace(/^data:[^;]+;base64,/, "");
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(raw) || raw.length < 100) return { ok: false, error: "The photo could not be read. Please choose it again.", status: 400 };
+  const buf = Buffer.from(raw, "base64");
+  if (buf.length > PHOTO_LIMIT) return { ok: false, error: "The photo is too big \u2014 pick a smaller one.", status: 413 };
+  const mime = sniffMime(buf);
+  if (mime !== "image/jpeg" && mime !== "image/png" && mime !== "image/webp") return { ok: false, error: "Only a JPEG, PNG or WebP photo is accepted.", status: 415 };
+  const id = `WPH-${crypto14.randomBytes(6).toString("hex")}`;
+  try {
+    fs9.mkdirSync(DIR4(), { recursive: true });
+    const tmp = fileOf4(id) + ".tmp";
+    fs9.writeFileSync(tmp, buf);
+    fs9.renameSync(tmp, fileOf4(id));
+  } catch {
+    return { ok: false, error: "The photo could not be saved. Please try again.", status: 500 };
+  }
+  const photo = { id, ownerKind: owner.kind, ownerId: owner.id, byId: owner.byId, mime, size: buf.length, sha256: crypto14.createHash("sha256").update(buf).digest("hex"), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+  db.getState().workPhotos.push(photo);
+  return { ok: true, photo };
+}
+var photoById = (id) => db.getState().workPhotos.find((p) => p.id === id);
+function sendPhoto(res, p) {
+  try {
+    const buf = fs9.readFileSync(fileOf4(p.id));
+    res.set({ "Content-Type": p.mime, "Cache-Control": "private, max-age=600", "X-Content-Type-Options": "nosniff", "Content-Disposition": "inline", "Content-Security-Policy": "default-src 'none'; sandbox" }).send(buf);
+  } catch {
+    res.status(404).json({ error: "Photo not found" });
+  }
+}
+function erasePhoto(id) {
+  try {
+    fs9.unlinkSync(fileOf4(id));
+  } catch {
+  }
+  const s = db.getState();
+  s.workPhotos = s.workPhotos.filter((p) => p.id !== id);
+}
+
 // server/privacy.ts
 var POLICY_VERSION = "2026-10-17";
 function legalConfig() {
@@ -76059,9 +76115,9 @@ function legalConfig() {
 }
 function createPrivacyRouter() {
   const r = (0, import_express17.Router)();
-  const me27 = () => ctx().user;
+  const me28 = () => ctx().user;
   r.get("/export", requireAuth, rateLimit("export", 5, 60 * 6e4), (_req, res) => {
-    const u = me27();
+    const u = me28();
     const s = db.getState();
     const mine3 = (rows, ...keys) => rows.filter((x) => keys.some((k) => x[k] === u.id));
     const { passwordHash: _p, sessionVersion: _s, mustChangePassword: _m, ...profile5 } = u;
@@ -76077,6 +76133,9 @@ function createPrivacyRouter() {
       crmBookings: mine3(s.crmBookings, "associateId", "builderId"),
       disputes: s.disputes.filter((d) => d.raisedBy === u.id || d.againstUserId === u.id),
       privacyRequests: mine3(s.privacyRequests, "userId"),
+      // v60 / v61 — his Rent desk records and the messages he wrote in builder ↔ partner chats
+      tenancies: mine3(s.tenancies || [], "brokerId"),
+      partnerChatMessages: (s.partnerThreads || []).flatMap((t) => t.messages.filter((m) => m.byId === u.id).map((m) => ({ thread: t.id, at: m.at, text: m.text, card: m.card ? { kind: m.card.kind, label: m.card.label } : void 0 }))),
       // v25: the encrypted vault is summarised (what is kept, when, and who opened it) — the number itself is never put in an export file
       kycVault: (() => {
         const r3 = s.kycVault.find((x) => x.userId === u.id);
@@ -76089,7 +76148,7 @@ function createPrivacyRouter() {
     res.json(bundle);
   });
   r.post("/requests", requireAuth, rateLimit("privreq", 10, 24 * 60 * 6e4), (req, res) => {
-    const u = me27();
+    const u = me28();
     const { type, details } = req.body || {};
     if (!["ERASURE", "CORRECTION", "GRIEVANCE"].includes(type)) return res.status(400).json({ error: "Invalid request type" });
     const text = String(details || "").trim().slice(0, 2e3);
@@ -76113,13 +76172,13 @@ function createPrivacyRouter() {
     res.json({ success: true, request: pr, respondWithinDays: legalConfig().grievanceOfficer.responseDays });
   });
   r.get("/requests", requireAuth, (_req, res) => {
-    const u = me27();
+    const u = me28();
     const s = db.getState();
     const all = u.role === "SUPERADMIN" || u.role === "ADMIN";
     res.json({ success: true, requests: all ? s.privacyRequests : s.privacyRequests.filter((p) => p.userId === u.id) });
   });
   r.post("/requests/:id/resolve", needs("users:review"), (req, res) => {
-    const actor = me27();
+    const actor = me28();
     const s = db.getState();
     const pr = s.privacyRequests.find((p) => p.id === req.params.id);
     if (!pr) return res.status(404).json({ error: "Request not found" });
@@ -76166,6 +76225,16 @@ function createPrivacyRouter() {
         a.aadhaarLast4 = void 0;
         a.companyName = void 0;
       }
+      s.tenancies = (s.tenancies || []).filter((t) => t.brokerId !== target.id);
+      const gone = new Set((s.workPhotos || []).filter((p) => p.byId === target.id).map((p) => p.id));
+      for (const id of gone) erasePhoto(id);
+      for (const t of s.partnerThreads || []) for (const m of t.messages) {
+        if (m.byId === target.id) m.byName = target.name;
+        if (m.card?.kind === "PHOTO" && gone.has(m.card.refId)) {
+          m.card = void 0;
+          m.text = m.text || "(photo removed)";
+        }
+      }
     }
     pr.status = decision === "COMPLETE" ? "COMPLETED" : "REJECTED";
     pr.resolvedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -76192,9 +76261,9 @@ var createSchema = external_exports.object({
 var nowIso11 = () => (/* @__PURE__ */ new Date()).toISOString();
 function createTeamRouter() {
   const r = (0, import_express18.Router)();
-  const me27 = () => ctx().user;
+  const me28 = () => ctx().user;
   const audit9 = (entity, id, action, details) => {
-    const u = me27();
+    const u = me28();
     db.appendAuditEvent(u.id, u.role, entity, id, action, details);
   };
   const mine3 = (employerId) => db.getState().users.filter((u) => u.role === "TEAM_MEMBER" && u.employerId === employerId);
@@ -76208,7 +76277,7 @@ function createTeamRouter() {
     selfie: external_exports.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, "A selfie with the client is required").max(22e4, "Selfie is too large")
   });
   r.post("/checkin", needs("team:checkin"), rateLimit("checkin", 40, 24 * 60 * 6e4), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = checkinSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid check-in" });
     const state = db.getState();
@@ -76247,7 +76316,7 @@ function createTeamRouter() {
   });
   r.use(needs("team:manage"));
   r.get("/activity", (req, res) => {
-    const u = me27();
+    const u = me28();
     const state = db.getState();
     const days3 = Math.min(30, Math.max(1, Number(req.query.days) || 7));
     const since = Date.now() - days3 * 864e5;
@@ -76297,7 +76366,7 @@ function createTeamRouter() {
     res.json({ success: true, days: days3, rows });
   });
   r.get("/checkins", (req, res) => {
-    const u = me27();
+    const u = me28();
     const days3 = Math.min(90, Math.max(1, Number(req.query.days) || 14));
     const since = Date.now() - days3 * 864e5;
     const memberId = req.query.memberId ? String(req.query.memberId) : "";
@@ -76305,12 +76374,12 @@ function createTeamRouter() {
     res.json({ success: true, checkins: list });
   });
   r.get("/checkins/:id/selfie", (req, res) => {
-    const c = db.getState().siteCheckins.find((x) => x.id === req.params.id && x.employerId === me27().id);
+    const c = db.getState().siteCheckins.find((x) => x.id === req.params.id && x.employerId === me28().id);
     if (!c?.selfie) return res.status(404).json({ error: "No selfie stored for this check-in" });
     res.json({ success: true, selfie: c.selfie });
   });
   r.get("/incentives", (_req, res) => {
-    const u = me27();
+    const u = me28();
     const state = db.getState();
     const team = mine3(u.id);
     const teamIds = new Set(team.map((m) => m.id));
@@ -76337,7 +76406,7 @@ function createTeamRouter() {
     res.json({ success: true, rows, note: "Incentive is calculated on brokerage of approved bookings of leads the member worked. GENZ only calculates \u2014 you pay your employee yourself. Members never see these figures." });
   });
   r.get("/", (_req, res) => {
-    const u = me27();
+    const u = me28();
     const state = db.getState();
     const team = mine3(u.id);
     const ids2 = new Set(team.map((m) => m.id));
@@ -76366,7 +76435,7 @@ function createTeamRouter() {
     res.json({ success: true, members: members2, max: MAX_TEAM });
   });
   r.post("/", rateLimit("team-create", 20, 60 * 6e4), (req, res) => {
-    const u = me27();
+    const u = me28();
     if (u.verificationStatus !== "VERIFIED") return res.status(403).json({ error: "Your account must be verified first" });
     const p = createSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid details" });
@@ -76408,7 +76477,7 @@ function createTeamRouter() {
     res.json({ success: true, member: { id: m.id, name: m.name, phone: m.phone, teamTitle: m.teamTitle, teamRole: m.teamRole }, loginId: phone.slice(-10), temporaryPassword: temp, note: "Shown once. The member must change it at first sign-in." });
   });
   r.put("/:id", (req, res) => {
-    const u = me27();
+    const u = me28();
     const m = member(req.params.id, u.id);
     if (!m) return res.status(404).json({ error: "Team member not found" });
     if (req.body?.incentivePct !== void 0) {
@@ -76444,7 +76513,7 @@ function createTeamRouter() {
     res.json({ success: true });
   });
   r.post("/:id/reset-password", rateLimit("team-reset", 20, 60 * 6e4), (req, res) => {
-    const u = me27();
+    const u = me28();
     const m = member(req.params.id, u.id);
     if (!m) return res.status(404).json({ error: "Team member not found" });
     const temp = randomPassword();
@@ -76456,7 +76525,7 @@ function createTeamRouter() {
     res.json({ success: true, loginId: digits(m.phone).slice(-10), temporaryPassword: temp, note: "Shown once." });
   });
   r.post("/allot/lead", (req, res) => {
-    const u = me27();
+    const u = me28();
     const state = db.getState();
     const lead = state.crmLeads.find((l) => l.id === String(req.body?.leadId || ""));
     if (!lead || lead.associateId !== u.id && lead.builderId !== u.id) return res.status(404).json({ error: "Lead not found" });
@@ -76479,7 +76548,7 @@ function createTeamRouter() {
     res.json({ success: true, lead });
   });
   r.post("/allot/deal", (req, res) => {
-    const u = me27();
+    const u = me28();
     const state = db.getState();
     const deal = state.dealRooms.find((d) => d.id === String(req.body?.dealId || ""));
     if (!deal || !isDealBroker(u, deal)) return res.status(404).json({ error: "Deal room not found" });
@@ -76499,7 +76568,7 @@ function createTeamRouter() {
 
 // server/inventory2.ts
 var import_express19 = __toESM(require_express2(), 1);
-import crypto14 from "node:crypto";
+import crypto15 from "node:crypto";
 var nowIso12 = () => (/* @__PURE__ */ new Date()).toISOString();
 var uid = (p) => `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 var postSchema = external_exports.object({
@@ -76521,23 +76590,23 @@ var shareSchema = external_exports.object({
 });
 function createInventoryDeskRouter() {
   const r = (0, import_express19.Router)();
-  const me27 = () => ctx().user;
-  const bad27 = (res, msg, code = 400) => res.status(code).json({ error: msg });
+  const me28 = () => ctx().user;
+  const bad28 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const audit9 = (id, action, details) => {
-    const u = me27();
+    const u = me28();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
   };
   const teamOf = (employerId) => db.getState().users.filter((x) => x.role === "TEAM_MEMBER" && x.employerId === employerId);
   r.get("/posts", needs("inventory:read"), (req, res) => {
-    const u = me27();
-    const st24 = db.getState();
+    const u = me28();
+    const st25 = db.getState();
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : void 0;
     let rows;
     if (u.role === "TEAM_MEMBER") {
-      rows = st24.inventoryPosts.filter((p) => p.employerId === u.employerId && postIsLive(p) && (p.memberIds.length === 0 || p.memberIds.includes(u.id)));
+      rows = st25.inventoryPosts.filter((p) => p.employerId === u.employerId && postIsLive(p) && (p.memberIds.length === 0 || p.memberIds.includes(u.id)));
     } else if (u.role === "BROKER" || u.role === "DEVELOPER_BUILDER") {
-      rows = st24.inventoryPosts.filter((p) => p.employerId === u.id);
-    } else return bad27(res, "Not available", 403);
+      rows = st25.inventoryPosts.filter((p) => p.employerId === u.id);
+    } else return bad28(res, "Not available", 403);
     if (projectId) rows = rows.filter((p) => p.projectId === projectId);
     const out = rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100).map((p) => ({
       ...p,
@@ -76549,24 +76618,24 @@ function createInventoryDeskRouter() {
     res.json({ success: true, posts: u.role === "TEAM_MEMBER" ? out.map(({ showPrice, ...x }) => ({ ...x, showPrice: showPrice && policyOf(u).invPrice })) : out });
   });
   r.post("/posts", needs("team:manage"), (req, res) => {
-    const u = me27();
-    const st24 = db.getState();
-    if (u.role !== "BROKER" && u.role !== "DEVELOPER_BUILDER") return bad27(res, "Only a partner or a builder can post units to a team", 403);
+    const u = me28();
+    const st25 = db.getState();
+    if (u.role !== "BROKER" && u.role !== "DEVELOPER_BUILDER") return bad28(res, "Only a partner or a builder can post units to a team", 403);
     const parsed = postSchema.safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid post");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid post");
     const d = parsed.data;
     const a = actorFor(u, d.projectId);
-    if (!a) return bad27(res, "Project not found", 404);
+    if (!a) return bad28(res, "Project not found", 404);
     const actor = a.actor;
-    const units = st24.inventoryUnits.filter((x) => x.projectId === d.projectId && d.unitIds.includes(x.id));
-    if (units.length !== new Set(d.unitIds).size) return bad27(res, "Some units are not part of this project");
+    const units = st25.inventoryUnits.filter((x) => x.projectId === d.projectId && d.unitIds.includes(x.id));
+    if (units.length !== new Set(d.unitIds).size) return bad28(res, "Some units are not part of this project");
     for (const x of units) {
-      if (!seenBy(actor, a.project, x).visible) return bad27(res, `Unit ${x.label} is not open to you`);
-      if (x.status !== "AVAILABLE") return bad27(res, `Unit ${x.label} is not available any more`, 409);
+      if (!seenBy(actor, a.project, x).visible) return bad28(res, `Unit ${x.label} is not open to you`);
+      if (x.status !== "AVAILABLE") return bad28(res, `Unit ${x.label} is not available any more`, 409);
     }
     const mineIds = new Set(teamOf(u.id).map((x) => x.id));
-    if (d.memberIds.some((id) => !mineIds.has(id))) return bad27(res, "Pick only your own team members");
-    if (st24.inventoryPosts.filter((p) => p.employerId === u.id && postIsLive(p)).length >= MAX_ACTIVE_POSTS) return bad27(res, `You can keep ${MAX_ACTIVE_POSTS} live posts \u2014 end an old one first`, 409);
+    if (d.memberIds.some((id) => !mineIds.has(id))) return bad28(res, "Pick only your own team members");
+    if (st25.inventoryPosts.filter((p) => p.employerId === u.id && postIsLive(p)).length >= MAX_ACTIVE_POSTS) return bad28(res, `You can keep ${MAX_ACTIVE_POSTS} live posts \u2014 end an old one first`, 409);
     const canPrice = units.every((x) => seenBy(actor, a.project, x).price);
     const post = {
       id: uid("POST"),
@@ -76583,15 +76652,15 @@ function createInventoryDeskRouter() {
       endsAt: d.endsAt,
       active: true
     };
-    st24.inventoryPosts.unshift(post);
+    st25.inventoryPosts.unshift(post);
     db.save();
     audit9(post.id, "INVENTORY_POSTED", `${u.name} posted ${units.length} unit(s) of ${a.project.projectName} to ${d.memberIds.length ? `${d.memberIds.length} team member(s)` : "the whole team"} (price ${post.showPrice ? "shown" : "hidden"}, features ${post.showFeatures ? "shown" : "hidden"})`);
     res.json({ success: true, post, priceCapped: d.showPrice && !canPrice });
   });
   r.post("/posts/:id/end", needs("team:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = db.getState().inventoryPosts.find((x) => x.id === req.params.id && x.employerId === u.id);
-    if (!p) return bad27(res, "Post not found", 404);
+    if (!p) return bad28(res, "Post not found", 404);
     p.active = false;
     db.save();
     audit9(p.id, "INVENTORY_POST_ENDED", `${u.name} ended a team post`);
@@ -76618,17 +76687,17 @@ function createInventoryDeskRouter() {
     return { project, actor, units, canPrice, canFeatures };
   };
   r.post("/shares", needShare, rateLimit("invshare-create", 60, 24 * 36e5), (req, res) => {
-    const u = me27();
-    const st24 = db.getState();
+    const u = me28();
+    const st25 = db.getState();
     const parsed = shareSchema.safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid request");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid request");
     const d = parsed.data;
     const rs = resolve(u, d.projectId, d.unitIds);
-    if ("error" in rs) return bad27(res, rs.error, rs.code || 400);
-    if (st24.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return bad27(res, "Too many links \u2014 revoke old ones first", 409);
+    if ("error" in rs) return bad28(res, rs.error, rs.code || 400);
+    if (st25.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return bad28(res, "Too many links \u2014 revoke old ones first", 409);
     const flags = capShareFlags({ showPrice: d.showPrice, showFeatures: d.showFeatures }, rs.canPrice, rs.canFeatures);
     const link = {
-      token: crypto14.randomBytes(8).toString("base64url"),
+      token: crypto15.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: "UNITS",
       refId: d.projectId,
@@ -76643,15 +76712,15 @@ function createInventoryDeskRouter() {
       seconds: {},
       viewLog: []
     };
-    st24.shareLinks.unshift(link);
+    st25.shareLinks.unshift(link);
     db.save();
     audit9(link.token, "INVENTORY_SHARED", `${u.name} made a customer link for ${rs.units.length} unit(s) of ${rs.project.projectName} (price ${flags.showPrice ? "shown" : "hidden"}, features ${flags.showFeatures ? "shown" : "hidden"})`);
     res.json({ success: true, token: link.token, path: `/s/${link.token}`, showPrice: flags.showPrice, showFeatures: flags.showFeatures, capped: d.showPrice && !flags.showPrice || d.showFeatures && !flags.showFeatures });
   });
   r.get("/shares", needShare, (_req, res) => {
-    const u = me27();
-    const st24 = db.getState();
-    const mine3 = u.role === "TEAM_MEMBER" ? st24.shareLinks.filter((l) => l.ownerId === u.id && l.kind === "UNITS") : st24.shareLinks.filter((l) => l.kind === "UNITS" && (l.ownerId === u.id || l.employerId === u.id));
+    const u = me28();
+    const st25 = db.getState();
+    const mine3 = u.role === "TEAM_MEMBER" ? st25.shareLinks.filter((l) => l.ownerId === u.id && l.kind === "UNITS") : st25.shareLinks.filter((l) => l.kind === "UNITS" && (l.ownerId === u.id || l.employerId === u.id));
     const rows = mine3.map((l) => ({
       token: l.token,
       projectId: l.refId,
@@ -76670,9 +76739,9 @@ function createInventoryDeskRouter() {
     res.json({ success: true, links: rows });
   });
   r.post("/shares/:token/revoke", needShare, (req, res) => {
-    const u = me27();
+    const u = me28();
     const l = db.getState().shareLinks.find((x) => x.token === req.params.token && x.kind === "UNITS" && (x.ownerId === u.id || x.employerId === u.id));
-    if (!l) return bad27(res, "Link not found", 404);
+    if (!l) return bad28(res, "Link not found", 404);
     l.revoked = true;
     db.save();
     res.json({ success: true });
@@ -76699,11 +76768,11 @@ var requestSchema = external_exports.object({ note: external_exports.string().tr
 var statusSchema = external_exports.object({ status: external_exports.enum(["DRAFT", "LIVE", "PAUSED", "CLOSED"]), note: external_exports.string().trim().max(200).default("") });
 function createLaunchRouter() {
   const r = (0, import_express20.Router)();
-  const me27 = () => ctx().user;
-  const st24 = () => db.getState();
-  const bad27 = (res, msg, code = 400) => res.status(code).json({ error: msg });
+  const me28 = () => ctx().user;
+  const st25 = () => db.getState();
+  const bad28 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const audit9 = (id, action, details) => {
-    const u = me27();
+    const u = me28();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
   };
   const planRow = (p) => ({
@@ -76718,17 +76787,17 @@ function createLaunchRouter() {
     priceMax: p.priceMax,
     commissionPct: p.channelPartnerCommissionPct,
     hasRera: !!p.reraNumber,
-    partners: st24().associateMandates.filter((m) => m.projectId === p.id && mandateIsActive(m)).length,
+    partners: st25().associateMandates.filter((m) => m.projectId === p.id && mandateIsActive(m)).length,
     plan: p.launch ? { ...p.launch } : void 0
   });
   r.get("/admin/projects", needs("launch:manage"), (_req, res) => {
-    const rows = st24().builderProjects.filter((p) => p.status !== "ARCHIVED").map(planRow).sort((a, b) => (a.plan?.status === "LIVE" ? 0 : 1) - (b.plan?.status === "LIVE" ? 0 : 1) || a.projectName.localeCompare(b.projectName));
+    const rows = st25().builderProjects.filter((p) => p.status !== "ARCHIVED").map(planRow).sort((a, b) => (a.plan?.status === "LIVE" ? 0 : 1) - (b.plan?.status === "LIVE" ? 0 : 1) || a.projectName.localeCompare(b.projectName));
     res.json({ success: true, projects: rows });
   });
   r.get("/admin/segments", needs("launch:manage"), (_req, res) => {
     const staffOf = /* @__PURE__ */ new Map();
-    for (const x of st24().users) if (x.role === "TEAM_MEMBER" && x.employerId && x.verificationStatus === "VERIFIED") staffOf.set(x.employerId, (staffOf.get(x.employerId) || 0) + 1);
-    const members2 = st24().users.filter((u) => u.role === "BROKER" && u.verificationStatus === "VERIFIED").map((u) => {
+    for (const x of st25().users) if (x.role === "TEAM_MEMBER" && x.employerId && x.verificationStatus === "VERIFIED") staffOf.set(x.employerId, (staffOf.get(x.employerId) || 0) + 1);
+    const members2 = st25().users.filter((u) => u.role === "BROKER" && u.verificationStatus === "VERIFIED").map((u) => {
       const staff = staffOf.get(u.id) || 0;
       return { id: u.id, name: u.name, company: u.companyName || "", city: u.city, staff, segment: segmentOf(u, staff), override: u.firmSegment, tier: tierOf(u) };
     });
@@ -76737,66 +76806,66 @@ function createLaunchRouter() {
     res.json({ success: true, counts: counts4, members: members2.sort((a, b) => a.segment.localeCompare(b.segment) || a.name.localeCompare(b.name)) });
   });
   r.put("/admin/partners/:id/segment", needs("launch:manage"), (req, res) => {
-    const u = st24().users.find((x) => x.id === req.params.id && x.role === "BROKER");
-    if (!u) return bad27(res, "Partner not found", 404);
-    if (tierOf(u) === "TIER2") return bad27(res, "A local associate (no RERA no.) cannot be moved to a RERA group \u2014 add the RERA registration first", 409);
+    const u = st25().users.find((x) => x.id === req.params.id && x.role === "BROKER");
+    if (!u) return bad28(res, "Partner not found", 404);
+    if (tierOf(u) === "TIER2") return bad28(res, "A local associate (no RERA no.) cannot be moved to a RERA group \u2014 add the RERA registration first", 409);
     const seg = req.body?.segment;
-    if (seg !== null && seg !== "BIG_FIRM" && seg !== "INDEPENDENT") return bad27(res, "Segment must be BIG_FIRM, INDEPENDENT or null (automatic)");
+    if (seg !== null && seg !== "BIG_FIRM" && seg !== "INDEPENDENT") return bad28(res, "Segment must be BIG_FIRM, INDEPENDENT or null (automatic)");
     if (seg === null) delete u.firmSegment;
     else u.firmSegment = seg;
     db.save();
-    audit9(u.id, "LAUNCH_SEGMENT_SET", `${me27().name} set ${u.name} to ${seg ?? "automatic (by team size)"}`);
+    audit9(u.id, "LAUNCH_SEGMENT_SET", `${me28().name} set ${u.name} to ${seg ?? "automatic (by team size)"}`);
     res.json({ success: true, segment: segmentFor(u) });
   });
   r.post("/admin/projects/:id/request", needs("launch:manage"), rateLimit("launch-req", 40, 24 * 36e5), (req, res) => {
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || p.status === "ARCHIVED") return bad27(res, "Project not found", 404);
+    if (!p || p.status === "ARCHIVED") return bad28(res, "Project not found", 404);
     const parsed = requestSchema.safeParse(req.body || {});
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid request");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid request");
     const plan = p.launch ?? emptyPlan();
-    if (plan.consent === "GRANTED") return bad27(res, "The builder has already agreed \u2014 plan the launch", 409);
-    if (plan.consent === "REQUESTED") return bad27(res, "A request is already waiting for the builder", 409);
+    if (plan.consent === "GRANTED") return bad28(res, "The builder has already agreed \u2014 plan the launch", 409);
+    if (plan.consent === "REQUESTED") return bad28(res, "A request is already waiting for the builder", 409);
     plan.consent = "REQUESTED";
-    plan.requestedBy = me27().name;
+    plan.requestedBy = me28().name;
     plan.requestedAt = nowIso13();
     plan.requestNote = parsed.data.note;
     plan.decidedAt = void 0;
     plan.decidedBy = void 0;
-    pushHistory(plan, me27().name, "Asked the builder to let GENZ launch this project to the network");
+    pushHistory(plan, me28().name, "Asked the builder to let GENZ launch this project to the network");
     p.launch = plan;
     db.save();
-    audit9(p.id, "LAUNCH_REQUESTED", `${me27().name} asked ${p.builderName} for permission to launch ${p.projectName} on the GENZ network`);
+    audit9(p.id, "LAUNCH_REQUESTED", `${me28().name} asked ${p.builderName} for permission to launch ${p.projectName} on the GENZ network`);
     res.json({ success: true, plan });
   });
   r.put("/admin/projects/:id/plan", needs("launch:manage"), (req, res) => {
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || p.status === "ARCHIVED") return bad27(res, "Project not found", 404);
-    if (!p.launch || p.launch.consent !== "GRANTED") return bad27(res, "The builder has not agreed to a GENZ launch yet", 409);
+    if (!p || p.status === "ARCHIVED") return bad28(res, "Project not found", 404);
+    if (!p.launch || p.launch.consent !== "GRANTED") return bad28(res, "The builder has not agreed to a GENZ launch yet", 409);
     const next2 = cleanPlanInput(req.body || {}, p.launch);
-    if (typeof next2 === "string") return bad27(res, next2);
-    pushHistory(next2, me27().name, `Launch plan edited${p.launch.status === "LIVE" ? " (while live)" : ""}`);
+    if (typeof next2 === "string") return bad28(res, next2);
+    pushHistory(next2, me28().name, `Launch plan edited${p.launch.status === "LIVE" ? " (while live)" : ""}`);
     p.launch = next2;
     db.save();
-    audit9(p.id, "LAUNCH_PLAN_SET", `${me27().name} set the launch plan of ${p.projectName}: big firms ${next2.waves.BIG_FIRM.on ? next2.waves.BIG_FIRM.at.slice(0, 10) : "off"}, independents ${next2.waves.INDEPENDENT.on ? next2.waves.INDEPENDENT.at.slice(0, 10) : "off"}, locals ${next2.waves.LOCAL.mode}`);
+    audit9(p.id, "LAUNCH_PLAN_SET", `${me28().name} set the launch plan of ${p.projectName}: big firms ${next2.waves.BIG_FIRM.on ? next2.waves.BIG_FIRM.at.slice(0, 10) : "off"}, independents ${next2.waves.INDEPENDENT.on ? next2.waves.INDEPENDENT.at.slice(0, 10) : "off"}, locals ${next2.waves.LOCAL.mode}`);
     res.json({ success: true, plan: next2 });
   });
   r.post("/admin/projects/:id/status", needs("launch:manage"), (req, res) => {
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || p.status === "ARCHIVED") return bad27(res, "Project not found", 404);
+    if (!p || p.status === "ARCHIVED") return bad28(res, "Project not found", 404);
     const plan = p.launch;
-    if (!plan || plan.consent !== "GRANTED") return bad27(res, "The builder has not agreed to a GENZ launch yet", 409);
+    if (!plan || plan.consent !== "GRANTED") return bad28(res, "The builder has not agreed to a GENZ launch yet", 409);
     const parsed = statusSchema.safeParse(req.body || {});
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid status");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid status");
     const to = parsed.data.status;
     if (to === "LIVE") {
-      if (!VISIBLE_STATUS.includes(p.status)) return bad27(res, "This project is not taking new partners (status must be Active launch or Pre-booking)", 409);
-      if ((p.access || "OPEN_APPLY") !== "OPEN_APPLY") return bad27(res, "The builder set this project to invite-only. Ask the builder to open it to applications first.", 409);
+      if (!VISIBLE_STATUS.includes(p.status)) return bad28(res, "This project is not taking new partners (status must be Active launch or Pre-booking)", 409);
+      if ((p.access || "OPEN_APPLY") !== "OPEN_APPLY") return bad28(res, "The builder set this project to invite-only. Ask the builder to open it to applications first.", 409);
     }
-    if (plan.status === to) return bad27(res, `Already ${to.toLowerCase()}`, 409);
+    if (plan.status === to) return bad28(res, `Already ${to.toLowerCase()}`, 409);
     plan.status = to;
-    pushHistory(plan, me27().name, `Launch ${to.toLowerCase()}${parsed.data.note ? ` \u2014 ${parsed.data.note}` : ""}`);
+    pushHistory(plan, me28().name, `Launch ${to.toLowerCase()}${parsed.data.note ? ` \u2014 ${parsed.data.note}` : ""}`);
     db.save();
-    audit9(p.id, `LAUNCH_${to}`, `${me27().name} set the GENZ launch of ${p.projectName} to ${to}${parsed.data.note ? `: ${parsed.data.note}` : ""}`);
+    audit9(p.id, `LAUNCH_${to}`, `${me28().name} set the GENZ launch of ${p.projectName} to ${to}${parsed.data.note ? `: ${parsed.data.note}` : ""}`);
     res.json({ success: true, plan });
   });
   const ownProject = (u, id) => {
@@ -76804,8 +76873,8 @@ function createLaunchRouter() {
     return p && u.role === "DEVELOPER_BUILDER" && p.builderId === u.id ? p : void 0;
   };
   r.get("/builder/projects", needs("pcontrol:manage"), (_req, res) => {
-    const u = me27();
-    const rows = st24().builderProjects.filter((p) => p.builderId === u.id && p.status !== "ARCHIVED").map((p) => ({
+    const u = me28();
+    const rows = st25().builderProjects.filter((p) => p.builderId === u.id && p.status !== "ARCHIVED").map((p) => ({
       id: p.id,
       projectName: p.projectName,
       status: p.status,
@@ -76815,28 +76884,28 @@ function createLaunchRouter() {
     res.json({ success: true, projects: rows });
   });
   r.post("/builder/projects/:id/consent", needs("pcontrol:manage"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = ownProject(u, req.params.id);
-    if (!p) return bad27(res, "Project not found", 404);
+    if (!p) return bad28(res, "Project not found", 404);
     const decision = req.body?.decision;
     const note5 = String(req.body?.note || "").trim().slice(0, 200);
-    if (!["GRANT", "DECLINE", "WITHDRAW"].includes(decision)) return bad27(res, "Decision must be GRANT, DECLINE or WITHDRAW");
+    if (!["GRANT", "DECLINE", "WITHDRAW"].includes(decision)) return bad28(res, "Decision must be GRANT, DECLINE or WITHDRAW");
     const plan = p.launch ?? emptyPlan();
     const at = nowIso13();
     if (decision === "GRANT") {
-      if (plan.consent === "GRANTED") return bad27(res, "Already agreed", 409);
+      if (plan.consent === "GRANTED") return bad28(res, "Already agreed", 409);
       plan.consent = "GRANTED";
       plan.decidedBy = u.name;
       plan.decidedAt = at;
       pushHistory(plan, u.name, plan.requestedAt ? "Builder agreed to the GENZ launch" : "Builder invited GENZ to launch this project", at);
     } else if (decision === "DECLINE") {
-      if (plan.consent !== "REQUESTED") return bad27(res, "There is no pending request to decline", 409);
+      if (plan.consent !== "REQUESTED") return bad28(res, "There is no pending request to decline", 409);
       plan.consent = "DECLINED";
       plan.decidedBy = u.name;
       plan.decidedAt = at;
       pushHistory(plan, u.name, `Builder declined the GENZ launch${note5 ? ` \u2014 ${note5}` : ""}`, at);
     } else {
-      if (plan.consent !== "GRANTED") return bad27(res, "Nothing to withdraw", 409);
+      if (plan.consent !== "GRANTED") return bad28(res, "Nothing to withdraw", 409);
       plan.consent = "DECLINED";
       plan.status = "CLOSED";
       plan.decidedBy = u.name;
@@ -76849,20 +76918,20 @@ function createLaunchRouter() {
     res.json({ success: true, consent: plan.consent, status: plan.status });
   });
   r.get("/feed", needs("launch:read"), (_req, res) => {
-    const u = me27();
+    const u = me28();
     const seg = launchSegmentFor(u);
     if (!seg || u.verificationStatus !== "VERIFIED") return res.json({ success: true, segment: seg, items: [] });
     const now = Date.now();
     const items = [];
-    for (const p of st24().builderProjects) {
+    for (const p of st25().builderProjects) {
       if (!p.launch || p.status === "ARCHIVED") continue;
-      const view7 = launchView(p.launch, seg, now);
-      if (view7 === "HIDDEN") continue;
-      const m = st24().associateMandates.find((x) => x.projectId === p.id && x.brokerId === u.id);
-      const base = { id: p.id, projectName: p.projectName, city: p.city, locality: p.locality, headline: p.launch.headline, view: view7 };
-      if (view7 === "OPEN") {
+      const view8 = launchView(p.launch, seg, now);
+      if (view8 === "HIDDEN") continue;
+      const m = st25().associateMandates.find((x) => x.projectId === p.id && x.brokerId === u.id);
+      const base = { id: p.id, projectName: p.projectName, city: p.city, locality: p.locality, headline: p.launch.headline, view: view8 };
+      if (view8 === "OPEN") {
         items.push({ ...base, builderName: p.builderName, projectType: p.projectType, projectStage: p.projectStage, launchDate: p.launchDate, priceStartingFrom: p.priceStartingFrom, priceMax: p.priceMax, defaultCommissionPct: p.channelPartnerCommissionPct, note: p.launch.note, relation: m?.status || "NONE" });
-      } else if (view7 === "SOON") {
+      } else if (view8 === "SOON") {
         items.push({ ...base, opensAt: p.launch.waves[seg].at });
       } else {
         items.push({ ...base, projectType: p.projectType, projectStage: p.projectStage, launchDate: p.launchDate, opensAt: p.launch.waves.LOCAL.at });
@@ -76963,11 +77032,11 @@ function badgesFor(verifiedInvitees) {
 
 // server/growth.ts
 var import_express31 = __toESM(require_express2(), 1);
-import crypto23 from "node:crypto";
+import crypto24 from "node:crypto";
 
 // server/reputation.ts
 var import_express30 = __toESM(require_express2(), 1);
-import crypto21 from "crypto";
+import crypto22 from "crypto";
 
 // server/community.ts
 var import_express21 = __toESM(require_express2(), 1);
@@ -77039,29 +77108,29 @@ var BADGES = [
   { min: 1e3, id: "champion", en: "Champion", hi: "\u091A\u0948\u0902\u092A\u093F\u092F\u0928" }
 ];
 function awardPoints(userId, kind, refId, points) {
-  const st24 = db.getState();
+  const st25 = db.getState();
   if (points <= 0) return false;
-  if (st24.pointEvents.some((e) => e.userId === userId && e.kind === kind && e.refId === refId)) return false;
+  if (st25.pointEvents.some((e) => e.userId === userId && e.kind === kind && e.refId === refId)) return false;
   const today = nowIso14().slice(0, 10);
-  const earnedToday = st24.pointEvents.filter((e) => e.userId === userId && e.points > 0 && e.at.startsWith(today)).reduce((a, e) => a + e.points, 0);
+  const earnedToday = st25.pointEvents.filter((e) => e.userId === userId && e.points > 0 && e.at.startsWith(today)).reduce((a, e) => a + e.points, 0);
   if (earnedToday + points > DAILY_POINT_CAP) return false;
-  st24.pointEvents.push({ id: `PT-${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, userId, kind, refId, points, at: nowIso14() });
+  st25.pointEvents.push({ id: `PT-${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, userId, kind, refId, points, at: nowIso14() });
   db.save();
   return true;
 }
 var sameParty2 = (a, b) => !a || !b || a.id === b.id || !!a.companyName && a.companyName.trim().toLowerCase() === (b.companyName || "").trim().toLowerCase() || digits(a.phone).slice(-10) === digits(b.phone).slice(-10);
-function syncPoints(u, st24 = db.getState()) {
-  for (const d of st24.dealRooms) {
+function syncPoints(u, st25 = db.getState()) {
+  for (const d of st25.dealRooms) {
     if (d.stage !== "Settled" || d.introducingBrokerId !== u.id && d.closingBrokerId !== u.id) continue;
-    const other = st24.users.find((x) => x.id === (d.introducingBrokerId === u.id ? d.closingBrokerId : d.introducingBrokerId));
+    const other = st25.users.find((x) => x.id === (d.introducingBrokerId === u.id ? d.closingBrokerId : d.introducingBrokerId));
     if (sameParty2(u, other)) continue;
     awardPoints(u.id, "DEAL_SETTLED", d.id, 25);
   }
-  for (const v of st24.siteVisits) if (v.brokerId === u.id && v.isVerified) awardPoints(u.id, "VISIT_VERIFIED", v.id, 3);
-  for (const x of st24.users) if (x.invitedById === u.id && x.verificationStatus === "VERIFIED" && !sameParty2(u, x)) awardPoints(u.id, "REFERRAL_VERIFIED", x.id, 15);
+  for (const v of st25.siteVisits) if (v.brokerId === u.id && v.isVerified) awardPoints(u.id, "VISIT_VERIFIED", v.id, 3);
+  for (const x of st25.users) if (x.invitedById === u.id && x.verificationStatus === "VERIFIED" && !sameParty2(u, x)) awardPoints(u.id, "REFERRAL_VERIFIED", x.id, 15);
 }
-function pointsSummary(u, st24 = db.getState()) {
-  const ev2 = st24.pointEvents.filter((e) => e.userId === u.id);
+function pointsSummary(u, st25 = db.getState()) {
+  const ev2 = st25.pointEvents.filter((e) => e.userId === u.id);
   const earned = ev2.filter((e) => e.points > 0).reduce((a, e) => a + e.points, 0);
   const balance = ev2.reduce((a, e) => a + e.points, 0);
   const month = nowIso14().slice(0, 7);
@@ -77076,9 +77145,9 @@ function pointsSummary(u, st24 = db.getState()) {
     cost: BOOST_COST
   };
 }
-var chapterView = (st24, c, u) => {
-  const members2 = st24.users.filter((x) => x.chapterId === c.id && x.verificationStatus === "VERIFIED");
-  const next2 = st24.chapterMeets.filter((m) => m.chapterId === c.id && new Date(m.at).getTime() >= Date.now() - 6 * 36e5).sort((a, b) => a.at.localeCompare(b.at))[0];
+var chapterView = (st25, c, u) => {
+  const members2 = st25.users.filter((x) => x.chapterId === c.id && x.verificationStatus === "VERIFIED");
+  const next2 = st25.chapterMeets.filter((m) => m.chapterId === c.id && new Date(m.at).getTime() >= Date.now() - 6 * 36e5).sort((a, b) => a.at.localeCompare(b.at))[0];
   return { id: c.id, name: c.name, city: c.city, zone: c.zone, captain: db.byId("users", c.captainId)?.name || null, members: members2.length, isMember: u.chapterId === c.id, isCaptain: c.captainId === u.id, nextMeet: next2 ? { id: next2.id, title: next2.title, at: next2.at } : null };
 };
 var canRunChapter = (u, c) => c.captainId === u.id || ["ADMIN", "SUPERADMIN"].includes(u.role);
@@ -77092,11 +77161,11 @@ function createCommunityRouter() {
   });
   r.post("/points/redeem", needs("daily:use"), rateLimit("redeem", 20, 60 * 6e4), (_req, res) => {
     const u = me9();
-    const st24 = db.getState();
+    const st25 = db.getState();
     syncPoints(u);
-    const sum = pointsSummary(u, st24);
+    const sum = pointsSummary(u, st25);
     if (sum.balance < BOOST_COST) return res.status(400).json({ error: `You need ${BOOST_COST} points for a 7-day profile boost (you have ${sum.balance}).` });
-    st24.pointEvents.push({ id: `PT-${Date.now().toString(36)}R`, userId: u.id, kind: "REDEEM_BOOST", refId: nowIso14(), points: -BOOST_COST, at: nowIso14() });
+    st25.pointEvents.push({ id: `PT-${Date.now().toString(36)}R`, userId: u.id, kind: "REDEEM_BOOST", refId: nowIso14(), points: -BOOST_COST, at: nowIso14() });
     const base = u.boostUntil && new Date(u.boostUntil).getTime() > Date.now() ? new Date(u.boostUntil).getTime() : Date.now();
     const stored = db.byId("users", u.id);
     stored.boostUntil = new Date(base + 7 * 864e5).toISOString();
@@ -77106,35 +77175,35 @@ function createCommunityRouter() {
   });
   r.get("/leaderboard", needs("daily:use"), (_req, res) => {
     const u = me9();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const month = nowIso14().slice(0, 7);
-    const pool = st24.users.filter((x) => x.role === "BROKER" && x.verificationStatus === "VERIFIED" && (u.chapterId ? x.chapterId === u.chapterId : normCity(x.city) === normCity(u.city)));
-    const rows = pool.map((x) => ({ id: x.id, name: x.name, company: x.companyName || "", points: st24.pointEvents.filter((e) => e.userId === x.id && e.points > 0 && e.at.startsWith(month)).reduce((a, e) => a + e.points, 0) })).filter((x) => x.points > 0).sort((a, b) => b.points - a.points).slice(0, 10);
+    const pool = st25.users.filter((x) => x.role === "BROKER" && x.verificationStatus === "VERIFIED" && (u.chapterId ? x.chapterId === u.chapterId : normCity(x.city) === normCity(u.city)));
+    const rows = pool.map((x) => ({ id: x.id, name: x.name, company: x.companyName || "", points: st25.pointEvents.filter((e) => e.userId === x.id && e.points > 0 && e.at.startsWith(month)).reduce((a, e) => a + e.points, 0) })).filter((x) => x.points > 0).sort((a, b) => b.points - a.points).slice(0, 10);
     res.json({ success: true, scope: u.chapterId ? "CHAPTER" : "CITY", month, rows, me: rows.findIndex((x) => x.id === u.id) + 1 || null });
   });
   r.get("/chapters", needs("chapter:read"), (_req, res) => {
     const u = me9();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const mine3 = normCity(u.city);
-    const list = st24.chapters.map((c) => chapterView(st24, c, u)).sort((a, b) => Number(normCity(b.city) === mine3) - Number(normCity(a.city) === mine3) || a.name.localeCompare(b.name));
+    const list = st25.chapters.map((c) => chapterView(st25, c, u)).sort((a, b) => Number(normCity(b.city) === mine3) - Number(normCity(a.city) === mine3) || a.name.localeCompare(b.name));
     res.json({ success: true, chapters: list, myChapterId: u.chapterId || null });
   });
   r.post("/chapters", needs("chapter:manage"), (req, res) => {
-    const st24 = db.getState();
+    const st25 = db.getState();
     const b = external_exports.object({ name: external_exports.string().trim().min(3).max(80), city: external_exports.string().trim().min(2).max(60), zone: external_exports.string().trim().max(60).default(""), captainId: external_exports.string().optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Chapter name and city are required" });
-    if (b.data.captainId && !st24.users.some((x) => x.id === b.data.captainId && x.role === "BROKER" && x.verificationStatus === "VERIFIED")) return res.status(400).json({ error: "Captain must be a verified broker" });
-    const c = { id: `CH-${pad(st24.chapters.length + 1)}`, name: b.data.name, city: normCity(b.data.city), zone: b.data.zone, captainId: b.data.captainId, createdAt: nowIso14(), posts: [] };
-    st24.chapters.push(c);
+    if (b.data.captainId && !st25.users.some((x) => x.id === b.data.captainId && x.role === "BROKER" && x.verificationStatus === "VERIFIED")) return res.status(400).json({ error: "Captain must be a verified broker" });
+    const c = { id: `CH-${pad(st25.chapters.length + 1)}`, name: b.data.name, city: normCity(b.data.city), zone: b.data.zone, captainId: b.data.captainId, createdAt: nowIso14(), posts: [] };
+    st25.chapters.push(c);
     db.save();
     audit9("CHAPTER_CREATED", c.id, `${c.name} (${c.city})`);
-    res.json({ success: true, chapter: chapterView(st24, c, me9()) });
+    res.json({ success: true, chapter: chapterView(st25, c, me9()) });
   });
   r.put("/chapters/:id/captain", needs("chapter:manage"), (req, res) => {
-    const st24 = db.getState();
-    const c = st24.chapters.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const c = st25.chapters.find((x) => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: "Chapter not found" });
-    const cap = st24.users.find((x) => x.id === req.body?.captainId && x.role === "BROKER" && x.verificationStatus === "VERIFIED");
+    const cap = st25.users.find((x) => x.id === req.body?.captainId && x.role === "BROKER" && x.verificationStatus === "VERIFIED");
     if (!cap) return res.status(400).json({ error: "Captain must be a verified broker" });
     c.captainId = cap.id;
     cap.chapterId = c.id;
@@ -77144,8 +77213,8 @@ function createCommunityRouter() {
   });
   r.post("/chapters/:id/join", needs("chapter:read"), (req, res) => {
     const u = me9();
-    const st24 = db.getState();
-    const c = st24.chapters.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const c = st25.chapters.find((x) => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: "Chapter not found" });
     if (normCity(c.city) !== normCity(u.city)) return res.status(400).json({ error: `This chapter is for ${c.city}. Your city is ${u.city || "not set"}.` });
     db.byId("users", u.id).chapterId = c.id;
@@ -77153,21 +77222,21 @@ function createCommunityRouter() {
     res.json({ success: true });
   });
   r.post("/chapters/leave", needs("chapter:read"), (_req, res) => {
-    const st24 = db.getState();
-    const x = st24.users.find((y) => y.id === me9().id);
+    const st25 = db.getState();
+    const x = st25.users.find((y) => y.id === me9().id);
     if (x) x.chapterId = void 0;
     db.save();
     res.json({ success: true });
   });
   r.get("/chapters/:id", needs("chapter:read"), (req, res) => {
     const u = me9();
-    const st24 = db.getState();
-    const c = st24.chapters.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const c = st25.chapters.find((x) => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: "Chapter not found" });
     const admin = ["ADMIN", "SUPERADMIN"].includes(u.role);
     if (u.chapterId !== c.id && !admin) return res.status(403).json({ error: "Join this chapter to see its members and meets." });
     const person2 = (x) => ({ id: x.id, name: x.name, company: x.companyName || "", trustScore: x.trustScore ?? null, card: x.publicCard?.enabled && x.referralCode ? `/c/${x.referralCode}` : null });
-    const meets = st24.chapterMeets.filter((m) => m.chapterId === c.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30).map((m) => {
+    const meets = st25.chapterMeets.filter((m) => m.chapterId === c.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30).map((m) => {
       const attended = m.attended.includes(u.id) || canRunChapter(u, c);
       return {
         id: m.id,
@@ -77179,7 +77248,7 @@ function createCommunityRouter() {
         attendees: new Date(m.at).getTime() < Date.now() && attended ? m.attended.map((id) => db.byId("users", id)).filter(Boolean).map((x) => person2(x)) : void 0
       };
     });
-    res.json({ success: true, chapter: chapterView(st24, c, u), members: st24.users.filter((x) => x.chapterId === c.id && x.verificationStatus === "VERIFIED").map(person2), posts: c.posts.slice(-20).reverse().map((p) => ({ ...p, by: db.byId("users", p.by)?.name || "Captain" })), meets, canRun: canRunChapter(u, c) });
+    res.json({ success: true, chapter: chapterView(st25, c, u), members: st25.users.filter((x) => x.chapterId === c.id && x.verificationStatus === "VERIFIED").map(person2), posts: c.posts.slice(-20).reverse().map((p) => ({ ...p, by: db.byId("users", p.by)?.name || "Captain" })), meets, canRun: canRunChapter(u, c) });
   });
   r.post("/chapters/:id/posts", needs("chapter:read"), rateLimit("chpost", 30, 60 * 6e4), (req, res) => {
     const u = me9();
@@ -77195,23 +77264,23 @@ function createCommunityRouter() {
   });
   r.post("/chapters/:id/meets", needs("chapter:read"), rateLimit("chmeet", 20, 60 * 6e4), (req, res) => {
     const u = me9();
-    const st24 = db.getState();
-    const c = st24.chapters.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const c = st25.chapters.find((x) => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: "Chapter not found" });
     if (!canRunChapter(u, c)) return res.status(403).json({ error: "Only the City Captain can schedule meets." });
     const b = external_exports.object({ title: external_exports.string().trim().min(3).max(100), at: external_exports.string().datetime(), venue: external_exports.string().trim().min(2).max(160) }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Title, date/time and venue are required" });
-    const m = { id: `MEET-${pad(st24.chapterMeets.length + 1)}`, chapterId: c.id, ...b.data, createdBy: u.id, rsvps: [], attended: [], createdAt: nowIso14() };
-    st24.chapterMeets.push(m);
+    const m = { id: `MEET-${pad(st25.chapterMeets.length + 1)}`, chapterId: c.id, ...b.data, createdBy: u.id, rsvps: [], attended: [], createdAt: nowIso14() };
+    st25.chapterMeets.push(m);
     db.save();
     res.json({ success: true, meet: m });
     const when2 = new Date(m.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-    for (const x of st24.users) if (x.chapterId === c.id && x.id !== u.id && x.verificationStatus === "VERIFIED") void pushTo(x.id, { kind: "community", title: `${c.name}: ${m.title}`, body: `${when2} \xB7 ${m.venue}`, url: "/?tab=community", tag: m.id });
+    for (const x of st25.users) if (x.chapterId === c.id && x.id !== u.id && x.verificationStatus === "VERIFIED") void pushTo(x.id, { kind: "community", title: `${c.name}: ${m.title}`, body: `${when2} \xB7 ${m.venue}`, url: "/?tab=community", tag: m.id });
   });
   r.post("/meets/:id/rsvp", needs("chapter:read"), (req, res) => {
     const u = me9();
-    const st24 = db.getState();
-    const m = st24.chapterMeets.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const m = st25.chapterMeets.find((x) => x.id === req.params.id);
     if (!m || u.chapterId !== m.chapterId) return res.status(404).json({ error: "Meet not found" });
     const going = req.body?.going !== false;
     const ex = m.rsvps.find((x) => x.userId === u.id);
@@ -77222,14 +77291,14 @@ function createCommunityRouter() {
   });
   r.post("/meets/:id/attendance", needs("chapter:read"), (req, res) => {
     const u = me9();
-    const st24 = db.getState();
-    const m = st24.chapterMeets.find((x) => x.id === req.params.id);
-    const c = m && st24.chapters.find((x) => x.id === m.chapterId);
+    const st25 = db.getState();
+    const m = st25.chapterMeets.find((x) => x.id === req.params.id);
+    const c = m && st25.chapters.find((x) => x.id === m.chapterId);
     if (!m || !c) return res.status(404).json({ error: "Meet not found" });
     if (!canRunChapter(u, c)) return res.status(403).json({ error: "Only the City Captain can mark attendance." });
     if (new Date(m.at).getTime() > Date.now()) return res.status(400).json({ error: "The meet has not happened yet." });
     const ids2 = Array.isArray(req.body?.userIds) ? req.body.userIds.filter((x) => typeof x === "string").slice(0, 200) : [];
-    const valid = ids2.filter((id) => st24.users.some((x) => x.id === id && x.chapterId === c.id));
+    const valid = ids2.filter((id) => st25.users.some((x) => x.id === id && x.chapterId === c.id));
     m.attended = [...new Set(valid)];
     for (const id of m.attended) awardPoints(id, "CHAPTER_ATTEND", m.id, 10);
     db.save();
@@ -77246,26 +77315,26 @@ function createCommunityRouter() {
   });
   r.post("/loans", needs("loan:submit"), rateLimit("loan", 20, 24 * 60 * 6e4), (req, res) => {
     const u = me9();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const p = loanSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Please check the form" });
     const now = nowIso14();
-    const l = { id: `LN-${pad(st24.loanReferrals.length + 1)}`, brokerId: u.id, ...p.data, city: normCity(p.data.city), status: "SUBMITTED", history: [{ at: now, status: "SUBMITTED", by: u.id }], createdAt: now, updatedAt: now };
-    st24.loanReferrals.push(l);
+    const l = { id: `LN-${pad(st25.loanReferrals.length + 1)}`, brokerId: u.id, ...p.data, city: normCity(p.data.city), status: "SUBMITTED", history: [{ at: now, status: "SUBMITTED", by: u.id }], createdAt: now, updatedAt: now };
+    st25.loanReferrals.push(l);
     db.save();
     audit9("LOAN_REFERRAL_SUBMITTED", l.id, "Home-loan referral submitted with client consent");
     res.json({ success: true, loan: l });
   });
   r.get("/loans", needs("loan:submit", "loan:manage"), (_req, res) => {
     const u = me9();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const all = ["ADMIN", "SUPERADMIN"].includes(u.role);
-    const list = st24.loanReferrals.filter((l) => all || l.brokerId === u.id).slice().reverse().map((l) => ({ ...l, brokerName: db.byId("users", l.brokerId)?.name || "\u2014" }));
+    const list = st25.loanReferrals.filter((l) => all || l.brokerId === u.id).slice().reverse().map((l) => ({ ...l, brokerName: db.byId("users", l.brokerId)?.name || "\u2014" }));
     res.json({ success: true, loans: list });
   });
   r.post("/loans/:id/status", needs("loan:manage"), (req, res) => {
-    const st24 = db.getState();
-    const l = st24.loanReferrals.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const l = st25.loanReferrals.find((x) => x.id === req.params.id);
     if (!l) return res.status(404).json({ error: "Referral not found" });
     const b = external_exports.object({ status: external_exports.enum(["SUBMITTED", "CONTACTED", "SANCTIONED", "DISBURSED", "REJECTED"]), sharePct: external_exports.coerce.number().min(0).max(100).optional(), notes: external_exports.string().trim().max(300).optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Invalid status" });
@@ -77280,11 +77349,11 @@ function createCommunityRouter() {
   });
   r.get("/academy", needs("academy:read"), (_req, res) => res.json({ success: true, done: db.getState().academyProgress.filter((p) => p.userId === me9().id).map((p) => p.lessonId) }));
   r.post("/academy/:id/done", needs("academy:read"), (req, res) => {
-    const st24 = db.getState();
+    const st25 = db.getState();
     const id = req.params.id;
     if (!LESSONS.some((l) => l.id === id)) return res.status(404).json({ error: "Lesson not found" });
-    if (!st24.academyProgress.some((p) => p.userId === me9().id && p.lessonId === id)) {
-      st24.academyProgress.push({ id: `${me9().id}:${id}`, userId: me9().id, lessonId: id, doneAt: nowIso14() });
+    if (!st25.academyProgress.some((p) => p.userId === me9().id && p.lessonId === id)) {
+      st25.academyProgress.push({ id: `${me9().id}:${id}`, userId: me9().id, lessonId: id, doneAt: nowIso14() });
       db.save();
     }
     res.json({ success: true });
@@ -77294,11 +77363,11 @@ function createCommunityRouter() {
 
 // server/publicPage.ts
 var import_express24 = __toESM(require_express2(), 1);
-import crypto17 from "node:crypto";
+import crypto18 from "node:crypto";
 
 // server/share.ts
 var import_express22 = __toESM(require_express2(), 1);
-import crypto15 from "node:crypto";
+import crypto16 from "node:crypto";
 
 // server/publicFooter.ts
 var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -77385,47 +77454,47 @@ function brandOf(u) {
   };
 }
 function sourcesFor(u) {
-  const st24 = db.getState();
-  const mandated = new Set(st24.associateMandates.filter((m) => m.brokerId === u.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status)).map((m) => m.projectId));
-  const projects = st24.builderProjects.filter((p) => u.role === "DEVELOPER_BUILDER" ? p.builderId === u.id : mandated.has(p.id) || p.status === "ACTIVE_LAUNCH" || p.status === "PRE_BOOKING").filter((p) => p.status !== "ARCHIVED").map((p) => ({ kind: "PROJECT", id: p.id, title: p.projectName, sub: `${p.locality}, ${p.city}`, price: `From ${inr6(p.priceStartingFrom)}`, lines: [p.projectType, ...(p.unitConfigurations || []).slice(0, 3), p.reraNumber ? `RERA ${p.reraNumber}` : ""].filter(Boolean) }));
-  const props = u.role === "BROKER" ? st24.properties.filter((p) => p.listingBrokerId === u.id && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus)).map((p) => ({ kind: "PROPERTY", id: p.id, title: p.title, sub: `${p.locality}, ${p.city}`, price: inr6(p.askingPrice), lines: [p.propertyType, p.transactionType, p.plotAreaSqFt ? `${p.plotAreaSqFt} sq ft` : ""].filter(Boolean) })) : [];
+  const st25 = db.getState();
+  const mandated = new Set(st25.associateMandates.filter((m) => m.brokerId === u.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status)).map((m) => m.projectId));
+  const projects = st25.builderProjects.filter((p) => u.role === "DEVELOPER_BUILDER" ? p.builderId === u.id : mandated.has(p.id) || p.status === "ACTIVE_LAUNCH" || p.status === "PRE_BOOKING").filter((p) => p.status !== "ARCHIVED").map((p) => ({ kind: "PROJECT", id: p.id, title: p.projectName, sub: `${p.locality}, ${p.city}`, price: `From ${inr6(p.priceStartingFrom)}`, lines: [p.projectType, ...(p.unitConfigurations || []).slice(0, 3), p.reraNumber ? `RERA ${p.reraNumber}` : ""].filter(Boolean) }));
+  const props = u.role === "BROKER" ? st25.properties.filter((p) => p.listingBrokerId === u.id && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus)).map((p) => ({ kind: "PROPERTY", id: p.id, title: p.title, sub: `${p.locality}, ${p.city}`, price: inr6(p.askingPrice), lines: [p.propertyType, p.transactionType, p.plotAreaSqFt ? `${p.plotAreaSqFt} sq ft` : ""].filter(Boolean) })) : [];
   return [...projects, ...props];
 }
 var canShare = (u, kind, refId) => sourcesFor(u).some((s) => s.kind === kind && s.id === refId);
 function createShareRouter() {
   const r = (0, import_express22.Router)();
-  const me27 = () => ctx().user;
+  const me28 = () => ctx().user;
   r.use(needs("share:use"));
-  r.get("/brand", (_req, res) => res.json({ success: true, brand: brandOf(me27()) }));
+  r.get("/brand", (_req, res) => res.json({ success: true, brand: brandOf(me28()) }));
   r.put("/brand", (req, res) => {
     const p = brandSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid details" });
-    const u = me27();
+    const u = me28();
     const stored = db.byId("users", u.id);
     stored.brand = { ...stored.brand, ...Object.fromEntries(Object.entries(p.data).filter(([, v]) => v !== void 0)) };
     if (p.data.logo === "") delete stored.brand.logo;
     db.save();
     res.json({ success: true, brand: brandOf(stored) });
   });
-  r.get("/sources", (_req, res) => res.json({ success: true, sources: sourcesFor(me27()) }));
+  r.get("/sources", (_req, res) => res.json({ success: true, sources: sourcesFor(me28()) }));
   r.get("/links", (_req, res) => {
-    const u = me27();
-    const st24 = db.getState();
-    const links = st24.shareLinks.filter((l) => l.ownerId === u.id).map((l) => {
+    const u = me28();
+    const st25 = db.getState();
+    const links = st25.shareLinks.filter((l) => l.ownerId === u.id).map((l) => {
       const title = l.kind === "PROJECT" ? db.byId("builderProjects", l.refId)?.projectName : l.kind === "UNITS" ? `${db.byId("builderProjects", l.refId)?.projectName || l.refId} \xB7 ${(l.unitIds || []).length} unit(s)` : db.byId("properties", l.refId)?.title;
       return { token: l.token, kind: l.kind, refId: l.refId, title: title || l.refId, clientLabel: l.clientLabel, lang: l.lang, createdAt: l.createdAt, views: l.views, lastViewAt: l.lastViewAt, seconds: l.seconds, revoked: !!l.revoked };
     }).sort((a, b) => (b.lastViewAt || b.createdAt).localeCompare(a.lastViewAt || a.createdAt));
     res.json({ success: true, links });
   });
   r.post("/links", rateLimit("share-create", 60, 24 * 60 * 6e4), (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = linkSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid request" });
     if (!canShare(u, p.data.kind, p.data.refId)) return res.status(404).json({ error: "You cannot share this item" });
-    const st24 = db.getState();
-    if (st24.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return res.status(409).json({ error: "Too many links \u2014 revoke old ones first" });
+    const st25 = db.getState();
+    if (st25.shareLinks.filter((l) => l.ownerId === u.id).length >= 500) return res.status(409).json({ error: "Too many links \u2014 revoke old ones first" });
     const link = {
-      token: crypto15.randomBytes(8).toString("base64url"),
+      token: crypto16.randomBytes(8).toString("base64url"),
       ownerId: u.id,
       kind: p.data.kind,
       refId: p.data.refId,
@@ -77436,12 +77505,12 @@ function createShareRouter() {
       seconds: {},
       viewLog: []
     };
-    st24.shareLinks.unshift(link);
+    st25.shareLinks.unshift(link);
     db.save();
     res.json({ success: true, token: link.token, path: `/s/${link.token}` });
   });
   r.post("/links/:token/revoke", (req, res) => {
-    const l = db.getState().shareLinks.find((x) => x.token === req.params.token && x.ownerId === me27().id);
+    const l = db.getState().shareLinks.find((x) => x.token === req.params.token && x.ownerId === me28().id);
     if (!l) return res.status(404).json({ error: "Link not found" });
     l.revoked = true;
     db.save();
@@ -77495,8 +77564,8 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
   });
   r.get("/:token", rateLimit("share-view", 120, 6e4), (req, res) => {
     res.set("Cache-Control", "no-store");
-    const st24 = db.getState();
-    const l = st24.shareLinks.find((x) => x.token === req.params.token);
+    const st25 = db.getState();
+    const l = st25.shareLinks.find((x) => x.token === req.params.token);
     const owner = l && db.byId("users", l.ownerId);
     const lang = l?.lang || "en";
     const t = T[lang];
@@ -77526,7 +77595,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       let off = 0;
       const cards = [];
       for (const id of l.unitIds || []) {
-        const x = st24.inventoryUnits.find((u) => u.id === id && u.projectId === p.id);
+        const x = st25.inventoryUnits.find((u) => u.id === id && u.projectId === p.id);
         const seen2 = x && seenBy(a.actor, p, x);
         if (!x || !seen2 || !seen2.visible || x.status !== "AVAILABLE") {
           off++;
@@ -77569,7 +77638,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     }
     const ua = String(req.headers["user-agent"] || "");
     if (!BOT.test(ua)) {
-      const key = crypto15.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
+      const key = crypto16.createHash("sha256").update(`${l.token}|${req.ip}|${ua}`).digest("hex").slice(0, 20);
       const prev = seen.get(key) || 0;
       if (Date.now() - prev > 2e4) {
         l.views += 1;
@@ -77914,7 +77983,7 @@ function videoKind(url3) {
 
 // server/partywatch.ts
 var import_express23 = __toESM(require_express2(), 1);
-import crypto16 from "crypto";
+import crypto17 from "crypto";
 
 // src/shared/partyWatchRules.ts
 var WATCH_CATEGORIES = [
@@ -77957,7 +78026,7 @@ var me10 = () => ctx().user;
 var bad8 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone10 = (p) => digits(String(p ?? "")).slice(-10);
 var PHONE_RE2 = /^[6-9]\d{9}$/;
-var hm = (tag, v) => crypto16.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hm = (tag, v) => crypto17.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var keyOf = (p) => hm("pw-phone", phone10(p));
 var note = (a, text) => {
   a.events.push({ at: nowIso15(), text });
@@ -78098,11 +78167,11 @@ function createPartyWatchRouter() {
     }
     let a = findAlert(phone);
     if (!a) {
-      a = { id: `PW-${crypto16.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso15(), updatedAt: nowIso15() };
+      a = { id: `PW-${crypto17.randomBytes(4).toString("hex").toUpperCase()}`, key: keyOf(phone), last4: phone.slice(-4), reports: [], level: "NONE", appeals: [], events: [], createdAt: nowIso15(), updatedAt: nowIso15() };
       st5().partyAlerts.unshift(a);
     }
     if (a.reports.some((x) => x.brokerId === u.id && x.status === "OPEN")) return bad8(res, "You already have an open report for this mobile \u2014 GENZ is reviewing it.", 409, { code: "ALREADY_REPORTED" });
-    const rep = { id: `PR-${crypto16.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso15(), evidence, status: "OPEN" };
+    const rep = { id: `PR-${crypto17.randomBytes(4).toString("hex")}`, brokerId: u.id, partyKind, category, partyName: name, note: text, at: nowIso15(), evidence, status: "OPEN" };
     a.reports.push(rep);
     const before = a.level;
     const after = refresh(a);
@@ -78128,7 +78197,7 @@ function createPartyWatchRouter() {
     const text = String(req.body?.note ?? "").trim().slice(0, 400);
     if (text.length < WATCH_LIMITS.noteMin) return bad8(res, `Write why this mark is wrong (at least ${WATCH_LIMITS.noteMin} characters)`, 400, { hi: `\u092F\u0939 \u0928\u093F\u0936\u093E\u0928 \u0917\u093C\u0932\u0924 \u0915\u094D\u092F\u094B\u0902 \u0939\u0948, \u0932\u093F\u0916\u0947\u0902 (\u0915\u092E \u0938\u0947 \u0915\u092E ${WATCH_LIMITS.noteMin} \u0905\u0915\u094D\u0937\u0930)`, code: "NOTE_SHORT" });
     if (a.appeals.some((x) => x.byId === u.id && x.status === "OPEN")) return bad8(res, "Your appeal is already with GENZ.", 409);
-    a.appeals.push({ id: `PA-${crypto16.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso15(), note: text, status: "OPEN" });
+    a.appeals.push({ id: `PA-${crypto17.randomBytes(3).toString("hex")}`, byId: u.id, byName: u.name, at: nowIso15(), note: text, status: "OPEN" });
     note(a, `Appeal by ${u.name}`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", a.id, "PARTY_WATCH_APPEAL", `${u.name} appealed the mark on \u2026${a.last4}`);
@@ -78299,7 +78368,7 @@ function pagePhotos(p) {
 var dealHi = (t) => t === "Sale" ? "\u092C\u093F\u0915\u094D\u0930\u0940" : t === "Rent" ? "\u0915\u093F\u0930\u093E\u092F\u093E" : "\u0932\u0940\u091C\u093C";
 var dealEn = (t) => t === "Sale" ? "For sale" : t === "Rent" ? "For rent" : "For lease";
 var areaOf = (p) => [p.builtUpAreaSqFt ? `${Math.round(p.builtUpAreaSqFt).toLocaleString("en-IN")} sq ft built-up` : "", p.plotAreaSqFt ? `${Math.round(p.plotAreaSqFt).toLocaleString("en-IN")} sq ft plot` : ""].filter(Boolean).join(" \xB7 ");
-var formSig = (uid3, t) => crypto17.createHmac("sha256", secret()).update(`pgform|${uid3}|${t}`).digest("base64url").slice(0, 24);
+var formSig = (uid3, t) => crypto18.createHmac("sha256", secret()).update(`pgform|${uid3}|${t}`).digest("base64url").slice(0, 24);
 var formToken = (uid3, now = Date.now()) => `${now}.${formSig(uid3, now)}`;
 var usedForms = /* @__PURE__ */ new Map();
 setInterval(() => {
@@ -78354,7 +78423,7 @@ document.addEventListener('contextmenu',function(e){if(e.target&&e.target.tagNam
 var f=document.getElementById('enq-form');if(f){f.addEventListener('submit',function(){var b=f.querySelector('button[type=submit]');if(b){setTimeout(function(){b.disabled=true;b.textContent='\\u092d\\u0947\\u091c \\u0930\\u0939\\u0947 \\u0939\\u0948\\u0902\\u2026 / Sending\\u2026'},0)}})}
 })();`;
 var gonePage = () => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Page not available</title><style>${CSS}</style></head><body><div class="w"><div class="card"><p class="empty">\u092F\u0939 \u092A\u0947\u091C \u0905\u092D\u0940 \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964<br>This page is not available.</p></div></div></body></html>`;
-var photoBox = (src, wm, label, w = 800, h = 500) => `<div class="ph${src ? "" : " nophoto"}"><canvas width="${w}" height="${h}"${src ? ` data-src="${esc4(src)}"` : ""} data-wm="${esc4(wm)}" aria-label="${esc4(label)}"></canvas><span class="np">\u{1F4F7} \u092B\u093C\u094B\u091F\u094B \u091C\u0932\u094D\u0926 / Photo coming soon</span>`;
+var photoBox = (src, wm, label2, w = 800, h = 500) => `<div class="ph${src ? "" : " nophoto"}"><canvas width="${w}" height="${h}"${src ? ` data-src="${esc4(src)}"` : ""} data-wm="${esc4(wm)}" aria-label="${esc4(label2)}"></canvas><span class="np">\u{1F4F7} \u092B\u093C\u094B\u091F\u094B \u091C\u0932\u094D\u0926 / Photo coming soon</span>`;
 function renderBrokerPage(req, res, u, o = {}) {
   const b = brandOf(u);
   const card2 = u.publicCard;
@@ -78441,7 +78510,7 @@ function createBrokerPagePublicRouter() {
       return res.status(429).send(gonePage());
     }
     headers(res);
-    const ck2 = `gzpv_${crypto17.createHash("sha1").update(u.id).digest("hex").slice(0, 10)}`;
+    const ck2 = `gzpv_${crypto18.createHash("sha1").update(u.id).digest("hex").slice(0, 10)}`;
     if (!BOT2.test(String(req.headers["user-agent"] || "")) && !parseCookies(req.headers.cookie)[ck2]) {
       u.publicCard.views = (u.publicCard.views || 0) + 1;
       db.save();
@@ -78491,7 +78560,7 @@ function createBrokerPagePublicRouter() {
     }
     const lvl = publicLevel(ph);
     const e = {
-      id: `PGE-${Date.now().toString(36)}${crypto17.randomBytes(3).toString("hex")}`,
+      id: `PGE-${Date.now().toString(36)}${crypto18.randomBytes(3).toString("hex")}`,
       brokerId: u.id,
       propertyId: home,
       name: draft.name,
@@ -78695,7 +78764,7 @@ function seedDemoPage() {
   }
   ensureReferralCode(u);
   u.publicCard = { ...u.publicCard || {}, enabled: true, showPhone: true, headline: u.publicCard?.headline || "Raipur ke verified ghar, plot aur dukaan \u2014 sahi daam, saaf kaagaz", areas: ["Shankar Nagar", "Telibandha", "Naya Raipur"], views: Math.max(u.publicCard?.views || 0, 37), homes: [...own2, ...theirs].map((p) => p.id), ownerOkAt: at(72) };
-  const mk = (name, phone, p, message, h, status = "NEW") => s.pageEnquiries.push({ id: `PGE-demo${crypto17.randomBytes(3).toString("hex")}`, brokerId: u.id, propertyId: p?.id, name, phone, message, consentAt: at(h), status, createdAt: at(h) });
+  const mk = (name, phone, p, message, h, status = "NEW") => s.pageEnquiries.push({ id: `PGE-demo${crypto18.randomBytes(3).toString("hex")}`, brokerId: u.id, propertyId: p?.id, name, phone, message, consentAt: at(h), status, createdAt: at(h) });
   mk("Neha Gupta", "9131100011", own2[0], "Is it still available? We can visit on Sunday.", 2);
   mk("Rahul Tiwari", "9131100012", theirs[0], void 0, 20);
   mk("Sunita Yadav", "9131100013", void 0, "2BHK on rent near Telibandha, up to 15,000.", 50, "CONTACTED");
@@ -78828,7 +78897,7 @@ function insightsFor(u) {
 var import_express25 = __toESM(require_express2(), 1);
 var import_express26 = __toESM(require_express2(), 1);
 var import_qrcode = __toESM(require_lib5(), 1);
-import crypto18 from "crypto";
+import crypto19 from "crypto";
 
 // src/shared/shopPartner.ts
 var PARTNER_LIMITS = {
@@ -78899,14 +78968,14 @@ var st8 = () => db.getState();
 var nowIso17 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me11 = () => ctx().user;
 var esc5 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha2 = (v) => crypto18.createHash("sha256").update(v).digest("hex");
-var hmac = (tag, v) => crypto18.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha2 = (v) => crypto19.createHash("sha256").update(v).digest("hex");
+var hmac = (tag, v) => crypto19.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone102 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE4 = /^[6-9]\d{9}$/;
-var newToken = () => crypto18.randomBytes(18).toString("base64url");
+var newToken = () => crypto19.randomBytes(18).toString("base64url");
 var QR_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-var newQrCode = () => Array.from(crypto18.randomBytes(8), (b) => QR_ALPHA[b % QR_ALPHA.length]).join("");
-var rid2 = (p) => `${p}-${crypto18.randomBytes(5).toString("hex")}`;
+var newQrCode = () => Array.from(crypto19.randomBytes(8), (b) => QR_ALPHA[b % QR_ALPHA.length]).join("");
+var rid2 = (p) => `${p}-${crypto19.randomBytes(5).toString("hex")}`;
 var smsOn = () => !!process.env.SMS_WEBHOOK_URL;
 var inr7 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var bad10 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
@@ -79146,8 +79215,8 @@ function createShopPartnerRouter() {
     db.save();
     res.json({ success: true, partner: partnerView(p) });
   });
-  for (const [path13, to, text] of [["pause", "PAUSED", "Paused \u2014 the QR form says \u201Cnot taking requests right now\u201D"], ["resume", "ACTIVE", "Resumed"], ["end", "ENDED", "Partnership ended \u2014 the QR stops; leads already in keep their terms"]]) {
-    r.post(`/:id/${path13}`, needs("partner:manage"), (req, res) => {
+  for (const [path14, to, text] of [["pause", "PAUSED", "Paused \u2014 the QR form says \u201Cnot taking requests right now\u201D"], ["resume", "ACTIVE", "Resumed"], ["end", "ENDED", "Partnership ended \u2014 the QR stops; leads already in keep their terms"]]) {
+    r.post(`/:id/${path14}`, needs("partner:manage"), (req, res) => {
       const p = mine3(req.params.id);
       if (!p) return bad10(res, "Partner not found", 404);
       if (p.status === "ENDED") return bad10(res, "This partnership has ended", 409);
@@ -79160,7 +79229,7 @@ function createShopPartnerRouter() {
       }
       hist(p, "BROKER", text);
       db.save();
-      audit2(p.id, `SHOP_PARTNER_${path13.toUpperCase()}`, `Shop QR partner ${p.id}: ${text}`);
+      audit2(p.id, `SHOP_PARTNER_${path14.toUpperCase()}`, `Shop QR partner ${p.id}: ${text}`);
       res.json({ success: true, partner: partnerView(p) });
     });
   }
@@ -79543,7 +79612,7 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
     const devices = p.devices || (p.devices = []);
     if (!dev) {
       if (devices.length >= PARTNER_LIMITS.devices) return gate(res, p, req.params.token, "\u092F\u0939 \u092A\u0947\u091C \u092A\u0939\u0932\u0947 \u0938\u0947 2 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0916\u0941\u0932\u093E \u0939\u0948\u0964 / Already open on 2 phones.", "phone", 403);
-      dev = crypto18.randomBytes(6).toString("hex");
+      dev = crypto19.randomBytes(6).toString("hex");
       devices.push({ id: dev, label: devLabel(req.headers["user-agent"]), firstAt: nowIso17(), lastAt: nowIso17() });
       hist(p, "PARTNER", `Opened the partner page on a phone (${devices[devices.length - 1].label})`);
     }
@@ -79731,7 +79800,7 @@ function seedDemoPartners() {
 
 // server/rentdesk.ts
 var import_express27 = __toESM(require_express2(), 1);
-import crypto19 from "node:crypto";
+import crypto20 from "node:crypto";
 
 // src/shared/rentRules.ts
 var RENT_LIMITS = {
@@ -79985,7 +80054,7 @@ function createRentRouter() {
       return bad11(res, "A running tenancy for this home is already on your Rent desk", 409, "DUPLICATE");
     const ts = nowIso18();
     const t = {
-      id: `TEN-${crypto19.randomBytes(5).toString("hex")}`,
+      id: `TEN-${crypto20.randomBytes(5).toString("hex")}`,
       brokerId: u.id,
       dealRoomId,
       propertyId,
@@ -80255,7 +80324,7 @@ function seedDemoRent() {
   const today = todayIst2();
   const ts = nowIso18();
   const mk = (place, owner, ownerPhone, tenant, tenantPhone, rent, deposit, startOn, police, agreement, extra = {}) => ({
-    id: `TEN-demo${crypto19.randomBytes(3).toString("hex")}`,
+    id: `TEN-demo${crypto20.randomBytes(3).toString("hex")}`,
     brokerId: u.id,
     place,
     ownerName: owner,
@@ -80293,7 +80362,7 @@ function seedDemoRent() {
 var import_express28 = __toESM(require_express2(), 1);
 var import_express29 = __toESM(require_express2(), 1);
 var import_qrcode2 = __toESM(require_lib5(), 1);
-import crypto20 from "crypto";
+import crypto21 from "crypto";
 
 // src/shared/dealClose.ts
 var CLOSE_AUTO_DAYS = 7;
@@ -80316,7 +80385,7 @@ var st10 = () => db.getState();
 var nowIso19 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me13 = () => ctx().user;
 var esc7 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha3 = (v) => crypto20.createHash("sha256").update(v).digest("hex");
+var sha3 = (v) => crypto21.createHash("sha256").update(v).digest("hex");
 var phone104 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE5 = /^[6-9]\d{9}$/;
 var UPI_RE = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
@@ -80420,10 +80489,10 @@ function createPaymentRequestRouter() {
     if (s.paymentRequests.some((x) => x.dealId === d.id && x.brokerId === u.id && x.party === party && ["SENT", "PARTY_SAYS_PAID"].includes(x.status))) return bad12(res, `You already have an open bill to the ${party === "OWNER" ? "owner" : "buyer"} on this deal \u2014 cancel it or mark it received first`, 409);
     const p = s.properties.find((x) => x.id === d.propertyId);
     const seq2 = s.paymentRequests.filter((x) => x.brokerId === u.id && x.number.includes(`/${fy()}/`)).length + 1;
-    const token = crypto20.randomBytes(18).toString("base64url");
+    const token = crypto21.randomBytes(18).toString("base64url");
     const now = nowIso19();
     const pr = {
-      id: `PRQ-${crypto20.randomBytes(5).toString("hex")}`,
+      id: `PRQ-${crypto21.randomBytes(5).toString("hex")}`,
       number: `${(u.brokerId || u.id).replace(/[^A-Za-z0-9-]/g, "").slice(-16)}/${fy()}/${String(seq2).padStart(4, "0")}`,
       dealId: d.id,
       brokerId: u.id,
@@ -80623,7 +80692,7 @@ function createReputationRouter() {
     const toId = String(req.body?.toId || "");
     const p = pendingFor(u).find((x) => x.refId === refId && x.toId === toId);
     if (!p) return res.status(404).json({ error: "Nothing to confirm here" });
-    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto21.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso20() };
+    const c = { id: `PC-${Date.now().toString(36).toUpperCase()}${crypto22.randomInt(100, 999)}`, kind: "DEAL_ROOM", refId, fromId: u.id, toId, note: String(req.body?.note || "").trim().slice(0, 200), at: nowIso20() };
     s.peerConfirms.push(c);
     awardPoints(toId, "PEER_CONFIRM", c.id, 10);
     db.save();
@@ -80706,7 +80775,7 @@ function shareCounts(s, uid3) {
 }
 
 // server/spam.ts
-import crypto22 from "node:crypto";
+import crypto23 from "node:crypto";
 
 // src/shared/spamRules.ts
 var NEW_ACCOUNT_DAYS = 7;
@@ -80721,9 +80790,9 @@ function filterMessage(u, text, now = Date.now(), demo = false) {
 }
 
 // server/spam.ts
-var sign2 = (body) => crypto22.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
+var sign2 = (body) => crypto23.createHmac("sha256", secret()).update("challenge:" + body).digest("base64url");
 function makeChallenge(now = Date.now()) {
-  const a = crypto22.randomInt(3, 15), b = crypto22.randomInt(2, 10);
+  const a = crypto23.randomInt(3, 15), b = crypto23.randomInt(2, 10);
   const body = Buffer.from(JSON.stringify({ a, b, t: now })).toString("base64url");
   return { question: `${a} + ${b}`, token: `${body}.${sign2(body)}` };
 }
@@ -80736,7 +80805,7 @@ function checkChallenge(token, answer, now = Date.now()) {
   const [body, sig] = String(token || "").split(".");
   if (!body || !sig) return "BAD";
   const good = sign2(body);
-  if (sig.length !== good.length || !crypto22.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
+  if (sig.length !== good.length || !crypto23.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return "BAD";
   try {
     const { a, b, t } = JSON.parse(Buffer.from(body, "base64url").toString());
     if (now - t > 10 * 6e4) return "EXPIRED";
@@ -80752,7 +80821,7 @@ function checkChallenge(token, answer, now = Date.now()) {
 var isNewAccount2 = (u, now = Date.now()) => isNewAccount(u, now, DEMO_MODE);
 var filterMessage2 = (u, text) => filterMessage(u, text, Date.now(), DEMO_MODE);
 function isFlood(userId, text) {
-  const key = `flood:${userId}:${crypto22.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
+  const key = `flood:${userId}:${crypto23.createHash("sha1").update(text.trim().toLowerCase()).digest("hex")}`;
   return hit(key, 2, 10 * 6e4) > 0;
 }
 function newAccountCap(kind, limit) {
@@ -80807,7 +80876,7 @@ function ensureReferralCode(u) {
   const taken = new Set(db.getState().users.map((x) => x.referralCode).filter(Boolean));
   let code = "";
   do {
-    code = `GZ-${letters}-${crypto23.randomInt(1e3, 1e4)}`;
+    code = `GZ-${letters}-${crypto24.randomInt(1e3, 1e4)}`;
   } while (taken.has(code));
   u.referralCode = code;
   db.save();
@@ -80827,16 +80896,16 @@ function nextResetId(list) {
 }
 var phoneKnown = (phone) => db.getState().users.some((u) => digits(u.phone).slice(-10) === digits(phone).slice(-10));
 function checklistFor(u) {
-  const st24 = db.getState();
-  const mine3 = st24.growthLeads.filter((l) => l.nominatorId === u.id);
-  const invitees = st24.users.filter((x) => x.invitedById === u.id);
+  const st25 = db.getState();
+  const mine3 = st25.growthLeads.filter((l) => l.nominatorId === u.id);
+  const invitees = st25.users.filter((x) => x.invitedById === u.id);
   const items = [
     { id: "kyc", en: "Get your KYC verified", hi: "\u0905\u092A\u0928\u093E KYC \u0938\u0924\u094D\u092F\u093E\u092A\u093F\u0924 \u0915\u0930\u093E\u090F\u0901", done: isVerified(u) }
   ];
   if (can(u, "share:use")) items.push({ id: "brand", en: "Set your brand (name, tagline, logo) in Share Kit", hi: "Share Kit \u092E\u0947\u0902 \u0905\u092A\u0928\u093E \u092C\u094D\u0930\u093E\u0902\u0921 (\u0928\u093E\u092E, \u091F\u0948\u0917\u0932\u093E\u0907\u0928, \u0932\u094B\u0917\u094B) \u0938\u0947\u091F \u0915\u0930\u0947\u0902", done: !!(u.brand?.tagline || u.brand?.logo) });
-  if (u.role === "BROKER") items.push({ id: "listing", en: "Post your first verified listing", hi: "\u0905\u092A\u0928\u0940 \u092A\u0939\u0932\u0940 \u0938\u0924\u094D\u092F\u093E\u092A\u093F\u0924 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u0921\u093E\u0932\u0947\u0902", done: st24.properties.some((p) => p.listingBrokerId === u.id) });
-  if (u.role === "DEVELOPER_BUILDER") items.push({ id: "project", en: "Launch your first project", hi: "\u0905\u092A\u0928\u093E \u092A\u0939\u0932\u093E \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0932\u0949\u0928\u094D\u091A \u0915\u0930\u0947\u0902", done: st24.builderProjects.some((p) => p.builderId === u.id) });
-  if (u.role === "BROKER" || u.role === "DEVELOPER_BUILDER") items.push({ id: "share", en: "Send one tracked link to a client", hi: "\u0915\u093F\u0938\u0940 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u094B \u090F\u0915 \u091F\u094D\u0930\u0948\u0915\u094D\u0921 \u0932\u093F\u0902\u0915 \u092D\u0947\u091C\u0947\u0902", done: st24.shareLinks.some((l) => l.ownerId === u.id) });
+  if (u.role === "BROKER") items.push({ id: "listing", en: "Post your first verified listing", hi: "\u0905\u092A\u0928\u0940 \u092A\u0939\u0932\u0940 \u0938\u0924\u094D\u092F\u093E\u092A\u093F\u0924 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u0921\u093E\u0932\u0947\u0902", done: st25.properties.some((p) => p.listingBrokerId === u.id) });
+  if (u.role === "DEVELOPER_BUILDER") items.push({ id: "project", en: "Launch your first project", hi: "\u0905\u092A\u0928\u093E \u092A\u0939\u0932\u093E \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0932\u0949\u0928\u094D\u091A \u0915\u0930\u0947\u0902", done: st25.builderProjects.some((p) => p.builderId === u.id) });
+  if (u.role === "BROKER" || u.role === "DEVELOPER_BUILDER") items.push({ id: "share", en: "Send one tracked link to a client", hi: "\u0915\u093F\u0938\u0940 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u094B \u090F\u0915 \u091F\u094D\u0930\u0948\u0915\u094D\u0921 \u0932\u093F\u0902\u0915 \u092D\u0947\u091C\u0947\u0902", done: st25.shareLinks.some((l) => l.ownerId === u.id) });
   items.push(
     { id: "card", en: "Switch on your public visiting card", hi: "\u0905\u092A\u0928\u093E \u092A\u092C\u094D\u0932\u093F\u0915 \u0935\u093F\u091C\u093C\u093F\u091F\u093F\u0902\u0917 \u0915\u093E\u0930\u094D\u0921 \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902", done: !!u.publicCard?.enabled },
     { id: "nominate", en: "Nominate your first trusted peer", hi: "\u0905\u092A\u0928\u0947 \u092A\u0939\u0932\u0947 \u092D\u0930\u094B\u0938\u0947\u092E\u0902\u0926 \u0938\u093E\u0925\u0940 \u0915\u094B \u0928\u093E\u092E\u093E\u0902\u0915\u093F\u0924 \u0915\u0930\u0947\u0902", done: mine3.length > 0 },
@@ -80852,7 +80921,7 @@ function shareTexts(u, code) {
 }
 function createGrowthRouter() {
   const r = (0, import_express31.Router)();
-  const me27 = () => ctx().user;
+  const me28 = () => ctx().user;
   r.get("/public/challenge", rateLimit("challenge", 60, 60 * 6e4), (_req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.json(makeChallenge());
@@ -80864,12 +80933,12 @@ function createGrowthRouter() {
     const chk = checkChallenge(d.challengeToken, d.challengeAnswer);
     if (chk !== "OK") return res.status(400).json({ error: chk === "TOO_FAST" ? "That was very quick \u2014 please wait a moment and try again." : "Please solve the small sum correctly (it refreshes if you reload).", code: "CHALLENGE" });
     const generic = { success: true, message: "Thank you! GENZ will contact you on WhatsApp once your city is opened for your role." };
-    const st24 = db.getState();
+    const st25 = db.getState();
     const phone = digits(d.phone).slice(-10);
-    if (phoneKnown(d.phone) || st24.growthLeads.some((l) => digits(l.phone).slice(-10) === phone && (l.status === "NEW" || l.status === "INVITED"))) return res.json(generic);
+    if (phoneKnown(d.phone) || st25.growthLeads.some((l) => digits(l.phone).slice(-10) === phone && (l.status === "NEW" || l.status === "INVITED"))) return res.json(generic);
     const nominator = d.ref ? findByCode(d.ref) : void 0;
     const lead = {
-      id: nextLeadId(st24.growthLeads),
+      id: nextLeadId(st25.growthLeads),
       name: d.name,
       phone: d.phone,
       city: normCity(d.city),
@@ -80882,7 +80951,7 @@ function createGrowthRouter() {
       createdAt: nowIso21(),
       updatedAt: nowIso21()
     };
-    st24.growthLeads.unshift(lead);
+    st25.growthLeads.unshift(lead);
     db.save();
     db.appendAuditEvent(nominator?.id || "PUBLIC", nominator?.role || "BUYER_TENANT", "SYSTEM", lead.id, "GROWTH_WAITLIST_JOINED", `${lead.role} request from ${lead.city}${nominator ? ` via ${nominator.name}'s code` : ""}`);
     res.json(generic);
@@ -80893,21 +80962,21 @@ function createGrowthRouter() {
     if (!parsed.success) return res.json(generic);
     const phone = digits(parsed.data).slice(-10);
     if (hit(`forgot-phone:${phone}`, 3, 24 * 60 * 6e4)) return res.json(generic);
-    const st24 = db.getState();
-    const matches = st24.users.filter((u) => digits(u.phone).slice(-10) === phone && u.verificationStatus !== "BLACKLISTED" && u.verificationStatus !== "REJECTED");
+    const st25 = db.getState();
+    const matches = st25.users.filter((u) => digits(u.phone).slice(-10) === phone && u.verificationStatus !== "BLACKLISTED" && u.verificationStatus !== "REJECTED");
     if (matches.length === 0) return res.json(generic);
-    if (st24.resetRequests.some((x) => x.status === "NEW" && x.phone === phone)) return res.json(generic);
-    st24.resetRequests.unshift({ id: nextResetId(st24.resetRequests), phone, userId: matches.length === 1 ? matches[0].id : void 0, status: "NEW", createdAt: nowIso21() });
+    if (st25.resetRequests.some((x) => x.status === "NEW" && x.phone === phone)) return res.json(generic);
+    st25.resetRequests.unshift({ id: nextResetId(st25.resetRequests), phone, userId: matches.length === 1 ? matches[0].id : void 0, status: "NEW", createdAt: nowIso21() });
     db.save();
     res.json(generic);
   });
   r.get("/me", needs("growth:nominate"), (_req, res) => {
-    const u = me27();
-    const st24 = db.getState();
+    const u = me28();
+    const st25 = db.getState();
     const code = ensureReferralCode(u);
-    const invitees = st24.users.filter((x) => x.invitedById === u.id);
+    const invitees = st25.users.filter((x) => x.invitedById === u.id);
     const verified2 = invitees.filter(isVerified).length;
-    const leads = st24.growthLeads.filter((l) => l.nominatorId === u.id).map((l) => ({ id: l.id, name: l.name, phone: l.phone, city: l.city, role: l.role, status: l.status, source: l.source, createdAt: l.createdAt, rejectReason: l.status === "REJECTED" ? void 0 : void 0 }));
+    const leads = st25.growthLeads.filter((l) => l.nominatorId === u.id).map((l) => ({ id: l.id, name: l.name, phone: l.phone, city: l.city, role: l.role, status: l.status, source: l.source, createdAt: l.createdAt, rejectReason: l.status === "REJECTED" ? void 0 : void 0 }));
     const checklist = checklistFor(u);
     res.json({
       success: true,
@@ -80923,19 +80992,19 @@ function createGrowthRouter() {
     });
   });
   r.post("/nominations", needs("growth:nominate"), rateLimit("nominate", 10, 24 * 60 * 6e4), (req, res) => {
-    const u = me27();
+    const u = me28();
     if (!isVerified(u)) return res.status(403).json({ error: "Your account must be verified before you can nominate others" });
     const p = nominateSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Please check the form" });
     const d = p.data;
-    const st24 = db.getState();
+    const st25 = db.getState();
     if (digits(d.phone).slice(-10) === digits(u.phone).slice(-10)) return res.status(400).json({ error: "That is your own number" });
     if (phoneKnown(d.phone)) return res.status(409).json({ error: "This person is already on GENZ" });
-    if (st24.growthLeads.some((l) => digits(l.phone).slice(-10) === digits(d.phone).slice(-10) && (l.status === "NEW" || l.status === "INVITED"))) {
+    if (st25.growthLeads.some((l) => digits(l.phone).slice(-10) === digits(d.phone).slice(-10) && (l.status === "NEW" || l.status === "INVITED"))) {
       return res.status(409).json({ error: "This person has already been nominated" });
     }
     const lead = {
-      id: nextLeadId(st24.growthLeads),
+      id: nextLeadId(st25.growthLeads),
       name: d.name,
       phone: d.phone,
       city: normCity(d.city),
@@ -80949,13 +81018,13 @@ function createGrowthRouter() {
       createdAt: nowIso21(),
       updatedAt: nowIso21()
     };
-    st24.growthLeads.unshift(lead);
+    st25.growthLeads.unshift(lead);
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", lead.id, "GROWTH_NOMINATED", `${u.name} nominated a ${d.role} in ${lead.city}`);
     res.json({ success: true, lead: { id: lead.id, name: lead.name, city: lead.city, role: lead.role, status: lead.status } });
   });
   r.put("/card", needs("growth:nominate"), (req, res) => {
-    const u = me27();
+    const u = me28();
     if (!isVerified(u)) return res.status(403).json({ error: "Your account must be verified first" });
     const p = cardSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid" });
@@ -80967,25 +81036,25 @@ function createGrowthRouter() {
     res.json({ success: true, card: { ...stored.publicCard, path: `/c/${stored.referralCode}` } });
   });
   r.get("/queue", needs("growth:manage"), (req, res) => {
-    const st24 = db.getState();
+    const st25 = db.getState();
     const status = String(req.query.status || "");
-    let list = st24.growthLeads;
+    let list = st25.growthLeads;
     if (status) list = list.filter((l) => l.status === status);
     res.json({
       success: true,
       leads: list.slice(0, 300).map((l) => ({ ...l, nominatorName: l.nominatorId ? db.byId("users", l.nominatorId)?.name : void 0 })),
-      resets: st24.resetRequests.filter((x) => x.status === "NEW").map((x) => ({ ...x, userName: x.userId ? db.byId("users", x.userId)?.name : void 0, userRole: x.userId ? db.byId("users", x.userId)?.role : void 0 }))
+      resets: st25.resetRequests.filter((x) => x.status === "NEW").map((x) => ({ ...x, userName: x.userId ? db.byId("users", x.userId)?.name : void 0, userRole: x.userId ? db.byId("users", x.userId)?.role : void 0 }))
     });
   });
   r.post("/queue/:id/approve", needs("growth:manage"), (req, res) => {
-    const actor = me27();
-    const st24 = db.getState();
+    const actor = me28();
+    const st25 = db.getState();
     const lead = db.byId("growthLeads", req.params.id);
     if (!lead) return res.status(404).json({ error: "Not found" });
     if (lead.status !== "NEW") return res.status(409).json({ error: `Already ${lead.status.toLowerCase()}` });
     if (phoneKnown(lead.phone)) return res.status(409).json({ error: "This person already has a GENZ account" });
     const email3 = `${digits(lead.phone).slice(-10)}@phone.genz.local`;
-    if (st24.invitations.some((i) => i.invitedEmail === email3 && i.status === "PENDING" && new Date(i.expiresAt) > /* @__PURE__ */ new Date())) return res.status(409).json({ error: "An active invitation already exists for this number" });
+    if (st25.invitations.some((i) => i.invitedEmail === email3 && i.status === "PENDING" && new Date(i.expiresAt) > /* @__PURE__ */ new Date())) return res.status(409).json({ error: "An active invitation already exists for this number" });
     const inv = {
       id: `INV-${Date.now()}`,
       code: `GZ-${lead.role.slice(0, 3)}-${secureCode(9)}`,
@@ -80999,7 +81068,7 @@ function createGrowthRouter() {
       nominatedBy: lead.nominatorId,
       growthLeadId: lead.id
     };
-    st24.invitations.unshift(inv);
+    st25.invitations.unshift(inv);
     lead.status = "INVITED";
     lead.invitationId = inv.id;
     lead.updatedAt = nowIso21();
@@ -81013,7 +81082,7 @@ function createGrowthRouter() {
     });
   });
   r.post("/queue/:id/reject", needs("growth:manage"), (req, res) => {
-    const actor = me27();
+    const actor = me28();
     const lead = db.byId("growthLeads", req.params.id);
     if (!lead) return res.status(404).json({ error: "Not found" });
     if (lead.status !== "NEW") return res.status(409).json({ error: `Already ${lead.status.toLowerCase()}` });
@@ -81025,9 +81094,9 @@ function createGrowthRouter() {
     res.json({ success: true });
   });
   r.post("/resets/:id/issue", needs("users:reset_password"), (req, res) => {
-    const actor = me27();
-    const st24 = db.getState();
-    const rr = st24.resetRequests.find((x) => x.id === req.params.id);
+    const actor = me28();
+    const st25 = db.getState();
+    const rr = st25.resetRequests.find((x) => x.id === req.params.id);
     if (!rr || rr.status !== "NEW") return res.status(404).json({ error: "Request not found" });
     const target = rr.userId ? db.byId("users", rr.userId) : void 0;
     if (!target) return res.status(409).json({ error: "More than one account uses this number \u2014 reset the right one from Users" });
@@ -81051,7 +81120,7 @@ function createGrowthRouter() {
     });
   });
   r.post("/resets/:id/dismiss", needs("users:reset_password"), (req, res) => {
-    const actor = me27();
+    const actor = me28();
     const rr = db.getState().resetRequests.find((x) => x.id === req.params.id);
     if (!rr || rr.status !== "NEW") return res.status(404).json({ error: "Request not found" });
     rr.status = "DISMISSED";
@@ -81061,7 +81130,7 @@ function createGrowthRouter() {
     res.json({ success: true });
   });
   r.get("/cities", needs("growth:manage"), (_req, res) => {
-    const st24 = db.getState();
+    const st25 = db.getState();
     const rows = /* @__PURE__ */ new Map();
     const row = (city, state) => {
       const key = city.toLowerCase();
@@ -81073,7 +81142,7 @@ function createGrowthRouter() {
       x.tier = c.tier;
       x.target = true;
     }
-    for (const u of st24.users) {
+    for (const u of st25.users) {
       if (!isPro(u) || !u.city) continue;
       const x = row(normCity(u.city), u.state);
       if (isVerified(u)) {
@@ -81084,15 +81153,15 @@ function createGrowthRouter() {
         else x.legal++;
       } else if (u.verificationStatus === "PENDING") x.pendingKyc++;
     }
-    for (const l of st24.growthLeads) if (l.status === "NEW" || l.status === "INVITED") row(normCity(l.city), l.state).waitlist++;
+    for (const l of st25.growthLeads) if (l.status === "NEW" || l.status === "INVITED") row(normCity(l.city), l.state).waitlist++;
     const cityOfProp = /* @__PURE__ */ new Map();
-    for (const p of st24.properties) {
+    for (const p of st25.properties) {
       const c = normCity(p.city);
       if (!c) continue;
       cityOfProp.set(p.id, c);
       row(c).listings++;
     }
-    for (const d of st24.dealRooms) {
+    for (const d of st25.dealRooms) {
       const c = cityOfProp.get(d.propertyId);
       if (c) row(c).deals++;
     }
@@ -81104,9 +81173,9 @@ function createGrowthRouter() {
     list.sort((a, b) => b.verifiedPros - a.verifiedPros || b.demand - a.demand || order(a.city) - order(b.city));
     const next2 = list.filter((x) => x.stage === "WAITLIST" && x.demand > 0).sort((a, b) => b.demand - a.demand || order(a.city) - order(b.city))[0];
     const since = Date.now() - 30 * 864e5;
-    const recent = st24.growthLeads.filter((l) => Date.parse(l.createdAt) >= since);
+    const recent = st25.growthLeads.filter((l) => Date.parse(l.createdAt) >= since);
     const inviters = /* @__PURE__ */ new Map();
-    for (const u of st24.users) {
+    for (const u of st25.users) {
       if (!u.invitedById) continue;
       const inv = db.byId("users", u.invitedById);
       if (!inv) continue;
@@ -81115,7 +81184,7 @@ function createGrowthRouter() {
       if (isVerified(u)) e.verified++;
       inviters.set(inv.id, e);
     }
-    const pros = st24.users.filter((u) => isPro(u) && isVerified(u)).length;
+    const pros = st25.users.filter((u) => isPro(u) && isVerified(u)).length;
     res.json({
       success: true,
       thresholds: CITY_THRESHOLDS,
@@ -81123,9 +81192,9 @@ function createGrowthRouter() {
         verifiedPros: pros,
         citiesLive: list.filter((x) => x.stage === "LIVE" || x.stage === "HUB").length,
         citiesSeeding: list.filter((x) => x.stage === "SEEDING").length,
-        waitlistOpen: st24.growthLeads.filter((l) => l.status === "NEW").length,
-        invitedViaMembers: st24.users.filter((u) => u.invitedById).length,
-        invitesPerMember: pros ? Math.round(st24.users.filter((u) => u.invitedById).length / pros * 100) / 100 : 0,
+        waitlistOpen: st25.growthLeads.filter((l) => l.status === "NEW").length,
+        invitedViaMembers: st25.users.filter((u) => u.invitedById).length,
+        invitesPerMember: pros ? Math.round(st25.users.filter((u) => u.invitedById).length / pros * 100) / 100 : 0,
         last30d: { requests: recent.length, invited: recent.filter((l) => l.status === "INVITED" || l.status === "JOINED").length, joined: recent.filter((l) => l.status === "JOINED").length }
       },
       nextCity: next2 ? { city: next2.city, demand: next2.demand, waitlist: next2.waitlist, pendingKyc: next2.pendingKyc } : null,
@@ -81143,14 +81212,14 @@ function createPublicCardRouter() {
     const u = findByCode(req.params.code);
     const gone = () => res.status(404).send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Card not available</title><body style="font-family:system-ui;padding:24px"><p>This card is not available.</p></body>`);
     if (!u || !u.publicCard?.enabled) return gone();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const b = brandOf(u);
     if (!BOT4.test(String(req.headers["user-agent"] || ""))) {
       u.publicCard.views = (u.publicCard.views || 0) + 1;
       db.save();
     }
-    const activeListings = u.role === "BROKER" ? st24.properties.filter((p) => p.listingBrokerId === u.id && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus)).length : 0;
-    const projects = u.role === "DEVELOPER_BUILDER" ? st24.builderProjects.filter((p) => p.builderId === u.id && p.status !== "ARCHIVED").length : 0;
+    const activeListings = u.role === "BROKER" ? st25.properties.filter((p) => p.listingBrokerId === u.id && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus)).length : 0;
+    const projects = u.role === "DEVELOPER_BUILDER" ? st25.builderProjects.filter((p) => p.builderId === u.id && p.status !== "ARCHIVED").length : 0;
     const since = new Date(u.createdAt).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
     const code = u.referralCode;
     const phone = digits(u.phone).slice(-10);
@@ -81361,34 +81430,34 @@ function clientAsRequirement(c) {
     updatedAt: c.updatedAt
   };
 }
-function browsable(st24, u, now = Date.now()) {
-  return st24.properties.filter((p) => p.listingBrokerId !== u.id && canBrowseProperty(u, p) && days2(p.confirmedAt, now) <= FRESH_DAYS);
+function browsable(st25, u, now = Date.now()) {
+  return st25.properties.filter((p) => p.listingBrokerId !== u.id && canBrowseProperty(u, p) && days2(p.confirmedAt, now) <= FRESH_DAYS);
 }
-function shareViews7d(st24, u, c, now = Date.now()) {
-  const label = c.name.trim().toLowerCase();
-  if (!label) return 0;
-  return st24.shareLinks.filter((l) => l.ownerId === u.id && !l.revoked && l.clientLabel.trim().toLowerCase() === label).reduce((a, l) => a + (l.viewLog || []).filter((t) => now - new Date(t).getTime() < 7 * DAY12).length, 0);
+function shareViews7d(st25, u, c, now = Date.now()) {
+  const label2 = c.name.trim().toLowerCase();
+  if (!label2) return 0;
+  return st25.shareLinks.filter((l) => l.ownerId === u.id && !l.revoked && l.clientLabel.trim().toLowerCase() === label2).reduce((a, l) => a + (l.viewLog || []).filter((t) => now - new Date(t).getTime() < 7 * DAY12).length, 0);
 }
 function matchCountFor(c, props) {
   const req = clientAsRequirement(c);
   return props.filter((p) => calculatePropertyMatch(p, req).score >= 70).length;
 }
-var pref = (st24, userId) => {
-  let p = st24.digestPrefs.find((x) => x.userId === userId);
+var pref = (st25, userId) => {
+  let p = st25.digestPrefs.find((x) => x.userId === userId);
   if (!p) {
     p = { id: userId, userId, muted: false, hour: 8, seen: {}, typeAffinity: {}, localityAffinity: {} };
-    st24.digestPrefs.push(p);
+    st25.digestPrefs.push(p);
   }
   return p;
 };
 function buildDigest(u, now = Date.now()) {
-  const st24 = db.getState();
-  const pr = pref(st24, u.id);
+  const st25 = db.getState();
+  const pr = pref(st25, u.id);
   if (pr.muted) return { muted: true, hour: pr.hour, clients: 0, properties: 0, fresh: 0, matches: [] };
-  const props = browsable(st24, u, now);
+  const props = browsable(st25, u, now);
   const sources = [
-    ...st24.clientCards.filter((c) => c.brokerId === u.id && c.stage !== "DEAL" && c.stage !== "LOST").map((c) => ({ id: c.id, name: c.name, req: clientAsRequirement(c), kind: "CLIENT" })),
-    ...st24.requirements.filter((r) => r.assignedBrokerId === u.id && ["active", "matching"].includes(r.status)).map((r) => ({ id: r.id, name: r.customerName, req: r, kind: "REQUIREMENT" }))
+    ...st25.clientCards.filter((c) => c.brokerId === u.id && c.stage !== "DEAL" && c.stage !== "LOST").map((c) => ({ id: c.id, name: c.name, req: clientAsRequirement(c), kind: "CLIENT" })),
+    ...st25.requirements.filter((r) => r.assignedBrokerId === u.id && ["active", "matching"].includes(r.status)).map((r) => ({ id: r.id, name: r.customerName, req: r, kind: "REQUIREMENT" }))
   ];
   const seenKeys = /* @__PURE__ */ new Set();
   const out = [];
@@ -81462,9 +81531,9 @@ function buildDigest(u, now = Date.now()) {
   };
 }
 function sweepListings(now = Date.now()) {
-  const st24 = db.getState();
+  const st25 = db.getState();
   let n2 = 0;
-  for (const p of st24.properties) {
+  for (const p of st25.properties) {
     if (p.expiredAt || !["active", "under_negotiation"].includes(p.listingStatus)) continue;
     if (days2(p.confirmedAt || p.createdAt, now) > FRESH_DAYS) {
       p.expiredAt = new Date(now).toISOString();
@@ -81475,13 +81544,13 @@ function sweepListings(now = Date.now()) {
   if (n2) db.save();
   return n2;
 }
-function trustBreakdown(u, st24 = db.getState(), now = Date.now()) {
-  const settled = st24.dealRooms.filter((d) => (d.introducingBrokerId === u.id || d.closingBrokerId === u.id) && d.stage === "Settled").length;
-  const visits = st24.siteVisits.filter((v) => v.brokerId === u.id && v.isVerified).length;
-  const mine3 = st24.properties.filter((p) => p.listingBrokerId === u.id && ["active", "under_negotiation"].includes(p.listingStatus));
+function trustBreakdown(u, st25 = db.getState(), now = Date.now()) {
+  const settled = st25.dealRooms.filter((d) => (d.introducingBrokerId === u.id || d.closingBrokerId === u.id) && d.stage === "Settled").length;
+  const visits = st25.siteVisits.filter((v) => v.brokerId === u.id && v.isVerified).length;
+  const mine3 = st25.properties.filter((p) => p.listingBrokerId === u.id && ["active", "under_negotiation"].includes(p.listingStatus));
   const fresh = mine3.filter((p) => !p.expiredAt && days2(p.confirmedAt, now) <= FRESH_DAYS).length;
-  const upheld = st24.listingReports.filter((r) => r.status === "UPHELD" && (r.targetType === "BROKER" && r.targetId === u.id || r.targetType === "LISTING" && db.byId("properties", r.targetId)?.listingBrokerId === u.id)).length;
-  const openBy = new Set(st24.listingReports.filter((r) => r.status === "OPEN" && r.targetType === "BROKER" && r.targetId === u.id).map((r) => r.reporterId)).size;
+  const upheld = st25.listingReports.filter((r) => r.status === "UPHELD" && (r.targetType === "BROKER" && r.targetId === u.id || r.targetType === "LISTING" && db.byId("properties", r.targetId)?.listingBrokerId === u.id)).length;
+  const openBy = new Set(st25.listingReports.filter((r) => r.status === "OPEN" && r.targetType === "BROKER" && r.targetId === u.id).map((r) => r.reporterId)).size;
   const parts = [
     { id: "kyc", max: 30, pts: (u.verificationStatus === "VERIFIED" ? 25 : 0) + (u.reraNumber ? 5 : 0), en: "KYC verified + RERA number on profile", hi: "KYC \u0938\u0924\u094D\u092F\u093E\u092A\u093F\u0924 + \u092A\u094D\u0930\u094B\u092B\u093C\u093E\u0907\u0932 \u092A\u0930 RERA \u0928\u0902\u092C\u0930", tip: { en: "Complete KYC and add your RERA number.", hi: "KYC \u092A\u0942\u0930\u093E \u0915\u0930\u0947\u0902 \u0914\u0930 RERA \u0928\u0902\u092C\u0930 \u091C\u094B\u0921\u093C\u0947\u0902\u0964" } },
     { id: "deals", max: 20, pts: Math.min(20, settled * 5), en: `Deals settled with a counter-party (${settled})`, hi: `\u0915\u093E\u0909\u0902\u091F\u0930-\u092A\u093E\u0930\u094D\u091F\u0940 \u0915\u0947 \u0938\u093E\u0925 \u092A\u0942\u0930\u0940 \u0939\u0941\u0908 \u0921\u0940\u0932 (${settled})`, tip: { en: "Close deals through the deal room \u2014 each settled deal adds 5.", hi: "\u0921\u0940\u0932 \u0930\u0942\u092E \u0938\u0947 \u0921\u0940\u0932 \u092A\u0942\u0930\u0940 \u0915\u0930\u0947\u0902 \u2014 \u0939\u0930 \u092A\u0942\u0930\u0940 \u0921\u0940\u0932 \u092A\u0930 5\u0964" } },
@@ -81515,8 +81584,8 @@ var reportSchema = external_exports.object({
   note: external_exports.string().trim().max(300).default("")
 });
 var nextClientId = (list) => `CLI-${pad2(list.reduce((m, c) => Math.max(m, Number(c.id.split("-").pop()) || 0), 0) + 1)}`;
-var view4 = (st24, u, c, props, now = Date.now()) => {
-  const sc = leadScore(c, { matchCount: matchCountFor(c, props), shareViews7d: shareViews7d(st24, u, c, now), now });
+var view4 = (st25, u, c, props, now = Date.now()) => {
+  const sc = leadScore(c, { matchCount: matchCountFor(c, props), shareViews7d: shareViews7d(st25, u, c, now), now });
   return { ...c, lead: sc };
 };
 var cardOwner = (u) => u.role === "TEAM_MEMBER" && u.employerId ? db.byId("users", u.employerId) || u : u;
@@ -81545,11 +81614,11 @@ function createDailyRouter() {
     const u = me15();
     const body = external_exports.object({ key: external_exports.string().max(120), action: external_exports.enum(["OPENED", "SHORTLISTED", "DISMISSED"]) }).safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: "Invalid feedback" });
-    const st24 = db.getState();
+    const st25 = db.getState();
     const [, propId] = body.data.key.split("|");
     const prop = db.byId("properties", propId);
     if (!prop || !canBrowseProperty(u, prop)) return res.status(404).json({ error: "Property not found" });
-    const pr = pref(st24, u.id);
+    const pr = pref(st25, u.id);
     const prev = pr.seen[body.data.key];
     if (prev === "SHORTLISTED" && body.data.action === "OPENED") return res.json({ success: true });
     pr.seen[body.data.key] = body.data.action;
@@ -81574,9 +81643,9 @@ function createDailyRouter() {
   r.get("/clients", needs("daily:use"), (_req, res) => {
     const viewer = me15();
     const u = cardOwner(viewer);
-    const st24 = db.getState();
-    const props = browsable(st24, u);
-    const list = st24.clientCards.filter((c) => c.brokerId === u.id).map((c) => forViewer(viewer, view4(st24, u, c, props)));
+    const st25 = db.getState();
+    const props = browsable(st25, u);
+    const list = st25.clientCards.filter((c) => c.brokerId === u.id).map((c) => forViewer(viewer, view4(st25, u, c, props)));
     res.json({ success: true, clients: list, stages: CLIENT_STAGES, staff: isStaff2(viewer) ? { employer: u.name, phones: showPhone(viewer) } : void 0 });
   });
   r.get("/clients/due", needs("daily:use"), (_req, res) => {
@@ -81589,20 +81658,20 @@ function createDailyRouter() {
   r.post("/clients", needs("daily:use"), rateLimit("clientadd", 120, 60 * 6e4), (req, res) => {
     const viewer = me15();
     const u = cardOwner(viewer);
-    const st24 = db.getState();
+    const st25 = db.getState();
     const p = clientSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Please check the form" });
     const d = p.data;
     if (d.clientRef) {
-      const dup = st24.clientCards.find((c) => c.brokerId === u.id && c.clientRef === d.clientRef);
+      const dup = st25.clientCards.find((c) => c.brokerId === u.id && c.clientRef === d.clientRef);
       if (dup) return res.json({ success: true, client: dup, duplicate: true });
     }
-    const mine3 = st24.clientCards.filter((c) => c.brokerId === u.id);
+    const mine3 = st25.clientCards.filter((c) => c.brokerId === u.id);
     if (mine3.length >= 2e3) return res.status(400).json({ error: "Client limit reached (2000). Archive old clients first." });
     if (mine3.some((c) => digits(c.phone).slice(-10) === digits(d.phone).slice(-10) && c.stage !== "LOST")) return res.status(409).json({ error: "You already have a client with this mobile number." });
     const now = nowIso22();
     const card2 = {
-      id: nextClientId(st24.clientCards),
+      id: nextClientId(st25.clientCards),
       brokerId: u.id,
       name: d.name,
       phone: d.phone,
@@ -81622,10 +81691,10 @@ function createDailyRouter() {
       createdAt: now,
       updatedAt: now
     };
-    st24.clientCards.unshift(card2);
+    st25.clientCards.unshift(card2);
     db.save();
     audit9("CLIENT_CARD_CREATED", card2.id, `Client card created (consent recorded)${isStaff2(viewer) ? ` by ${viewer.name} for ${u.name}` : ""}`);
-    res.json({ success: true, client: forViewer(viewer, view4(st24, u, card2, browsable(st24, u))) });
+    res.json({ success: true, client: forViewer(viewer, view4(st25, u, card2, browsable(st25, u))) });
   });
   r.put("/clients/:id", needs("daily:use"), (req, res) => {
     const c = findCard(req.params.id);
@@ -81676,10 +81745,10 @@ function createDailyRouter() {
   });
   r.delete("/clients/:id", needs("daily:use"), (req, res) => {
     if (isStaff2(me15())) return res.status(403).json({ error: "Only the broker can delete a client", code: "STAFF_CANNOT_DELETE" });
-    const st24 = db.getState();
-    const i = st24.clientCards.findIndex((c) => c.id === req.params.id && c.brokerId === me15().id);
+    const st25 = db.getState();
+    const i = st25.clientCards.findIndex((c) => c.id === req.params.id && c.brokerId === me15().id);
     if (i < 0) return res.status(404).json({ error: "Client not found" });
-    st24.clientCards.splice(i, 1);
+    st25.clientCards.splice(i, 1);
     db.save();
     audit9("CLIENT_CARD_DELETED", req.params.id, "Client card deleted by the broker");
     res.json({ success: true });
@@ -81713,7 +81782,7 @@ function createDailyRouter() {
   r.get("/trust", needs("daily:use"), (_req, res) => res.json({ success: true, ...trustBreakdown(me15()) }));
   r.post("/report", needs("report:create"), rateLimit("report", 30, 24 * 60 * 6e4), (req, res) => {
     const u = me15();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const p = reportSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: "Choose what you are reporting and why." });
     const d = p.data;
@@ -81728,12 +81797,12 @@ function createDailyRouter() {
       ownerId = t.id;
     }
     if (ownerId === u.id) return res.status(400).json({ error: "You cannot report your own listing or profile." });
-    if (st24.listingReports.some((x) => x.reporterId === u.id && x.targetType === d.targetType && x.targetId === d.targetId && x.status === "OPEN")) return res.json({ success: true, duplicate: true, message: "You have already reported this. GENZ is reviewing it." });
-    const rep = { id: `RPT-${pad2(st24.listingReports.length + 1)}`, targetType: d.targetType, targetId: d.targetId, reporterId: u.id, reason: d.reason, note: d.note, status: "OPEN", createdAt: nowIso22() };
-    st24.listingReports.push(rep);
+    if (st25.listingReports.some((x) => x.reporterId === u.id && x.targetType === d.targetType && x.targetId === d.targetId && x.status === "OPEN")) return res.json({ success: true, duplicate: true, message: "You have already reported this. GENZ is reviewing it." });
+    const rep = { id: `RPT-${pad2(st25.listingReports.length + 1)}`, targetType: d.targetType, targetId: d.targetId, reporterId: u.id, reason: d.reason, note: d.note, status: "OPEN", createdAt: nowIso22() };
+    st25.listingReports.push(rep);
     let held = false;
     if (d.targetType === "LISTING") {
-      const who = new Set(st24.listingReports.filter((x) => x.targetType === "LISTING" && x.targetId === d.targetId && x.status === "OPEN").map((x) => x.reporterId));
+      const who = new Set(st25.listingReports.filter((x) => x.targetType === "LISTING" && x.targetId === d.targetId && x.status === "OPEN").map((x) => x.reporterId));
       const prop = db.byId("properties", d.targetId);
       if (who.size >= 3 && !prop.heldAt) {
         prop.heldAt = nowIso22();
@@ -81745,8 +81814,8 @@ function createDailyRouter() {
     res.json({ success: true, message: "Thank you. GENZ will review this report." });
   });
   r.get("/reports", needs("report:manage"), (_req, res) => {
-    const st24 = db.getState();
-    res.json({ success: true, reports: st24.listingReports.slice().reverse().slice(0, 200).map((x) => ({
+    const st25 = db.getState();
+    res.json({ success: true, reports: st25.listingReports.slice().reverse().slice(0, 200).map((x) => ({
       ...x,
       reporterName: db.byId("users", x.reporterId)?.name || "\u2014",
       targetLabel: x.targetType === "LISTING" ? db.byId("properties", x.targetId)?.title || x.targetId : db.byId("users", x.targetId)?.name || x.targetId,
@@ -81754,8 +81823,8 @@ function createDailyRouter() {
     })) });
   });
   r.post("/reports/:id/resolve", needs("report:manage"), (req, res) => {
-    const st24 = db.getState();
-    const rep = st24.listingReports.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const rep = st25.listingReports.find((x) => x.id === req.params.id);
     if (!rep) return res.status(404).json({ error: "Report not found" });
     const action = req.body?.action === "UPHOLD" ? "UPHOLD" : req.body?.action === "DISMISS" ? "DISMISS" : "";
     if (!action) return res.status(400).json({ error: "Choose UPHOLD or DISMISS" });
@@ -81768,7 +81837,7 @@ function createDailyRouter() {
         if (action === "UPHOLD") {
           prop.listingStatus = "withdrawn";
           prop.heldAt = void 0;
-        } else if (!st24.listingReports.some((x) => x.targetId === prop.id && x.targetType === "LISTING" && x.status === "OPEN")) prop.heldAt = void 0;
+        } else if (!st25.listingReports.some((x) => x.targetId === prop.id && x.targetType === "LISTING" && x.status === "OPEN")) prop.heldAt = void 0;
       }
     }
     db.save();
@@ -81777,13 +81846,13 @@ function createDailyRouter() {
   });
   r.get("/map", needs("daily:use"), (req, res) => {
     const u = me15();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const now = Date.now();
-    const listings = st24.properties.filter((p) => canBrowseProperty(u, p) && days2(p.confirmedAt, now) <= FRESH_DAYS).map((p) => {
+    const listings = st25.properties.filter((p) => canBrowseProperty(u, p) && days2(p.confirmedAt, now) <= FRESH_DAYS).map((p) => {
       const pt = approxPoint(p.city, p.locality, p.latitude, p.longitude);
       return { kind: "LISTING", id: p.id, title: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType, transactionType: p.transactionType, price: p.askingPrice, mine: p.listingBrokerId === u.id, lat: pt.lat, lng: pt.lng };
     });
-    const reqs = st24.requirements.filter((q) => ["active", "matching"].includes(q.status)).flatMap((q) => (q.preferredLocalities.length ? q.preferredLocalities.slice(0, 1) : [""]).map((loc) => {
+    const reqs = st25.requirements.filter((q) => ["active", "matching"].includes(q.status)).flatMap((q) => (q.preferredLocalities.length ? q.preferredLocalities.slice(0, 1) : [""]).map((loc) => {
       const pt = approxPoint(q.city || "", loc);
       return { kind: "REQUIREMENT", id: q.id, title: `${q.propertyType} wanted`, locality: loc || (q.city || ""), city: q.city || "", propertyType: q.propertyType, transactionType: q.transactionType, price: q.budgetMax, priceMin: q.budgetMin, mine: q.assignedBrokerId === u.id, lat: pt.lat, lng: pt.lng };
     }));
@@ -81800,8 +81869,8 @@ function createDailyRouter() {
   });
   r.get("/rate-card", needs("daily:use"), (req, res) => {
     const city = req.query.city ? String(req.query.city) : "";
-    const st24 = db.getState();
-    const all = rateCard(st24.properties.filter((p) => !p.heldAt && p.verificationStatus === "VERIFIED"));
+    const st25 = db.getState();
+    const all = rateCard(st25.properties.filter((p) => !p.heldAt && p.verificationStatus === "VERIFIED"));
     res.json({ success: true, minSample: RATE_MIN_SAMPLE, cards: city ? all.filter((c) => sameCity(c.city, city)) : all, disclaimer: "Indicative only. Based on asking prices of GENZ listings in the last 90 days." });
   });
   return r;
@@ -81810,12 +81879,12 @@ function createDailyRouter() {
 // server/pdocs.ts
 var import_express33 = __toESM(require_express2(), 1);
 var import_express34 = __toESM(require_express2(), 1);
-import crypto24 from "node:crypto";
-import fs9 from "node:fs";
-import path9 from "node:path";
+import crypto25 from "node:crypto";
+import fs10 from "node:fs";
+import path10 from "node:path";
 var me16 = () => ctx().user;
 var nowIso23 = () => (/* @__PURE__ */ new Date()).toISOString();
-var DIR4 = () => path9.resolve(process.cwd(), "data", "protected");
+var DIR5 = () => path10.resolve(process.cwd(), "data", "protected");
 var MAX_PAGES2 = 12;
 var MAX_PAGE_BYTES = 15e5;
 var kindOf2 = (b) => {
@@ -81824,7 +81893,7 @@ var kindOf2 = (b) => {
   if (b.length > 12 && b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WEBP") return "image/webp";
   return null;
 };
-var pageFile = (id, n2) => path9.join(DIR4(), `${id}-${n2}.bin`);
+var pageFile = (id, n2) => path10.join(DIR5(), `${id}-${n2}.bin`);
 function accessState(doc, userId, now = Date.now(), ignoreLimit = false) {
   if (doc.revoked) return { ok: false, reason: "This document was withdrawn by its owner." };
   if (doc.ownerId === userId) return { ok: true };
@@ -81835,12 +81904,12 @@ function accessState(doc, userId, now = Date.now(), ignoreLimit = false) {
   return { ok: true, viewer: v };
 }
 var log3 = (docId2, userId, page2, allowed, ip) => {
-  const st24 = db.getState();
-  st24.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto24.randomInt(1e3, 9999)}`, docId: docId2, userId, page: page2, at: nowIso23(), ip, allowed });
-  if (st24.docAccessLogs.length > 3e3) st24.docAccessLogs.splice(0, st24.docAccessLogs.length - 3e3);
+  const st25 = db.getState();
+  st25.docAccessLogs.push({ id: `DAL-${Date.now().toString(36)}${crypto25.randomInt(1e3, 9999)}`, docId: docId2, userId, page: page2, at: nowIso23(), ip, allowed });
+  if (st25.docAccessLogs.length > 3e3) st25.docAccessLogs.splice(0, st25.docAccessLogs.length - 3e3);
 };
 var summary2 = (d, u) => {
-  const st24 = db.getState();
+  const st25 = db.getState();
   const owner = d.ownerId === u.id;
   const mine3 = d.viewers.find((v) => v.userId === u.id);
   return {
@@ -81863,21 +81932,21 @@ function createPdocsRouter() {
   const big = import_express34.default.json({ limit: "18mb" });
   r.get("/", needs("pdoc:use"), (_req, res) => {
     const u = me16();
-    const st24 = db.getState();
-    const list = st24.protectedDocs.filter((d) => d.ownerId === u.id || d.viewers.some((v) => v.userId === u.id && !v.revoked) && !d.revoked);
+    const st25 = db.getState();
+    const list = st25.protectedDocs.filter((d) => d.ownerId === u.id || d.viewers.some((v) => v.userId === u.id && !v.revoked) && !d.revoked);
     res.json({ success: true, docs: list.slice().reverse().map((d) => summary2(d, u)) });
   });
   r.get("/people", needs("pdoc:use"), (_req, res) => {
     const u = me16();
-    const st24 = db.getState();
-    res.json({ success: true, people: st24.users.filter((x) => x.id !== u.id && x.verificationStatus === "VERIFIED" && can(x, "pdoc:use") && !["SUPERADMIN", "ADMIN"].includes(x.role)).slice(0, 600).map((x) => ({ id: x.id, name: x.name, role: x.role, company: x.companyName || "", city: x.city })) });
+    const st25 = db.getState();
+    res.json({ success: true, people: st25.users.filter((x) => x.id !== u.id && x.verificationStatus === "VERIFIED" && can(x, "pdoc:use") && !["SUPERADMIN", "ADMIN"].includes(x.role)).slice(0, 600).map((x) => ({ id: x.id, name: x.name, role: x.role, company: x.companyName || "", city: x.city })) });
   });
   r.post("/", needs("pdoc:use"), rateLimit("pdocup", 20, 60 * 6e4), big, (req, res) => {
     const u = me16();
-    const st24 = db.getState();
+    const st25 = db.getState();
     const b = external_exports.object({ title: external_exports.string().trim().min(2).max(120), propertyId: external_exports.string().max(60).optional(), pages: external_exports.array(external_exports.string().max(21e5)).min(1).max(MAX_PAGES2) }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Give the document a title and add 1\u201312 page images." });
-    if (st24.protectedDocs.filter((d) => d.ownerId === u.id && !d.revoked).length >= 200) return res.status(400).json({ error: "You have reached 200 protected documents. Remove old ones first." });
+    if (st25.protectedDocs.filter((d) => d.ownerId === u.id && !d.revoked).length >= 200) return res.status(400).json({ error: "You have reached 200 protected documents. Remove old ones first." });
     const bufs = [];
     const mimes = [];
     for (const p of b.data.pages) {
@@ -81890,11 +81959,11 @@ function createPdocsRouter() {
       bufs.push(buf);
       mimes.push(mime);
     }
-    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto24.randomInt(100, 999)}`;
-    fs9.mkdirSync(DIR4(), { recursive: true });
-    bufs.forEach((buf, i) => fs9.writeFileSync(pageFile(id, i), buf));
+    const id = `PDOC-${Date.now().toString(36).toUpperCase()}${crypto25.randomInt(100, 999)}`;
+    fs10.mkdirSync(DIR5(), { recursive: true });
+    bufs.forEach((buf, i) => fs10.writeFileSync(pageFile(id, i), buf));
     const doc = { id, ownerId: u.id, title: b.data.title, propertyId: b.data.propertyId, pages: bufs.length, mime: mimes, viewers: [], createdAt: nowIso23() };
-    st24.protectedDocs.push(doc);
+    st25.protectedDocs.push(doc);
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, "PDOC_UPLOADED", `Protected document \u201C${doc.title}\u201D (${doc.pages} pages)`);
     res.json({ success: true, doc: summary2(doc, u) });
@@ -81907,12 +81976,12 @@ function createPdocsRouter() {
   r.post("/:id/share", needs("pdoc:use"), (req, res) => {
     const d = owned(req, res);
     if (!d) return;
-    const st24 = db.getState();
+    const st25 = db.getState();
     const b = external_exports.object({ userIds: external_exports.array(external_exports.string()).min(1).max(30), expiresInDays: external_exports.coerce.number().int().min(1).max(365).optional(), maxViews: external_exports.coerce.number().int().min(1).max(100).optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: "Choose who can view it (and optionally an expiry / view limit)." });
     let n2 = 0;
     for (const uid3 of new Set(b.data.userIds)) {
-      const t = st24.users.find((x) => x.id === uid3 && x.verificationStatus === "VERIFIED" && can(x, "pdoc:use") && uid3 !== d.ownerId);
+      const t = st25.users.find((x) => x.id === uid3 && x.verificationStatus === "VERIFIED" && can(x, "pdoc:use") && uid3 !== d.ownerId);
       if (!t) continue;
       const exp = b.data.expiresInDays ? new Date(Date.now() + b.data.expiresInDays * 864e5).toISOString() : void 0;
       const ex = d.viewers.find((v) => v.userId === uid3);
@@ -81942,10 +82011,10 @@ function createPdocsRouter() {
   r.delete("/:id", needs("pdoc:use"), (req, res) => {
     const d = owned(req, res);
     if (!d) return;
-    const st24 = db.getState();
-    st24.protectedDocs.splice(st24.protectedDocs.indexOf(d), 1);
+    const st25 = db.getState();
+    st25.protectedDocs.splice(st25.protectedDocs.indexOf(d), 1);
     for (let i = 0; i < d.pages; i++) try {
-      fs9.unlinkSync(pageFile(d.id, i));
+      fs10.unlinkSync(pageFile(d.id, i));
     } catch {
     }
     db.save();
@@ -81955,13 +82024,13 @@ function createPdocsRouter() {
   r.get("/:id/log", needs("pdoc:use"), (req, res) => {
     const d = owned(req, res);
     if (!d) return;
-    const st24 = db.getState();
-    res.json({ success: true, log: st24.docAccessLogs.filter((l) => l.docId === d.id).slice(-100).reverse().map((l) => ({ at: l.at, allowed: l.allowed, name: db.byId("users", l.userId)?.name || "\u2014", page: l.page })) });
+    const st25 = db.getState();
+    res.json({ success: true, log: st25.docAccessLogs.filter((l) => l.docId === d.id).slice(-100).reverse().map((l) => ({ at: l.at, allowed: l.allowed, name: db.byId("users", l.userId)?.name || "\u2014", page: l.page })) });
   });
   r.post("/:id/open", needs("pdoc:use"), rateLimit("pdocopen", 120, 60 * 6e4), (req, res) => {
     const u = me16();
-    const st24 = db.getState();
-    const d = st24.protectedDocs.find((x) => x.id === req.params.id);
+    const st25 = db.getState();
+    const d = st25.protectedDocs.find((x) => x.id === req.params.id);
     if (!d) return res.status(404).json({ error: "Document not found" });
     const a = accessState(d, u.id);
     log3(d.id, u.id, 0, a.ok, req.ip || "");
@@ -81987,7 +82056,7 @@ function createPdocsRouter() {
     const d = db.getState().protectedDocs.find((x) => x.id === t.docId);
     if (!d || !accessState(d, t.userId, Date.now(), true).ok) return res.status(403).end();
     try {
-      const buf = fs9.readFileSync(pageFile(d.id, t.page));
+      const buf = fs10.readFileSync(pageFile(d.id, t.page));
       res.setHeader("Content-Type", d.mime[t.page] || "image/jpeg");
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
       res.setHeader("Content-Disposition", "inline");
@@ -82006,7 +82075,7 @@ function createPdocsRouter() {
       res.setHeader("Content-Type", d.mime[n2] || "image/jpeg");
       res.setHeader("Content-Disposition", `attachment; filename="${d.title.replace(/[^\w.-]+/g, "_")}-page${n2 + 1}"`);
       res.setHeader("Cache-Control", "no-store");
-      res.send(fs9.readFileSync(pageFile(d.id, n2)));
+      res.send(fs10.readFileSync(pageFile(d.id, n2)));
     } catch {
       res.status(404).json({ error: "Page file missing" });
     }
@@ -82016,6 +82085,7 @@ function createPdocsRouter() {
 
 // server/pcontrol.ts
 var import_express35 = __toESM(require_express2(), 1);
+var import_express36 = __toESM(require_express2(), 1);
 var nowIso24 = () => (/* @__PURE__ */ new Date()).toISOString();
 var isOpen2 = (l) => !["BOOKED", "LOST"].includes(l.stage);
 var VISIBLE_STATUS2 = ["ACTIVE_LAUNCH", "PRE_BOOKING"];
@@ -82026,9 +82096,9 @@ function mandateSeq() {
 }
 var uid2 = (p) => `${p}-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 function sweepControl(now = Date.now()) {
-  const st24 = db.getState();
+  const st25 = db.getState();
   let accepted = 0, expired = 0;
-  for (const l of st24.crmLeads) {
+  for (const l of st25.crmLeads) {
     if (l.verify === "PENDING" && l.verifyDueAt && Date.parse(l.verifyDueAt) < now) {
       l.verify = "ACCEPTED";
       l.verifiedAt = nowIso24();
@@ -82038,7 +82108,7 @@ function sweepControl(now = Date.now()) {
       accepted++;
     }
   }
-  for (const m of st24.associateMandates) {
+  for (const m of st25.associateMandates) {
     if (m.validUntil && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"].includes(m.status) && Date.parse(m.validUntil) < now) {
       m.status = "COMPLETED";
       m.statusReason = "Partnership period ended";
@@ -82085,16 +82155,16 @@ var collateralSchema = external_exports.object({
 });
 var pctOk = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.1 && v <= 10;
 function createPcontrolRouter() {
-  const r = (0, import_express35.Router)();
-  const me27 = () => ctx().user;
+  const r = (0, import_express36.Router)();
+  const me28 = () => ctx().user;
   const audit9 = (entity, id, action, details) => {
-    const u = me27();
+    const u = me28();
     db.appendAuditEvent(u.id, u.role, entity, id, action, details);
   };
   const state = () => db.getState();
-  const bad27 = (res, msg, code = 400) => res.status(code).json({ error: msg });
+  const bad28 = (res, msg, code = 400) => res.status(code).json({ error: msg });
   const projectFor = (id, write) => {
-    const u = me27();
+    const u = me28();
     const p = state().builderProjects.find((x) => x.id === id);
     if (!p) return void 0;
     if (isSuper(u)) return p;
@@ -82112,11 +82182,11 @@ function createPcontrolRouter() {
     return c;
   };
   r.get("/builder/projects", needs("pcontrol:manage", "pcontrol:oversee"), (_req, res) => {
-    const u = me27();
-    const st24 = state();
-    const projects = st24.builderProjects.filter((p) => isAdmin(u) || p.builderId === u.id).map((p) => {
-      const ms = st24.associateMandates.filter((m) => m.projectId === p.id);
-      const leads = st24.crmLeads.filter((l) => l.projectId === p.id);
+    const u = me28();
+    const st25 = state();
+    const projects = st25.builderProjects.filter((p) => isAdmin(u) || p.builderId === u.id).map((p) => {
+      const ms = st25.associateMandates.filter((m) => m.projectId === p.id);
+      const leads = st25.crmLeads.filter((l) => l.projectId === p.id);
       return {
         id: p.id,
         projectName: p.projectName,
@@ -82135,19 +82205,19 @@ function createPcontrolRouter() {
         openLeads: leads.filter(isOpen2).length,
         pendingVerification: leads.filter((l) => l.verify === "PENDING").length,
         verifiedVisits: leads.filter((l) => l.visitProof).length,
-        pendingBookings: st24.crmBookings.filter((b) => b.projectId === p.id && b.status === "REQUESTED").length
+        pendingBookings: st25.crmBookings.filter((b) => b.projectId === p.id && b.status === "REQUESTED").length
       };
     });
     res.json({ success: true, projects });
   });
   r.get("/builder/projects/:id", needs("pcontrol:manage", "pcontrol:oversee"), (req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const p = projectFor(req.params.id, false);
-    if (!p) return bad27(res, "Project not found", 404);
-    const leads = st24.crmLeads.filter((l) => l.projectId === p.id);
+    if (!p) return bad28(res, "Project not found", 404);
+    const leads = st25.crmLeads.filter((l) => l.projectId === p.id);
     const mask2 = (l) => isAdmin(u) && !isSuper(u) ? { ...l, phone: l.phone.slice(0, -5) + "\u2022\u2022\u2022\u2022\u2022" } : l;
-    const partners = st24.associateMandates.filter((m) => m.projectId === p.id).map((m) => {
+    const partners = st25.associateMandates.filter((m) => m.projectId === p.id).map((m) => {
       const broker = db.byId("users", m.brokerId);
       return {
         ...m,
@@ -82156,12 +82226,12 @@ function createPcontrolRouter() {
         brokerCompany: m.brokerCompany || broker?.companyName,
         card: partnerCard2(leads.filter((l) => l.mandateId === m.id), m.assignedAt),
         verifiedVisits: leads.filter((l) => l.mandateId === m.id && l.visitProof).length,
-        pendingBookings: st24.crmBookings.filter((b) => b.mandateId === m.id && b.status === "REQUESTED").length,
+        pendingBookings: st25.crmBookings.filter((b) => b.mandateId === m.id && b.status === "REQUESTED").length,
         leadsToday: leads.filter((l) => l.mandateId === m.id && Date.parse(l.createdAt) >= startOfDayMs()).length
       };
     }).sort((a, b) => (a.status === "APPLIED" ? -1 : 0) - (b.status === "APPLIED" ? -1 : 0));
     const staff = membersOf(p.builderId).map((m) => ({ id: m.id, name: m.name, title: m.teamTitle, status: m.verificationStatus, policy: policyOf(m) }));
-    const shortlists = st24.projectShortlists.filter((s) => s.projectId === p.id && s.status !== "DROPPED");
+    const shortlists = st25.projectShortlists.filter((s) => s.projectId === p.id && s.status !== "DROPPED");
     res.json({
       success: true,
       project: {
@@ -82190,7 +82260,7 @@ function createPcontrolRouter() {
       },
       partners,
       verification: leads.filter((l) => l.verify === "PENDING").map(mask2),
-      updates: st24.projectUpdates.filter((x) => x.projectId === p.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      updates: st25.projectUpdates.filter((x) => x.projectId === p.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       collateral: p.collateral || [],
       demand: { clients: new Set(shortlists.map((s) => `${s.ownerId}:${s.clientName.toLowerCase()}`)).size, partners: new Set(shortlists.map((s) => s.ownerId)).size, registered: shortlists.filter((s) => s.status === "LEAD_REGISTERED").length },
       units: unitCounts(p.id),
@@ -82208,14 +82278,14 @@ function createPcontrolRouter() {
   });
   r.put("/builder/projects/:id/details", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad27(res, "Project not found", 404);
+    if (!p) return bad28(res, "Project not found", 404);
     const parsed = detailsSchema.safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid details");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid details");
     const d = parsed.data;
     const lo = d.priceStartingFrom ?? p.priceStartingFrom;
     const hi = d.priceMax ?? p.priceMax;
-    if (hi < lo) return bad27(res, "Maximum price must be \u2265 starting price");
-    if (d.availableUnits !== void 0 && d.availableUnits > p.totalUnits) return bad27(res, `Available units cannot exceed total units (${p.totalUnits})`);
+    if (hi < lo) return bad28(res, "Maximum price must be \u2265 starting price");
+    if (d.availableUnits !== void 0 && d.availableUnits > p.totalUnits) return bad28(res, `Available units cannot exceed total units (${p.totalUnits})`);
     const changed = [];
     for (const [k, v] of Object.entries(d)) {
       if (v !== void 0 && JSON.stringify(p[k]) !== JSON.stringify(v)) {
@@ -82226,21 +82296,21 @@ function createPcontrolRouter() {
     if (changed.length) {
       p.updatedAt = nowIso24();
       db.save();
-      audit9("SYSTEM", p.id, "PROJECT_DETAILS_UPDATED", `${me27().name} changed ${changed.join(", ")} on ${p.projectName}${changed.includes("channelPartnerCommissionPct") ? " (default commission applies to NEW appointments only)" : ""}`);
+      audit9("SYSTEM", p.id, "PROJECT_DETAILS_UPDATED", `${me28().name} changed ${changed.join(", ")} on ${p.projectName}${changed.includes("channelPartnerCommissionPct") ? " (default commission applies to NEW appointments only)" : ""}`);
     }
     res.json({ success: true, changed });
   });
   r.put("/builder/projects/:id/settings", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad27(res, "Project not found", 404);
+    if (!p) return bad28(res, "Project not found", 404);
     const parsed = settingsSchema3.safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid settings");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid settings");
     const d = parsed.data;
     const was = `${p.access || "OPEN_APPLY"}/${p.leadIntake || "OPEN"}/${p.leadVerification || "AUTO"}/${p.registrationDays || 60}d`;
     if (d.access) p.access = d.access;
     if (d.desk !== void 0 && d.desk !== !!p.desk) {
       p.desk = d.desk;
-      audit9("SYSTEM", p.id, "PROJECT_DESK", `${me27().name}: ${p.projectName} GENZ desk coordination \u2192 ${d.desk ? "ON" : "OFF"}`);
+      audit9("SYSTEM", p.id, "PROJECT_DESK", `${me28().name}: ${p.projectName} GENZ desk coordination \u2192 ${d.desk ? "ON" : "OFF"}`);
     }
     if (d.leadIntake) {
       p.leadIntake = d.leadIntake;
@@ -82252,55 +82322,63 @@ function createPcontrolRouter() {
     if (d.visitProof && d.visitProof !== (p.visitProof || "OFF")) {
       p.visitProof = d.visitProof;
       p.visitProofSince = d.visitProof === "QR_REQUIRED" ? nowIso24() : void 0;
-      audit9("SYSTEM", p.id, "VISIT_PROOF_RULE", `${me27().name}: ${p.projectName} visit proof \u2192 ${d.visitProof}`);
+      audit9("SYSTEM", p.id, "VISIT_PROOF_RULE", `${me28().name}: ${p.projectName} visit proof \u2192 ${d.visitProof}`);
     }
     p.updatedAt = nowIso24();
     db.save();
-    audit9("SYSTEM", p.id, "PROJECT_CONTROL_SETTINGS", `${me27().name}: ${p.projectName} ${was} \u2192 ${p.access || "OPEN_APPLY"}/${p.leadIntake || "OPEN"}/${p.leadVerification || "AUTO"}/${p.registrationDays || 60}d`);
+    audit9("SYSTEM", p.id, "PROJECT_CONTROL_SETTINGS", `${me28().name}: ${p.projectName} ${was} \u2192 ${p.access || "OPEN_APPLY"}/${p.leadIntake || "OPEN"}/${p.leadVerification || "AUTO"}/${p.registrationDays || 60}d`);
     res.json({ success: true });
   });
-  r.post("/builder/projects/:id/updates", needs("pcontrol:manage"), rateLimit("pc-update", 60, 24 * 36e5), (req, res) => {
+  r.post("/builder/projects/:id/updates", import_express35.default.json({ limit: "1mb" }), needs("pcontrol:manage"), rateLimit("pc-update", 60, 24 * 36e5), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad27(res, "Project not found", 404);
-    const parsed = updateSchema.safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid notice");
-    if (state().projectUpdates.filter((x2) => x2.projectId === p.id).length >= 100) return bad27(res, "Notice board is full (100) \u2014 delete old notices first", 409);
-    const x = { id: uid2("PU"), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me27().id, createdAt: nowIso24() };
+    if (!p) return bad28(res, "Project not found", 404);
+    const { photo, ...rest } = req.body || {};
+    const parsed = updateSchema.safeParse(rest);
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid notice");
+    if (state().projectUpdates.filter((x2) => x2.projectId === p.id).length >= 100) return bad28(res, "Notice board is full (100) \u2014 delete old notices first", 409);
+    const x = { id: uid2("PU"), projectId: p.id, builderId: p.builderId, ...parsed.data, createdBy: me28().id, createdAt: nowIso24() };
+    if (photo !== void 0 && photo !== null && photo !== "") {
+      if (typeof photo !== "string" || photo.length > 9e5) return bad28(res, "The photo is too big \u2014 pick a smaller one.", 413);
+      const sp = savePhoto(photo, { kind: "NOTICE", id: x.id, byId: me28().id });
+      if (!sp.ok) return bad28(res, sp.error, sp.status);
+      x.photoId = sp.photo.id;
+    }
     state().projectUpdates.unshift(x);
     db.save();
-    alert(state().associateMandates.filter((mm) => mm.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(mm.status)).map((mm) => mm.brokerId), "broadcast", `${p.projectName}: ${x.title}`, String(x.body || "").slice(0, 160), "/?tab=pcontrol", { not: me27().id, tag: `pu-${x.id}` });
-    audit9("SYSTEM", x.id, "PROJECT_NOTICE_POSTED", `${me27().name} posted "${x.title}" (${x.kind}) for ${p.projectName} to ${x.audience === "ASSOCIATES" ? "appointed partners" : "all brokers"}`);
+    alert(state().associateMandates.filter((mm) => mm.projectId === p.id && ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(mm.status)).map((mm) => mm.brokerId), "broadcast", `${p.projectName}: ${x.title}`, String(x.body || "").slice(0, 160), "/?tab=pcontrol", { not: me28().id, tag: `pu-${x.id}` });
+    audit9("SYSTEM", x.id, "PROJECT_NOTICE_POSTED", `${me28().name} posted "${x.title}" (${x.kind}) for ${p.projectName} to ${x.audience === "ASSOCIATES" ? "appointed partners" : "all brokers"}`);
     res.json({ success: true, update: x });
   });
   r.delete("/builder/updates/:uid", needs("pcontrol:manage"), (req, res) => {
     const x = state().projectUpdates.find((y) => y.id === req.params.uid);
-    if (!x || !projectFor(x.projectId, true)) return bad27(res, "Notice not found", 404);
+    if (!x || !projectFor(x.projectId, true)) return bad28(res, "Notice not found", 404);
     state().projectUpdates = state().projectUpdates.filter((y) => y.id !== x.id);
+    if (x.photoId) erasePhoto(x.photoId);
     db.save();
-    audit9("SYSTEM", x.id, "PROJECT_NOTICE_DELETED", `${me27().name} deleted notice "${x.title}"`);
+    audit9("SYSTEM", x.id, "PROJECT_NOTICE_DELETED", `${me28().name} deleted notice "${x.title}"`);
     res.json({ success: true });
   });
   r.post("/builder/projects/:id/collateral", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad27(res, "Project not found", 404);
+    if (!p) return bad28(res, "Project not found", 404);
     const parsed = collateralSchema.safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid link");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid link");
     p.collateral ||= [];
-    if (p.collateral.length >= 30) return bad27(res, "Up to 30 files per project", 409);
+    if (p.collateral.length >= 30) return bad28(res, "Up to 30 files per project", 409);
     const c = { id: uid2("PC"), ...parsed.data, addedAt: nowIso24() };
     p.collateral.unshift(c);
     db.save();
-    audit9("SYSTEM", p.id, "PROJECT_COLLATERAL_ADDED", `${me27().name} added "${c.title}" (${c.kind}) to ${p.projectName}`);
+    audit9("SYSTEM", p.id, "PROJECT_COLLATERAL_ADDED", `${me28().name} added "${c.title}" (${c.kind}) to ${p.projectName}`);
     res.json({ success: true, collateral: c });
   });
   r.delete("/builder/projects/:id/collateral/:cid", needs("pcontrol:manage"), (req, res) => {
     const p = projectFor(req.params.id, true);
-    if (!p) return bad27(res, "Project not found", 404);
+    if (!p) return bad28(res, "Project not found", 404);
     const before = (p.collateral || []).length;
     p.collateral = (p.collateral || []).filter((c) => c.id !== req.params.cid);
-    if (p.collateral.length === before) return bad27(res, "File not found", 404);
+    if (p.collateral.length === before) return bad28(res, "File not found", 404);
     db.save();
-    audit9("SYSTEM", p.id, "PROJECT_COLLATERAL_REMOVED", `${me27().name} removed a file from ${p.projectName}`);
+    audit9("SYSTEM", p.id, "PROJECT_COLLATERAL_REMOVED", `${me28().name} removed a file from ${p.projectName}`);
     res.json({ success: true });
   });
   const mandateFor = (id) => {
@@ -82310,24 +82388,24 @@ function createPcontrolRouter() {
   };
   r.post("/builder/mandates/:id/decide", needs("pcontrol:manage"), (req, res) => {
     const f = mandateFor(req.params.id);
-    if (!f) return bad27(res, "Partner request not found", 404);
+    if (!f) return bad28(res, "Partner request not found", 404);
     const { m, p } = f;
-    if (!["APPLIED", "SHORTLISTED", "INVITED", "DECLINED"].includes(m.status)) return bad27(res, `This partner is already ${m.status.toLowerCase().replace("_", " ")}`, 409);
+    if (!["APPLIED", "SHORTLISTED", "INVITED", "DECLINED"].includes(m.status)) return bad28(res, `This partner is already ${m.status.toLowerCase().replace("_", " ")}`, 409);
     const { action, commissionPct, quota, dailyLeadCap, validUntil, note: note5 } = req.body || {};
     const broker = state().users.find((x) => x.id === m.brokerId);
     if (action === "APPROVE") {
-      if (!broker || broker.verificationStatus !== "VERIFIED") return bad27(res, "Only KYC-verified brokers can be appointed");
-      if (tierOf(broker) === "TIER2") return bad27(res, "This broker is a Tier 2 local associate (no RERA). Builder projects need a RERA-verified (Tier 1) broker.", 409);
+      if (!broker || broker.verificationStatus !== "VERIFIED") return bad28(res, "Only KYC-verified brokers can be appointed");
+      if (tierOf(broker) === "TIER2") return bad28(res, "This broker is a Tier 2 local associate (no RERA). Builder projects need a RERA-verified (Tier 1) broker.", 409);
       const pct2 = commissionPct === void 0 || commissionPct === "" ? p.channelPartnerCommissionPct : Number(commissionPct);
-      if (!pctOk(pct2)) return bad27(res, "Commission must be between 0.1% and 10%");
+      if (!pctOk(pct2)) return bad28(res, "Commission must be between 0.1% and 10%");
       const q = quota === void 0 || quota === "" ? 5 : Number(quota);
-      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad27(res, "Target units must be a whole number between 1 and 1000");
+      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad28(res, "Target units must be a whole number between 1 and 1000");
       let cap;
       if (dailyLeadCap !== void 0 && dailyLeadCap !== "" && dailyLeadCap !== null) {
         cap = Number(dailyLeadCap);
-        if (!Number.isInteger(cap) || cap < 1 || cap > 200) return bad27(res, "Daily lead limit must be 1\u2013200");
+        if (!Number.isInteger(cap) || cap < 1 || cap > 200) return bad28(res, "Daily lead limit must be 1\u2013200");
       }
-      if (validUntil && (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now())) return bad27(res, "End date must be in the future");
+      if (validUntil && (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now())) return bad28(res, "End date must be in the future");
       m.status = "ACTIVE_ASSOCIATE";
       m.agreedCommissionPct = pct2;
       m.targetUnitsQuota = q;
@@ -82336,7 +82414,7 @@ function createPcontrolRouter() {
       m.statusReason = note5 ? String(note5).slice(0, 200) : void 0;
       m.decidedAt = nowIso24();
       m.marketingKitAccess = true;
-      m.termsHistory = [...m.termsHistory || [], { at: nowIso24(), by: me27().name, commissionPct: pct2, quota: q, dailyLeadCap: cap, validUntil: m.validUntil, note: "Appointed" }];
+      m.termsHistory = [...m.termsHistory || [], { at: nowIso24(), by: me28().name, commissionPct: pct2, quota: q, dailyLeadCap: cap, validUntil: m.validUntil, note: "Appointed" }];
       p.assignedAssociatesCount = (p.assignedAssociatesCount || 0) + 1;
       p.updatedAt = nowIso24();
     } else if (action === "SHORTLIST") {
@@ -82344,47 +82422,47 @@ function createPcontrolRouter() {
       m.statusReason = note5 ? String(note5).slice(0, 200) : "Shortlisted \u2014 builder will confirm";
       m.decidedAt = nowIso24();
     } else if (action === "DECLINE") {
-      if (!note5 || String(note5).trim().length < 3) return bad27(res, "Give the partner a short reason");
+      if (!note5 || String(note5).trim().length < 3) return bad28(res, "Give the partner a short reason");
       m.status = "DECLINED";
       m.statusReason = String(note5).slice(0, 200);
       m.decidedAt = nowIso24();
-    } else return bad27(res, "Action must be APPROVE, SHORTLIST or DECLINE");
+    } else return bad28(res, "Action must be APPROVE, SHORTLIST or DECLINE");
     db.save();
-    alert(m.brokerId, "deals", action === "APPROVE" ? `You are appointed \u2714 \xB7 ${p.projectName}` : action === "SHORTLIST" ? `Shortlisted \xB7 ${p.projectName}` : `Partner request declined \xB7 ${p.projectName}`, action === "APPROVE" ? `${m.agreedCommissionPct}% commission \xB7 register your clients now` : m.statusReason || "", "/?tab=pcontrol", { not: me27().id, tag: `mand-${m.id}`, hi: [action === "APPROVE" ? `\u0906\u092A \u0905\u092A\u0949\u0907\u0902\u091F \u0939\u0941\u090F \u2714 \xB7 ${p.projectName}` : action === "SHORTLIST" ? `\u0936\u0949\u0930\u094D\u091F\u0932\u093F\u0938\u094D\u091F \u0939\u0941\u090F \xB7 ${p.projectName}` : `\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u0940 \u092E\u093E\u0901\u0917 \u092E\u0928\u093E \xB7 ${p.projectName}`, action === "APPROVE" ? `${m.agreedCommissionPct}% \u0915\u092E\u0940\u0936\u0928 \xB7 \u0905\u092C \u0905\u092A\u0928\u0947 \u0915\u094D\u0932\u093E\u0907\u0902\u091F \u0930\u091C\u093F\u0938\u094D\u091F\u0930 \u0915\u0930\u0947\u0902` : m.statusReason || ""] });
-    audit9("DEAL", m.id, `PARTNER_${action}`, `${me27().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${action === "APPROVE" ? ` (${m.agreedCommissionPct}%, quota ${m.targetUnitsQuota}${m.dailyLeadCap ? `, ${m.dailyLeadCap}/day` : ""}${m.validUntil ? `, until ${m.validUntil.slice(0, 10)}` : ""})` : m.statusReason ? `: ${m.statusReason}` : ""}`);
+    alert(m.brokerId, "deals", action === "APPROVE" ? `You are appointed \u2714 \xB7 ${p.projectName}` : action === "SHORTLIST" ? `Shortlisted \xB7 ${p.projectName}` : `Partner request declined \xB7 ${p.projectName}`, action === "APPROVE" ? `${m.agreedCommissionPct}% commission \xB7 register your clients now` : m.statusReason || "", "/?tab=pcontrol", { not: me28().id, tag: `mand-${m.id}`, hi: [action === "APPROVE" ? `\u0906\u092A \u0905\u092A\u0949\u0907\u0902\u091F \u0939\u0941\u090F \u2714 \xB7 ${p.projectName}` : action === "SHORTLIST" ? `\u0936\u0949\u0930\u094D\u091F\u0932\u093F\u0938\u094D\u091F \u0939\u0941\u090F \xB7 ${p.projectName}` : `\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u0940 \u092E\u093E\u0901\u0917 \u092E\u0928\u093E \xB7 ${p.projectName}`, action === "APPROVE" ? `${m.agreedCommissionPct}% \u0915\u092E\u0940\u0936\u0928 \xB7 \u0905\u092C \u0905\u092A\u0928\u0947 \u0915\u094D\u0932\u093E\u0907\u0902\u091F \u0930\u091C\u093F\u0938\u094D\u091F\u0930 \u0915\u0930\u0947\u0902` : m.statusReason || ""] });
+    audit9("DEAL", m.id, `PARTNER_${action}`, `${me28().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${action === "APPROVE" ? ` (${m.agreedCommissionPct}%, quota ${m.targetUnitsQuota}${m.dailyLeadCap ? `, ${m.dailyLeadCap}/day` : ""}${m.validUntil ? `, until ${m.validUntil.slice(0, 10)}` : ""})` : m.statusReason ? `: ${m.statusReason}` : ""}`);
     res.json({ success: true, mandate: m });
   });
   r.post("/builder/mandates/:id/status", needs("pcontrol:manage"), (req, res) => {
     const f = mandateFor(req.params.id);
-    if (!f) return bad27(res, "Partner not found", 404);
+    if (!f) return bad28(res, "Partner not found", 404);
     const { m, p } = f;
-    const st24 = state();
+    const st25 = state();
     const { action, reason, takeOpenLeads } = req.body || {};
     const active = ["ACTIVE_ASSOCIATE", "TOP_PERFORMER"].includes(m.status);
     if (action === "PAUSE") {
-      if (!active) return bad27(res, "Only an active partner can be paused", 409);
-      if (!reason || String(reason).trim().length < 3) return bad27(res, "Give a short reason");
+      if (!active) return bad28(res, "Only an active partner can be paused", 409);
+      if (!reason || String(reason).trim().length < 3) return bad28(res, "Give a short reason");
       m.status = "PAUSED";
       m.statusReason = String(reason).slice(0, 200);
     } else if (action === "RESUME") {
-      if (m.status !== "PAUSED") return bad27(res, "Only a paused partner can be resumed", 409);
+      if (m.status !== "PAUSED") return bad28(res, "Only a paused partner can be resumed", 409);
       m.status = "ACTIVE_ASSOCIATE";
       m.statusReason = void 0;
     } else if (action === "REVOKE") {
-      if (!active && m.status !== "PAUSED") return bad27(res, "Only an active or paused partner can be revoked", 409);
-      if (!reason || String(reason).trim().length < 5) return bad27(res, "A reason (min 5 characters) is required to revoke");
-      if (st24.crmBookings.some((b) => b.mandateId === m.id && b.status === "REQUESTED")) return bad27(res, "Decide this partner's pending booking requests first, then revoke", 409);
+      if (!active && m.status !== "PAUSED") return bad28(res, "Only an active or paused partner can be revoked", 409);
+      if (!reason || String(reason).trim().length < 5) return bad28(res, "A reason (min 5 characters) is required to revoke");
+      if (st25.crmBookings.some((b) => b.mandateId === m.id && b.status === "REQUESTED")) return bad28(res, "Decide this partner's pending booking requests first, then revoke", 409);
       m.status = "REVOKED";
       m.statusReason = String(reason).slice(0, 200);
       p.assignedAssociatesCount = Math.max(0, (p.assignedAssociatesCount || 1) - 1);
-      for (const u of st24.inventoryUnits.filter((x) => x.projectId === p.id && x.status === "HOLD" && x.hold?.brokerId === m.brokerId && !x.hold?.bookingId)) {
+      for (const u of st25.inventoryUnits.filter((x) => x.projectId === p.id && x.status === "HOLD" && x.hold?.brokerId === m.brokerId && !x.hold?.bookingId)) {
         u.status = "AVAILABLE";
         u.hold = void 0;
         u.updatedAt = nowIso24();
       }
       if (takeOpenLeads === true) {
-        for (const l of st24.crmLeads.filter((x) => x.mandateId === m.id && isOpen2(x) && x.stage !== "BOOKING_REQUESTED")) {
-          l.activities.unshift({ id: uid2("A"), type: "SYSTEM", note: `Taken back by builder desk after partnership ended: ${String(reason).slice(0, 120)}`, byUserId: me27().id, byName: me27().name, at: nowIso24() });
+        for (const l of st25.crmLeads.filter((x) => x.mandateId === m.id && isOpen2(x) && x.stage !== "BOOKING_REQUESTED")) {
+          l.activities.unshift({ id: uid2("A"), type: "SYSTEM", note: `Taken back by builder desk after partnership ended: ${String(reason).slice(0, 120)}`, byUserId: me28().id, byName: me28().name, at: nowIso24() });
           l.associateId = "";
           l.associateName = "Builder desk";
           l.mandateId = void 0;
@@ -82393,43 +82471,43 @@ function createPcontrolRouter() {
           l.updatedAt = nowIso24();
         }
       }
-    } else return bad27(res, "Action must be PAUSE, RESUME or REVOKE");
+    } else return bad28(res, "Action must be PAUSE, RESUME or REVOKE");
     m.decidedAt = nowIso24();
     p.updatedAt = nowIso24();
     db.save();
-    audit9("DEAL", m.id, `PARTNER_${action}`, `${me27().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${m.statusReason ? ` (${m.statusReason})` : ""}${action === "REVOKE" ? takeOpenLeads === true ? "; open leads taken back" : "; registered leads keep attribution" : ""}`);
+    audit9("DEAL", m.id, `PARTNER_${action}`, `${me28().name}: ${m.brokerName} on ${p.projectName} \u2192 ${m.status}${m.statusReason ? ` (${m.statusReason})` : ""}${action === "REVOKE" ? takeOpenLeads === true ? "; open leads taken back" : "; registered leads keep attribution" : ""}`);
     res.json({ success: true, mandate: m });
   });
   r.put("/builder/mandates/:id/terms", needs("pcontrol:manage"), (req, res) => {
     const f = mandateFor(req.params.id);
-    if (!f) return bad27(res, "Partner not found", 404);
+    if (!f) return bad28(res, "Partner not found", 404);
     const { m, p } = f;
-    if (!["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"].includes(m.status)) return bad27(res, "Terms can be changed for appointed partners only", 409);
+    if (!["ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"].includes(m.status)) return bad28(res, "Terms can be changed for appointed partners only", 409);
     const { commissionPct, quota, dailyLeadCap, validUntil, note: note5 } = req.body || {};
-    if (!note5 || String(note5).trim().length < 3) return bad27(res, "Add a short note \u2014 the partner will see why the terms changed");
+    if (!note5 || String(note5).trim().length < 3) return bad28(res, "Add a short note \u2014 the partner will see why the terms changed");
     lockTargetTerms(p);
     const next2 = { commissionPct: m.agreedCommissionPct, quota: m.targetUnitsQuota, cap: m.dailyLeadCap, until: m.validUntil };
     if (commissionPct !== void 0) {
-      if (!pctOk(Number(commissionPct))) return bad27(res, "Commission must be between 0.1% and 10%");
+      if (!pctOk(Number(commissionPct))) return bad28(res, "Commission must be between 0.1% and 10%");
       next2.commissionPct = Number(commissionPct);
     }
     if (quota !== void 0) {
       const q = Number(quota);
-      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad27(res, "Target units must be 1\u20131000");
+      if (!Number.isInteger(q) || q < 1 || q > 1e3) return bad28(res, "Target units must be 1\u20131000");
       next2.quota = q;
     }
     if (dailyLeadCap !== void 0) {
       if (dailyLeadCap === null || dailyLeadCap === "") next2.cap = void 0;
       else {
         const c = Number(dailyLeadCap);
-        if (!Number.isInteger(c) || c < 1 || c > 200) return bad27(res, "Daily lead limit must be 1\u2013200");
+        if (!Number.isInteger(c) || c < 1 || c > 200) return bad28(res, "Daily lead limit must be 1\u2013200");
         next2.cap = c;
       }
     }
     if (validUntil !== void 0) {
       if (!validUntil) next2.until = void 0;
       else {
-        if (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now()) return bad27(res, "End date must be in the future");
+        if (Number.isNaN(Date.parse(validUntil)) || Date.parse(validUntil) < Date.now()) return bad28(res, "End date must be in the future");
         next2.until = String(validUntil);
       }
     }
@@ -82438,9 +82516,9 @@ function createPcontrolRouter() {
     m.targetUnitsQuota = next2.quota;
     m.dailyLeadCap = next2.cap;
     m.validUntil = next2.until;
-    m.termsHistory = [...m.termsHistory || [], { at: nowIso24(), by: me27().name, commissionPct: next2.commissionPct, quota: next2.quota, dailyLeadCap: next2.cap, validUntil: next2.until, note: String(note5).slice(0, 200) }];
+    m.termsHistory = [...m.termsHistory || [], { at: nowIso24(), by: me28().name, commissionPct: next2.commissionPct, quota: next2.quota, dailyLeadCap: next2.cap, validUntil: next2.until, note: String(note5).slice(0, 200) }];
     db.save();
-    audit9("DEAL", m.id, "PARTNER_TERMS_CHANGED", `${me27().name}: ${m.brokerName} on ${p.projectName} ${before} \u2192 ${m.agreedCommissionPct}%/${m.targetUnitsQuota}/${m.dailyLeadCap ?? "\u221E"}/${m.validUntil?.slice(0, 10) ?? "\u221E"} (${String(note5).slice(0, 100)}). Applies to bookings requested from now on.`);
+    audit9("DEAL", m.id, "PARTNER_TERMS_CHANGED", `${me28().name}: ${m.brokerName} on ${p.projectName} ${before} \u2192 ${m.agreedCommissionPct}%/${m.targetUnitsQuota}/${m.dailyLeadCap ?? "\u221E"}/${m.validUntil?.slice(0, 10) ?? "\u221E"} (${String(note5).slice(0, 100)}). Applies to bookings requested from now on.`);
     res.json({ success: true, mandate: m });
   });
   const canVerify = (u, l) => {
@@ -82452,18 +82530,18 @@ function createPcontrolRouter() {
     return false;
   };
   r.get("/builder/verification-queue", needs("crm:read"), (_req, res) => {
-    const u = me27();
+    const u = me28();
     const q = state().crmLeads.filter((l) => l.verify === "PENDING" && canVerify(u, l)).map((l) => maskLeadForViewer(l, u));
     res.json({ success: true, leads: q });
   });
   r.post("/builder/leads/:id/verify", needs("crm:read"), (req, res) => {
-    const u = me27();
+    const u = me28();
     const l = state().crmLeads.find((x) => x.id === req.params.id);
-    if (!l || !canVerify(u, l)) return bad27(res, "Lead not found", 404);
-    if (l.verify !== "PENDING") return bad27(res, "This lead is not waiting for verification", 409);
+    if (!l || !canVerify(u, l)) return bad28(res, "Lead not found", 404);
+    if (l.verify !== "PENDING") return bad28(res, "This lead is not waiting for verification", 409);
     const { decision, note: note5 } = req.body || {};
-    if (decision === "REJECT" && (!note5 || String(note5).trim().length < 3)) return bad27(res, "Give the partner a short reason");
-    if (decision !== "ACCEPT" && decision !== "REJECT") return bad27(res, "Decision must be ACCEPT or REJECT");
+    if (decision === "REJECT" && (!note5 || String(note5).trim().length < 3)) return bad28(res, "Give the partner a short reason");
+    if (decision !== "ACCEPT" && decision !== "REJECT") return bad28(res, "Decision must be ACCEPT or REJECT");
     l.verify = decision === "ACCEPT" ? "ACCEPTED" : "REJECTED";
     l.verifiedBy = u.name;
     l.verifiedAt = nowIso24();
@@ -82496,14 +82574,24 @@ function createPcontrolRouter() {
     return m.status;
   };
   const audienceOk = (aud, rel) => aud === "ALL_CPS" || ["ACTIVE", "PAUSED", "COMPLETED"].includes(rel);
+  r.get("/notice-photo/:pid", needs("pcontrol:manage", "pcontrol:oversee", "pcontrol:partner", "pcontrol:staff"), rateLimit("pc-photo", 600, 36e5), (req, res) => {
+    const u = me28();
+    const ph = photoById(req.params.pid);
+    const n2 = ph && ph.ownerKind === "NOTICE" ? state().projectUpdates.find((y) => y.id === ph.ownerId) : void 0;
+    const p = n2 ? state().builderProjects.find((y) => y.id === n2.projectId) : void 0;
+    if (!ph || !n2 || !p) return bad28(res, "Photo not found", 404);
+    const ok = !!projectFor(p.id, false) || u.role === "TEAM_MEMBER" && u.employerId === p.builderId || u.role === "BROKER" && visibleTo2(p, u.id) && audienceOk(n2.audience, relationOf(myMandate(p.id, u.id)));
+    if (!ok) return bad28(res, "Photo not found", 404);
+    sendPhoto(res, ph);
+  });
   r.get("/partner/projects", partnerOnly, (_req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const order = { ACTIVE: 0, PAUSED: 1, SHORTLISTED: 2, APPLIED: 3, INVITED: 4, NONE: 5, COMPLETED: 6, DECLINED: 7, REVOKED: 8 };
-    const rows = st24.builderProjects.filter((p) => p.status !== "ARCHIVED" || myMandate(p.id, u.id)).filter((p) => visibleTo2(p, u.id)).map((p) => {
+    const rows = st25.builderProjects.filter((p) => p.status !== "ARCHIVED" || myMandate(p.id, u.id)).filter((p) => visibleTo2(p, u.id)).map((p) => {
       const m = myMandate(p.id, u.id);
       const rel = relationOf(m);
-      const mine3 = st24.crmLeads.filter((l) => l.projectId === p.id && l.associateId === u.id);
+      const mine3 = st25.crmLeads.filter((l) => l.projectId === p.id && l.associateId === u.id);
       const now = Date.now();
       return {
         id: p.id,
@@ -82529,21 +82617,21 @@ function createPcontrolRouter() {
         myOpen: mine3.filter(isOpen2).length,
         myBooked: mine3.filter((l) => l.stage === "BOOKED").length,
         myPendingVerify: mine3.filter((l) => l.verify === "PENDING").length,
-        shortlisted: st24.projectShortlists.filter((s) => s.ownerId === u.id && s.projectId === p.id && s.status === "SHORTLISTED").length,
-        notices: st24.projectUpdates.filter((x) => x.projectId === p.id && audienceOk(x.audience, rel) && (!x.validUntil || Date.parse(x.validUntil) + 864e5 > now)).length
+        shortlisted: st25.projectShortlists.filter((s) => s.ownerId === u.id && s.projectId === p.id && s.status === "SHORTLISTED").length,
+        notices: st25.projectUpdates.filter((x) => x.projectId === p.id && audienceOk(x.audience, rel) && (!x.validUntil || Date.parse(x.validUntil) + 864e5 > now)).length
       };
     }).sort((a, b) => (order[a.relation] ?? 9) - (order[b.relation] ?? 9) || a.projectName.localeCompare(b.projectName));
     res.json({ success: true, projects: rows });
   });
   r.get("/partner/projects/:id", partnerOnly, (req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || !visibleTo2(p, u.id)) return bad27(res, "Project not found", 404);
+    if (!p || !visibleTo2(p, u.id)) return bad28(res, "Project not found", 404);
     const m = myMandate(p.id, u.id);
     const rel = relationOf(m);
     const now = Date.now();
-    const mine3 = st24.crmLeads.filter((l) => l.projectId === p.id && l.associateId === u.id);
+    const mine3 = st25.crmLeads.filter((l) => l.projectId === p.id && l.associateId === u.id);
     const showUnits = ["ACTIVE", "PAUSED"].includes(rel);
     res.json({
       success: true,
@@ -82551,6 +82639,7 @@ function createPcontrolRouter() {
         id: p.id,
         projectName: p.projectName,
         builderName: p.builderName,
+        builderId: p.builderId,
         tagline: p.tagline,
         city: p.city,
         locality: p.locality,
@@ -82573,24 +82662,24 @@ function createPcontrolRouter() {
       statusReason: m?.statusReason,
       mandateId: m?.id,
       terms: m && ["ACTIVE", "PAUSED", "COMPLETED"].includes(rel) ? { commissionPct: m.agreedCommissionPct, quota: m.targetUnitsQuota, sold: m.unitsSold, dailyLeadCap: m.dailyLeadCap, validUntil: m.validUntil, history: m.termsHistory || [] } : void 0,
-      updates: st24.projectUpdates.filter((x) => x.projectId === p.id && audienceOk(x.audience, rel) && (!x.validUntil || Date.parse(x.validUntil) + 864e5 > now)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      updates: st25.projectUpdates.filter((x) => x.projectId === p.id && audienceOk(x.audience, rel) && (!x.validUntil || Date.parse(x.validUntil) + 864e5 > now)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       collateral: (p.collateral || []).filter((c) => audienceOk(c.audience, rel)),
       units: unitCounts(p.id),
       // same rules as the unit grid: units the builder hid stay hidden, a hidden rate shows as "price on request"
       availableUnits_list: showUnits ? availableUnitsForPartner(p, u, 300).map((x) => ({ id: x.id, label: x.label, group: x.group, config: x.config, floor: x.floor, areaSqft: x.areaSqft, dimensions: x.dimensions, price: x.price, priceHidden: x.priceHidden, ratePerSqft: x.ratePerSqft, facing: x.facing, roadSides: x.roadSides, roadWidthFt: x.roadWidthFt, features: x.features, note: x.note })) : [],
       leads: mine3.map((l) => ({ id: l.id, name: l.name, stage: l.stage, verify: l.verify, nextFollowUpAt: l.nextFollowUpAt, assignedMemberName: l.assignedMemberName, unitInterest: l.unitInterest, updatedAt: l.updatedAt, protectedUntil: l.protectedUntil })),
-      shortlist: st24.projectShortlists.filter((s) => s.ownerId === u.id && s.projectId === p.id && s.status !== "DROPPED").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-      bookings: st24.crmBookings.filter((b) => b.projectId === p.id && b.associateId === u.id).map((b) => ({ id: b.id, customerName: b.customerName, unitNo: b.unitNo, status: b.status, agreementValue: b.agreementValue, brokerageAmount: b.brokerageAmount }))
+      shortlist: st25.projectShortlists.filter((s) => s.ownerId === u.id && s.projectId === p.id && s.status !== "DROPPED").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      bookings: st25.crmBookings.filter((b) => b.projectId === p.id && b.associateId === u.id).map((b) => ({ id: b.id, customerName: b.customerName, unitNo: b.unitNo, status: b.status, agreementValue: b.agreementValue, brokerageAmount: b.brokerageAmount }))
     });
   });
   r.post("/partner/projects/:id/apply", partnerOnly, rateLimit("pc-apply", 20, 24 * 36e5), (req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || !visibleTo2(p, u.id)) return bad27(res, "Project not found", 404);
-    if (u.verificationStatus !== "VERIFIED") return bad27(res, "Your account must be KYC-verified to apply", 403);
-    if (!VISIBLE_STATUS2.includes(p.status)) return bad27(res, "This project is not taking new partners", 409);
-    if ((p.access || "OPEN_APPLY") === "INVITE_ONLY") return bad27(res, "This project is invite-only", 403);
+    if (!p || !visibleTo2(p, u.id)) return bad28(res, "Project not found", 404);
+    if (u.verificationStatus !== "VERIFIED") return bad28(res, "Your account must be KYC-verified to apply", 403);
+    if (!VISIBLE_STATUS2.includes(p.status)) return bad28(res, "This project is not taking new partners", 409);
+    if ((p.access || "OPEN_APPLY") === "INVITE_ONLY") return bad28(res, "This project is invite-only", 403);
     const note5 = String(req.body?.note || "").trim().slice(0, 300);
     const ex = myMandate(p.id, u.id);
     if (ex) {
@@ -82602,7 +82691,7 @@ function createPcontrolRouter() {
         db.save();
         return res.json({ success: true, relation: "APPLIED" });
       }
-      return bad27(res, ex.status === "DECLINED" ? "The builder declined your request recently \u2014 you can apply again after 30 days" : `You already have a ${relationOf(ex).toLowerCase()} request / partnership on this project`, 409);
+      return bad28(res, ex.status === "DECLINED" ? "The builder declined your request recently \u2014 you can apply again after 30 days" : `You already have a ${relationOf(ex).toLowerCase()} request / partnership on this project`, 409);
     }
     const m = {
       id: mandateSeq(),
@@ -82625,7 +82714,7 @@ function createPcontrolRouter() {
       assignedAt: nowIso24(),
       appliedNote: note5
     };
-    st24.associateMandates.unshift(m);
+    st25.associateMandates.unshift(m);
     db.save();
     alert(p.builderId, "deals", `Partner request \xB7 ${p.projectName}`, `${u.name}${u.companyName ? ` (${u.companyName})` : ""} wants to sell this project \u2014 appoint, shortlist or decline`, "/?tab=pcontrol", { not: u.id, tag: `mand-${m.id}`, hi: [`\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u0940 \u092E\u093E\u0901\u0917 \xB7 ${p.projectName}`, `${u.name}${u.companyName ? ` (${u.companyName})` : ""} \u092F\u0939 \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u092C\u0947\u091A\u0928\u093E \u091A\u093E\u0939\u0924\u0947 \u0939\u0948\u0902 \u2014 \u0905\u092A\u0949\u0907\u0902\u091F, \u0936\u0949\u0930\u094D\u091F\u0932\u093F\u0938\u094D\u091F \u092F\u093E \u092E\u0928\u093E \u0915\u0930\u0947\u0902`] });
     audit9("DEAL", m.id, "PARTNER_APPLIED", `${u.name} applied to partner on ${p.projectName}${note5 ? `: ${note5.slice(0, 100)}` : ""}`);
@@ -82638,43 +82727,43 @@ function createPcontrolRouter() {
     note: external_exports.string().trim().max(300).default("")
   });
   r.get("/partner/shortlist", partnerOnly, (_req, res) => {
-    res.json({ success: true, shortlist: state().projectShortlists.filter((s) => s.ownerId === me27().id && s.status !== "DROPPED") });
+    res.json({ success: true, shortlist: state().projectShortlists.filter((s) => s.ownerId === me28().id && s.status !== "DROPPED") });
   });
   r.get("/partner/clients", partnerOnly, (_req, res) => {
-    res.json({ success: true, clients: state().clientCards.filter((c) => c.brokerId === me27().id && !["CLOSED", "LOST"].includes(String(c.stage))).map((c) => ({ id: c.id, name: c.name, budgetMax: c.budgetMax, city: c.city, stage: c.stage })) });
+    res.json({ success: true, clients: state().clientCards.filter((c) => c.brokerId === me28().id && !["CLOSED", "LOST"].includes(String(c.stage))).map((c) => ({ id: c.id, name: c.name, budgetMax: c.budgetMax, city: c.city, stage: c.stage })) });
   });
   r.post("/partner/projects/:id/shortlist", partnerOnly, rateLimit("pc-short", 200, 24 * 36e5), (req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const p = db.byId("builderProjects", req.params.id);
-    if (!p || !visibleTo2(p, u.id)) return bad27(res, "Project not found", 404);
+    if (!p || !visibleTo2(p, u.id)) return bad28(res, "Project not found", 404);
     const parsed = shortlistSchema.safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid shortlist");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid shortlist");
     const d = parsed.data;
     let name = d.clientName || "";
     let clientId;
     if (d.clientId) {
-      const c = st24.clientCards.find((x) => x.id === d.clientId && x.brokerId === u.id);
-      if (!c) return bad27(res, "Client not found", 404);
+      const c = st25.clientCards.find((x) => x.id === d.clientId && x.brokerId === u.id);
+      if (!c) return bad28(res, "Client not found", 404);
       clientId = c.id;
       name = c.name;
     }
-    if (!name) return bad27(res, "Pick a client or type a name");
-    if (st24.projectShortlists.filter((s2) => s2.ownerId === u.id && s2.status !== "DROPPED").length >= 300) return bad27(res, "Shortlist limit (300) reached", 409);
+    if (!name) return bad28(res, "Pick a client or type a name");
+    if (st25.projectShortlists.filter((s2) => s2.ownerId === u.id && s2.status !== "DROPPED").length >= 300) return bad28(res, "Shortlist limit (300) reached", 409);
     const key = clientId || name.toLowerCase();
-    if (st24.projectShortlists.some((s2) => s2.ownerId === u.id && s2.projectId === p.id && s2.status !== "DROPPED" && (s2.clientId || s2.clientName.toLowerCase()) === key)) return bad27(res, "This client is already on your shortlist for this project", 409);
+    if (st25.projectShortlists.some((s2) => s2.ownerId === u.id && s2.projectId === p.id && s2.status !== "DROPPED" && (s2.clientId || s2.clientName.toLowerCase()) === key)) return bad28(res, "This client is already on your shortlist for this project", 409);
     const ts = nowIso24();
     const s = { id: uid2("SL"), ownerId: u.id, projectId: p.id, projectName: p.projectName, clientId, clientName: name, units: d.units, note: d.note, status: "SHORTLISTED", createdAt: ts, updatedAt: ts };
-    st24.projectShortlists.unshift(s);
+    st25.projectShortlists.unshift(s);
     db.save();
     res.json({ success: true, shortlist: s });
   });
-  const myShortlist = (id) => state().projectShortlists.find((s) => s.id === id && s.ownerId === me27().id);
+  const myShortlist = (id) => state().projectShortlists.find((s) => s.id === id && s.ownerId === me28().id);
   r.put("/partner/shortlist/:sid", partnerOnly, (req, res) => {
     const s = myShortlist(req.params.sid);
-    if (!s) return bad27(res, "Not found", 404);
+    if (!s) return bad28(res, "Not found", 404);
     const parsed = shortlistSchema.pick({ units: true, note: true }).partial().safeParse(req.body);
-    if (!parsed.success) return bad27(res, parsed.error.issues[0]?.message || "Invalid");
+    if (!parsed.success) return bad28(res, parsed.error.issues[0]?.message || "Invalid");
     if (parsed.data.units) s.units = parsed.data.units;
     if (parsed.data.note !== void 0) s.note = parsed.data.note;
     s.updatedAt = nowIso24();
@@ -82683,21 +82772,21 @@ function createPcontrolRouter() {
   });
   r.delete("/partner/shortlist/:sid", partnerOnly, (req, res) => {
     const s = myShortlist(req.params.sid);
-    if (!s) return bad27(res, "Not found", 404);
+    if (!s) return bad28(res, "Not found", 404);
     s.status = "DROPPED";
     s.updatedAt = nowIso24();
     db.save();
     res.json({ success: true });
   });
   r.post("/partner/shortlist/:sid/register", partnerOnly, (req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const s = myShortlist(req.params.sid);
-    if (!s || s.status === "DROPPED") return bad27(res, "Not found", 404);
-    if (s.status === "LEAD_REGISTERED") return bad27(res, "Already registered as a lead", 409);
-    const card2 = s.clientId ? st24.clientCards.find((c) => c.id === s.clientId && c.brokerId === u.id) : void 0;
+    if (!s || s.status === "DROPPED") return bad28(res, "Not found", 404);
+    if (s.status === "LEAD_REGISTERED") return bad28(res, "Already registered as a lead", 409);
+    const card2 = s.clientId ? st25.clientCards.find((c) => c.id === s.clientId && c.brokerId === u.id) : void 0;
     const phone = String(req.body?.phone || card2?.phone || "");
-    if (!card2 && digits(phone).length < 10) return bad27(res, "Enter the client's 10-digit mobile number");
+    if (!card2 && digits(phone).length < 10) return bad28(res, "Enter the client's 10-digit mobile number");
     const input2 = leadCreateSchema.safeParse({
       projectId: s.projectId,
       name: s.clientName,
@@ -82709,7 +82798,7 @@ function createPcontrolRouter() {
       note: s.note ? `From shortlist: ${s.note}` : "From project shortlist",
       consent: req.body?.consent === true ? true : void 0
     });
-    if (!input2.success) return bad27(res, input2.error.issues[0]?.message || "Invalid details");
+    if (!input2.success) return bad28(res, input2.error.issues[0]?.message || "Invalid details");
     const out = registerLead(u, input2.data, { shortlistId: s.id, via: "SHORTLIST" });
     if (out.status !== 200) return res.status(out.status).json(out.body);
     s.status = "LEAD_REGISTERED";
@@ -82720,17 +82809,17 @@ function createPcontrolRouter() {
   });
   const teamGate = needs("team:manage");
   const employerOnly = (req, res, next2) => {
-    teamGate(req, res, () => ["BROKER", "DEVELOPER_BUILDER"].includes(me27().role) ? next2() : bad27(res, "Only a broker or builder manages a team", 403));
+    teamGate(req, res, () => ["BROKER", "DEVELOPER_BUILDER"].includes(me28().role) ? next2() : bad28(res, "Only a broker or builder manages a team", 403));
   };
-  const myMember = (id) => membersOf(me27().id).find((m) => m.id === id);
+  const myMember = (id) => membersOf(me28().id).find((m) => m.id === id);
   r.get("/team/control", employerOnly, (_req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const today = startOfDayMs();
     const wk = Date.now() - 7 * 864e5;
-    const mine3 = st24.crmLeads.filter((l) => ownerIdOf(l) === u.id);
+    const mine3 = st25.crmLeads.filter((l) => ownerIdOf(l) === u.id);
     const members2 = membersOf(u.id).map((m) => {
-      const rev = st24.leadReveals.filter((x) => x.userId === m.id);
+      const rev = st25.leadReveals.filter((x) => x.userId === m.id);
       return {
         id: m.id,
         name: m.name,
@@ -82742,29 +82831,29 @@ function createPcontrolRouter() {
         reveals7d: rev.filter((x) => Date.parse(x.at) >= wk).length
       };
     });
-    const projects = (u.role === "DEVELOPER_BUILDER" ? st24.builderProjects.filter((p) => p.builderId === u.id) : st24.builderProjects.filter((p) => myProjectIds(u).includes(p.id))).map((p) => ({ id: p.id, name: p.projectName }));
+    const projects = (u.role === "DEVELOPER_BUILDER" ? st25.builderProjects.filter((p) => p.builderId === u.id) : st25.builderProjects.filter((p) => myProjectIds(u).includes(p.id))).map((p) => ({ id: p.id, name: p.projectName }));
     res.json({ success: true, routing: u.leadRouting?.mode || "OFF", pool: poolFor(u.id).length, members: members2, projects, canVerifyEnabled: u.role === "DEVELOPER_BUILDER" });
   });
   r.put("/team/routing", employerOnly, (req, res) => {
-    const u = me27();
+    const u = me28();
     const mode = req.body?.mode;
-    if (!["OFF", "ROUND_ROBIN", "LEAST_LOADED"].includes(mode)) return bad27(res, "Mode must be OFF, ROUND_ROBIN or LEAST_LOADED");
+    if (!["OFF", "ROUND_ROBIN", "LEAST_LOADED"].includes(mode)) return bad28(res, "Mode must be OFF, ROUND_ROBIN or LEAST_LOADED");
     u.leadRouting = { mode, cursor: u.leadRouting?.cursor || 0 };
     db.save();
     audit9("LEAD", u.id, "LEAD_ROUTING_SET", `${u.name} set new-lead routing to ${mode}`);
     res.json({ success: true });
   });
   r.put("/team/:id/policy", employerOnly, (req, res) => {
-    const u = me27();
+    const u = me28();
     const m = myMember(req.params.id);
-    if (!m) return bad27(res, "Team member not found", 404);
+    if (!m) return bad28(res, "Team member not found", 404);
     const clean = cleanPolicy(req.body || {}, policyOf(m));
-    if (typeof clean === "string") return bad27(res, clean);
-    if (clean.canVerify && u.role !== "DEVELOPER_BUILDER") return bad27(res, "Only a builder can let staff verify partner leads");
-    if (clean.canScanVisits && u.role !== "DEVELOPER_BUILDER") return bad27(res, "Only a builder can let staff scan visit QR passes (a partner's staff cannot verify their own visits)");
-    if ((clean.listings !== "OFF" || clean.rooms || clean.clients) && u.role !== "BROKER") return bad27(res, "Listings, client rooms and the client list are for a broker's office staff");
+    if (typeof clean === "string") return bad28(res, clean);
+    if (clean.canVerify && u.role !== "DEVELOPER_BUILDER") return bad28(res, "Only a builder can let staff verify partner leads");
+    if (clean.canScanVisits && u.role !== "DEVELOPER_BUILDER") return bad28(res, "Only a builder can let staff scan visit QR passes (a partner's staff cannot verify their own visits)");
+    if ((clean.listings !== "OFF" || clean.rooms || clean.clients) && u.role !== "BROKER") return bad28(res, "Listings, client rooms and the client list are for a broker's office staff");
     const mine3 = new Set(u.role === "DEVELOPER_BUILDER" ? state().builderProjects.filter((p) => p.builderId === u.id).map((p) => p.id) : state().associateMandates.filter((x) => x.brokerId === u.id).map((x) => x.projectId));
-    if (clean.projectIds.some((id) => !mine3.has(id))) return bad27(res, "Pick only your own projects");
+    if (clean.projectIds.some((id) => !mine3.has(id))) return bad28(res, "Pick only your own projects");
     const prev = policyOf(m);
     m.teamPolicy = clean;
     let handed = 0;
@@ -82774,26 +82863,26 @@ function createPcontrolRouter() {
     res.json({ success: true, policy: clean, handedBack: handed });
   });
   r.post("/team/handover", employerOnly, (req, res) => {
-    const u = me27();
+    const u = me28();
     const from = myMember(String(req.body?.fromMemberId || ""));
-    if (!from) return bad27(res, "Team member not found", 404);
+    if (!from) return bad28(res, "Team member not found", 404);
     const toId = req.body?.toMemberId ? String(req.body.toMemberId) : null;
-    if (toId && !membersOf(u.id).some((m) => m.id === toId && m.verificationStatus === "VERIFIED" && m.id !== from.id)) return bad27(res, "Pick another active team member");
+    if (toId && !membersOf(u.id).some((m) => m.id === toId && m.verificationStatus === "VERIFIED" && m.id !== from.id)) return bad28(res, "Pick another active team member");
     const n2 = releaseMemberLeads(u, from, u.id, u.name, toId);
     db.save();
     audit9("LEAD", from.id, "LEADS_HANDED_OVER", `${u.name} handed ${n2} open lead(s) of ${from.name} to ${toId ? membersOf(u.id).find((m) => m.id === toId)?.name : "the pool / routing"}`);
     res.json({ success: true, moved: n2 });
   });
   r.post("/team/bulk-allot", employerOnly, (req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const ids2 = Array.isArray(req.body?.leadIds) ? req.body.leadIds.map(String).slice(0, 100) : [];
-    if (!ids2.length) return bad27(res, "Select at least one lead");
+    if (!ids2.length) return bad28(res, "Select at least one lead");
     const memberId = req.body?.memberId ? String(req.body.memberId) : "";
     const to = memberId ? myMember(memberId) : void 0;
-    if (memberId && (!to || to.verificationStatus !== "VERIFIED")) return bad27(res, "Pick one of your active team members");
+    if (memberId && (!to || to.verificationStatus !== "VERIFIED")) return bad28(res, "Pick one of your active team members");
     let n2 = 0;
-    for (const l of st24.crmLeads.filter((x) => ids2.includes(x.id) && ownerIdOf(x) === u.id && isOpen2(x) && x.stage !== "BOOKING_REQUESTED")) {
+    for (const l of st25.crmLeads.filter((x) => ids2.includes(x.id) && ownerIdOf(x) === u.id && isOpen2(x) && x.stage !== "BOOKING_REQUESTED")) {
       const prev = l.assignedMemberName;
       l.assignedMemberId = to?.id;
       l.assignedMemberName = to?.name;
@@ -82807,48 +82896,48 @@ function createPcontrolRouter() {
     res.json({ success: true, moved: n2 });
   });
   r.get("/team/reveals", employerOnly, (_req, res) => {
-    res.json({ success: true, reveals: state().leadReveals.filter((x) => x.employerId === me27().id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100) });
+    res.json({ success: true, reveals: state().leadReveals.filter((x) => x.employerId === me28().id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100) });
   });
   const staffOnly = (req, res, next2) => {
-    const u = me27();
-    if (u.role !== "TEAM_MEMBER") return bad27(res, "Only team members use this", 403);
+    const u = me28();
+    if (u.role !== "TEAM_MEMBER") return bad28(res, "Only team members use this", 403);
     next2();
   };
   r.post("/leads/:id/reveal", needs("pcontrol:staff"), staffOnly, rateLimit("pc-reveal", 200, 24 * 36e5), (req, res) => {
-    const u = me27();
-    const st24 = state();
+    const u = me28();
+    const st25 = state();
     const pol = policyOf(u);
     const l = leadsForMember(u).find((x) => x.id === req.params.id);
-    if (!l) return bad27(res, "Lead not found", 404);
-    if (pol.phoneMode === "HIDDEN") return bad27(res, "Your employer has not allowed you to see customer numbers", 403);
+    if (!l) return bad28(res, "Lead not found", 404);
+    if (pol.phoneMode === "HIDDEN") return bad28(res, "Your employer has not allowed you to see customer numbers", 403);
     if (pol.phoneMode === "FULL") return res.json({ success: true, phone: l.phone });
-    if (l.assignedMemberId !== u.id) return bad27(res, "You can reveal the number only of leads allotted to you", 403);
-    const today = st24.leadReveals.filter((x) => x.userId === u.id && Date.parse(x.at) >= startOfDayMs());
-    if (!today.some((x) => x.leadId === l.id) && today.length >= pol.revealCap) return bad27(res, `Daily limit of ${pol.revealCap} number reveals reached \u2014 ask your employer`, 429);
+    if (l.assignedMemberId !== u.id) return bad28(res, "You can reveal the number only of leads allotted to you", 403);
+    const today = st25.leadReveals.filter((x) => x.userId === u.id && Date.parse(x.at) >= startOfDayMs());
+    if (!today.some((x) => x.leadId === l.id) && today.length >= pol.revealCap) return bad28(res, `Daily limit of ${pol.revealCap} number reveals reached \u2014 ask your employer`, 429);
     if (!today.some((x) => x.leadId === l.id)) {
-      st24.leadReveals.unshift({ id: uid2("RV"), employerId: u.employerId, userId: u.id, userName: u.name, leadId: l.id, at: nowIso24() });
-      if (st24.leadReveals.length > 5e3) st24.leadReveals.length = 5e3;
+      st25.leadReveals.unshift({ id: uid2("RV"), employerId: u.employerId, userId: u.id, userName: u.name, leadId: l.id, at: nowIso24() });
+      if (st25.leadReveals.length > 5e3) st25.leadReveals.length = 5e3;
       db.save();
       audit9("LEAD", l.id, "CRM_PHONE_REVEALED", `${u.name} revealed the number of ${l.name} (${l.projectName})`);
     }
     res.json({ success: true, phone: l.phone });
   });
   r.get("/staff/pool", needs("pcontrol:staff"), staffOnly, (_req, res) => {
-    const u = me27();
+    const u = me28();
     const pol = policyOf(u);
     if (!pol.canClaim) return res.json({ success: true, enabled: false, leads: [] });
     const leads = poolFor(u.employerId).filter((l) => pol.projectIds.length === 0 || pol.projectIds.includes(l.projectId)).map((l) => ({ id: l.id, name: l.name, projectName: l.projectName, stage: l.stage, unitInterest: l.unitInterest, createdAt: l.createdAt, phone: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" + l.phone.replace(/\D/g, "").slice(-2) }));
     res.json({ success: true, enabled: true, leads, open: openLoad(u.id), cap: pol.maxOpenLeads ?? 50 });
   });
   r.post("/staff/claim", needs("pcontrol:staff"), staffOnly, (req, res) => {
-    const u = me27();
+    const u = me28();
     const pol = policyOf(u);
-    if (!pol.canClaim) return bad27(res, "Your employer has not enabled lead claiming for you", 403);
-    if (pol.onLeave) return bad27(res, "You are marked on leave", 403);
+    if (!pol.canClaim) return bad28(res, "Your employer has not enabled lead claiming for you", 403);
+    if (pol.onLeave) return bad28(res, "You are marked on leave", 403);
     const cap = pol.maxOpenLeads ?? 50;
-    if (openLoad(u.id) >= cap) return bad27(res, `You already hold ${cap} open leads \u2014 close some first`, 409);
+    if (openLoad(u.id) >= cap) return bad28(res, `You already hold ${cap} open leads \u2014 close some first`, 409);
     const l = poolFor(u.employerId).find((x) => x.id === String(req.body?.leadId || "") && (pol.projectIds.length === 0 || pol.projectIds.includes(x.projectId)));
-    if (!l) return bad27(res, "This lead is no longer available", 409);
+    if (!l) return bad28(res, "This lead is no longer available", 409);
     l.assignedMemberId = u.id;
     l.assignedMemberName = u.name;
     l.updatedAt = nowIso24();
@@ -82861,7 +82950,7 @@ function createPcontrolRouter() {
 }
 
 // server/timeline.ts
-var import_express36 = __toESM(require_express2(), 1);
+var import_express37 = __toESM(require_express2(), 1);
 
 // src/shared/sideFees.ts
 var MAX_SIDE_FEE = 5e9;
@@ -82889,7 +82978,7 @@ var allSidesDone = (d) => [d.introducingBrokerId, d.closingBrokerId].every((id) 
 var feeFor = (d, userId) => isOwnSide(d) ? feeOf(d, userId) : d.totalCommissionExpected || 0;
 
 // server/timeline.ts
-import crypto25 from "node:crypto";
+import crypto26 from "node:crypto";
 var nowIso25 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st12 = () => db.getState();
 var bad13 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
@@ -82909,9 +82998,9 @@ var milestoneSchema = external_exports.object({
   note: external_exports.string().trim().max(300).optional()
 });
 function createTimelineRouter() {
-  const r = (0, import_express36.Router)();
-  const me27 = () => ctx().user;
-  const self = () => profile(me27().id);
+  const r = (0, import_express37.Router)();
+  const me28 = () => ctx().user;
+  const self = () => profile(me28().id);
   const loadDeal = (req, res) => {
     const u = self();
     const d = db.byId("dealRooms", req.params.dealId);
@@ -82957,7 +83046,7 @@ function createTimelineRouter() {
     }
     if (p?.soldAt && offers.some((o) => o.id === p.soldOfferId)) ev2.push({ at: p.soldAt, kind: "SOLD", title: `Property marked ${p.listingStatus} through this deal` });
     ev2.sort((a, b) => a.at.localeCompare(b.at));
-    const fingerprint = crypto25.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
+    const fingerprint = crypto26.createHash("sha256").update(JSON.stringify([d.id, ev2])).digest("hex").slice(0, 16).toUpperCase();
     const intro = profile(d.introducingBrokerId);
     const clos = profile(d.closingBrokerId);
     res.json({
@@ -82997,7 +83086,7 @@ function createTimelineRouter() {
     if (m.plannedAt && Number.isNaN(Date.parse(m.plannedAt))) return bad13(res, "Invalid planned date");
     if (hit(`ms:${u.id}`, 60, 36e5)) return bad13(res, "Too many milestones \u2014 slow down", 429);
     const ts = nowIso25();
-    const x = { id: `MS-${Date.now().toString(36)}${crypto25.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
+    const x = { id: `MS-${Date.now().toString(36)}${crypto26.randomBytes(2).toString("hex")}`, dealRoomId: d.id, kind: m.kind, title: m.title, plannedAt: m.plannedAt ? new Date(m.plannedAt).toISOString() : void 0, amount: m.amount, ref: m.ref, note: m.note, status: "PLANNED", createdById: u.id, createdByName: u.name, createdAt: ts };
     st12().dealMilestones.push(x);
     db.save();
     db.appendAuditEvent(u.id, u.role, "DEAL", d.id, "MILESTONE_ADDED", `${u.name} added ${m.kind} milestone "${m.title}"`);
@@ -83076,7 +83165,7 @@ function createTimelineRouter() {
     if (text.length < 2 || text.length > 500) return bad13(res, "Note must be 2\u2013500 characters");
     if (remind && Number.isNaN(Date.parse(remind))) return bad13(res, "Invalid reminder date");
     if (st12().brokerNotes.filter((n3) => n3.userId === u.id && n3.dealRoomId === d.id).length >= 200) return bad13(res, "Too many notes on this deal", 429);
-    const n2 = { id: `BN-${Date.now().toString(36)}${crypto25.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso25() };
+    const n2 = { id: `BN-${Date.now().toString(36)}${crypto26.randomBytes(2).toString("hex")}`, dealRoomId: d.id, userId: u.id, text, remindAt: remind ? new Date(remind).toISOString() : void 0, createdAt: nowIso25() };
     st12().brokerNotes.push(n2);
     db.save();
     res.json({ success: true, note: n2 });
@@ -83093,8 +83182,8 @@ function createTimelineRouter() {
 }
 
 // server/network.ts
-var import_express37 = __toESM(require_express2(), 1);
-import crypto26 from "node:crypto";
+var import_express38 = __toESM(require_express2(), 1);
+import crypto27 from "node:crypto";
 var nowIso26 = () => (/* @__PURE__ */ new Date()).toISOString();
 var st13 = () => db.getState();
 var me17 = () => ctx().user;
@@ -83191,7 +83280,7 @@ var applicationSchema = external_exports.object({
   aadhaarLast4: external_exports.string().trim().max(4).optional()
 });
 function createNetworkRouter() {
-  const r = (0, import_express37.Router)();
+  const r = (0, import_express38.Router)();
   r.get("/me", needs("network:use"), (_req, res) => {
     const u = me17();
     const s = st13();
@@ -83689,10 +83778,10 @@ var proposeSchema = external_exports.object({
 });
 var brokerCard = (u) => u ? { id: u.id, name: u.name, company: u.companyName || "", city: u.city, tier: tierOf(u), tierLabel: tierOf(u) ? TIER_LABEL[tierOf(u)] : null } : null;
 function tieupHash(t) {
-  return crypto26.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
+  return crypto27.createHash("sha256").update([t.id, t.fromId, t.toId, t.introSharePct, [...t.scopeKinds].sort().join(","), t.city || "", t.validUntil || "", t.decidedAt || ""].join("|")).digest("hex");
 }
 function createTieupsRouter() {
-  const r = (0, import_express37.Router)();
+  const r = (0, import_express38.Router)();
   const viewT = (t, u) => {
     const other = st13().users.find((x) => x.id === (t.fromId === u.id ? t.toId : t.fromId));
     return { ...t, direction: t.fromId === u.id ? "OUT" : "IN", other: brokerCard(other), history: t.history.slice(-10) };
@@ -83865,7 +83954,7 @@ function tieupSplitFor(buyerBrokerId, listingBrokerId, prop) {
 }
 
 // server/health.ts
-var import_express38 = __toESM(require_express2(), 1);
+var import_express39 = __toESM(require_express2(), 1);
 init_pgstore();
 import v8 from "node:v8";
 var MAX = 60;
@@ -83873,29 +83962,29 @@ var ring = { serverErrors: [], slow: [], client: [] };
 var counts3 = { serverErrors: 0, slow: 0, client: 0, rejections: 0, requests: 0 };
 var startedAt = (/* @__PURE__ */ new Date()).toISOString();
 var SLOW_MS = Number(process.env.SLOW_REQUEST_MS || 1500);
-function push2(list, path13, detail2, ms) {
-  const hit2 = list.find((e) => e.path === path13 && e.detail === detail2);
+function push2(list, path14, detail2, ms) {
+  const hit2 = list.find((e) => e.path === path14 && e.detail === detail2);
   if (hit2) {
     hit2.n++;
     hit2.at = (/* @__PURE__ */ new Date()).toISOString();
     if (ms && (!hit2.ms || ms > hit2.ms)) hit2.ms = ms;
     return;
   }
-  list.unshift({ at: (/* @__PURE__ */ new Date()).toISOString(), path: path13, detail: detail2, ms, n: 1 });
+  list.unshift({ at: (/* @__PURE__ */ new Date()).toISOString(), path: path14, detail: detail2, ms, n: 1 });
   if (list.length > MAX) list.length = MAX;
 }
 var pathKey = (p) => p.replace(/\/[A-Z]{2,}[-_][A-Z0-9_-]+/g, "/:id").replace(/\/\d{3,}/g, "/:n").slice(0, 120);
-function noteRequest(path13, status, ms) {
+function noteRequest(path14, status, ms) {
   counts3.requests++;
   if (ms >= SLOW_MS) {
     counts3.slow++;
-    push2(ring.slow, pathKey(path13), `${status}`, ms);
+    push2(ring.slow, pathKey(path14), `${status}`, ms);
   }
 }
-function noteServerError(path13, err) {
+function noteServerError(path14, err) {
   counts3.serverErrors++;
   const msg = err instanceof Error ? err.message : String(err);
-  push2(ring.serverErrors, pathKey(path13), msg.replace(/\b\d{10,}\b/g, "[n]").slice(0, 300));
+  push2(ring.serverErrors, pathKey(path14), msg.replace(/\b\d{10,}\b/g, "[n]").slice(0, 300));
 }
 function noteRejection(err) {
   counts3.rejections++;
@@ -83931,10 +84020,10 @@ var clientSchema2 = external_exports.object({
   ua: external_exports.string().max(160).optional().default("")
 });
 function healthSnapshot() {
-  const st24 = db.getState();
+  const st25 = db.getState();
   const mem2 = process.memoryUsage();
   const sizes = {};
-  for (const [k, v] of Object.entries(st24)) if (Array.isArray(v) && v.length >= 100) sizes[k] = v.length;
+  for (const [k, v] of Object.entries(st25)) if (Array.isArray(v) && v.length >= 100) sizes[k] = v.length;
   const worstLag = Math.max(lagMax1m, ...lagHistory.slice(-15));
   const status = counts3.serverErrors > 0 && ring.serverErrors[0] && Date.now() - Date.parse(ring.serverErrors[0].at) < 15 * 6e4 ? "WARN" : worstLag > 2e3 ? "WARN" : "OK";
   return {
@@ -83948,13 +84037,13 @@ function healthSnapshot() {
     serverErrors: ring.serverErrors.slice(0, 25),
     slow: ring.slow.slice(0, 25),
     client: ring.client.slice(0, 25),
-    data: { users: st24.users?.length || 0, properties: st24.properties?.length || 0, auditEvents: st24.auditEvents?.length || 0, bigCollections: sizes, version: db.version },
+    data: { users: st25.users?.length || 0, properties: st25.properties?.length || 0, auditEvents: st25.auditEvents?.length || 0, bigCollections: sizes, version: db.version },
     storage: process.env.DATABASE_URL ? "PostgreSQL" : "JSON file",
     saves: pgStore ? { ...pgStore.stats } : void 0
   };
 }
 function createHealthRouter() {
-  const r = (0, import_express38.Router)();
+  const r = (0, import_express39.Router)();
   r.post("/client-errors", rateLimit("client-err", 30, 6e4), (req, res) => {
     const p = clientSchema2.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: "bad report" });
@@ -83968,7 +84057,7 @@ function createHealthRouter() {
 }
 
 // server/legal.ts
-var import_express39 = __toESM(require_express2(), 1);
+var import_express40 = __toESM(require_express2(), 1);
 var st14 = () => db.getState();
 var nowIso27 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me18 = () => ctx().user;
@@ -84123,7 +84212,7 @@ function closeShares(r) {
   }
 }
 function createLegalRouter() {
-  const r = (0, import_express39.Router)();
+  const r = (0, import_express40.Router)();
   const broker = needs("legal:request");
   const desk = needs("legal:desk");
   const manage = needs("legal:manage");
@@ -84525,8 +84614,8 @@ function createLegalRouter() {
 }
 
 // server/revenue.ts
-var import_express40 = __toESM(require_express2(), 1);
-import crypto27 from "node:crypto";
+var import_express41 = __toESM(require_express2(), 1);
+import crypto28 from "node:crypto";
 
 // src/shared/revenueRules.ts
 var r2 = (n2) => Math.round(n2);
@@ -84966,7 +85055,7 @@ function shapeEntry2(e, a, now = Date.now()) {
   return { ...e, money: entryMoney(e, a), overdue: isOverdue(e, a, now), builderName: a?.builderName || "" };
 }
 function createRevenueRouter() {
-  const r = (0, import_express40.Router)();
+  const r = (0, import_express41.Router)();
   const admin = needs("admin:control_center");
   r.get("/summary", admin, (_req, res) => {
     syncMasterCp();
@@ -85073,7 +85162,7 @@ function createRevenueRouter() {
     const now = Date.now();
     const agreementId = String(req.query.agreementId || "");
     const q = String(req.query.q || "").trim().toLowerCase();
-    const view7 = String(req.query.view || "all");
+    const view8 = String(req.query.view || "all");
     let list = st15().masterCpEntries.slice();
     if (agreementId) list = list.filter((e) => e.agreementId === agreementId);
     if (q) list = list.filter((e) => `${e.id} ${e.projectName} ${e.unitNo} ${e.brokerName} ${e.bookingId || ""} ${e.builder.invoiceNo || ""}`.toLowerCase().includes(q));
@@ -85090,7 +85179,7 @@ function createRevenueRouter() {
       done: (e) => !e.cancelled && e.builder.status === "RECEIVED" && (e.broker.status === "PAID" || !e.brokerId),
       cancelled: (e) => !!e.cancelled
     };
-    const f = views[view7] || views.all;
+    const f = views[view8] || views.all;
     const counts4 = Object.fromEntries(Object.entries(views).map(([k, fn]) => [k, st15().masterCpEntries.filter((e) => (!agreementId || e.agreementId === agreementId) && fn(e)).length]));
     list = list.filter(f).sort((a, b) => b.bookedAt.localeCompare(a.bookedAt));
     res.json({ success: true, entries: list.slice(0, 500).map((e) => shapeEntry2(e, ag.get(e.agreementId), now)), total: list.length, counts: counts4 });
@@ -85305,7 +85394,7 @@ function createRevenueRouter() {
     const p = external_exports.object({ city: external_exports.string().trim().max(80).optional().default(""), label: external_exports.string().trim().min(2).max(80), days: external_exports.number().int().min(1).max(90).optional().default(30) }).safeParse(req.body);
     if (!p.success) return bad16(res, p.error.issues[0]?.message || "Invalid link");
     const s = st15();
-    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto27.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso28(), createdBy: me19().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
+    const l = { id: nextId4("SL-", s.strengthLinks.map((x) => x.id), 4), token: crypto28.randomBytes(18).toString("base64url"), city: p.data.city, label: p.data.label, createdAt: nowIso28(), createdBy: me19().name, expiresAt: new Date(Date.now() + p.data.days * 864e5).toISOString(), views: 0 };
     s.strengthLinks.push(l);
     db.save();
     audit6("SYSTEM", l.id, "STRENGTH_LINK_CREATED", `Network-strength link for "${l.label}" (${l.city || "All India"}), ${p.data.days} days`);
@@ -85324,7 +85413,7 @@ function createRevenueRouter() {
   return r;
 }
 function createPublicStrengthRouter() {
-  const r = (0, import_express40.Router)();
+  const r = (0, import_express41.Router)();
   r.get("/strength/:token", rateLimit("strength-public", 60, 6e4), (req, res) => {
     const l = st15().strengthLinks.find((x) => x.token === req.params.token);
     if (!l || l.revokedAt || Date.parse(l.expiresAt) < Date.now()) return res.status(404).json({ error: "This link has expired or was switched off. Ask GENZ for a new one." });
@@ -85341,7 +85430,7 @@ function sweepRevenue() {
 }
 
 // server/protection.ts
-var import_express41 = __toESM(require_express2(), 1);
+var import_express42 = __toESM(require_express2(), 1);
 
 // src/shared/protectionRules.ts
 var PROTECTION_MIN = 7;
@@ -85394,13 +85483,13 @@ var settingsSchema4 = external_exports.object({
   defaultDays: external_exports.number().int().min(PROTECTION_MIN).max(PROTECTION_CEILING).optional()
 }).strict();
 function createProtectionRouter() {
-  const r = (0, import_express41.Router)();
+  const r = (0, import_express42.Router)();
   r.get("/config", requireAuth, (_req, res) => {
     const s = db.getState().settings;
     res.json({ success: true, ...currentProtection(), changedBy: s.bypassMaxChangedBy ? true : false, changedAt: s.bypassMaxChangedAt || null });
   });
   r.put("/settings", needs("admin:control_center"), (req, res) => {
-    const me27 = ctx().user;
+    const me28 = ctx().user;
     const p = settingsSchema4.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid days", code: "PROTECTION_SETTINGS" });
     const s = db.getState().settings;
@@ -85417,9 +85506,9 @@ function createProtectionRouter() {
     s.bypassMaxDays = max;
     s.defaultProtectionPeriodDays = def;
     if (changes.length) {
-      s.bypassMaxChangedBy = me27.id;
+      s.bypassMaxChangedBy = me28.id;
       s.bypassMaxChangedAt = (/* @__PURE__ */ new Date()).toISOString();
-      db.appendAuditEvent(me27.id, me27.role, "SYSTEM", "PROTECTION-DAYS", "PROTECTION_LIMIT_CHANGED", `Bypass protection: ${changes.join("; ")}. Existing bonds keep their days.`);
+      db.appendAuditEvent(me28.id, me28.role, "SYSTEM", "PROTECTION-DAYS", "PROTECTION_LIMIT_CHANGED", `Bypass protection: ${changes.join("; ")}. Existing bonds keep their days.`);
     }
     db.save();
     res.json({ success: true, ...currentProtection() });
@@ -85441,7 +85530,7 @@ function verifySigningPassword(user, password) {
 }
 
 // server/dealhub.ts
-var import_express42 = __toESM(require_express2(), 1);
+var import_express43 = __toESM(require_express2(), 1);
 var DAY15 = 864e5;
 var STAGES2 = ["Lead", "Introduction", "Site Visit Done", "Negotiation", "Agreement", "Handover", "Settled"];
 var LIVE_DISPUTE2 = /* @__PURE__ */ new Set(["OPEN", "UNDER_REVIEW", "MEDIATION"]);
@@ -85597,7 +85686,7 @@ function hubItem(d, u, s, open2, now = Date.now()) {
 }
 var ORDER2 = ["CLOSE_TO_ANSWER", "CLIENT_PAYMENT", "OFFLINE_VISIT_TO_CONFIRM", "DISPUTE_OPEN", "AGREEMENT_TO_SIGN", "TASKS_TO_ACCEPT", "VISITS_TO_VERIFY", "TASKS_OVERDUE", "TASKS_TO_VERIFY", "PAYMENTS_TO_CONFIRM", "NO_AGREEMENT", "TASKS_TO_DO", "STALLED"];
 function createDealHubRouter() {
-  const r = (0, import_express42.Router)();
+  const r = (0, import_express43.Router)();
   r.get("/", needs("deal:read"), (_req, res) => {
     const u = ctx().user;
     const s = db.getState();
@@ -85631,7 +85720,7 @@ function createDealHubRouter() {
 }
 
 // server/chats.ts
-var import_express43 = __toESM(require_express2(), 1);
+var import_express44 = __toESM(require_express2(), 1);
 var FRESH_MS = 3 * 864e5;
 function mine(u, s) {
   if (u.role === "SUPERADMIN" || u.role === "ADMIN") return [];
@@ -85658,7 +85747,7 @@ function unreadOf(u, d, ms, s) {
   return ms.filter((m) => m.senderId !== u.id && Date.parse(m.timestamp) > since).length;
 }
 function createChatsRouter() {
-  const r = (0, import_express43.Router)();
+  const r = (0, import_express44.Router)();
   r.get("/deals", needs("deal:chat"), (_req, res) => {
     const u = ctx().user;
     const s = db.getState();
@@ -85721,8 +85810,8 @@ function createChatsRouter() {
 }
 
 // server/saved.ts
-var import_express44 = __toESM(require_express2(), 1);
-import crypto28 from "node:crypto";
+var import_express45 = __toESM(require_express2(), 1);
+import crypto29 from "node:crypto";
 var MAX_SAVED = 100;
 var me20 = () => ctx().user;
 var live = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
@@ -85739,7 +85828,7 @@ var card = (p) => ({
   status: p.listingStatus
 });
 function createSavedRouter() {
-  const r = (0, import_express44.Router)();
+  const r = (0, import_express45.Router)();
   r.get("/", needs("property:read"), (_req, res) => {
     const u = me20();
     const s = db.getState();
@@ -85763,15 +85852,216 @@ function createSavedRouter() {
     const p = s.properties.find((q) => q.id === req.params.propertyId);
     if (!live(p)) return res.status(404).json({ error: "This home is not available to save.", hi: "\u092F\u0939 \u0918\u0930 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u0938\u0915\u0924\u093E (\u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902)\u0964" });
     if (list.filter((x) => x.userId === u.id).length >= MAX_SAVED) return res.status(400).json({ error: `You can keep ${MAX_SAVED} saved homes \u2014 remove some first.`, hi: `\u0906\u092A ${MAX_SAVED} \u0918\u0930 \u0938\u0947\u0935 \u0930\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902 \u2014 \u092A\u0939\u0932\u0947 \u0915\u0941\u091B \u0939\u091F\u093E\u090F\u0901\u0964` });
-    list.push({ id: `SAV-${crypto28.randomBytes(5).toString("hex")}`, userId: u.id, propertyId: p.id, at: (/* @__PURE__ */ new Date()).toISOString() });
+    list.push({ id: `SAV-${crypto29.randomBytes(5).toString("hex")}`, userId: u.id, propertyId: p.id, at: (/* @__PURE__ */ new Date()).toISOString() });
     db.save();
     res.json({ success: true, saved: true });
   });
   return r;
 }
 
+// server/partnerchat.ts
+var import_express46 = __toESM(require_express2(), 1);
+var import_express47 = __toESM(require_express2(), 1);
+import crypto30 from "node:crypto";
+var st16 = () => db.getState();
+var nowIso29 = () => (/* @__PURE__ */ new Date()).toISOString();
+var me21 = () => ctx().user;
+var bad17 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
+var inr11 = (n2) => "\u20B9" + Math.round(Number(n2) || 0).toLocaleString("en-IN");
+var OPEN_STATUSES = ["INVITED", "APPLIED", "SHORTLISTED", "ACTIVE_ASSOCIATE", "TOP_PERFORMER", "PAUSED"];
+var MAX_MSGS = 2e3;
+function sideOf2(u) {
+  if (u.verificationStatus !== "VERIFIED") return null;
+  if (u.role === "DEVELOPER_BUILDER") return { side: "BUILDER", builderId: u.id };
+  if (u.role === "BROKER") return { side: "PARTNER", brokerId: u.id };
+  if (u.role === "TEAM_MEMBER" && u.employerRole === "DEVELOPER_BUILDER" && u.employerId && u.teamPolicy?.canVerify && !u.teamPolicy?.onLeave) return { side: "BUILDER", builderId: u.employerId };
+  return null;
+}
+function linkOf(builderId, brokerId) {
+  const s = st16();
+  const projects = new Map(s.builderProjects.filter((p) => p.builderId === builderId).map((p) => [p.id, p]));
+  const ms = s.associateMandates.filter((m) => m.brokerId === brokerId && projects.has(m.projectId));
+  return { any: ms.length > 0, open: ms.some((m) => OPEN_STATUSES.includes(m.status)), projectIds: [...new Set(ms.map((m) => m.projectId))], projectNames: [...new Set(ms.map((m) => projects.get(m.projectId).projectName))] };
+}
+var pairOf = (sd, withId) => sd.side === "BUILDER" ? { builderId: sd.builderId, brokerId: withId } : { builderId: withId, brokerId: sd.brokerId };
+var otherOf = (sd, t) => sd.side === "BUILDER" ? t.brokerId : t.builderId;
+var mineThread = (sd, t) => sd.side === "BUILDER" ? t.builderId === sd.builderId : t.brokerId === sd.brokerId;
+var unreadOf2 = (u, sd, t) => {
+  const since = t.reads[u.id] || "";
+  return t.messages.filter((m) => m.side !== sd.side && m.at > since).length;
+};
+var label = (id) => {
+  const x = db.byId("users", id);
+  return x ? x.companyName ? `${x.name} (${x.companyName})` : x.name : id;
+};
+var view5 = (m, u, sd) => ({ ...m, mine: m.side === sd.side, ...m.side === sd.side && m.byId !== u.id ? { by: m.byName } : {} });
+function leadCard(l) {
+  return { kind: "LEAD", refId: l.id, label: `${firstName(l.name)} \xB7 ${l.projectName}`, sub: `${l.stage.replace(/_/g, " ").toLowerCase()}${l.verify ? ` \xB7 ${l.verify.toLowerCase()}` : ""}` };
+}
+function bookingCard(b) {
+  return { kind: "BOOKING", refId: b.id, label: `Unit ${b.unitNo} \xB7 ${b.projectName}`, sub: `${b.status.toLowerCase()} \xB7 ${firstName(b.customerName)} \xB7 ${inr11(b.agreementValue)}` };
+}
+function createPartnerChatRouter() {
+  const r = (0, import_express46.Router)();
+  r.use(needs("pchat:use"));
+  const side = (res) => {
+    const sd = sideOf2(me21());
+    if (!sd) {
+      bad17(res, "Only a builder (or his sales manager) and his channel partners use this chat", 403);
+      return null;
+    }
+    return sd;
+  };
+  const load2 = (req, res) => {
+    const sd = side(res);
+    if (!sd) return null;
+    const t = st16().partnerThreads.find((x) => x.id === req.params.id);
+    if (!t || !mineThread(sd, t)) {
+      bad17(res, "Chat not found", 404);
+      return null;
+    }
+    return { sd, t };
+  };
+  r.get("/", (_req, res) => {
+    const u = me21();
+    const sd = side(res);
+    if (!sd) return;
+    const s = st16();
+    const others = /* @__PURE__ */ new Set();
+    if (sd.side === "BUILDER") {
+      const mine3 = new Set(s.builderProjects.filter((p) => p.builderId === sd.builderId).map((p) => p.id));
+      for (const m of s.associateMandates) if (mine3.has(m.projectId)) others.add(m.brokerId);
+    } else {
+      const pids = new Set(s.associateMandates.filter((m) => m.brokerId === sd.brokerId).map((m) => m.projectId));
+      for (const p of s.builderProjects) if (pids.has(p.id)) others.add(p.builderId);
+    }
+    for (const t of s.partnerThreads) if (mineThread(sd, t)) others.add(otherOf(sd, t));
+    const rows = [...others].map((o) => {
+      const pair = pairOf(sd, o);
+      const link = linkOf(pair.builderId, pair.brokerId);
+      const t = s.partnerThreads.find((x) => x.builderId === pair.builderId && x.brokerId === pair.brokerId);
+      const last = t?.messages[t.messages.length - 1];
+      return {
+        id: t?.id || null,
+        withId: o,
+        with: label(o),
+        projects: link.projectNames,
+        open: link.open,
+        last: last ? { text: last.card && !last.text ? last.card.label : last.text.slice(0, 140), at: last.at, mine: last.side === sd.side, by: last.byName, photo: last.card?.kind === "PHOTO" } : void 0,
+        unread: t ? unreadOf2(u, sd, t) : 0
+      };
+    }).filter((x) => x.id || x.open).sort((a, b) => String(b.last?.at || "").localeCompare(String(a.last?.at || "")) || a.with.localeCompare(b.with));
+    res.json({ success: true, side: sd.side, threads: rows, unread: rows.reduce((n2, x) => n2 + x.unread, 0) });
+  });
+  r.post("/open", (req, res) => {
+    const u = me21();
+    const sd = side(res);
+    if (!sd) return;
+    const withId = String(req.body?.withId || "");
+    const pair = pairOf(sd, withId);
+    const link = linkOf(pair.builderId, pair.brokerId);
+    const s = st16();
+    let t = s.partnerThreads.find((x) => x.builderId === pair.builderId && x.brokerId === pair.brokerId);
+    if (!t) {
+      if (!link.open) return bad17(res, "You can chat once the two of you are linked by a project (invited, applied or appointed)", 404, "NOT_LINKED");
+      const ts = nowIso29();
+      t = { id: `PCH-${crypto30.randomBytes(5).toString("hex")}`, builderId: pair.builderId, brokerId: pair.brokerId, messages: [], reads: {}, createdAt: ts, updatedAt: ts };
+      s.partnerThreads.push(t);
+      db.save();
+      db.appendAuditEvent(u.id, u.role, "LEAD", t.id, "PARTNER_CHAT_OPENED", `${u.name} opened the builder\u2013partner chat (${label(pair.builderId)} \u2194 ${label(pair.brokerId)})`);
+    }
+    res.json({ success: true, id: t.id });
+  });
+  r.get("/:id", (req, res) => {
+    const l = load2(req, res);
+    if (!l) return;
+    const { sd, t } = l;
+    const u = me21();
+    const link = linkOf(t.builderId, t.brokerId);
+    const last = t.messages[t.messages.length - 1];
+    if (last && (t.reads[u.id] || "") < last.at) {
+      t.reads[u.id] = last.at;
+      db.save();
+    }
+    res.json({
+      success: true,
+      side: sd.side,
+      thread: { id: t.id, with: label(otherOf(sd, t)), withId: otherOf(sd, t), projects: link.projectNames, open: link.open, messages: t.messages.slice(-300).map((m) => view5(m, u, sd)) }
+    });
+  });
+  r.get("/:id/cards", (req, res) => {
+    const l = load2(req, res);
+    if (!l) return;
+    const { sd, t } = l;
+    const s = st16();
+    const link = linkOf(t.builderId, t.brokerId);
+    const leads = s.crmLeads.filter((x) => x.builderId === t.builderId && x.associateId === t.brokerId).sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))).slice(0, 60).map(leadCard);
+    const bookings = s.crmBookings.filter((x) => x.builderId === t.builderId && x.associateId === t.brokerId).slice(-40).reverse().map(bookingCard);
+    const units = sd.side === "BUILDER" ? s.inventoryUnits.filter((x) => x.builderId === t.builderId && link.projectIds.includes(x.projectId) && x.status === "AVAILABLE").slice(0, 80).map((x) => ({ kind: "UNIT", refId: x.id, label: `${x.label} \xB7 ${x.config}`, sub: `${s.builderProjects.find((p) => p.id === x.projectId)?.projectName || ""}${x.vis?.priceHidden ? "" : ` \xB7 ${inr11(x.price)}`}` })) : [];
+    res.json({ success: true, leads, bookings, units });
+  });
+  r.post("/:id/messages", import_express47.default.json({ limit: "1mb" }), rateLimit("pchat-msg", 300, 36e5), (req, res) => {
+    const l = load2(req, res);
+    if (!l) return;
+    const { sd, t } = l;
+    const u = me21();
+    const s = st16();
+    if (!linkOf(t.builderId, t.brokerId).open) return bad17(res, "This partnership has ended \u2014 the chat is read-only now", 409, "CLOSED");
+    const p = external_exports.object({ text: external_exports.string().trim().max(1e3).optional(), card: external_exports.object({ kind: external_exports.enum(["LEAD", "BOOKING", "UNIT"]), refId: external_exports.string().max(60) }).optional(), photo: external_exports.string().max(9e5).optional() }).strict().safeParse(req.body);
+    if (!p.success) return bad17(res, p.error.issues[0]?.message || "Invalid message");
+    const d = p.data;
+    if (!d.text && !d.card && !d.photo) return bad17(res, "Write a message");
+    if (d.card && d.photo) return bad17(res, "Send one card or one photo at a time");
+    let card2;
+    if (d.card) {
+      if (d.card.kind === "LEAD") {
+        const x = s.crmLeads.find((y) => y.id === d.card.refId && y.builderId === t.builderId && y.associateId === t.brokerId);
+        if (!x) return bad17(res, "That lead is not between the two of you", 404);
+        card2 = leadCard(x);
+      } else if (d.card.kind === "BOOKING") {
+        const x = s.crmBookings.find((y) => y.id === d.card.refId && y.builderId === t.builderId && y.associateId === t.brokerId);
+        if (!x) return bad17(res, "That booking is not between the two of you", 404);
+        card2 = bookingCard(x);
+      } else {
+        if (sd.side !== "BUILDER") return bad17(res, "Only the builder shares units here", 403);
+        const x = s.inventoryUnits.find((y) => y.id === d.card.refId && y.builderId === t.builderId && linkOf(t.builderId, t.brokerId).projectIds.includes(y.projectId));
+        if (!x) return bad17(res, "Unit not found", 404);
+        card2 = { kind: "UNIT", refId: x.id, label: `${x.label} \xB7 ${x.config}`, sub: `${s.builderProjects.find((q) => q.id === x.projectId)?.projectName || ""}${x.vis?.priceHidden ? "" : ` \xB7 ${inr11(x.price)}`} \xB7 ${x.status.toLowerCase()}` };
+      }
+    }
+    if (d.photo) {
+      const sp = savePhoto(d.photo, { kind: "PCHAT", id: t.id, byId: u.id });
+      if (!sp.ok) return bad17(res, sp.error, sp.status);
+      card2 = { kind: "PHOTO", refId: sp.photo.id, label: "Photo" };
+    }
+    const m = { id: `PCM-${crypto30.randomBytes(5).toString("hex")}`, at: nowIso29(), byId: u.id, byName: u.name, side: sd.side, text: d.text || "", ...card2 ? { card: card2 } : {} };
+    t.messages.push(m);
+    if (t.messages.length > MAX_MSGS) t.messages.splice(0, t.messages.length - MAX_MSGS);
+    t.lastAt = m.at;
+    t.updatedAt = m.at;
+    t.reads[u.id] = m.at;
+    db.save();
+    if (card2) db.appendAuditEvent(u.id, u.role, "LEAD", t.id, "PARTNER_CHAT_CARD", `${card2.kind} ${card2.refId} shared in the builder\u2013partner chat`);
+    const to = (sd.side === "PARTNER" ? builderVerifiers(t.builderId) : [t.brokerId]).filter((id) => !!id && id !== u.id && once(`pc:${id}:${t.id}`, 18e4));
+    const what = m.text ? m.text.slice(0, 100) : card2?.kind === "PHOTO" ? "\u{1F4F7} Photo" : `${card2?.label || ""}`;
+    const whatHi = m.text ? m.text.slice(0, 100) : card2?.kind === "PHOTO" ? "\u{1F4F7} \u092B\u093C\u094B\u091F\u094B" : `${card2?.label || ""}`;
+    const from = sd.side === "BUILDER" ? label(t.builderId) : u.name;
+    alert(to, "deals", `${from} \xB7 partner chat`, what, `/?tab=chats&chat=p:${t.id}`, { tag: `pch-${t.id}`, hi: [`${from} \xB7 \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u091A\u0948\u091F`, whatHi] });
+    res.json({ success: true, message: view5(m, u, sd) });
+  });
+  r.get("/photo/:pid", rateLimit("pchat-photo", 600, 36e5), (req, res) => {
+    const sd = side(res);
+    if (!sd) return;
+    const p = photoById(req.params.pid);
+    const t = p && p.ownerKind === "PCHAT" ? st16().partnerThreads.find((x) => x.id === p.ownerId) : void 0;
+    if (!p || !t || !mineThread(sd, t)) return bad17(res, "Photo not found", 404);
+    sendPhoto(res, p);
+  });
+  return r;
+}
+
 // server/sides.ts
-var import_express45 = __toESM(require_express2(), 1);
+var import_express48 = __toESM(require_express2(), 1);
 var str3 = (v, max = 300) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var REF_RE = /^[A-Za-z0-9][A-Za-z0-9 \-\/_.,#:]{3,59}$/;
 function sideViewFor(d, u) {
@@ -85832,7 +86122,7 @@ function load(req, res, write) {
   return { u, deal };
 }
 function createSidesRouter() {
-  const r = (0, import_express45.Router)();
+  const r = (0, import_express48.Router)();
   r.get("/:id/sides", needs("deal:read"), (req, res) => {
     const c = load(req, res, false);
     if (!c) return;
@@ -85907,17 +86197,17 @@ function createSidesRouter() {
 }
 
 // server/buyerbond.ts
-var import_express46 = __toESM(require_express2(), 1);
-import crypto29 from "crypto";
-var nowIso29 = () => (/* @__PURE__ */ new Date()).toISOString();
-var st16 = () => db.getState();
-var me21 = () => ctx().user;
-var bad17 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
+var import_express49 = __toESM(require_express2(), 1);
+import crypto31 from "crypto";
+var nowIso30 = () => (/* @__PURE__ */ new Date()).toISOString();
+var st17 = () => db.getState();
+var me22 = () => ctx().user;
+var bad18 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var phone105 = (p) => digits(String(p ?? "")).slice(-10);
-var buyerKeyOf = (p) => crypto29.createHmac("sha256", secret()).update(`bb-phone|${phone105(p)}`).digest("hex");
+var buyerKeyOf = (p) => crypto31.createHmac("sha256", secret()).update(`bb-phone|${phone105(p)}`).digest("hex");
 var isActive = (b, now = Date.now()) => b.status === "ACTIVE" && Date.parse(b.expiresAt) > now;
 var note2 = (b, text) => {
-  b.events.push({ at: nowIso29(), text });
+  b.events.push({ at: nowIso30(), text });
   if (b.events.length > 40) b.events.splice(0, b.events.length - 40);
 };
 var dIN = (iso) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -85928,12 +86218,12 @@ var BUYER_BONDED_MSG = {
 function activeBuyerBond(propertyId, buyerPhone) {
   if (phone105(buyerPhone).length !== 10) return void 0;
   const key = buyerKeyOf(buyerPhone);
-  return st16().buyerBonds.find((b) => b.propertyId === propertyId && b.buyerKey === key && isActive(b));
+  return st17().buyerBonds.find((b) => b.propertyId === propertyId && b.buyerKey === key && isActive(b));
 }
 function buyerBondBlock(u, propertyId, buyerPhone, _dealRoomId) {
   const b = activeBuyerBond(propertyId, buyerPhone);
   if (!b || b.brokerId === u.id) return null;
-  const together = st16().dealRooms.some((d) => d.propertyId === propertyId && (d.introducingBrokerId === u.id || d.closingBrokerId === u.id) && (d.id === b.dealRoomId || d.introducingBrokerId === b.brokerId));
+  const together = st17().dealRooms.some((d) => d.propertyId === propertyId && (d.introducingBrokerId === u.id || d.closingBrokerId === u.id) && (d.id === b.dealRoomId || d.introducingBrokerId === b.brokerId));
   if (together) return null;
   return { error: BUYER_BONDED_MSG.en, hi: BUYER_BONDED_MSG.hi, code: "BUYER_BONDED", protectedUntil: b.expiresAt, bondRef: b.id };
 }
@@ -85949,7 +86239,7 @@ function makeBuyerBond(a) {
   const days3 = daysFor();
   const now = Date.now();
   const b = {
-    id: `BB-${now.toString(36).toUpperCase()}${crypto29.randomInt(100, 999)}`,
+    id: `BB-${now.toString(36).toUpperCase()}${crypto31.randomInt(100, 999)}`,
     propertyId: a.propertyId,
     brokerId: a.brokerId,
     buyerKey: buyerKeyOf(a.buyerPhone),
@@ -85966,15 +86256,15 @@ function makeBuyerBond(a) {
     events: []
   };
   note2(b, a.source === "VISIT" ? `Site visit ${a.sourceId} verified with the buyer \u2014 buyer bond for ${days3} days` : `Offer ${a.sourceId} sent with the buyer's consent \u2014 buyer bond for ${days3} days`);
-  st16().buyerBonds.unshift(b);
+  st17().buyerBonds.unshift(b);
   const u = db.byId("users", a.brokerId);
   db.appendAuditEvent(a.brokerId, u?.role || "BROKER", "PROPERTY", a.propertyId, "BUYER_BOND_CREATED", `Buyer bond ${b.id}: ${u?.name || a.brokerId} brought buyer \u2026${b.buyerPhoneLast4} to ${a.propertyId} (${a.source} ${a.sourceId}), protected until ${b.expiresAt.slice(0, 10)}`);
   return b;
 }
 function onPropertyClosed(p, status, via, closedByIds) {
-  const ts = nowIso29();
+  const ts = nowIso30();
   let n2 = 0;
-  for (const b of st16().buyerBonds) {
+  for (const b of st17().buyerBonds) {
     if (b.propertyId !== p.id || !isActive(b) || closedByIds.includes(b.brokerId)) continue;
     b.closedNotice = { at: ts, status, via };
     n2++;
@@ -86009,17 +86299,17 @@ function bondView(b, forHolder) {
   };
 }
 function createBuyerBondRouter() {
-  const r = (0, import_express46.Router)();
+  const r = (0, import_express49.Router)();
   r.get("/mine", needs("offer:make", "sitevisit:create"), (_req, res) => {
-    const u = me21();
-    const list = st16().buyerBonds.filter((b) => b.brokerId === u.id).slice(0, 300).map((b) => bondView(b, true));
+    const u = me22();
+    const list = st17().buyerBonds.filter((b) => b.brokerId === u.id).slice(0, 300).map((b) => bondView(b, true));
     res.json({ success: true, bonds: list, active: list.filter((b) => b.active).length, asks: list.reduce((n2, b) => n2 + (b.active ? b.asks?.length || 0 : 0), 0) });
   });
   r.post("/:id/release", needs("offer:make", "sitevisit:create"), (req, res) => {
-    const u = me21();
-    const b = st16().buyerBonds.find((x) => x.id === req.params.id && x.brokerId === u.id);
-    if (!b) return bad17(res, "Buyer bond not found", 404);
-    if (!isActive(b)) return bad17(res, "This bond has already ended", 409);
+    const u = me22();
+    const b = st17().buyerBonds.find((x) => x.id === req.params.id && x.brokerId === u.id);
+    if (!b) return bad18(res, "Buyer bond not found", 404);
+    if (!isActive(b)) return bad18(res, "This bond has already ended", 409);
     b.status = "RELEASED";
     note2(b, "Released by the broker");
     db.save();
@@ -86027,13 +86317,13 @@ function createBuyerBondRouter() {
     res.json({ success: true, bond: bondView(b, true) });
   });
   r.post("/:id/ask", needs("offer:make", "sitevisit:create"), rateLimit("bb-ask", 20, 36e5), (req, res) => {
-    const u = me21();
-    const b = st16().buyerBonds.find((x) => x.id === req.params.id);
-    if (!b || !isActive(b)) return bad17(res, "This protection has ended \u2014 you can go ahead now.", 404, { code: "BOND_ENDED" });
-    if (b.brokerId === u.id) return bad17(res, "This is your own buyer bond", 400);
-    if (b.asks.some((a) => a.fromId === u.id)) return bad17(res, "You already asked \u2014 the broker has your name and mobile.", 409, { code: "ALREADY_ASKED" });
+    const u = me22();
+    const b = st17().buyerBonds.find((x) => x.id === req.params.id);
+    if (!b || !isActive(b)) return bad18(res, "This protection has ended \u2014 you can go ahead now.", 404, { code: "BOND_ENDED" });
+    if (b.brokerId === u.id) return bad18(res, "This is your own buyer bond", 400);
+    if (b.asks.some((a) => a.fromId === u.id)) return bad18(res, "You already asked \u2014 the broker has your name and mobile.", 409, { code: "ALREADY_ASKED" });
     const text = String(req.body?.note ?? "").trim().slice(0, 300);
-    b.asks.push({ id: crypto29.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso29() });
+    b.asks.push({ id: crypto31.randomBytes(4).toString("hex"), fromId: u.id, fromName: u.name, fromCompany: u.companyName, fromPhone: u.phone, note: text, at: nowIso30() });
     note2(b, `Co-broke request from ${u.name}`);
     db.save();
     const p = db.byId("properties", b.propertyId);
@@ -86043,18 +86333,18 @@ function createBuyerBondRouter() {
   });
   r.get("/admin", needs("property:moderate"), (req, res) => {
     const pid = String(req.query.propertyId || "");
-    const users = new Map(st16().users.map((x) => [x.id, x]));
-    const list = st16().buyerBonds.filter((b) => !pid || b.propertyId === pid).slice(0, 300).map((b) => ({ ...bondView(b, true), brokerName: users.get(b.brokerId)?.name || b.brokerId, events: b.events.slice(-8) }));
+    const users = new Map(st17().users.map((x) => [x.id, x]));
+    const list = st17().buyerBonds.filter((b) => !pid || b.propertyId === pid).slice(0, 300).map((b) => ({ ...bondView(b, true), brokerName: users.get(b.brokerId)?.name || b.brokerId, events: b.events.slice(-8) }));
     res.json({ success: true, bonds: list });
   });
   r.post("/admin/:id/void", needs("property:moderate"), (req, res) => {
-    const a = me21();
-    const b = st16().buyerBonds.find((x) => x.id === req.params.id);
-    if (!b) return bad17(res, "Not found", 404);
+    const a = me22();
+    const b = st17().buyerBonds.find((x) => x.id === req.params.id);
+    if (!b) return bad18(res, "Not found", 404);
     const why = String(req.body?.note ?? "").trim().slice(0, 300);
-    if (why.length < 10) return bad17(res, "Write why the bond is cancelled (at least 10 characters).");
+    if (why.length < 10) return bad18(res, "Write why the bond is cancelled (at least 10 characters).");
     b.status = "VOID";
-    b.void = { byId: a.id, byName: a.name, at: nowIso29(), note: why };
+    b.void = { byId: a.id, byName: a.name, at: nowIso30(), note: why };
     note2(b, `Cancelled by GENZ: ${why}`);
     db.save();
     db.appendAuditEvent(a.id, a.role, "PROPERTY", b.propertyId, "BUYER_BOND_VOID", `${a.name} cancelled buyer bond ${b.id}: ${why}`);
@@ -86065,10 +86355,10 @@ function createBuyerBondRouter() {
 }
 
 // server/consent.ts
-var import_express47 = __toESM(require_express2(), 1);
-import crypto30 from "crypto";
-import fs10 from "fs";
-import path10 from "path";
+var import_express50 = __toESM(require_express2(), 1);
+import crypto32 from "crypto";
+import fs11 from "fs";
+import path11 from "path";
 
 // src/shared/consentRules.ts
 var CONSENT_LINK_DAYS = 7;
@@ -86181,16 +86471,16 @@ var SIGN_MAX_BYTES = 200 * 1024;
 
 // server/consent.ts
 var stateFor = (state, city) => findState(String(state || ""))?.name || TOP_CITIES.find((c) => c.name === normCity(city))?.state || String(state || "");
-var nowIso30 = () => (/* @__PURE__ */ new Date()).toISOString();
-var st17 = () => db.getState();
-var me22 = () => ctx().user;
-var bad18 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
+var nowIso31 = () => (/* @__PURE__ */ new Date()).toISOString();
+var st18 = () => db.getState();
+var me23 = () => ctx().user;
+var bad19 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var esc9 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac2 = (tag, v) => crypto30.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
-var sha4 = (v) => crypto30.createHash("sha256").update(v).digest("hex");
-var PAPER_DIR = () => path10.resolve(process.cwd(), "data", "consent-papers");
+var hmac2 = (tag, v) => crypto32.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha4 = (v) => crypto32.createHash("sha256").update(v).digest("hex");
+var PAPER_DIR = () => path11.resolve(process.cwd(), "data", "consent-papers");
 var PAPER_MAX = 4 * 1024 * 1024;
-var SIG_DIR = () => path10.resolve(process.cwd(), "data", "consent-signatures");
+var SIG_DIR = () => path11.resolve(process.cwd(), "data", "consent-signatures");
 var PHONE_RE6 = /^[6-9]\d{9}$/;
 var fullPhone = (raw) => {
   const d = phone106(raw);
@@ -86201,9 +86491,9 @@ var ipOf = (req) => hmac2("oc-ip", String(req.ip || req.socket.remoteAddress || 
 var uaOf = (req) => hmac2("oc-ua", String(req.headers["user-agent"] || ""));
 var bondActive = (c, now = Date.now()) => c.status === "ACCEPTED" && !!c.expiresAt && Date.parse(c.expiresAt) > now;
 var note3 = (c, text) => {
-  c.events.push({ at: nowIso30(), text });
+  c.events.push({ at: nowIso31(), text });
   if (c.events.length > 40) c.events.splice(0, c.events.length - 40);
-  c.updatedAt = nowIso30();
+  c.updatedAt = nowIso31();
 };
 var smsOn2 = () => !!process.env.SMS_WEBHOOK_URL;
 var dIN2 = (iso) => iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) : "";
@@ -86211,7 +86501,7 @@ var publicBase = (req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.ge
 function findBlockingBond(p, brokerId, exceptConsentId = "") {
   if (!PHONE_RE6.test(phone106(p.ownerPhone))) return void 0;
   const key = keyOf2(p);
-  return st17().ownerConsents.find((c) => c.id !== exceptConsentId && c.brokerId !== brokerId && c.looseKeyHash === key && bondActive(c) && sameArea(c.snapshot.areaSqft, p.areaSqft));
+  return st18().ownerConsents.find((c) => c.id !== exceptConsentId && c.brokerId !== brokerId && c.looseKeyHash === key && bondActive(c) && sameArea(c.snapshot.areaSqft, p.areaSqft));
 }
 function blockedAnswer(c) {
   const prop = c.propertyId ? db.byId("properties", c.propertyId) : void 0;
@@ -86219,7 +86509,7 @@ function blockedAnswer(c) {
   return { error: TAKEN_MSG.en, hi: TAKEN_MSG.hi, code: "CONSENT_TAKEN", protectedUntil: c.expiresAt, coBrokePropertyId: live5 ? prop.id : void 0 };
 }
 function consentForPublish(consentId, brokerId, data) {
-  const c = st17().ownerConsents.find((x) => x.id === consentId);
+  const c = st18().ownerConsents.find((x) => x.id === consentId);
   if (!c || c.brokerId !== brokerId) return { error: "Consent not found", status: 404, code: "CONSENT_NOT_FOUND" };
   if (!bondActive(c)) return { error: c.status === "ACCEPTED" ? "This consent has run out \u2014 ask the owner again." : "The owner has not given consent yet.", status: 409, code: "CONSENT_NOT_ACCEPTED" };
   if (c.propertyId) return { error: "This consent is already used for a listing.", status: 409, code: "CONSENT_USED" };
@@ -86233,19 +86523,19 @@ function markPublished(c, prop) {
   prop.ownerConsentId = c.id;
   prop.protectionUntil = c.expiresAt;
   prop.ownerKeyHash = c.looseKeyHash;
-  const d = c.draftId ? st17().listingDrafts.find((x) => x.id === c.draftId) : void 0;
+  const d = c.draftId ? st18().listingDrafts.find((x) => x.id === c.draftId) : void 0;
   if (d) {
     d.status = "PUBLISHED";
     d.propertyId = prop.id;
-    d.updatedAt = nowIso30();
+    d.updatedAt = nowIso31();
   }
   activateMandate(c, prop);
 }
 function activateMandate(c, prop) {
   const t = c.terms;
   if (!t || c.mandateId) return;
-  const s = st17();
-  const now = nowIso30();
+  const s = st18();
+  const now = nowIso31();
   for (const m2 of s.ownerMandates) {
     if (m2.propertyId !== prop.id) continue;
     if (m2.status === "ACTIVE") {
@@ -86322,7 +86612,7 @@ var draftFields = external_exports.object({
   fixedFeeAmount: external_exports.number().nonnegative().max(1e12).nullable()
 }).partial();
 function draftView(d) {
-  const c = d.consentId ? st17().ownerConsents.find((x) => x.id === d.consentId) : void 0;
+  const c = d.consentId ? st18().ownerConsents.find((x) => x.id === d.consentId) : void 0;
   return {
     id: d.id,
     kind: d.kind || "LISTING",
@@ -86365,16 +86655,16 @@ function consentView(c) {
   };
 }
 function signatureSummary(consentId) {
-  const c = st17().ownerConsents.find((x) => x.id === consentId);
+  const c = st18().ownerConsents.find((x) => x.id === consentId);
   return c?.ownerSignature ? { initials: c.ownerSignature.initials, drawn: c.ownerSignature.drawn, at: c.ownerSignature.at, name: c.ownerTypedName } : null;
 }
 function nextId5(prefix, list) {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto30.randomInt(100, 999)}${list.length % 10}`;
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto32.randomInt(100, 999)}${list.length % 10}`;
 }
 function myDraft(req, res) {
-  const d = st17().listingDrafts.find((x) => x.id === req.params.id && x.brokerId === me22().id && x.status !== "DISCARDED");
+  const d = st18().listingDrafts.find((x) => x.id === req.params.id && x.brokerId === me23().id && x.status !== "DISCARDED");
   if (!d) {
-    bad18(res, "Draft not found", 404);
+    bad19(res, "Draft not found", 404);
     return null;
   }
   return d;
@@ -86391,9 +86681,9 @@ function snapshotOf(f) {
     areaSqft: Number(f.areaSqft) || void 0
   };
 }
-var openConsentOf = (d) => d.consentId ? st17().ownerConsents.find((x) => x.id === d.consentId && ["PENDING", "PAPER_REVIEW", "ACCEPTED"].includes(x.status)) : void 0;
+var openConsentOf = (d) => d.consentId ? st18().ownerConsents.find((x) => x.id === d.consentId && ["PENDING", "PAPER_REVIEW", "ACCEPTED"].includes(x.status)) : void 0;
 function draftForProperty(u, p) {
-  const s = st17();
+  const s = st18();
   if (["sold", "rented", "withdrawn", "suspended"].includes(p.listingStatus)) return { error: `This listing is ${p.listingStatus}.`, code: "LISTING_CLOSED" };
   const c = p.ownerConsentId ? s.ownerConsents.find((x) => x.id === p.ownerConsentId) : void 0;
   if (c && bondActive(c)) return { error: "The owner has already approved this listing.", code: "ALREADY_APPROVED" };
@@ -86420,23 +86710,23 @@ function draftForProperty(u, p) {
     agreedCommissionPct: null,
     fixedFeeAmount: null
   };
-  const d = { id: nextId5("LD", s.listingDrafts), brokerId: u.id, kind: "LISTING", status: "DRAFT", raw: `Listing ${p.id} \u2014 owner approval`, fields, createdAt: nowIso30(), updatedAt: nowIso30() };
+  const d = { id: nextId5("LD", s.listingDrafts), brokerId: u.id, kind: "LISTING", status: "DRAFT", raw: `Listing ${p.id} \u2014 owner approval`, fields, createdAt: nowIso31(), updatedAt: nowIso31() };
   s.listingDrafts.unshift(d);
   return { draft: d };
 }
 function createConsentRouter() {
-  const r = (0, import_express47.Router)();
-  const big = import_express47.default.json({ limit: "6mb" });
+  const r = (0, import_express50.Router)();
+  const big = import_express50.default.json({ limit: "6mb" });
   r.post("/paste", needs("property:create"), rateLimit("wa-paste", 30, 36e5), (req, res) => {
-    const u = me22();
-    const s = st17();
+    const u = me23();
+    const s = st18();
     const text = String(req.body?.text ?? "");
-    if (!text.trim()) return bad18(res, "Paste the WhatsApp messages first.");
-    if (text.length > PASTE_MAX_CHARS) return bad18(res, `Paste at most ${PASTE_MAX_CHARS.toLocaleString("en-IN")} characters at a time.`);
+    if (!text.trim()) return bad19(res, "Paste the WhatsApp messages first.");
+    if (text.length > PASTE_MAX_CHARS) return bad19(res, `Paste at most ${PASTE_MAX_CHARS.toLocaleString("en-IN")} characters at a time.`);
     const open2 = s.listingDrafts.filter((d) => d.brokerId === u.id && ["DRAFT", "CONSENT_PENDING", "READY"].includes(d.status)).length;
     const items = parsePaste(text);
-    if (!items.length) return bad18(res, "No property message was found in the text. Each message needs at least the kind of property and a price or size.", 400, { code: "NOTHING_FOUND" });
-    if (open2 + items.length > MAX_OPEN_DRAFTS) return bad18(res, `You already have ${open2} drafts. Finish or delete some first (at most ${MAX_OPEN_DRAFTS}).`, 409);
+    if (!items.length) return bad19(res, "No property message was found in the text. Each message needs at least the kind of property and a price or size.", 400, { code: "NOTHING_FOUND" });
+    if (open2 + items.length > MAX_OPEN_DRAFTS) return bad19(res, `You already have ${open2} drafts. Finish or delete some first (at most ${MAX_OPEN_DRAFTS}).`, 409);
     const homeCity = String(u.city || "").trim();
     const out = [];
     for (const it of items) {
@@ -86461,7 +86751,7 @@ function createConsentRouter() {
           purpose: "Self-use",
           urgency: "Moderate (1-3 months)"
         };
-        out.push({ id: nextId5("LD", s.listingDrafts), brokerId: u.id, kind: "NEED", status: "DRAFT", raw: it.raw, fields: nf, createdAt: nowIso30(), updatedAt: nowIso30() });
+        out.push({ id: nextId5("LD", s.listingDrafts), brokerId: u.id, kind: "NEED", status: "DRAFT", raw: it.raw, fields: nf, createdAt: nowIso31(), updatedAt: nowIso31() });
         continue;
       }
       const fields = {
@@ -86482,7 +86772,7 @@ function createConsentRouter() {
         tags: it.tags,
         phonesFound: it.phones
       };
-      const d = { id: nextId5("LD", s.listingDrafts), brokerId: u.id, status: "DRAFT", raw: it.raw, fields, createdAt: nowIso30(), updatedAt: nowIso30() };
+      const d = { id: nextId5("LD", s.listingDrafts), brokerId: u.id, status: "DRAFT", raw: it.raw, fields, createdAt: nowIso31(), updatedAt: nowIso31() };
       out.push(d);
     }
     s.listingDrafts.unshift(...out);
@@ -86492,44 +86782,44 @@ function createConsentRouter() {
   r.post("/drafts/:id/saved-need", needs("property:create"), (req, res) => {
     const d = myDraft(req, res);
     if (!d) return;
-    if (d.kind !== "NEED") return bad18(res, "Not a buyer-need draft", 400);
+    if (d.kind !== "NEED") return bad19(res, "Not a buyer-need draft", 400);
     const rq = db.byId("requirements", String(req.body?.requirementId || ""));
-    if (!rq || rq.assignedBrokerId !== me22().id) return bad18(res, "Buyer need not found", 404);
+    if (!rq || rq.assignedBrokerId !== me23().id) return bad19(res, "Buyer need not found", 404);
     d.status = "PUBLISHED";
     d.requirementId = rq.id;
-    d.updatedAt = nowIso30();
+    d.updatedAt = nowIso31();
     db.save();
     res.json({ success: true, draft: draftView(d) });
   });
   r.get("/drafts", needs("property:create"), (_req, res) => {
-    const u = me22();
-    const list = st17().listingDrafts.filter((d) => d.brokerId === u.id && d.status !== "DISCARDED").slice(0, 300);
+    const u = me23();
+    const list = st18().listingDrafts.filter((d) => d.brokerId === u.id && d.status !== "DISCARDED").slice(0, 300);
     res.json({ success: true, drafts: list.map(draftView), protection: currentProtection(), smsCodes: smsOn2() });
   });
   r.put("/drafts/:id", needs("property:create"), (req, res) => {
     const d = myDraft(req, res);
     if (!d) return;
-    if (d.status === "PUBLISHED") return bad18(res, "This draft is already published \u2014 edit the listing instead.", 409);
+    if (d.status === "PUBLISHED") return bad19(res, "This draft is already published \u2014 edit the listing instead.", 409);
     const p = draftFields.safeParse(req.body?.fields ?? {});
-    if (!p.success) return bad18(res, p.error.issues[0]?.message || "Check the details");
+    if (!p.success) return bad19(res, p.error.issues[0]?.message || "Check the details");
     const c = openConsentOf(d);
     const next2 = { ...d.fields, ...p.data };
     if (p.data.ownerPhone !== void 0) next2.ownerPhone = phone106(p.data.ownerPhone) || p.data.ownerPhone;
     if (c && ["ownerPhone", "city", "locality", "propertyType"].some((k) => String(next2[k] ?? "") !== String(d.fields[k] ?? ""))) {
-      return bad18(res, "The owner was asked about the current owner phone, city, locality and type. To change these, withdraw the request first.", 409, { code: "CONSENT_LOCKED" });
+      return bad19(res, "The owner was asked about the current owner phone, city, locality and type. To change these, withdraw the request first.", 409, { code: "CONSENT_LOCKED" });
     }
     if (c && ["remunerationBasis", "agreedCommissionPct", "fixedFeeAmount", "askingPrice", "ownerApprovedNetPrice"].some((k) => String(next2[k] ?? "") !== String(d.fields[k] ?? ""))) {
-      return bad18(res, "The owner was shown this price and brokerage. To change them, withdraw the request first.", 409, { code: "CONSENT_LOCKED" });
+      return bad19(res, "The owner was shown this price and brokerage. To change them, withdraw the request first.", 409, { code: "CONSENT_LOCKED" });
     }
     d.fields = next2;
-    d.updatedAt = nowIso30();
+    d.updatedAt = nowIso31();
     db.save();
     res.json({ success: true, draft: draftView(d) });
   });
   r.delete("/drafts/:id", needs("property:create"), (req, res) => {
     const d = myDraft(req, res);
     if (!d) return;
-    if (d.status === "PUBLISHED") return bad18(res, "This draft is already a listing.", 409);
+    if (d.status === "PUBLISHED") return bad19(res, "This draft is already a listing.", 409);
     const c = openConsentOf(d);
     if (c && c.status !== "ACCEPTED") {
       c.status = "WITHDRAWN";
@@ -86537,7 +86827,7 @@ function createConsentRouter() {
       note3(c, "Withdrawn by the broker (draft deleted)");
     }
     d.status = "DISCARDED";
-    d.updatedAt = nowIso30();
+    d.updatedAt = nowIso31();
     db.save();
     res.json({ success: true });
   });
@@ -86552,27 +86842,27 @@ function createConsentRouter() {
   });
   const prepare = (req, res, d) => {
     if (d.kind === "NEED") {
-      bad18(res, "A buyer need does not need owner consent \u2014 save it as a Buyer Need.", 400, { code: "NEED_DRAFT" });
+      bad19(res, "A buyer need does not need owner consent \u2014 save it as a Buyer Need.", 400, { code: "NEED_DRAFT" });
       return null;
     }
     if (d.status === "PUBLISHED") {
-      bad18(res, "Already published.", 409);
+      bad19(res, "Already published.", 409);
       return null;
     }
     const open2 = openConsentOf(d);
     if (open2 && open2.status === "ACCEPTED") {
-      bad18(res, "The owner has already agreed \u2014 publish the listing.", 409, { code: "ALREADY_ACCEPTED" });
+      bad19(res, "The owner has already agreed \u2014 publish the listing.", 409, { code: "ALREADY_ACCEPTED" });
       return null;
     }
     const missing = draftMissing(d.fields);
     if (missing.length) {
-      bad18(res, "Fill in the missing details first.", 400, { code: "DRAFT_INCOMPLETE", missing });
+      bad19(res, "Fill in the missing details first.", 400, { code: "DRAFT_INCOMPLETE", missing });
       return null;
     }
     const days3 = req.body?.protectionDays === void 0 ? daysFor() : Number(req.body.protectionDays);
     const pp = checkDays(days3);
     if (pp) {
-      bad18(res, pp.en, 400, { hi: pp.hi, code: pp.code });
+      bad19(res, pp.en, 400, { hi: pp.hi, code: pp.code });
       return null;
     }
     const f = d.fields;
@@ -86590,23 +86880,23 @@ function createConsentRouter() {
     }
     const tt = termsOf2(f);
     if (tt.problem) {
-      bad18(res, tt.problem.en, 400, { hi: tt.problem.hi, code: "TERMS_INVALID" });
+      bad19(res, tt.problem.en, 400, { hi: tt.problem.hi, code: "TERMS_INVALID" });
       return null;
     }
     let terms2;
     if (tt.terms) {
       if (req.body?.agreeTerms !== true) {
-        bad18(res, "Tick \u201CI agree to these brokerage terms\u201D before sending them to the owner.", 400, { hi: "\u092E\u093E\u0932\u093F\u0915 \u0915\u094B \u092D\u0947\u091C\u0928\u0947 \u0938\u0947 \u092A\u0939\u0932\u0947 \u201C\u092E\u0948\u0902 \u0907\u0928 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0936\u0930\u094D\u0924\u094B\u0902 \u092A\u0930 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901\u201D \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902\u0964", code: "TERMS_NOT_AGREED" });
+        bad19(res, "Tick \u201CI agree to these brokerage terms\u201D before sending them to the owner.", 400, { hi: "\u092E\u093E\u0932\u093F\u0915 \u0915\u094B \u092D\u0947\u091C\u0928\u0947 \u0938\u0947 \u092A\u0939\u0932\u0947 \u201C\u092E\u0948\u0902 \u0907\u0928 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0936\u0930\u094D\u0924\u094B\u0902 \u092A\u0930 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901\u201D \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902\u0964", code: "TERMS_NOT_AGREED" });
         return null;
       }
-      terms2 = { ...tt.terms, brokerSignedAt: nowIso30() };
+      terms2 = { ...tt.terms, brokerSignedAt: nowIso31() };
     }
     if (open2) {
       open2.status = "WITHDRAWN";
       open2.tokenHash = void 0;
       note3(open2, "Replaced by a new request");
     }
-    const s = st17();
+    const s = st18();
     const c = {
       id: nextId5("OC", s.ownerConsents),
       brokerId: d.brokerId,
@@ -86623,19 +86913,19 @@ function createConsentRouter() {
       ...terms2 ? { terms: terms2 } : {},
       evidence: { brokerIpHash: ipOf(req), brokerUaHash: uaOf(req) },
       events: [],
-      createdAt: nowIso30(),
-      updatedAt: nowIso30()
+      createdAt: nowIso31(),
+      updatedAt: nowIso31()
     };
     return { c, f, s };
   };
   r.post("/drafts/:id/request", needs("property:create"), rateLimit("oc-request", 60, 36e5), (req, res) => {
-    const u = me22();
+    const u = me23();
     const d = myDraft(req, res);
     if (!d) return;
     const prep = prepare(req, res, d);
     if (!prep) return;
     const { c, f, s } = prep;
-    const token = crypto30.randomBytes(18).toString("base64url");
+    const token = crypto32.randomBytes(18).toString("base64url");
     c.tokenHash = sha4(token);
     c.linkExpiresAt = new Date(Date.now() + CONSENT_LINK_DAYS * 864e5).toISOString();
     const url3 = `${publicBase(req)}/oc/${token}`;
@@ -86649,7 +86939,7 @@ function createConsentRouter() {
     s.ownerConsents.unshift(c);
     d.consentId = c.id;
     d.status = "CONSENT_PENDING";
-    d.updatedAt = nowIso30();
+    d.updatedAt = nowIso31();
     db.save();
     db.appendAuditEvent(u.id, u.role, "PROPERTY", c.id, "OWNER_CONSENT_REQUESTED", `${u.name} asked owner ${c.ownerName} (\u2026${c.ownerPhoneLast4}) to agree to list \u201C${c.snapshot.title}\u201D with ${c.protectionDays} days protection (link)`);
     if (otp) void sendSms(phone106(f.ownerPhone), `GENZ: ${u.name} wants to list your property "${c.snapshot.title}". Open ${url3} and enter code ${otp} only if you agree. Do not share this code on a call.`);
@@ -86660,39 +86950,39 @@ function createConsentRouter() {
 ${msgEn}`)}` } });
   });
   r.post("/drafts/:id/paper", needs("property:create"), rateLimit("oc-paper", 30, 36e5), big, (req, res) => {
-    const u = me22();
+    const u = me23();
     const d = myDraft(req, res);
     if (!d) return;
     const raw = String(req.body?.data ?? "").replace(/^data:[^;]+;base64,/, "");
-    if (!raw || !/^[A-Za-z0-9+/=\r\n]+$/.test(raw)) return bad18(res, "Choose the photo of the signed form.");
+    if (!raw || !/^[A-Za-z0-9+/=\r\n]+$/.test(raw)) return bad19(res, "Choose the photo of the signed form.");
     const buf = Buffer.from(raw, "base64");
-    if (!buf.length) return bad18(res, "The file is empty.");
-    if (buf.length > PAPER_MAX) return bad18(res, "The photo is larger than 4 MB. Take it again or send a smaller one.", 413);
+    if (!buf.length) return bad19(res, "The file is empty.");
+    if (buf.length > PAPER_MAX) return bad19(res, "The photo is larger than 4 MB. Take it again or send a smaller one.", 413);
     const mime = sniffMime(buf);
-    if (!mime) return bad18(res, "Only a photo (JPEG, PNG, WebP) or a PDF is accepted.", 415);
+    if (!mime) return bad19(res, "Only a photo (JPEG, PNG, WebP) or a PDF is accepted.", 415);
     const prep = prepare(req, res, d);
     if (!prep) return;
     const { c, s } = prep;
     c.method = "PAPER";
     c.status = "PAPER_REVIEW";
     try {
-      fs10.mkdirSync(PAPER_DIR(), { recursive: true });
-      fs10.writeFileSync(path10.join(PAPER_DIR(), `${c.id}.bin`), buf);
+      fs11.mkdirSync(PAPER_DIR(), { recursive: true });
+      fs11.writeFileSync(path11.join(PAPER_DIR(), `${c.id}.bin`), buf);
     } catch {
-      return bad18(res, "The photo could not be saved. Please try again.", 500);
+      return bad19(res, "The photo could not be saved. Please try again.", 500);
     }
-    c.paper = { mime, size: buf.length, sha256: crypto30.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso30() };
+    c.paper = { mime, size: buf.length, sha256: crypto32.createHash("sha256").update(buf).digest("hex"), uploadedAt: nowIso31() };
     note3(c, `Signed form uploaded (${Math.round(buf.length / 1024)} KB) \u2014 waiting for a GENZ check`);
     s.ownerConsents.unshift(c);
     d.consentId = c.id;
     d.status = "CONSENT_PENDING";
-    d.updatedAt = nowIso30();
+    d.updatedAt = nowIso31();
     db.save();
     db.appendAuditEvent(u.id, u.role, "PROPERTY", c.id, "OWNER_CONSENT_PAPER", `${u.name} uploaded owner ${c.ownerName}'s signed consent form for \u201C${c.snapshot.title}\u201D (${c.protectionDays} days), SHA-256 ${c.paper.sha256.slice(0, 16)}\u2026`);
     res.json({ success: true, draft: draftView(d) });
   });
   r.get("/drafts/:id/form", needs("property:create"), (req, res) => {
-    const u = me22();
+    const u = me23();
     const d = myDraft(req, res);
     if (!d) return;
     const f = d.fields;
@@ -86713,17 +87003,17 @@ ${msgEn}`)}` } });
 <div class="sig"><div>Witness name and signature (if thumb impression)<br>\u0917\u0935\u093E\u0939 \u0915\u093E \u0928\u093E\u092E \u0914\u0930 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 (\u0905\u0902\u0917\u0942\u0920\u0947 \u0915\u0940 \u0938\u094D\u0925\u093F\u0924\u093F \u092E\u0947\u0902)</div><div>Witness mobile / \u0917\u0935\u093E\u0939 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932</div></div></body></html>`);
   });
   r.post("/from-property/:propertyId", needs("property:create"), (req, res) => {
-    const u = me22();
+    const u = me23();
     const p = db.byId("properties", req.params.propertyId);
-    if (!p || p.listingBrokerId !== u.id) return bad18(res, "Listing not found", 404);
+    if (!p || p.listingBrokerId !== u.id) return bad19(res, "Listing not found", 404);
     const r22 = draftForProperty(u, p);
-    if ("error" in r22) return bad18(res, r22.error, 409, { code: r22.code });
+    if ("error" in r22) return bad19(res, r22.error, 409, { code: r22.code });
     db.save();
     res.json({ success: true, draft: draftView(r22.draft) });
   });
   r.post("/drafts/from-form", needs("property:create"), (req, res) => {
-    const u = me22();
-    const s = st17();
+    const u = me23();
+    const s = st18();
     const b = req.body || {};
     const parsed = draftFields.safeParse({
       title: String(b.title || "").slice(0, 160),
@@ -86741,73 +87031,73 @@ ${msgEn}`)}` } });
       ownerPhone: phone106(b.ownerPhone),
       tags: Array.isArray(b.tags) ? b.tags.slice(0, 20) : []
     });
-    if (!parsed.success) return bad18(res, parsed.error.issues[0]?.message || "Check the details");
+    if (!parsed.success) return bad19(res, parsed.error.issues[0]?.message || "Check the details");
     const open2 = s.listingDrafts.filter((d2) => d2.brokerId === u.id && ["DRAFT", "CONSENT_PENDING", "READY"].includes(d2.status)).length;
-    if (open2 >= MAX_OPEN_DRAFTS) return bad18(res, `You already have ${open2} drafts. Finish or delete some first.`, 409);
-    const d = { id: nextId5("LD", s.listingDrafts), brokerId: u.id, kind: "LISTING", status: "DRAFT", raw: "From the \u201CList property\u201D form", fields: { ...parsed.data, images: Array.isArray(b.images) ? b.images.slice(0, 12) : [], remunerationBasis: "", extra: Object.fromEntries(["landmark", "pincode", "district", "village", "street", "googleMapsUrl", "videoUrl"].filter((k) => typeof b[k] === "string" && b[k].trim()).map((k) => [k, String(b[k]).trim().slice(0, 500)])) }, createdAt: nowIso30(), updatedAt: nowIso30() };
+    if (open2 >= MAX_OPEN_DRAFTS) return bad19(res, `You already have ${open2} drafts. Finish or delete some first.`, 409);
+    const d = { id: nextId5("LD", s.listingDrafts), brokerId: u.id, kind: "LISTING", status: "DRAFT", raw: "From the \u201CList property\u201D form", fields: { ...parsed.data, images: Array.isArray(b.images) ? b.images.slice(0, 12) : [], remunerationBasis: "", extra: Object.fromEntries(["landmark", "pincode", "district", "village", "street", "googleMapsUrl", "videoUrl"].filter((k) => typeof b[k] === "string" && b[k].trim()).map((k) => [k, String(b[k]).trim().slice(0, 500)])) }, createdAt: nowIso31(), updatedAt: nowIso31() };
     s.listingDrafts.unshift(d);
     db.save();
     res.json({ success: true, draft: draftView(d) });
   });
   r.post("/drafts/:id/attach", needs("property:create"), (req, res) => {
-    const u = me22();
+    const u = me23();
     const d = myDraft(req, res);
     if (!d) return;
     const p = db.byId("properties", String(d.fields?.forPropertyId || ""));
-    if (!p || p.listingBrokerId !== u.id) return bad18(res, "Listing not found", 404);
-    const c = d.consentId ? st17().ownerConsents.find((x) => x.id === d.consentId) : void 0;
-    if (!c || c.brokerId !== u.id || !bondActive(c)) return bad18(res, "The owner has not given consent yet.", 409, { code: "CONSENT_NOT_ACCEPTED" });
-    if (c.propertyId) return bad18(res, "This consent is already used.", 409, { code: "CONSENT_USED" });
-    if (keyOf2({ ownerPhone: p.ownerPhone, city: p.city, locality: p.locality, propertyType: p.propertyType }) !== c.looseKeyHash) return bad18(res, "This listing\u2019s owner phone, city, locality or type changed after the owner agreed. Ask the owner again.", 409, { code: "CONSENT_MISMATCH" });
+    if (!p || p.listingBrokerId !== u.id) return bad19(res, "Listing not found", 404);
+    const c = d.consentId ? st18().ownerConsents.find((x) => x.id === d.consentId) : void 0;
+    if (!c || c.brokerId !== u.id || !bondActive(c)) return bad19(res, "The owner has not given consent yet.", 409, { code: "CONSENT_NOT_ACCEPTED" });
+    if (c.propertyId) return bad19(res, "This consent is already used.", 409, { code: "CONSENT_USED" });
+    if (keyOf2({ ownerPhone: p.ownerPhone, city: p.city, locality: p.locality, propertyType: p.propertyType }) !== c.looseKeyHash) return bad19(res, "This listing\u2019s owner phone, city, locality or type changed after the owner agreed. Ask the owner again.", 409, { code: "CONSENT_MISMATCH" });
     markPublished(c, p);
     db.save();
     db.appendAuditEvent(u.id, u.role, "PROPERTY", p.id, "OWNER_CONSENT_ATTACHED", `${u.name} attached owner consent ${c.id} (${c.protectionDays} days) to existing listing ${p.id}${c.mandateId ? ` and activated mandate ${c.mandateId}` : ""}`);
     res.json({ success: true, propertyId: p.id, mandateId: c.mandateId, draft: draftView(d) });
   });
   r.get("/:id/signature", needs("property:create", "property:moderate"), (req, res) => {
-    const u = me22();
-    const c = st17().ownerConsents.find((x) => x.id === req.params.id);
-    if (!c?.ownerSignature?.drawn || c.brokerId !== u.id && !can(u, "property:moderate")) return bad18(res, "No signature", 404);
+    const u = me23();
+    const c = st18().ownerConsents.find((x) => x.id === req.params.id);
+    if (!c?.ownerSignature?.drawn || c.brokerId !== u.id && !can(u, "property:moderate")) return bad19(res, "No signature", 404);
     try {
-      const buf = fs10.readFileSync(path10.join(SIG_DIR(), `${c.id}.png`));
+      const buf = fs11.readFileSync(path11.join(SIG_DIR(), `${c.id}.png`));
       res.set({ "Content-Type": "image/png", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox", "Content-Disposition": "inline" });
       res.send(buf);
     } catch {
-      bad18(res, "The file is missing on the server", 404);
+      bad19(res, "The file is missing on the server", 404);
     }
   });
   r.get("/mine", needs("property:create"), (_req, res) => {
-    const u = me22();
-    res.json({ success: true, consents: st17().ownerConsents.filter((c) => c.brokerId === u.id).slice(0, 300).map(consentView) });
+    const u = me23();
+    res.json({ success: true, consents: st18().ownerConsents.filter((c) => c.brokerId === u.id).slice(0, 300).map(consentView) });
   });
   r.get("/admin/queue", needs("property:moderate"), (_req, res) => {
-    const s = st17();
+    const s = st18();
     const usersById = new Map(s.users.map((x) => [x.id, x]));
     const list = s.ownerConsents.filter((c) => c.status === "PAPER_REVIEW" || c.status === "ACCEPTED" && (c.evidence?.sameDeviceSuspected || c.ownerReport) && !c.review).slice(0, 200);
     res.json({ success: true, items: list.map((c) => ({ ...consentView(c), brokerName: usersById.get(c.brokerId)?.name || c.brokerId, events: c.events.slice(-8), paper: c.paper ? { mime: c.paper.mime, size: c.paper.size } : null, ownerReport: c.ownerReport || null, sameDevice: !!c.evidence?.sameDeviceSuspected })) });
   });
   r.get("/admin/:id/paper", needs("property:moderate"), (req, res) => {
-    const c = st17().ownerConsents.find((x) => x.id === req.params.id);
-    if (!c?.paper) return bad18(res, "No form photo", 404);
+    const c = st18().ownerConsents.find((x) => x.id === req.params.id);
+    if (!c?.paper) return bad19(res, "No form photo", 404);
     try {
-      const buf = fs10.readFileSync(path10.join(PAPER_DIR(), `${c.id}.bin`));
+      const buf = fs11.readFileSync(path11.join(PAPER_DIR(), `${c.id}.bin`));
       res.set("Content-Type", c.paper.mime);
       res.set("Cache-Control", "no-store");
       res.set("Content-Disposition", "inline");
       res.send(buf);
     } catch {
-      bad18(res, "The file is missing on the server", 404);
+      bad19(res, "The file is missing on the server", 404);
     }
   });
   r.post("/admin/:id/decide", needs("property:moderate"), (req, res) => {
-    const a = me22();
-    const c = st17().ownerConsents.find((x) => x.id === req.params.id);
-    if (!c) return bad18(res, "Not found", 404);
+    const a = me23();
+    const c = st18().ownerConsents.find((x) => x.id === req.params.id);
+    if (!c) return bad19(res, "Not found", 404);
     const approve = req.body?.approve === true;
     const why = String(req.body?.note ?? "").trim().slice(0, 300);
     if (c.status === "PAPER_REVIEW") {
-      if (!approve && why.length < 5) return bad18(res, "Write what is wrong with the form (the broker sees it).");
-      c.review = { byId: a.id, byName: a.name, at: nowIso30(), approve, note: why };
+      if (!approve && why.length < 5) return bad19(res, "Write what is wrong with the form (the broker sees it).");
+      c.review = { byId: a.id, byName: a.name, at: nowIso31(), approve, note: why };
       if (approve) accept(c, "Signed form accepted by GENZ");
       else {
         c.status = "PAPER_REJECTED";
@@ -86815,12 +87105,12 @@ ${msgEn}`)}` } });
         const d = draftOf(c);
         if (d) {
           d.status = "DRAFT";
-          d.updatedAt = nowIso30();
+          d.updatedAt = nowIso31();
         }
       }
       void pushTo(c.brokerId, approve ? { kind: "consent", title: "Owner consent accepted \u2714", body: `\u201C${c.snapshot.title}\u201D \u2014 you can publish it now. Protected for ${c.protectionDays} days.`, url: "/?tab=properties&drafts=1" } : { kind: "consent", title: "Signed form not accepted", body: why, url: "/?tab=properties&drafts=1" });
     } else {
-      c.review = { byId: a.id, byName: a.name, at: nowIso30(), approve: true, note: why || "Checked \u2014 keep" };
+      c.review = { byId: a.id, byName: a.name, at: nowIso31(), approve: true, note: why || "Checked \u2014 keep" };
       note3(c, `Checked by GENZ: ${c.review.note}`);
     }
     db.save();
@@ -86828,19 +87118,19 @@ ${msgEn}`)}` } });
     res.json({ success: true, consent: consentView(c) });
   });
   r.post("/admin/:id/void", needs("property:moderate"), (req, res) => {
-    const a = me22();
-    const c = st17().ownerConsents.find((x) => x.id === req.params.id);
-    if (!c) return bad18(res, "Not found", 404);
+    const a = me23();
+    const c = st18().ownerConsents.find((x) => x.id === req.params.id);
+    if (!c) return bad19(res, "Not found", 404);
     const why = String(req.body?.note ?? "").trim().slice(0, 300);
-    if (why.length < 10) return bad18(res, "Write why the consent is cancelled (at least 10 characters).");
+    if (why.length < 10) return bad19(res, "Write why the consent is cancelled (at least 10 characters).");
     c.status = "VOID";
-    c.expiresAt = nowIso30();
+    c.expiresAt = nowIso31();
     c.tokenHash = void 0;
-    c.review = { byId: a.id, byName: a.name, at: nowIso30(), approve: false, note: why };
+    c.review = { byId: a.id, byName: a.name, at: nowIso31(), approve: false, note: why };
     note3(c, `Cancelled by GENZ: ${why}`);
     if (c.propertyId) {
       const p = db.byId("properties", c.propertyId);
-      if (p) p.protectionUntil = nowIso30();
+      if (p) p.protectionUntil = nowIso31();
     }
     db.save();
     db.appendAuditEvent(a.id, a.role, "PROPERTY", c.id, "OWNER_CONSENT_VOID", `${a.name} cancelled consent ${c.id}: ${why}`);
@@ -86849,7 +87139,7 @@ ${msgEn}`)}` } });
   });
   return r;
 }
-var draftOf = (c) => c.draftId ? st17().listingDrafts.find((x) => x.id === c.draftId) : void 0;
+var draftOf = (c) => c.draftId ? st18().listingDrafts.find((x) => x.id === c.draftId) : void 0;
 function accept(c, how) {
   const now = Date.now();
   c.status = "ACCEPTED";
@@ -86860,7 +87150,7 @@ function accept(c, how) {
   const d = draftOf(c);
   if (d && d.status !== "PUBLISHED") {
     d.status = "READY";
-    d.updatedAt = nowIso30();
+    d.updatedAt = nowIso31();
   }
   awardPoints(c.brokerId, "OWNER_CONSENT", c.id, 5);
 }
@@ -86906,12 +87196,12 @@ var f=pad.closest('form');
 if(f)f.addEventListener('submit',function(e){var m=document.querySelector('input[name=sigMode]:checked');if(m&&m.value==='draw'){if(n<${SIGN_MIN_POINTS}){e.preventDefault();alert('\u0915\u0943\u092A\u092F\u093E \u092A\u0939\u0932\u0947 \u0938\u093E\u0907\u0928 \u0915\u0930\u0947\u0902\u0964 / Please sign first.');return}png.value=pad.toDataURL('image/png');pts.value=String(n)}else{png.value='';pts.value='0'}});
 })();`;
 function createOwnerConsentPageRouter() {
-  const r = (0, import_express47.Router)();
-  const form = import_express47.default.urlencoded({ extended: false, limit: "300kb" });
+  const r = (0, import_express50.Router)();
+  const form = import_express50.default.urlencoded({ extended: false, limit: "300kb" });
   const find = (token) => {
     if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return void 0;
     const h = sha4(token);
-    return st17().ownerConsents.find((c) => c.tokenHash && safeEqual(c.tokenHash, h));
+    return st18().ownerConsents.find((c) => c.tokenHash && safeEqual(c.tokenHash, h));
   };
   const memberHere = (req) => {
     const p = verifySession(parseCookies(req.headers.cookie)[COOKIE_NAME]);
@@ -86936,8 +87226,8 @@ ${c.ownerReport ? `<div class="card warn"><p class="t">\u0906\u092A\u0915\u0940 
 <p class="small">GENZ \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0932\u0947\u0924\u093E\u0964 / GENZ never asks you for money.</p>`));
     }
     if (c.status !== "PENDING" || !c.linkExpiresAt || Date.parse(c.linkExpiresAt) < Date.now()) {
-      const label = STATUS_LABEL[Date.parse(c.linkExpiresAt || "") < Date.now() && c.status === "PENDING" ? "LINK_EXPIRED" : c.status];
-      return res.send(ownerPage("Consent", `${head}<div class="card warn"><p class="h">${esc9(label.hi)}</p><p class="t">${esc9(label.en)}</p></div>`));
+      const label2 = STATUS_LABEL[Date.parse(c.linkExpiresAt || "") < Date.now() && c.status === "PENDING" ? "LINK_EXPIRED" : c.status];
+      return res.send(ownerPage("Consent", `${head}<div class="card warn"><p class="h">${esc9(label2.hi)}</p><p class="t">${esc9(label2.en)}</p></div>`));
     }
     res.send(ownerPage("Consent to list your property", `${head}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
 <div class="card"><p class="h">${esc9(words.hi)}</p><p class="t">${esc9(words.en)}</p>
@@ -86973,7 +87263,7 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
     const action = String(req.body?.action || "");
     if (action === "report") {
       if (c.status !== "ACCEPTED" || c.ownerReport) return render(req, res, c);
-      c.ownerReport = { at: nowIso30(), note: String(req.body?.note || "").trim().slice(0, 300) || "(no note)" };
+      c.ownerReport = { at: nowIso31(), note: String(req.body?.note || "").trim().slice(0, 300) || "(no note)" };
       note3(c, "Owner reported: did not agree");
       db.save();
       db.appendAuditEvent("PUBLIC", "PROPERTY_OWNER", "PROPERTY", c.id, "OWNER_CONSENT_REPORTED", `Owner of \u201C${c.snapshot.title}\u201D says he did not agree \u2014 GENZ to check`);
@@ -86993,7 +87283,7 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
       const d = draftOf(c);
       if (d) {
         d.status = "DRAFT";
-        d.updatedAt = nowIso30();
+        d.updatedAt = nowIso31();
       }
       db.save();
       db.appendAuditEvent("PUBLIC", "PROPERTY_OWNER", "PROPERTY", c.id, "OWNER_CONSENT_DECLINED", `Owner declined to list \u201C${c.snapshot.title}\u201D`);
@@ -87017,17 +87307,17 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
     const ev2 = c.evidence || {};
     ev2.ipHash = ipOf(req);
     ev2.uaHash = uaOf(req);
-    ev2.at = nowIso30();
+    ev2.at = nowIso31();
     ev2.otpVerified = !!c.otpHash;
     ev2.sameDeviceSuspected = !!(ev2.brokerIpHash && ev2.brokerUaHash && ev2.ipHash === ev2.brokerIpHash && ev2.uaHash === ev2.brokerUaHash);
     c.evidence = ev2;
     c.ownerTypedName = name;
-    c.ownerSignature = { initials: sig.initials, drawn: !!sig.png, at: nowIso30() };
+    c.ownerSignature = { initials: sig.initials, drawn: !!sig.png, at: nowIso31() };
     if (sig.png) {
       try {
-        fs10.mkdirSync(SIG_DIR(), { recursive: true });
-        fs10.writeFileSync(path10.join(SIG_DIR(), `${c.id}.png`), sig.png);
-        c.ownerSignature.sha256 = crypto30.createHash("sha256").update(sig.png).digest("hex");
+        fs11.mkdirSync(SIG_DIR(), { recursive: true });
+        fs11.writeFileSync(path11.join(SIG_DIR(), `${c.id}.png`), sig.png);
+        c.ownerSignature.sha256 = crypto32.createHash("sha256").update(sig.png).digest("hex");
         c.ownerSignature.size = sig.png.length;
       } catch {
         return render(req, res, c, "\u0938\u093E\u0907\u0928 \u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E, \u092B\u093F\u0930 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / The signature could not be saved \u2014 please try again.");
@@ -87042,7 +87332,7 @@ ${c.otpHash ? `<label>SMS \u092E\u0947\u0902 \u0906\u092F\u093E \u0915\u094B\u09
   return r;
 }
 function sweepConsents() {
-  const s = st17();
+  const s = st18();
   const now = Date.now();
   let n2 = 0;
   for (const c of s.ownerConsents) {
@@ -87054,7 +87344,7 @@ function sweepConsents() {
       const d = draftOf(c);
       if (d && d.status === "CONSENT_PENDING") {
         d.status = "DRAFT";
-        d.updatedAt = nowIso30();
+        d.updatedAt = nowIso31();
       }
     }
   }
@@ -87063,27 +87353,27 @@ function sweepConsents() {
 }
 
 // server/broadcast.ts
-var import_express48 = __toESM(require_express2(), 1);
-import crypto31 from "crypto";
-var nowIso31 = () => (/* @__PURE__ */ new Date()).toISOString();
-var st18 = () => db.getState();
-var me23 = () => ctx().user;
-var bad19 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
+var import_express51 = __toESM(require_express2(), 1);
+import crypto33 from "crypto";
+var nowIso32 = () => (/* @__PURE__ */ new Date()).toISOString();
+var st19 = () => db.getState();
+var me24 = () => ctx().user;
+var bad20 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var BROADCAST_DAYS = 7;
 var BROADCAST_PER_DAY = 5;
 var BROADCAST_MAX_RECIPIENTS = 80;
 var MATCH_MIN = 60;
-var inr11 = (n2) => n2 >= 1e7 ? `\u20B9${+(n2 / 1e7).toFixed(2)} Cr` : n2 >= 1e5 ? `\u20B9${+(n2 / 1e5).toFixed(1)} L` : `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
+var inr12 = (n2) => n2 >= 1e7 ? `\u20B9${+(n2 / 1e7).toFixed(2)} Cr` : n2 >= 1e5 ? `\u20B9${+(n2 / 1e5).toFixed(1)} L` : `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
 var live2 = (p) => p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus) && !p.heldAt && !p.expiredAt;
 var verifiedBroker = (u) => !!u && u.role === "BROKER" && u.verificationStatus === "VERIFIED";
 var ck = (s) => String(s || "").trim().toLowerCase();
 function summaryOf(r) {
   return { transactionType: r.transactionType, propertyTypes: [r.propertyType], city: r.city || "", localities: (r.preferredLocalities || []).slice(0, 6), budgetMin: r.budgetMin, budgetMax: r.budgetMax };
 }
-var broadcastLine = (b) => `${b.propertyTypes.join(" / ")} ${b.transactionType === "Rent" ? "on rent" : b.transactionType === "Lease" ? "on lease" : "to buy"}${b.localities.length ? ` \xB7 ${b.localities.slice(0, 3).join(", ")}` : ""}${b.city ? ` \xB7 ${b.city}` : ""} \xB7 ${inr11(b.budgetMin)}\u2013${inr11(b.budgetMax)}`;
+var broadcastLine = (b) => `${b.propertyTypes.join(" / ")} ${b.transactionType === "Rent" ? "on rent" : b.transactionType === "Lease" ? "on lease" : "to buy"}${b.localities.length ? ` \xB7 ${b.localities.slice(0, 3).join(", ")}` : ""}${b.city ? ` \xB7 ${b.city}` : ""} \xB7 ${inr12(b.budgetMin)}\u2013${inr12(b.budgetMax)}`;
 function fits(r, excludeBrokerId) {
   const out = [];
-  for (const p of st18().properties) {
+  for (const p of st19().properties) {
     if (!p.listingBrokerId || p.listingBrokerId === excludeBrokerId || !live2(p) || p.transactionType !== r.transactionType) continue;
     if (r.city && ck(p.city) !== ck(r.city)) continue;
     const m = calculatePropertyMatch(p, r);
@@ -87092,18 +87382,18 @@ function fits(r, excludeBrokerId) {
   return out.sort((a, b) => b.score - a.score);
 }
 function createBroadcastRouter() {
-  const r = (0, import_express48.Router)();
+  const r = (0, import_express51.Router)();
   r.post("/", needs("requirement:create"), rateLimit("broadcast", 20, 36e5), (req, res) => {
-    const u = me23();
-    const s = st18();
+    const u = me24();
+    const s = st19();
     const rq = s.requirements.find((x) => x.id === String(req.body?.requirementId || ""));
-    if (!rq || rq.assignedBrokerId !== u.id) return bad19(res, "Requirement not found", 404);
-    if (!["active", "matching"].includes(rq.status)) return bad19(res, "Only an open requirement can be sent to the network.", 409);
+    if (!rq || rq.assignedBrokerId !== u.id) return bad20(res, "Requirement not found", 404);
+    if (!["active", "matching"].includes(rq.status)) return bad20(res, "Only an open requirement can be sent to the network.", 409);
     const today = istDay();
     const sentToday = s.broadcasts.filter((b2) => b2.brokerId === u.id && istDay(new Date(b2.createdAt)) === today).length;
-    if (sentToday >= BROADCAST_PER_DAY) return bad19(res, `You can send ${BROADCAST_PER_DAY} needs to the network per day.`, 429, { code: "BROADCAST_DAILY" });
+    if (sentToday >= BROADCAST_PER_DAY) return bad20(res, `You can send ${BROADCAST_PER_DAY} needs to the network per day.`, 429, { code: "BROADCAST_DAILY" });
     const open2 = s.broadcasts.find((b2) => b2.requirementId === rq.id && b2.status === "OPEN" && Date.parse(b2.closesAt) > Date.now());
-    if (open2 && Date.now() - Date.parse(open2.createdAt) < 24 * 36e5) return bad19(res, "This need was sent less than a day ago. Answers are shown under \u201CMy broadcasts\u201D.", 409, { code: "BROADCAST_RECENT", broadcastId: open2.id });
+    if (open2 && Date.now() - Date.parse(open2.createdAt) < 24 * 36e5) return bad20(res, "This need was sent less than a day ago. Answers are shown under \u201CMy broadcasts\u201D.", 409, { code: "BROADCAST_RECENT", broadcastId: open2.id });
     if (open2) open2.status = "CLOSED";
     const withListing = /* @__PURE__ */ new Map();
     for (const f of fits(rq, u.id)) if (!withListing.has(f.p.listingBrokerId)) withListing.set(f.p.listingBrokerId, f.score);
@@ -87118,14 +87408,14 @@ function createBroadcastRouter() {
       }
     }
     const b = {
-      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto31.randomInt(100, 999)}`,
+      id: `BC-${Date.now().toString(36).toUpperCase()}${crypto33.randomInt(100, 999)}`,
       brokerId: u.id,
       requirementId: rq.id,
       summary: summaryOf(rq),
       recipients: recipients.slice(0, BROADCAST_MAX_RECIPIENTS),
       responses: [],
       status: "OPEN",
-      createdAt: nowIso31(),
+      createdAt: nowIso32(),
       closesAt: new Date(Date.now() + BROADCAST_DAYS * 864e5).toISOString()
     };
     s.broadcasts.unshift(b);
@@ -87137,8 +87427,8 @@ function createBroadcastRouter() {
     res.json({ success: true, broadcast: { id: b.id, sentTo: b.recipients.length, withListing: withListing.size, line } });
   });
   r.get("/inbox", needs("property:read"), (_req, res) => {
-    const u = me23();
-    const s = st18();
+    const u = me24();
+    const s = st19();
     const now = Date.now();
     const list = s.broadcasts.filter((b) => b.status === "OPEN" && Date.parse(b.closesAt) > now && b.recipients.includes(u.id)).slice(0, 60);
     res.json({
@@ -87153,28 +87443,28 @@ function createBroadcastRouter() {
   });
   const respondSchema = external_exports.object({ propertyId: external_exports.string().max(40).optional(), note: external_exports.string().trim().max(300).default("") });
   r.post("/:id/respond", needs("property:read"), rateLimit("bc-respond", 120, 36e5), (req, res) => {
-    const u = me23();
-    const s = st18();
+    const u = me24();
+    const s = st19();
     const b = s.broadcasts.find((x) => x.id === req.params.id);
-    if (!b || !b.recipients.includes(u.id)) return bad19(res, "Not found", 404);
-    if (b.status !== "OPEN" || Date.parse(b.closesAt) < Date.now()) return bad19(res, "This need is closed.", 409);
+    if (!b || !b.recipients.includes(u.id)) return bad20(res, "Not found", 404);
+    if (b.status !== "OPEN" || Date.parse(b.closesAt) < Date.now()) return bad20(res, "This need is closed.", 409);
     const p = respondSchema.safeParse(req.body ?? {});
-    if (!p.success) return bad19(res, "Check the answer");
+    if (!p.success) return bad20(res, "Check the answer");
     let prop;
     if (p.data.propertyId) {
       prop = db.byId("properties", p.data.propertyId);
-      if (!prop || prop.listingBrokerId !== u.id || !live2(prop)) return bad19(res, "Choose one of your own live listings", 400);
-    } else if (p.data.note.length < 5) return bad19(res, "Choose your listing, or write a line about what you have (it is not on GENZ yet).");
+      if (!prop || prop.listingBrokerId !== u.id || !live2(prop)) return bad20(res, "Choose one of your own live listings", 400);
+    } else if (p.data.note.length < 5) return bad20(res, "Choose your listing, or write a line about what you have (it is not on GENZ yet).");
     const key = prop?.id || "";
     if (b.responses.some((x) => x.brokerId === u.id && x.propertyId === key)) return res.json({ success: true, duplicate: true });
-    b.responses.push({ brokerId: u.id, propertyId: key, note: p.data.note, at: nowIso31() });
+    b.responses.push({ brokerId: u.id, propertyId: key, note: p.data.note, at: nowIso32() });
     db.save();
-    void pushTo(b.brokerId, { kind: "broadcast", title: `${u.name} has a match for your client`, body: prop ? `${prop.title} \xB7 ${inr11(prop.askingPrice)}` : p.data.note.slice(0, 120), url: `/?tab=requirements&bcmine=${b.id}`, tag: `${b.id}-r` });
+    void pushTo(b.brokerId, { kind: "broadcast", title: `${u.name} has a match for your client`, body: prop ? `${prop.title} \xB7 ${inr12(prop.askingPrice)}` : p.data.note.slice(0, 120), url: `/?tab=requirements&bcmine=${b.id}`, tag: `${b.id}-r` });
     res.json({ success: true });
   });
   r.get("/mine", needs("requirement:create"), (_req, res) => {
-    const u = me23();
-    const s = st18();
+    const u = me24();
+    const s = st19();
     const list = s.broadcasts.filter((b) => b.brokerId === u.id).slice(0, 60);
     res.json({
       success: true,
@@ -87195,9 +87485,9 @@ function createBroadcastRouter() {
     });
   });
   r.post("/:id/close", needs("requirement:create"), (req, res) => {
-    const u = me23();
-    const b = st18().broadcasts.find((x) => x.id === req.params.id && x.brokerId === u.id);
-    if (!b) return bad19(res, "Not found", 404);
+    const u = me24();
+    const b = st19().broadcasts.find((x) => x.id === req.params.id && x.brokerId === u.id);
+    if (!b) return bad20(res, "Not found", 404);
     b.status = "CLOSED";
     db.save();
     res.json({ success: true });
@@ -87207,7 +87497,7 @@ function createBroadcastRouter() {
 function alertNewListing(p) {
   try {
     if (!live2(p)) return 0;
-    const s = st18();
+    const s = st19();
     const told = /* @__PURE__ */ new Set();
     for (const rq of s.requirements) {
       if (told.size >= 30) break;
@@ -87215,7 +87505,7 @@ function alertNewListing(p) {
       if (rq.transactionType !== p.transactionType || rq.city && ck(rq.city) !== ck(p.city)) continue;
       if (calculatePropertyMatch(p, rq).score < 70) continue;
       told.add(rq.assignedBrokerId);
-      void pushTo(rq.assignedBrokerId, { kind: "matches", title: "New match for one of your clients", body: `${p.title} \xB7 ${inr11(p.askingPrice)}`, url: "/?tab=matches", tag: `m-${p.id}` });
+      void pushTo(rq.assignedBrokerId, { kind: "matches", title: "New match for one of your clients", body: `${p.title} \xB7 ${inr12(p.askingPrice)}`, url: "/?tab=matches", tag: `m-${p.id}` });
     }
     return told.size;
   } catch {
@@ -87224,7 +87514,7 @@ function alertNewListing(p) {
 }
 async function sweepDigestPush(now = /* @__PURE__ */ new Date()) {
   if (istHour(now) !== 9) return 0;
-  const s = st18();
+  const s = st19();
   const day3 = istDay(now);
   let n2 = 0;
   const withDevices = new Set(s.pushSubs.map((x) => x.userId));
@@ -87247,7 +87537,7 @@ async function sweepDigestPush(now = /* @__PURE__ */ new Date()) {
 }
 
 // server/report.ts
-var import_express49 = __toESM(require_express2(), 1);
+var import_express52 = __toESM(require_express2(), 1);
 var REPORT_MIN_LISTINGS = 20;
 var NEED_MIN = 3;
 var esc10 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -87280,7 +87570,7 @@ function cityReport(cityRaw) {
   };
 }
 function createReportRouter() {
-  const r = (0, import_express49.Router)();
+  const r = (0, import_express52.Router)();
   r.get("/:city", rateLimit("report-view", 120, 6e4), (req, res) => {
     res.set("Cache-Control", "public, max-age=600");
     const rep = cityReport(decodeURIComponent(req.params.city).replace(/-/g, " "));
@@ -87290,10 +87580,10 @@ function createReportRouter() {
       if (ref) sharer = findByCode(ref);
     } catch {
     }
-    const inr14 = (n2) => `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
+    const inr15 = (n2) => `\u20B9${Math.round(n2).toLocaleString("en-IN")}`;
     const title = `GENZ ${rep.city} Property Report \u2014 ${rep.month}`;
     const body = !rep.ready ? `<div class="card"><p>The ${esc10(rep.city)} report starts when GENZ has at least ${REPORT_MIN_LISTINGS} verified live listings there (now: ${rep.liveListings}).<br>\u092F\u0939 \u0930\u093F\u092A\u094B\u0930\u094D\u091F \u0924\u092C \u0936\u0941\u0930\u0942 \u0939\u094B\u0917\u0940 \u091C\u092C ${esc10(rep.city)} \u092E\u0947\u0902 \u0915\u092E \u0938\u0947 \u0915\u092E ${REPORT_MIN_LISTINGS} \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0932\u093E\u0907\u0935 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u0939\u094B\u0902\u0964</p></div>` : `<div class="card"><h2>Live verified listings / \u0932\u093E\u0907\u0935 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917: ${rep.liveListings}</h2>${rep.byType.map((t) => `<div class="row"><span>${esc10(t.type)}</span><b>${t.n}</b></div>`).join("")}</div>
-${rep.rates.length ? `<div class="card"><h2>Asking rate per sq ft (median) / \u092A\u094D\u0930\u0924\u093F \u0935\u0930\u094D\u0917 \u092B\u093C\u0941\u091F \u092E\u093E\u0901\u0917\u0940 \u0917\u0908 \u0926\u0930</h2>${rep.rates.map((x) => `<div class="row"><span>${esc10(x.locality)} \xB7 ${esc10(x.propertyType)}</span><b>${inr14(x.medianPerSqFt)} <small>(${x.sample})</small></b></div>`).join("")}<p class="small">Only localities with ${rep.minSample}+ listings in 90 days. Asking prices on GENZ, not registered sale values.</p></div>` : ""}
+${rep.rates.length ? `<div class="card"><h2>Asking rate per sq ft (median) / \u092A\u094D\u0930\u0924\u093F \u0935\u0930\u094D\u0917 \u092B\u093C\u0941\u091F \u092E\u093E\u0901\u0917\u0940 \u0917\u0908 \u0926\u0930</h2>${rep.rates.map((x) => `<div class="row"><span>${esc10(x.locality)} \xB7 ${esc10(x.propertyType)}</span><b>${inr15(x.medianPerSqFt)} <small>(${x.sample})</small></b></div>`).join("")}<p class="small">Only localities with ${rep.minSample}+ listings in 90 days. Asking prices on GENZ, not registered sale values.</p></div>` : ""}
 ${rep.hotLocalities.length ? `<div class="card"><h2>Where buyers are looking / \u0916\u093C\u0930\u0940\u0926\u093E\u0930 \u0915\u0939\u093E\u0901 \u0922\u0942\u0901\u0922 \u0930\u0939\u0947 \u0939\u0948\u0902</h2>${rep.hotLocalities.map((x) => `<div class="row"><span>${esc10(x.locality)}</span><b>${x.needs} needs</b></div>`).join("")}</div>` : ""}`;
     res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc10(title)}</title>
 <meta property="og:title" content="${esc10(title)}"><meta property="og:description" content="${esc10(`${rep.liveListings} verified listings \xB7 locality rates \xB7 buyer demand \u2014 ${rep.city}`)}">
@@ -87307,10 +87597,10 @@ h2{font-size:14px;margin:0 0 8px}.row{display:flex;justify-content:space-between
 }
 
 // server/offers.ts
-var import_express50 = __toESM(require_express2(), 1);
-var nowIso32 = () => (/* @__PURE__ */ new Date()).toISOString();
-var st19 = () => db.getState();
-var bad20 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
+var import_express53 = __toESM(require_express2(), 1);
+var nowIso33 = () => (/* @__PURE__ */ new Date()).toISOString();
+var st20 = () => db.getState();
+var bad21 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
 var PUBLIC = ["active", "under_negotiation"];
 var makeSchema = external_exports.object({
   propertyId: external_exports.string().min(3).max(40),
@@ -87331,8 +87621,8 @@ function canDecide(u, p, o) {
   return p.listingBrokerId === u.id && o.brokerId !== u.id;
 }
 var log4 = (o, u, text) => {
-  o.history.push({ at: nowIso32(), byId: u.id, byName: u.name, text });
-  o.updatedAt = nowIso32();
+  o.history.push({ at: nowIso33(), byId: u.id, byName: u.name, text });
+  o.updatedAt = nowIso33();
 };
 var audit7 = (u, o, action, details) => {
   db.appendAuditEvent(u.id, u.role, "PROPERTY", o.propertyId, action, `[${o.id}] ${details}`);
@@ -87350,13 +87640,13 @@ function notifyOffer(byId, o, action) {
   }
 }
 function provisionDeal(o, p) {
-  const s = st19();
+  const s = st20();
   const exist = s.dealRooms.find((d) => d.propertyId === p.id && d.introducingBrokerId === o.brokerId && d.customerId === o.buyerName);
   if (exist) return exist.id;
   const seq2 = s.dealRooms.reduce((m, d) => Math.max(m, Number(/DEAL-2026-(\d+)/.exec(d.id)?.[1] ?? 0)), 0) + 1;
   const id = `DEAL-2026-${String(seq2).padStart(3, "0")}`;
   const days3 = daysFor();
-  const ts = nowIso32();
+  const ts = nowIso33();
   const mandate = s.ownerMandates.some((m) => m.propertyId === p.id && m.isConfirmed);
   const tu = tieupSplitFor(o.brokerId, p.listingBrokerId || "", p);
   if (tu) {
@@ -87388,10 +87678,10 @@ function provisionDeal(o, p) {
   });
   return id;
 }
-var slotTaken = (p, exceptId) => st19().propertyOffers.some((x) => x.propertyId === p.id && x.id !== exceptId && ["ACCEPTED", "TOKEN_HELD"].includes(x.status));
+var slotTaken = (p, exceptId) => st20().propertyOffers.some((x) => x.propertyId === p.id && x.id !== exceptId && ["ACCEPTED", "TOKEN_HELD"].includes(x.status));
 function acceptOffer(o, p, by) {
   if (slotTaken(p, o.id)) {
-    const q = st19().propertyOffers.filter((x) => x.propertyId === p.id && x.status === "BACKUP").reduce((m, x) => Math.max(m, x.queueNo ?? 0), 0) + 1;
+    const q = st20().propertyOffers.filter((x) => x.propertyId === p.id && x.status === "BACKUP").reduce((m, x) => Math.max(m, x.queueNo ?? 0), 0) + 1;
     o.status = "BACKUP";
     o.queueNo = q;
     log4(o, by, `Accepted by the property side but another offer holds the property \u2014 on backup #${q}`);
@@ -87399,7 +87689,7 @@ function acceptOffer(o, p, by) {
     return "BACKUP";
   }
   o.status = "ACCEPTED";
-  o.acceptedAt = nowIso32();
+  o.acceptedAt = nowIso33();
   o.tokenDueBy = new Date(Date.now() + TOKEN_DUE_HOURS * 36e5).toISOString();
   o.queueNo = void 0;
   o.dealRoomId = provisionDeal(o, p);
@@ -87409,11 +87699,11 @@ function acceptOffer(o, p, by) {
 }
 function promoteNext(p) {
   if (slotTaken(p)) return void 0;
-  const b = nextBackup(st19().propertyOffers.filter((x) => x.propertyId === p.id));
+  const b = nextBackup(st20().propertyOffers.filter((x) => x.propertyId === p.id));
   if (!b) return void 0;
   const sys = { id: "system", name: "GENZ", role: "SUPERADMIN" };
   b.status = "ACCEPTED";
-  b.acceptedAt = nowIso32();
+  b.acceptedAt = nowIso33();
   b.tokenDueBy = new Date(Date.now() + TOKEN_DUE_HOURS * 36e5).toISOString();
   b.queueNo = void 0;
   b.dealRoomId = provisionDeal(b, p);
@@ -87422,10 +87712,10 @@ function promoteNext(p) {
   return b;
 }
 function unlockIfFree(p) {
-  if (p.listingStatus === "under_negotiation" && !st19().propertyOffers.some((x) => x.propertyId === p.id && x.status === "TOKEN_HELD")) p.listingStatus = "active";
+  if (p.listingStatus === "under_negotiation" && !st20().propertyOffers.some((x) => x.propertyId === p.id && x.status === "TOKEN_HELD")) p.listingStatus = "active";
 }
 function sweepOffers(now = Date.now()) {
-  const s = st19();
+  const s = st20();
   let n2 = 0;
   const sys = { id: "system", name: "GENZ", role: "SUPERADMIN" };
   const touched = /* @__PURE__ */ new Set();
@@ -87446,7 +87736,7 @@ function sweepOffers(now = Date.now()) {
     } else if (o.status === "TOKEN_HELD" && o.token && !o.token.outcome && Date.parse(o.token.validUntil) + TOKEN_GRACE_DAYS * 864e5 < now) {
       o.status = "RELEASED";
       o.token.outcome = "RELEASED";
-      o.token.outcomeAt = nowIso32();
+      o.token.outcomeAt = nowIso33();
       o.token.outcomeNote = "Auto-released: token validity and grace period ended without any action. Money matters stay between the parties.";
       log4(o, sys, "Lock auto-released after the token grace period");
       audit7(sys, o, "TOKEN_AUTO_RELEASED", "Token lock released");
@@ -87464,7 +87754,7 @@ function sweepOffers(now = Date.now()) {
   if (n2) db.save();
   return n2;
 }
-function view5(o, u) {
+function view6(o, u) {
   const p = propOf(o);
   const mine3 = o.brokerId === u.id;
   const principal2 = !!p && isPrincipal(u, p);
@@ -87481,35 +87771,35 @@ function view5(o, u) {
   };
 }
 function createOffersRouter() {
-  const r = (0, import_express50.Router)();
-  const me27 = () => ctx().user;
-  const self = () => profile2(me27().id);
+  const r = (0, import_express53.Router)();
+  const me28 = () => ctx().user;
+  const self = () => profile2(me28().id);
   r.get("/", needs("offer:make", "offer:decide"), (_req, res) => {
     const u = self();
-    const mine3 = st19().propertyOffers.filter((o) => o.brokerId === u.id);
-    const props = new Set(st19().properties.filter((p) => isPrincipal(u, p)).map((p) => p.id));
-    const incoming = st19().propertyOffers.filter((o) => props.has(o.propertyId) && o.brokerId !== u.id || props.has(o.propertyId) && o.brokerId === u.id && db.byId("properties", o.propertyId)?.ownerId === u.id);
+    const mine3 = st20().propertyOffers.filter((o) => o.brokerId === u.id);
+    const props = new Set(st20().properties.filter((p) => isPrincipal(u, p)).map((p) => p.id));
+    const incoming = st20().propertyOffers.filter((o) => props.has(o.propertyId) && o.brokerId !== u.id || props.has(o.propertyId) && o.brokerId === u.id && db.byId("properties", o.propertyId)?.ownerId === u.id);
     const sort = (a, b) => b.updatedAt.localeCompare(a.updatedAt);
-    res.json({ success: true, made: mine3.sort(sort).map((o) => view5(o, u)), incoming: incoming.sort(sort).map((o) => view5(o, u)), limits: { perProperty: MAX_LIVE_OFFERS_PER_PROPERTY } });
+    res.json({ success: true, made: mine3.sort(sort).map((o) => view6(o, u)), incoming: incoming.sort(sort).map((o) => view6(o, u)), limits: { perProperty: MAX_LIVE_OFFERS_PER_PROPERTY } });
   });
   r.post("/", needs("offer:make"), (req, res) => {
     const u = self();
     const parsed = makeSchema.safeParse(req.body);
-    if (!parsed.success) return bad20(res, parsed.error.issues[0]?.message || "Invalid offer");
+    if (!parsed.success) return bad21(res, parsed.error.issues[0]?.message || "Invalid offer");
     const d = parsed.data;
-    if (hit(`offer:${u.id}`, 30, 36e5)) return bad20(res, "Too many offers this hour \u2014 slow down", 429);
+    if (hit(`offer:${u.id}`, 30, 36e5)) return bad21(res, "Too many offers this hour \u2014 slow down", 429);
     const p = db.byId("properties", d.propertyId);
-    if (!p || !canBrowseProperty(u, p) || !PUBLIC.includes(p.listingStatus)) return bad20(res, "Property not found or not open for offers", 404);
-    if (p.ownerId === u.id) return bad20(res, "You cannot make an offer on your own property", 403);
+    if (!p || !canBrowseProperty(u, p) || !PUBLIC.includes(p.listingStatus)) return bad21(res, "Property not found or not open for offers", 404);
+    if (p.ownerId === u.id) return bad21(res, "You cannot make an offer on your own property", 403);
     const err = checkOfferAmount(d.amount, p.askingPrice, d.tokenProposed);
-    if (err) return bad20(res, err);
+    if (err) return bad21(res, err);
     if (d.requirementId) {
       const rq = db.byId("requirements", d.requirementId);
-      if (!rq || rq.assignedBrokerId !== u.id) return bad20(res, "Requirement not found", 404);
+      if (!rq || rq.assignedBrokerId !== u.id) return bad21(res, "Requirement not found", 404);
     }
     const key = digits(d.buyerPhone).slice(-10);
-    const live5 = st19().propertyOffers.filter((o2) => isLiveOffer(o2.status));
-    if (live5.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId !== u.id)) return bad20(res, "This buyer already has an active offer on this property", 409, "BUYER_TAKEN");
+    const live5 = st20().propertyOffers.filter((o2) => isLiveOffer(o2.status));
+    if (live5.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId !== u.id)) return bad21(res, "This buyer already has an active offer on this property", 409, "BUYER_TAKEN");
     {
       const pb = partyBlock(d.buyerPhone, "buyer");
       if (pb) return res.status(403).json(pb);
@@ -87518,14 +87808,14 @@ function createOffersRouter() {
       const blocked = buyerBondBlock(u, p.id, d.buyerPhone);
       if (blocked) return res.status(409).json(blocked);
     }
-    if (live5.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId === u.id)) return bad20(res, "You already have an active offer for this buyer on this property \u2014 withdraw it to submit a new one", 409, "OFFER_EXISTS");
-    if (live5.filter((o2) => o2.propertyId === p.id && o2.brokerId === u.id).length >= MAX_LIVE_OFFERS_PER_PROPERTY) return bad20(res, `You can keep at most ${MAX_LIVE_OFFERS_PER_PROPERTY} live offers on one property`, 429, "OFFER_CAP");
+    if (live5.some((o2) => o2.propertyId === p.id && o2.buyerPhoneKey === key && o2.brokerId === u.id)) return bad21(res, "You already have an active offer for this buyer on this property \u2014 withdraw it to submit a new one", 409, "OFFER_EXISTS");
+    if (live5.filter((o2) => o2.propertyId === p.id && o2.brokerId === u.id).length >= MAX_LIVE_OFFERS_PER_PROPERTY) return bad21(res, `You can keep at most ${MAX_LIVE_OFFERS_PER_PROPERTY} live offers on one property`, 429, "OFFER_CAP");
     {
       const cap = liveOfferCap(u, MAX_LIVE_OFFERS_PER_BROKER, PROBATION_LIVE_OFFERS);
-      if (live5.filter((o2) => o2.brokerId === u.id).length >= cap) return bad20(res, `You can keep at most ${cap} live offers in total${cap < MAX_LIVE_OFFERS_PER_BROKER ? " during your 30-day probation" : ""}`, 429, "OFFER_CAP");
+      if (live5.filter((o2) => o2.brokerId === u.id).length >= cap) return bad21(res, `You can keep at most ${cap} live offers in total${cap < MAX_LIVE_OFFERS_PER_BROKER ? " during your 30-day probation" : ""}`, 429, "OFFER_CAP");
     }
-    const ts = nowIso32();
-    const seq2 = st19().propertyOffers.reduce((m, o2) => Math.max(m, Number(/OFR-(\d+)/.exec(o2.id)?.[1] ?? 0)), 0) + 1;
+    const ts = nowIso33();
+    const seq2 = st20().propertyOffers.reduce((m, o2) => Math.max(m, Number(/OFR-(\d+)/.exec(o2.id)?.[1] ?? 0)), 0) + 1;
     const o = {
       id: `OFR-${String(seq2).padStart(4, "0")}`,
       propertyId: p.id,
@@ -87545,17 +87835,17 @@ function createOffersRouter() {
       updatedAt: ts
     };
     log4(o, u, `Offer \u20B9${d.amount.toLocaleString("en-IN")} (token \u20B9${d.tokenProposed.toLocaleString("en-IN")}) submitted`);
-    st19().propertyOffers.unshift(o);
+    st20().propertyOffers.unshift(o);
     makeBuyerBond({ brokerId: u.id, propertyId: p.id, buyerPhone: d.buyerPhone, buyerName: d.buyerName, source: "OFFER", sourceId: o.id });
     db.save();
     audit7(u, o, "OFFER_SUBMITTED", `${u.name} offered \u20B9${d.amount} (token \u20B9${d.tokenProposed}) for a buyer on ${p.id}`);
-    res.json({ success: true, offer: view5(o, u), watch: partyCaution(d.buyerPhone) || void 0 });
+    res.json({ success: true, offer: view6(o, u), watch: partyCaution(d.buyerPhone) || void 0 });
   });
   const load2 = (req, res) => {
-    const o = st19().propertyOffers.find((x) => x.id === req.params.id);
+    const o = st20().propertyOffers.find((x) => x.id === req.params.id);
     const p = o && propOf(o);
     if (!o || !p) {
-      bad20(res, "Offer not found", 404);
+      bad21(res, "Offer not found", 404);
       return null;
     }
     return { o, p };
@@ -87565,9 +87855,9 @@ function createOffersRouter() {
     const l = load2(req, res);
     if (!l) return;
     const { o, p } = l;
-    if (o.brokerId !== u.id) return bad20(res, "Offer not found", 404);
-    if (!isLiveOffer(o.status)) return bad20(res, `Offer is already ${o.status.toLowerCase()}`, 409);
-    if (o.status === "TOKEN_HELD") return bad20(res, "A token is held on this offer \u2014 ask the property side to refund or release it first", 409);
+    if (o.brokerId !== u.id) return bad21(res, "Offer not found", 404);
+    if (!isLiveOffer(o.status)) return bad21(res, `Offer is already ${o.status.toLowerCase()}`, 409);
+    if (o.status === "TOKEN_HELD") return bad21(res, "A token is held on this offer \u2014 ask the property side to refund or release it first", 409);
     o.status = "WITHDRAWN";
     log4(o, u, "Withdrawn by the buyer side");
     db.save();
@@ -87581,61 +87871,61 @@ function createOffersRouter() {
     const l = load2(req, res);
     if (!l) return;
     const { o, p } = l;
-    if (!isPrincipal(u, p)) return bad20(res, "Offer not found", 404);
-    if (!canDecide(u, p, o)) return bad20(res, "The listing broker brought this buyer \u2014 only the property owner can decide on this offer", 403, "OWNER_ONLY");
+    if (!isPrincipal(u, p)) return bad21(res, "Offer not found", 404);
+    if (!canDecide(u, p, o)) return bad21(res, "The listing broker brought this buyer \u2014 only the property owner can decide on this offer", 403, "OWNER_ONLY");
     const { action, counterAmount, note: note5 } = req.body || {};
-    if (!["SUBMITTED", "COUNTERED"].includes(o.status) && !(action === "REJECT" && o.status === "BACKUP")) return bad20(res, `Offer is ${o.status.toLowerCase()} \u2014 nothing to decide`, 409);
+    if (!["SUBMITTED", "COUNTERED"].includes(o.status) && !(action === "REJECT" && o.status === "BACKUP")) return bad21(res, `Offer is ${o.status.toLowerCase()} \u2014 nothing to decide`, 409);
     if (Date.parse(o.validUntil) < Date.now()) {
       o.status = "EXPIRED";
       db.save();
-      return bad20(res, "This offer has expired", 409);
+      return bad21(res, "This offer has expired", 409);
     }
-    if (!PUBLIC.includes(p.listingStatus)) return bad20(res, "This listing is no longer open", 409);
+    if (!PUBLIC.includes(p.listingStatus)) return bad21(res, "This listing is no longer open", 409);
     if (action === "REJECT") {
-      if (!note5 || String(note5).trim().length < 3) return bad20(res, "A short reason is required to reject");
+      if (!note5 || String(note5).trim().length < 3) return bad21(res, "A short reason is required to reject");
       o.status = "REJECTED";
       o.reason = String(note5).slice(0, 200);
       o.decidedById = u.id;
       o.decidedByName = u.name;
-      o.decidedAt = nowIso32();
+      o.decidedAt = nowIso33();
       log4(o, u, `Rejected: ${o.reason}`);
       audit7(u, o, "OFFER_REJECTED", o.reason);
     } else if (action === "COUNTER") {
       const c = Number(counterAmount);
-      if (!Number.isFinite(c) || c <= 0) return bad20(res, "Counter amount is required");
-      if (o.rounds >= MAX_COUNTER_ROUNDS) return bad20(res, `At most ${MAX_COUNTER_ROUNDS} counter rounds \u2014 accept or reject`, 409);
+      if (!Number.isFinite(c) || c <= 0) return bad21(res, "Counter amount is required");
+      if (o.rounds >= MAX_COUNTER_ROUNDS) return bad21(res, `At most ${MAX_COUNTER_ROUNDS} counter rounds \u2014 accept or reject`, 409);
       const err = checkOfferAmount(c, p.askingPrice, 0);
-      if (err) return bad20(res, err);
+      if (err) return bad21(res, err);
       o.status = "COUNTERED";
       o.counterAmount = c;
       o.counterNote = note5 ? String(note5).slice(0, 200) : void 0;
       o.rounds++;
       o.decidedById = u.id;
       o.decidedByName = u.name;
-      o.decidedAt = nowIso32();
+      o.decidedAt = nowIso33();
       o.validUntil = new Date(Math.max(Date.parse(o.validUntil), Date.now() + 24 * 36e5)).toISOString();
       log4(o, u, `Counter \u20B9${c.toLocaleString("en-IN")}${o.counterNote ? ` \u2014 ${o.counterNote}` : ""}`);
       audit7(u, o, "OFFER_COUNTERED", `Counter \u20B9${c}`);
     } else if (action === "ACCEPT") {
       o.decidedById = u.id;
       o.decidedByName = u.name;
-      o.decidedAt = nowIso32();
+      o.decidedAt = nowIso33();
       const out = acceptOffer(o, p, { id: u.id, name: u.name, role: u.role });
       db.save();
-      return res.json({ success: true, result: out, offer: view5(o, u) });
-    } else return bad20(res, "action must be ACCEPT, COUNTER or REJECT");
+      return res.json({ success: true, result: out, offer: view6(o, u) });
+    } else return bad21(res, "action must be ACCEPT, COUNTER or REJECT");
     db.save();
     promoteNext(p);
     db.save();
-    res.json({ success: true, offer: view5(o, u) });
+    res.json({ success: true, offer: view6(o, u) });
   });
   r.post("/:id/respond", needs("offer:make"), (req, res) => {
     const u = self();
     const l = load2(req, res);
     if (!l) return;
     const { o, p } = l;
-    if (o.brokerId !== u.id) return bad20(res, "Offer not found", 404);
-    if (o.status !== "COUNTERED" || !o.counterAmount) return bad20(res, "There is no counter to answer", 409);
+    if (o.brokerId !== u.id) return bad21(res, "Offer not found", 404);
+    if (o.status !== "COUNTERED" || !o.counterAmount) return bad21(res, "There is no counter to answer", 409);
     if (req.body?.action === "DECLINE") {
       o.status = "WITHDRAWN";
       log4(o, u, "Counter declined \u2014 offer withdrawn");
@@ -87644,31 +87934,31 @@ function createOffersRouter() {
       db.save();
       return res.json({ success: true });
     }
-    if (req.body?.action !== "ACCEPT") return bad20(res, "action must be ACCEPT or DECLINE");
-    if (!PUBLIC.includes(p.listingStatus)) return bad20(res, "This listing is no longer open", 409);
+    if (req.body?.action !== "ACCEPT") return bad21(res, "action must be ACCEPT or DECLINE");
+    if (!PUBLIC.includes(p.listingStatus)) return bad21(res, "This listing is no longer open", 409);
     o.amount = o.counterAmount;
     log4(o, u, `Buyer side accepted the counter \u20B9${o.amount.toLocaleString("en-IN")}`);
     const out = acceptOffer(o, p, { id: u.id, name: u.name, role: u.role });
     db.save();
-    res.json({ success: true, result: out, offer: view5(o, u) });
+    res.json({ success: true, result: out, offer: view6(o, u) });
   });
   r.post("/:id/token/received", needs("offer:decide"), (req, res) => {
     const u = self();
     const l = load2(req, res);
     if (!l) return;
     const { o, p } = l;
-    if (!isPrincipal(u, p) || !canDecide(u, p, o)) return bad20(res, "Only the property side (the owner if the listing broker brought the buyer) can record a token", 403);
-    if (o.status !== "ACCEPTED") return bad20(res, "A token can be recorded only on an accepted offer", 409);
+    if (!isPrincipal(u, p) || !canDecide(u, p, o)) return bad21(res, "Only the property side (the owner if the listing broker brought the buyer) can record a token", 403);
+    if (o.status !== "ACCEPTED") return bad21(res, "A token can be recorded only on an accepted offer", 409);
     const amount2 = Number(req.body?.amount);
     const ref = String(req.body?.ref || "").trim();
     const days3 = Math.min(TOKEN_MAX_DAYS, Math.max(1, Math.round(Number(req.body?.validDays ?? TOKEN_DEFAULT_DAYS))));
-    if (!Number.isFinite(amount2) || amount2 <= 0 || amount2 > o.amount) return bad20(res, "Token amount must be more than 0 and not more than the offer");
-    if (ref.length < 3 || ref.length > 40) return bad20(res, "Enter the payment reference (UTR / cheque no. / receipt no.)");
-    const ts = nowIso32();
+    if (!Number.isFinite(amount2) || amount2 <= 0 || amount2 > o.amount) return bad21(res, "Token amount must be more than 0 and not more than the offer");
+    if (ref.length < 3 || ref.length > 40) return bad21(res, "Enter the payment reference (UTR / cheque no. / receipt no.)");
+    const ts = nowIso33();
     o.token = { amount: amount2, ref, receivedAt: ts, receivedById: u.id, validUntil: new Date(Date.now() + days3 * 864e5).toISOString() };
     o.status = "TOKEN_HELD";
-    for (const x of st19().propertyOffers.filter((x2) => x2.propertyId === p.id && ["SUBMITTED", "COUNTERED"].includes(x2.status))) {
-      const q = st19().propertyOffers.filter((y) => y.propertyId === p.id && y.status === "BACKUP").reduce((m, y) => Math.max(m, y.queueNo ?? 0), 0) + 1;
+    for (const x of st20().propertyOffers.filter((x2) => x2.propertyId === p.id && ["SUBMITTED", "COUNTERED"].includes(x2.status))) {
+      const q = st20().propertyOffers.filter((y) => y.propertyId === p.id && y.status === "BACKUP").reduce((m, y) => Math.max(m, y.queueNo ?? 0), 0) + 1;
       x.status = "BACKUP";
       x.queueNo = q;
       log4(x, { id: "system", name: "GENZ" }, `Another offer now holds the property (token received) \u2014 moved to backup #${q}`);
@@ -87678,23 +87968,23 @@ function createOffersRouter() {
     log4(o, u, `Token \u20B9${amount2.toLocaleString("en-IN")} recorded (ref ${ref}), valid ${days3} days`);
     db.save();
     audit7(u, o, "TOKEN_RECEIVED", `Token \u20B9${amount2} ref ${ref}, valid till ${o.token.validUntil.slice(0, 10)}`);
-    res.json({ success: true, offer: view5(o, u) });
+    res.json({ success: true, offer: view6(o, u) });
   });
   r.post("/:id/token/ack", needs("offer:make"), (req, res) => {
     const u = self();
     const l = load2(req, res);
     if (!l) return;
     const { o } = l;
-    if (o.brokerId !== u.id || !o.token) return bad20(res, "Offer not found", 404);
+    if (o.brokerId !== u.id || !o.token) return bad21(res, "Offer not found", 404);
     const what = req.body?.what === "OUTCOME" ? "OUTCOME" : "PAID";
     if (what === "PAID") {
-      if (o.token.buyerSideAckAt) return bad20(res, "Already acknowledged", 409);
-      o.token.buyerSideAckAt = nowIso32();
+      if (o.token.buyerSideAckAt) return bad21(res, "Already acknowledged", 409);
+      o.token.buyerSideAckAt = nowIso33();
       log4(o, u, "Buyer side confirmed the token was paid");
       audit7(u, o, "TOKEN_ACK", "Buyer side confirmed token paid");
     } else {
-      if (!o.token.outcome) return bad20(res, "No outcome to acknowledge yet", 409);
-      o.token.outcomeAckAt = nowIso32();
+      if (!o.token.outcome) return bad21(res, "No outcome to acknowledge yet", 409);
+      o.token.outcomeAckAt = nowIso33();
       log4(o, u, `Buyer side confirmed the outcome (${o.token.outcome})`);
       audit7(u, o, "TOKEN_OUTCOME_ACK", o.token.outcome);
     }
@@ -87706,31 +87996,31 @@ function createOffersRouter() {
     const l = load2(req, res);
     if (!l) return;
     const { o, p } = l;
-    if (!isPrincipal(u, p) || !canDecide(u, p, o)) return bad20(res, "Not allowed", 403);
-    if (o.status !== "TOKEN_HELD" || !o.token || o.token.outcome) return bad20(res, "No token lock to extend", 409);
-    if (o.token.extended) return bad20(res, "A token can be extended only once", 409);
+    if (!isPrincipal(u, p) || !canDecide(u, p, o)) return bad21(res, "Not allowed", 403);
+    if (o.status !== "TOKEN_HELD" || !o.token || o.token.outcome) return bad21(res, "No token lock to extend", 409);
+    if (o.token.extended) return bad21(res, "A token can be extended only once", 409);
     const days3 = Math.min(7, Math.max(1, Math.round(Number(req.body?.days ?? 3))));
     o.token.validUntil = new Date(Math.max(Date.parse(o.token.validUntil), Date.now()) + days3 * 864e5).toISOString();
     o.token.extended = true;
     log4(o, u, `Token validity extended by ${days3} days`);
     db.save();
     audit7(u, o, "TOKEN_EXTENDED", `+${days3} days`);
-    res.json({ success: true, offer: view5(o, u) });
+    res.json({ success: true, offer: view6(o, u) });
   });
   r.post("/:id/token/close", needs("offer:decide"), (req, res) => {
     const u = self();
     const l = load2(req, res);
     if (!l) return;
     const { o, p } = l;
-    if (!isPrincipal(u, p) || !canDecide(u, p, o)) return bad20(res, "Not allowed", 403);
-    if (o.status !== "TOKEN_HELD" || !o.token || o.token.outcome) return bad20(res, "No open token on this offer", 409);
+    if (!isPrincipal(u, p) || !canDecide(u, p, o)) return bad21(res, "Not allowed", 403);
+    if (o.status !== "TOKEN_HELD" || !o.token || o.token.outcome) return bad21(res, "No open token on this offer", 409);
     const outcome = req.body?.outcome;
     const note5 = String(req.body?.note || "").trim().slice(0, 300);
-    if (!["REFUNDED", "FORFEITED"].includes(outcome)) return bad20(res, "outcome must be REFUNDED or FORFEITED (a completed deal is closed by marking the listing sold)");
-    if (outcome === "FORFEITED" && Date.parse(o.token.validUntil) > Date.now()) return bad20(res, "A token can be marked forfeited only after its validity has ended", 409);
-    if (note5.length < 3) return bad20(res, "Add a short note");
+    if (!["REFUNDED", "FORFEITED"].includes(outcome)) return bad21(res, "outcome must be REFUNDED or FORFEITED (a completed deal is closed by marking the listing sold)");
+    if (outcome === "FORFEITED" && Date.parse(o.token.validUntil) > Date.now()) return bad21(res, "A token can be marked forfeited only after its validity has ended", 409);
+    if (note5.length < 3) return bad21(res, "Add a short note");
     o.token.outcome = outcome;
-    o.token.outcomeAt = nowIso32();
+    o.token.outcomeAt = nowIso33();
     o.token.outcomeNote = note5;
     o.status = "RELEASED";
     log4(o, u, `Token ${outcome.toLowerCase()}: ${note5}`);
@@ -87738,38 +88028,38 @@ function createOffersRouter() {
     promoteNext(p);
     db.save();
     audit7(u, o, outcome === "REFUNDED" ? "TOKEN_REFUNDED" : "TOKEN_FORFEITED", note5);
-    res.json({ success: true, offer: view5(o, u) });
+    res.json({ success: true, offer: view6(o, u) });
   });
   return r;
 }
 
 // server/listings.ts
-var import_express51 = __toESM(require_express2(), 1);
-import crypto32 from "node:crypto";
-var nowIso33 = () => (/* @__PURE__ */ new Date()).toISOString();
-var st20 = () => db.getState();
-var bad21 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
+var import_express54 = __toESM(require_express2(), 1);
+import crypto34 from "node:crypto";
+var nowIso34 = () => (/* @__PURE__ */ new Date()).toISOString();
+var st21 = () => db.getState();
+var bad22 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
 var esc11 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var inr12 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var inr13 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
 var profile3 = (id) => db.byId("users", id);
 var principal = (u, p) => p.ownerId === u.id || p.listingBrokerId === u.id;
 var PUBLIC2 = ["active", "under_negotiation"];
 var BOT3 = /bot|crawler|spider|preview|facebookexternalhit|whatsapp|telegram|slack|embedly|curl|wget|python|node-fetch/i;
 var SETTLING = ["AGREED", "DUE", "PARTIALLY_PAID", "DISPUTED"];
 function purgeBlocked(p) {
-  const deals = st20().dealRooms.filter((d) => d.propertyId === p.id);
-  return deals.some((d) => SETTLING.includes(d.settlementStatus) || d.stage === "Disputed") || st20().disputes.some((x) => x.dealRoomId && deals.some((d) => d.id === x.dealRoomId) && !["RESOLVED", "DISMISSED"].includes(x.status));
+  const deals = st21().dealRooms.filter((d) => d.propertyId === p.id);
+  return deals.some((d) => SETTLING.includes(d.settlementStatus) || d.stage === "Disputed") || st21().disputes.some((x) => x.dealRoomId && deals.some((d) => d.id === x.dealRoomId) && !["RESOLVED", "DISMISSED"].includes(x.status));
 }
 function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
-  const s = st20();
+  const s = st21();
   s.marketRecords.push({
-    id: `MR-${crypto32.randomBytes(4).toString("hex")}`,
+    id: `MR-${crypto34.randomBytes(4).toString("hex")}`,
     city: p.city,
     locality: p.locality,
     propertyType: p.propertyType,
     transactionType: p.transactionType,
     areaSqFt: p.plotAreaSqFt || p.builtUpAreaSqFt || 0,
-    month: monthOf(p.soldAt || nowIso33()),
+    month: monthOf(p.soldAt || nowIso34()),
     priceBand: priceBand(p.soldPrice || p.askingPrice),
     via: p.soldVia || "OUTSIDE"
   });
@@ -87791,7 +88081,7 @@ function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
   p.soldNote = void 0;
   p.soldPrice = void 0;
   p.posterCode = void 0;
-  p.purgedAt = nowIso33();
+  p.purgedAt = nowIso34();
   for (const v of s.siteVisits.filter((x) => x.propertyId === p.id)) {
     v.customerName = firstName2(v.customerName);
     v.customerPhone = void 0;
@@ -87808,7 +88098,7 @@ function purgeProperty(p, actor = { id: "system", role: "SUPERADMIN" }) {
 }
 function sweepSoldPurge(now = Date.now()) {
   let n2 = 0;
-  for (const p of st20().properties) {
+  for (const p of st21().properties) {
     if (p.purgedAt || !["sold", "rented"].includes(p.listingStatus) || !purgeDue(p.soldAt, now)) continue;
     if (purgeBlocked(p)) continue;
     purgeProperty(p);
@@ -87834,15 +88124,15 @@ var relistSchema = external_exports.object({
   addressHidden: external_exports.string().trim().min(5).max(300).optional()
 });
 function createListingsRouter() {
-  const r = (0, import_express51.Router)();
-  const me27 = () => ctx().user;
-  const self = () => profile3(me27().id);
+  const r = (0, import_express54.Router)();
+  const me28 = () => ctx().user;
+  const self = () => profile3(me28().id);
   const audit9 = (u, p, action, d) => db.appendAuditEvent(u.id, u.role, "PROPERTY", p.id, action, d);
   const load2 = (req, res) => {
     const u = self();
     const p = db.byId("properties", req.params.id);
     if (!p || !principal(u, p)) {
-      bad21(res, "Listing not found", 404);
+      bad22(res, "Listing not found", 404);
       return null;
     }
     return { u, p };
@@ -87850,8 +88140,8 @@ function createListingsRouter() {
   r.get("/mine", needs("listing:lifecycle"), (_req, res) => {
     const u = self();
     const now = Date.now();
-    const rows = st20().properties.filter((p) => principal(u, p)).map((p) => {
-      const offers = st20().propertyOffers.filter((o) => o.propertyId === p.id);
+    const rows = st21().properties.filter((p) => principal(u, p)).map((p) => {
+      const offers = st21().propertyOffers.filter((o) => o.propertyId === p.id);
       return {
         id: p.id,
         title: p.title,
@@ -87875,7 +88165,7 @@ function createListingsRouter() {
         posterViews: p.posterViews || 0,
         liveOffers: offers.filter((o) => isLiveOffer(o.status)).length,
         tokenHeld: offers.some((o) => o.status === "TOKEN_HELD"),
-        newEnquiries: st20().posterEnquiries.filter((e) => e.propertyId === p.id && e.status === "NEW").length
+        newEnquiries: st21().posterEnquiries.filter((e) => e.propertyId === p.id && e.status === "NEW").length
       };
     });
     res.json({ success: true, listings: rows, purgeDays: SOLD_PURGE_DAYS });
@@ -87885,16 +88175,16 @@ function createListingsRouter() {
     if (!l) return;
     const { u, p } = l;
     const parsed = statusSchema2.safeParse(req.body);
-    if (!parsed.success) return bad21(res, parsed.error.issues[0]?.message || "Invalid request");
+    if (!parsed.success) return bad22(res, parsed.error.issues[0]?.message || "Invalid request");
     const d = parsed.data;
-    const s = st20();
-    const ts = nowIso33();
-    if (!["active", "under_negotiation", "sold", "rented", "withdrawn"].includes(p.listingStatus)) return bad21(res, `A ${p.listingStatus.replace("_", " ")} listing cannot be changed here`, 409);
-    if (["sold", "rented", "withdrawn"].includes(p.listingStatus)) return bad21(res, `This listing is already ${p.listingStatus}. Use undo (within 24 h) or relist.`, 409);
+    const s = st21();
+    const ts = nowIso34();
+    if (!["active", "under_negotiation", "sold", "rented", "withdrawn"].includes(p.listingStatus)) return bad22(res, `A ${p.listingStatus.replace("_", " ")} listing cannot be changed here`, 409);
+    if (["sold", "rented", "withdrawn"].includes(p.listingStatus)) return bad22(res, `This listing is already ${p.listingStatus}. Use undo (within 24 h) or relist.`, 409);
     const offers = s.propertyOffers.filter((o) => o.propertyId === p.id);
     const held = offers.find((o) => o.status === "TOKEN_HELD");
     if (d.status === "active" || d.status === "under_negotiation") {
-      if (held) return bad21(res, 'A token is held on this property \u2014 it stays "under negotiation" until the token is closed', 409, "TOKEN_LOCK");
+      if (held) return bad22(res, 'A token is held on this property \u2014 it stays "under negotiation" until the token is closed', 409, "TOKEN_LOCK");
       p.listingStatus = d.status;
       p.updatedAt = ts;
       db.save();
@@ -87903,7 +88193,7 @@ function createListingsRouter() {
     }
     if (d.status === "withdrawn") {
       const live5 = s.dealRooms.some((x) => x.propertyId === p.id && !["Settled"].includes(x.stage) && x.settlementStatus !== "PAID" && x.stage !== "Lead" && x.stage !== "Introduction");
-      if (live5 || held) return bad21(res, "Cannot withdraw: this property has live deals or a held token. Settle, refund or dispute them first.", 409);
+      if (live5 || held) return bad22(res, "Cannot withdraw: this property has live deals or a held token. Settle, refund or dispute them first.", 409);
       for (const o of offers.filter((o2) => isLiveOffer(o2.status))) {
         o.status = "CLOSED";
         o.reason = "Listing withdrawn";
@@ -87917,17 +88207,17 @@ function createListingsRouter() {
       audit9(u, p, "PROPERTY_WITHDRAWN", `${u.name} withdrew ${p.id}`);
       return res.json({ success: true });
     }
-    if (d.status !== closedStatusFor(p.transactionType)) return bad21(res, p.transactionType === "Sale" ? 'A sale listing is marked "sold"' : 'A rent / lease listing is marked "rented"');
-    if (!d.soldVia) return bad21(res, "Tell us how it closed: inside the GENZ network, or outside", 400, "SOLD_VIA");
+    if (d.status !== closedStatusFor(p.transactionType)) return bad22(res, p.transactionType === "Sale" ? 'A sale listing is marked "sold"' : 'A rent / lease listing is marked "rented"');
+    if (!d.soldVia) return bad22(res, "Tell us how it closed: inside the GENZ network, or outside", 400, "SOLD_VIA");
     let winner = void 0;
     if (d.soldVia === "NETWORK") {
       if (d.offerId) {
         winner = offers.find((o) => o.id === d.offerId && ["ACCEPTED", "TOKEN_HELD"].includes(o.status));
-        if (!winner) return bad21(res, "Pick an accepted offer on this property", 404);
+        if (!winner) return bad22(res, "Pick an accepted offer on this property", 404);
       } else if (d.dealRoomId) {
-        if (!s.dealRooms.some((x) => x.id === d.dealRoomId && x.propertyId === p.id)) return bad21(res, "Deal room does not belong to this property", 404);
-      } else return bad21(res, "Pick the offer or deal room through which it was sold");
-    } else if (held) return bad21(res, "A token is held on this property \u2014 refund or release it before marking it sold outside the network", 409, "TOKEN_LOCK");
+        if (!s.dealRooms.some((x) => x.id === d.dealRoomId && x.propertyId === p.id)) return bad22(res, "Deal room does not belong to this property", 404);
+      } else return bad22(res, "Pick the offer or deal room through which it was sold");
+    } else if (held) return bad22(res, "A token is held on this property \u2014 refund or release it before marking it sold outside the network", 409, "TOKEN_LOCK");
     for (const o of offers.filter((o2) => isLiveOffer(o2.status))) {
       if (winner && o.id === winner.id) {
         o.status = "CLOSED";
@@ -87965,10 +88255,10 @@ function createListingsRouter() {
     const l = load2(req, res);
     if (!l) return;
     const { u, p } = l;
-    if (!["sold", "rented"].includes(p.listingStatus) || !canUndoSold(p.soldAt)) return bad21(res, "Undo is possible only within 24 hours of marking sold / rented. After that, relist the property.", 409);
-    if (p.purgedAt) return bad21(res, "Already erased", 409);
-    const ts = nowIso33();
-    const w = st20().propertyOffers.find((o) => o.id === p.soldOfferId);
+    if (!["sold", "rented"].includes(p.listingStatus) || !canUndoSold(p.soldAt)) return bad22(res, "Undo is possible only within 24 hours of marking sold / rented. After that, relist the property.", 409);
+    if (p.purgedAt) return bad22(res, "Already erased", 409);
+    const ts = nowIso34();
+    const w = st21().propertyOffers.find((o) => o.id === p.soldOfferId);
     if (w && w.status === "CLOSED") {
       w.status = w.token ? "TOKEN_HELD" : "ACCEPTED";
       if (w.token) {
@@ -87991,15 +88281,15 @@ function createListingsRouter() {
     const l = load2(req, res);
     if (!l) return;
     const { u, p } = l;
-    if (!["sold", "rented", "withdrawn"].includes(p.listingStatus)) return bad21(res, "Only a sold, rented or withdrawn listing can be relisted", 409);
-    if (st20().properties.some((x) => x.resaleOf === p.id && !["withdrawn", "sold", "rented"].includes(x.listingStatus))) return bad21(res, "This property has already been relisted", 409);
+    if (!["sold", "rented", "withdrawn"].includes(p.listingStatus)) return bad22(res, "Only a sold, rented or withdrawn listing can be relisted", 409);
+    if (st21().properties.some((x) => x.resaleOf === p.id && !["withdrawn", "sold", "rented"].includes(x.listingStatus))) return bad22(res, "This property has already been relisted", 409);
     const parsed = relistSchema.safeParse(req.body);
-    if (!parsed.success) return bad21(res, parsed.error.issues[0]?.message || "Invalid request");
+    if (!parsed.success) return bad22(res, parsed.error.issues[0]?.message || "Invalid request");
     const d = parsed.data;
     const erased = !!p.purgedAt;
-    if (erased && (!d.ownerName || !d.ownerPhone || !d.addressHidden)) return bad21(res, "The old details were erased \u2014 enter the owner name, owner phone and address again", 400, "DETAILS_NEEDED");
-    const s = st20();
-    const ts = nowIso33();
+    if (erased && (!d.ownerName || !d.ownerPhone || !d.addressHidden)) return bad22(res, "The old details were erased \u2014 enter the owner name, owner phone and address again", 400, "DETAILS_NEEDED");
+    const s = st21();
+    const ts = nowIso34();
     const seq2 = s.properties.reduce((m, x) => Math.max(m, Number(/PROP-(?:RAI-)?(\d+)/.exec(x.id)?.[1] ?? 0)), 100) + 1;
     const id = `PROP-${seq2}`;
     const np = {
@@ -88015,7 +88305,7 @@ function createListingsRouter() {
       listingStatus: "active",
       verificationStatus: "PENDING",
       priceHistory: [{ price: d.askingPrice, changedAt: ts, reason: `Relisted (resale of ${p.id})` }],
-      duplicateHash: crypto32.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
+      duplicateHash: crypto34.createHash("sha256").update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest("hex"),
       soldAt: void 0,
       soldVia: void 0,
       soldPrice: void 0,
@@ -88043,10 +88333,10 @@ function createListingsRouter() {
     const l = load2(req, res);
     if (!l) return;
     const { u, p } = l;
-    if (p.listingBrokerId !== u.id) return bad21(res, "Only the listing broker can make the site poster \u2014 it carries the broker's contact", 403);
-    if (!PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad21(res, "Poster is available for verified, live listings", 409);
+    if (p.listingBrokerId !== u.id) return bad22(res, "Only the listing broker can make the site poster \u2014 it carries the broker's contact", 403);
+    if (!PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad22(res, "Poster is available for verified, live listings", 409);
     if (!p.posterCode) {
-      p.posterCode = crypto32.randomBytes(5).toString("hex").toUpperCase();
+      p.posterCode = crypto34.randomBytes(5).toString("hex").toUpperCase();
       db.save();
       audit9(u, p, "POSTER_CREATED", `Site poster code created for ${p.id}`);
     }
@@ -88070,22 +88360,22 @@ function createListingsRouter() {
   });
   r.get("/enquiries", needs("listing:lifecycle"), (_req, res) => {
     const u = self();
-    const mine3 = new Set(st20().properties.filter((p) => p.listingBrokerId === u.id).map((p) => p.id));
-    res.json({ success: true, enquiries: st20().posterEnquiries.filter((e) => mine3.has(e.propertyId)).map((e) => ({ ...e, propertyTitle: db.byId("properties", e.propertyId)?.title })) });
+    const mine3 = new Set(st21().properties.filter((p) => p.listingBrokerId === u.id).map((p) => p.id));
+    res.json({ success: true, enquiries: st21().posterEnquiries.filter((e) => mine3.has(e.propertyId)).map((e) => ({ ...e, propertyTitle: db.byId("properties", e.propertyId)?.title })) });
   });
   r.post("/enquiries/:id/status", needs("listing:lifecycle"), (req, res) => {
     const u = self();
-    const e = st20().posterEnquiries.find((x) => x.id === req.params.id);
+    const e = st21().posterEnquiries.find((x) => x.id === req.params.id);
     const p = e && db.byId("properties", e.propertyId);
-    if (!e || !p || p.listingBrokerId !== u.id) return bad21(res, "Enquiry not found", 404);
-    if (!["CONTACTED", "CLOSED"].includes(req.body?.status)) return bad21(res, "status must be CONTACTED or CLOSED");
+    if (!e || !p || p.listingBrokerId !== u.id) return bad22(res, "Enquiry not found", 404);
+    if (!["CONTACTED", "CLOSED"].includes(req.body?.status)) return bad22(res, "status must be CONTACTED or CLOSED");
     e.status = req.body.status;
     db.save();
     res.json({ success: true });
   });
   r.get("/alerts", needs("listing:lifecycle", "offer:make"), (_req, res) => {
     const u = self();
-    const s = st20();
+    const s = st21();
     const now = Date.now();
     const out = [];
     const mineProps = s.properties.filter((p) => principal(u, p));
@@ -88110,18 +88400,18 @@ function createListingsRouter() {
     res.json({ success: true, alerts: out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 60) });
   });
   r.post("/admin/purge-now", needs(), (_req, res) => {
-    if (me27().role !== "SUPERADMIN") return bad21(res, "Only a super-admin can run this", 403);
+    if (me28().role !== "SUPERADMIN") return bad22(res, "Only a super-admin can run this", 403);
     res.json({ success: true, erased: sweepSoldPurge() });
   });
   r.get("/market", needs("property:read"), (req, res) => {
     const city = String(req.query.city || "").toLowerCase();
     const loc = String(req.query.locality || "").toLowerCase();
-    res.json({ success: true, records: st20().marketRecords.filter((m) => (!city || m.city.toLowerCase() === city) && (!loc || m.locality.toLowerCase().includes(loc))).slice(-200).reverse() });
+    res.json({ success: true, records: st21().marketRecords.filter((m) => (!city || m.city.toLowerCase() === city) && (!loc || m.locality.toLowerCase().includes(loc))).slice(-200).reverse() });
   });
   return r;
 }
 function createPublicPosterRouter() {
-  const r = (0, import_express51.Router)();
+  const r = (0, import_express54.Router)();
   const page2 = (title, body, code = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${esc11(title)}</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f2;color:#1b1b1b}.w{max-width:520px;margin:0 auto;padding:14px}
 .card{background:#fff;border-radius:16px;padding:16px;margin-top:12px;box-shadow:0 1px 3px rgba(0,0,0,.07)}h1{font-size:20px;margin:0 0 4px}.s{color:#555;font-size:13px}.price{font-size:24px;font-weight:800;margin:8px 0}
@@ -88138,7 +88428,7 @@ fetch('/p/'+c+'/enquiry',{method:'POST',headers:{'Content-Type':'application/jso
 .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})}).then(function(x){m.style.display='block';if(x.ok){m.style.background='#dcfce7';m.style.color='#166534';m.textContent='Thank you! The broker will contact you shortly. / \u0927\u0928\u094D\u092F\u0935\u093E\u0926! \u092C\u094D\u0930\u094B\u0915\u0930 \u091C\u0932\u094D\u0926 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0917\u0947\u0964';f.style.display='none'}else{m.style.background='#fee2e2';m.style.color='#991b1b';m.textContent=x.j.error||'Could not send';b.disabled=false}})
 .catch(function(){m.style.display='block';m.textContent='Network error \u2014 please try again';b.disabled=false})})})();`);
   });
-  const find = (code) => st20().properties.find((p) => p.posterCode && p.posterCode === String(code).toUpperCase());
+  const find = (code) => st21().properties.find((p) => p.posterCode && p.posterCode === String(code).toUpperCase());
   r.get("/:code", rateLimit("poster-view", 90, 6e4), (req, res) => {
     res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
     const p = find(req.params.code);
@@ -88157,7 +88447,7 @@ fetch('/p/'+c+'/enquiry',{method:'POST',headers:{'Content-Type':'application/jso
     if (sold) return res.send(page2("Property closed", `${head}<div class="sold" style="margin-top:12px">${p.transactionType === "Sale" ? "This property has been sold." : "This property has been rented."}<br>\u092F\u0939 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 ${p.transactionType === "Sale" ? "\u092C\u093F\u0915" : "\u0915\u093F\u0930\u093E\u090F \u092A\u0930 \u091C\u093E"} \u091A\u0941\u0915\u0940 \u0939\u0948\u0964</div></div><p class="small">Listed via GENZ Broker Network</p>${joinFooter(broker)}`));
     if (!live5) return res.status(404).send(page2("Not available", '<div class="card">This listing is not available right now.</div>'));
     const desc = String(p.description || "").slice(0, 400);
-    res.send(page2(`${p.title} \u2014 GENZ`, `${head}<div class="price">${inr12(p.askingPrice)}${p.transactionType !== "Sale" ? " / month" : ""}</div>${(p.tags || []).slice(0, 8).map((t) => `<span class="tag">${esc11(t)}</span>`).join("")}${desc ? `<p class="s" style="margin-top:10px">${esc11(desc)}</p>` : ""}${p.listingStatus === "under_negotiation" ? '<div class="neg" style="margin-top:10px">Under negotiation \u2014 you can still enquire / \u092C\u093E\u0924\u091A\u0940\u0924 \u091C\u093E\u0930\u0940 \u0939\u0948, \u092B\u093F\u0930 \u092D\u0940 \u092A\u0942\u091B \u0938\u0915\u0924\u0947 \u0939\u0948\u0902</div>' : ""}</div>
+    res.send(page2(`${p.title} \u2014 GENZ`, `${head}<div class="price">${inr13(p.askingPrice)}${p.transactionType !== "Sale" ? " / month" : ""}</div>${(p.tags || []).slice(0, 8).map((t) => `<span class="tag">${esc11(t)}</span>`).join("")}${desc ? `<p class="s" style="margin-top:10px">${esc11(desc)}</p>` : ""}${p.listingStatus === "under_negotiation" ? '<div class="neg" style="margin-top:10px">Under negotiation \u2014 you can still enquire / \u092C\u093E\u0924\u091A\u0940\u0924 \u091C\u093E\u0930\u0940 \u0939\u0948, \u092B\u093F\u0930 \u092D\u0940 \u092A\u0942\u091B \u0938\u0915\u0924\u0947 \u0939\u0948\u0902</div>' : ""}</div>
 ${broker ? `<div class="card"><b>${esc11(broker.name)}</b>${broker.companyName ? `<div class="s">${esc11(broker.companyName)}</div>` : ""}${broker.reraNumber ? `<div class="s">RERA: ${esc11(broker.reraNumber)}</div>` : ""}${reputationHtml(broker)}<div class="btns"><a class="call" href="tel:+91${esc11(phone)}">Call</a><a class="wa" href="https://wa.me/91${esc11(phone)}?text=${encodeURIComponent(`Hello, I saw your board for ${p.title}`)}">WhatsApp</a></div></div>` : ""}
 <div class="card"><b>Send an enquiry / \u092A\u0942\u091B\u0924\u093E\u091B \u092D\u0947\u091C\u0947\u0902</b><form id="enq"><label>Name / \u0928\u093E\u092E<input name="name" required maxlength="80" autocomplete="name"></label><label>Mobile / \u092E\u094B\u092C\u093E\u0907\u0932<input name="phone" required inputmode="numeric" maxlength="14" autocomplete="tel"></label><label>Message (optional)<textarea name="message" rows="2" maxlength="300"></textarea></label>
 <label class="ck"><input type="checkbox" name="consent" required><span>I agree that GENZ and this broker may contact me about this property. / \u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F \u0907\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0947 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902 \u092E\u0941\u091D\u0938\u0947 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u093F\u092F\u093E \u091C\u093E\u090F\u0964</span></label><button class="go" type="submit">Send enquiry</button></form><div id="enqmsg" class="ok"></div></div>
@@ -88167,22 +88457,22 @@ ${broker ? `<div class="card"><b>${esc11(broker.name)}</b>${broker.companyName ?
     const origin = req.headers.origin;
     if (origin) {
       try {
-        if (new URL(String(origin)).host !== req.headers.host) return bad21(res, "Cross-origin request blocked", 403);
+        if (new URL(String(origin)).host !== req.headers.host) return bad22(res, "Cross-origin request blocked", 403);
       } catch {
-        return bad21(res, "Invalid origin", 403);
+        return bad22(res, "Invalid origin", 403);
       }
     }
     const p = find(req.params.code);
-    if (!p || !PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad21(res, "This listing is not available", 404);
+    if (!p || !PUBLIC2.includes(p.listingStatus) || p.verificationStatus !== "VERIFIED") return bad22(res, "This listing is not available", 404);
     const name = String(req.body?.name || "").trim();
     const msg = String(req.body?.message || "").trim().slice(0, 300);
     const ph = phoneSchema.safeParse(String(req.body?.phone || "").trim());
-    if (name.length < 2 || name.length > 80) return bad21(res, "Please enter your name");
-    if (!ph.success) return bad21(res, "Please enter a valid mobile number");
-    if (req.body?.consent !== true) return bad21(res, "Please tick the consent box so the broker may contact you");
-    if (hit(`penq:${digits(ph.data).slice(-10)}:${p.id}`, 2, 24 * 36e5)) return bad21(res, "You have already sent an enquiry for this property today", 429);
-    if (hit(`penq-prop:${p.id}`, 60, 24 * 36e5)) return bad21(res, "Too many enquiries for this listing today", 429);
-    st20().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto32.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso33(), status: "NEW", createdAt: nowIso33() });
+    if (name.length < 2 || name.length > 80) return bad22(res, "Please enter your name");
+    if (!ph.success) return bad22(res, "Please enter a valid mobile number");
+    if (req.body?.consent !== true) return bad22(res, "Please tick the consent box so the broker may contact you");
+    if (hit(`penq:${digits(ph.data).slice(-10)}:${p.id}`, 2, 24 * 36e5)) return bad22(res, "You have already sent an enquiry for this property today", 429);
+    if (hit(`penq-prop:${p.id}`, 60, 24 * 36e5)) return bad22(res, "Too many enquiries for this listing today", 429);
+    st21().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto34.randomBytes(2).toString("hex")}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || void 0, consentAt: nowIso34(), status: "NEW", createdAt: nowIso34() });
     db.save();
     db.appendAuditEvent("public", "SUPERADMIN", "PROPERTY", p.id, "POSTER_ENQUIRY", `Enquiry received via site poster for ${p.id} (consent recorded)`);
     res.json({ success: true });
@@ -88191,15 +88481,15 @@ ${broker ? `<div class="card"><b>${esc11(broker.name)}</b>${broker.companyName ?
 }
 
 // server/visitpass.ts
-var import_express54 = __toESM(require_express2(), 1);
+var import_express57 = __toESM(require_express2(), 1);
 var import_qrcode4 = __toESM(require_lib5(), 1);
-import crypto34 from "node:crypto";
+import crypto36 from "node:crypto";
 
 // server/visitack.ts
-var import_express52 = __toESM(require_express2(), 1);
-var import_express53 = __toESM(require_express2(), 1);
+var import_express55 = __toESM(require_express2(), 1);
+var import_express56 = __toESM(require_express2(), 1);
 var import_qrcode3 = __toESM(require_lib5(), 1);
-import crypto33 from "crypto";
+import crypto35 from "crypto";
 
 // src/shared/visitAckRules.ts
 var ACK_VERSION = "v1";
@@ -88214,20 +88504,20 @@ var ACK_NOTE = {
 };
 
 // server/visitack.ts
-var st21 = () => db.getState();
-var nowIso34 = () => (/* @__PURE__ */ new Date()).toISOString();
+var st22 = () => db.getState();
+var nowIso35 = () => (/* @__PURE__ */ new Date()).toISOString();
 var esc12 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var hmac3 = (tag, v) => crypto33.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var hmac3 = (tag, v) => crypto35.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone107 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE7 = /^[6-9]\d{9}$/;
 var smsOn3 = () => !!process.env.SMS_WEBHOOK_URL;
-var bad22 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
+var bad23 = (res, error62, status = 400) => res.status(status).json({ error: error62 });
 var tokenOf = (a) => {
   const h = a.id.slice(4);
   return `${h}-${hmac3("va-token", a.id).slice(0, 24)}`;
 };
 var ackBase = (a) => `/a/${tokenOf(a)}`;
-var ackFor = (kind, refId) => st21().visitAcks.find((a) => a.kind === kind && a.refId === refId);
+var ackFor = (kind, refId) => st22().visitAcks.find((a) => a.kind === kind && a.refId === refId);
 var ackStatus = (kind, refId) => ackFor(kind, refId)?.status || "NONE";
 var ackLinkFor = (a, passCode) => a.kind === "PASS" && passCode ? `/v/${passCode}` : `/a/${tokenOf(a)}`;
 function ackBlock(kind, refId) {
@@ -88242,7 +88532,7 @@ function createAck(a) {
   if (old) return old;
   const broker = db.byId("users", a.brokerId);
   const ack = {
-    id: `VAK-${crypto33.randomBytes(5).toString("hex")}`,
+    id: `VAK-${crypto35.randomBytes(5).toString("hex")}`,
     kind: a.kind,
     refId: a.refId,
     phoneKey: hmac3("va-phone", phone),
@@ -88253,35 +88543,35 @@ function createAck(a) {
     subject: a.subject,
     textVersion: ACK_VERSION,
     status: "PENDING",
-    createdAt: nowIso34()
+    createdAt: nowIso35()
   };
-  st21().visitAcks.unshift(ack);
+  st22().visitAcks.unshift(ack);
   db.appendAuditEvent("SYSTEM", "SUPERADMIN", "VISIT", a.refId, "VISIT_ACK_REQUESTED", `\u201CNo direct deal\u201D acknowledgement requested from ${a.buyerName} (\u2022\u2022${ack.phoneLast4}) for ${a.subject}, introduced by ${ack.brokerName}. Wording ${ACK_VERSION}.`);
   if (smsOn3()) void sendSms(`+91${phone}`, `GENZ: ${ack.brokerName} has arranged your property visit. Open this link to confirm and get your visit pass: ${process.env.PUBLIC_URL || ""}${ackLinkFor(ack)}`);
   return ack;
 }
 var sweepVisitAcks = () => {
   const cut = Date.now() - 120 * 864e5;
-  const s = st21();
+  const s = st22();
   const before = s.visitAcks.length;
   s.visitAcks = s.visitAcks.filter((a) => a.status === "ACKED" || Date.parse(a.createdAt) > cut);
   if (s.visitAcks.length !== before) db.save();
 };
-var me24 = () => ctx().user;
+var me25 = () => ctx().user;
 function mayManage(a) {
-  const u = me24();
+  const u = me25();
   if (u.role === "SUPERADMIN" || u.role === "ADMIN") return true;
   if (a.brokerId === u.id) return true;
   if (u.role === "TEAM_MEMBER" && u.employerId === a.brokerId) return true;
   return false;
 }
 function createVisitAckRouter() {
-  const r = (0, import_express52.Router)();
+  const r = (0, import_express55.Router)();
   r.get("/:kind/:refId", (req, res) => {
-    if (!ctx().user?.id) return bad22(res, "Sign in first", 401);
+    if (!ctx().user?.id) return bad23(res, "Sign in first", 401);
     const kind = String(req.params.kind).toUpperCase();
-    if (!["PASS", "VISIT"].includes(kind)) return bad22(res, "Unknown kind", 404);
-    if (!(can(me24(), "visit:pass") || can(me24(), "sitevisit:read"))) return bad22(res, "Not allowed", 403);
+    if (!["PASS", "VISIT"].includes(kind)) return bad23(res, "Unknown kind", 404);
+    if (!(can(me25(), "visit:pass") || can(me25(), "sitevisit:read"))) return bad23(res, "Not allowed", 403);
     const a = ackFor(kind, String(req.params.refId));
     if (!a || !mayManage(a)) return res.json({ success: true, ack: null });
     const pass = kind === "PASS" ? db.byId("visitPasses", a.refId) : void 0;
@@ -88342,15 +88632,15 @@ async function ackedView(a) {
   return shell2(`${done}${pass ? `<div class="card"><a class="btn" href="/v/${esc12(pass.code)}">\u0905\u092A\u0928\u093E \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u093E\u0938 \u0916\u094B\u0932\u0947\u0902 / Open my visit pass</a></div>` : ""}`);
 }
 function createVisitAckPageRouter() {
-  const r = (0, import_express52.Router)();
-  const form = import_express53.default.urlencoded({ extended: false, limit: "10kb" });
+  const r = (0, import_express55.Router)();
+  const form = import_express56.default.urlencoded({ extended: false, limit: "10kb" });
   const headers = (res) => {
     res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow" });
   };
   const find = (token) => {
     const m = /^([a-f0-9]{10})-([a-f0-9]{24})$/.exec(token);
     if (!m) return void 0;
-    const a = st21().visitAcks.find((x) => x.id === `VAK-${m[1]}`);
+    const a = st22().visitAcks.find((x) => x.id === `VAK-${m[1]}`);
     return a && safeEqual(token, tokenOf(a)) ? a : void 0;
   };
   const gone = (res) => res.status(404).send(shell2(`<div class="card"><p class="h">\u092F\u0939 \u0932\u093F\u0902\u0915 \u092E\u093E\u0928\u094D\u092F \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0905\u092A\u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u0928\u092F\u093E \u0932\u093F\u0902\u0915 \u092E\u093E\u0901\u0917\u0947\u0902\u0964</p><p class="t">This link is not valid. Ask your broker for a new one.</p></div>`));
@@ -88378,7 +88668,7 @@ function createVisitAckPageRouter() {
     if (hit(`va-phone:${a.id}`, ACK_LIMITS.askPerHour, 36e5, 36e5) > 0) return res.status(429).send(renderAckGate(a, base, "\u092C\u0939\u0941\u0924 \u092C\u093E\u0930 \u0915\u094B\u0936\u093F\u0936 \u0939\u094B \u091A\u0941\u0915\u0940\u0964 \u090F\u0915 \u0918\u0902\u091F\u0947 \u092C\u093E\u0926 \u092B\u093F\u0930 \u0915\u0930\u0947\u0902\u0964 / Too many tries \u2014 please wait an hour.", "phone", true));
     if (!safeEqual(hmac3("va-phone", phone), a.phoneKey)) return res.send(renderAckGate(a, base, "\u092F\u0939 \u0928\u0902\u092C\u0930 \u0907\u0938 \u0935\u093F\u091C\u093C\u093F\u091F \u0938\u0947 \u092E\u0947\u0932 \u0928\u0939\u0940\u0902 \u0916\u093E\u0924\u093E\u0964 \u0909\u0938\u0940 \u0928\u0902\u092C\u0930 \u0938\u0947 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902 \u091C\u094B \u0906\u092A\u0928\u0947 \u0905\u092A\u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0926\u093F\u092F\u093E \u0925\u093E\u0964 / This number does not match this visit \u2014 use the number you gave your broker.", "phone", true));
     const otp = secureOtp();
-    a.tickedAt = nowIso34();
+    a.tickedAt = nowIso35();
     a.otpHash = hmac3("va-otp", `${a.id}|${otp}`);
     a.otpExpires = new Date(Date.now() + ACK_LIMITS.otpMinutes * 6e4).toISOString();
     a.otpTries = 0;
@@ -88412,7 +88702,7 @@ function createVisitAckPageRouter() {
     a.otpExpires = void 0;
     a.otpTries = 0;
     a.status = "ACKED";
-    a.ackedAt = nowIso34();
+    a.ackedAt = nowIso35();
     db.save();
     db.appendAuditEvent("SYSTEM", "SUPERADMIN", "VISIT", a.refId, "VISIT_ACK_DONE", `${a.buyerName} (\u2022\u2022${a.phoneLast4}, mobile verified by code) agreed on ${a.ackedAt}: no direct dealing with the owner / builder of ${a.subject} without ${a.brokerName} during the protection period (wording ${a.textVersion}).`);
     ping2(a, "Buyer confirmed", `${a.buyerName} confirmed the visit. The pass is ready.`);
@@ -88422,11 +88712,11 @@ function createVisitAckPageRouter() {
 }
 
 // server/visitpass.ts
-var nowIso35 = () => (/* @__PURE__ */ new Date()).toISOString();
-var st22 = () => db.getState();
+var nowIso36 = () => (/* @__PURE__ */ new Date()).toISOString();
+var st23 = () => db.getState();
 var esc13 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var last4 = (p) => String(p || "").replace(/\D/g, "").slice(-4);
-var bad23 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
+var bad24 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
 var profile4 = (id) => db.byId("users", id);
 function canIssueFor(u, l) {
   if (u.role === "BROKER") return l.associateId === u.id;
@@ -88451,7 +88741,7 @@ function canScanFor(u, builderId, projectId) {
 var ownerOf = (u) => u.role === "TEAM_MEMBER" ? u.employerId || "" : u.id;
 function expireStale(now = Date.now()) {
   let n2 = 0;
-  for (const p of st22().visitPasses) if (p.status === "ACTIVE" && Date.parse(p.validUntil) < now) {
+  for (const p of st23().visitPasses) if (p.status === "ACTIVE" && Date.parse(p.validUntil) < now) {
     p.status = "EXPIRED";
     n2++;
   }
@@ -88471,52 +88761,52 @@ var confirmSchema = external_exports.object({
   partySize: external_exports.number().int().min(1).max(MAX_PARTY).optional(),
   note: external_exports.string().trim().max(200).optional()
 });
-var view6 = (p) => ({ ...p, timing: passTiming(p), payload: qrPayload(p.code), link: `/v/${p.code}`, ackStatus: ackStatus("PASS", p.id), scan: scanLine("PASS", p.scanAt) });
+var view7 = (p) => ({ ...p, timing: passTiming(p), payload: qrPayload(p.code), link: `/v/${p.code}`, ackStatus: ackStatus("PASS", p.id), scan: scanLine("PASS", p.scanAt) });
 function createVisitRouter() {
-  const r = (0, import_express54.Router)();
-  const me27 = () => ctx().user;
+  const r = (0, import_express57.Router)();
+  const me28 = () => ctx().user;
   const audit9 = (action, id, details) => {
-    const u = me27();
+    const u = me28();
     db.appendAuditEvent(u.id, u.role, "VISIT", id, action, details);
   };
   r.get("/me", (_req, res) => {
-    const u = profile4(me27().id);
+    const u = profile4(me28().id);
     const canIssue = can(u, "visit:pass");
     const canScan = can(u, "visit:scan") && canScanFor(u, ownerOf(u));
     res.json({ success: true, canIssue, canScan, role: u.role, id: u.id });
   });
   r.post("/passes", needs("visit:pass"), (req, res) => {
-    const u = profile4(me27().id);
+    const u = profile4(me28().id);
     const parsed = issueSchema.safeParse(req.body);
-    if (!parsed.success) return bad23(res, parsed.error.issues[0]?.message || "Invalid pass");
+    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid pass");
     const d = parsed.data;
     const slotErr = checkSlot(d.scheduledAt);
-    if (slotErr) return bad23(res, slotErr);
+    if (slotErr) return bad24(res, slotErr);
     const lead = db.byId("crmLeads", d.leadId);
     if (!lead || !canIssueFor(u, lead)) {
       if (lead && u.role === "DEVELOPER_BUILDER" && lead.builderId === u.id && lead.associateId) {
-        return bad23(res, "This lead belongs to a channel partner \u2014 only the partner can issue its visit pass (you scan it at the site)", 403);
+        return bad24(res, "This lead belongs to a channel partner \u2014 only the partner can issue its visit pass (you scan it at the site)", 403);
       }
-      return bad23(res, "Lead not found or not yours to issue a pass for", 404);
+      return bad24(res, "Lead not found or not yours to issue a pass for", 404);
     }
-    if (STAGES_NO_PASS.includes(lead.stage)) return bad23(res, `A visit pass cannot be issued for a lead that is ${lead.stage.replace(/_/g, " ").toLowerCase()}`, 409);
-    if (lead.verify === "REJECTED") return bad23(res, "This lead was rejected by the builder", 409);
+    if (STAGES_NO_PASS.includes(lead.stage)) return bad24(res, `A visit pass cannot be issued for a lead that is ${lead.stage.replace(/_/g, " ").toLowerCase()}`, 409);
+    if (lead.verify === "REJECTED") return bad24(res, "This lead was rejected by the builder", 409);
     const project = db.byId("builderProjects", lead.projectId);
-    if (!project || project.status === "ARCHIVED") return bad23(res, "Project is not available", 409);
+    if (!project || project.status === "ARCHIVED") return bad24(res, "Project is not available", 409);
     if (lead.associateId) {
       const m = db.byId("associateMandates", lead.mandateId);
-      if (!m || !mandateIsActive(m)) return bad23(res, "The partnership on this project is not active \u2014 pass cannot be issued", 409);
+      if (!m || !mandateIsActive(m)) return bad24(res, "The partnership on this project is not active \u2014 pass cannot be issued", 409);
     }
     const wait = hit(`vpass:${u.id}`, 60, 864e5);
-    if (wait) return bad23(res, "Daily limit of 60 passes reached", 429);
-    for (const o of st22().visitPasses) if (o.leadId === lead.id && o.status === "ACTIVE") o.status = "SUPERSEDED";
+    if (wait) return bad24(res, "Daily limit of 60 passes reached", 429);
+    for (const o of st23().visitPasses) if (o.leadId === lead.id && o.status === "ACTIVE") o.status = "SUPERSEDED";
     let code = "";
     do {
-      code = makeCode((n2) => crypto34.randomInt(n2));
-    } while (st22().visitPasses.some((p) => p.code === code));
-    const ts = nowIso35();
+      code = makeCode((n2) => crypto36.randomInt(n2));
+    } while (st23().visitPasses.some((p) => p.code === code));
+    const ts = nowIso36();
     const pass = {
-      id: `VP-${Date.now().toString(36)}${crypto34.randomInt(1296).toString(36)}`,
+      id: `VP-${Date.now().toString(36)}${crypto36.randomInt(1296).toString(36)}`,
       code,
       leadId: lead.id,
       projectId: project.id,
@@ -88536,10 +88826,10 @@ function createVisitRouter() {
       createdByName: u.name,
       createdAt: ts
     };
-    st22().visitPasses.unshift(pass);
+    st23().visitPasses.unshift(pass);
     const newAck = createAck({ kind: "PASS", refId: pass.id, phone: lead.phone, buyerName: lead.name, brokerId: lead.associateId || lead.builderId || u.id, subject: project.projectName });
     if (newAck) {
-      const prior = st22().visitPasses.filter((o) => o.leadId === lead.id && o.id !== pass.id).map((o) => ackFor("PASS", o.id)).find((a) => a && a.status === "ACKED" && a.phoneKey === newAck.phoneKey);
+      const prior = st23().visitPasses.filter((o) => o.leadId === lead.id && o.id !== pass.id).map((o) => ackFor("PASS", o.id)).find((a) => a && a.status === "ACKED" && a.phoneKey === newAck.phoneKey);
       if (prior) {
         newAck.status = "ACKED";
         newAck.tickedAt = prior.tickedAt;
@@ -88555,54 +88845,54 @@ function createVisitRouter() {
     lead.updatedAt = ts;
     db.save();
     audit9("VISIT_PASS_ISSUED", pass.id, `${u.name} issued visit pass for ${lead.name} (${lead.id}) at ${project.projectName}, slot ${pass.scheduledAt}`);
-    res.json({ success: true, pass: view6(pass) });
+    res.json({ success: true, pass: view7(pass) });
   });
   r.get("/passes", needs("visit:pass"), (req, res) => {
     expireStale();
-    const u = profile4(me27().id);
+    const u = profile4(me28().id);
     const owner = ownerOf(u);
     const leadId = req.query.leadId ? String(req.query.leadId) : "";
-    let list = st22().visitPasses.filter((p) => u.role === "DEVELOPER_BUILDER" || u.role === "TEAM_MEMBER" && profile4(owner)?.role === "DEVELOPER_BUILDER" ? p.builderId === owner && !p.associateId : p.associateId === owner);
+    let list = st23().visitPasses.filter((p) => u.role === "DEVELOPER_BUILDER" || u.role === "TEAM_MEMBER" && profile4(owner)?.role === "DEVELOPER_BUILDER" ? p.builderId === owner && !p.associateId : p.associateId === owner);
     if (u.role === "TEAM_MEMBER") {
-      const mine3 = new Set(st22().crmLeads.filter((l) => canIssueFor(u, l)).map((l) => l.id));
+      const mine3 = new Set(st23().crmLeads.filter((l) => canIssueFor(u, l)).map((l) => l.id));
       list = list.filter((p) => mine3.has(p.leadId));
     }
     if (leadId) list = list.filter((p) => p.leadId === leadId);
-    res.json({ success: true, passes: list.slice(0, 200).map(view6) });
+    res.json({ success: true, passes: list.slice(0, 200).map(view7) });
   });
   r.post("/passes/:id/cancel", needs("visit:pass"), (req, res) => {
-    const u = profile4(me27().id);
-    const p = st22().visitPasses.find((x) => x.id === req.params.id);
+    const u = profile4(me28().id);
+    const p = st23().visitPasses.find((x) => x.id === req.params.id);
     const lead = p && db.byId("crmLeads", p.leadId);
-    if (!p || !lead || !canIssueFor(u, lead)) return bad23(res, "Pass not found", 404);
-    if (p.status !== "ACTIVE") return bad23(res, `Pass is already ${p.status.toLowerCase()}`, 409);
+    if (!p || !lead || !canIssueFor(u, lead)) return bad24(res, "Pass not found", 404);
+    if (p.status !== "ACTIVE") return bad24(res, `Pass is already ${p.status.toLowerCase()}`, 409);
     p.status = "CANCELLED";
-    p.cancelledAt = nowIso35();
+    p.cancelledAt = nowIso36();
     db.save();
     audit9("VISIT_PASS_CANCELLED", p.id, `${u.name} cancelled pass ${p.code} for ${p.customerName}`);
     res.json({ success: true });
   });
   const scanGate = (req, res) => {
-    const u = profile4(me27().id);
+    const u = profile4(me28().id);
     if (hit(`vscan-all:${u.id}`, 150, 6e5)) {
-      bad23(res, "Too many scans \u2014 wait a few minutes", 429);
+      bad24(res, "Too many scans \u2014 wait a few minutes", 429);
       return null;
     }
     const code = normalizeCode(String(req.params.code || ""));
-    const pass = code ? st22().visitPasses.find((p) => p.code === code) : void 0;
+    const pass = code ? st23().visitPasses.find((p) => p.code === code) : void 0;
     if (!pass || !canScanFor(u, pass.builderId, pass.projectId)) {
       const wait = hit(`vscan-bad:${u.id}`, 10, 6e5, 6e5);
       if (wait) {
-        bad23(res, "Too many invalid scans \u2014 scanner locked for 10 minutes", 429);
+        bad24(res, "Too many invalid scans \u2014 scanner locked for 10 minutes", 429);
         return null;
       }
       const foreign = !!pass && !(u.role === "TEAM_MEMBER" && !policyOf(u).canScanVisits);
-      bad23(res, !pass ? "This is not a valid GENZ visit pass (unknown or mistyped code). Ask the visitor to open his pass link again. / \u092F\u0939 GENZ \u0915\u093E \u092E\u093E\u0928\u094D\u092F \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u093E\u0938 \u0928\u0939\u0940\u0902 \u0939\u0948 \u2014 \u0935\u093F\u091C\u093C\u093F\u091F\u0930 \u0938\u0947 \u092A\u093E\u0938 \u0932\u093F\u0902\u0915 \u0926\u094B\u092C\u093E\u0930\u093E \u0916\u0941\u0932\u0935\u093E\u090F\u0901\u0964" : foreign ? "This is a GENZ visit pass, but NOT for your project \u2014 you cannot scan it. Send the visitor to the right builder. / \u092F\u0939 GENZ \u092A\u093E\u0938 \u0939\u0948, \u092A\u0930 \u0906\u092A\u0915\u0947 \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0915\u093E \u0928\u0939\u0940\u0902 \u2014 \u0906\u092A \u0907\u0938\u0947 \u0938\u094D\u0915\u0948\u0928 \u0928\u0939\u0940\u0902 \u0915\u0930 \u0938\u0915\u0924\u0947\u0964" : "Your employer has not allowed you to scan visit passes", 404, foreign ? "NOT_YOUR_PASS" : void 0);
+      bad24(res, !pass ? "This is not a valid GENZ visit pass (unknown or mistyped code). Ask the visitor to open his pass link again. / \u092F\u0939 GENZ \u0915\u093E \u092E\u093E\u0928\u094D\u092F \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u093E\u0938 \u0928\u0939\u0940\u0902 \u0939\u0948 \u2014 \u0935\u093F\u091C\u093C\u093F\u091F\u0930 \u0938\u0947 \u092A\u093E\u0938 \u0932\u093F\u0902\u0915 \u0926\u094B\u092C\u093E\u0930\u093E \u0916\u0941\u0932\u0935\u093E\u090F\u0901\u0964" : foreign ? "This is a GENZ visit pass, but NOT for your project \u2014 you cannot scan it. Send the visitor to the right builder. / \u092F\u0939 GENZ \u092A\u093E\u0938 \u0939\u0948, \u092A\u0930 \u0906\u092A\u0915\u0947 \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0915\u093E \u0928\u0939\u0940\u0902 \u2014 \u0906\u092A \u0907\u0938\u0947 \u0938\u094D\u0915\u0948\u0928 \u0928\u0939\u0940\u0902 \u0915\u0930 \u0938\u0915\u0924\u0947\u0964" : "Your employer has not allowed you to scan visit passes", 404, foreign ? "NOT_YOUR_PASS" : void 0);
       return null;
     }
     const lead = db.byId("crmLeads", pass.leadId);
     if (!lead) {
-      bad23(res, "Lead no longer exists", 404);
+      bad24(res, "Lead no longer exists", 404);
       return null;
     }
     return { pass, lead, u };
@@ -88649,17 +88939,17 @@ function createVisitRouter() {
   r.post("/scan/:code/confirm", needs("visit:scan"), (req, res) => {
     expireStale();
     const parsed = confirmSchema.safeParse(req.body);
-    if (!parsed.success) return bad23(res, parsed.error.issues[0]?.message || "Invalid request");
+    if (!parsed.success) return bad24(res, parsed.error.issues[0]?.message || "Invalid request");
     const g = scanGate(req, res);
     if (!g) return;
     const { pass, lead, u } = g;
-    if (pass.status !== "ACTIVE") return bad23(res, pass.status === "USED" ? "This pass has already been used" : `Pass is ${pass.status.toLowerCase()}`, 409);
+    if (pass.status !== "ACTIVE") return bad24(res, pass.status === "USED" ? "This pass has already been used" : `Pass is ${pass.status.toLowerCase()}`, 409);
     const timing = passTiming(pass);
-    if (timing !== "OPEN") return bad23(res, timing === "NOT_YET" ? `Pass opens ${new Date(pass.validFrom).toLocaleString("en-IN")}` : "Pass time window is over", 409);
-    if (lead.stage === "LOST" || lead.verify === "REJECTED") return bad23(res, "Lead is lost / rejected", 409);
+    if (timing !== "OPEN") return bad24(res, timing === "NOT_YET" ? `Pass opens ${new Date(pass.validFrom).toLocaleString("en-IN")}` : "Pass time window is over", 409);
+    if (lead.stage === "LOST" || lead.verify === "REJECTED") return bad24(res, "Lead is lost / rejected", 409);
     const ackMsg = ackBlock("PASS", pass.id);
-    if (ackMsg) return bad23(res, ackMsg, 409, "ACK_REQUIRED");
-    const ts = nowIso35();
+    if (ackMsg) return bad24(res, ackMsg, 409, "ACK_REQUIRED");
+    const ts = nowIso36();
     pass.status = "USED";
     pass.usedAt = ts;
     pass.usedById = u.id;
@@ -88686,33 +88976,33 @@ function createVisitRouter() {
   });
   r.get("/board", needs("visit:scan"), (_req, res) => {
     expireStale();
-    const u = profile4(me27().id);
+    const u = profile4(me28().id);
     if (!canScanFor(u, ownerOf(u))) return res.json({ success: true, expected: [], done: [] });
     const owner = ownerOf(u);
     const day3 = startOfDayMs();
     const end = day3 + 864e5;
     const pol = policyOf(u);
-    const mine3 = st22().visitPasses.filter((p) => p.builderId === owner && (u.role !== "TEAM_MEMBER" || pol.projectIds.length === 0 || pol.projectIds.includes(p.projectId)));
+    const mine3 = st23().visitPasses.filter((p) => p.builderId === owner && (u.role !== "TEAM_MEMBER" || pol.projectIds.length === 0 || pol.projectIds.includes(p.projectId)));
     const today = (p) => {
       const t = Date.parse(p.scheduledAt);
       return t >= day3 && t < end;
     };
     res.json({
       success: true,
-      expected: mine3.filter((p) => p.status === "ACTIVE" && (today(p) || passTiming(p) === "OPEN")).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)).map((p) => ({ ...view6(p), code: void 0, payload: void 0, link: void 0, codeTail: p.code.slice(-4) })),
-      done: mine3.filter((p) => p.status === "USED" && p.usedAt && Date.parse(p.usedAt) >= day3).map((p) => ({ ...view6(p), code: void 0, payload: void 0, link: void 0 }))
+      expected: mine3.filter((p) => p.status === "ACTIVE" && (today(p) || passTiming(p) === "OPEN")).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)).map((p) => ({ ...view7(p), code: void 0, payload: void 0, link: void 0, codeTail: p.code.slice(-4) })),
+      done: mine3.filter((p) => p.status === "USED" && p.usedAt && Date.parse(p.usedAt) >= day3).map((p) => ({ ...view7(p), code: void 0, payload: void 0, link: void 0 }))
     });
   });
   return r;
 }
 function createPublicVisitRouter() {
-  const r = (0, import_express54.Router)();
+  const r = (0, import_express57.Router)();
   r.get("/:code", rateLimit("visit-pass-view", 60, 6e4), async (req, res) => {
     res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
     const gone = () => res.status(404).send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Pass not found</title><body style="font-family:system-ui;padding:24px"><p>This visit pass was not found.</p></body>`);
     const code = normalizeCode(req.params.code);
     expireStale();
-    const p = code ? st22().visitPasses.find((x) => x.code === code) : void 0;
+    const p = code ? st23().visitPasses.find((x) => x.code === code) : void 0;
     if (!p) return gone();
     if (p.status === "ACTIVE" && ackBlock("PASS", p.id)) {
       const a = ackFor("PASS", p.id);
@@ -88722,7 +89012,7 @@ function createPublicVisitRouter() {
     const svg = await import_qrcode4.default.toString(qrPayload(p.code), { type: "svg", margin: 1, errorCorrectionLevel: "M", width: 240 });
     const when2 = new Date(p.scheduledAt).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short", timeZone: "Asia/Kolkata" });
     const live5 = p.status === "ACTIVE" && passTiming(p) !== "EXPIRED";
-    const label = p.status === "USED" ? "Visit verified \u2714" : p.status === "ACTIVE" ? live5 ? "Valid pass" : "Expired" : p.status === "CANCELLED" || p.status === "SUPERSEDED" ? "Pass cancelled / replaced" : "Expired";
+    const label2 = p.status === "USED" ? "Visit verified \u2714" : p.status === "ACTIVE" ? live5 ? "Valid pass" : "Expired" : p.status === "CANCELLED" || p.status === "SUPERSEDED" ? "Pass cancelled / replaced" : "Expired";
     res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Site visit pass \u2014 ${esc13(p.projectName)}</title>
 <style>*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f5f2;color:#1b1b1b}.w{max-width:440px;margin:0 auto;padding:16px}
 .c{background:#fff;border-radius:18px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}h1{font-size:19px;margin:0 0 2px}.s{color:#555;font-size:13px}
@@ -88730,7 +89020,7 @@ function createPublicVisitRouter() {
 .st{display:inline-block;margin:6px 0;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:700;background:${p.status === "USED" ? "#dcfce7;color:#166534" : live5 ? "#dbeafe;color:#1e40af" : "#fee2e2;color:#991b1b"}}
 .row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:8px 0;border-bottom:1px solid #eee;text-align:left}.row:last-child{border:0}.row b{text-align:right}.n{font-size:12px;color:#666;margin-top:12px;line-height:1.5}</style></head>
 <body><div class="w"><div class="c"><div class="s">GENZ \xB7 Site visit pass</div><h1>${esc13(p.projectName)}</h1>${proj?.locality ? `<div class="s">${esc13(proj.locality)}${proj.city ? ", " + esc13(proj.city) : ""}</div>` : ""}
-<div class="st">${esc13(label)}</div><br><div class="q">${svg}</div><div class="code">${esc13(p.code)}</div>
+<div class="st">${esc13(label2)}</div><br><div class="q">${svg}</div><div class="code">${esc13(p.code)}</div>
 <div style="margin-top:14px"><div class="row"><span>Visitor</span><b>${esc13(firstName3(p.customerName))} \xB7 \u2022\u2022\u2022\u2022${esc13(p.phoneLast4)}</b></div><div class="row"><span>Visit slot</span><b>${esc13(when2)}</b></div>${p.partySize ? `<div class="row"><span>People</span><b>${p.partySize}</b></div>` : ""}<div class="row"><span>Referred by</span><b>${esc13(p.associateName)}</b></div><div class="row"><span>Scan at</span><b>${esc13(scanLine("PASS", p.scanAt).where.en)} \xB7 ${esc13(scanLine("PASS", p.scanAt).where.hi)}</b></div></div>
 <p class="n">Show this QR (or the code) at the ${esc13(scanLine("PASS", p.scanAt).where.en.toLowerCase())} with a photo ID. It works once, only during the slot window, and only the builder's team can scan it.<br>\u0915\u0943\u092A\u092F\u093E \u092F\u0939 QR / \u0915\u094B\u0921 \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0911\u092B\u093C\u093F\u0938 \u092A\u0930 \u092B\u093C\u094B\u091F\u094B ID \u0915\u0947 \u0938\u093E\u0925 \u0926\u093F\u0916\u093E\u090F\u0901\u0964 \u092F\u0939 \u090F\u0915 \u0939\u0940 \u092C\u093E\u0930 \u092E\u093E\u0928\u094D\u092F \u0939\u0948\u0964</p></div></div></body></html>`);
   });
@@ -88750,33 +89040,33 @@ var CATEGORY_EN = {
   OTHER_ATTACHMENT: "attachment",
   PHOTOGRAPH: "photo"
 };
-var bad24 = (status, code, error62) => ({ ok: false, status, code, error: error62 });
+var bad25 = (status, code, error62) => ({ ok: false, status, code, error: error62 });
 function checkCard(i) {
   const { kind, deal } = i;
   const ref = typeof i.refId === "string" ? i.refId.trim().slice(0, 120) : "";
   switch (kind) {
     case "PROPERTY":
     case "LOCATION": {
-      if (!i.property) return bad24(404, "CARD_NOT_FOUND", "Property not found");
-      if (ref && ref !== deal.propertyId) return bad24(400, "CARD_BAD_REF", "A deal chat can only carry the property of this deal.");
+      if (!i.property) return bad25(404, "CARD_NOT_FOUND", "Property not found");
+      if (ref && ref !== deal.propertyId) return bad25(400, "CARD_BAD_REF", "A deal chat can only carry the property of this deal.");
       return { ok: true, refId: deal.propertyId, auto: kind === "PROPERTY" ? `Shared the property: ${String(i.property.title || deal.propertyId).slice(0, 120)}` : "Shared the property location" };
     }
     case "PHOTO": {
-      if (!i.property) return bad24(404, "CARD_NOT_FOUND", "Property not found");
+      if (!i.property) return bad25(404, "CARD_NOT_FOUND", "Property not found");
       const url3 = typeof i.mediaUrl === "string" ? i.mediaUrl.trim() : "";
       const mine3 = /* @__PURE__ */ new Set([...i.property.images || [], ...i.visibleAssets.filter((a) => a.category === "PHOTOGRAPH").map((a) => a.fileUrl)]);
-      if (!url3 || !mine3.has(url3)) return bad24(403, "CARD_NOT_YOURS", "That photo is not one you can share from this property.");
+      if (!url3 || !mine3.has(url3)) return bad25(403, "CARD_NOT_YOURS", "That photo is not one you can share from this property.");
       return { ok: true, refId: deal.propertyId, mediaUrl: url3, auto: "Shared a photo" };
     }
     case "DOCUMENT": {
       const a = i.visibleAssets.find((x) => x.id === ref);
-      if (!a) return bad24(403, "CARD_NOT_YOURS", "That document is not one you can open on this property, so it cannot be shared from the chat.");
+      if (!a) return bad25(403, "CARD_NOT_YOURS", "That document is not one you can open on this property, so it cannot be shared from the chat.");
       return { ok: true, refId: a.id, auto: `Shared a document (${CATEGORY_EN[a.category] || "document"})` };
     }
     case "VISIT": {
       const v = i.visits.find((x) => x.id === ref && x.dealRoomId === deal.id);
-      if (!v) return bad24(404, "CARD_NOT_FOUND", "That site visit is not part of this deal room.");
-      if (v.brokerId !== i.userId && !i.isBroker) return bad24(403, "CARD_NOT_YOURS", "Only the broker who set up the visit (or a deal broker) can share it.");
+      if (!v) return bad25(404, "CARD_NOT_FOUND", "That site visit is not part of this deal room.");
+      if (v.brokerId !== i.userId && !i.isBroker) return bad25(403, "CARD_NOT_YOURS", "Only the broker who set up the visit (or a deal broker) can share it.");
       const when2 = (() => {
         try {
           return new Date(v.scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -88787,34 +89077,34 @@ function checkCard(i) {
       return { ok: true, refId: v.id, auto: `Site visit${when2 ? ` on ${when2}` : ""}` };
     }
     case "STAGE": {
-      if (!i.isBroker) return bad24(403, "CARD_NOT_YOURS", "Only the deal brokers can post a stage card.");
-      if (ref !== deal.stage) return bad24(409, "CARD_STALE", "The deal is no longer at that stage.");
+      if (!i.isBroker) return bad25(403, "CARD_NOT_YOURS", "Only the deal brokers can post a stage card.");
+      if (ref !== deal.stage) return bad25(409, "CARD_STALE", "The deal is no longer at that stage.");
       return { ok: true, refId: deal.stage, auto: `Deal stage: ${deal.stage}` };
     }
   }
 }
 
 // server/clientroom.ts
-var import_express55 = __toESM(require_express2(), 1);
-var import_express56 = __toESM(require_express2(), 1);
-import crypto35 from "crypto";
-var st23 = () => db.getState();
-var nowIso36 = () => (/* @__PURE__ */ new Date()).toISOString();
-var me25 = () => ctx().user;
+var import_express58 = __toESM(require_express2(), 1);
+var import_express59 = __toESM(require_express2(), 1);
+import crypto37 from "crypto";
+var st24 = () => db.getState();
+var nowIso37 = () => (/* @__PURE__ */ new Date()).toISOString();
+var me26 = () => ctx().user;
 var esc14 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var sha5 = (v) => crypto35.createHash("sha256").update(v).digest("hex");
-var hmac4 = (tag, v) => crypto35.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
+var sha5 = (v) => crypto37.createHash("sha256").update(v).digest("hex");
+var hmac4 = (tag, v) => crypto37.createHmac("sha256", secret()).update(`${tag}|${v}`).digest("hex");
 var phone108 = (p) => String(p ?? "").replace(/\D/g, "").slice(-10);
 var PHONE_RE8 = /^[6-9]\d{9}$/;
-var newToken2 = () => crypto35.randomBytes(18).toString("base64url");
+var newToken2 = () => crypto37.randomBytes(18).toString("base64url");
 var smsOn4 = () => !!process.env.SMS_WEBHOOK_URL;
-var inr13 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
-var bad25 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
+var inr14 = (n2) => "\u20B9" + Math.round(n2 || 0).toLocaleString("en-IN");
+var bad26 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var ev = (r, text) => {
-  r.events.push({ at: nowIso36(), text });
-  r.updatedAt = nowIso36();
+  r.events.push({ at: nowIso37(), text });
+  r.updatedAt = nowIso37();
 };
-var rid3 = (p) => `${p}-${crypto35.randomBytes(5).toString("hex")}`;
+var rid3 = (p) => `${p}-${crypto37.randomBytes(5).toString("hex")}`;
 var live4 = (p) => !!p && p.verificationStatus === "VERIFIED" && ["active", "under_negotiation"].includes(p.listingStatus);
 var goneText = (p) => !p ? "removed" : p.listingStatus === "sold" ? "sold" : p.listingStatus === "rented" ? "rented" : "not available now";
 function publicProperty(p) {
@@ -88837,7 +89127,7 @@ function publicProperty(p) {
   };
 }
 function shareableMedia(u, p) {
-  const s = st23();
+  const s = st24();
   const principal2 = p.listingBrokerId === u.id || p.ownerId === u.id;
   const listed = live4(p);
   const assets = (s.propertyMediaAssets || []).filter((a) => a.propertyId === p.id && a.status === "ACTIVE" && (principal2 || listed && a.sensitivity === "PUBLIC"));
@@ -88861,10 +89151,10 @@ function chosenMedia(room, item, p) {
 }
 var allMedia = (u, p) => {
   const m = shareableMedia(u, p);
-  return { photos: m.photos.slice(0, ROOM_MEDIA.maxPhotos), videos: m.videos.slice(0, ROOM_MEDIA.maxVideos), at: nowIso36() };
+  return { photos: m.photos.slice(0, ROOM_MEDIA.maxPhotos), videos: m.videos.slice(0, ROOM_MEDIA.maxVideos), at: nowIso37() };
 };
 function roomForVisit(u, b) {
-  const room = st23().clientRooms.find((r) => r.id === b.clientRoomId && r.brokerId === u.id);
+  const room = st24().clientRooms.find((r) => r.id === b.clientRoomId && r.brokerId === u.id);
   if (!room) return { error: "Client room not found", status: 404 };
   if (room.status !== "ACTIVE") return { error: "This client room is closed", status: 409 };
   const item = b.clientRoomItemId ? room.items.find((i) => i.id === b.clientRoomItemId) : room.items.find((i) => i.propertyId === b.propertyId);
@@ -88876,7 +89166,7 @@ function roomForVisit(u, b) {
   return { room, item };
 }
 function linkVisitToRoom(room, item, requestId, visit2) {
-  (item.visits ||= []).push({ visitId: visit2.id, when: visit2.scheduledTime, at: nowIso36() });
+  (item.visits ||= []).push({ visitId: visit2.id, when: visit2.scheduledTime, at: nowIso37() });
   const req = requestId ? item.visitRequests.find((v) => v.id === requestId) : item.visitRequests.find((v) => v.status === "REQUESTED");
   if (req) {
     req.status = "HANDLED";
@@ -88886,9 +89176,9 @@ function linkVisitToRoom(room, item, requestId, visit2) {
 }
 var roomOwnerOf = (u) => u.role === "TEAM_MEMBER" && u.employerId ? u.employerId : u.id;
 var isStaff4 = (u) => u.role === "TEAM_MEMBER";
-var actingAs = () => ({ id: roomOwnerOf(me25()) });
-var mine2 = (req) => st23().clientRooms.find((r) => r.id === req.params.id && r.brokerId === roomOwnerOf(me25()));
-var roomTeam = (brokerId) => st23().users.filter((m) => m.role === "TEAM_MEMBER" && m.employerId === brokerId && m.verificationStatus === "VERIFIED" && !!m.teamPolicy?.rooms);
+var actingAs = () => ({ id: roomOwnerOf(me26()) });
+var mine2 = (req) => st24().clientRooms.find((r) => r.id === req.params.id && r.brokerId === roomOwnerOf(me26()));
+var roomTeam = (brokerId) => st24().users.filter((m) => m.role === "TEAM_MEMBER" && m.employerId === brokerId && m.verificationStatus === "VERIFIED" && !!m.teamPolicy?.rooms);
 var unread = (r) => r.messages.filter((m) => m.from === "CLIENT" && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 var openVisits = (r) => r.items.reduce((n2, i) => n2 + i.visitRequests.filter((v) => v.status === "REQUESTED").length, 0);
 function summary3(r) {
@@ -88913,7 +89203,7 @@ function summary3(r) {
   };
 }
 function detail(r) {
-  const props = st23().properties;
+  const props = st24().properties;
   const awaiting = r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : void 0;
   return {
     ...summary3(r),
@@ -88937,11 +89227,11 @@ function detail(r) {
   };
 }
 function createClientRoomRouter() {
-  const r = (0, import_express55.Router)();
+  const r = (0, import_express58.Router)();
   r.use(needs("clientroom:use"));
   r.get("/", (_req, res) => {
-    const list = st23().clientRooms.filter((x) => x.brokerId === roomOwnerOf(me25())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const u = me25();
+    const list = st24().clientRooms.filter((x) => x.brokerId === roomOwnerOf(me26())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const u = me26();
     res.json({
       success: true,
       rooms: list.map(summary3),
@@ -88950,21 +89240,21 @@ function createClientRoomRouter() {
     });
   });
   r.post("/", rateLimit("cr-create", 40, 36e5), (req, res) => {
-    const u = me25();
+    const u = me26();
     const name = String(req.body?.clientName || "").trim().slice(0, 80);
     const phone = phone108(req.body?.phone);
     const kind = ROOM_KINDS.find((k) => k.id === req.body?.kind)?.id || "BUYER";
-    if (name.length < 2) return bad25(res, "Enter your client's name");
-    if (!PHONE_RE8.test(phone)) return bad25(res, "Enter your client's 10-digit mobile number");
-    if (req.body?.consent !== true) return bad25(res, "Confirm that your client agreed to receive properties and chat in this room");
+    if (name.length < 2) return bad26(res, "Enter your client's name");
+    if (!PHONE_RE8.test(phone)) return bad26(res, "Enter your client's 10-digit mobile number");
+    if (req.body?.consent !== true) return bad26(res, "Confirm that your client agreed to receive properties and chat in this room");
     const owner = roomOwnerOf(u);
-    if (st23().clientRooms.filter((x) => x.brokerId === owner && x.status === "ACTIVE").length >= ROOM_LIMITS.activeRooms) return bad25(res, `You can keep ${ROOM_LIMITS.activeRooms} client rooms open \u2014 close some old ones`);
+    if (st24().clientRooms.filter((x) => x.brokerId === owner && x.status === "ACTIVE").length >= ROOM_LIMITS.activeRooms) return bad26(res, `You can keep ${ROOM_LIMITS.activeRooms} client rooms open \u2014 close some old ones`);
     {
       const pb = partyBlock(phone, "buyer");
       if (pb) return res.status(403).json(pb);
     }
     const phoneKey = hmac4("cr-phone", phone);
-    if (st23().clientRooms.some((x) => x.brokerId === owner && x.status === "ACTIVE" && x.phoneKey === phoneKey)) return bad25(res, "You already have an open room for this mobile number", 409);
+    if (st24().clientRooms.some((x) => x.brokerId === owner && x.status === "ACTIVE" && x.phoneKey === phoneKey)) return bad26(res, "You already have an open room for this mobile number", 409);
     const token = newToken2();
     const room = {
       id: rid3("CRM"),
@@ -88978,74 +89268,74 @@ function createClientRoomRouter() {
       tokenHash: sha5(token),
       sessVersion: 1,
       status: "ACTIVE",
-      createdAt: nowIso36(),
-      updatedAt: nowIso36(),
+      createdAt: nowIso37(),
+      updatedAt: nowIso37(),
       expiresAt: new Date(Date.now() + ROOM_LIMITS.linkDays * 864e5).toISOString(),
       items: [],
       messages: [],
       events: []
     };
     ev(room, isStaff4(u) ? `Room opened by ${u.name} (office team)` : "Room opened");
-    st23().clientRooms.push(room);
+    st24().clientRooms.push(room);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "CLIENT_ROOM_OPENED", `Client room opened (${kind}), mobile ending ${room.phoneLast4}`);
     res.json({ success: true, room: detail(room), link: `/r/${token}`, watch: partyCaution(phone) || void 0 });
   });
   r.get("/:id", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
+    if (!room) return bad26(res, "Room not found", 404);
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/items", rateLimit("cr-items", 120, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad25(res, "This room is closed", 409);
-    const p = st23().properties.find((x) => x.id === String(req.body?.propertyId || ""));
-    if (!p || !live4(p)) return bad25(res, "That property is not available to share", 404);
-    if (room.items.some((i) => i.propertyId === p.id)) return bad25(res, "Already shared in this room", 409);
-    if (room.items.length >= ROOM_LIMITS.items) return bad25(res, `A room can hold ${ROOM_LIMITS.items} properties`);
+    if (!room) return bad26(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad26(res, "This room is closed", 409);
+    const p = st24().properties.find((x) => x.id === String(req.body?.propertyId || ""));
+    if (!p || !live4(p)) return bad26(res, "That property is not available to share", 404);
+    if (room.items.some((i) => i.propertyId === p.id)) return bad26(res, "Already shared in this room", 409);
+    if (room.items.length >= ROOM_LIMITS.items) return bad26(res, `A room can hold ${ROOM_LIMITS.items} properties`);
     const note5 = stripPhones(String(req.body?.note || "").trim()).slice(0, 200) || void 0;
     const media = req.body?.withMedia === false ? void 0 : allMedia(actingAs(), p);
-    room.items.push({ id: rid3("CRI"), propertyId: p.id, sharedAt: nowIso36(), note: note5, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
-    ev(room, `${isStaff4(me25()) ? `${me25().name}: ` : ""}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
+    room.items.push({ id: rid3("CRI"), propertyId: p.id, sharedAt: nowIso37(), note: note5, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
+    ev(room, `${isStaff4(me26()) ? `${me26().name}: ` : ""}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
     db.save();
     void pushIfSeen(room);
     res.json({ success: true, room: detail(room) });
   });
   r.get("/:id/items/:itemId/media", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
+    if (!room) return bad26(res, "Room not found", 404);
     const it = room.items.find((i) => i.id === req.params.itemId);
-    if (!it) return bad25(res, "Not found", 404);
-    const p = st23().properties.find((x) => x.id === it.propertyId);
-    if (!p) return bad25(res, "Property not found", 404);
+    if (!it) return bad26(res, "Not found", 404);
+    const p = st24().properties.find((x) => x.id === it.propertyId);
+    if (!p) return bad26(res, "Property not found", 404);
     const avail = shareableMedia(actingAs(), p);
     res.json({ success: true, available: { photos: avail.photos, videos: avail.videos.map((url3) => ({ url: url3, kind: videoKind(url3) })) }, chosen: chosenMedia(room, it, p), limits: ROOM_MEDIA });
   });
   r.put("/:id/items/:itemId/media", rateLimit("cr-media", 120, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad25(res, "This room is closed", 409);
+    if (!room) return bad26(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad26(res, "This room is closed", 409);
     const it = room.items.find((i) => i.id === req.params.itemId);
-    if (!it) return bad25(res, "Not found", 404);
-    const p = st23().properties.find((x) => x.id === it.propertyId);
-    if (!p || !live4(p)) return bad25(res, "That property is not available to share", 404);
+    if (!it) return bad26(res, "Not found", 404);
+    const p = st24().properties.find((x) => x.id === it.propertyId);
+    if (!p || !live4(p)) return bad26(res, "That property is not available to share", 404);
     const photos = Array.isArray(req.body?.photos) ? req.body.photos.map(String) : [];
     const videos = Array.isArray(req.body?.videos) ? req.body.videos.map(String) : [];
-    if (photos.length > ROOM_MEDIA.maxPhotos) return bad25(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
-    if (videos.length > ROOM_MEDIA.maxVideos) return bad25(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
+    if (photos.length > ROOM_MEDIA.maxPhotos) return bad26(res, `Share at most ${ROOM_MEDIA.maxPhotos} photos per home`);
+    if (videos.length > ROOM_MEDIA.maxVideos) return bad26(res, `Share at most ${ROOM_MEDIA.maxVideos} videos per home`);
     const avail = shareableMedia(actingAs(), p);
-    if (!photos.every((x) => avail.photos.includes(x)) || !videos.every((x) => avail.videos.includes(x))) return bad25(res, "You can share only this listing's own photos and videos", 400, { code: "MEDIA_NOT_SHAREABLE" });
-    it.media = { photos: [...new Set(photos)], videos: [...new Set(videos)], at: nowIso36() };
+    if (!photos.every((x) => avail.photos.includes(x)) || !videos.every((x) => avail.videos.includes(x))) return bad26(res, "You can share only this listing's own photos and videos", 400, { code: "MEDIA_NOT_SHAREABLE" });
+    it.media = { photos: [...new Set(photos)], videos: [...new Set(videos)], at: nowIso37() };
     ev(room, `Photos & video of ${p.id}: ${it.media.photos.length} photo(s)${it.media.videos.length ? `, ${it.media.videos.length} video(s)` : ""}`);
     db.save();
     res.json({ success: true, room: detail(room) });
   });
   r.delete("/:id/items/:itemId", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
+    if (!room) return bad26(res, "Room not found", 404);
     const i = room.items.findIndex((x) => x.id === req.params.itemId);
-    if (i < 0) return bad25(res, "Not found", 404);
+    if (i < 0) return bad26(res, "Not found", 404);
     room.items.splice(i, 1);
     ev(room, "A property was taken out");
     db.save();
@@ -89053,32 +89343,32 @@ function createClientRoomRouter() {
   });
   r.post("/:id/messages", rateLimit("cr-msg-b", 300, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad25(res, "This room is closed", 409);
+    if (!room) return bad26(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad26(res, "This room is closed", 409);
     const text = String(req.body?.text || "").trim();
-    if (!text) return bad25(res, "Write a message");
-    if (text.length > ROOM_LIMITS.textChars) return bad25(res, `Keep it under ${ROOM_LIMITS.textChars} characters`);
-    if (containsPhone(text)) return bad25(res, PHONE_IN_CHAT_MSG.en, 400, { code: "PHONE_IN_CHAT", hi: PHONE_IN_CHAT_MSG.hi });
-    if (room.messages.length >= ROOM_LIMITS.messages) return bad25(res, "This chat is full \u2014 open a new room or close this one");
-    const u = me25();
-    room.messages.push({ id: rid3("CRX"), from: "BROKER", text, at: nowIso36(), propertyId: validPropRef(room, req.body?.propertyId), ...isStaff4(u) ? { byId: u.id, byName: u.name } : {} });
-    room.lastBrokerSeenAt = nowIso36();
+    if (!text) return bad26(res, "Write a message");
+    if (text.length > ROOM_LIMITS.textChars) return bad26(res, `Keep it under ${ROOM_LIMITS.textChars} characters`);
+    if (containsPhone(text)) return bad26(res, PHONE_IN_CHAT_MSG.en, 400, { code: "PHONE_IN_CHAT", hi: PHONE_IN_CHAT_MSG.hi });
+    if (room.messages.length >= ROOM_LIMITS.messages) return bad26(res, "This chat is full \u2014 open a new room or close this one");
+    const u = me26();
+    room.messages.push({ id: rid3("CRX"), from: "BROKER", text, at: nowIso37(), propertyId: validPropRef(room, req.body?.propertyId), ...isStaff4(u) ? { byId: u.id, byName: u.name } : {} });
+    room.lastBrokerSeenAt = nowIso37();
     ev(room, isStaff4(u) ? `${u.name} (office team) wrote` : "Broker wrote");
     db.save();
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/read", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
-    room.lastBrokerSeenAt = nowIso36();
+    if (!room) return bad26(res, "Room not found", 404);
+    room.lastBrokerSeenAt = nowIso37();
     db.save();
     res.json({ success: true });
   });
   r.post("/:id/visit/:itemId/:vid/handled", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
+    if (!room) return bad26(res, "Room not found", 404);
     const v = room.items.find((i) => i.id === req.params.itemId)?.visitRequests.find((x) => x.id === req.params.vid);
-    if (!v) return bad25(res, "Not found", 404);
+    if (!v) return bad26(res, "Not found", 404);
     v.status = "HANDLED";
     ev(room, "A visit request was handled");
     db.save();
@@ -89086,8 +89376,8 @@ function createClientRoomRouter() {
   });
   r.post("/:id/link", rateLimit("cr-link", 40, 36e5), (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
-    if (room.status !== "ACTIVE") return bad25(res, "This room is closed", 409);
+    if (!room) return bad26(res, "Room not found", 404);
+    if (room.status !== "ACTIVE") return bad26(res, "This room is closed", 409);
     const token = newToken2();
     room.tokenHash = sha5(token);
     room.sessVersion += 1;
@@ -89095,38 +89385,38 @@ function createClientRoomRouter() {
     room.otpPlain = void 0;
     room.otpExpires = void 0;
     room.devices = [];
-    room.linkAt = nowIso36();
+    room.linkAt = nowIso37();
     room.expiresAt = new Date(Date.now() + ROOM_LIMITS.linkDays * 864e5).toISOString();
     ev(room, "New link made \u2014 the old link stopped working");
     db.save();
-    db.appendAuditEvent(me25().id, me25().role, "LEAD", room.id, "CLIENT_ROOM_LINK_RENEWED", "Client room link renewed");
+    db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_ROOM_LINK_RENEWED", "Client room link renewed");
     res.json({ success: true, link: `/r/${token}`, room: detail(room) });
   });
   r.delete("/:id/devices/:dev", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
+    if (!room) return bad26(res, "Room not found", 404);
     const d = (room.devices || []).find((x) => x.id === req.params.dev);
-    if (!d) return bad25(res, "That phone is not signed in to this room", 404);
+    if (!d) return bad26(res, "That phone is not signed in to this room", 404);
     room.devices = (room.devices || []).filter((x) => x.id !== d.id);
     ev(room, `Broker removed a phone from the room (${d.label})`);
     db.save();
-    db.appendAuditEvent(me25().id, me25().role, "LEAD", room.id, "CLIENT_ROOM_DEVICE_REMOVED", `Client room phone removed (${d.label})`);
+    db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_ROOM_DEVICE_REMOVED", `Client room phone removed (${d.label})`);
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/close", (req, res) => {
     const room = mine2(req);
-    if (!room) return bad25(res, "Room not found", 404);
-    if (isStaff4(me25())) return bad25(res, "Only the broker can close a client room", 403, { code: "STAFF_CANNOT_CLOSE" });
+    if (!room) return bad26(res, "Room not found", 404);
+    if (isStaff4(me26())) return bad26(res, "Only the broker can close a client room", 403, { code: "STAFF_CANNOT_CLOSE" });
     room.status = "CLOSED";
-    room.closedAt = nowIso36();
-    room.tokenHash = sha5(crypto35.randomBytes(8).toString("hex"));
+    room.closedAt = nowIso37();
+    room.tokenHash = sha5(crypto37.randomBytes(8).toString("hex"));
     room.sessVersion += 1;
     room.devices = [];
     room.otpHash = void 0;
     room.otpPlain = void 0;
     ev(room, "Room closed");
     db.save();
-    db.appendAuditEvent(me25().id, me25().role, "LEAD", room.id, "CLIENT_ROOM_CLOSED", "Client room closed");
+    db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_ROOM_CLOSED", "Client room closed");
     res.json({ success: true, room: detail(room) });
   });
   return r;
@@ -89177,7 +89467,7 @@ function slide(req, res, r, dev) {
   const c = cookieOf(req, r);
   if (!c || c.exp - Date.now() < (ROOM_LIMITS.sessionDays - 1) * 864e5) setSession(req, res, r, dev);
   const d = (r.devices || []).find((x) => x.id === dev);
-  if (d) d.lastAt = nowIso36();
+  if (d) d.lastAt = nowIso37();
   const want = Math.min(Date.now() + ROOM_LIMITS.linkDays * 864e5, lifeEnd(r));
   if (want > Date.parse(r.expiresAt)) r.expiresAt = new Date(want).toISOString();
 }
@@ -89216,12 +89506,12 @@ var PAPER_WHY = {
 };
 var dayHi = (iso) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 function createClientRoomPageRouter() {
-  const r = (0, import_express55.Router)();
-  const form = import_express56.default.urlencoded({ extended: false, limit: "20kb" });
+  const r = (0, import_express58.Router)();
+  const form = import_express59.default.urlencoded({ extended: false, limit: "20kb" });
   const find = (token) => {
     if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return void 0;
     const h = sha5(token);
-    return st23().clientRooms.find((c) => safeEqual(c.tokenHash, h));
+    return st24().clientRooms.find((c) => safeEqual(c.tokenHash, h));
   };
   const gone = (res) => res.status(404).send(shell3("Link not valid", `<div class="card"><p class="h">\u092F\u0939 \u0932\u093F\u0902\u0915 \u092E\u093E\u0928\u094D\u092F \u0928\u0939\u0940\u0902 \u0939\u0948 \u092F\u093E \u092C\u0902\u0926 \u0939\u094B \u091A\u0941\u0915\u093E \u0939\u0948\u0964 \u0905\u092A\u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u0928\u092F\u093E \u0932\u093F\u0902\u0915 \u092E\u093E\u0901\u0917\u0947\u0902\u0964</p><p class="t">This link is not valid or has been closed. Ask your broker for a new one.</p></div>`));
   const headers = (res) => {
@@ -89242,7 +89532,7 @@ function createClientRoomPageRouter() {
 <div class="row">${ph ? `<a class="btn g" href="tel:+91${ph}">\u{1F4DE} \u0915\u0949\u0932 / Call</a><a class="btn l" href="https://wa.me/91${ph}" rel="noopener">WhatsApp</a>` : ""}</div></div>`;
   };
   const gate = (res, room, tok2, msg = "", step = "phone", status = 200) => {
-    const b = st23().users.find((u) => u.id === room.brokerId);
+    const b = st24().users.find((u) => u.id === room.brokerId);
     res.status(status).send(shell3("Your private room", `<div class="top"><h1>${esc14(b?.name || "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0915\u093E \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0928\u093F\u091C\u0940 \u0930\u0942\u092E</h1><p>Your private room \xB7 GENZ Broker Network</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
 <div class="card">${step === "phone" ? `<p class="h">\u092F\u0939 \u0930\u0942\u092E \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0939\u0948\u0964 \u0905\u092A\u0928\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0921\u093E\u0932\u0947\u0902 \u2014 \u0906\u092A\u0915\u094B \u090F\u0915 \u0915\u094B\u0921 \u092E\u093F\u0932\u0947\u0917\u093E\u0964</p><p class="t">This room is only for you. Enter your mobile number to get a code.</p>
@@ -89307,23 +89597,23 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
         db.save();
         return gate(res, room, req.params.token, FULL_DEVICES, "phone", 403);
       }
-      dev = crypto35.randomBytes(6).toString("hex");
-      devices.push({ id: dev, label: deviceLabel(req.headers["user-agent"]), firstAt: nowIso36(), lastAt: nowIso36() });
+      dev = crypto37.randomBytes(6).toString("hex");
+      devices.push({ id: dev, label: deviceLabel(req.headers["user-agent"]), firstAt: nowIso37(), lastAt: nowIso37() });
       fresh = true;
     }
     room.otpHash = void 0;
     room.otpPlain = void 0;
     room.otpExpires = void 0;
     room.otpTries = 0;
-    room.lastClientSeenAt = nowIso36();
-    const label = devices.find((d) => d.id === dev).label;
-    ev(room, fresh ? `Client opened the room on a new phone (${label}) \u2014 mobile verified` : `Client signed in again on the same phone (${label})`);
+    room.lastClientSeenAt = nowIso37();
+    const label2 = devices.find((d) => d.id === dev).label;
+    ev(room, fresh ? `Client opened the room on a new phone (${label2}) \u2014 mobile verified` : `Client signed in again on the same phone (${label2})`);
     slide(req, res, room, dev);
     db.save();
     pingBroker(
       room,
       fresh && devices.length > 1 ? "Your client room opened on a second phone" : "Your client is in the room",
-      fresh && devices.length > 1 ? `${room.clientName}'s room is now open on ${devices.length} phones (${label}). If that is not your client, remove it in Client Rooms \u2192 Info.` : `${room.clientName} opened the room.`
+      fresh && devices.length > 1 ? `${room.clientName}'s room is now open on ${devices.length} phones (${label2}). If that is not your client, remove it in Client Rooms \u2192 Info.` : `${room.clientName} opened the room.`
     );
     res.redirect(303, `/r/${req.params.token}`);
   });
@@ -89348,7 +89638,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     const it = room.items.find((i) => i.id === String(req.body?.item || ""));
     if (it && ["LIKE", "PASS"].includes(String(req.body?.r))) {
       it.reaction = req.body.r;
-      it.reactionAt = nowIso36();
+      it.reactionAt = nowIso37();
       ev(room, `Client marked ${it.propertyId} ${it.reaction}`);
       db.save();
       if (it.reaction === "LIKE") pingBroker(room, "Your client liked a property", `${room.clientName} liked ${it.propertyId}.`);
@@ -89359,13 +89649,13 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     const room = authed(req, res);
     if (!room) return;
     const it = room.items.find((i) => i.id === String(req.body?.item || ""));
-    const p = it && st23().properties.find((x) => x.id === it.propertyId);
+    const p = it && st24().properties.find((x) => x.id === it.propertyId);
     if (!it || !live4(p)) return render(req, res, room, "\u092F\u0939 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0905\u092C \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 / This property is no longer available.");
     const when2 = String(req.body?.when || "").trim().slice(0, 40);
     const note5 = stripPhones(String(req.body?.note || "").trim()).slice(0, 200) || void 0;
     if (!when2 || Number.isNaN(Date.parse(when2))) return render(req, res, room, "\u0935\u093F\u091C\u093C\u093F\u091F \u0915\u0947 \u0932\u093F\u090F \u0924\u093E\u0930\u0940\u0916\u093C \u0914\u0930 \u0938\u092E\u092F \u091A\u0941\u0928\u0947\u0902\u0964 / Pick a date and time for the visit.");
     if (it.visitRequests.filter((v) => v.status === "REQUESTED").length >= 3) return render(req, res, room, "\u0907\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0947 \u0932\u093F\u090F \u0905\u0928\u0941\u0930\u094B\u0927 \u092A\u0939\u0932\u0947 \u0938\u0947 \u092D\u0947\u091C\u0947 \u091C\u093E \u091A\u0941\u0915\u0947 \u0939\u0948\u0902\u0964 / Requests are already sent for this property.");
-    it.visitRequests.push({ id: rid3("CRV"), at: nowIso36(), preferred: when2, note: note5, status: "REQUESTED" });
+    it.visitRequests.push({ id: rid3("CRV"), at: nowIso37(), preferred: when2, note: note5, status: "REQUESTED" });
     ev(room, `Client asked for a visit to ${it.propertyId}`);
     db.save();
     pingBroker(room, "Visit request from your client", `${room.clientName} wants to see ${it.propertyId}. Open Client Rooms.`);
@@ -89379,8 +89669,8 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     if (text.length > ROOM_LIMITS.textChars) return render(req, res, room, `\u0938\u0902\u0926\u0947\u0936 ${ROOM_LIMITS.textChars} \u0905\u0915\u094D\u0937\u0930\u094B\u0902 \u0938\u0947 \u091B\u094B\u091F\u093E \u0930\u0916\u0947\u0902\u0964 / Keep the message under ${ROOM_LIMITS.textChars} characters.`);
     if (containsPhone(text)) return render(req, res, room, `${esc14(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc14(PHONE_IN_CHAT_MSG.en)}</small>`);
     if (room.messages.length >= ROOM_LIMITS.messages) return render(req, res, room, "\u092F\u0939 \u091A\u0948\u091F \u092D\u0930 \u0917\u0908 \u0939\u0948 \u2014 \u0905\u092A\u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0915\u0949\u0932 \u0915\u0930\u0947\u0902\u0964 / This chat is full \u2014 please call your broker.");
-    room.messages.push({ id: rid3("CRX"), from: "CLIENT", text, at: nowIso36(), propertyId: validPropRef(room, req.body?.item) });
-    room.lastClientSeenAt = nowIso36();
+    room.messages.push({ id: rid3("CRX"), from: "CLIENT", text, at: nowIso37(), propertyId: validPropRef(room, req.body?.item) });
+    room.lastClientSeenAt = nowIso37();
     ev(room, "Client wrote");
     db.save();
     pingBroker(room, `New message from ${room.clientName}`, "Open Client Rooms to read and reply.");
@@ -89391,13 +89681,13 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     if (!room) return;
     const dev = sessionFor(req, room);
     const tok2 = esc14(req.params.token);
-    const x = clientPaperState(st23(), String(req.params.sid), room.id);
+    const x = clientPaperState(st24(), String(req.params.sid), room.id);
     const back = `<div class="row"><a class="btn l" href="/r/${tok2}#chat">\u2190 \u0930\u0942\u092E \u092A\u0930 \u0935\u093E\u092A\u0938 / Back to the room</a></div>`;
     if (!x.ok) return res.status(403).send(shell3("Paper", `<div class="card warn"><p class="h">${PAPER_WHY[x.reason]}</p>${back}</div>`));
     const pages = viewerPages(x.doc);
     if (!pages) return res.status(404).send(shell3("Paper", `<div class="card warn"><p class="h">\u092F\u0939 \u0915\u093E\u0917\u091C\u093C \u0905\u092D\u0940 \u0928\u0939\u0940\u0902 \u0916\u0941\u0932 \u0930\u0939\u093E\u0964 / This paper cannot be opened right now.</p>${back}</div>`));
     x.cs.views += 1;
-    x.cs.lastAt = nowIso36();
+    x.cs.lastAt = nowIso37();
     ev(room, `Client opened a paper (${x.cs.views} of ${x.cs.maxViews}): ${x.doc.title}`);
     logDocOpen(x.doc.id, x.cs.brokerId, "VIEW", req.ip || "", `his client ${room.clientName} opened it in the client room (${x.cs.views} of ${x.cs.maxViews})`);
     db.save();
@@ -89421,7 +89711,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     if (!c) return res.status(403).end();
     if (String(req.headers["sec-fetch-dest"] || "image") !== "image") return res.status(403).end();
     const [, sid] = c.d.split("|");
-    const x = clientPaperState(st23(), sid, room.id, true);
+    const x = clientPaperState(st24(), sid, room.id, true);
     if (!x.ok) return res.status(403).end();
     const page2 = viewerPages(x.doc)?.[c.p];
     if (!page2) return res.status(404).end();
@@ -89432,10 +89722,10 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     res.send(page2);
   });
   function render(req, res, room, msg = "") {
-    const b = st23().users.find((u) => u.id === room.brokerId);
-    room.lastClientSeenAt = nowIso36();
+    const b = st24().users.find((u) => u.id === room.brokerId);
+    room.lastClientSeenAt = nowIso37();
     const tok2 = esc14(req.params.token);
-    const props = st23().properties;
+    const props = st24().properties;
     const cards = room.items.map((i) => {
       const p = props.find((x) => x.id === i.propertyId);
       if (!p) return "";
@@ -89450,7 +89740,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
         return k === "YOUTUBE" ? `<div class="vid"><iframe src="https://www.youtube-nocookie.com/embed/${esc14(yt)}" title="video" loading="lazy" allowfullscreen></iframe></div>` : k === "FILE" ? `<div class="vid"><video src="${esc14(u)}" controls preload="metadata" playsinline></video></div>` : `<div class="row"><a class="btn l" href="${esc14(u)}" target="_blank" rel="noopener noreferrer">\u25B6 \u0935\u0940\u0921\u093F\u092F\u094B \u0926\u0947\u0916\u0947\u0902 / Watch video</a></div>`;
       }).join("");
       const booked = (i.visits || []).filter((v) => Date.parse(v.when) > Date.now() - 6 * 36e5).sort((a, b2) => a.when.localeCompare(b2.when))[0];
-      return `<div class="card ${pub.available ? "" : "sold"}" id="p-${esc14(i.id)}"><div class="prop">${pub.image ? `<img src="${esc14(pub.image)}" alt="" loading="lazy">` : ""}<div><b>${esc14(pub.title)}</b><br><small>${esc14(pub.locality)}, ${esc14(pub.city)} \xB7 ${esc14(pub.type)} \xB7 ${esc14(pub.deal)}</small><div class="price">${esc14(inr13(pub.price))}${pub.deal === "Rent" ? " / \u092E\u093E\u0939" : ""}</div>${area ? `<small>${esc14(area)}</small>` : ""}</div></div>
+      return `<div class="card ${pub.available ? "" : "sold"}" id="p-${esc14(i.id)}"><div class="prop">${pub.image ? `<img src="${esc14(pub.image)}" alt="" loading="lazy">` : ""}<div><b>${esc14(pub.title)}</b><br><small>${esc14(pub.locality)}, ${esc14(pub.city)} \xB7 ${esc14(pub.type)} \xB7 ${esc14(pub.deal)}</small><div class="price">${esc14(inr14(pub.price))}${pub.deal === "Rent" ? " / \u092E\u093E\u0939" : ""}</div>${area ? `<small>${esc14(area)}</small>` : ""}</div></div>
 ${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">\u{1F5D3} <b>\u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F: ${esc14(new Date(booked.when).toLocaleString("hi-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }))}</b><br><small>Visit fixed \u2014 your broker will send the visit pass / code.</small></p></div>` : ""}
 ${gallery}${vids}
 ${i.note ? `<p class="t"><b>\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u094B\u091F:</b> ${esc14(i.note)}</p>` : ""}${pub.tags.length ? `<div>${pub.tags.map((t) => `<span class="tag">${esc14(t)}</span>`).join("")}</div>` : ""}
@@ -89460,7 +89750,7 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok2}/react
 <details${sent ? "" : ""}><summary>\u{1F5D3} \u0926\u0947\u0916\u0928\u0947 \u091C\u093E\u0928\u093E \u0939\u0948 / Ask for a visit${sent ? " \u2014 \u0905\u0928\u0941\u0930\u094B\u0927 \u092D\u0947\u091C\u093E \u0917\u092F\u093E \u2714" : ""}</summary><form method="post" action="/r/${tok2}/visit"><input type="hidden" name="item" value="${esc14(i.id)}"><label>\u0915\u092C? / When?</label><input type="datetime-local" name="when" required><label>\u0915\u0941\u091B \u092C\u0924\u093E\u0928\u093E \u0939\u0948? / Anything to add? (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915)</label><input type="text" name="note" maxlength="200"><div class="row"><button class="g" type="submit">\u0905\u0928\u0941\u0930\u094B\u0927 \u092D\u0947\u091C\u0947\u0902 / Send request</button></div></form></details>` : `<p class="t"><b>\u0905\u092C \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 (${esc14(pub.status)}).</b> / No longer available.</p>`}</div>`;
     }).join("");
     const paperLine = (pp) => {
-      const x = clientPaperState(st23(), pp.shareId, room.id);
+      const x = clientPaperState(st24(), pp.shareId, room.id);
       if (!x.ok) return `<small>\u{1F512} ${esc14(PAPER_WHY[x.reason])}</small>`;
       const left = Math.max(0, x.cs.maxViews - x.cs.views);
       return `<div class="row" style="margin-top:6px"><a class="btn g" href="/r/${tok2}/paper/${esc14(pp.shareId)}">\u{1F4C4} \u0916\u094B\u0932\u0947\u0902 / Open</a></div><small>${left} \u092C\u093E\u0930 \u0914\u0930 \xB7 ${esc14(dayHi(x.cs.expiresAt))} \u0924\u0915 / ${left} more open(s) \xB7 till ${esc14(dayHi(x.cs.expiresAt))}</small>`;
@@ -89485,13 +89775,13 @@ ${joinFooter(b, b?.city)}`).replace("<body>", '<body data-live="1">'));
   return r;
 }
 function sweepClientRooms() {
-  const s = st23();
+  const s = st24();
   const now = Date.now();
   let n2 = 0;
   for (const r of s.clientRooms) {
     if (r.status === "ACTIVE" && Date.parse(r.expiresAt) < now) {
       r.status = "CLOSED";
-      r.closedAt = nowIso36();
+      r.closedAt = nowIso37();
       ev(r, "Closed \u2014 the link ran out");
       n2++;
     }
@@ -89504,10 +89794,10 @@ function sweepClientRooms() {
 }
 
 // server/dealclose.ts
-var import_express57 = __toESM(require_express2(), 1);
-var nowIso37 = () => (/* @__PURE__ */ new Date()).toISOString();
-var me26 = () => ctx().user;
-var bad26 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
+var import_express60 = __toESM(require_express2(), 1);
+var nowIso38 = () => (/* @__PURE__ */ new Date()).toISOString();
+var me27 = () => ctx().user;
+var bad27 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
 var str4 = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var autoMs = () => process.env.NODE_ENV !== "production" && Number(process.env.DEAL_CLOSE_AUTO_MS) || CLOSE_AUTO_DAYS * 864e5;
 var STAGES3 = ["Lead", "Introduction", "Site Visit Done", "Negotiation", "Agreement", "Handover", "Settled"];
@@ -89516,13 +89806,13 @@ var otherBroker = (d, uid3) => d.introducingBrokerId === uid3 ? d.closingBrokerI
 var note4 = (d, text) => {
   d.notes = `${d.notes || ""}
 [${(/* @__PURE__ */ new Date()).toLocaleDateString("en-IN")}] ${text}`.trim();
-  d.updatedAt = nowIso37();
+  d.updatedAt = nowIso38();
 };
 var ping = (uid3, d, title, body) => {
   if (uid3) void pushTo(uid3, { kind: "deals", title, body, url: `/?tab=deals&deal=${d.id}` });
 };
 var audit8 = (d, action, text) => {
-  const u = me26();
+  const u = me27();
   db.appendAuditEvent(u.id, u.role, "DEAL", d.id, action, text);
 };
 function sweepDealClosures(now = Date.now()) {
@@ -89541,22 +89831,22 @@ function sweepDealClosures(now = Date.now()) {
   return changed;
 }
 function createDealCloseRouter() {
-  const r = (0, import_express57.Router)();
+  const r = (0, import_express60.Router)();
   const load2 = (req, res, opts = {}) => {
-    const u = me26();
+    const u = me27();
     const d = db.byId("dealRooms", req.params.id);
     if (!d) {
-      bad26(res, "Deal room not found", 404);
+      bad27(res, "Deal room not found", 404);
       return null;
     }
     const broker = isDealBroker(u, d);
     const owner = !!opts.owner && d.ownerId === u.id;
     if (!broker && !owner) {
-      bad26(res, "Only the deal-room brokers can do this", 403);
+      bad27(res, "Only the deal-room brokers can do this", 403);
       return null;
     }
     if (openDisputeOf(db.getState(), d.id) || d.settlementStatus === "DISPUTED" || d.stage === "Disputed") {
-      bad26(res, "A dispute is open on this deal room \u2014 the GENZ desk decides there", 409);
+      bad27(res, "A dispute is open on this deal room \u2014 the GENZ desk decides there", 409);
       return null;
     }
     return { u, d, broker };
@@ -89565,13 +89855,13 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (d.stage === "Settled") return bad26(res, "A settled deal is already finished", 409);
-    if (isClosed(d)) return bad26(res, "This deal room is already closed", 409);
+    if (d.stage === "Settled") return bad27(res, "A settled deal is already finished", 409);
+    if (isClosed(d)) return bad27(res, "This deal room is already closed", 409);
     const reason = String(req.body?.reason || "");
-    if (!CLOSE_REASONS.some((x) => x.id === reason)) return bad26(res, "Choose why the deal did not happen");
+    if (!CLOSE_REASONS.some((x) => x.id === reason)) return bad27(res, "Choose why the deal did not happen");
     const text = str4(req.body?.note, 300);
-    if (reason === "OTHER" && text.length < 3) return bad26(res, "Write a short reason");
-    const now = nowIso37();
+    if (reason === "OTHER" && text.length < 3) return bad27(res, "Write a short reason");
+    const now = nowIso38();
     if (d.closure?.status === "ASKED" && d.closure.byId !== u.id) {
       d.closure = { ...d.closure, status: "CLOSED", closedAt: now, how: "AGREED", agreedById: u.id };
       note4(d, `Deal room closed \u2014 both brokers agreed (${reasonText(d.closure.reason)})`);
@@ -89580,7 +89870,7 @@ function createDealCloseRouter() {
       ping(d.closure.byId, d, "Deal room closed", `${u.name} agreed \u2014 ${d.id} is closed.`);
       return res.json({ success: true, closure: d.closure });
     }
-    if (d.closure?.status === "ASKED") return bad26(res, "You have already asked to close this deal room", 409);
+    if (d.closure?.status === "ASKED") return bad27(res, "You have already asked to close this deal room", 409);
     const single = oneBroker(d);
     d.closure = {
       status: single ? "CLOSED" : "ASKED",
@@ -89603,16 +89893,16 @@ function createDealCloseRouter() {
     if (!c) return;
     const { u, d } = c;
     const cl = d.closure;
-    if (!cl || cl.status !== "ASKED") return bad26(res, "No close request is waiting", 409);
-    if (cl.byId === u.id) return bad26(res, "The other broker answers your request", 409);
+    if (!cl || cl.status !== "ASKED") return bad27(res, "No close request is waiting", 409);
+    if (cl.byId === u.id) return bad27(res, "The other broker answers your request", 409);
     const text = str4(req.body?.note, 300);
     if (req.body?.agree === true) {
-      d.closure = { ...cl, status: "CLOSED", closedAt: nowIso37(), how: "AGREED", agreedById: u.id };
+      d.closure = { ...cl, status: "CLOSED", closedAt: nowIso38(), how: "AGREED", agreedById: u.id };
       note4(d, `Deal room closed \u2014 ${u.name} agreed with ${cl.byName} (${reasonText(cl.reason)})`);
       audit8(d, "DEAL_ROOM_CLOSED", "Deal room closed \u2014 both brokers agreed");
       ping(cl.byId, d, "Deal room closed", `${u.name} agreed \u2014 ${d.id} is closed.`);
     } else {
-      if (text.length < 3) return bad26(res, "Tell the other broker why the deal is still on");
+      if (text.length < 3) return bad27(res, "Tell the other broker why the deal is still on");
       d.closure = void 0;
       note4(d, `${u.name} said the deal is still on \u2014 close request dropped: ${text}`);
       audit8(d, "DEAL_ROOM_CLOSE_REFUSED", "Close request refused by the other broker");
@@ -89625,7 +89915,7 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (d.closure?.status !== "ASKED" || d.closure.byId !== u.id) return bad26(res, "You have no close request waiting", 409);
+    if (d.closure?.status !== "ASKED" || d.closure.byId !== u.id) return bad27(res, "You have no close request waiting", 409);
     d.closure = void 0;
     note4(d, `${u.name} took back the close request`);
     db.save();
@@ -89635,9 +89925,9 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (!isClosed(d)) return bad26(res, "This deal room is not closed", 409);
+    if (!isClosed(d)) return bad27(res, "This deal room is not closed", 409);
     const text = str4(req.body?.note, 300);
-    if (text.length < 3) return bad26(res, "Write why you are reopening it (the other broker sees this)");
+    if (text.length < 3) return bad27(res, "Write why you are reopening it (the other broker sees this)");
     d.closure = void 0;
     note4(d, `Deal room reopened by ${u.name}: ${text}`);
     audit8(d, "DEAL_ROOM_REOPENED", `Reopened: ${text}`);
@@ -89650,18 +89940,18 @@ function createDealCloseRouter() {
     const c = load2(req, res);
     if (!c) return;
     const { u, d } = c;
-    if (isClosed(d)) return bad26(res, "This deal room is closed \u2014 reopen it first", 409);
+    if (isClosed(d)) return bad27(res, "This deal room is closed \u2014 reopen it first", 409);
     const s = db.getState();
-    if (STAGES3.indexOf(d.stage) >= 2) return bad26(res, "This deal is already past \u201CSite Visit Done\u201D", 409);
-    if (s.siteVisits.some((v) => v.dealRoomId === d.id && v.isVerified)) return bad26(res, "A verified visit is already on this deal", 409);
-    if (d.offlineVisit && !d.offlineVisit.confirmedAt) return bad26(res, "A visit outside the app is already waiting for confirmation", 409);
-    if (oneBroker(d) && !(d.ownerId && s.users.some((x) => x.id === d.ownerId))) return bad26(res, "You are on both sides of this deal and the owner is not on GENZ \u2014 verify the visit with the buyer\u2019s OTP / QR instead", 409);
+    if (STAGES3.indexOf(d.stage) >= 2) return bad27(res, "This deal is already past \u201CSite Visit Done\u201D", 409);
+    if (s.siteVisits.some((v) => v.dealRoomId === d.id && v.isVerified)) return bad27(res, "A verified visit is already on this deal", 409);
+    if (d.offlineVisit && !d.offlineVisit.confirmedAt) return bad27(res, "A visit outside the app is already waiting for confirmation", 409);
+    if (oneBroker(d) && !(d.ownerId && s.users.some((x) => x.id === d.ownerId))) return bad27(res, "You are on both sides of this deal and the owner is not on GENZ \u2014 verify the visit with the buyer\u2019s OTP / QR instead", 409);
     const day3 = str4(req.body?.visitedOn, 10);
     const ms = Date.parse(`${day3}T00:00:00+05:30`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day3) || !Number.isFinite(ms) || ms > Date.now() + 864e5 || ms < Date.now() - 365 * 864e5) return bad26(res, "Write the visit date (within the last year, not in the future)");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day3) || !Number.isFinite(ms) || ms > Date.now() + 864e5 || ms < Date.now() - 365 * 864e5) return bad27(res, "Write the visit date (within the last year, not in the future)");
     const text = str4(req.body?.note, 300);
-    if (text.length < 5) return bad26(res, "Write who visited and what happened (the other side reads this)");
-    d.offlineVisit = { byId: u.id, byName: u.name, at: nowIso37(), visitedOn: day3, note: text };
+    if (text.length < 5) return bad27(res, "Write who visited and what happened (the other side reads this)");
+    d.offlineVisit = { byId: u.id, byName: u.name, at: nowIso38(), visitedOn: day3, note: text };
     note4(d, `${u.name} recorded a site visit outside the app on ${day3} \u2014 waiting for the other side to confirm`);
     audit8(d, "OFFLINE_VISIT_RECORDED", `Visit outside the app recorded (${day3}) \u2014 not verified`);
     db.save();
@@ -89674,22 +89964,22 @@ function createDealCloseRouter() {
       if (!c) return;
       const { u, d } = c;
       const ov = d.offlineVisit;
-      if (!ov || ov.confirmedAt) return bad26(res, "No visit is waiting for confirmation", 409);
+      if (!ov || ov.confirmedAt) return bad27(res, "No visit is waiting for confirmation", 409);
       if (what === "withdraw") {
-        if (ov.byId !== u.id) return bad26(res, "Only the one who recorded it can take it back", 403);
+        if (ov.byId !== u.id) return bad27(res, "Only the one who recorded it can take it back", 403);
         d.offlineVisit = void 0;
         note4(d, `${u.name} took back the visit outside the app`);
       } else {
-        if (ov.byId === u.id) return bad26(res, "The other side must confirm the visit you recorded (maker \u2260 checker)", 403);
-        if (u.id !== confirmerOf(d, ov.byId)) return bad26(res, "Only the other broker (or, in a one-broker deal, the owner) confirms this", 403);
+        if (ov.byId === u.id) return bad27(res, "The other side must confirm the visit you recorded (maker \u2260 checker)", 403);
+        if (u.id !== confirmerOf(d, ov.byId)) return bad27(res, "Only the other broker (or, in a one-broker deal, the owner) confirms this", 403);
         if (what === "confirm") {
-          d.offlineVisit = { ...ov, confirmedById: u.id, confirmedByName: u.name, confirmedAt: nowIso37() };
+          d.offlineVisit = { ...ov, confirmedById: u.id, confirmedByName: u.name, confirmedAt: nowIso38() };
           note4(d, `${u.name} confirmed the visit outside the app (${ov.visitedOn}) \u2014 NOT verified by OTP / QR`);
           audit8(d, "OFFLINE_VISIT_CONFIRMED", `Visit outside the app confirmed by the other side (${ov.visitedOn}) \u2014 unverified, no buyer protection`);
           ping(ov.byId, d, "Visit confirmed", `${u.name} confirmed the visit of ${ov.visitedOn}. You can move the deal to \u201CSite Visit Done\u201D.`);
         } else {
           const why = str4(req.body?.note, 300);
-          if (why.length < 3) return bad26(res, "Write why (the other side reads this)");
+          if (why.length < 3) return bad27(res, "Write why (the other side reads this)");
           d.offlineVisit = void 0;
           note4(d, `${u.name} did not confirm the visit outside the app: ${why}`);
           ping(ov.byId, d, "Visit not confirmed", `${u.name}: ${why}`);
@@ -89703,7 +89993,7 @@ function createDealCloseRouter() {
 }
 
 // server/landrecords.ts
-var import_express58 = __toESM(require_express2(), 1);
+var import_express61 = __toESM(require_express2(), 1);
 
 // src/shared/redflags.ts
 var norm3 = (s) => (s || "").toLowerCase().replace(/\b(shri|smt|mr|mrs|ms|dr|late|sri)\b\.?/g, "").replace(/[^a-zऀ-ॿ ]/g, " ").replace(/\s+/g, " ").trim();
@@ -89779,8 +90069,8 @@ var bodySchema = external_exports.object({
   markVerified: external_exports.boolean().optional()
 });
 function createLandRecordsRouter() {
-  const r = (0, import_express58.Router)();
-  const me27 = () => ctx().user;
+  const r = (0, import_express61.Router)();
+  const me28 = () => ctx().user;
   r.use(needs("landrecord:manage"));
   const canSee = (u, rec2) => {
     if (isAdmin(u) || u.role === "LEGAL_COUNSEL" || rec2.createdBy === u.id) return true;
@@ -89788,31 +90078,31 @@ function createLandRecordsRouter() {
     return !!prop && (prop.listingBrokerId === u.id || prop.ownerId === u.id);
   };
   const canEdit = (u, rec2) => isAdmin(u) || u.role === "LEGAL_COUNSEL" || rec2.createdBy === u.id;
-  const view7 = (rec2) => ({ ...rec2, scan: scanRedFlags(rec2.fields) });
+  const view8 = (rec2) => ({ ...rec2, scan: scanRedFlags(rec2.fields) });
   const audit9 = (id, action, details) => {
-    const u = me27();
+    const u = me28();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", id, action, details);
   };
   r.get("/", (_req, res) => {
-    const u = me27();
-    res.json({ success: true, records: db.getState().landRecords.filter((x) => canSee(u, x)).map(view7) });
+    const u = me28();
+    res.json({ success: true, records: db.getState().landRecords.filter((x) => canSee(u, x)).map(view8) });
   });
   r.get("/properties", (_req, res) => {
-    const u = me27();
+    const u = me28();
     const list = db.getState().properties.filter((p) => isAdmin(u) || u.role === "LEGAL_COUNSEL" || p.listingBrokerId === u.id || p.ownerId === u.id).map((p) => ({ id: p.id, title: p.title, locality: p.locality, city: p.city }));
     res.json({ success: true, properties: list });
   });
   r.post("/", (req, res) => {
-    const u = me27();
+    const u = me28();
     const p = bodySchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || "Invalid record" });
     const d = p.data;
-    const st24 = db.getState();
+    const st25 = db.getState();
     if (d.propertyId) {
       const prop = db.byId("properties", d.propertyId);
       if (!prop || !(isAdmin(u) || u.role === "LEGAL_COUNSEL" || prop.listingBrokerId === u.id || prop.ownerId === u.id)) return res.status(404).json({ error: "Property not found" });
     }
-    if (st24.landRecords.filter((x) => x.createdBy === u.id).length >= 500) return res.status(409).json({ error: "Record limit reached" });
+    if (st25.landRecords.filter((x) => x.createdBy === u.id).length >= 500) return res.status(409).json({ error: "Record limit reached" });
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const rec2 = {
       id: `LR-${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 90 + 10)}`,
@@ -89831,14 +90121,14 @@ function createLandRecordsRouter() {
       createdAt: now,
       updatedAt: now
     };
-    st24.landRecords.unshift(rec2);
+    st25.landRecords.unshift(rec2);
     db.save();
     const scan = scanRedFlags(rec2.fields);
     audit9(rec2.id, "LAND_RECORD_CREATED", `${u.name} recorded khasra ${rec2.khasraNo}, ${rec2.village || rec2.tehsil}, ${rec2.district} \u2014 verdict ${scan.verdict} (${scan.flags.length} flags)`);
-    res.json({ success: true, record: view7(rec2) });
+    res.json({ success: true, record: view8(rec2) });
   });
   r.put("/:id", (req, res) => {
-    const u = me27();
+    const u = me28();
     const rec2 = db.getState().landRecords.find((x) => x.id === req.params.id);
     if (!rec2 || !canSee(u, rec2)) return res.status(404).json({ error: "Record not found" });
     if (!canEdit(u, rec2)) return res.status(403).json({ error: "Only the person who created this record (or legal counsel / admin) can edit it" });
@@ -89850,15 +90140,15 @@ function createLandRecordsRouter() {
     rec2.fields = { ...d.fields, verifiedAt: d.markVerified ? now : rec2.fields.verifiedAt };
     db.save();
     audit9(rec2.id, "LAND_RECORD_UPDATED", `${u.name} updated land record ${rec2.id}; verdict ${scanRedFlags(rec2.fields).verdict}`);
-    res.json({ success: true, record: view7(rec2) });
+    res.json({ success: true, record: view8(rec2) });
   });
   r.delete("/:id", (req, res) => {
-    const u = me27();
-    const st24 = db.getState();
-    const i = st24.landRecords.findIndex((x) => x.id === req.params.id);
-    if (i < 0 || !canSee(u, st24.landRecords[i])) return res.status(404).json({ error: "Record not found" });
-    if (!canEdit(u, st24.landRecords[i])) return res.status(403).json({ error: "Not allowed" });
-    const [gone] = st24.landRecords.splice(i, 1);
+    const u = me28();
+    const st25 = db.getState();
+    const i = st25.landRecords.findIndex((x) => x.id === req.params.id);
+    if (i < 0 || !canSee(u, st25.landRecords[i])) return res.status(404).json({ error: "Record not found" });
+    if (!canEdit(u, st25.landRecords[i])) return res.status(403).json({ error: "Not allowed" });
+    const [gone] = st25.landRecords.splice(i, 1);
     db.save();
     audit9(gone.id, "LAND_RECORD_DELETED", `${u.name} deleted land record ${gone.id}`);
     res.json({ success: true });
@@ -89867,8 +90157,8 @@ function createLandRecordsRouter() {
 }
 
 // server/connector.ts
-var import_express59 = __toESM(require_express2(), 1);
-import crypto36 from "crypto";
+var import_express62 = __toESM(require_express2(), 1);
+import crypto38 from "crypto";
 var DUP_WINDOW_DAYS = 60;
 var MAX_REWARD = 1e5;
 var upiRegex = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,30}$/;
@@ -89891,7 +90181,7 @@ var connectorProfileSchema = external_exports.object({
   whatsapp: phoneSchema.optional(),
   payoutUpi: external_exports.string().trim().regex(upiRegex, "UPI ID looks invalid (e.g. name@okaxis)").optional().or(external_exports.literal(""))
 });
-var nowIso38 = () => (/* @__PURE__ */ new Date()).toISOString();
+var nowIso39 = () => (/* @__PURE__ */ new Date()).toISOString();
 var isManager = (u) => can(u, "connector:manage");
 var isDesk = (u) => can(u, "connector:desk");
 var ownPhone = (id) => db.byId("users", id)?.phone;
@@ -89900,8 +90190,8 @@ function nextId6(list) {
   return `CR-2026-${String(n2).padStart(4, "0")}`;
 }
 function push3(r, u, action, note5) {
-  r.events.push({ at: nowIso38(), byId: u.id, byName: u.name, byRole: u.role, action, note: note5 });
-  r.updatedAt = nowIso38();
+  r.events.push({ at: nowIso39(), byId: u.id, byName: u.name, byRole: u.role, action, note: note5 });
+  r.updatedAt = nowIso39();
 }
 var PUBLIC_ACTIONS = {
   SUBMITTED: "Referral submitted",
@@ -89973,7 +90263,7 @@ function stats(list) {
   };
 }
 function createConnectorRouter() {
-  const r = (0, import_express59.Router)();
+  const r = (0, import_express62.Router)();
   r.get("/meta", needs("connector:self", "connector:manage", "connector:work", "connector:desk"), (_req, res) => {
     const s = db.getState().settings;
     res.json({
@@ -90064,8 +90354,8 @@ function createConnectorRouter() {
       status: "SUBMITTED",
       rewardStatus: "NONE",
       duplicateHash: intro ? `intro:${u.id}:${norm4(d.customerName)}:${d.type}` : `${phone}:${d.type}`,
-      createdAt: nowIso38(),
-      updatedAt: nowIso38(),
+      createdAt: nowIso39(),
+      updatedAt: nowIso39(),
       events: []
     };
     push3(ref, u, "SUBMITTED");
@@ -90168,7 +90458,7 @@ function createConnectorRouter() {
     if (!Number.isFinite(amount2) || amount2 <= 0 || amount2 > MAX_REWARD) return res.status(400).json({ error: `Reward must be between \u20B91 and \u20B9${MAX_REWARD.toLocaleString("en-IN")}` });
     x.rewardAmount = Math.round(amount2);
     x.rewardStatus = "APPROVED";
-    x.rewardApprovedAt = nowIso38();
+    x.rewardApprovedAt = nowIso39();
     push3(x, u, "REWARD_APPROVED", `\u20B9${x.rewardAmount}`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "COMMISSION", x.id, "CONNECTOR_REWARD_APPROVED", `Reward \u20B9${x.rewardAmount} approved for ${x.connectorName}`);
@@ -90183,22 +90473,22 @@ function createConnectorRouter() {
     const reference = String(req.body?.reference || "").trim().slice(0, 60);
     if (reference.length < 4) return res.status(400).json({ error: "Enter the UPI / bank payout reference (UTR)" });
     x.rewardStatus = "PAID";
-    x.paidAt = nowIso38();
+    x.paidAt = nowIso39();
     x.payoutReference = reference;
     push3(x, u, "REWARD_PAID", reference);
     db.save();
     db.appendAuditEvent(u.id, u.role, "COMMISSION", x.id, "CONNECTOR_REWARD_PAID", `\u20B9${x.rewardAmount} paid to ${x.connectorName} (ref ${reference})`);
     res.json({ success: true, referral: x });
   });
-  const sideOf2 = (u, x) => {
+  const sideOf3 = (u, x) => {
     if (x.connectorId === u.id) return "CONNECTOR";
     if (x.assignedToId === u.id || x.sponsorId === u.id) return "WORKER";
     return null;
   };
   const maxPct = () => db.getState().settings.connectorMaxSharePct ?? DEFAULT_MAX_SHARE_PCT;
   const shareStep = (sh, side, action, pct2, note5) => {
-    sh.history.push({ id: "SS-" + crypto36.randomBytes(4).toString("hex"), at: nowIso38(), side, action, pct: pct2, note: note5 ? note5.slice(0, 200) : void 0 });
-    sh.updatedAt = nowIso38();
+    sh.history.push({ id: "SS-" + crypto38.randomBytes(4).toString("hex"), at: nowIso39(), side, action, pct: pct2, note: note5 ? note5.slice(0, 200) : void 0 });
+    sh.updatedAt = nowIso39();
   };
   const ping2 = (x, toSide, title, body) => {
     const to = toSide === "WORKER" ? x.assignedToId || x.sponsorId : x.connectorId;
@@ -90207,7 +90497,7 @@ function createConnectorRouter() {
   const loadShareRef = (req, res) => {
     const u = ctx().user;
     const x = db.byId("connectorReferrals", req.params.id);
-    const side = x ? sideOf2(u, x) : null;
+    const side = x ? sideOf3(u, x) : null;
     if (!x || !side) {
       res.status(404).json({ error: "Referral not found" });
       return null;
@@ -90229,7 +90519,7 @@ function createConnectorRouter() {
     let sh = x.share;
     if (sh && ["AGREED", "PAID", "CONFIRMED", "NOT_RECEIVED"].includes(sh.status)) return res.status(409).json({ error: "The share is already agreed and locked" });
     if (!sh || sh.status === "DECLINED") {
-      sh = x.share = { id: "SH-" + crypto36.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso38() };
+      sh = x.share = { id: "SH-" + crypto38.randomBytes(4).toString("hex"), pct: pct2, proposedBy: side, status: "PROPOSED", history: [], updatedAt: nowIso39() };
       shareStep(sh, side, "PROPOSED", pct2, note5);
     } else {
       const counter = sh.proposedBy !== side;
@@ -90370,7 +90660,7 @@ function createConnectorRouter() {
       sponsorId: u.id,
       status: "PENDING",
       expiresAt: new Date(Date.now() + 14 * 864e5).toISOString(),
-      createdAt: nowIso38()
+      createdAt: nowIso39()
     };
     state.invitations.unshift(inv);
     db.save();
@@ -90408,11 +90698,11 @@ function createConnectorRouter() {
 
 // server.ts
 var import_compression = __toESM(require_compression(), 1);
-import path11 from "node:path";
+import path12 from "node:path";
 import { fileURLToPath } from "node:url";
 var __filename = fileURLToPath(import.meta.url);
-var __dirname = path11.dirname(__filename);
-var app = (0, import_express60.default)();
+var __dirname = path12.dirname(__filename);
+var app = (0, import_express63.default)();
 var port = Number(process.env.PORT) || 3e3;
 var HOST = process.env.HOST || (IS_PROD ? "0.0.0.0" : "127.0.0.1");
 var HttpError = class extends Error {
@@ -90440,8 +90730,8 @@ app.use((req, res, next2) => {
   if (req.path.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
   next2();
 });
-var jsonParser = import_express60.default.json({ limit: "256kb" });
-app.use((req, res, next2) => req.method === "POST" && (req.path === "/api/pdocs" || req.path === "/api/property-docs" || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path)) ? next2() : jsonParser(req, res, next2));
+var jsonParser = import_express63.default.json({ limit: "256kb" });
+app.use((req, res, next2) => req.method === "POST" && (req.path === "/api/pdocs" || req.path === "/api/property-docs" || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path)) ? next2() : jsonParser(req, res, next2));
 app.use("/api", (req, res, next2) => {
   const t0 = Date.now();
   res.on("finish", () => {
@@ -90772,29 +91062,29 @@ function sendCached(req, res, payload) {
 app.get("/api/auth/users", requireAuth, (req, res) => {
   const c = ctx();
   const state = db.getState();
-  const me27 = c.user;
-  if (me27.verificationStatus !== "VERIFIED") {
-    return res.json({ success: true, users: [enrichUserWithTrustScore(me27, state)], activeUserId: me27.id });
+  const me28 = c.user;
+  if (me28.verificationStatus !== "VERIFIED") {
+    return res.json({ success: true, users: [enrichUserWithTrustScore(me28, state)], activeUserId: me28.id });
   }
   let users;
-  if (me27.role === "TEAM_MEMBER") {
-    const emp = db.byId("users", me27.employerId);
-    users = [enrichUserWithTrustScore(me27, state), ...emp ? [directoryEntry(emp, state)] : []];
-    if (can(me27, "connector:desk")) {
+  if (me28.role === "TEAM_MEMBER") {
+    const emp = db.byId("users", me28.employerId);
+    users = [enrichUserWithTrustScore(me28, state), ...emp ? [directoryEntry(emp, state)] : []];
+    if (can(me28, "connector:desk")) {
       users.push(...state.users.filter((u) => (u.role === "BROKER" || u.role === "CONTRACTOR") && u.verificationStatus === "VERIFIED").map((u) => slimCard(u, state)));
     }
-  } else if (can(me27, "users:list")) {
+  } else if (can(me28, "users:list")) {
     if (!dirCacheAdmin || dirCacheAdmin.v !== db.version) dirCacheAdmin = { v: db.version, body: state.users.map((u) => enrichUserWithTrustScore(u, state)) };
-    return res.json({ success: true, users: dirCacheAdmin.body, activeUserId: me27.id });
+    return res.json({ success: true, users: dirCacheAdmin.body, activeUserId: me28.id });
   } else {
     const visibleRoles = ["BROKER", "DEVELOPER_BUILDER", "LEGAL_COUNSEL", "ADMIN", "SUPERADMIN"];
     if (!dirCache || dirCache.v !== db.version) {
       dirCache = { v: db.version, kind: "members", body: state.users.filter((u) => u.verificationStatus === "VERIFIED" && visibleRoles.includes(u.role)).map((u) => slimCard(u, state)) };
     }
-    users = [enrichUserWithTrustScore(me27, state), ...dirCache.body.filter((u) => u.id !== me27.id)];
-    return sendCached(req, res, { success: true, users, activeUserId: me27.id });
+    users = [enrichUserWithTrustScore(me28, state), ...dirCache.body.filter((u) => u.id !== me28.id)];
+    return sendCached(req, res, { success: true, users, activeUserId: me28.id });
   }
-  res.json({ success: true, users, activeUserId: me27.id });
+  res.json({ success: true, users, activeUserId: me28.id });
 });
 app.get("/api/auth/permission-matrix", needs("permissions:read_matrix"), (_req, res) => {
   res.json({ success: true, roles: ALL_ROLES, matrix: permissionMatrix() });
@@ -91972,8 +92262,8 @@ app.post("/api/collaborations", needs("collab:propose"), newAccountCap("collab",
   }
   const ownSide = data.feeMode === "OWN_SIDE";
   if (ownSide) {
-    const bad27 = checkProposerSide(data.proposerSide, currentUser2.id, targetBrokerId, prop.listingBrokerId);
-    if (bad27) return res.status(400).json({ error: bad27, code: "SIDE_MISMATCH" });
+    const bad28 = checkProposerSide(data.proposerSide, currentUser2.id, targetBrokerId, prop.listingBrokerId);
+    if (bad28) return res.status(400).json({ error: bad28, code: "SIDE_MISMATCH" });
   }
   const introShare = ownSide ? 100 : data.proposedIntroducingShare;
   const closeShare = ownSide ? 100 : data.proposedClosingShare;
@@ -92103,8 +92393,8 @@ app.post("/api/collaborations/:id/respond", needs("collab:respond"), (req, res) 
     if (toOwn && !offer.proposerSide) {
       const mine3 = req.body?.mySide;
       if (mine3 !== "SELLER" && mine3 !== "BUYER") return res.status(400).json({ error: "Say which side you act for: seller or buyer" });
-      const bad27 = checkProposerSide(otherSide(mine3), offer.proposingBrokerId, offer.receivingBrokerId, db.byId("properties", offer.propertyId)?.listingBrokerId);
-      if (bad27) return res.status(400).json({ error: bad27, code: "SIDE_MISMATCH" });
+      const bad28 = checkProposerSide(otherSide(mine3), offer.proposingBrokerId, offer.receivingBrokerId, db.byId("properties", offer.propertyId)?.listingBrokerId);
+      if (bad28) return res.status(400).json({ error: bad28, code: "SIDE_MISMATCH" });
       offer.proposerSide = otherSide(mine3);
     }
     if (!toOwn && ([a, b].some((n2) => !Number.isFinite(n2) || n2 < 0 || n2 > 100) || Math.abs(a + b - 100) > 1e-3)) {
@@ -92785,15 +93075,15 @@ app.post("/api/owner-mandates", needs("mandate:owner_create"), (req, res) => {
   };
   state.ownerMandates.unshift(newMandate);
   db.save();
-  const inr14 = (n2) => `\u20B9${n2.toLocaleString("en-IN")}`;
-  const terms2 = remunerationBasis === "PERCENTAGE" ? `commission ${commissionPct}% of the final price` : remunerationBasis === "FIXED_FEE" ? `fixed brokerage ${inr14(fixedFeeAmount)}` : `fixed net amount ${inr14(approvedNetPrice)} (everything above is the listing broker's remuneration)`;
+  const inr15 = (n2) => `\u20B9${n2.toLocaleString("en-IN")}`;
+  const terms2 = remunerationBasis === "PERCENTAGE" ? `commission ${commissionPct}% of the final price` : remunerationBasis === "FIXED_FEE" ? `fixed brokerage ${inr15(fixedFeeAmount)}` : `fixed net amount ${inr15(approvedNetPrice)} (everything above is the listing broker's remuneration)`;
   db.appendAuditEvent(
     currentUser2.id,
     currentUser2.role,
     "PROPERTY",
     mandateId,
     "OWNER_MANDATE_SIGNED_BY_OWNER",
-    `Owner signed a ${remunerationBasis} mandate: ${terms2}; advertised ${inr14(advertisedPrice)}. Protection tail: ${newMandate.protectionPeriodDays} days. Awaiting listing broker.`
+    `Owner signed a ${remunerationBasis} mandate: ${terms2}; advertised ${inr15(advertisedPrice)}. Protection tail: ${newMandate.protectionPeriodDays} days. Awaiting listing broker.`
   );
   if (broker.phone) void sendSms(broker.phone, `GENZ: a brokerage mandate ${mandateId} for property ${propertyId} is waiting for your review and signature.`);
   res.json({ success: true, mandate: mandateView(newMandate, state) });
@@ -95135,6 +95425,7 @@ app.use("/api/land-records", createLandRecordsRouter());
 app.use("/s", createPublicShareRouter());
 app.use("/api/client-rooms", createClientRoomRouter());
 app.use("/api/rent", createRentRouter());
+app.use("/api/partner-chats", createPartnerChatRouter());
 app.use("/r", createClientRoomPageRouter());
 app.use("/api/shop-partners", createShopPartnerRouter());
 app.use("/q", createPartnerQrRouter());
@@ -95204,10 +95495,10 @@ app.get("/api/geo/pincode/:pin", requireAuth, rateLimit("pincode", 60, 6e4), asy
       pinCache.set(pin, { at: Date.now(), data: data2 });
       return res.json({ success: true, ...data2 });
     }
-    const st24 = findState(String(offices[0].State || ""));
+    const st25 = findState(String(offices[0].State || ""));
     const data = {
       found: true,
-      state: st24?.name || String(offices[0].State || ""),
+      state: st25?.name || String(offices[0].State || ""),
       district: String(offices[0].District || ""),
       city: String(offices[0].Block || offices[0].District || ""),
       localities: [...new Set(offices.map((o) => String(o.Name || "").replace(/\s+(B\.?O|S\.?O|H\.?O)\.?$/i, "").trim()).filter(Boolean))].slice(0, 20)
@@ -95262,21 +95553,21 @@ async function startServer() {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
-    const distPath = process.env.DIST_DIR || path11.resolve(__dirname, "dist");
+    const distPath = process.env.DIST_DIR || path12.resolve(__dirname, "dist");
     app.use(
-      import_express60.default.static(distPath, {
+      import_express63.default.static(distPath, {
         index: false,
         setHeaders: (res, file2) => {
-          const base = path11.basename(file2);
+          const base = path12.basename(file2);
           if (base === "sw.js" || base === "index.html" || base === "manifest.webmanifest") res.setHeader("Cache-Control", "no-cache");
-          else if (file2.includes(`${path11.sep}assets${path11.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          else if (file2.includes(`${path12.sep}assets${path12.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
           else res.setHeader("Cache-Control", "public, max-age=86400");
         }
       })
     );
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-cache");
-      res.sendFile(path11.resolve(distPath, "index.html"));
+      res.sendFile(path12.resolve(distPath, "index.html"));
     });
   }
   app.use((err, req, res, _next) => {
@@ -95361,39 +95652,39 @@ init_pgstore();
 
 // server/fileSync.ts
 init_pgstore();
-import fs11 from "node:fs";
-import path12 from "node:path";
+import fs12 from "node:fs";
+import path13 from "node:path";
 import { createHash as createHash2 } from "node:crypto";
 var MAX_FILE = 12 * 1024 * 1024;
-var root = () => path12.resolve(process.cwd(), "data");
+var root = () => path13.resolve(process.cwd(), "data");
 var sha6 = (b) => createHash2("sha256").update(b).digest("hex");
 function walk() {
   const out = [];
   const base = root();
   let dirs = [];
   try {
-    dirs = fs11.readdirSync(base, { withFileTypes: true });
+    dirs = fs12.readdirSync(base, { withFileTypes: true });
   } catch {
     return out;
   }
   const rec2 = (dir, rel) => {
     let ents = [];
     try {
-      ents = fs11.readdirSync(dir, { withFileTypes: true });
+      ents = fs12.readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const e of ents) {
       const r = `${rel}/${e.name}`;
-      if (e.isDirectory()) rec2(path12.join(dir, e.name), r);
+      if (e.isDirectory()) rec2(path13.join(dir, e.name), r);
       else if (e.isFile() && !e.name.endsWith(".tmp")) out.push(r);
     }
   };
-  for (const d of dirs) if (d.isDirectory()) rec2(path12.join(base, d.name), d.name);
+  for (const d of dirs) if (d.isDirectory()) rec2(path13.join(base, d.name), d.name);
   return out;
 }
-var abs = (rel) => path12.join(root(), ...rel.split("/"));
-var safe = (rel) => !!rel && !rel.split("/").some((p) => p === ".." || p === "" || p === ".") && !path12.isAbsolute(rel);
+var abs = (rel) => path13.join(root(), ...rel.split("/"));
+var safe = (rel) => !!rel && !rel.split("/").some((p) => p === ".." || p === "" || p === ".") && !path13.isAbsolute(rel);
 function createFileSync() {
   const known = /* @__PURE__ */ new Map();
   let lastSig = null;
@@ -95407,9 +95698,9 @@ function createFileSync() {
     for (const r of rows) {
       if (!safe(r.path)) continue;
       if (r.deleted) {
-        if (known.has(r.path) || fs11.existsSync(abs(r.path))) {
+        if (known.has(r.path) || fs12.existsSync(abs(r.path))) {
           try {
-            fs11.rmSync(abs(r.path), { force: true });
+            fs12.rmSync(abs(r.path), { force: true });
           } catch {
           }
           known.delete(r.path);
@@ -95417,13 +95708,13 @@ function createFileSync() {
         continue;
       }
       inDb.add(r.path);
-      if (known.get(r.path)?.sha === r.sha && fs11.existsSync(abs(r.path))) continue;
+      if (known.get(r.path)?.sha === r.sha && fs12.existsSync(abs(r.path))) continue;
       const buf = await s.fileGet(r.path);
       if (!buf) continue;
-      fs11.mkdirSync(path12.dirname(abs(r.path)), { recursive: true });
-      fs11.writeFileSync(abs(r.path), buf);
-      const st24 = fs11.statSync(abs(r.path));
-      known.set(r.path, { sha: r.sha, mtimeMs: st24.mtimeMs, size: st24.size });
+      fs12.mkdirSync(path13.dirname(abs(r.path)), { recursive: true });
+      fs12.writeFileSync(abs(r.path), buf);
+      const st25 = fs12.statSync(abs(r.path));
+      known.set(r.path, { sha: r.sha, mtimeMs: st25.mtimeMs, size: st25.size });
     }
     lastSig = sig;
   }
@@ -95434,22 +95725,22 @@ function createFileSync() {
     const here = /* @__PURE__ */ new Set();
     for (const rel of walk()) {
       here.add(rel);
-      let st24;
+      let st25;
       try {
-        st24 = fs11.statSync(abs(rel));
+        st25 = fs12.statSync(abs(rel));
       } catch {
         continue;
       }
       const k = known.get(rel);
-      if (k && k.mtimeMs === st24.mtimeMs && k.size === st24.size) continue;
-      if (st24.size > MAX_FILE) continue;
-      const buf = fs11.readFileSync(abs(rel));
+      if (k && k.mtimeMs === st25.mtimeMs && k.size === st25.size) continue;
+      if (st25.size > MAX_FILE) continue;
+      const buf = fs12.readFileSync(abs(rel));
       const h = sha6(buf);
       if (k?.sha !== h) {
         await s.filePut(rel, h, buf);
         changed = true;
       }
-      known.set(rel, { sha: h, mtimeMs: st24.mtimeMs, size: st24.size });
+      known.set(rel, { sha: h, mtimeMs: st25.mtimeMs, size: st25.size });
     }
     for (const rel of [...known.keys()]) {
       if (here.has(rel)) continue;

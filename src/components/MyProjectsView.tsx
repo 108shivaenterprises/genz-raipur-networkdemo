@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, ArrowLeft, Star, FileText, Megaphone, Send, Trash2, UserPlus, ClipboardList } from 'lucide-react';
+import { Loader2, ArrowLeft, Star, FileText, Megaphone, Send, Trash2, UserPlus, ClipboardList, MessageCircle } from 'lucide-react';
+import { openPartnerChat } from './PartnerChat.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -212,6 +213,12 @@ const ProjectPage: React.FC<{ id: string; onBack: () => void; onNavigate: (t: an
         </div>
       )}
       {d.relation === 'APPLIED' && <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-800">{tx('Your request is with the builder. You will see the decision here.', 'आपकी रिक्वेस्ट बिल्डर के पास है। फ़ैसला यहीं दिखेगा।')}</p>}
+      {/* v61 — talk with the builder (leads, units, bookings, brokerage) */}
+      {p.builderId && ['ACTIVE', 'PAUSED', 'SHORTLISTED', 'APPLIED', 'INVITED'].includes(d.relation) && (
+        <button type="button" className={`${dark} w-full`} data-testid="mp-chat-builder" onClick={() => openPartnerChat(p.builderId).catch((e: any) => setToast({ ok: false, msg: e.message }))}>
+          <MessageCircle className="h-4 w-4" />{tx(`Chat with ${p.builderName}`, `${p.builderName} से चैट करें`)}
+        </button>
+      )}
 
       {d.terms && (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
@@ -227,7 +234,7 @@ const ProjectPage: React.FC<{ id: string; onBack: () => void; onNavigate: (t: an
 
       {d.updates.length > 0 && (
         <section className="space-y-2"><h3 className="flex items-center gap-1.5 text-sm font-bold"><Megaphone className="h-4 w-4" />{tx('Builder notices', 'बिल्डर की सूचनाएँ')}</h3>
-          {d.updates.map((u: any) => <div key={u.id} className="rounded-xl border border-violet-200 bg-violet-50/50 p-3"><div className="flex flex-wrap items-center gap-1.5 text-[10px]"><span className="rounded-full bg-violet-100 px-2 py-0.5 font-bold text-violet-800">{u.kind}</span><span className="text-slate-500">{new Date(u.createdAt).toLocaleDateString('en-IN')}{u.validUntil ? ` · ${tx('till', 'तक')} ${u.validUntil.slice(0, 10)}` : ''}</span></div><div className="mt-1 text-sm font-semibold">{u.title}</div>{u.body && <p className="text-xs text-slate-700">{u.body}</p>}</div>)}
+          {d.updates.map((u: any) => <div key={u.id} className="rounded-xl border border-violet-200 bg-violet-50/50 p-3"><div className="flex flex-wrap items-center gap-1.5 text-[10px]"><span className="rounded-full bg-violet-100 px-2 py-0.5 font-bold text-violet-800">{u.kind}</span><span className="text-slate-500">{new Date(u.createdAt).toLocaleDateString('en-IN')}{u.validUntil ? ` · ${tx('till', 'तक')} ${u.validUntil.slice(0, 10)}` : ''}</span></div><div className="mt-1 text-sm font-semibold">{u.title}</div>{u.body && <p className="text-xs text-slate-700">{u.body}</p>}{u.photoId && <a href={`/api/pcontrol/notice-photo/${u.photoId}`} target="_blank" rel="noopener noreferrer"><img src={`/api/pcontrol/notice-photo/${u.photoId}`} alt="" loading="lazy" className="mt-2 max-h-56 w-full rounded-lg object-cover" data-testid="mp-notice-photo" /></a>}</div>)}
         </section>
       )}
       {d.collateral.length > 0 && (
