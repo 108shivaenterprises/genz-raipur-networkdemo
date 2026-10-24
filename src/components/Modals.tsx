@@ -67,14 +67,14 @@ export const AddPropertyModal: React.FC<{
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
   
   // Photo Media State (URL + Gallery upload)
-  const [photoSourceMode, setPhotoSourceMode] = useState<'GALLERY' | 'URL'>('GALLERY');
+  const [photoSourceMode, setPhotoSourceMode] = useState<'GALLERY' | 'URL'>('URL');
   const [imageUrl, setImageUrl] = useState('');
   const [galleryImages, setGalleryImages] = useState<Array<{ id: string; name: string; url: string; size?: number }>>([]);
   const [isPhotoDragging, setIsPhotoDragging] = useState(false);
   const photoFileInputRef = useRef<HTMLInputElement>(null);
 
   // Video Media State (Gallery upload + URL)
-  const [videoSourceMode, setVideoSourceMode] = useState<'GALLERY' | 'URL'>('GALLERY');
+  const [videoSourceMode, setVideoSourceMode] = useState<'GALLERY' | 'URL'>('URL');
   const [videoUrl, setVideoUrl] = useState('');
   const [uploadedVideo, setUploadedVideo] = useState<{ name: string; url: string; size?: number } | null>(null);
   const [isVideoDragging, setIsVideoDragging] = useState(false);
@@ -383,8 +383,9 @@ export const AddPropertyModal: React.FC<{
                 <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 text-[11px]">
                   <button
                     type="button"
+                    disabled title={tx('Direct photo upload is not available yet — paste a photo link', 'फ़ोन से सीधी फ़ोटो अपलोड अभी उपलब्ध नहीं — फ़ोटो का लिंक डालें')}
                     onClick={() => setPhotoSourceMode('GALLERY')}
-                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${
+                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 opacity-40 cursor-not-allowed ${
                       photoSourceMode === 'GALLERY'
                         ? 'bg-slate-900 text-white shadow-2xs'
                         : 'text-slate-600 hover:text-slate-900'
@@ -523,8 +524,9 @@ export const AddPropertyModal: React.FC<{
                 <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 text-[11px]">
                   <button
                     type="button"
+                    disabled title={tx('Direct video upload is not available yet — paste a video link', 'सीधा वीडियो अपलोड अभी उपलब्ध नहीं — वीडियो का लिंक डालें')}
                     onClick={() => setVideoSourceMode('GALLERY')}
-                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${
+                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 opacity-40 cursor-not-allowed ${
                       videoSourceMode === 'GALLERY'
                         ? 'bg-slate-900 text-white shadow-2xs'
                         : 'text-slate-600 hover:text-slate-900'

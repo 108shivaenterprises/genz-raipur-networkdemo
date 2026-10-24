@@ -59,7 +59,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     if (res.status === 401 && !url.startsWith('/api/auth/login')) onUnauthorized?.();
-    throw new ApiError(data.error || 'Network error occurred', res.status, data.code, data);
+    throw new ApiError(data.error || (res.status === 413 ? 'The file or photos are too large — use a smaller file or a link.' : res.status >= 500 ? 'Server problem — please try again in a minute.' : 'Request failed — please try again.'), res.status, data.code, data);
   }
 
   return data;
