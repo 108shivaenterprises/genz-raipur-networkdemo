@@ -62,7 +62,7 @@ async function scan(phone: string, kind = 'BUY', extra: Record<string, string> =
   const page = await (await fetch(`${B}/q/${partner.qrCode}`)).text();
   const t = /name="t" value="([^"]+)"/.exec(page)?.[1] || '';
   await sleep(2600);
-  return form(undefined, `/q/${partner.qrCode}`, { t, kind, name: 'Ramesh Customer', phone, locality: 'Shankar Nagar', budget: '50 lakh', ptype: 'Flat', note: '', consent: '1', ...extra });
+  return form(undefined, `/q/${partner.qrCode}`, { t, kind, name: 'Ramesh Customer', phone, locality: 'Shankar Nagar', budget: '50 lakh', ptype: 'Flat', note: '', consent: '1', ...(kind === 'BUY' || kind === 'RENT_IN' ? { direct: '1', sign: 'Ramesh Customer' } : {}), ...extra });
 }
 
 describe('shop QR partner', () => {

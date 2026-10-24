@@ -6,7 +6,7 @@
  */
 import { PageTitle } from './PageTitle.js';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck, MessagesSquare } from 'lucide-react';
+import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck, MessagesSquare, Sparkles } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -144,7 +144,7 @@ const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }
 
 const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
-  const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid'>(''); const [val, setVal] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid' | 'need'>(''); const [val, setVal] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const kind = LEAD_KINDS.find((k) => k.id === l.kind)!; const side = sideOfKind(l.kind); const cut: Cut = side === 'SALE' ? l.terms.sale : l.terms.rent;
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); setMode(''); setVal(''); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   const pay = l.payout ? PAYOUT_LABEL[l.payout.status as keyof typeof PAYOUT_LABEL] : null;
@@ -155,6 +155,8 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         <span className="text-[11px] text-slate-500">{tx('via', 'से')} <b>{l.shopName}</b> · {when(l.createdAt)}</span>
       </div>
       <p className="text-xs text-slate-600">{l.locality}{l.budget ? ` · ${l.budget}` : ''}{l.propertyType ? ` · ${l.propertyType}` : ''}{l.note ? ` · “${l.note}”` : ''}</p>
+      {l.homeTitle && <p className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900" data-testid="sp-lead-home">👍 {tx('Interested in', 'पसंद आया')}: {l.homeTitle} <span className="font-normal text-emerald-800">· {l.homeOwn ? tx('your listing', 'आपकी लिस्टिंग') : tx('another GENZ broker’s listing — he never sees this lead; use a co-broking offer', 'दूसरे GENZ ब्रोकर की लिस्टिंग — उसे यह लीड नहीं दिखती; को-ब्रोकिंग ऑफ़र से काम करें')}</span></p>}
+      {l.promise && <p className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-700" data-testid="sp-lead-promise"><ShieldCheck className="mr-0.5 inline h-3 w-3 text-emerald-700" />{tx('“No direct deal” promise ticked and signed by', '“सीधा सौदा नहीं” की सहमति — हस्ताक्षर')} <b>{l.promise.signName}</b> · {when(l.promise.at)} · {tx('wording', 'शब्द')} {l.promise.version}</p>}
       {/* v56 — a client room first: the chat, the homes shown and the visits stay on record (a call or WhatsApp does not) */}
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={dark + ' !min-h-10'} data-testid="sp-lead-room" onClick={() => {
@@ -162,6 +164,7 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
           try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}` })); } catch { /* storage blocked: the form opens empty */ }
           window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
         }}><MessagesSquare className="h-4 w-4" />{tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
+        {(l.kind === 'BUY' || l.kind === 'RENT_IN') && <button type="button" className={light + ' !min-h-10 !text-xs'} data-testid="sp-lead-need" onClick={() => setMode(mode === 'need' ? '' : 'need')}><Sparkles className="h-3.5 w-3.5" />{tx('No home yet? Find in network', 'घर नहीं है? नेटवर्क में ढूँढें')}</button>}
         <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
         <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
       </div>
@@ -186,6 +189,19 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         </div>
       )}
       {l.status === 'LOST' && l.lostReason && <p className="text-[11px] text-slate-500">{tx('Reason', 'कारण')}: {l.lostReason}</p>}
+      {mode === 'need' && (
+        <div className="space-y-1 rounded-lg bg-slate-50 p-2" data-testid="sp-need-form">
+          <p className="text-[11px] text-slate-600">{tx('Adds this client to your Buyer Needs and opens Magic Match across the network. Other brokers see only his initials; the lead stays yours.', 'इस क्लाइंट को आपके बायर नीड में जोड़ता है और पूरे नेटवर्क में मैजिक मैच खोलता है। दूसरे ब्रोकर को सिर्फ़ उसके नाम के अक्षर दिखते हैं; लीड आपकी ही रहती है।')}</p>
+          <label className="text-[11px] font-semibold text-slate-700">{tx('Budget (max, ₹ lakh) / monthly rent (₹ thousand)', 'बजट (अधिकतम, ₹ लाख) / किराया (₹ हज़ार महीना)')}</label>
+          <input className={inp} type="number" inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value)} data-testid="sp-need-budget" />
+          <button className={dark + ' !min-h-9 !text-xs'} disabled={busy || !(Number(val) > 0)} data-testid="sp-need-save" onClick={() => run(async () => {
+            const rent = l.kind === 'RENT_IN'; const max = Math.round(Number(val) * (rent ? 1000 : 100000));
+            const T: Record<string, string> = { Flat: 'Residential Flat', House: 'Independent House', Plot: 'Residential Plot', Shop: 'Commercial Shop', Office: 'Commercial Office', Warehouse: 'Warehouse / Godown' };
+            await api.createRequirement({ customerName: l.name, customerPhone: l.phone, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city: l.city || 'Raipur', preferredLocalities: [l.locality], preferredTags: [], propertyType: T[l.propertyType || ''] || 'Residential Flat', transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)' });
+            window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'matches' }));
+          })}>{tx('Add & find matches', 'जोड़ें और मैच ढूँढें')}</button>
+        </div>
+      )}
       {mode === 'won' && (
         <div className="space-y-1 rounded-lg bg-slate-50 p-2">
           <label className="text-[11px] font-semibold text-slate-700">{tx('Your own brokerage on this deal (₹)', 'इस डील पर आपकी ब्रोकरेज (₹)')}</label>

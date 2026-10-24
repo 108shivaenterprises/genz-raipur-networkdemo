@@ -21,6 +21,10 @@ import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies 
 import { sendSms } from './notify.js';
 import { pushTo } from './webpush.js';
 import { partyBlock } from './partywatch.js';
+import { shownHomes, pagePhotos, canShow } from './publicPage.js';
+import { brandOf } from './share.js';
+import { priceShort } from '../src/shared/publicPageRules.js';
+import { ackText, ACK_VERSION } from '../src/shared/visitAckRules.js';
 import {
   PARTNER_LIMITS as L, LEAD_KINDS, LEAD_STATUSES, PAYOUT_LABEL, checkTerms, cleanTerms, sameTerms, partnerAmount, sideOfKind, termsText, cutText,
   type PartnerTerms, type LeadKind, type LeadStatus,
@@ -106,7 +110,7 @@ function partnerView(p: ShopPartner) {
 }
 function leadView(l: PartnerLead) {
   const links = linksFor(l); const p = partnerOf(l.partnerId);
-  return { ...l, shopName: p?.shopName || '', links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30) };
+  return { ...l, shopName: p?.shopName || '', city: p?.city || '', links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30) };
 }
 
 // ───────────────────────────── broker API ─────────────────────────────
@@ -260,6 +264,9 @@ button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;f
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kinds label{margin:0;display:flex;align-items:center;gap:8px;border:1px solid #ccc;border-radius:12px;padding:12px;font-size:14px;background:#fff}
 .ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px}.ck input{width:20px;height:20px;margin-top:2px}.hp{position:absolute;left:-9999px}
 .lead{border-top:1px solid #eee;padding:10px 0}.chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;background:#eef1f7;margin:2px 4px 0 0}.chip.ok{background:#dcfce7;color:#166534}.chip.w{background:#fef3c7;color:#92400e}.chip.x{background:#fee2e2;color:#991b1b}
+.hms{display:grid;gap:10px;margin-top:8px}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
+.hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
+.net{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;margin-top:6px}.big2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.big2 .btn{text-align:center;padding:14px 8px}.pick{background:#e9f7ee;border:1px solid #86efac}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}`;
 const shell = (title: string, body: string) => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div></body></html>`;
 const noStore = (res: Response) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); res.set('X-Robots-Tag', 'noindex, nofollow'); };
@@ -273,24 +280,50 @@ export function createPartnerQrRouter() {
   const byCode = (code: string) => /^[A-Z2-9]{8}$/.test(String(code).toUpperCase()) ? st().shopPartners.find(p => p.qrCode === String(code).toUpperCase()) : undefined;
   const notLive = (res: Response, p?: ShopPartner) => res.status(p ? 200 : 404).send(shell('GENZ', `<div class="card"><p class="t"><b>${p?.status === 'PENDING' ? 'यह QR अभी चालू नहीं हुआ है।' : 'यह QR अभी अनुरोध नहीं ले रहा।'}</b></p><p class="t">${p?.status === 'PENDING' ? 'This QR is not active yet.' : 'This QR is not taking requests right now.'}</p></div>`));
 
-  const page = (res: Response, p: ShopPartner, msg = '', keep: Record<string, string> = {}) => {
+  /** the homes on this broker's public page (his own + other brokers' that opened theirs to pages) — only when his page is ON */
+  const homesOf = (b?: UserProfile) => (b && b.role === 'BROKER' && b.verificationStatus === 'VERIFIED' && b.publicCard?.enabled ? shownHomes(b) : []);
+  const homeCards = (b: UserProfile, p: ShopPartner, homes: ReturnType<typeof shownHomes>) => {
+    const wm = `${brandOf(b).displayName} · GENZ`;
+    const one = (h: ReturnType<typeof shownHomes>[number]) => {
+      const ph = pagePhotos(h)[0]; const rent = h.transactionType !== 'Sale'; const net = canShow(b, h) === 'NETWORK';
+      return `<article class="hm" id="h-${esc(h.id)}"><div class="ph${ph ? '' : ' nophoto'}"><canvas width="640" height="400"${ph ? ` data-src="${esc(ph)}"` : ''} data-wm="${esc(wm)}" aria-label="${esc(h.title)}"></canvas><span class="np">📷</span></div>
+<div class="bd"><div class="pr">${esc(priceShort(h.askingPrice))}${rent ? ' <small>/ माह</small>' : ''}</div><div class="tt">${esc(h.title)}</div><div class="sb">${esc(h.propertyType)} · ${esc(h.locality)}, ${esc(h.city)}</div>${net ? '<span class="net">GENZ नेटवर्क लिस्टिंग / GENZ network listing</span>' : ''}
+<div class="row"><a class="btn g" href="/q/${esc(p.qrCode)}?home=${encodeURIComponent(h.id)}#form" data-testid="qr-interested">👍 मुझे पसंद है / I'm interested</a></div></div></article>`;
+    };
+    const first = homes.slice(0, 6); const rest = homes.slice(6);
+    return `<h2>मेरे पास ये घर हैं / Homes I can show you <small>(${homes.length})</small></h2><div class="hms">${first.map(one).join('')}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">और ${rest.length} घर / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join('')}</div></details>` : ''}<p class="small" style="margin:8px 4px">🔒 पूरा पता और मालिक की जानकारी वेरिफ़ाइड विज़िट पर। / Exact address and owner details only on a verified visit.</p>`;
+  };
+
+  const page = (res: Response, p: ShopPartner, msg = '', keep: Record<string, string> = {}, wantQuery: Record<string, unknown> = {}) => {
     const b = userOf(p.brokerId);
-    const kinds = LEAD_KINDS.map(k => `<label><input type="radio" name="kind" value="${k.id}" ${keep.kind === k.id ? 'checked' : ''} required> ${k.hi}<br><small>${k.en}</small></label>`).join('');
+    const homes = homesOf(b);
+    const picked = homes.find(h => h.id === (keep.home || str(wantQuery.home, 40)));
+    const want = str(wantQuery.want, 6);
+    const preKind = keep.kind || (picked ? (picked.transactionType === 'Sale' ? 'BUY' : 'RENT_IN') : want === 'buy' ? 'BUY' : want === 'sell' ? 'SELL' : '');
+    const kinds = LEAD_KINDS.map(k => `<label><input type="radio" name="kind" value="${k.id}" ${preKind === k.id ? 'checked' : ''} required> ${k.hi}<br><small>${k.en}</small></label>`).join('');
     const types = ['', 'Flat', 'House', 'Plot', 'Shop', 'Office', 'Warehouse', 'Other'];
+    const who = b?.name || 'ब्रोकर';
+    const ack = ackText(who, picked ? picked.title : 'ब्रोकर द्वारा दिखाई जाने वाली प्रॉपर्टी / the properties shown by the broker');
     res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
-<div class="card"><p class="t">${esc(b?.name || 'GENZ broker')}${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} आपसे संपर्क करेंगे। <small>A GENZ-verified broker will call you.</small></p>
-<form method="post" action="/q/${esc(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}"><input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
+<div class="card"><p class="t">${esc(who)}${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} आपसे संपर्क करेंगे। <small>A GENZ-verified broker will call you.</small></p>
+<div class="big2"><a class="btn g" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home">🏠 मुझे घर चाहिए<br><small style="color:#e9ffe9">I need a home</small></a><a class="btn l" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list">📋 मुझे अपनी प्रॉपर्टी देनी है<br><small>I want to list my property</small></a></div></div>
+${homes.length && b ? homeCards(b, p, homes) : ''}
+<div class="card${picked ? ' pick' : ''}" id="form">${picked ? `<p class="t"><b>👍 ${esc(picked.title)}</b> · ${esc(priceShort(picked.askingPrice))}<br><small>${esc(picked.locality)}, ${esc(picked.city)} — आपने यह घर चुना है / you chose this home</small></p>` : ''}
+<form method="post" action="/q/${esc(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc(picked.id)}">` : ''}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
 <label>आपको क्या चाहिए? / What do you need?</label><div class="kinds">${kinds}</div>
 <label>नाम / Name</label><input type="text" name="name" maxlength="80" required value="${esc(keep.name || '')}" autocomplete="name">
 <label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required value="${esc(keep.phone || '')}" autocomplete="tel-national" placeholder="98XXXXXXXX">
-<label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required value="${esc(keep.locality || p.area)}">
+<label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required value="${esc(keep.locality || (picked ? picked.locality : p.area))}">
 <label>बजट / किराया (अंदाज़न) / Budget or rent</label><input type="text" name="budget" maxlength="60" value="${esc(keep.budget || '')}" placeholder="जैसे 40 लाख / 12,000 महीना">
 <label>प्रॉपर्टी / Property type</label><select name="ptype">${types.map(x => `<option value="${x}" ${keep.ptype === x ? 'selected' : ''}>${x || '— कोई भी / Any —'}</option>`).join('')}</select>
 <label>कुछ और / Anything else</label><textarea name="note" rows="2" maxlength="300">${esc(keep.note || '')}</textarea>
-<label class="ck"><input type="checkbox" name="consent" value="1" required><span>मैं सहमत हूँ कि ${esc(b?.name || 'यह ब्रोकर')} इस बारे में मुझसे फ़ोन / WhatsApp पर संपर्क करें। मेरा पूरा नंबर दुकान वाले को नहीं दिखेगा। <small>I agree that this broker may contact me about this. The shop does not see my full number.</small></span></label>
+<div class="card warn" style="margin-top:12px" id="promise"><p class="t"><b>ख़रीदने या किराये पर लेने वालों के लिए · For buyers and renters</b></p><p class="t">${esc(ack.hi)}</p><p class="t"><small>${esc(ack.en)}</small></p>
+<label class="ck"><input type="checkbox" name="direct" value="1" ${keep.direct === '1' ? 'checked' : ''}><span>मैं यह मानता/मानती हूँ। <small>I agree to this.</small></span></label>
+<label>अपना नाम लिखकर हस्ताक्षर करें / Sign by typing your name</label><input type="text" name="sign" maxlength="80" value="${esc(keep.sign || '')}" autocomplete="off"><p class="small">यह आपकी सहमति का रिकॉर्ड है — GENZ आपसे कोई पैसा नहीं लेता। / This is a record of your agreement — GENZ takes no money from you.</p></div>
+<label class="ck"><input type="checkbox" name="consent" value="1" required><span>मैं सहमत हूँ कि ${esc(who)} इस बारे में मुझसे फ़ोन / WhatsApp पर संपर्क करें। मेरा पूरा नंबर दुकान वाले को नहीं दिखेगा। <small>I agree that this broker may contact me by phone / WhatsApp. The shop will not see my full number.</small></span></label>
 <div class="row"><button class="g" type="submit">भेजें / Send</button></div></form></div>
-<p class="small" style="margin:12px 4px">GENZ आपसे कोई पैसा नहीं माँगता। कोई भी रकम देने से पहले कागज़ और RERA ज़रूर जाँचें। / GENZ never asks you for money.</p>`));
+<p class="small" style="margin:12px 4px">GENZ आपसे कोई पैसा नहीं माँगता। कोई भी रकम देने से पहले कागज़ और RERA ज़रूर जाँचें। / GENZ never asks you for money.</p>${homes.length ? '<script src="/c/page.js" defer></script>' : ''}`));
   };
 
   r.get('/poster.js', (_req, res) => { res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); res.send("(function(){var b=document.getElementById('pr');if(b)b.addEventListener('click',function(){window.print()})})();"); });
@@ -316,14 +349,14 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     noStore(res);
     const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
     p.scans += 1; p.lastScanAt = nowIso(); db.save();
-    page(res, p);
+    page(res, p, '', {}, req.query as Record<string, unknown>);
   });
 
   r.post('/:code', rateLimit('sp-lead-ip', 20, 3600_000), form, (req: Request, res: Response) => {
     noStore(res);
     const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
     const body = req.body || {};
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300) };
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '' };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`); // a bot filled the hidden field
     if (!formTsOk(body.t)) return page(res, p, 'कृपया फ़ॉर्म दोबारा भरें। / Please fill the form again.', keep);
     const kind = LEAD_KINDS.find(k => k.id === keep.kind)?.id as LeadKind | undefined;
@@ -333,6 +366,11 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     if (!PHONE_RE.test(phone)) return page(res, p, 'सही 10 अंकों का मोबाइल नंबर लिखें। / Write a valid 10-digit mobile number.', keep);
     if (keep.locality.length < 2) return page(res, p, 'इलाका लिखें। / Write the area.', keep);
     if (body.consent !== '1') return page(res, p, 'सहमति वाले बॉक्स पर टिक करें। / Tick the consent box.', keep);
+    // v64 — a buyer / renter ticks and signs the "no direct deal" promise (the wording is versioned, like the visit acknowledgement)
+    const buyerSide = kind === 'BUY' || kind === 'RENT_IN';
+    if (buyerSide && (keep.direct !== '1' || keep.sign.length < 2)) return page(res, p, 'ख़रीदने / किराये पर लेने के लिए “सीधा सौदा नहीं” पर टिक करें और अपना नाम लिखकर हस्ताक्षर करें। / To continue, tick the “no direct deal” promise and sign with your name.', keep);
+    const broker = userOf(p.brokerId);
+    const home = keep.home ? homesOf(broker).find(h => h.id === keep.home) : undefined; // only a home really on this broker's page counts
     if (hit(`sp-qr:${p.id}`, L.leadsPerQrPerDay, 86400_000) > 0) return page(res, p, 'आज इस QR पर बहुत अनुरोध आ चुके — कल फिर कोशिश करें। / Too many requests on this QR today.', keep);
     if (hit(`sp-ph:${p.id}:${phone}`, 3, 86400_000) > 0) return res.redirect(303, `/q/${p.qrCode}/thanks`);
     const blocked = partyBlock(phone, kind === 'SELL' || kind === 'RENT_OUT' ? 'owner' : 'buyer');
@@ -349,8 +387,11 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
       id: rid('PLD'), partnerId: p.id, brokerId: p.brokerId, kind, name: keep.name, phone, phoneLast4: phone.slice(-4),
       locality: keep.locality, budget: keep.budget || undefined, propertyType: keep.ptype || undefined, note: keep.note || undefined, consentAt: now,
       termsVersion: p.termsVersion, terms: cleanTerms(p.terms), lockUntil, status: 'NEW', history: [], createdAt: now, updatedAt: now,
+      ...(home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {}),
+      ...(buyerSide ? (() => { const a = ackText(broker?.name || 'broker', home ? home.title : 'the properties shown by the broker'); return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } }; })() : {}),
     };
-    hist(lead, 'CUSTOMER', `Came in by scanning the QR at ${p.shopName} (consent recorded)`);
+    hist(lead, 'CUSTOMER', `Came in by scanning the QR at ${p.shopName} (consent recorded)${home ? ` · interested in “${home.title}”${lead.homeOwn ? '' : ' (another GENZ broker’s listing)'}` : ''}`);
+    if (lead.promise) hist(lead, 'CUSTOMER', `Agreed “no direct deal” (wording ${ACK_VERSION}) and signed as “${lead.promise.signName}”`);
     // a buyer / renter also lands in the broker's own client list (Today & Clients) so the follow-up is not missed
     if (kind === 'BUY' || kind === 'RENT_IN') {
       const has = s.clientCards.find(c => c.brokerId === p.brokerId && phone10(c.phone) === phone && c.stage !== 'LOST');
@@ -359,7 +400,7 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
         const n = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split('-').pop()) || 0), 0) + 1;
         const card: ClientCard = {
           id: `CLI-${String(n).padStart(4, '0')}`, brokerId: p.brokerId, name: keep.name, phone, budgetMin: 0, budgetMax: 0, city: p.city, areas: [keep.locality],
-          propertyType: keep.ptype || 'Any', transactionType: kind === 'BUY' ? 'Sale' : 'Rent', tags: ['Shop QR'], notes: `Via ${p.shopName} QR${keep.budget ? ` · budget ${keep.budget}` : ''}${keep.note ? ` · ${keep.note}` : ''}`,
+          propertyType: keep.ptype || 'Any', transactionType: kind === 'BUY' ? 'Sale' : 'Rent', tags: ['Shop QR'], notes: `Via ${p.shopName} QR${home ? ` · home: ${home.title}` : ''}${keep.budget ? ` · budget ${keep.budget}` : ''}${keep.note ? ` · ${keep.note}` : ''}`,
           stage: 'NEW', consent: true, timeline: [{ at: now, kind: 'CREATED', text: `From the QR at ${p.shopName}` }], createdAt: now, updatedAt: now,
         };
         s.clientCards.unshift(card); lead.clientCardId = card.id;
@@ -368,8 +409,8 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     s.partnerLeads.unshift(lead);
     hist(p, 'CUSTOMER', `New ${LEAD_KINDS.find(k => k.id === kind)!.en.toLowerCase()} lead (••${lead.phoneLast4})`);
     db.save();
-    db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', lead.id, 'SHOP_QR_LEAD', `Lead from shop QR ${p.id} (consent recorded)`);
-    void pushTo(p.brokerId, { kind: 'matches', title: `New lead from ${p.shopName}`, body: `${keep.name} — ${LEAD_KINDS.find(k => k.id === kind)!.en}, ${keep.locality}. Call soon.`, url: '/?tab=partners' });
+    db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', lead.id, 'SHOP_QR_LEAD', `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ''}${home ? `; home ${home.id}` : ''})`);
+    void pushTo(p.brokerId, { kind: 'matches', title: `New lead from ${p.shopName}`, body: `${keep.name} — ${LEAD_KINDS.find(k => k.id === kind)!.en}, ${keep.locality}${home ? ` · ${home.title}` : ''}. Call soon.`, url: '/?tab=partners' });
     res.redirect(303, `/q/${p.qrCode}/thanks`);
   });
 

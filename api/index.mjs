@@ -78906,6 +78906,18 @@ var import_express26 = __toESM(require_express2(), 1);
 var import_qrcode = __toESM(require_lib5(), 1);
 import crypto19 from "crypto";
 
+// src/shared/visitAckRules.ts
+var ACK_VERSION = "v1";
+var ACK_LIMITS = { otpMinutes: 10, otpTries: 5, askPerHour: 8 };
+var ackText = (who, what) => ({
+  hi: `\u092E\u0948\u0902 \u092E\u093E\u0928\u0924\u093E/\u092E\u093E\u0928\u0924\u0940 \u0939\u0942\u0901 \u0915\u093F \u201C${what}\u201D \u0915\u0940 \u092F\u0939 \u0935\u093F\u091C\u093C\u093F\u091F ${who} \u0915\u0947 \u091C\u093C\u0930\u093F\u090F \u0939\u094B \u0930\u0939\u0940 \u0939\u0948\u0964 \u0938\u0941\u0930\u0915\u094D\u0937\u093E \u0905\u0935\u0927\u093F \u0915\u0947 \u0926\u094C\u0930\u093E\u0928 \u092E\u0948\u0902 \u0907\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0915\u0947 \u092E\u093E\u0932\u093F\u0915 \u092F\u093E \u092C\u093F\u0932\u094D\u0921\u0930 \u0938\u0947, \u092F\u093E \u0909\u0928\u0915\u0940 \u0913\u0930 \u0938\u0947 \u0915\u093F\u0938\u0940 \u0938\u0947, ${who} \u0915\u094B \u092C\u0940\u091A \u092E\u0947\u0902 \u0930\u0916\u0947 \u092C\u093F\u0928\u093E \u0938\u0940\u0927\u0947 \u0938\u094C\u0926\u093E, \u092C\u093E\u0924\u091A\u0940\u0924 \u092F\u093E \u092D\u0941\u0917\u0924\u093E\u0928 \u0928\u0939\u0940\u0902 \u0915\u0930\u0942\u0901\u0917\u093E/\u0915\u0930\u0942\u0901\u0917\u0940\u0964`,
+  en: `I confirm that this visit to \u201C${what}\u201D is arranged through ${who}. During the protection period I will not deal, negotiate or pay directly with the owner or builder of this property / project, or anyone on their behalf, without ${who} being involved.`
+});
+var ACK_NOTE = {
+  hi: "\u092F\u0939 \u0906\u092A\u0915\u0940 \u0938\u0939\u092E\u0924\u093F \u0915\u093E \u0930\u093F\u0915\u0949\u0930\u094D\u0921 \u0939\u0948\u0964 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0932\u0947\u0924\u093E\u0964 \u0906\u092A\u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0938\u093F\u0930\u094D\u092B\u093C \u090F\u0915-\u0924\u0930\u092B\u093C\u093E \u0939\u0948\u0936 \u0914\u0930 \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915\u094B\u0902 \u0915\u0947 \u0930\u0942\u092A \u092E\u0947\u0902 \u0930\u0916\u093E \u091C\u093E\u0924\u093E \u0939\u0948\u0964",
+  en: "This is a record of your agreement. GENZ takes no money from you. Your mobile is kept only as a one-way hash plus its last 4 digits."
+};
+
 // src/shared/shopPartner.ts
 var PARTNER_LIMITS = {
   maxPct: 50,
@@ -79085,7 +79097,7 @@ function partnerView(p) {
 function leadView(l) {
   const links = linksFor(l);
   const p = partnerOf(l.partnerId);
-  return { ...l, shopName: p?.shopName || "", links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30) };
+  return { ...l, shopName: p?.shopName || "", city: p?.city || "", links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30) };
 }
 function createShopPartnerRouter() {
   const r = (0, import_express25.Router)();
@@ -79311,6 +79323,9 @@ button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;f
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kinds label{margin:0;display:flex;align-items:center;gap:8px;border:1px solid #ccc;border-radius:12px;padding:12px;font-size:14px;background:#fff}
 .ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px}.ck input{width:20px;height:20px;margin-top:2px}.hp{position:absolute;left:-9999px}
 .lead{border-top:1px solid #eee;padding:10px 0}.chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;background:#eef1f7;margin:2px 4px 0 0}.chip.ok{background:#dcfce7;color:#166534}.chip.w{background:#fef3c7;color:#92400e}.chip.x{background:#fee2e2;color:#991b1b}
+.hms{display:grid;gap:10px;margin-top:8px}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
+.hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
+.net{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;margin-top:6px}.big2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.big2 .btn{text-align:center;padding:14px 8px}.pick{background:#e9f7ee;border:1px solid #86efac}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}`;
 var shell = (title, body) => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc5(title)}</title><style>${CSS2}</style></head><body><div class="w">${body}</div></body></html>`;
 var noStore = (res) => {
@@ -79332,24 +79347,51 @@ function createPartnerQrRouter() {
   const form = import_express26.default.urlencoded({ extended: false, limit: "20kb" });
   const byCode = (code) => /^[A-Z2-9]{8}$/.test(String(code).toUpperCase()) ? st8().shopPartners.find((p) => p.qrCode === String(code).toUpperCase()) : void 0;
   const notLive = (res, p) => res.status(p ? 200 : 404).send(shell("GENZ", `<div class="card"><p class="t"><b>${p?.status === "PENDING" ? "\u092F\u0939 QR \u0905\u092D\u0940 \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u0941\u0906 \u0939\u0948\u0964" : "\u092F\u0939 QR \u0905\u092D\u0940 \u0905\u0928\u0941\u0930\u094B\u0927 \u0928\u0939\u0940\u0902 \u0932\u0947 \u0930\u0939\u093E\u0964"}</b></p><p class="t">${p?.status === "PENDING" ? "This QR is not active yet." : "This QR is not taking requests right now."}</p></div>`));
-  const page2 = (res, p, msg = "", keep = {}) => {
+  const homesOf = (b) => b && b.role === "BROKER" && b.verificationStatus === "VERIFIED" && b.publicCard?.enabled ? shownHomes(b) : [];
+  const homeCards = (b, p, homes) => {
+    const wm = `${brandOf(b).displayName} \xB7 GENZ`;
+    const one = (h) => {
+      const ph = pagePhotos(h)[0];
+      const rent = h.transactionType !== "Sale";
+      const net = canShow(b, h) === "NETWORK";
+      return `<article class="hm" id="h-${esc5(h.id)}"><div class="ph${ph ? "" : " nophoto"}"><canvas width="640" height="400"${ph ? ` data-src="${esc5(ph)}"` : ""} data-wm="${esc5(wm)}" aria-label="${esc5(h.title)}"></canvas><span class="np">\u{1F4F7}</span></div>
+<div class="bd"><div class="pr">${esc5(priceShort(h.askingPrice))}${rent ? " <small>/ \u092E\u093E\u0939</small>" : ""}</div><div class="tt">${esc5(h.title)}</div><div class="sb">${esc5(h.propertyType)} \xB7 ${esc5(h.locality)}, ${esc5(h.city)}</div>${net ? '<span class="net">GENZ \u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 / GENZ network listing</span>' : ""}
+<div class="row"><a class="btn g" href="/q/${esc5(p.qrCode)}?home=${encodeURIComponent(h.id)}#form" data-testid="qr-interested">\u{1F44D} \u092E\u0941\u091D\u0947 \u092A\u0938\u0902\u0926 \u0939\u0948 / I'm interested</a></div></div></article>`;
+    };
+    const first2 = homes.slice(0, 6);
+    const rest = homes.slice(6);
+    return `<h2>\u092E\u0947\u0930\u0947 \u092A\u093E\u0938 \u092F\u0947 \u0918\u0930 \u0939\u0948\u0902 / Homes I can show you <small>(${homes.length})</small></h2><div class="hms">${first2.map(one).join("")}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">\u0914\u0930 ${rest.length} \u0918\u0930 / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join("")}</div></details>` : ""}<p class="small" style="margin:8px 4px">\u{1F512} \u092A\u0942\u0930\u093E \u092A\u0924\u093E \u0914\u0930 \u092E\u093E\u0932\u093F\u0915 \u0915\u0940 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0930\u0964 / Exact address and owner details only on a verified visit.</p>`;
+  };
+  const page2 = (res, p, msg = "", keep = {}, wantQuery = {}) => {
     const b = userOf(p.brokerId);
-    const kinds = LEAD_KINDS.map((k) => `<label><input type="radio" name="kind" value="${k.id}" ${keep.kind === k.id ? "checked" : ""} required> ${k.hi}<br><small>${k.en}</small></label>`).join("");
+    const homes = homesOf(b);
+    const picked = homes.find((h) => h.id === (keep.home || str(wantQuery.home, 40)));
+    const want = str(wantQuery.want, 6);
+    const preKind = keep.kind || (picked ? picked.transactionType === "Sale" ? "BUY" : "RENT_IN" : want === "buy" ? "BUY" : want === "sell" ? "SELL" : "");
+    const kinds = LEAD_KINDS.map((k) => `<label><input type="radio" name="kind" value="${k.id}" ${preKind === k.id ? "checked" : ""} required> ${k.hi}<br><small>${k.en}</small></label>`).join("");
     const types2 = ["", "Flat", "House", "Plot", "Shop", "Office", "Warehouse", "Other"];
+    const who = b?.name || "\u092C\u094D\u0930\u094B\u0915\u0930";
+    const ack = ackText(who, picked ? picked.title : "\u092C\u094D\u0930\u094B\u0915\u0930 \u0926\u094D\u0935\u093E\u0930\u093E \u0926\u093F\u0916\u093E\u0908 \u091C\u093E\u0928\u0947 \u0935\u093E\u0932\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / the properties shown by the broker");
     res.send(shell("\u092E\u0915\u093E\u0928 / \u0926\u0941\u0915\u093E\u0928 / \u092A\u094D\u0932\u0949\u091F \u2014 GENZ", `<div class="top"><h1>\u092E\u0915\u093E\u0928 \xB7 \u0926\u0941\u0915\u093E\u0928 \xB7 \u092A\u094D\u0932\u0949\u091F</h1><p>\u0915\u093F\u0930\u093E\u092F\u093E \u092F\u093E \u0916\u093C\u0930\u0940\u0926-\u092C\u093F\u0915\u094D\u0930\u0940 \u2014 \u0905\u092A\u0928\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0932\u093F\u0916\u0947\u0902 \xB7 ${esc5(p.shopName)}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
-<div class="card"><p class="t">${esc5(b?.name || "GENZ broker")}${b?.reraNumber ? ` \xB7 RERA ${esc5(b.reraNumber)}` : ""} \u0906\u092A\u0938\u0947 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0917\u0947\u0964 <small>A GENZ-verified broker will call you.</small></p>
-<form method="post" action="/q/${esc5(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}"><input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
+<div class="card"><p class="t">${esc5(who)}${b?.reraNumber ? ` \xB7 RERA ${esc5(b.reraNumber)}` : ""} \u0906\u092A\u0938\u0947 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0917\u0947\u0964 <small>A GENZ-verified broker will call you.</small></p>
+<div class="big2"><a class="btn g" href="/q/${esc5(p.qrCode)}?want=buy#form" data-testid="qr-want-home">\u{1F3E0} \u092E\u0941\u091D\u0947 \u0918\u0930 \u091A\u093E\u0939\u093F\u090F<br><small style="color:#e9ffe9">I need a home</small></a><a class="btn l" href="/q/${esc5(p.qrCode)}?want=sell#form" data-testid="qr-want-list">\u{1F4CB} \u092E\u0941\u091D\u0947 \u0905\u092A\u0928\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0926\u0947\u0928\u0940 \u0939\u0948<br><small>I want to list my property</small></a></div></div>
+${homes.length && b ? homeCards(b, p, homes) : ""}
+<div class="card${picked ? " pick" : ""}" id="form">${picked ? `<p class="t"><b>\u{1F44D} ${esc5(picked.title)}</b> \xB7 ${esc5(priceShort(picked.askingPrice))}<br><small>${esc5(picked.locality)}, ${esc5(picked.city)} \u2014 \u0906\u092A\u0928\u0947 \u092F\u0939 \u0918\u0930 \u091A\u0941\u0928\u093E \u0939\u0948 / you chose this home</small></p>` : ""}
+<form method="post" action="/q/${esc5(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc5(picked.id)}">` : ""}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
 <label>\u0906\u092A\u0915\u094B \u0915\u094D\u092F\u093E \u091A\u093E\u0939\u093F\u090F? / What do you need?</label><div class="kinds">${kinds}</div>
 <label>\u0928\u093E\u092E / Name</label><input type="text" name="name" maxlength="80" required value="${esc5(keep.name || "")}" autocomplete="name">
 <label>\u092E\u094B\u092C\u093E\u0907\u0932 / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required value="${esc5(keep.phone || "")}" autocomplete="tel-national" placeholder="98XXXXXXXX">
-<label>\u0907\u0932\u093E\u0915\u093E / Area</label><input type="text" name="locality" maxlength="80" required value="${esc5(keep.locality || p.area)}">
+<label>\u0907\u0932\u093E\u0915\u093E / Area</label><input type="text" name="locality" maxlength="80" required value="${esc5(keep.locality || (picked ? picked.locality : p.area))}">
 <label>\u092C\u091C\u091F / \u0915\u093F\u0930\u093E\u092F\u093E (\u0905\u0902\u0926\u093E\u091C\u093C\u0928) / Budget or rent</label><input type="text" name="budget" maxlength="60" value="${esc5(keep.budget || "")}" placeholder="\u091C\u0948\u0938\u0947 40 \u0932\u093E\u0916 / 12,000 \u092E\u0939\u0940\u0928\u093E">
 <label>\u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Property type</label><select name="ptype">${types2.map((x) => `<option value="${x}" ${keep.ptype === x ? "selected" : ""}>${x || "\u2014 \u0915\u094B\u0908 \u092D\u0940 / Any \u2014"}</option>`).join("")}</select>
 <label>\u0915\u0941\u091B \u0914\u0930 / Anything else</label><textarea name="note" rows="2" maxlength="300">${esc5(keep.note || "")}</textarea>
-<label class="ck"><input type="checkbox" name="consent" value="1" required><span>\u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F ${esc5(b?.name || "\u092F\u0939 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0907\u0938 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902 \u092E\u0941\u091D\u0938\u0947 \u092B\u093C\u094B\u0928 / WhatsApp \u092A\u0930 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0964 \u092E\u0947\u0930\u093E \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0926\u0941\u0915\u093E\u0928 \u0935\u093E\u0932\u0947 \u0915\u094B \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 <small>I agree that this broker may contact me about this. The shop does not see my full number.</small></span></label>
+<div class="card warn" style="margin-top:12px" id="promise"><p class="t"><b>\u0916\u093C\u0930\u0940\u0926\u0928\u0947 \u092F\u093E \u0915\u093F\u0930\u093E\u092F\u0947 \u092A\u0930 \u0932\u0947\u0928\u0947 \u0935\u093E\u0932\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F \xB7 For buyers and renters</b></p><p class="t">${esc5(ack.hi)}</p><p class="t"><small>${esc5(ack.en)}</small></p>
+<label class="ck"><input type="checkbox" name="direct" value="1" ${keep.direct === "1" ? "checked" : ""}><span>\u092E\u0948\u0902 \u092F\u0939 \u092E\u093E\u0928\u0924\u093E/\u092E\u093E\u0928\u0924\u0940 \u0939\u0942\u0901\u0964 <small>I agree to this.</small></span></label>
+<label>\u0905\u092A\u0928\u093E \u0928\u093E\u092E \u0932\u093F\u0916\u0915\u0930 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 \u0915\u0930\u0947\u0902 / Sign by typing your name</label><input type="text" name="sign" maxlength="80" value="${esc5(keep.sign || "")}" autocomplete="off"><p class="small">\u092F\u0939 \u0906\u092A\u0915\u0940 \u0938\u0939\u092E\u0924\u093F \u0915\u093E \u0930\u093F\u0915\u0949\u0930\u094D\u0921 \u0939\u0948 \u2014 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0932\u0947\u0924\u093E\u0964 / This is a record of your agreement \u2014 GENZ takes no money from you.</p></div>
+<label class="ck"><input type="checkbox" name="consent" value="1" required><span>\u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F ${esc5(who)} \u0907\u0938 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902 \u092E\u0941\u091D\u0938\u0947 \u092B\u093C\u094B\u0928 / WhatsApp \u092A\u0930 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0964 \u092E\u0947\u0930\u093E \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0926\u0941\u0915\u093E\u0928 \u0935\u093E\u0932\u0947 \u0915\u094B \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 <small>I agree that this broker may contact me by phone / WhatsApp. The shop will not see my full number.</small></span></label>
 <div class="row"><button class="g" type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
-<p class="small" style="margin:12px 4px">GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964 \u0915\u094B\u0908 \u092D\u0940 \u0930\u0915\u092E \u0926\u0947\u0928\u0947 \u0938\u0947 \u092A\u0939\u0932\u0947 \u0915\u093E\u0917\u091C\u093C \u0914\u0930 RERA \u091C\u093C\u0930\u0942\u0930 \u091C\u093E\u0901\u091A\u0947\u0902\u0964 / GENZ never asks you for money.</p>`));
+<p class="small" style="margin:12px 4px">GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964 \u0915\u094B\u0908 \u092D\u0940 \u0930\u0915\u092E \u0926\u0947\u0928\u0947 \u0938\u0947 \u092A\u0939\u0932\u0947 \u0915\u093E\u0917\u091C\u093C \u0914\u0930 RERA \u091C\u093C\u0930\u0942\u0930 \u091C\u093E\u0901\u091A\u0947\u0902\u0964 / GENZ never asks you for money.</p>${homes.length ? '<script src="/c/page.js" defer></script>' : ""}`));
   };
   r.get("/poster.js", (_req, res) => {
     res.set({ "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" });
@@ -79379,14 +79421,14 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     p.scans += 1;
     p.lastScanAt = nowIso17();
     db.save();
-    page2(res, p);
+    page2(res, p, "", {}, req.query);
   });
   r.post("/:code", rateLimit("sp-lead-ip", 20, 36e5), form, (req, res) => {
     noStore(res);
     const p = byCode(req.params.code);
     if (!p || p.status !== "ACTIVE") return notLive(res, p);
     const body = req.body || {};
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300) };
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === "1" ? "1" : "" };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`);
     if (!formTsOk(body.t)) return page2(res, p, "\u0915\u0943\u092A\u092F\u093E \u092B\u093C\u0949\u0930\u094D\u092E \u0926\u094B\u092C\u093E\u0930\u093E \u092D\u0930\u0947\u0902\u0964 / Please fill the form again.", keep);
     const kind = LEAD_KINDS.find((k) => k.id === keep.kind)?.id;
@@ -79396,6 +79438,10 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     if (!PHONE_RE4.test(phone)) return page2(res, p, "\u0938\u0939\u0940 10 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0932\u093F\u0916\u0947\u0902\u0964 / Write a valid 10-digit mobile number.", keep);
     if (keep.locality.length < 2) return page2(res, p, "\u0907\u0932\u093E\u0915\u093E \u0932\u093F\u0916\u0947\u0902\u0964 / Write the area.", keep);
     if (body.consent !== "1") return page2(res, p, "\u0938\u0939\u092E\u0924\u093F \u0935\u093E\u0932\u0947 \u092C\u0949\u0915\u094D\u0938 \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902\u0964 / Tick the consent box.", keep);
+    const buyerSide = kind === "BUY" || kind === "RENT_IN";
+    if (buyerSide && (keep.direct !== "1" || keep.sign.length < 2)) return page2(res, p, "\u0916\u093C\u0930\u0940\u0926\u0928\u0947 / \u0915\u093F\u0930\u093E\u092F\u0947 \u092A\u0930 \u0932\u0947\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u201C\u0938\u0940\u0927\u093E \u0938\u094C\u0926\u093E \u0928\u0939\u0940\u0902\u201D \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902 \u0914\u0930 \u0905\u092A\u0928\u093E \u0928\u093E\u092E \u0932\u093F\u0916\u0915\u0930 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 \u0915\u0930\u0947\u0902\u0964 / To continue, tick the \u201Cno direct deal\u201D promise and sign with your name.", keep);
+    const broker = userOf(p.brokerId);
+    const home = keep.home ? homesOf(broker).find((h) => h.id === keep.home) : void 0;
     if (hit(`sp-qr:${p.id}`, PARTNER_LIMITS.leadsPerQrPerDay, 864e5) > 0) return page2(res, p, "\u0906\u091C \u0907\u0938 QR \u092A\u0930 \u092C\u0939\u0941\u0924 \u0905\u0928\u0941\u0930\u094B\u0927 \u0906 \u091A\u0941\u0915\u0947 \u2014 \u0915\u0932 \u092B\u093F\u0930 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Too many requests on this QR today.", keep);
     if (hit(`sp-ph:${p.id}:${phone}`, 3, 864e5) > 0) return res.redirect(303, `/q/${p.qrCode}/thanks`);
     const blocked = partyBlock(phone, kind === "SELL" || kind === "RENT_OUT" ? "owner" : "buyer");
@@ -79428,9 +79474,15 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
       status: "NEW",
       history: [],
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      ...home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {},
+      ...buyerSide ? (() => {
+        const a = ackText(broker?.name || "broker", home ? home.title : "the properties shown by the broker");
+        return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } };
+      })() : {}
     };
-    hist(lead, "CUSTOMER", `Came in by scanning the QR at ${p.shopName} (consent recorded)`);
+    hist(lead, "CUSTOMER", `Came in by scanning the QR at ${p.shopName} (consent recorded)${home ? ` \xB7 interested in \u201C${home.title}\u201D${lead.homeOwn ? "" : " (another GENZ broker\u2019s listing)"}` : ""}`);
+    if (lead.promise) hist(lead, "CUSTOMER", `Agreed \u201Cno direct deal\u201D (wording ${ACK_VERSION}) and signed as \u201C${lead.promise.signName}\u201D`);
     if (kind === "BUY" || kind === "RENT_IN") {
       const has = s.clientCards.find((c) => c.brokerId === p.brokerId && phone102(c.phone) === phone && c.stage !== "LOST");
       if (has) lead.clientCardId = has.id;
@@ -79448,7 +79500,7 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
           propertyType: keep.ptype || "Any",
           transactionType: kind === "BUY" ? "Sale" : "Rent",
           tags: ["Shop QR"],
-          notes: `Via ${p.shopName} QR${keep.budget ? ` \xB7 budget ${keep.budget}` : ""}${keep.note ? ` \xB7 ${keep.note}` : ""}`,
+          notes: `Via ${p.shopName} QR${home ? ` \xB7 home: ${home.title}` : ""}${keep.budget ? ` \xB7 budget ${keep.budget}` : ""}${keep.note ? ` \xB7 ${keep.note}` : ""}`,
           stage: "NEW",
           consent: true,
           timeline: [{ at: now, kind: "CREATED", text: `From the QR at ${p.shopName}` }],
@@ -79462,8 +79514,8 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     s.partnerLeads.unshift(lead);
     hist(p, "CUSTOMER", `New ${LEAD_KINDS.find((k) => k.id === kind).en.toLowerCase()} lead (\u2022\u2022${lead.phoneLast4})`);
     db.save();
-    db.appendAuditEvent("public", "SUPERADMIN", "LEAD", lead.id, "SHOP_QR_LEAD", `Lead from shop QR ${p.id} (consent recorded)`);
-    void pushTo(p.brokerId, { kind: "matches", title: `New lead from ${p.shopName}`, body: `${keep.name} \u2014 ${LEAD_KINDS.find((k) => k.id === kind).en}, ${keep.locality}. Call soon.`, url: "/?tab=partners" });
+    db.appendAuditEvent("public", "SUPERADMIN", "LEAD", lead.id, "SHOP_QR_LEAD", `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ""}${home ? `; home ${home.id}` : ""})`);
+    void pushTo(p.brokerId, { kind: "matches", title: `New lead from ${p.shopName}`, body: `${keep.name} \u2014 ${LEAD_KINDS.find((k) => k.id === kind).en}, ${keep.locality}${home ? ` \xB7 ${home.title}` : ""}. Call soon.`, url: "/?tab=partners" });
     res.redirect(303, `/q/${p.qrCode}/thanks`);
   });
   r.get("/:code/thanks", (req, res) => {
@@ -88497,20 +88549,6 @@ var import_express55 = __toESM(require_express2(), 1);
 var import_express56 = __toESM(require_express2(), 1);
 var import_qrcode3 = __toESM(require_lib5(), 1);
 import crypto35 from "crypto";
-
-// src/shared/visitAckRules.ts
-var ACK_VERSION = "v1";
-var ACK_LIMITS = { otpMinutes: 10, otpTries: 5, askPerHour: 8 };
-var ackText = (who, what) => ({
-  hi: `\u092E\u0948\u0902 \u092E\u093E\u0928\u0924\u093E/\u092E\u093E\u0928\u0924\u0940 \u0939\u0942\u0901 \u0915\u093F \u201C${what}\u201D \u0915\u0940 \u092F\u0939 \u0935\u093F\u091C\u093C\u093F\u091F ${who} \u0915\u0947 \u091C\u093C\u0930\u093F\u090F \u0939\u094B \u0930\u0939\u0940 \u0939\u0948\u0964 \u0938\u0941\u0930\u0915\u094D\u0937\u093E \u0905\u0935\u0927\u093F \u0915\u0947 \u0926\u094C\u0930\u093E\u0928 \u092E\u0948\u0902 \u0907\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / \u092A\u094D\u0930\u094B\u091C\u0947\u0915\u094D\u091F \u0915\u0947 \u092E\u093E\u0932\u093F\u0915 \u092F\u093E \u092C\u093F\u0932\u094D\u0921\u0930 \u0938\u0947, \u092F\u093E \u0909\u0928\u0915\u0940 \u0913\u0930 \u0938\u0947 \u0915\u093F\u0938\u0940 \u0938\u0947, ${who} \u0915\u094B \u092C\u0940\u091A \u092E\u0947\u0902 \u0930\u0916\u0947 \u092C\u093F\u0928\u093E \u0938\u0940\u0927\u0947 \u0938\u094C\u0926\u093E, \u092C\u093E\u0924\u091A\u0940\u0924 \u092F\u093E \u092D\u0941\u0917\u0924\u093E\u0928 \u0928\u0939\u0940\u0902 \u0915\u0930\u0942\u0901\u0917\u093E/\u0915\u0930\u0942\u0901\u0917\u0940\u0964`,
-  en: `I confirm that this visit to \u201C${what}\u201D is arranged through ${who}. During the protection period I will not deal, negotiate or pay directly with the owner or builder of this property / project, or anyone on their behalf, without ${who} being involved.`
-});
-var ACK_NOTE = {
-  hi: "\u092F\u0939 \u0906\u092A\u0915\u0940 \u0938\u0939\u092E\u0924\u093F \u0915\u093E \u0930\u093F\u0915\u0949\u0930\u094D\u0921 \u0939\u0948\u0964 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0932\u0947\u0924\u093E\u0964 \u0906\u092A\u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0938\u093F\u0930\u094D\u092B\u093C \u090F\u0915-\u0924\u0930\u092B\u093C\u093E \u0939\u0948\u0936 \u0914\u0930 \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915\u094B\u0902 \u0915\u0947 \u0930\u0942\u092A \u092E\u0947\u0902 \u0930\u0916\u093E \u091C\u093E\u0924\u093E \u0939\u0948\u0964",
-  en: "This is a record of your agreement. GENZ takes no money from you. Your mobile is kept only as a one-way hash plus its last 4 digits."
-};
-
-// server/visitack.ts
 var st22 = () => db.getState();
 var nowIso35 = () => (/* @__PURE__ */ new Date()).toISOString();
 var esc12 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

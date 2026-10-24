@@ -1290,6 +1290,10 @@ export interface PartnerLead {
   won?: { at: string; brokerage: number; amount: number; side: 'SALE' | 'RENT' };
   payout?: { status: import('../src/shared/shopPartner.js').PayoutStatus; paidAt?: string; ref?: string; partnerAt?: string; partnerNote?: string };
   clientCardId?: string;
+  /** v64 — the home he tapped "I'm interested" on (on the broker's own public page); `homeOwn` false = another GENZ broker's listing (that broker never sees this lead) */
+  homeId?: string; homeTitle?: string; homeOwn?: boolean;
+  /** v64 — the "no direct deal" promise he ticked and signed (typed name) on the QR page; wording version + text are kept so a dispute can show what he agreed to */
+  promise?: { at: string; signName: string; version: string; text: string };
   history: { at: string; by: 'BROKER' | 'PARTNER' | 'CUSTOMER' | 'SYSTEM'; text: string }[];
   createdAt: string; updatedAt: string;
 }
