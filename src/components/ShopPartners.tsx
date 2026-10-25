@@ -161,7 +161,7 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={dark + ' !min-h-10'} data-testid="sp-lead-room" onClick={() => {
           const kindOfRoom = l.kind === 'BUY' ? 'BUYER' : l.kind === 'RENT_IN' ? 'RENTER' : 'OTHER';
-          try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}` })); } catch { /* storage blocked: the form opens empty */ }
+          try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}${l.homeTitle ? ` · ${l.homeTitle}` : ''}`.slice(0, 190), homeId: l.homeId || '', homeTitle: l.homeTitle || '' })); } catch { /* storage blocked: the form opens empty */ }
           window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
         }}><MessagesSquare className="h-4 w-4" />{tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
         {(l.kind === 'BUY' || l.kind === 'RENT_IN') && <button type="button" className={light + ' !min-h-10 !text-xs'} data-testid="sp-lead-need" onClick={() => setMode(mode === 'need' ? '' : 'need')}><Sparkles className="h-3.5 w-3.5" />{tx('No home yet? Find in network', 'घर नहीं है? नेटवर्क में ढूँढें')}</button>}

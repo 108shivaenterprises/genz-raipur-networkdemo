@@ -1,5 +1,5 @@
 import BrokerageAtPrice from './BrokerageAtPrice.js';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PropertyThumb } from './PropertyThumb.js';
 import { PageTitle } from './PageTitle.js';
 import {
@@ -177,6 +177,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     return (['overview', 'antibypass_protocol', 'chat_call', 'media_vault', 'responsibilities', 'commission_agreement', 'due_diligence', 'readiness_report', 'legal_help', 'disputes_holds'].includes(q || '') ? q : 'overview') as DealSubTab;
   });
   const [selectedVisitForQrPass, setSelectedVisitForQrPass] = useState<SiteVisit | null>(null);
+  // v67 — a visit card in the chat opens that visit's QR pass (a link can too: ?sub=visit:SV-…)
+  const pendingQr = useRef<string>((urlQ.get('sub') || '').startsWith('visit:') ? (urlQ.get('sub') || '').slice(6) : '');
 
   // Top-Level Mode: Deal Rooms vs Collaboration Proposals
   // owners and employees of a broker are not parties to the broker↔broker commission: they get the redacted view
@@ -316,6 +318,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     try {
       const res = await api.getDeal(id);
       setDealDetail(res);
+      if (pendingQr.current) { const v = (res.siteVisits || []).find((x: any) => x.id === pendingQr.current); pendingQr.current = ''; if (v) setSelectedVisitForQrPass(v as any); }
       setLoadingDetail(false);
       // v21: a GENZ admin gets the summary only (no open dispute) — nothing inside the room is requested, the tabs are hidden
       if (res.access?.level === 'SUMMARY') {
@@ -536,7 +539,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const chatKit = useDealChatKit({
     dealId: selectedDealId, active: chatOpen, meId: currentUser.id, role: currentUser.role,
     perms: permissions || ['property:read', 'sitevisit:create', 'deal:update_stage'],
-    send: sendChatBody, onOpen: (tab) => setActiveSubTab(tab as DealSubTab), onMessage: (m) => setMessages(prev => [...prev, m]),
+    send: sendChatBody, onOpen: (tab) => { if (tab.startsWith('visit:')) { const v = (dealDetail?.siteVisits || []).find((x: any) => x.id === tab.slice(6)); if (v) setSelectedVisitForQrPass(v as any); else setActiveSubTab('overview'); } else setActiveSubTab(tab as DealSubTab); }, onMessage: (m) => setMessages(prev => [...prev, m]),
     onStageChanged: () => { if (selectedDealId) loadDetail(selectedDealId); onRefreshDeals(); },
   });
   useEffect(() => {

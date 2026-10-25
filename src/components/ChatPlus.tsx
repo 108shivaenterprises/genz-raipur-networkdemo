@@ -12,7 +12,7 @@
  * needed); nothing here holds money, takes contact numbers or records voice.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, ExternalLink, FileText, Flag, Loader2, Lock, MapPin } from 'lucide-react';
+import { Building2, QrCode, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, ExternalLink, FileText, Flag, Loader2, Lock, MapPin } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -106,14 +106,17 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
     case 'VISIT': {
       const v = data?.visits.find((x) => x.id === m.refId);
       return (
-        <button type="button" onClick={open('overview')} className={`${box} flex items-center gap-2.5`} data-testid="chat-card-VISIT">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700"><CalendarClock className="h-5 w-5" aria-hidden /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-slate-900">{tx('Site visit', 'साइट विज़िट')}{v ? ` · ${when(v.scheduledTime)}` : ''}</span>
-            <span className={`block text-xs ${v?.isVerified ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{v ? (v.isVerified ? tx('Verified on site', 'साइट पर वेरिफ़ाइड') : tx('Scheduled — not verified yet', 'तय — अभी वेरिफ़ाई नहीं')) : data ? tx('Open the deal room for details', 'ब्योरे के लिए डील रूम खोलें') : '…'}</span>
-          </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-        </button>
+        <div className={box} data-testid="chat-card-VISIT">
+          <button type="button" onClick={open('overview')} className="flex w-full items-center gap-2.5 text-left">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700"><CalendarClock className="h-5 w-5" aria-hidden /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-slate-900">{tx('Site visit', 'साइट विज़िट')}{v ? ` · ${when(v.scheduledTime)}` : ''}</span>
+              <span className={`block text-xs ${v?.isVerified ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{v ? (v.isVerified ? tx('Verified on site', 'साइट पर वेरिफ़ाइड') : tx('Scheduled — not verified yet', 'तय — अभी वेरिफ़ाई नहीं')) : data ? tx('Open the deal room for details', 'ब्योरे के लिए डील रूम खोलें') : '…'}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+          </button>
+          {v && <button type="button" onClick={open(`visit:${v.id}`)} className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white" data-testid="chat-card-visit-qr"><QrCode className="h-3.5 w-3.5" aria-hidden />{v.isVerified ? tx('Visit pass', 'विज़िट पास') : tx('Visit QR Pass', 'विज़िट QR पास')}</button>}
+        </div>
       );
     }
     case 'PAPER':

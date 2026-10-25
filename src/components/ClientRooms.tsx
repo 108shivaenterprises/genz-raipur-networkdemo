@@ -177,16 +177,22 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   );
 };
 
-const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id: string) => void; defaults?: { clientName?: string; phone?: string; kind?: string; note?: string } }> = ({ onDone, defaults }) => {
+const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id: string) => void; defaults?: { clientName?: string; phone?: string; kind?: string; note?: string; homeId?: string; homeTitle?: string } }> = ({ onDone, defaults }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [f, setF] = useState({ clientName: defaults?.clientName || '', phone: defaults?.phone || '', kind: defaults?.kind || 'BUYER', note: defaults?.note || '', consent: false });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const go = async () => {
     setBusy(true); setErr('');
-    try { const r = await api.crCreate(f); onDone(r.link, f.clientName, f.phone.replace(/\D/g, '').slice(-10), r.room.id); } catch (e: any) { setErr(e?.code === 'PARTY_BLOCKED' ? tx(e.body?.error || e.message, e.body?.hi || e.message) : e.message); } finally { setBusy(false); }
+    try {
+      const r = await api.crCreate(f);
+      // v67 — the home the customer tapped “I’m interested” on goes into the room at once, so the room shows what it is for
+      if (defaults?.homeId) { try { await api.crAddItem(r.room.id, defaults.homeId); } catch { /* the broker can add it by hand */ } }
+      onDone(r.link, f.clientName, f.phone.replace(/\D/g, '').slice(-10), r.room.id);
+    } catch (e: any) { setErr(e?.code === 'PARTY_BLOCKED' ? tx(e.body?.error || e.message, e.body?.hi || e.message) : e.message); } finally { setBusy(false); }
   };
   return (
     <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+      {defaults?.homeTitle && <p className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900" data-testid="room-home">👍 {tx('Interested in', 'पसंद आया')}: {defaults.homeTitle} — {tx('it will be added to the room', 'रूम में अपने आप जुड़ेगा')}</p>}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <input className={inp} placeholder={tx('Client name', 'क्लाइंट का नाम')} value={f.clientName} onChange={e => setF({ ...f, clientName: e.target.value })} data-testid="room-name" />
         <input className={inp} inputMode="numeric" placeholder={tx('Client mobile (10 digits)', 'क्लाइंट का मोबाइल (10 अंक)')} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} data-testid="room-phone" />
