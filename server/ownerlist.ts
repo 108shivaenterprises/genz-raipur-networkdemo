@@ -39,6 +39,9 @@ const safeRef = (v: unknown) => { const r = str(v, 60); return /^[A-Za-z0-9][A-Z
 const OPEN = ['draft', 'pending_verification', 'active', 'under_negotiation'];
 
 export { inPool };
+/** v73 — a self-listed property (owner paid GENZ) is matched and gets offers at once, but NO token / payment entry before a broker is chosen and the mandate is signed */
+export const needsMandateFirst = (p?: Property) => !!p?.ownerListing && ['PAID', 'FREE'].includes(p.ownerListing.feeStatus) && !p.ownerListing.matchedAt;
+export const MANDATE_FIRST_MSG = 'पहले मालिक ब्रोकर चुने और मंडेट साइन हो — उसके बाद ही टोकन / पेमेंट की एंट्री होगी। / Choose a broker and sign the mandate first — only then a token or payment can be recorded.';
 export function ensureOwnerPlans() {
   const s = st();
   if (s.ownerListPlans.length) return;
@@ -62,7 +65,7 @@ export function applyOwnerListing(owner: UserProfile, data: { transactionType: s
   if (live >= plan.maxActivePerOwner) return { error: `You can keep ${plan.maxActivePerOwner} listing(s) open at a time on this plan. Close or withdraw one first.`, status: 429, code: 'PLAN_LIMIT' };
   if ((data.images || []).length > plan.maxPhotos) return { error: `This plan allows ${plan.maxPhotos} photos per listing.`, status: 400, code: 'PHOTO_LIMIT' };
   const ol: OwnerListingState = { planId: plan.id, planName: plan.name, fee: plan.fee, durationDays: plan.durationDays, refundable: plan.refundable, feeStatus: plan.fee > 0 ? 'PENDING' : 'FREE', requests: [], createdAt: now };
-  if (plan.fee === 0) { ol.liveFrom = now; ol.liveUntil = new Date(Date.now() + plan.durationDays * DAY).toISOString(); return { patch: { listingStatus: 'pending_verification', verificationStatus: 'PENDING', ownerListing: ol } }; }
+  if (plan.fee === 0) { ol.liveFrom = now; ol.liveUntil = new Date(Date.now() + plan.durationDays * DAY).toISOString(); return { patch: { listingStatus: 'active', verificationStatus: 'VERIFIED', ownerListing: ol } }; }
   return { patch: { listingStatus: 'draft', verificationStatus: 'PENDING', ownerListing: ol } };
 }
 
@@ -78,7 +81,7 @@ export function onMandateActive(prop: Property) {
 export function sweepOwnerListings(now = Date.now()): number {
   let n = 0;
   for (const p of st().properties) {
-    const o = p.ownerListing; if (!o || p.listingStatus !== 'pending_verification' || o.assignedBrokerId) continue;
+    const o = p.ownerListing; if (!o || !['pending_verification', 'active'].includes(p.listingStatus) || o.assignedBrokerId || o.matchedAt) continue;
     if (['FREE', 'PAID'].includes(o.feeStatus) && o.liveUntil && Date.parse(o.liveUntil) < now) {
       o.feeStatus = 'EXPIRED'; p.listingStatus = 'draft'; p.updatedAt = nowIso(); n++;
       alert(p.ownerId, 'deals', 'Your listing time is over', `${p.title} — renew to show it to brokers again.`, '/');
@@ -201,7 +204,7 @@ export function createOwnerListingRouter() {
     if (o.feeStatus !== 'EXPIRED') return bad(res, 'Only a listing whose time is over can be renewed', 409);
     const plan = pickOwnerPlan(st().ownerListPlans, p.transactionType, p.propertyType); if (!plan) return bad(res, 'No listing plan covers this kind of property now', 409, 'NO_PLAN');
     Object.assign(o, { planId: plan.id, planName: plan.name, fee: plan.fee, durationDays: plan.durationDays, refundable: plan.refundable, ref: undefined, paidOn: undefined, confirmedAt: undefined, confirmedById: undefined });
-    if (plan.fee === 0) { o.feeStatus = 'FREE'; o.liveFrom = nowIso(); o.liveUntil = new Date(Date.now() + plan.durationDays * DAY).toISOString(); p.listingStatus = 'pending_verification'; } else o.feeStatus = 'PENDING';
+    if (plan.fee === 0) { o.feeStatus = 'FREE'; o.liveFrom = nowIso(); o.liveUntil = new Date(Date.now() + plan.durationDays * DAY).toISOString(); p.listingStatus = 'active'; p.verificationStatus = 'VERIFIED'; } else o.feeStatus = 'PENDING';
     p.updatedAt = nowIso(); db.save(); res.json({ success: true, listing: feeView(p) });
   });
   r.post('/:pid/via-broker', needs('property:create'), (req, res) => {
@@ -289,9 +292,9 @@ export function createOwnerListingRouter() {
     const u = me(); const p = st().properties.find(x => x.id === req.params.pid); const o = p?.ownerListing;
     if (!p || !o || o.feeStatus !== 'WAITING_CONFIRM') return bad(res, 'No payment is waiting on this listing', 404);
     o.feeStatus = 'PAID'; o.confirmedById = u.id; o.confirmedAt = nowIso(); o.liveFrom = nowIso(); o.liveUntil = new Date(Date.now() + o.durationDays * DAY).toISOString();
-    p.listingStatus = 'pending_verification'; p.updatedAt = nowIso(); db.save();
+    p.listingStatus = 'active'; p.verificationStatus = 'VERIFIED'; p.updatedAt = nowIso(); db.save();
     db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_CONFIRMED', `Listing fee ₹${o.fee} confirmed — listing is in the pool for ${o.durationDays} days`);
-    alert(p.ownerId, 'deals', 'Your listing is live ✔', `${p.title} — brokers can see it now. Choose a broker to start matching.`, '/');
+    alert(p.ownerId, 'deals', 'Your listing is live ✔', `${p.title} — it is live — buyers can be matched and offers can come. Before any token or payment, choose a broker and sign the mandate.`, '/');
     res.json({ success: true, listing: feeView(p) });
   });
   r.post('/:pid/reject', manage, (req, res) => {

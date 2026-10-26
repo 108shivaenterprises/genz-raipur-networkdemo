@@ -69,7 +69,7 @@ const OwnerHome: React.FC<{ goto: (t: string) => void }> = ({ goto }) => {
   return (
     <div className="space-y-3" data-testid="owner-listings">
       <div className="flex items-center justify-between gap-2">
-        <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Fee first → brokers see it → you choose one broker → mandate → matching starts.', 'पहले फ़ीस → ब्रोकर देखते हैं → आप एक ब्रोकर चुनते हैं → मंडेट → मैचिंग शुरू।')}</p></div>
+        <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Fee first → listing is live: matches and offers start → before any token or payment, choose a broker and sign the mandate.', 'पहले फ़ीस → लिस्टिंग लाइव: मैच और ऑफ़र शुरू → टोकन / पेमेंट से पहले ब्रोकर चुनें और मंडेट साइन करें।')}</p></div>
         <button type="button" className={btn} onClick={() => goto('properties')} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>
       </div>
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
@@ -80,7 +80,7 @@ const OwnerHome: React.FC<{ goto: (t: string) => void }> = ({ goto }) => {
           <div key={l.propertyId} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid={`owner-listing-${l.propertyId}`}>
             <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-sm font-bold text-slate-900">{l.title}</div><div className="text-[11px] text-slate-500">{l.locality}, {l.city} · {formatINR(l.askingPrice)} · {l.propertyId}</div></div></div>
             <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold ${s[2]}`} data-testid="owner-listing-status">{tx(s[0], s[1])}</span>
-            {l.listingStatus === 'active' && <p className="text-[11px] font-semibold text-emerald-700">✔ {tx('Matching is on — your broker is working on it.', 'मैचिंग चालू है — आपका ब्रोकर काम कर रहा है।')}</p>}
+            {l.listingStatus === 'active' && <p className="text-[11px] font-semibold text-emerald-700">✔ {tx('Live — matching and offers are on.', 'लाइव — मैचिंग और ऑफ़र चालू हैं।')}</p>}
             {['PENDING', 'REJECTED', 'EXPIRED'].includes(l.feeStatus) && l.fee > 0 && l.feeStatus !== 'EXPIRED' && (
               <div className="space-y-2 rounded-lg bg-amber-50 p-2.5 text-xs">
                 <div>{tx('Listing fee', 'लिस्टिंग फ़ीस')}: <b>{formatINR(l.fee)}</b> · {l.durationDays} {tx('days in the pool', 'दिन पूल में')}{l.refundable ? ` · ${tx('refundable on title check / deal', 'टाइटल जाँच / डील पर वापस')}` : ''}</div>
@@ -102,7 +102,7 @@ const OwnerHome: React.FC<{ goto: (t: string) => void }> = ({ goto }) => {
             )}
             {l.assignedBrokerId && l.listingStatus !== 'active' && (
               <div className="space-y-2 rounded-lg bg-indigo-50 p-2.5 text-xs">
-                <p>{tx('You chose a broker. Matching starts after you both sign the mandate. You paid GENZ the listing fee, so the broker cannot ask you for brokerage — he earns from the buyer only.', 'आपने ब्रोकर चुन लिया। आप दोनों के मंडेट पर साइन करने के बाद मैचिंग शुरू होगी। आपने GENZ को लिस्टिंग फ़ीस दी है, इसलिए ब्रोकर आपसे ब्रोकरेज नहीं माँग सकता — वह सिर्फ़ ख़रीदार से लेगा।')}</p>
+                <p>{tx('You chose a broker. Token / payment entries start after you both sign the mandate. You paid GENZ the listing fee, so the broker cannot ask you for brokerage — he earns from the buyer only.', 'आपने ब्रोकर चुन लिया। आप दोनों के मंडेट पर साइन करने के बाद टोकन / पेमेंट की एंट्री शुरू होगी। आपने GENZ को लिस्टिंग फ़ीस दी है, इसलिए ब्रोकर आपसे ब्रोकरेज नहीं माँग सकता — वह सिर्फ़ ख़रीदार से लेगा।')}</p>
                 <div className="flex gap-2"><button type="button" className={btn} onClick={() => goto('properties')}>{tx('Make the mandate', 'मंडेट बनाएँ')}</button><button type="button" className={ghost} disabled={busy} onClick={() => run(() => api.olUnassign(l.propertyId))}>{tx('Take back', 'वापस लें')}</button></div>
               </div>
             )}
@@ -120,7 +120,7 @@ const OwnerPool: React.FC = () => {
   if (!d) return err ? <p className="text-xs text-red-700">{err}</p> : <Loader2 className="h-4 w-4 animate-spin" />;
   return (
     <div className="space-y-3" data-testid="owner-pool">
-      <div><h2 className="text-base font-bold text-slate-900">{tx('Owner pool', 'मालिक पूल')}</h2><p className="text-[11px] text-slate-500">{tx('Homes listed by owners themselves. You can see them, but they are not matched until the owner chooses you and the mandate is signed. Owner phone and address stay hidden.', 'मालिकों की ख़ुद डाली लिस्टिंग। आप इन्हें देख सकते हैं, पर मैच तभी होंगी जब मालिक आपको चुने और मंडेट साइन हो। मालिक का फ़ोन और पता छिपा रहता है।')}</p></div>
+      <div><h2 className="text-base font-bold text-slate-900">{tx('Owner pool', 'मालिक पूल')}</h2><p className="text-[11px] text-slate-500">{tx('Homes listed by owners themselves. You can see them, and can bring buyers and offers now; a token or payment can be recorded only after the owner chooses you and the mandate is signed. Owner phone and address stay hidden.', 'मालिकों की ख़ुद डाली लिस्टिंग। आप इन्हें देख सकते हैं, और ख़रीदार / ऑफ़र अभी ला सकते हैं; टोकन या पेमेंट की एंट्री तभी होगी जब मालिक आपको चुने और मंडेट साइन हो। मालिक का फ़ोन और पता छिपा रहता है।')}</p></div>
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
       {d.pool.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No owner listing in the pool now.', 'अभी पूल में कोई मालिक-लिस्टिंग नहीं।')}</p>}
       {d.pool.map((p: any) => (

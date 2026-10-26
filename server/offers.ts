@@ -9,6 +9,7 @@
  *                       (amount + reference + validity). The buyer side acknowledges. The listing is locked (under negotiation)
  *                       until the token is completed, refunded, forfeited after expiry, or auto-released after a grace period.
  */
+import { needsMandateFirst, MANDATE_FIRST_MSG } from './ownerlist.js';
 import { liveOfferCap } from './tiers.js';
 import { tieupSplitFor } from './network.js';
 import { PROBATION_LIVE_OFFERS } from '../src/shared/networkRules.js';
@@ -299,6 +300,7 @@ export function createOffersRouter() {
     const u = self(); const l = load(req, res); if (!l) return; const { o, p } = l;
     if (!isPrincipal(u, p) || !canDecide(u, p, o)) return bad(res, 'Only the property side (the owner if the listing broker brought the buyer) can record a token', 403);
     if (o.status !== 'ACCEPTED') return bad(res, 'A token can be recorded only on an accepted offer', 409);
+    if (needsMandateFirst(p)) return bad(res, MANDATE_FIRST_MSG, 409);
     const amount = Number(req.body?.amount); const ref = String(req.body?.ref || '').trim();
     const days = Math.min(TOKEN_MAX_DAYS, Math.max(1, Math.round(Number(req.body?.validDays ?? TOKEN_DEFAULT_DAYS))));
     if (!Number.isFinite(amount) || amount <= 0 || amount > o.amount) return bad(res, 'Token amount must be more than 0 and not more than the offer');

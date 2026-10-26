@@ -61,6 +61,6 @@ export function planProblem(p: Partial<OwnerListPlan>): string | null {
 
 /** is a self-listed property in the broker pool (seen by brokers, never matched)? */
 export const inPool = (p: { ownerListing?: OwnerListingState; listingStatus: string }, now = Date.now()) => {
-  const o = p.ownerListing; if (!o || p.listingStatus !== 'pending_verification') return false;
+  const o = p.ownerListing; if (!o || !['pending_verification', 'active'].includes(p.listingStatus)) return false;
   return (o.feeStatus === 'FREE' || o.feeStatus === 'PAID') && !o.assignedBrokerId && !!o.liveUntil && Date.parse(o.liveUntil) > now;
 };
