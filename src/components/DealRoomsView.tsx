@@ -1,4 +1,5 @@
 import BrokerageAtPrice from './BrokerageAtPrice.js';
+import { DealHisaab } from './DealHisaab.js';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PropertyThumb } from './PropertyThumb.js';
 import { PageTitle } from './PageTitle.js';
@@ -1060,6 +1061,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     </div>
 
                     {dealDetail?.brokerage?.mandate && !hideCommercials && <BrokerageAtPrice b={dealDetail.brokerage} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />}
+                    {(isOwnerViewer || !activeDeal?.commercialsHidden) && !activeDeal?.summaryOnly && <DealHisaab dealId={activeDeal.id} />}
 
                     <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-1">
                       <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">

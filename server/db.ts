@@ -111,6 +111,19 @@ export interface PropertyOffer {
   updatedAt: string;
 }
 
+export type PayMode = 'UPI' | 'BANK' | 'CASH' | 'CHEQUE';
+export interface DealPayment {
+  id: string; kind: 'TOKEN' | 'PART' | 'FINAL' | 'REFUND'; amount: number; mode: PayMode; ref?: string; paidOn: string; note?: string;
+  byId: string; byName: string; at: string;
+  /** the owner (or the other deal broker) confirmed he saw it */
+  ack?: { byId: string; byName: string; at: string };
+  void?: { at: string; byId: string; reason: string };
+}
+export interface BrokerBookEntry {
+  id: string; dir: 'IN' | 'OUT'; party: 'OWNER' | 'BUYER' | 'BROKER' | 'OTHER'; amount: number; mode: PayMode; ref?: string; paidOn: string; note?: string; at: string;
+  void?: { at: string; reason: string };
+}
+
 /** v14 — registry / payment / agreement milestone on a deal room. The side that did it marks it done; the other side confirms. */
 export interface DealMilestone {
   id: string;
@@ -768,6 +781,10 @@ export interface DealRoom {
   sideUndertaking?: Record<string, string>;
   /** v41 — brokerId → fee he wrote down as received from his own client (self-recorded) */
   sideReceipts?: Record<string, { entries: { id: string; amount: number; ref: string; paidOn: string; at: string }[]; total: number }>;
+  /** v71 — हिसाब: money the BUYER paid / got back on the sale itself (token, part, final, refund). Recorded by a deal broker, confirmed by the owner. GENZ holds none of it. */
+  payments?: DealPayment[];
+  /** v71 — हिसाब: each broker's PRIVATE brokerage book (what he received / paid out); the other broker never sees it */
+  brokerBook?: Record<string, { due?: number; entries: BrokerBookEntry[] }>;
   disputeId?: string;
   /** v47 — the deal did not happen: asked by one broker, agreed by the other (or no reply in 7 days) → CLOSED; can be reopened */
   closure?: import('../src/shared/dealClose.js').DealClosure;

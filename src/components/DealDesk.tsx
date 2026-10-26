@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Bell, Handshake, Home, History, Plus, Check, X, QrCode, Printer, Trash2, ChevronDown, ShieldCheck, Calculator, MessagesSquare } from 'lucide-react';
+import { Loader2, Bell, Handshake, Home, History, Plus, Check, X, QrCode, Printer, Trash2, ChevronDown, ShieldCheck, Calculator, MessagesSquare, Wallet } from 'lucide-react';
 import { BuyerBondsTab, BondBlockedNotice } from './BuyerBond.js';
 import { ClientRoomsTab } from './ClientRooms.js';
 import { CostSheet } from './CostSheet.js';
+import { HisaabTab } from './DealHisaab.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -28,7 +29,7 @@ export const DealDesk: React.FC<{ currentUser: UserProfile; permissions: string[
   const canListings = hasPerm(permissions, 'listing:lifecycle');
   const canTimeline = hasPerm(permissions, 'deal:read');
   // v32 — priority order: offers & token (money) → client rooms (live chats) → my listings → buyer protection → timeline → calculator
-  const tabs = [canOffers && ['offers', 'Offers & token', 'ऑफ़र और टोकन', Handshake], hasPerm(permissions, 'clientroom:use') && ['rooms', 'Client rooms', 'क्लाइंट रूम', MessagesSquare], canListings && ['listings', 'My listings', 'मेरी लिस्टिंग', Home], hasPerm(permissions, 'offer:make', 'sitevisit:create') && currentUser.role === 'BROKER' && ['bonds', 'Buyer protection', 'खरीदार सुरक्षा', ShieldCheck], canTimeline && ['timeline', 'Deal timeline', 'डील टाइमलाइन', History], ['cost', 'Cost sheet & EMI', 'कुल ख़र्च और EMI', Calculator]].filter(Boolean) as any[];
+  const tabs = [canOffers && ['offers', 'Offers & token', 'ऑफ़र और टोकन', Handshake], canTimeline && ['hisaab', 'Accounts', 'हिसाब', Wallet], hasPerm(permissions, 'clientroom:use') && ['rooms', 'Client rooms', 'क्लाइंट रूम', MessagesSquare], canListings && ['listings', 'My listings', 'मेरी लिस्टिंग', Home], hasPerm(permissions, 'offer:make', 'sitevisit:create') && currentUser.role === 'BROKER' && ['bonds', 'Buyer protection', 'खरीदार सुरक्षा', ShieldCheck], canTimeline && ['timeline', 'Deal timeline', 'डील टाइमलाइन', History], ['cost', 'Cost sheet & EMI', 'कुल ख़र्च और EMI', Calculator]].filter(Boolean) as any[];
   const [sub, setSub] = useState<string>(() => { try { const q = new URLSearchParams(window.location.search).get('sub'); if (q && tabs.some(t => t[0] === q)) return q; } catch { /* */ } return tabs[0]?.[0] || 'offers'; });
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -56,6 +57,7 @@ export const DealDesk: React.FC<{ currentUser: UserProfile; permissions: string[
       {sub === 'offers' && canOffers && <OffersTab act={act} tick={tick} permissions={permissions} />}
       {sub === 'listings' && canListings && <ListingsTab act={act} tick={tick} currentUser={currentUser} />}
       {sub === 'timeline' && canTimeline && <TimelineTab act={act} tick={tick} />}
+      {sub === 'hisaab' && canTimeline && <HisaabTab />}
       {sub === 'bonds' && <BuyerBondsTab tick={tick} />}
       {sub === 'rooms' && <ClientRoomsTab tick={tick} />}
       {sub === 'cost' && <CostSheet />}
