@@ -12,7 +12,7 @@ import { api } from '../lib/api.js';
 import { formatINR } from '../lib/utils.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel, useReason } from '../lib/labels.js';
-import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart } from 'lucide-react';
+import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart, MessagesSquare } from 'lucide-react';
 
 interface MatchCenterViewProps {
   properties: Property[];
@@ -22,6 +22,8 @@ interface MatchCenterViewProps {
   onOpenCollaborationModal: (data: { propertyId: string; requirementId?: string; receivingBrokerId: string }) => void;
   /** broker-only action; a buyer / owner never sees the button */
   canPropose?: boolean;
+  /** v68 — my own id: a match between my own home and my own buyer is not a co-broking case */
+  meId?: string;
   /** matching a property against other customers' needs is not open to buyers */
   canMatchByProperty?: boolean;
 }
@@ -36,6 +38,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   selectedPropertyId,
   onOpenCollaborationModal,
   canPropose = true,
+  meId,
   canMatchByProperty = true,
 }) => {
   const tx = useTx();
@@ -142,6 +145,8 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
             const b = item.breakdown || {};
             const key = `${isPropMatch ? p.id : r.id}-${index}`;
             const open = why === key;
+            // v68 — my own home and my own buyer: nobody to co-broke with; open a client room instead
+            const own = !!meId && (isPropMatch ? (p?.listingBrokerId === meId && currentReq?.assignedBrokerId === meId) : (r?.assignedBrokerId === meId && currentProp?.listingBrokerId === meId));
             const tone = score >= 80 ? 'bg-emerald-100 text-emerald-800' : score >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700';
             const checks: [boolean, string, string][] = [[!!b.locationMatch, 'Location', 'इलाका'], [!!b.budgetMatch, 'Budget', 'बजट'], [!!b.typeMatch, 'Type', 'प्रकार'], [!!b.areaMatch, 'Area', 'क्षेत्रफल']];
             return (
@@ -177,7 +182,20 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                       <Heart className={`h-4 w-4 ${saved.has(p.id) ? 'fill-rose-500 text-rose-500' : ''}`} />{saved.has(p.id) ? tx('Saved', 'सेव है') : tx('Save', 'सेव करें')}
                     </button>
                   )}
-                  {canPropose && (
+                  {canPropose && own && (
+                    <button
+                      onClick={() => {
+                        const req = isPropMatch ? currentReq : r; const home = isPropMatch ? p : currentProp;
+                        try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: req?.customerName || '', phone: String(req?.customerPhone || '').replace(/\D/g, '').slice(-10), kind: 'BUYER', note: `Magic Match · ${home?.title || ''}`.slice(0, 190), homeId: home?.id || '', homeTitle: home?.title || '' })); } catch { /* storage blocked: the form opens empty */ }
+                        window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
+                      }}
+                      className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800"
+                      data-testid="match-own-room"
+                    >
+                      <MessagesSquare className="h-4 w-4" />{tx('Your own home & buyer — open client room', 'आपका अपना घर और खरीदार — क्लाइंट रूम खोलें')}
+                    </button>
+                  )}
+                  {canPropose && !own && (
                     <button
                       onClick={() => onOpenCollaborationModal({
                         propertyId: isPropMatch ? p.id : activePropId,
