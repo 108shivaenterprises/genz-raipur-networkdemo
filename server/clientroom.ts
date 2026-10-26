@@ -21,7 +21,7 @@ import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies,
 import { sendSms } from './notify.js';
 import fs from 'fs';
 import path from 'path';
-import { pushTo, pushToRoom, dropRoomPush, roomPushKey, vapidKeys, allowedEndpoint } from './webpush.js';
+import { pushTo, pushToRoom, dropRoomPush, roomPushKey, vapidKeys, allowedEndpoint, roomAlertInfo, brokerWrote } from './webpush.js';
 import { sniffMime } from '../src/shared/propDocs.js';
 import { DOC_KINDS, DOC_LIMITS, FULL_AADHAAR_DAYS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
 import { ackFor, ackLinkFor, ackBlock } from './visitack.js';
@@ -137,6 +137,8 @@ function summary(r: ClientRoom) {
     id: r.id, clientName: r.clientName, kind: r.kind, phoneLast4: r.phoneLast4, phoneSaved: !!r.phoneSealed && r.status === 'ACTIVE', createdById: r.createdById, createdByName: r.createdByName, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt, expiresAt: r.expiresAt,
     items: r.items.length, propertyIds: r.items.map(i => i.propertyId), codeAsk: !!(r.status === 'ACTIVE' && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now()), unread: unread(r), openVisits: openVisits(r), liked: r.items.filter(i => i.reaction === 'LIKE').length,
     lastMessage: last ? { from: last.from, text: last.text.slice(0, 80), at: last.at } : null, lastClientSeenAt: r.lastClientSeenAt,
+    /** v75 — does his phone get our alerts? phones = how many phones have them on */
+    alerts: r.status === 'ACTIVE' ? roomAlertInfo(r.id) : { phones: 0 },
   };
 }
 function detail(r: ClientRoom) {
@@ -227,7 +229,7 @@ export function createClientRoomRouter() {
     room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note, visitRequests: [], ...(media && (media.photos.length || media.videos.length) ? { media } : {}) });
     ev(room, `${isStaff(me()) ? `${me().name}: ` : ''}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? ' + video' : ''}` : ''}`);
     db.save();
-    tell(room, 'नई प्रॉपर्टी / A new property', 'आपके ब्रोकर ने आपके लिए एक प्रॉपर्टी जोड़ी / Your broker added a property for you');
+    tellMsg(room, 'HOME');
     res.json({ success: true, room: detail(room) });
   });
 
@@ -276,7 +278,7 @@ export function createClientRoomRouter() {
     room.messages.push({ id: rid('CRX'), from: 'BROKER', text, at: nowIso(), propertyId: validPropRef(room, req.body?.propertyId), ...(isStaff(u) ? { byId: u.id, byName: u.name } : {}) });
     room.lastBrokerSeenAt = nowIso(); ev(room, isStaff(u) ? `${u.name} (office team) wrote` : 'Broker wrote');
     db.save();
-    tell(room, 'आपके ब्रोकर का संदेश / Message from your broker', 'पढ़ने के लिए खोलें / Tap to read');
+    tellMsg(room);
     res.json({ success: true, room: detail(room) });
   });
 
@@ -389,7 +391,7 @@ export function createClientRoomRouter() {
     room.fullAadhaarAsk = req.body?.ask !== false;
     ev(room, room.fullAadhaarAsk ? 'Broker asked for the full Aadhaar (for a paper being made)' : 'Broker withdrew the full-Aadhaar request');
     room.messages.push({ id: rid('CRX'), from: 'BROKER', text: room.fullAadhaarAsk ? '🪪 काग़ज़ बनाने के लिए पूरा आधार चाहिए — नीचे “काग़ज़ भेजें” में चुनकर भेजें। 7 दिन बाद यह अपने आप मिट जाएगा।' : 'पूरा आधार अब नहीं चाहिए।', at: nowIso() });
-    db.save(); tell(room, 'Message from your broker', 'Open your room.');
+    db.save(); tellMsg(room);
     res.json({ success: true, room: detail(room) });
   });
   r.get('/:id/docs/:docId', rateLimit('cr-doc-open', 200, 3600_000), (req: Request, res: Response) => {
@@ -430,6 +432,8 @@ function pushIfSeen(_room: ClientRoom) { /* the client has no app: the broker se
 
 // ───────────────────────────── v69 — the client's phones (alerts) and the papers he sends ─────────────────────────────
 const tell = (room: ClientRoom, title: string, body: string) => { void pushToRoom(room.id, title, body, `room-${room.id}`); };
+const bName = (room: ClientRoom) => st().users.find(u => u.id === room.brokerId)?.name || 'Broker';
+const tellMsg = (room: ClientRoom, what: 'MSG' | 'HOME' = 'MSG') => { void brokerWrote(room.id, bName(room), what); };
 const DOCDIR = (roomId: string) => path.resolve(process.cwd(), 'data', 'clientdocs', roomId.replace(/[^A-Za-z0-9-]/g, ''));
 const docFile = (roomId: string, docId: string) => path.join(DOCDIR(roomId), docId.replace(/[^A-Za-z0-9-]/g, '') + '.bin');
 const docAad = (roomId: string, docId: string) => `clientroom:${roomId}:doc:${docId}`;
@@ -527,20 +531,41 @@ const CR_JS = `(function(){var TOK=(location.pathname.match(/^\\/r\\/([A-Za-z0-9
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
 var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}
 function $(i){return document.getElementById(i)}
-// v69 — the room as an app: service worker, "add to home", alerts, sending papers
+// v69/v75 — the room as an app: service worker, "add to home", alerts (one big card on top until they are ON), sending papers
 var sw=null;if('serviceWorker' in navigator&&TOK&&$('app-card')){navigator.serviceWorker.register('/sw.js').then(function(r){sw=r;setup()}).catch(function(){setup()})}else{setup()}
-var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b)b.style.display='inline-block'});
+var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b&&standalone()===false)b.style.display='inline-block'});
 function standalone(){return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
-function setup(){var c=$('app-card');if(!c)return;if(standalone()){var i=$('app-install');if(i)i.style.display='none';var ih=$('app-ios');if(ih)ih.style.display='none'}
-var ios=/iphone|ipad|ipod/i.test(navigator.userAgent);if(ios&&!standalone()&&$('app-ios'))$('app-ios').style.display='block';
-var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
-var bp=$('app-push');var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator&&(!ios||standalone());
-if(bp&&can){bp.style.display='inline-block';if(Notification.permission==='granted'){reg(true)}bp.addEventListener('click',function(){reg(false)})}else if(bp&&ios&&!standalone()){/* iPhone needs the app on the home screen first */}
+var IOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+function show(st,extra){var c=$('app-card');if(!c)return;c.style.display='block';c.setAttribute('data-alerts',st);
+var t=$('app-title'),s2=$('app-sub'),bp=$('app-push'),bl=$('app-later'),ih=$('app-ios'),bi=$('app-install');
+var on=st==='on';c.style.background=on?'#f0fdf4':'#ecfdf5';c.style.borderColor=on?'#86efac':'#0f766e';
+if(bp)bp.style.display=st==='ask'?'inline-block':'none';if(bl)bl.style.display=st==='ask'?'inline-block':'none';
+if(ih)ih.style.display=st==='ios'?'block':'none';if(bi&&(on||st==='ios'||standalone())&&!dip)bi.style.display='none';
+if(st==='on'){t.textContent='🔔 अलर्ट चालू हैं ✔ / Alerts are on';s2.textContent='ब्रोकर का संदेश आते ही इस फ़ोन पर अलर्ट आएगा — लिंक बार-बार खोलना नहीं पड़ेगा। / You will get an alert on this phone the moment your broker writes.'}
+else if(st==='ios'){t.textContent='🔔 iPhone पर अलर्ट पाने के लिए पहले होम स्क्रीन पर जोड़ें / On iPhone, add this to your home screen first';s2.textContent='iPhone में अलर्ट सिर्फ़ होम स्क्रीन वाले ऐप में आते हैं (iOS 16.4+)। / On iPhone, alerts work only in the home-screen app (iOS 16.4 or newer).'}
+else if(st==='denied'){t.textContent='🔕 अलर्ट रुके हुए हैं / Alerts are blocked';s2.textContent='फ़ोन की सेटिंग → ब्राउज़र/ऐप → Notifications में “Allow” करें, फिर यह पेज दोबारा खोलें। / Allow notifications for this page in the phone settings, then open it again.'}
+else if(st==='none'){t.textContent='🔕 इस ब्राउज़र में अलर्ट नहीं चलते / Alerts do not work in this browser';s2.textContent='Chrome (Android) या Safari-होम-स्क्रीन ऐप (iPhone) में खोलें। / Open this page in Chrome (Android) or the Safari home-screen app (iPhone).'}
+else{t.textContent='🔔 ब्रोकर का जवाब सीधे फ़ोन पर पाएँ / Get your broker’s replies on your phone';s2.textContent='लिंक बार-बार खोलना नहीं पड़ेगा — ब्रोकर के लिखते ही फ़ोन पर अलर्ट आएगा। एक बार नीचे का बटन दबाएँ। / No need to open the link again and again — tap the button once and you are alerted when your broker writes.'}
 }
+function setup(){var c=$('app-card');if(!c)return;
+var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
+var bp=$('app-push');if(bp)bp.addEventListener('click',function(){reg(false)});
+var bl=$('app-later');if(bl)bl.addEventListener('click',function(){try{localStorage.setItem('cr_later_'+TOK,String(Date.now()))}catch(e){}c.style.display='none'});
+var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator;
+if(IOS&&!standalone()){show('ios');return}
+if(!can){show('none');return}
+if(Notification.permission==='denied'){show('denied');return}
+if(Notification.permission==='granted'){reg(true);return}
+var later=0;try{later=Number(localStorage.getItem('cr_later_'+TOK))||0}catch(e){}
+if(later&&Date.now()-later<86400000){return}
+show('ask')}
 function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o}
-function reg(quiet){var bp=$('app-push');var m=$('app-push-msg');navigator.serviceWorker.ready.then(function(r){return Notification.requestPermission().then(function(p){if(p!=='granted'){if(m)m.textContent='अलर्ट बंद हैं — फ़ोन की सेटिंग में अनुमति दें। / Alerts are off — allow them in the phone settings.';return}
-return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){if(m)m.textContent='अलर्ट अभी चालू नहीं हैं। / Alerts are not on yet.';return}
-return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/r/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){if(bp)bp.style.display='none';if(m)m.textContent='🔔 अलर्ट चालू हैं / Alerts are on'}else if(m&&!quiet)m.textContent='अलर्ट चालू नहीं हो पाए — दोबारा कोशिश करें। / Could not turn alerts on — try again.'})})})})}).catch(function(){if(m&&!quiet)m.textContent='इस फ़ोन पर अलर्ट नहीं चल सकते। / Alerts do not work on this phone.'})}
+function say(m){var e=$('app-push-msg');if(e)e.textContent=m||''}
+function reg(quiet){say('');var fail=function(m){if(!quiet){say(m);show(Notification.permission==='denied'?'denied':'ask')}};
+var ready=Promise.race([navigator.serviceWorker.ready,new Promise(function(_,no){setTimeout(function(){no(new Error('sw'))},7000)})]);
+ready.then(function(r){return Notification.requestPermission().then(function(p){if(p==='denied'){show('denied');return}if(p!=='granted'){fail('अलर्ट के लिए “Allow” दबाएँ। / Please tap “Allow” to get alerts.');return}
+return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){fail('अलर्ट अभी इस सर्वर पर चालू नहीं हैं — ब्रोकर को बताएँ। / Alerts are not switched on for this server — tell your broker.');return}
+return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/r/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){show('on')}else{fail('अलर्ट चालू नहीं हो पाए — दोबारा कोशिश करें। / Could not turn alerts on — try again.')}})})})})}).catch(function(){fail('इस फ़ोन पर अलर्ट नहीं चल पाए — दोबारा कोशिश करें। / Could not turn alerts on here — try again.')})}
 // sending a paper / photo / ID copy: a photo is made smaller on the phone first
 var df=$('docform');if(df){df.addEventListener('submit',function(e){e.preventDefault();var msg=$('docmsg'),f=$('docfile').files[0];if(!f){msg.textContent='फ़ाइल चुनें। / Choose a file.';return}
 if(!$('docok').checked){msg.textContent='सहमति पर टिक करें। / Please tick the consent.';return}
@@ -805,12 +830,15 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     if (!allowedEndpoint(endpoint)) return jerr(res, 400, 'This browser’s push service is not supported.');
     const state = db.getState(); const key = roomPushKey(room.id);
     const id = crypto.createHash('sha256').update(endpoint).digest('hex').slice(0, 32);
+    const before = state.pushSubs.find(x => x.id === id && x.userId === key);
     state.pushSubs = state.pushSubs.filter(x => x.id !== id);
     const mine = state.pushSubs.filter(x => x.userId === key);
     if (mine.length >= 3) { const oldest = mine.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]; state.pushSubs = state.pushSubs.filter(x => x.id !== oldest.id); }
-    state.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers['user-agent'] || '').slice(0, 120), createdAt: nowIso(), fails: 0, url: `/r/${req.params.token}` });
-    ev(room, 'Client turned on alerts on a phone'); db.save();
-    res.json({ success: true });
+    state.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers['user-agent'] || '').slice(0, 120), createdAt: before?.createdAt || nowIso(), lastOkAt: before?.lastOkAt, fails: 0, url: `/r/${req.params.token}` });
+    // the page re-sends the same phone on every visit — only a NEW phone is news (event line + one "it works" alert so he sees it live)
+    if (!before) { ev(room, 'Client turned on alerts on a phone'); db.save(); tell(room, '🔔 अलर्ट चालू हैं / Alerts are on', `अब ${bName(room)} का संदेश सीधे इस फ़ोन पर आएगा / ${bName(room)}’s messages will now come straight to this phone`); }
+    else db.save();
+    res.json({ success: true, fresh: !before });
   });
   r.post('/:token/doc', rateLimit('cr-doc', 20, 3600_000), jsonBody, (req: Request, res: Response) => {
     const room = jsonAuth(req, res); if (!room) return;
@@ -963,15 +991,15 @@ ${offersHtml}${visitsHtml}<h2 id="scan">📷 विज़िट पक्की 
     const mark = esc(`${room.clientName} ••${room.phoneLast4} · ${b?.name || 'GENZ'}`);
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join('')}</div>`;
     res.send(shell('Your private room', `${wm}<div class="top"><h1>नमस्ते ${esc(room.clientName.split(' ')[0])} 🙏</h1><p>${room.kind === 'OWNER' ? `${esc(b?.name || 'आपके ब्रोकर')} के साथ आपकी प्रॉपर्टी का रूम · Your property room` : `${esc(b?.name || 'आपके ब्रोकर')} ने आपके लिए ये प्रॉपर्टी चुनी हैं · Properties picked for you`}</p></div>
+<div class="card" id="app-card" style="display:none;border:2px solid #0f766e;background:#ecfdf5"><p class="h" id="app-title"></p>
+<p class="small" id="app-sub"></p>
+<div class="row"><button type="button" class="g" id="app-push" style="display:none;font-size:17px;padding:14px 20px">🔔 अलर्ट चालू करें / Turn on alerts</button> <button type="button" class="l" id="app-later" style="display:none">बाद में / Later</button> <button type="button" class="l" id="app-install" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to Home</button></div>
+<p class="small" id="app-ios" style="display:none"><b>1.</b> Safari में नीचे Share (⬆) दबाएँ / tap Share (⬆) &nbsp;<b>2.</b> “Add to Home Screen” &nbsp;<b>3.</b> होम स्क्रीन के आइकन से खोलें और अलर्ट चालू करें / open it from the home-screen icon and turn on alerts.</p>
+<p class="small" id="app-push-msg" role="status"></p></div>
 ${sibsHtml}
 ${req.query.sent === '1' ? '<div class="card ok"><p class="t">आपका विज़िट अनुरोध ब्रोकर को भेज दिया गया। / Your visit request has been sent.</p></div>' : ''}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 ${req.query.doc === '1' ? '<div class="card ok"><p class="t">फ़ाइल ब्रोकर को भेज दी गई। / File sent to your broker.</p></div>' : ''}
 ${brokerCard(b)}
-<div class="card" id="app-card"><p class="h">📲 इसे ऐप की तरह रखें / Keep this as an app</p>
-<p class="small">होम स्क्रीन पर जोड़ें — हर बार लिंक खोलने या WhatsApp में ढूँढने की ज़रूरत नहीं। ब्रोकर का संदेश आएगा तो फ़ोन पर अलर्ट मिलेगा। / Add it to your home screen — no hunting for the link. You get an alert when your broker writes.</p>
-<div class="row"><button type="button" class="g" id="app-install" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to Home</button> <button type="button" class="l" id="app-push" style="display:none">🔔 अलर्ट चालू करें / Turn on alerts</button></div>
-<p class="small" id="app-ios" style="display:none">iPhone: नीचे Share (⬆) दबाएँ → “Add to Home Screen”। फिर ऐप खोलकर अलर्ट चालू करें। (अलर्ट के लिए iOS 16.4+) / iPhone: tap Share → Add to Home Screen, then open the app and turn on alerts (needs iOS 16.4+).</p>
-<p class="small" id="app-push-msg"></p></div>
 <p class="small" style="margin:10px 4px">📌 इस पेज को बुकमार्क / होम स्क्रीन पर रख लें — इसी फ़ोन पर अगली बार बिना कोड के खुलेगा (${L.sessionDays} दिन में एक बार खोलते रहें)। यह पेज सिर्फ़ आपके लिए है, इसका लिंक या स्क्रीनशॉट आगे न भेजें।<br>Bookmark this page or add it to your home screen — on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
 ${room.kind === 'OWNER' ? ownerBlock : `<h2>आपके लिए प्रॉपर्टी / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">अभी कोई प्रॉपर्टी नहीं भेजी गई। / Nothing shared yet — your broker will add some.</p></div>'}`}
 ${(() => {

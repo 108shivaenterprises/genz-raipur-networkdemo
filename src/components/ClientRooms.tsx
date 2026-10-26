@@ -160,6 +160,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
                       {r.unread > 0 && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">{tx(`${r.unread} new`, `${r.unread} नए`)}</span>}
                       {r.openVisits > 0 && <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">{tx(`${r.openVisits} visit ask`, `${r.openVisits} विज़िट अनुरोध`)}</span>}
                       {!r.lastClientSeenAt && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{tx('not opened yet', 'अभी खोला नहीं')}</span>}
+                      {r.lastClientSeenAt && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${r.alerts?.phones ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`} data-testid={`room-alerts-${r.id}`}>{r.alerts?.phones ? tx('🔔 alerts on', '🔔 अलर्ट चालू') : tx('🔕 alerts off', '🔕 अलर्ट बंद')}</span>}
                     </span>
                   </span>
                 </button>
@@ -237,6 +238,24 @@ const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id
   );
 };
 
+
+/** v75 — does the client hear us? ON = his phone gets an alert for every message; OFF = he sees it only when he opens the link, so nudge him once on WhatsApp */
+const ClientAlerts: React.FC<{ r: any }> = ({ r }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  if (r.status !== 'ACTIVE' || !r.lastClientSeenAt) return null;
+  const n = r.alerts?.phones || 0;
+  if (n > 0) return <div className="shrink-0 border-b border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800" data-testid="room-alerts-on">{tx(`🔔 Client's phone gets an alert for every message (${n} phone${n > 1 ? 's' : ''})`, `🔔 क्लाइंट के फ़ोन पर हर संदेश का अलर्ट जाता है (${n} फ़ोन)`)}</div>;
+  const phone: string = r.phone || '';
+  const text = hi
+    ? `नमस्ते ${r.clientName}, आपके रूम में नया संदेश है। रूम खोलकर ऊपर “🔔 अलर्ट चालू करें” दबा दें — फिर हर संदेश सीधे फ़ोन पर आएगा, लिंक बार-बार नहीं खोलना पड़ेगा।`
+    : `Hello ${r.clientName}, there is a new message in your room. Open it and tap “🔔 Turn on alerts” at the top — then every message reaches your phone and you need not open the link again.`;
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="room-alerts-off">
+      <span className="min-w-0 flex-1 font-semibold">{tx('🔕 Client’s alerts are OFF — he sees your message only when he opens the link.', '🔕 क्लाइंट के अलर्ट बंद हैं — वह आपका संदेश लिंक खोलने पर ही देखेगा।')}</span>
+      <a className={light} target="_blank" rel="noreferrer" href={`https://wa.me/${phone ? '91' + phone : ''}?text=${encodeURIComponent(text)}`} data-testid="room-alerts-nudge"><MessageCircle className="h-4 w-4" />{tx('Remind on WhatsApp', 'WhatsApp पर याद दिलाएँ')}</a>
+    </div>
+  );
+};
 
 /** v63 — the client's mobile inside his room: the broker always; office staff by the "customer numbers" switch (full / tap to reveal / hidden) */
 const ClientPhone: React.FC<{ r: any; id: string; onRoom: (r: any) => void }> = ({ r, id, onRoom }) => {
@@ -372,6 +391,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
             </div>
           )}
           <ClientPhone r={r} id={id} onRoom={setR} />
+          <ClientAlerts r={r} />
           {r.codeForClient && (
             <div className="shrink-0 border-b border-amber-400 bg-amber-50 p-3 text-center" data-testid="room-code">
               <p className="text-xs font-semibold text-amber-900">{tx('Your client is opening the room. Tell him this code (valid 10 minutes):', 'आपका क्लाइंट रूम खोल रहा है। उसे यह कोड बताएँ (10 मिनट तक वैध):')}</p>

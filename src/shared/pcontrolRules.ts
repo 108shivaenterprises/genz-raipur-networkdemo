@@ -102,6 +102,56 @@ export function cleanPolicy(input: any, current: PolicyLike): PolicyLike | strin
   return out;
 }
 
+// ───────────────────────── v75 — one-tap staff presets ─────────────────────────
+/** Which kind of employer is setting the switches: the server refuses verify / scan for non-builders and listings / rooms / clients for non-brokers. */
+export type EmployerKind = 'BUILDER' | 'BROKER';
+export interface StaffPreset { id: string; en: string; hi: string; hintEn: string; hintHi: string; patch: Partial<PolicyLike> }
+
+const BASE_OFF: Partial<PolicyLike> = {
+  canRegister: false, canMarkLost: false, canClaim: false, canForward: false, canRequestBooking: false, canCollectMoney: false, canConfirmMoney: false,
+  invMode: 'OFF', invPrice: false, invShareOut: false,
+};
+/** The four everyday jobs, plus "look only". Every preset sets every switch it cares about, so applying one never leaves an old switch behind. */
+export const STAFF_PRESETS: StaffPreset[] = [
+  { id: 'CALLER', en: 'Telecaller', hi: 'टेलीकॉलर',
+    hintEn: 'Calls leads. Number only by tap (logged), can take from the pool, cannot close a lead as lost.', hintHi: 'लीड को कॉल करता है। नंबर सिर्फ़ टैप करके (लॉग), पूल से ले सकता, लीड “लॉस्ट” नहीं कर सकता।',
+    patch: { ...BASE_OFF, phoneMode: 'REVEAL', revealCap: 30, canRegister: true, canClaim: true, canForward: true } },
+  { id: 'SALES', en: 'Sales / closing', hi: 'सेल्स / क्लोज़िंग',
+    hintEn: 'Works his own leads end to end: sees numbers, raises booking requests, sends unit links.', hintHi: 'अपनी लीड शुरू से अंत तक संभालता है: नंबर दिखते हैं, बुकिंग अनुरोध भेजता है, यूनिट लिंक भेजता है।',
+    patch: { ...BASE_OFF, phoneMode: 'FULL', canRegister: true, canMarkLost: true, canForward: true, canRequestBooking: true, invMode: 'SHARED', invPrice: true, invShareOut: true } },
+  { id: 'SITE', en: 'Site / visit desk', hi: 'साइट / विज़िट डेस्क',
+    hintEn: 'Receives customers at the site. Number by tap only; scans the visit QR (builder staff).', hintHi: 'साइट पर ग्राहक को संभालता है। नंबर सिर्फ़ टैप करके; विज़िट QR स्कैन करता है (बिल्डर का स्टाफ़)।',
+    patch: { ...BASE_OFF, phoneMode: 'REVEAL', revealCap: 30, canRegister: true, canForward: true, invMode: 'SHARED' } },
+  { id: 'ACCOUNTS', en: 'Accounts', hi: 'अकाउंट्स',
+    hintEn: 'Handles money only: records and confirms it. Never sees customer numbers.', hintHi: 'सिर्फ़ पैसे का काम: दर्ज और कन्फ़र्म करता है। ग्राहक के नंबर कभी नहीं दिखते।',
+    patch: { ...BASE_OFF, phoneMode: 'HIDDEN', canCollectMoney: true, canConfirmMoney: true } },
+  { id: 'VIEW', en: 'Look only', hi: 'सिर्फ़ देखे',
+    hintEn: 'Sees what you allot to him, cannot change or forward anything, no numbers.', hintHi: 'जो आप दें वही देखता है, कुछ बदल या आगे भेज नहीं सकता, नंबर नहीं।',
+    patch: { ...BASE_OFF, phoneMode: 'HIDDEN' } },
+];
+
+/** The full patch to send for a preset: the preset's switches plus the ones only this employer kind may set. */
+export function presetPatch(id: string, kind: EmployerKind): Partial<PolicyLike> | null {
+  const pr = STAFF_PRESETS.find(x => x.id === id); if (!pr) return null;
+  const patch: Partial<PolicyLike> = { ...pr.patch };
+  if (kind === 'BUILDER') { patch.canVerify = false; patch.canScanVisits = id === 'SITE'; }
+  else {
+    patch.listings = id === 'SALES' ? 'READ' : id === 'SITE' ? 'ADDRESS' : 'OFF';
+    patch.rooms = id === 'SALES' || id === 'SITE'; patch.clients = id === 'SALES';
+  }
+  return patch;
+}
+/** Which preset (if any) does this policy match exactly? null = a custom mix. */
+export function presetOf(policy: Partial<PolicyLike> | undefined, kind: EmployerKind): string | null {
+  const p = { ...DEFAULT_POLICY, ...(policy || {}) } as Record<string, unknown>;
+  for (const pr of STAFF_PRESETS) {
+    const patch = presetPatch(pr.id, kind) as Record<string, unknown>;
+    // revealCap only matters in REVEAL mode; an unrelated number never makes a preset "custom"
+    if (Object.entries(patch).every(([k, v]) => (k === 'revealCap' && p.phoneMode !== 'REVEAL') || p[k] === v)) return pr.id;
+  }
+  return null;
+}
+
 export function maskPhone(phone: string): string {
   const d = String(phone || '').replace(/\D/g, '');
   if (d.length < 6) return '••••••••••';

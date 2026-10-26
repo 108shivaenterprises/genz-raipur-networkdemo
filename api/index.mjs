@@ -67627,6 +67627,17 @@ async function pushToRoom(roomId, title, body, tag = "room") {
     return 0;
   }
 }
+function roomAlertInfo(roomId) {
+  const key = roomPushKey(roomId);
+  const subs = db.getState().pushSubs.filter((x) => x.userId === key);
+  const ok = subs.map((x) => x.lastOkAt || "").filter(Boolean).sort();
+  return { phones: subs.length, ...ok.length ? { lastOkAt: ok[ok.length - 1] } : {}, sent: pushLog.filter((x) => x.userId === key).slice(-5).map((x) => ({ at: x.at, title: x.msg.title })) };
+}
+function brokerWrote(roomId, brokerName, what = "MSG") {
+  const n2 = String(brokerName || "Broker").replace(/\s+/g, " ").trim().slice(0, 28) || "Broker";
+  const t = what === "PAPER" ? [`\u{1F4C4} ${n2} \u0928\u0947 \u0915\u093E\u0917\u093C\u091C\u093C \u092D\u0947\u091C\u093E / ${n2} sent a paper`, "\u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0916\u094B\u0932\u0947\u0902 / Tap to view"] : what === "HOME" ? [`\u{1F3E0} ${n2} \u0928\u0947 \u0928\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u092D\u0947\u091C\u0940 / ${n2} sent a property`, "\u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0916\u094B\u0932\u0947\u0902 / Tap to view"] : [`\u{1F4AC} ${n2} \u0915\u093E \u0938\u0902\u0926\u0947\u0936 / Message from ${n2}`, "\u092A\u0922\u093C\u0928\u0947 \u0914\u0930 \u091C\u0935\u093E\u092C \u0926\u0947\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0916\u094B\u0932\u0947\u0902 / Tap to read and reply"];
+  return pushToRoom(roomId, t[0], t[1], `room-${roomId}`);
+}
 function dropRoomPush(roomId) {
   const s = db.getState();
   const key = roomPushKey(roomId);
@@ -69551,6 +69562,60 @@ function cleanPolicy(input2, current) {
   if (out.scope === "PROJECTS" && out.projectIds.length === 0) return 'Pick at least one project for "all leads of these projects" access';
   return out;
 }
+var BASE_OFF = {
+  canRegister: false,
+  canMarkLost: false,
+  canClaim: false,
+  canForward: false,
+  canRequestBooking: false,
+  canCollectMoney: false,
+  canConfirmMoney: false,
+  invMode: "OFF",
+  invPrice: false,
+  invShareOut: false
+};
+var STAFF_PRESETS = [
+  {
+    id: "CALLER",
+    en: "Telecaller",
+    hi: "\u091F\u0947\u0932\u0940\u0915\u0949\u0932\u0930",
+    hintEn: "Calls leads. Number only by tap (logged), can take from the pool, cannot close a lead as lost.",
+    hintHi: "\u0932\u0940\u0921 \u0915\u094B \u0915\u0949\u0932 \u0915\u0930\u0924\u093E \u0939\u0948\u0964 \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u091F\u0948\u092A \u0915\u0930\u0915\u0947 (\u0932\u0949\u0917), \u092A\u0942\u0932 \u0938\u0947 \u0932\u0947 \u0938\u0915\u0924\u093E, \u0932\u0940\u0921 \u201C\u0932\u0949\u0938\u094D\u091F\u201D \u0928\u0939\u0940\u0902 \u0915\u0930 \u0938\u0915\u0924\u093E\u0964",
+    patch: { ...BASE_OFF, phoneMode: "REVEAL", revealCap: 30, canRegister: true, canClaim: true, canForward: true }
+  },
+  {
+    id: "SALES",
+    en: "Sales / closing",
+    hi: "\u0938\u0947\u0932\u094D\u0938 / \u0915\u094D\u0932\u094B\u091C\u093C\u093F\u0902\u0917",
+    hintEn: "Works his own leads end to end: sees numbers, raises booking requests, sends unit links.",
+    hintHi: "\u0905\u092A\u0928\u0940 \u0932\u0940\u0921 \u0936\u0941\u0930\u0942 \u0938\u0947 \u0905\u0902\u0924 \u0924\u0915 \u0938\u0902\u092D\u093E\u0932\u0924\u093E \u0939\u0948: \u0928\u0902\u092C\u0930 \u0926\u093F\u0916\u0924\u0947 \u0939\u0948\u0902, \u092C\u0941\u0915\u093F\u0902\u0917 \u0905\u0928\u0941\u0930\u094B\u0927 \u092D\u0947\u091C\u0924\u093E \u0939\u0948, \u092F\u0942\u0928\u093F\u091F \u0932\u093F\u0902\u0915 \u092D\u0947\u091C\u0924\u093E \u0939\u0948\u0964",
+    patch: { ...BASE_OFF, phoneMode: "FULL", canRegister: true, canMarkLost: true, canForward: true, canRequestBooking: true, invMode: "SHARED", invPrice: true, invShareOut: true }
+  },
+  {
+    id: "SITE",
+    en: "Site / visit desk",
+    hi: "\u0938\u093E\u0907\u091F / \u0935\u093F\u091C\u093C\u093F\u091F \u0921\u0947\u0938\u094D\u0915",
+    hintEn: "Receives customers at the site. Number by tap only; scans the visit QR (builder staff).",
+    hintHi: "\u0938\u093E\u0907\u091F \u092A\u0930 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u094B \u0938\u0902\u092D\u093E\u0932\u0924\u093E \u0939\u0948\u0964 \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u091F\u0948\u092A \u0915\u0930\u0915\u0947; \u0935\u093F\u091C\u093C\u093F\u091F QR \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0924\u093E \u0939\u0948 (\u092C\u093F\u0932\u094D\u0921\u0930 \u0915\u093E \u0938\u094D\u091F\u093E\u092B\u093C)\u0964",
+    patch: { ...BASE_OFF, phoneMode: "REVEAL", revealCap: 30, canRegister: true, canForward: true, invMode: "SHARED" }
+  },
+  {
+    id: "ACCOUNTS",
+    en: "Accounts",
+    hi: "\u0905\u0915\u093E\u0909\u0902\u091F\u094D\u0938",
+    hintEn: "Handles money only: records and confirms it. Never sees customer numbers.",
+    hintHi: "\u0938\u093F\u0930\u094D\u092B\u093C \u092A\u0948\u0938\u0947 \u0915\u093E \u0915\u093E\u092E: \u0926\u0930\u094D\u091C \u0914\u0930 \u0915\u0928\u094D\u092B\u093C\u0930\u094D\u092E \u0915\u0930\u0924\u093E \u0939\u0948\u0964 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u0947 \u0928\u0902\u092C\u0930 \u0915\u092D\u0940 \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0924\u0947\u0964",
+    patch: { ...BASE_OFF, phoneMode: "HIDDEN", canCollectMoney: true, canConfirmMoney: true }
+  },
+  {
+    id: "VIEW",
+    en: "Look only",
+    hi: "\u0938\u093F\u0930\u094D\u092B\u093C \u0926\u0947\u0916\u0947",
+    hintEn: "Sees what you allot to him, cannot change or forward anything, no numbers.",
+    hintHi: "\u091C\u094B \u0906\u092A \u0926\u0947\u0902 \u0935\u0939\u0940 \u0926\u0947\u0916\u0924\u093E \u0939\u0948, \u0915\u0941\u091B \u092C\u0926\u0932 \u092F\u093E \u0906\u0917\u0947 \u092D\u0947\u091C \u0928\u0939\u0940\u0902 \u0938\u0915\u0924\u093E, \u0928\u0902\u092C\u0930 \u0928\u0939\u0940\u0902\u0964",
+    patch: { ...BASE_OFF, phoneMode: "HIDDEN" }
+  }
+];
 function maskPhone(phone) {
   const d = String(phone || "").replace(/\D/g, "");
   if (d.length < 6) return "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
@@ -70859,13 +70924,23 @@ var TEAM_ROLES = [
   { id: "SITE_COORDINATOR", en: "Site / visit coordinator", hi: "\u0938\u093E\u0907\u091F / \u0935\u093F\u091C\u093C\u093F\u091F \u0915\u094B\u0911\u0930\u094D\u0921\u093F\u0928\u0947\u091F\u0930" },
   { id: "CLOSING_MANAGER", en: "Closing / sales manager", hi: "\u0915\u094D\u0932\u094B\u091C\u093C\u093F\u0902\u0917 / \u0938\u0947\u0932\u094D\u0938 \u092E\u0948\u0928\u0947\u091C\u0930" },
   { id: "ASSISTANT", en: "Assistant / back office", hi: "\u0905\u0938\u093F\u0938\u094D\u091F\u0947\u0902\u091F / \u092C\u0948\u0915-\u0911\u092B\u093C\u093F\u0938" },
+  // v75 — a contractor's own people
+  { id: "SITE_SUPERVISOR", en: "Site supervisor", hi: "\u0938\u093E\u0907\u091F \u0938\u0941\u092A\u0930\u0935\u093E\u0907\u091C\u093C\u0930" },
+  { id: "ESTIMATOR", en: "Estimator / quantity surveyor", hi: "\u090F\u0938\u094D\u091F\u0940\u092E\u0947\u091F\u0930 / \u0915\u094D\u0935\u093E\u0902\u091F\u093F\u091F\u0940 \u0938\u0930\u094D\u0935\u0947\u092F\u0930" },
+  { id: "ACCOUNTANT", en: "Accountant", hi: "\u0905\u0915\u093E\u0909\u0902\u091F\u0947\u0902\u091F" },
   { id: "OTHER", en: "Other", hi: "\u0905\u0928\u094D\u092F" }
 ];
 var TEAM_ROLE_IDS = ids(TEAM_ROLES);
+var TEAM_MAX_BY_ROLE = { DEVELOPER_BUILDER: 60, CONTRACTOR: 30 };
+var TEAM_MAX_DEFAULT = 15;
+var teamMaxFor = (employerRole) => TEAM_MAX_BY_ROLE[String(employerRole || "")] ?? TEAM_MAX_DEFAULT;
 function inferTeamRole(title, role) {
   if (role && TEAM_ROLES.some((r) => r.id === role)) return role;
   const t = String(title || "").toLowerCase();
   if (/tele\s*-?call|calling|caller/.test(t)) return "TELECALLER";
+  if (/supervisor|foreman|mistri/.test(t)) return "SITE_SUPERVISOR";
+  if (/estimat|quantity|survey/.test(t)) return "ESTIMATOR";
+  if (/account|book-?keep/.test(t)) return "ACCOUNTANT";
   if (/site|visit|co-?ordinator/.test(t)) return "SITE_COORDINATOR";
   if (/closing|manager|head|team lead/.test(t)) return "CLOSING_MANAGER";
   if (/sales|executive|relationship/.test(t)) return "SALES_EXECUTIVE";
@@ -74840,6 +74915,7 @@ function createPropDocsRouter() {
     log(d.id, u.id, "SHARE", req.ip || "", `shown to his client ${room.clientName} (client room) \u2014 ${Math.ceil((until - Date.now()) / 864e5)} day(s), ${b.data.maxViews} open(s)`);
     db.save();
     db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "PROPDOC_CLIENT_SHARED", `Paper \u201C${d.title}\u201D (${d.id}) shown to the client of room ${room.id}: until ${cs.expiresAt.slice(0, 10)}, ${cs.maxViews} open(s), view-only`);
+    void brokerWrote(room.id, st29.users.find((x2) => x2.id === room.brokerId)?.name || u.name, "PAPER");
     res.json({ success: true, share: cs, doc: summary(st29, d, u, a) });
   });
   r.post("/:id/client-revoke", need, (req, res) => {
@@ -76737,7 +76813,6 @@ function createPrivacyRouter() {
 }
 
 // server/team.ts
-var MAX_TEAM = 15;
 var createSchema = external_exports.object({
   name: external_exports.string().trim().min(2, "Name is required").max(100),
   phone: phoneSchema,
@@ -76921,9 +76996,9 @@ function createTeamRouter() {
       openLeads: n2.get(m.id)?.open || 0,
       deals: n2.get(m.id)?.deals || 0
     }));
-    res.json({ success: true, members: members2, max: MAX_TEAM });
+    res.json({ success: true, members: members2, max: teamMaxFor(me32().role) });
   });
-  r.post("/", rateLimit("team-create", 20, 60 * 6e4), (req, res) => {
+  r.post("/", rateLimit("team-create", 60, 60 * 6e4), (req, res) => {
     const u = me32();
     if (u.verificationStatus !== "VERIFIED") return res.status(403).json({ error: "Your account must be verified first" });
     const p = createSchema.safeParse(req.body);
@@ -76932,7 +77007,8 @@ function createTeamRouter() {
     const teamRole = inferTeamRole(p.data.title, p.data.role);
     const title = p.data.title || TEAM_ROLES.find((x) => x.id === teamRole)?.en || "Team member";
     const state = db.getState();
-    if (mine3(u.id).filter((m2) => m2.verificationStatus !== "REJECTED").length >= MAX_TEAM) return res.status(409).json({ error: `You can add up to ${MAX_TEAM} team members` });
+    const cap = teamMaxFor(u.role);
+    if (mine3(u.id).filter((m2) => m2.verificationStatus !== "REJECTED").length >= cap) return res.status(409).json({ error: `You can add up to ${cap} team members` });
     const phone = digits(p.data.phone);
     if (state.users.some((x) => digits(x.phone) === phone)) return res.status(409).json({ error: "A GENZ account with this mobile number already exists" });
     const email3 = `${phone.slice(-10)}@phone.genz.local`;
@@ -90662,7 +90738,9 @@ function summary3(r) {
     openVisits: openVisits(r),
     liked: r.items.filter((i) => i.reaction === "LIKE").length,
     lastMessage: last ? { from: last.from, text: last.text.slice(0, 80), at: last.at } : null,
-    lastClientSeenAt: r.lastClientSeenAt
+    lastClientSeenAt: r.lastClientSeenAt,
+    /** v75 — does his phone get our alerts? phones = how many phones have them on */
+    alerts: r.status === "ACTIVE" ? roomAlertInfo(r.id) : { phones: 0 }
   };
 }
 function detail(r) {
@@ -90784,7 +90862,7 @@ function createClientRoomRouter() {
     room.items.push({ id: rid6("CRI"), propertyId: p.id, sharedAt: nowIso41(), note: note5, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
     ev(room, `${isStaff4(me30()) ? `${me30().name}: ` : ""}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
     db.save();
-    tell(room, "\u0928\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / A new property", "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u090F\u0915 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u091C\u094B\u0921\u093C\u0940 / Your broker added a property for you");
+    tellMsg(room, "HOME");
     res.json({ success: true, room: detail(room) });
   });
   r.get("/:id/items/:itemId/media", (req, res) => {
@@ -90840,7 +90918,7 @@ function createClientRoomRouter() {
     room.lastBrokerSeenAt = nowIso41();
     ev(room, isStaff4(u) ? `${u.name} (office team) wrote` : "Broker wrote");
     db.save();
-    tell(room, "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0938\u0902\u0926\u0947\u0936 / Message from your broker", "\u092A\u0922\u093C\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0916\u094B\u0932\u0947\u0902 / Tap to read");
+    tellMsg(room);
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/read", (req, res) => {
@@ -90978,7 +91056,7 @@ function createClientRoomRouter() {
     ev(room, room.fullAadhaarAsk ? "Broker asked for the full Aadhaar (for a paper being made)" : "Broker withdrew the full-Aadhaar request");
     room.messages.push({ id: rid6("CRX"), from: "BROKER", text: room.fullAadhaarAsk ? "\u{1FAAA} \u0915\u093E\u0917\u093C\u091C\u093C \u092C\u0928\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 \u091A\u093E\u0939\u093F\u090F \u2014 \u0928\u0940\u091A\u0947 \u201C\u0915\u093E\u0917\u093C\u091C\u093C \u092D\u0947\u091C\u0947\u0902\u201D \u092E\u0947\u0902 \u091A\u0941\u0928\u0915\u0930 \u092D\u0947\u091C\u0947\u0902\u0964 7 \u0926\u093F\u0928 \u092C\u093E\u0926 \u092F\u0939 \u0905\u092A\u0928\u0947 \u0906\u092A \u092E\u093F\u091F \u091C\u093E\u090F\u0917\u093E\u0964" : "\u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 \u0905\u092C \u0928\u0939\u0940\u0902 \u091A\u093E\u0939\u093F\u090F\u0964", at: nowIso41() });
     db.save();
-    tell(room, "Message from your broker", "Open your room.");
+    tellMsg(room);
     res.json({ success: true, room: detail(room) });
   });
   r.get("/:id/docs/:docId", rateLimit("cr-doc-open", 200, 36e5), (req, res) => {
@@ -91042,6 +91120,10 @@ var validPropRef = (room, id) => {
 };
 var tell = (room, title, body) => {
   void pushToRoom(room.id, title, body, `room-${room.id}`);
+};
+var bName = (room) => st28().users.find((u) => u.id === room.brokerId)?.name || "Broker";
+var tellMsg = (room, what = "MSG") => {
+  void brokerWrote(room.id, bName(room), what);
 };
 var DOCDIR = (roomId) => path14.resolve(process.cwd(), "data", "clientdocs", roomId.replace(/[^A-Za-z0-9-]/g, ""));
 var docFile2 = (roomId, docId2) => path14.join(DOCDIR(roomId), docId2.replace(/[^A-Za-z0-9-]/g, "") + ".bin");
@@ -91132,20 +91214,41 @@ var CR_JS = `(function(){var TOK=(location.pathname.match(/^\\/r\\/([A-Za-z0-9_-
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
 var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}
 function $(i){return document.getElementById(i)}
-// v69 \u2014 the room as an app: service worker, "add to home", alerts, sending papers
+// v69/v75 \u2014 the room as an app: service worker, "add to home", alerts (one big card on top until they are ON), sending papers
 var sw=null;if('serviceWorker' in navigator&&TOK&&$('app-card')){navigator.serviceWorker.register('/sw.js').then(function(r){sw=r;setup()}).catch(function(){setup()})}else{setup()}
-var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b)b.style.display='inline-block'});
+var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b&&standalone()===false)b.style.display='inline-block'});
 function standalone(){return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
-function setup(){var c=$('app-card');if(!c)return;if(standalone()){var i=$('app-install');if(i)i.style.display='none';var ih=$('app-ios');if(ih)ih.style.display='none'}
-var ios=/iphone|ipad|ipod/i.test(navigator.userAgent);if(ios&&!standalone()&&$('app-ios'))$('app-ios').style.display='block';
-var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
-var bp=$('app-push');var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator&&(!ios||standalone());
-if(bp&&can){bp.style.display='inline-block';if(Notification.permission==='granted'){reg(true)}bp.addEventListener('click',function(){reg(false)})}else if(bp&&ios&&!standalone()){/* iPhone needs the app on the home screen first */}
+var IOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+function show(st,extra){var c=$('app-card');if(!c)return;c.style.display='block';c.setAttribute('data-alerts',st);
+var t=$('app-title'),s2=$('app-sub'),bp=$('app-push'),bl=$('app-later'),ih=$('app-ios'),bi=$('app-install');
+var on=st==='on';c.style.background=on?'#f0fdf4':'#ecfdf5';c.style.borderColor=on?'#86efac':'#0f766e';
+if(bp)bp.style.display=st==='ask'?'inline-block':'none';if(bl)bl.style.display=st==='ask'?'inline-block':'none';
+if(ih)ih.style.display=st==='ios'?'block':'none';if(bi&&(on||st==='ios'||standalone())&&!dip)bi.style.display='none';
+if(st==='on'){t.textContent='\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0939\u0948\u0902 \u2714 / Alerts are on';s2.textContent='\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0938\u0902\u0926\u0947\u0936 \u0906\u0924\u0947 \u0939\u0940 \u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0906\u090F\u0917\u093E \u2014 \u0932\u093F\u0902\u0915 \u092C\u093E\u0930-\u092C\u093E\u0930 \u0916\u094B\u0932\u0928\u093E \u0928\u0939\u0940\u0902 \u092A\u0921\u093C\u0947\u0917\u093E\u0964 / You will get an alert on this phone the moment your broker writes.'}
+else if(st==='ios'){t.textContent='\u{1F514} iPhone \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u092A\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u092A\u0939\u0932\u0947 \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 / On iPhone, add this to your home screen first';s2.textContent='iPhone \u092E\u0947\u0902 \u0905\u0932\u0930\u094D\u091F \u0938\u093F\u0930\u094D\u092B\u093C \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0935\u093E\u0932\u0947 \u0910\u092A \u092E\u0947\u0902 \u0906\u0924\u0947 \u0939\u0948\u0902 (iOS 16.4+)\u0964 / On iPhone, alerts work only in the home-screen app (iOS 16.4 or newer).'}
+else if(st==='denied'){t.textContent='\u{1F515} \u0905\u0932\u0930\u094D\u091F \u0930\u0941\u0915\u0947 \u0939\u0941\u090F \u0939\u0948\u0902 / Alerts are blocked';s2.textContent='\u092B\u093C\u094B\u0928 \u0915\u0940 \u0938\u0947\u091F\u093F\u0902\u0917 \u2192 \u092C\u094D\u0930\u093E\u0909\u091C\u093C\u0930/\u0910\u092A \u2192 Notifications \u092E\u0947\u0902 \u201CAllow\u201D \u0915\u0930\u0947\u0902, \u092B\u093F\u0930 \u092F\u0939 \u092A\u0947\u091C \u0926\u094B\u092C\u093E\u0930\u093E \u0916\u094B\u0932\u0947\u0902\u0964 / Allow notifications for this page in the phone settings, then open it again.'}
+else if(st==='none'){t.textContent='\u{1F515} \u0907\u0938 \u092C\u094D\u0930\u093E\u0909\u091C\u093C\u0930 \u092E\u0947\u0902 \u0905\u0932\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u091A\u0932\u0924\u0947 / Alerts do not work in this browser';s2.textContent='Chrome (Android) \u092F\u093E Safari-\u0939\u094B\u092E-\u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0910\u092A (iPhone) \u092E\u0947\u0902 \u0916\u094B\u0932\u0947\u0902\u0964 / Open this page in Chrome (Android) or the Safari home-screen app (iPhone).'}
+else{t.textContent='\u{1F514} \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u091C\u0935\u093E\u092C \u0938\u0940\u0927\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u092A\u093E\u090F\u0901 / Get your broker\u2019s replies on your phone';s2.textContent='\u0932\u093F\u0902\u0915 \u092C\u093E\u0930-\u092C\u093E\u0930 \u0916\u094B\u0932\u0928\u093E \u0928\u0939\u0940\u0902 \u092A\u0921\u093C\u0947\u0917\u093E \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u0932\u093F\u0916\u0924\u0947 \u0939\u0940 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0906\u090F\u0917\u093E\u0964 \u090F\u0915 \u092C\u093E\u0930 \u0928\u0940\u091A\u0947 \u0915\u093E \u092C\u091F\u0928 \u0926\u092C\u093E\u090F\u0901\u0964 / No need to open the link again and again \u2014 tap the button once and you are alerted when your broker writes.'}
 }
+function setup(){var c=$('app-card');if(!c)return;
+var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
+var bp=$('app-push');if(bp)bp.addEventListener('click',function(){reg(false)});
+var bl=$('app-later');if(bl)bl.addEventListener('click',function(){try{localStorage.setItem('cr_later_'+TOK,String(Date.now()))}catch(e){}c.style.display='none'});
+var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator;
+if(IOS&&!standalone()){show('ios');return}
+if(!can){show('none');return}
+if(Notification.permission==='denied'){show('denied');return}
+if(Notification.permission==='granted'){reg(true);return}
+var later=0;try{later=Number(localStorage.getItem('cr_later_'+TOK))||0}catch(e){}
+if(later&&Date.now()-later<86400000){return}
+show('ask')}
 function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o}
-function reg(quiet){var bp=$('app-push');var m=$('app-push-msg');navigator.serviceWorker.ready.then(function(r){return Notification.requestPermission().then(function(p){if(p!=='granted'){if(m)m.textContent='\u0905\u0932\u0930\u094D\u091F \u092C\u0902\u0926 \u0939\u0948\u0902 \u2014 \u092B\u093C\u094B\u0928 \u0915\u0940 \u0938\u0947\u091F\u093F\u0902\u0917 \u092E\u0947\u0902 \u0905\u0928\u0941\u092E\u0924\u093F \u0926\u0947\u0902\u0964 / Alerts are off \u2014 allow them in the phone settings.';return}
-return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){if(m)m.textContent='\u0905\u0932\u0930\u094D\u091F \u0905\u092D\u0940 \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u0948\u0902\u0964 / Alerts are not on yet.';return}
-return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/r/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){if(bp)bp.style.display='none';if(m)m.textContent='\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0939\u0948\u0902 / Alerts are on'}else if(m&&!quiet)m.textContent='\u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on \u2014 try again.'})})})})}).catch(function(){if(m&&!quiet)m.textContent='\u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u091A\u0932 \u0938\u0915\u0924\u0947\u0964 / Alerts do not work on this phone.'})}
+function say(m){var e=$('app-push-msg');if(e)e.textContent=m||''}
+function reg(quiet){say('');var fail=function(m){if(!quiet){say(m);show(Notification.permission==='denied'?'denied':'ask')}};
+var ready=Promise.race([navigator.serviceWorker.ready,new Promise(function(_,no){setTimeout(function(){no(new Error('sw'))},7000)})]);
+ready.then(function(r){return Notification.requestPermission().then(function(p){if(p==='denied'){show('denied');return}if(p!=='granted'){fail('\u0905\u0932\u0930\u094D\u091F \u0915\u0947 \u0932\u093F\u090F \u201CAllow\u201D \u0926\u092C\u093E\u090F\u0901\u0964 / Please tap \u201CAllow\u201D to get alerts.');return}
+return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){fail('\u0905\u0932\u0930\u094D\u091F \u0905\u092D\u0940 \u0907\u0938 \u0938\u0930\u094D\u0935\u0930 \u092A\u0930 \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u0948\u0902 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092C\u0924\u093E\u090F\u0901\u0964 / Alerts are not switched on for this server \u2014 tell your broker.');return}
+return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/r/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){show('on')}else{fail('\u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on \u2014 try again.')}})})})})}).catch(function(){fail('\u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u091A\u0932 \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on here \u2014 try again.')})}
 // sending a paper / photo / ID copy: a photo is made smaller on the phone first
 var df=$('docform');if(df){df.addEventListener('submit',function(e){e.preventDefault();var msg=$('docmsg'),f=$('docfile').files[0];if(!f){msg.textContent='\u092B\u093C\u093E\u0907\u0932 \u091A\u0941\u0928\u0947\u0902\u0964 / Choose a file.';return}
 if(!$('docok').checked){msg.textContent='\u0938\u0939\u092E\u0924\u093F \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902\u0964 / Please tick the consent.';return}
@@ -91455,16 +91558,20 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     const state = db.getState();
     const key = roomPushKey(room.id);
     const id = crypto42.createHash("sha256").update(endpoint).digest("hex").slice(0, 32);
+    const before = state.pushSubs.find((x) => x.id === id && x.userId === key);
     state.pushSubs = state.pushSubs.filter((x) => x.id !== id);
     const mine3 = state.pushSubs.filter((x) => x.userId === key);
     if (mine3.length >= 3) {
       const oldest = mine3.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
       state.pushSubs = state.pushSubs.filter((x) => x.id !== oldest.id);
     }
-    state.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers["user-agent"] || "").slice(0, 120), createdAt: nowIso41(), fails: 0, url: `/r/${req.params.token}` });
-    ev(room, "Client turned on alerts on a phone");
-    db.save();
-    res.json({ success: true });
+    state.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers["user-agent"] || "").slice(0, 120), createdAt: before?.createdAt || nowIso41(), lastOkAt: before?.lastOkAt, fails: 0, url: `/r/${req.params.token}` });
+    if (!before) {
+      ev(room, "Client turned on alerts on a phone");
+      db.save();
+      tell(room, "\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0939\u0948\u0902 / Alerts are on", `\u0905\u092C ${bName(room)} \u0915\u093E \u0938\u0902\u0926\u0947\u0936 \u0938\u0940\u0927\u0947 \u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0906\u090F\u0917\u093E / ${bName(room)}\u2019s messages will now come straight to this phone`);
+    } else db.save();
+    res.json({ success: true, fresh: !before });
   });
   r.post("/:token/doc", rateLimit("cr-doc", 20, 36e5), jsonBody, (req, res) => {
     const room = jsonAuth(req, res);
@@ -91637,15 +91744,15 @@ ${offersHtml}${visitsHtml}<h2 id="scan">\u{1F4F7} \u0935\u093F\u091C\u093C\u093F
     const mark = esc14(`${room.clientName} \u2022\u2022${room.phoneLast4} \xB7 ${b?.name || "GENZ"}`);
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join("")}</div>`;
     res.send(shell3("Your private room", `${wm}<div class="top"><h1>\u0928\u092E\u0938\u094D\u0924\u0947 ${esc14(room.clientName.split(" ")[0])} \u{1F64F}</h1><p>${room.kind === "OWNER" ? `${esc14(b?.name || "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0915\u0947 \u0938\u093E\u0925 \u0906\u092A\u0915\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u093E \u0930\u0942\u092E \xB7 Your property room` : `${esc14(b?.name || "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0928\u0947 \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092F\u0947 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u091A\u0941\u0928\u0940 \u0939\u0948\u0902 \xB7 Properties picked for you`}</p></div>
+<div class="card" id="app-card" style="display:none;border:2px solid #0f766e;background:#ecfdf5"><p class="h" id="app-title"></p>
+<p class="small" id="app-sub"></p>
+<div class="row"><button type="button" class="g" id="app-push" style="display:none;font-size:17px;padding:14px 20px">\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902 / Turn on alerts</button> <button type="button" class="l" id="app-later" style="display:none">\u092C\u093E\u0926 \u092E\u0947\u0902 / Later</button> <button type="button" class="l" id="app-install" style="display:none">\u{1F4F2} \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 / Add to Home</button></div>
+<p class="small" id="app-ios" style="display:none"><b>1.</b> Safari \u092E\u0947\u0902 \u0928\u0940\u091A\u0947 Share (\u2B06) \u0926\u092C\u093E\u090F\u0901 / tap Share (\u2B06) &nbsp;<b>2.</b> \u201CAdd to Home Screen\u201D &nbsp;<b>3.</b> \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0915\u0947 \u0906\u0907\u0915\u0928 \u0938\u0947 \u0916\u094B\u0932\u0947\u0902 \u0914\u0930 \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902 / open it from the home-screen icon and turn on alerts.</p>
+<p class="small" id="app-push-msg" role="status"></p></div>
 ${sibsHtml}
 ${req.query.sent === "1" ? '<div class="card ok"><p class="t">\u0906\u092A\u0915\u093E \u0935\u093F\u091C\u093C\u093F\u091F \u0905\u0928\u0941\u0930\u094B\u0927 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092D\u0947\u091C \u0926\u093F\u092F\u093E \u0917\u092F\u093E\u0964 / Your visit request has been sent.</p></div>' : ""}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
 ${req.query.doc === "1" ? '<div class="card ok"><p class="t">\u092B\u093C\u093E\u0907\u0932 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092D\u0947\u091C \u0926\u0940 \u0917\u0908\u0964 / File sent to your broker.</p></div>' : ""}
 ${brokerCard3(b)}
-<div class="card" id="app-card"><p class="h">\u{1F4F2} \u0907\u0938\u0947 \u0910\u092A \u0915\u0940 \u0924\u0930\u0939 \u0930\u0916\u0947\u0902 / Keep this as an app</p>
-<p class="small">\u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 \u2014 \u0939\u0930 \u092C\u093E\u0930 \u0932\u093F\u0902\u0915 \u0916\u094B\u0932\u0928\u0947 \u092F\u093E WhatsApp \u092E\u0947\u0902 \u0922\u0942\u0901\u0922\u0928\u0947 \u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0928\u0939\u0940\u0902\u0964 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0938\u0902\u0926\u0947\u0936 \u0906\u090F\u0917\u093E \u0924\u094B \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u092E\u093F\u0932\u0947\u0917\u093E\u0964 / Add it to your home screen \u2014 no hunting for the link. You get an alert when your broker writes.</p>
-<div class="row"><button type="button" class="g" id="app-install" style="display:none">\u{1F4F2} \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 / Add to Home</button> <button type="button" class="l" id="app-push" style="display:none">\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902 / Turn on alerts</button></div>
-<p class="small" id="app-ios" style="display:none">iPhone: \u0928\u0940\u091A\u0947 Share (\u2B06) \u0926\u092C\u093E\u090F\u0901 \u2192 \u201CAdd to Home Screen\u201D\u0964 \u092B\u093F\u0930 \u0910\u092A \u0916\u094B\u0932\u0915\u0930 \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902\u0964 (\u0905\u0932\u0930\u094D\u091F \u0915\u0947 \u0932\u093F\u090F iOS 16.4+) / iPhone: tap Share \u2192 Add to Home Screen, then open the app and turn on alerts (needs iOS 16.4+).</p>
-<p class="small" id="app-push-msg"></p></div>
 <p class="small" style="margin:10px 4px">\u{1F4CC} \u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 / \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u0930\u0916 \u0932\u0947\u0902 \u2014 \u0907\u0938\u0940 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0917\u0932\u0940 \u092C\u093E\u0930 \u092C\u093F\u0928\u093E \u0915\u094B\u0921 \u0915\u0947 \u0916\u0941\u0932\u0947\u0917\u093E (${ROOM_LIMITS.sessionDays} \u0926\u093F\u0928 \u092E\u0947\u0902 \u090F\u0915 \u092C\u093E\u0930 \u0916\u094B\u0932\u0924\u0947 \u0930\u0939\u0947\u0902)\u0964 \u092F\u0939 \u092A\u0947\u091C \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0939\u0948, \u0907\u0938\u0915\u093E \u0932\u093F\u0902\u0915 \u092F\u093E \u0938\u094D\u0915\u094D\u0930\u0940\u0928\u0936\u0949\u091F \u0906\u0917\u0947 \u0928 \u092D\u0947\u091C\u0947\u0902\u0964<br>Bookmark this page or add it to your home screen \u2014 on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
 ${room.kind === "OWNER" ? ownerBlock : `<h2>\u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">\u0905\u092D\u0940 \u0915\u094B\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0928\u0939\u0940\u0902 \u092D\u0947\u091C\u0940 \u0917\u0908\u0964 / Nothing shared yet \u2014 your broker will add some.</p></div>'}`}
 ${(() => {

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Shuffle, Eye, EyeOff, ShieldAlert, ArrowRightLeft, Palmtree, Building2, Wallet, Home } from 'lucide-react';
+import { Loader2, Shuffle, Eye, EyeOff, ShieldAlert, ArrowRightLeft, Palmtree, Building2, Wallet, Home, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { STAFF_PRESETS, presetOf, presetPatch } from '../shared/pcontrolRules.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-semibold disabled:opacity-50';
@@ -58,6 +59,8 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
   const set = (patch: any, ok = tx('Saved', 'सेव')) => run(() => api.tcPolicy(m.id, patch), ok);
   const [to, setTo] = useState('');
   const others = active.filter((x: any) => x.id !== m.id);
+  const kind = isBuilder ? 'BUILDER' : 'BROKER';
+  const cur = presetOf(p, kind);
   const toggle = (label: string, hi: string, key: string, hint?: string) => (
     <label className="flex min-h-11 items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-1" checked={!!p[key]} onChange={e => set({ [key]: e.target.checked })} data-testid={`tc-${key}-${m.id}`} /><span><b>{tx(label, hi)}</b>{hint && <span className="block text-[10px] text-slate-500">{hint}</span>}</span></label>
   );
@@ -66,6 +69,7 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
       <button onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left" aria-expanded={open}>
         <div className="min-w-0"><div className="text-sm font-bold text-slate-900">{m.name} <span className="text-xs font-normal text-slate-500">· {m.title}</span></div>
           <div className="mt-0.5 flex flex-wrap gap-1.5 text-[10px]">
+            <span className="rounded bg-slate-900 px-1.5 py-0.5 font-semibold text-white" data-testid={`tc-preset-badge-${m.id}`}>{cur ? tx(STAFF_PRESETS.find(x => x.id === cur)!.en, STAFF_PRESETS.find(x => x.id === cur)!.hi) : tx('Custom', 'कस्टम')}</span>
             <span className="rounded bg-slate-100 px-1.5 py-0.5">{p.phoneMode === 'FULL' ? tx('sees numbers', 'नंबर देखता है') : p.phoneMode === 'REVEAL' ? tx('tap-to-reveal', 'टैप करके नंबर') : tx('no numbers', 'नंबर नहीं')}</span>
             {p.onLeave && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">{tx('on leave', 'छुट्टी पर')}</span>}
             {m.status !== 'VERIFIED' && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">{label('status', m.status)}</span>}
@@ -87,6 +91,20 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
       </div>
       {open && (
         <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
+          <div data-testid={`tc-presets-${m.id}`}>
+            <div className="mb-1 text-[11px] font-bold text-slate-700">{tx('What is his job? (one tap sets everything)', 'इसका काम क्या है? (एक टैप में सब सेट)')}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {STAFF_PRESETS.map(pr => (
+                <button key={pr.id} data-testid={`tc-preset-${pr.id}-${m.id}`} aria-pressed={cur === pr.id}
+                  onClick={() => set(presetPatch(pr.id, kind), tx(`Set as ${pr.en}`, `${pr.hi} के रूप में सेट`))}
+                  className={`min-h-11 rounded-full px-3.5 text-xs font-semibold ${cur === pr.id ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}>{tx(pr.en, pr.hi)}</button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-600">{cur ? tx(STAFF_PRESETS.find(x => x.id === cur)!.hintEn, STAFF_PRESETS.find(x => x.id === cur)!.hintHi) : tx('Custom mix of switches. Tap a job above to reset to a safe set, or change single switches below.', 'स्विच का अपना मिश्रण। ऊपर कोई काम चुनें तो सुरक्षित सेट लग जाएगा, या नीचे अलग-अलग स्विच बदलें।')}</p>
+          </div>
+          <details className="group rounded-lg border border-slate-200" data-testid={`tc-advanced-${m.id}`}>
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-xs font-semibold text-slate-700"><span className="flex items-center gap-1.5"><SlidersHorizontal className="h-3.5 w-3.5" />{tx('All switches (advanced)', 'सारे स्विच (एडवांस्ड)')}</span><ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+          <div className="space-y-4 border-t border-slate-100 p-3">
           <div>
             <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-700">{p.phoneMode === 'FULL' ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}{tx('Customer phone numbers', 'ग्राहक के फ़ोन नंबर')}</div>
             <div className="grid grid-cols-3 gap-2">
@@ -153,6 +171,8 @@ const MemberCard: React.FC<{ m: any; active: any[]; projects: { id: string; name
             <p className="mt-1 text-[10px] text-slate-500">{tx('None selected = all projects.', 'कोई नहीं चुना = सभी प्रोजेक्ट।')}</p>
             {p.projectIds.length > 0 && <label className="mt-2 flex min-h-11 items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-1" checked={p.scope === 'PROJECTS'} onChange={e => set({ scope: e.target.checked ? 'PROJECTS' : 'ASSIGNED' })} /><span><b>{tx('Can see ALL leads of these projects (read-only)', 'इन प्रोजेक्ट की सारी लीड देख सकता (सिर्फ़ पढ़ने)')}</b><span className="block text-[10px] text-slate-500">{tx('Otherwise he sees only leads you allot to him.', 'वरना सिर्फ़ वही लीड दिखती हैं जो आप उसे दें।')}</span></span></label>}
           </div>
+          </div>
+          </details>
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
             <button onClick={() => set({ onLeave: !p.onLeave }, p.onLeave ? tx('Back from leave', 'छुट्टी से वापस') : tx('Marked on leave — open leads taken back', 'छुट्टी पर — खुली लीड वापस ली गईं'))} className={ghost}><Palmtree className="h-4 w-4" />{p.onLeave ? tx('Back from leave', 'छुट्टी से वापस') : tx('On leave', 'छुट्टी पर')}</button>
             <select value={to} onChange={e => setTo(e.target.value)} className={`${inp} !w-auto`} aria-label={tx('Hand over to', 'इन्हें सौंपें')}><option value="">{tx('Hand over open leads to…', 'खुली लीड सौंपें…')}</option>{others.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}<option value="__pool">{tx('Back to my pool', 'मेरे पूल में वापस')}</option></select>

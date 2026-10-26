@@ -67,10 +67,18 @@ export const FilterBar: React.FC<{ f: Filters; setF: (f: Filters) => void; proje
     <button key={flag} onClick={() => set('flag', f.flag === flag ? '' : flag)} className={`min-h-9 rounded-full border px-3 text-[11px] font-semibold ${f.flag === flag ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{tx(en, hi)}</button>
   );
   const sel = 'min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs';
+  // v75 — search is always there; the project / temperature / source pickers and the flag chips open with "Filters" (they stay open while one is in use)
+  const used = [f.temperature, f.projectId, f.source, f.flag].filter(Boolean).length;
+  const [more, setMore] = useState(false);
+  const show = more || used > 0;
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid="crm-filters">
+      <div className="flex items-center gap-2">
+        <input value={f.q} onChange={e => set('q', e.target.value)} placeholder={tx('Search name, phone, tag', 'नाम, फ़ोन, टैग खोजें')} className="min-h-9 min-w-0 flex-1 sm:max-w-xs rounded-lg border border-slate-300 px-3 text-xs" />
+        <button type="button" onClick={() => setMore(m => !m)} aria-expanded={show} data-testid="crm-filters-toggle" className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700">{tx('Filters', 'फ़िल्टर')}{used > 0 && <span className="rounded-full bg-slate-900 px-1.5 text-[10px] text-white">{used}</span>}<span aria-hidden>{show ? '▲' : '▼'}</span></button>
+      </div>
+      {show && (<>
       <div className="flex flex-wrap items-center gap-2">
-        <input value={f.q} onChange={e => set('q', e.target.value)} placeholder={tx('Search name, phone, tag', 'नाम, फ़ोन, टैग खोजें')} className="min-h-9 w-full max-w-xs rounded-lg border border-slate-300 px-3 text-xs" />
         <select value={f.projectId} onChange={e => set('projectId', e.target.value)} className={sel} aria-label={tx('Project', 'प्रोजेक्ट')}><option value="">{tx('All projects', 'सभी प्रोजेक्ट')}</option>{projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}</select>
         <select value={f.temperature} onChange={e => set('temperature', e.target.value)} className={sel} aria-label={tx('Temperature', 'तापमान')}><option value="">{tx('Any temperature', 'कोई भी तापमान')}</option>{Object.entries(TEMP_LABEL).map(([k, v]) => <option key={k} value={k}>{v[0]} {lang === 'hi' ? v[2] : v[1]}</option>)}</select>
         <select value={f.source} onChange={e => set('source', e.target.value)} className={sel} aria-label={tx('Source', 'स्रोत')}><option value="">{tx('Any source', 'कोई भी स्रोत')}</option>{SOURCES.map(s => <option key={s[0]} value={s[0]}>{lang === 'hi' ? s[2] : s[1]}</option>)}</select>
@@ -79,6 +87,8 @@ export const FilterBar: React.FC<{ f: Filters; setF: (f: Filters) => void; proje
         {chip('overdue', 'Overdue follow-up', 'ओवरड्यू फ़ॉलो-अप')}{chip('stale', `No activity ${STALE_DAYS}+ days`, `${STALE_DAYS}+ दिन निष्क्रिय`)}{chip('expiring', 'Protection ending', 'सुरक्षा खत्म होने वाली')}
         {(f.q || f.temperature || f.projectId || f.source || f.flag) && <button onClick={() => setF(EMPTY_FILTERS)} className="min-h-9 px-2 text-[11px] font-semibold text-red-600">{tx('Clear', 'हटाएँ')}</button>}
       </div>
+      </>)}
+      {!show && f.q && <button onClick={() => setF(EMPTY_FILTERS)} className="min-h-9 px-2 text-[11px] font-semibold text-red-600">{tx('Clear', 'हटाएँ')}</button>}
     </div>
   );
 };

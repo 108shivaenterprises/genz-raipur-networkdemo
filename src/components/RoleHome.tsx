@@ -11,6 +11,7 @@ import { useLabel } from '../lib/labels.js';
 import { hasPerm } from '../lib/permissions.js';
 import type { BuilderProject, BuyerRequirement, DealRoom, DueDiligenceIssue, Property, SalesAssociateMandate, SiteVisit, UserProfile } from '../types/index.js';
 import type { TabType } from './NavigationTabs.js';
+import { ProHome } from './ProHome.js';
 
 /**
  * Role-specific home screens. The broker dashboard (commission pipeline, co-broking, network inventory) is the wrong
@@ -186,80 +187,6 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
   );
 };
 
-// ───────────────────────── Legal counsel ─────────────────────────
-const SEV: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFORMATIONAL: 4 };
-const LegalHome: React.FC<Props> = ({ permissions, properties, deals, onNavigate }) => {
-  const tx = useTx();
-  const label = useLabel();
-  const res = useOnce(hasPerm(permissions, 'dd:read'), () => api.getDueDiligenceIssues());
-  const issues: DueDiligenceIssue[] = (res?.issues || []).filter(i => ['OPEN', 'IN_PROGRESS', 'REOPENED'].includes(i.status)).sort((a, b) => (SEV[a.severity] ?? 9) - (SEV[b.severity] ?? 9));
-  const serious = issues.filter(i => i.severity === 'CRITICAL' || i.severity === 'HIGH');
-  const titleOf = (id: string) => properties.find(p => p.id === id)?.title || id;
-  const tp = { onNavigate };
-  const items: Attention[] = issues.map(i => ({ key: i.id, tab: 'due_diligence' as TabType, tone: (i.severity === 'CRITICAL' || i.severity === 'HIGH' ? 'warn' : 'info') as 'warn' | 'info', title: `${label('status', i.severity)} · ${i.title}`, detail: `${titleOf(i.propertyId)} · ${tx('due', 'अंतिम तिथि')} ${i.deadline ? formatDateTime(i.deadline) : '—'}` }));
-
-  return (
-    <div className="space-y-6" data-testid="legal-home">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile {...tp} testId="tile-legal-issues" tab="due_diligence" label={tx('Open legal issues', 'खुले कानूनी मुद्दे')} value={res ? String(issues.length) : '—'} sub={tx('Title, approvals and compliance gaps', 'टाइटल, अनुमति और अनुपालन की कमियाँ')} tone={issues.length ? 'warn' : 'ok'} icon={<Scale className="h-4 w-4 text-amber-600" />} />
-        <Tile {...tp} testId="tile-legal-serious" tab="due_diligence" label={tx('Critical / high', 'गंभीर / ऊँचे')} value={res ? String(serious.length) : '—'} sub={tx('Resolve these before registry', 'रजिस्ट्री से पहले निपटाएँ')} tone={serious.length ? 'warn' : undefined} icon={<AlertTriangle className="h-4 w-4 text-rose-600" />} />
-        <Tile {...tp} testId="tile-legal-props" tab="properties" label={tx('Properties in network', 'नेटवर्क की प्रॉपर्टी')} value={String(properties.length)} sub={tx('Open one to review its checklist', 'चेकलिस्ट देखने के लिए खोलें')} icon={<Building2 className="h-4 w-4 text-slate-500" />} />
-        {hasPerm(permissions, 'deal:read') && <Tile {...tp} testId="tile-legal-deals" tab="deals" label={tx('Deals to clear', 'क्लियर करने वाले सौदे')} value={String(deals.length)} sub={tx('Readiness report and sign-off', 'रेडीनेस रिपोर्ट और साइन-ऑफ़')} icon={<FileSignature className="h-4 w-4 text-slate-500" />} />}
-      </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <AttentionList items={items} onNavigate={onNavigate} heading={tx('Open issues, most serious first', 'खुले मुद्दे, गंभीर पहले')} sub={tx('From the due-diligence issue register', 'ड्यू-डिलिजेंस इश्यू रजिस्टर से')} empty={tx('No open legal issues.', 'कोई खुला कानूनी मुद्दा नहीं।')} />
-        <LinkCard onNavigate={onNavigate} title={tx('My work', 'मेरा काम')} links={[
-          { tab: 'due_diligence', label: tx('Due diligence & title audit', 'ड्यू डिलिजेंस और टाइटल ऑडिट'), icon: <ShieldCheck className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'dd:read') },
-          { tab: 'landrecords', label: tx('Land records & red flags', 'भूमि रिकॉर्ड और रेड फ़्लैग'), icon: <Landmark className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'landrecord:manage') },
-          { tab: 'deals', label: tx('Deal rooms (no commissions shown)', 'डील रूम (कमीशन नहीं दिखता)'), icon: <Briefcase className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'deal:read') },
-          { tab: 'propdocs', label: tx('Property papers shared with me', 'मुझसे शेयर हुए प्रॉपर्टी पेपर्स'), icon: <FolderOpen className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'propdoc:use') },
-          { tab: 'pdocs', label: tx('Protected documents', 'सुरक्षित दस्तावेज़'), icon: <FileLock2 className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'pdoc:use') },
-        ]} />
-      </div>
-    </div>
-  );
-};
-
-// ───────────────────────── Developer / builder ─────────────────────────
-const BuilderHome: React.FC<Props> = ({ currentUser, permissions, projects, mandates, onNavigate }) => {
-  const tx = useTx();
-  const crm = useOnce(hasPerm(permissions, 'crm:read'), () => api.crmOverview());
-  const o = crm?.overview;
-  const mine = projects.filter(p => p.builderId === currentUser.id);
-  const live = mine.filter(p => p.status !== 'ARCHIVED');
-  const units = live.reduce((a, p) => ({ total: a.total + (p.totalUnits || 0), left: a.left + (p.availableUnits || 0) }), { total: 0, left: 0 });
-  const myMandates = mandates.filter(m => m.builderId === currentUser.id);
-  const active = myMandates.filter(m => ['ACTIVE_ASSOCIATE', 'TOP_PERFORMER'].includes(m.status)).length;
-  const applied = myMandates.filter(m => m.status === 'APPLIED').length;
-  const tp = { onNavigate };
-  const items: Attention[] = [
-    ...(o?.pendingBookingRequests ? [{ key: 'bk', tone: 'warn' as const, tab: 'crm' as TabType, title: tx(`${o.pendingBookingRequests} booking request(s) to approve`, `${o.pendingBookingRequests} बुकिंग अनुरोध मंज़ूर करने हैं`), detail: tx('Associates are waiting for your decision', 'एसोसिएट आपके फ़ैसले का इंतज़ार कर रहे हैं') }] : []),
-    ...(o?.overdueFollowUps ? [{ key: 'fu', tone: 'warn' as const, tab: 'crm' as TabType, title: tx(`${o.overdueFollowUps} overdue follow-up(s)`, `${o.overdueFollowUps} फ़ॉलो-अप लेट`), detail: tx('Leads going cold — assign or call today', 'लीड ठंडी पड़ रही हैं — आज असाइन करें या कॉल करें') }] : []),
-    ...(applied ? [{ key: 'ap', tab: 'pcontrol' as TabType, title: tx(`${applied} associate application(s)`, `${applied} एसोसिएट आवेदन`), detail: tx('Review and shortlist or decline', 'देखें और शॉर्टलिस्ट या अस्वीकार करें') }] : []),
-    ...(o?.brokeragePayable ? [{ key: 'pay', tone: 'warn' as const, tab: 'crm' as TabType, title: tx(`${formatINR(o.brokeragePayable)} brokerage payable`, `${formatINR(o.brokeragePayable)} ब्रोकरेज देय`), detail: tx('Pay the associate directly, then record it — GENZ never holds this money', 'एसोसिएट को सीधे दें, फिर दर्ज करें — GENZ यह पैसा नहीं रखता') }] : []),
-  ];
-
-  return (
-    <div className="space-y-6" data-testid="builder-home">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile {...tp} testId="tile-builder-projects" tab="builder" label={tx('Live projects', 'चालू प्रोजेक्ट')} value={String(live.length)} sub={tx(`${units.left} of ${units.total} units available`, `${units.total} में से ${units.left} यूनिट उपलब्ध`)} icon={<Layers className="h-4 w-4 text-slate-500" />} />
-        <Tile {...tp} testId="tile-builder-assoc" tab={applied ? 'pcontrol' : 'builder'} label={tx('Active associates', 'सक्रिय एसोसिएट')} value={String(active)} sub={tx(`${applied} application(s) waiting`, `${applied} आवेदन बाकी`)} tone={applied ? 'warn' : undefined} icon={<Users className="h-4 w-4 text-slate-500" />} />
-        {hasPerm(permissions, 'crm:read') && <Tile {...tp} testId="tile-builder-leads" tab="crm" label={tx('Active leads', 'सक्रिय लीड')} value={o ? String(o.activeLeads) : '—'} sub={tx(`${o?.overdueFollowUps ?? 0} overdue follow-up(s) · ${o?.conversionPct ?? 0}% converted`, `${o?.overdueFollowUps ?? 0} फ़ॉलो-अप लेट · ${o?.conversionPct ?? 0}% कन्वर्ट`)} tone={o?.overdueFollowUps ? 'warn' : undefined} icon={<Contact className="h-4 w-4 text-blue-600" />} />}
-        {hasPerm(permissions, 'crm:read') && <Tile {...tp} testId="tile-builder-sales" tab="crm" label={tx('Sales booked', 'बुक हुई बिक्री')} value={o ? formatINR(o.salesValue) : '—'} sub={tx(`${o?.approvedBookings ?? 0} booking(s) · ${formatINR(o?.brokeragePayable ?? 0)} brokerage payable`, `${o?.approvedBookings ?? 0} बुकिंग · ${formatINR(o?.brokeragePayable ?? 0)} ब्रोकरेज देय`)} icon={<IndianRupee className="h-4 w-4 text-emerald-600" />} />}
-      </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <AttentionList items={items} onNavigate={onNavigate} heading={tx('Needs your attention', 'आपके ध्यान की ज़रूरत')} sub={tx('Bookings, follow-ups, applications and payouts', 'बुकिंग, फ़ॉलो-अप, आवेदन और भुगतान')} empty={tx('Nothing is waiting on you right now.', 'अभी आप पर कुछ भी रुका नहीं है।')} />
-        <LinkCard onNavigate={onNavigate} title={tx('Quick links', 'क्विक लिंक')} links={[
-          { tab: 'builder', label: tx('Builder Launchpad & associates', 'बिल्डर लॉन्चपैड और एसोसिएट'), icon: <Layers className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'builder:associates_read') },
-          { tab: 'crm', label: tx('Associates CRM', 'एसोसिएट CRM'), icon: <Contact className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'crm:read') },
-          { tab: 'pcontrol', label: tx('Project Control', 'प्रोजेक्ट कंट्रोल'), icon: <KeyRound className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'pcontrol:manage', 'pcontrol:oversee') },
-          { tab: 'team', label: tx('My team', 'मेरी टीम'), icon: <Users className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'team:manage') },
-        ]} />
-      </div>
-    </div>
-  );
-};
-
 // ───────────────────────── switch ─────────────────────────
 interface Props {
   currentUser: UserProfile;
@@ -280,8 +207,8 @@ export const RoleHome: React.FC<Props> = (p) => {
   switch (p.currentUser.role) {
     case 'PROPERTY_OWNER': return <OwnerHome {...p} />;
     case 'BUYER_TENANT': return <BuyerHome {...p} />;
-    case 'LEGAL_COUNSEL': return <LegalHome {...p} />;
-    case 'DEVELOPER_BUILDER': return <BuilderHome {...p} />;
+    // v75 — builder and lawyer share the one simple home (Today · four big buttons · four numbers)
+    case 'LEGAL_COUNSEL': case 'DEVELOPER_BUILDER': return <ProHome currentUser={p.currentUser} permissions={p.permissions} projects={p.projects} mandates={p.mandates} onNavigate={p.onNavigate} />;
     default: return null;
   }
 };

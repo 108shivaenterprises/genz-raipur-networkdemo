@@ -169,15 +169,19 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const isOwner = currentUser?.role === 'PROPERTY_OWNER';
   const isConnector = currentUser?.role === 'GENZ_CONNECTOR';
   const isMember = currentUser?.role === 'TEAM_MEMBER';
+  // v75 — a builder / lawyer / contractor sees plain names for his own screens (a broker or GENZ staff keep the old ones)
+  const isBuilderRole = currentUser?.role === 'DEVELOPER_BUILDER';
+  const isCounsel = currentUser?.role === 'LEGAL_COUNSEL';
+  const isContractorRole = currentUser?.role === 'CONTRACTOR';
 
   // Tabs are derived from the server-issued permission list; the API enforces the same rules independently.
   const allTabs = [
     { id: 'dashboard', label: isMember ? t('nav.myWork', 'My Work') : isConnector ? t('nav.myReferrals', 'My Referrals') : t('nav.dashboard', 'Dashboard'), icon: LayoutDashboard },
-    ...(has('legal:desk') && !has('legal:manage') ? [{ id: 'legal', label: t('nav.legal', 'Legal Desk'), icon: ScaleIcon, badge: legalBadge }] : []),
+    ...(has('legal:desk') && !has('legal:manage') ? [{ id: 'legal', label: isCounsel ? t('nav.legalCases', 'Legal Cases') : t('nav.legal', 'Legal Desk'), icon: ScaleIcon, badge: legalBadge }] : []),
     // v54.1 — GENZ admins are never part of a deal chat (they read a deal room only through a dispute), so their Chats list is always empty
     ...(has('deal:chat', 'clientroom:use', 'pchat:use') && currentUser?.role !== 'ADMIN' && currentUser?.role !== 'SUPERADMIN' ? [{ id: 'chats', label: t('nav.chats', 'Chats'), icon: MessageCircle, badge: chatBadge }] : []),
     ...(has('daily:use') ? [{ id: 'daily', label: t('nav.daily', 'Today & Clients'), icon: CalendarCheck }] : []),
-    ...(has('pcontrol:manage', 'pcontrol:oversee') ? [{ id: 'pcontrol', label: t('nav.pcontrol', 'Project Control'), icon: SlidersHorizontal }] : has('pcontrol:partner') ? [{ id: 'pcontrol', label: t('nav.myprojects', 'My Projects'), icon: Layers }] : []),
+    ...(has('pcontrol:manage', 'pcontrol:oversee') ? [{ id: 'pcontrol', label: isBuilderRole ? t('nav.pcontrolBuilder', 'Partners & Rules') : t('nav.pcontrol', 'Project Control'), icon: SlidersHorizontal }] : has('pcontrol:partner') ? [{ id: 'pcontrol', label: t('nav.myprojects', 'My Projects'), icon: Layers }] : []),
     ...(has('offer:make', 'offer:decide', 'listing:lifecycle') ? [{ id: 'desk', label: t('nav.desk', 'Deal Desk'), icon: Handshake }] : []),
     ...(has('network:use', 'growth:manage') ? [{ id: 'network', label: t('nav.network', 'Tie-ups & Tiers'), icon: Network }] : []),
     ...(has('clientroom:use') ? [{ id: 'clientroom', label: t('nav.clientroom', 'Client Rooms'), icon: MessagesSquare, badge: roomBadge }] : []),
@@ -196,8 +200,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('launch:manage') ? [{ id: 'launchdesk', label: t('nav.launchdesk', 'Launch Desk'), icon: Rocket }] : []),
     ...(has('growth:manage') ? [{ id: 'citylaunch', label: t('nav.citylaunch', 'City Launch'), icon: Rocket }] : []),
     ...(has('landrecord:manage') ? [{ id: 'landrecords', label: t('nav.landrecords', 'Land Records'), icon: Landmark }] : []),
-    ...(has('builder:associates_read') ? [{ id: 'builder', label: t('nav.builder', 'Builder Launchpad'), icon: Layers }] : []),
-    ...(has('crm:read') ? [{ id: 'crm', label: t('nav.crm', 'Associates CRM'), icon: Contact }] : []),
+    ...(has('builder:associates_read') ? [{ id: 'builder', label: isBuilderRole ? t('nav.builderProjects', 'My Projects') : t('nav.builder', 'Builder Launchpad'), icon: Layers }] : []),
+    ...(has('crm:read') ? [{ id: 'crm', label: isBuilderRole ? t('nav.crmBuilder', 'Leads & Bookings') : t('nav.crm', 'Associates CRM'), icon: Contact }] : []),
     ...(has('property:read')
       ? [{ id: 'properties', label: isOwner ? t('nav.myProperties', 'My Properties') : t('nav.properties', 'Properties'), icon: Building }]
       : []),
@@ -207,7 +211,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
       ? [{ id: 'deals', label: isOwner ? t('nav.myDeals', 'My Property Deals') : t('nav.deals', 'My Deals'), icon: Briefcase, badge: unreadCount.deals }]
       : []),
     ...(has('dd:read') ? [{ id: 'due_diligence', label: t('nav.dd', 'Title Check'), icon: ShieldCheck }] : []),
-    ...(has('lead:read') ? [{ id: 'construction', label: t('nav.construction', 'Construction Leads'), icon: HardHat, badge: unreadCount.leads }] : []),
+    ...(has('lead:read') ? [{ id: 'construction', label: isContractorRole ? t('nav.constructionContractor', 'Leads & Jobs') : t('nav.construction', 'Construction Leads'), icon: HardHat, badge: unreadCount.leads }] : []),
     ...(has('dispute:read') ? [{ id: 'disputes', label: t('nav.disputes', 'Disputes'), icon: Scale, badge: unreadCount.disputes }] : []),
     ...(has('audit:read_all', 'audit:read_own') ? [{ id: 'audit', label: t('nav.audit', 'Activity Record'), icon: History }] : []),
     ...(has('users:invite', 'users:review') ? [{ id: 'onboarding', label: t('nav.onboarding', 'Invite & KYC'), icon: KeyRound }] : []),
@@ -242,10 +246,10 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const HOME = { ids: ['dashboard'], key: 'nav.home', en: 'Home' };
   const BOTTOM: Record<string, Array<{ ids: string[]; key: string; en: string }>> = {
     BROKER: [HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['requirements'], key: 'nav.buyersShort', en: 'Buyers' }, { ids: ['deals', 'desk'], key: 'nav.dealsShort', en: 'Deals' }],
-    DEVELOPER_BUILDER: [HOME, { ids: ['pcontrol'], key: 'nav.projectsShort', en: 'Projects' }, { ids: ['crm'], key: 'nav.crmShort', en: 'CRM' }, { ids: ['chats'], key: 'nav.chats', en: 'Chats' }],
+    DEVELOPER_BUILDER: [HOME, { ids: ['crm'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['builder', 'pcontrol'], key: 'nav.projectsShort', en: 'Projects' }, { ids: ['chats'], key: 'nav.chats', en: 'Chats' }],
     ADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['plans'], key: 'nav.feesShort', en: 'Fees' }],
     SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'plans'], key: 'nav.controlShort', en: 'Control' }],
-    LEGAL_COUNSEL: [HOME, { ids: ['legal'], key: 'nav.legalShort', en: 'Legal' }, { ids: ['due_diligence'], key: 'nav.ddShort', en: 'Title' }, { ids: ['propdocs', 'pdocs'], key: 'nav.papersShort', en: 'Papers' }],
+    LEGAL_COUNSEL: [HOME, { ids: ['legal'], key: 'nav.casesShort', en: 'Cases' }, { ids: ['due_diligence'], key: 'nav.ddShort', en: 'Title' }, { ids: ['propdocs', 'pdocs'], key: 'nav.papersShort', en: 'Papers' }],
     PROPERTY_OWNER: [HOME, { ids: ['properties', 'propdocs'], key: 'nav.myPropShort', en: 'My Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
     CONTRACTOR: [HOME, { ids: ['construction'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['team'], key: 'nav.teamShort', en: 'Team' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }],
   };
@@ -270,7 +274,24 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'partners', 'team'] },
     { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'audit'] },
   ];
-  const GROUP_DEFS = role === 'ADMIN' || role === 'SUPERADMIN' ? ADMIN_GROUP_DEFS : BROKER_GROUP_DEFS;
+  // v75 — a builder, a lawyer and a contractor each get a few plain groups of their own (not the broker's "Property & Buyers / Deals / Sales & Team")
+  const BUILDER_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
+    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'crm', 'chats', 'visits'] },
+    { id: 'projects', key: 'nav.g.projects', en: 'Projects & partners', ids: ['builder', 'pcontrol', 'network', 'share'] },
+    { id: 'team', key: 'nav.g.teamrec', en: 'Team & records', ids: ['team', 'propdocs', 'pdocs', 'disputes', 'audit'] },
+    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['community', 'grow', 'plans'] },
+  ];
+  const LEGAL_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
+    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'legal', 'due_diligence', 'deals'] },
+    { id: 'papers', key: 'nav.g.papers', en: 'Papers & records', ids: ['propdocs', 'pdocs', 'landrecords', 'properties', 'audit'] },
+    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['community', 'grow', 'plans'] },
+  ];
+  const CONTRACTOR_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
+    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'construction', 'team'] },
+    { id: 'docs', key: 'nav.g.docs', en: 'Papers & disputes', ids: ['pdocs', 'disputes', 'audit'] },
+    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['connector', 'community', 'grow', 'plans'] },
+  ];
+  const GROUP_DEFS = role === 'ADMIN' || role === 'SUPERADMIN' ? ADMIN_GROUP_DEFS : role === 'DEVELOPER_BUILDER' ? BUILDER_GROUP_DEFS : role === 'LEGAL_COUNSEL' ? LEGAL_GROUP_DEFS : role === 'CONTRACTOR' ? CONTRACTOR_GROUP_DEFS : BROKER_GROUP_DEFS;
   const groups = (() => {
     const placed = new Set<string>();
     const g = GROUP_DEFS.map(d => ({ ...d, label: t(d.key, d.en), tabs: d.ids.map(id => tabs.find(x => x.id === id)).filter(Boolean) as typeof tabs })).filter(d => d.tabs.length > 0);

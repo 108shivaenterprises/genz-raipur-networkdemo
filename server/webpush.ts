@@ -185,6 +185,20 @@ export async function pushToRoom(roomId: string, title: string, body: string, ta
     return ok;
   } catch (e) { console.error('[PUSH] room send failed:', (e as Error).message); return 0; }
 }
+/** v75 — does this room's client hear us? (the broker sees ON / OFF and how many phones) */
+export function roomAlertInfo(roomId: string): { phones: number; lastOkAt?: string; sent: { at: string; title: string }[] } {
+  const key = roomPushKey(roomId); const subs = db.getState().pushSubs.filter(x => x.userId === key);
+  const ok = subs.map(x => x.lastOkAt || '').filter(Boolean).sort();
+  return { phones: subs.length, ...(ok.length ? { lastOkAt: ok[ok.length - 1] } : {}), sent: pushLog.filter(x => x.userId === key).slice(-5).map(x => ({ at: x.at, title: x.msg.title })) };
+}
+/** v75 — the words the client's phone shows when his broker writes: the broker's NAME (so it feels like a chat) but never the message itself — a lock screen is not private */
+export function brokerWrote(roomId: string, brokerName: string, what: 'MSG' | 'PAPER' | 'HOME' = 'MSG'): Promise<number> {
+  const n = String(brokerName || 'Broker').replace(/\s+/g, ' ').trim().slice(0, 28) || 'Broker';
+  const t = what === 'PAPER' ? [`📄 ${n} ने काग़ज़ भेजा / ${n} sent a paper`, 'देखने के लिए खोलें / Tap to view']
+    : what === 'HOME' ? [`🏠 ${n} ने नई प्रॉपर्टी भेजी / ${n} sent a property`, 'देखने के लिए खोलें / Tap to view']
+    : [`💬 ${n} का संदेश / Message from ${n}`, 'पढ़ने और जवाब देने के लिए खोलें / Tap to read and reply'];
+  return pushToRoom(roomId, t[0], t[1], `room-${roomId}`);
+}
 export function dropRoomPush(roomId: string) { const s = db.getState(); const key = roomPushKey(roomId); const n = s.pushSubs.length; s.pushSubs = s.pushSubs.filter(x => x.userId !== key); return n - s.pushSubs.length; }
 
 /** never throws, never blocks the request that caused it */

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTx, useI18n } from '../lib/i18n.js';
-import { TEAM_ROLES } from '../shared/crmSales.js';
+import { TEAM_ROLES, teamRolesFor, teamMaxFor } from '../shared/crmSales.js';
 import { Loader2, UserPlus, Copy, PauseCircle, PlayCircle, KeyRound, Share2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { TeamControl } from './TeamControl.js';
@@ -65,12 +65,15 @@ const ActivityTab: React.FC = () => {
 /** `canControl`: lead routing / handover is a CRM feature, so only brokers and builders get that sub-tab (the server refuses everyone else). */
 export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> = ({ isBuilder = false, canControl = true }) => {
   const tx = useTx(); const { lang } = useI18n();
+  // who employs: a builder runs a sales force, a broker a small office, a contractor site people (role names + member limit differ)
+  const employerRole = isBuilder ? 'DEVELOPER_BUILDER' : canControl ? 'BROKER' : 'CONTRACTOR';
+  const roleOpts = teamRolesFor(employerRole);
   const [tab, setTab] = useState<'members' | 'control' | 'activity'>('members');
   const [members, setMembers] = useState<any[]>([]);
-  const [max, setMax] = useState(15);
+  const [max, setMax] = useState(teamMaxFor(employerRole));
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', title: '', role: 'TELECALLER', consent: false });
+  const [form, setForm] = useState({ name: '', phone: '', title: '', role: roleOpts[0].id, consent: false });
   const [busy, setBusy] = useState(false);
   const [cred, setCred] = useState<Cred | null>(null);
 
@@ -87,7 +90,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> =
     try {
       const r = await api.teamAdd({ name: form.name, phone: form.phone, role: form.role, ...(form.title.trim() ? { title: form.title.trim() } : {}), consentAttested: form.consent as true });
       setCred({ name: r.member.name, loginId: r.loginId, password: r.temporaryPassword });
-      setForm({ name: '', phone: '', title: '', role: 'TELECALLER', consent: false });
+      setForm({ name: '', phone: '', title: '', role: roleOpts[0].id, consent: false });
       await load();
     } catch (err: any) { flash(false, err.message); } finally { setBusy(false); }
   };
@@ -135,7 +138,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> =
         <input required placeholder={tx('Name', 'नाम')} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-xs" />
         <input required placeholder={tx('Mobile (10 digits)', 'मोबाइल (10 अंक)')} inputMode="numeric" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-xs" />
         <div className="flex gap-2">
-          <select required aria-label={tx('Role', 'भूमिका')} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">{TEAM_ROLES.map(r => <option key={r.id} value={r.id}>{lang === 'hi' ? r.hi : r.en}</option>)}</select>
+          <select required aria-label={tx('Role', 'भूमिका')} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs">{roleOpts.map(r => <option key={r.id} value={r.id}>{lang === 'hi' ? r.hi : r.en}</option>)}</select>
         </div>
         <button disabled={busy || full || !form.consent} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} {tx('Add member', 'सदस्य जोड़ें')}
@@ -156,7 +159,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> =
             {members.map(m => (
               <tr key={m.id} className="border-t border-slate-100">
                 <td className="p-2.5 font-medium">{m.name}</td><td>{m.phone}</td><td>
-                  <select value={m.teamRole || 'OTHER'} aria-label={tx('Role', 'भूमिका')} onChange={async e => { try { await api.teamUpdate(m.id, { teamRole: e.target.value }); flash(true, tx('Role saved', 'भूमिका सेव हुई')); await load(); } catch (err: any) { flash(false, err.message); } }} className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px]">{TEAM_ROLES.map(r => <option key={r.id} value={r.id}>{lang === 'hi' ? r.hi : r.en}</option>)}</select>
+                  <select value={m.teamRole || 'OTHER'} aria-label={tx('Role', 'भूमिका')} onChange={async e => { try { await api.teamUpdate(m.id, { teamRole: e.target.value }); flash(true, tx('Role saved', 'भूमिका सेव हुई')); await load(); } catch (err: any) { flash(false, err.message); } }} className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px]">{[...roleOpts, ...TEAM_ROLES.filter(r => r.id === (m.teamRole || 'OTHER') && !roleOpts.some(o => o.id === r.id))].map(r => <option key={r.id} value={r.id}>{lang === 'hi' ? r.hi : r.en}</option>)}</select>
                   {m.teamTitle && m.teamTitle.toLowerCase() !== (TEAM_ROLES.find(r => r.id === m.teamRole)?.en || '').toLowerCase() && <span className="block text-[10px] text-slate-500">{m.teamTitle}</span>}
                 </td>
                 <td>{m.openLeads}/{m.leads}</td><td>{m.deals}</td><td><input defaultValue={m.incentivePct} onBlur={async e => { const v = Number(e.target.value); if (v !== m.incentivePct) { try { await api.teamUpdate(m.id, { incentivePct: v } as any); flash(true, tx('Incentive saved', 'इंसेंटिव सेव हुआ')); await load(); } catch (x: any) { flash(false, x.message); } } }} className="w-14 rounded border border-slate-300 px-1 py-0.5" /></td>

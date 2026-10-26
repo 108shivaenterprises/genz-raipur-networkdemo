@@ -21,8 +21,8 @@ import {
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { ActivityFeed } from './ActivityFeed.js';
 import { RoleHome, ROLE_HOME_ROLES } from './RoleHome.js';
+import { ProHome } from './ProHome.js';
 import { hasPerm } from '../lib/permissions.js';
-import { ContractorDashboard } from './ContractorDashboard.js';
 import { lazyView } from '../lib/lazyView.js';
 import { goto } from '../lib/goto.js';
 // v20: the chart library (~350 KB) downloads after the numbers are already on screen
@@ -438,8 +438,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Welcome Banner */}
-      <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs">
+      {/* Welcome Banner — v75: builder, lawyer and contractor have their own simple home (ProHome) with its own greeting */}
+      {!(isBuilder || isLegal || isContractor) && <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -520,7 +520,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Incoming Collaboration Proposals Notification Banner */}
       {myIncomingOffers.length > 0 && (
@@ -555,7 +555,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* A contractor has no property or deal-room access: show construction work only, never network inventory or brokerage. */}
       {isContractor ? (
-        <ContractorDashboard currentUser={currentUser} constructionLeads={constructionLeads} onNavigate={onNavigate} />
+        <ProHome currentUser={currentUser} permissions={permissions || []} constructionLeads={constructionLeads} onNavigate={onNavigate} />
       ) : hasOwnHome ? (
         <RoleHome
           currentUser={currentUser}

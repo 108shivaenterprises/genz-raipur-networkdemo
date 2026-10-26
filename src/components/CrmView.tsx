@@ -32,9 +32,9 @@ const STAGE_COLOR: Record<string, string> = {
 };
 
 const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: string }> = ({ label, value, tone }) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
-    <div className={`mt-1 text-xl font-bold ${tone || 'text-slate-900'}`}>{value}</div>
+  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+    <div className="text-[11px] font-semibold text-slate-500">{label}</div>
+    <div className={`text-lg font-bold ${tone || 'text-slate-900'}`}>{value}</div>
   </div>
 );
 
@@ -111,15 +111,23 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">{t('crm.title', 'Builder ⇄ Associates CRM')}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{isBuilder ? tx('Leads & bookings', 'लीड और बुकिंग') : t('crm.title', 'Builder ⇄ Associates CRM')}</h2>
           <p className="text-xs text-slate-500">
             {isMember ? tx('Leads your employer has allotted to you', 'आपके नियोक्ता ने आपको जो लीड सौंपी हैं') : isBroker ? tx('Your registered leads, bookings and brokerage', 'आपकी दर्ज की हुई लीड, बुकिंग और ब्रोकरेज') : isBuilder ? tx('Channel-partner leads, booking approvals and brokerage payouts for your projects', 'आपके प्रोजेक्ट की चैनल-पार्टनर लीड, बुकिंग अनुमोदन और ब्रोकरेज भुगतान') : tx('Platform-wide oversight (customer phone numbers masked)', 'पूरे प्लेटफ़ॉर्म की निगरानी (ग्राहकों के फ़ोन नंबर छिपे हुए)')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* v75 — Register lead is the one big button; select / import / export are tucked under "More" */}
+          {!isMember && (
+            <details className="relative" data-testid="crm-tools">
+              <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">{tx('More', 'और')} ▾</summary>
+              <div className="absolute right-0 z-20 mt-1 flex w-56 flex-col items-stretch gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
           {!isMember && can('crm:lead_manage') && <button onClick={() => { setSelectMode(!selectMode); setSel(new Set()); }} className={`${btnLine} ${selectMode ? '!border-slate-900 !bg-slate-900 !text-white' : ''}`}><CheckSquare className="h-3.5 w-3.5" /> {tx('Select', 'चुनें')}</button>}
           {!isMember && can('crm:lead_create') && projects.length > 0 && <button onClick={() => setShowImport(true)} className={btnLine}><Upload className="h-3.5 w-3.5" /> {tx('Import', 'इम्पोर्ट')}</button>}
           {!isMember && <ExportButtons canFull={isBroker || isBuilder} flash={flash} />}
+              </div>
+            </details>
+          )}
           {can('crm:lead_create') && (
             <button onClick={() => setShowAdd(true)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
               <Plus className="h-4 w-4" /> {t('crm.register', 'Register lead')}
@@ -130,18 +138,24 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
 
       {toast && <div className={`rounded-lg px-3 py-2 text-xs font-medium ${toast.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{toast.msg}</div>}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {/* v75 — four numbers first; the money numbers open with "More numbers" */}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4" data-testid="crm-kpis">
         <Stat label={t('crm.activeLeads', 'Active leads')} value={o.activeLeads ?? 0} />
         <Stat label={t('crm.overdue', 'Overdue follow-ups')} value={o.overdueFollowUps ?? 0} tone={o.overdueFollowUps ? 'text-red-600' : undefined} />
-        {!isMember && <Stat label={t('crm.pending', 'Pending approvals')} value={o.pendingBookingRequests ?? 0} />}
-        <Stat label={t('crm.conversion', 'Conversion')} value={`${o.conversionPct ?? 0}%`} />
-        {!isMember && (<>
-          <Stat label={t('crm.salesValue', 'Sales value')} value={inr(o.salesValue)} />
-          <Stat label={t('crm.collected', 'Collected')} value={inr(o.collected)} />
-          <Stat label={t('crm.accrued', 'Brokerage accrued')} value={inr(o.brokerageAccrued)} />
-          <Stat label={t('crm.payable', 'Payable now')} value={inr(o.brokeragePayable)} tone="text-emerald-700" />
-        </>)}
+        {!isMember && <Stat label={t('crm.pending', 'Pending approvals')} value={o.pendingBookingRequests ?? 0} tone={o.pendingBookingRequests ? 'text-amber-700' : undefined} />}
+        {!isMember ? <Stat label={t('crm.payable', 'Payable now')} value={inr(o.brokeragePayable)} tone="text-emerald-700" /> : <Stat label={t('crm.conversion', 'Conversion')} value={`${o.conversionPct ?? 0}%`} />}
       </div>
+      {!isMember && (
+        <details className="rounded-xl border border-slate-200 bg-white px-3 py-2" data-testid="crm-more-numbers">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600">{tx('More numbers', 'और आँकड़े')}</summary>
+          <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <Stat label={t('crm.conversion', 'Conversion')} value={`${o.conversionPct ?? 0}%`} />
+            <Stat label={t('crm.salesValue', 'Sales value')} value={inr(o.salesValue)} />
+            <Stat label={t('crm.collected', 'Collected')} value={inr(o.collected)} />
+            <Stat label={t('crm.accrued', 'Brokerage accrued')} value={inr(o.brokerageAccrued)} />
+          </div>
+        </details>
+      )}
 
       <AlertsBar refreshKey={alertKey} active={activeKind} onPick={pick} />
 

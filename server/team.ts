@@ -23,9 +23,10 @@ import { isDealBroker } from './access.js';
 import { releaseMemberLeads } from './leadflow.js';
 import { POLICY_VERSION } from './privacy.js';
 import type { SiteCheckin } from './db.js';
-import { TEAM_ROLE_IDS, TEAM_ROLES, inferTeamRole } from '../src/shared/crmSales.js';
+import { TEAM_ROLE_IDS, TEAM_ROLES, inferTeamRole, teamMaxFor, TEAM_MAX_DEFAULT } from '../src/shared/crmSales.js';
 
-export const MAX_TEAM = 15;
+/** kept for older imports; the real limit depends on who employs (v75: a builder may add 60, a contractor 30, a broker 15) */
+export const MAX_TEAM = TEAM_MAX_DEFAULT;
 
 const createSchema = z.object({
   name: z.string().trim().min(2, 'Name is required').max(100),
@@ -183,10 +184,10 @@ export function createTeamRouter() {
       openLeads: n.get(m.id)?.open || 0,
       deals: n.get(m.id)?.deals || 0,
     }));
-    res.json({ success: true, members, max: MAX_TEAM });
+    res.json({ success: true, members, max: teamMaxFor(me().role) });
   });
 
-  r.post('/', rateLimit('team-create', 20, 60 * 60_000), (req: Request, res: Response) => {
+  r.post('/', rateLimit('team-create', 60, 60 * 60_000), (req: Request, res: Response) => {
     const u = me();
     if (u.verificationStatus !== 'VERIFIED') return res.status(403).json({ error: 'Your account must be verified first' });
     const p = createSchema.safeParse(req.body);
@@ -195,7 +196,8 @@ export function createTeamRouter() {
     const teamRole = inferTeamRole(p.data.title, p.data.role);
     const title = p.data.title || TEAM_ROLES.find(x => x.id === teamRole)?.en || 'Team member';
     const state = db.getState();
-    if (mine(u.id).filter(m => m.verificationStatus !== 'REJECTED').length >= MAX_TEAM) return res.status(409).json({ error: `You can add up to ${MAX_TEAM} team members` });
+    const cap = teamMaxFor(u.role);
+    if (mine(u.id).filter(m => m.verificationStatus !== 'REJECTED').length >= cap) return res.status(409).json({ error: `You can add up to ${cap} team members` });
     const phone = digits(p.data.phone);
     if (state.users.some(x => digits(x.phone) === phone)) return res.status(409).json({ error: 'A GENZ account with this mobile number already exists' });
     const email = `${phone.slice(-10)}@phone.genz.local`;

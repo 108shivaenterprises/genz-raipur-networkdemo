@@ -15,6 +15,8 @@ import { useTemplateHi } from '../lib/templateHi.js';
 import { hasPerm } from '../lib/permissions.js';
 import {
   ShieldCheck,
+  ChevronDown,
+  ChevronUp,
   FileText,
   AlertTriangle,
   CheckCircle2,
@@ -97,6 +99,8 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
   // v62 — "my open items" across properties: tap one → its property opens and the row is brought into view
   const [mine, setMine] = useState<any>(null);
   const [focusId, setFocusId] = useState('');
+  // v75 — a check is one line until opened (the list was 14 long cards, ~13,000 px on a phone)
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [extraProp, setExtraProp] = useState<{ id: string; title: string } | null>(null);
   useEffect(() => { api.ddMine().then(setMine).catch(() => setMine(null)); }, []);
 
@@ -339,7 +343,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
 
       {/* Selected Property Header Card */}
       {currentProperty && (
-        <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm">
+        <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs text-amber-400 font-mono">
@@ -350,7 +354,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                 <span>{[currentProperty.locality, currentProperty.city].filter(Boolean).join(', ')}</span>
               </div>
               <h3 className="text-base font-bold text-white">{currentProperty.title}</h3>
-              <p className="text-xs text-slate-300 max-w-3xl line-clamp-1">{currentProperty.description}</p>
+              <p className="hidden text-xs text-slate-300 max-w-3xl line-clamp-1 sm:block">{currentProperty.description}</p>
             </div>
             <div className="flex items-center gap-6 border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-6">
               <div>
@@ -376,14 +380,14 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
       )}
 
       {/* Scorecard Metrics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3" data-testid="dd-scorecard">
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-500 font-medium">{tx('Verified Checks', 'सत्यापित जाँचें')}</span>
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </div>
           <div className="text-lg font-bold text-slate-900 mt-1">{verifiedCount}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{tx('Gate cleared with evidence', 'सबूत के साथ गेट पार')}</div>
+          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Gate cleared with evidence', 'सबूत के साथ गेट पार')}</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3">
@@ -392,7 +396,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             <Clock className="h-4 w-4 text-blue-600" />
           </div>
           <div className="text-lg font-bold text-slate-900 mt-1">{underReviewCount}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{tx('Documents uploaded / checking', 'दस्तावेज़ दर्ज / जाँच जारी')}</div>
+          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Documents uploaded / checking', 'दस्तावेज़ दर्ज / जाँच जारी')}</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3">
@@ -401,7 +405,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             <FileText className="h-4 w-4 text-amber-600" />
           </div>
           <div className="text-lg font-bold text-slate-900 mt-1">{pendingDocCount}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{tx('Awaiting seller submission', 'विक्रेता से दस्तावेज़ का इंतज़ार')}</div>
+          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Awaiting seller submission', 'विक्रेता से दस्तावेज़ का इंतज़ार')}</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3">
@@ -425,7 +429,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
               ? tx('Defect Identified', 'दोष मिला')
               : tx('Advocate Vetting Pending', 'अधिवक्ता की जाँच बाकी')}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{tx('Reviewed by an empanelled advocate', 'पैनल के अधिवक्ता द्वारा समीक्षित')}</div>
+          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Reviewed by an empanelled advocate', 'पैनल के अधिवक्ता द्वारा समीक्षित')}</div>
         </div>
       </div>
 
@@ -513,6 +517,18 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             const isVerified = item.status === 'VERIFIED';
             const isIssue = item.status === 'ISSUE_FOUND';
             const isWaived = !item.isApplicable;
+            const statusCls = isVerified ? 'bg-emerald-100 text-emerald-800' : isIssue ? 'bg-rose-100 text-rose-800' : item.status === 'UNDER_REVIEW' ? 'bg-blue-100 text-blue-800' : isWaived ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800';
+            if (!openIds.has(item.id) && focusId !== item.id) {
+              return (
+                <button key={item.id} id={`dd-item-${item.id}`} type="button" onClick={() => setOpenIds(prev => new Set(prev).add(item.id))} data-testid={`dd-row-${item.id}`}
+                  className={`flex min-h-14 w-full items-center gap-3 rounded-xl border px-4 py-2 text-left ${isIssue ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200 bg-white hover:border-slate-400'} ${isWaived ? 'opacity-70' : ''}`}>
+                  <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold ${statusCls}`}>{stt(DD_STATUS, item.status)}</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-900">{th(item.title)}</span>
+                  {item.evidenceReferences.length > 0 && <span className="shrink-0 text-[11px] text-slate-500">📎 {item.evidenceReferences.length}</span>}
+                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                </button>
+              );
+            }
 
             return (
               <div
@@ -560,6 +576,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                       <span className="text-[10px] text-slate-500 font-medium">
                         {tx('Gate', 'गेट')}: <strong className="text-slate-800">{stt(DD_GATE, item.approvalStage)}</strong>
                       </span>
+                      <button type="button" onClick={() => { setOpenIds(prev => { const n = new Set(prev); n.delete(item.id); return n; }); if (focusId === item.id) setFocusId(''); }} data-testid={`dd-hide-${item.id}`} className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"><ChevronUp className="h-3.5 w-3.5" />{tx('Hide', 'छुपाएँ')}</button>
                     </div>
 
                     <h4 className="text-sm font-bold text-slate-900">{th(item.title)}</h4>

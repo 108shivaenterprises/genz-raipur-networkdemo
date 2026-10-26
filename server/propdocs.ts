@@ -29,6 +29,7 @@ import {
   matchesQuery, sniffMime,
 } from '../src/shared/propDocs.js';
 import { ROOM_LIMITS } from '../src/shared/clientRoomRules.js';
+import { brokerWrote } from './webpush.js';
 
 const me = () => ctx().user as UserProfile;
 const nowIso = () => new Date().toISOString();
@@ -454,6 +455,7 @@ export function createPropDocsRouter() {
     log(d.id, u.id, 'SHARE', req.ip || '', `shown to his client ${room.clientName} (client room) — ${Math.ceil((until - Date.now()) / 86_400_000)} day(s), ${b.data.maxViews} open(s)`);
     db.save();
     db.appendAuditEvent(u.id, u.role, 'LEAD', room.id, 'PROPDOC_CLIENT_SHARED', `Paper “${d.title}” (${d.id}) shown to the client of room ${room.id}: until ${cs.expiresAt.slice(0, 10)}, ${cs.maxViews} open(s), view-only`);
+    void brokerWrote(room.id, st.users.find(x => x.id === room.brokerId)?.name || u.name, 'PAPER'); // v75 — the client hears it on his phone
     res.json({ success: true, share: cs, doc: summary(st, d, u, a) });
   });
 

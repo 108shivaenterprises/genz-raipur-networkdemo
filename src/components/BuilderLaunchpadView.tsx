@@ -203,22 +203,15 @@ export const BuilderLaunchpadView: React.FC<BuilderLaunchpadViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="rounded-xl border border-slate-200/90 bg-white p-6 shadow-xs">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Header — v75: a plain title + one line; the big launch button stays */}
+      <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-semibold text-slate-900">{tx('GENZ BUILDCON Developer Desk', 'GENZ BUILDCON डेवलपर डेस्क')}</span>
-              <span aria-hidden="true">·</span>
-              <span>{tx('Master Launches', 'मास्टर लॉन्च')}</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-mono text-emerald-700">{tx('RERA Registered Projects', 'RERA पंजीकृत प्रोजेक्ट')}</span>
-            </div>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-              {tx('Builders Project Launchpad & Sales Associate Network', 'बिल्डर प्रोजेक्ट लॉन्चपैड और सेल्स एसोसिएट नेटवर्क')}
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+              {currentUser.role === 'DEVELOPER_BUILDER' ? tx('My projects', 'मेरे प्रोजेक्ट') : tx('Builders Project Launchpad & Sales Associate Network', 'बिल्डर प्रोजेक्ट लॉन्चपैड और सेल्स एसोसिएट नेटवर्क')}
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              {tx('Launch marquee developments, appoint verified RERA brokers as channel partners, and manage sales quotas with recorded, mutually-confirmed commissions.', 'बड़े प्रोजेक्ट लॉन्च करें, वेरिफ़ाइड RERA ब्रोकर को चैनल पार्टनर नियुक्त करें और रिकॉर्ड किए और आपसी-पुष्टि वाले कमीशन के साथ बिक्री का लक्ष्य संभालें।')}
+              {tx('Launch a project, appoint verified brokers to sell it, and track their quotas and commissions.', 'प्रोजेक्ट लॉन्च करें, बेचने के लिए वेरिफ़ाइड ब्रोकर चुनें, और उनका कोटा व कमीशन देखें।')}
             </p>
           </div>
 

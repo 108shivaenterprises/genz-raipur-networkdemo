@@ -62,7 +62,7 @@ export const ProjectControlView: React.FC<{ currentUser: UserProfile }> = ({ cur
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-bold text-slate-900">{tx('Project Control', 'प्रोजेक्ट कंट्रोल')}</h2>
+        <h2 className="text-lg font-bold text-slate-900">{tx('Partners & rules', 'पार्टनर और नियम')}</h2>
         <p className="text-xs text-slate-500">{tx('You decide who sells each project, on what terms, and which leads are accepted.', 'हर प्रोजेक्ट कौन बेचेगा, किस शर्त पर, और कौन-सी लीड मंज़ूर होगी — यह आप तय करते हैं।')}</p>
       </div>
       {currentUser.role === 'DEVELOPER_BUILDER' && <BuilderLaunchPanel />}

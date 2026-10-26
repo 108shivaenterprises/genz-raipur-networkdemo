@@ -164,14 +164,31 @@ export const TEAM_ROLES: readonly Opt[] = [
   { id: 'SITE_COORDINATOR', en: 'Site / visit coordinator', hi: 'साइट / विज़िट कोऑर्डिनेटर' },
   { id: 'CLOSING_MANAGER', en: 'Closing / sales manager', hi: 'क्लोज़िंग / सेल्स मैनेजर' },
   { id: 'ASSISTANT', en: 'Assistant / back office', hi: 'असिस्टेंट / बैक-ऑफ़िस' },
+  // v75 — a contractor's own people
+  { id: 'SITE_SUPERVISOR', en: 'Site supervisor', hi: 'साइट सुपरवाइज़र' },
+  { id: 'ESTIMATOR', en: 'Estimator / quantity surveyor', hi: 'एस्टीमेटर / क्वांटिटी सर्वेयर' },
+  { id: 'ACCOUNTANT', en: 'Accountant', hi: 'अकाउंटेंट' },
   { id: 'OTHER', en: 'Other', hi: 'अन्य' },
 ];
 export const TEAM_ROLE_IDS = ids(TEAM_ROLES);
+/** v75 — the roles offered in the "Add member" list: a contractor sees his own (supervisor, estimator…), a broker / builder the sales ones */
+export function teamRolesFor(employerRole?: string): readonly Opt[] {
+  const pick = (x: string[]) => x.map(id => TEAM_ROLES.find(r => r.id === id)!).filter(Boolean);   // in the order given: the first is the default
+  return employerRole === 'CONTRACTOR' ? pick(['SITE_SUPERVISOR', 'ESTIMATOR', 'SALES_EXECUTIVE', 'ACCOUNTANT', 'ASSISTANT', 'OTHER'])
+    : pick(['TELECALLER', 'SALES_EXECUTIVE', 'SITE_COORDINATOR', 'CLOSING_MANAGER', 'ASSISTANT', 'OTHER']);
+}
+/** v75 — how many people one employer may add: a builder runs a sales force, a broker a small office */
+export const TEAM_MAX_BY_ROLE: Record<string, number> = { DEVELOPER_BUILDER: 60, CONTRACTOR: 30 };
+export const TEAM_MAX_DEFAULT = 15;
+export const teamMaxFor = (employerRole?: string) => TEAM_MAX_BY_ROLE[String(employerRole || '')] ?? TEAM_MAX_DEFAULT;
 /** Older members only have a free-text title ("Telecaller", "Site executive") — read the role out of it. */
 export function inferTeamRole(title: string | undefined, role?: string): string {
   if (role && TEAM_ROLES.some(r => r.id === role)) return role;
   const t = String(title || '').toLowerCase();
   if (/tele\s*-?call|calling|caller/.test(t)) return 'TELECALLER';
+  if (/supervisor|foreman|mistri/.test(t)) return 'SITE_SUPERVISOR';
+  if (/estimat|quantity|survey/.test(t)) return 'ESTIMATOR';
+  if (/account|book-?keep/.test(t)) return 'ACCOUNTANT';
   if (/site|visit|co-?ordinator/.test(t)) return 'SITE_COORDINATOR';
   if (/closing|manager|head|team lead/.test(t)) return 'CLOSING_MANAGER';
   if (/sales|executive|relationship/.test(t)) return 'SALES_EXECUTIVE';

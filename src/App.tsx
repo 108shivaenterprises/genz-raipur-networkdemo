@@ -441,7 +441,7 @@ export default function App() {
         )}
 
         {/* v43: a verified broker sees the setup bar inside his home (after his first steps), not twice */}
-        {activeTab === 'dashboard' && currentUser.verificationStatus === 'VERIFIED' && currentUser.role !== 'BROKER' && hasPerm(permissions, 'growth:nominate') && <GrowthNudge onOpen={() => setActiveTab('grow')} />}
+        {activeTab === 'dashboard' && currentUser.verificationStatus === 'VERIFIED' && currentUser.role !== 'BROKER' && !['DEVELOPER_BUILDER', 'LEGAL_COUNSEL', 'CONTRACTOR'].includes(currentUser.role) && hasPerm(permissions, 'growth:nominate') && <GrowthNudge onOpen={() => setActiveTab('grow')} />}
 
         {activeTab === 'dashboard' && ['ADMIN', 'SUPERADMIN'].includes(currentUser.role) && <HomeInsights role={currentUser.role} onNavigate={setActiveTab} />}
 
@@ -464,7 +464,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'dashboard' && ['PROPERTY_OWNER', 'BUYER_TENANT', 'LEGAL_COUNSEL', 'DEVELOPER_BUILDER', 'CONTRACTOR'].includes(currentUser.role) && <HomeInsights role={currentUser.role} onNavigate={setActiveTab} />}
+        {activeTab === 'dashboard' && ['PROPERTY_OWNER', 'BUYER_TENANT'].includes(currentUser.role) && <HomeInsights role={currentUser.role} onNavigate={setActiveTab} />}
 
         {activeTab === 'builder' && hasPerm(permissions, 'builder:associates_read') && (
           <BuilderLaunchpadView
