@@ -4,6 +4,7 @@ export const ROOM_KINDS = [
   { id: 'RENTER', en: 'Renter', hi: 'किराए पर लेने वाला' },
   { id: 'TENANT', en: 'Tenant', hi: 'किराएदार' },
   { id: 'OTHER', en: 'Other client', hi: 'अन्य क्लाइंट' },
+  { id: 'OWNER', en: 'Property owner', hi: 'प्रॉपर्टी मालिक' },
 ] as const;
 export type RoomKind = (typeof ROOM_KINDS)[number]['id'];
 
@@ -25,6 +26,7 @@ export const PHONE_IN_CHAT_MSG = {
 export const DOC_KINDS = [
   { id: 'KYC_PAN', kyc: true, en: 'PAN card', hi: 'पैन कार्ड' },
   { id: 'KYC_AADHAAR_MASKED', kyc: true, en: 'Aadhaar (masked — first 8 digits covered)', hi: 'आधार (मास्क्ड — पहले 8 अंक ढके हुए)' },
+  { id: 'KYC_AADHAAR_FULL', kyc: true, en: 'Full Aadhaar (only for a paper the broker is making)', hi: 'पूरा आधार (सिर्फ़ ब्रोकर जो काग़ज़ बना रहा है उसके लिए)' },
   { id: 'KYC_OTHER_ID', kyc: true, en: 'Other photo ID', hi: 'अन्य फ़ोटो पहचान पत्र' },
   { id: 'PAPER', kyc: false, en: 'Paper / document', hi: 'काग़ज़ / दस्तावेज़' },
   { id: 'PHOTO', kyc: false, en: 'Photo', hi: 'फ़ोटो' },
@@ -33,4 +35,6 @@ export type DocKind = (typeof DOC_KINDS)[number]['id'];
 export const isDocKind = (k: unknown): k is DocKind => DOC_KINDS.some(d => d.id === k);
 export const isKycKind = (k: unknown) => DOC_KINDS.some(d => d.id === k && d.kyc);
 /** a file is at most 2.5 MB (a phone photo is made smaller on the phone first); a room holds at most 12 files */
+/** v70 — the full-Aadhaar kind is off unless the server switch is on AND the broker asked this client; such a file is erased after this many days */
+export const FULL_AADHAAR_DAYS = 7;
 export const DOC_LIMITS = { maxBytes: 2_500_000, perRoom: 12 } as const;

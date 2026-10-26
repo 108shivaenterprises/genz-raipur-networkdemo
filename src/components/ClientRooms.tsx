@@ -50,7 +50,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   // v57 — read here, removed only after the screen is really shown: a render React throws away and redoes must still find it
   const [prefill] = useState<any>(() => { try { const v = sessionStorage.getItem('genz.newroom'); if (v) return JSON.parse(v); } catch { /* blocked */ } return null; });
   useEffect(() => { if (prefill) { try { sessionStorage.removeItem('genz.newroom'); } catch { /* blocked */ } } }, [prefill]);
-  const [creating, setCreating] = useState(!!prefill);
+  const [creating, setCreating] = useState(!!prefill); const [creatingOwner, setCreatingOwner] = useState(false);
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string } | null>(null);
   const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all'); const [who, setWho] = useState('ALL'); // v63 — broker: whose rooms (his own / one team member's)
   const load = () => api.crList().then(r => { setD(r); window.dispatchEvent(new Event('genz:rooms-changed')); }).catch(e => setErr(e.message));
@@ -128,8 +128,12 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
             {[{ id: 'ALL', label: tx('Whole team', 'पूरी टीम') }, { id: 'ME', label: tx('Mine', 'मेरे') }, ...makers.map(m => ({ id: m.id, label: `${m.name.split(' ')[0]} (${m.n})` }))].map(k => <button key={k.id} type="button" onClick={() => setWho(k.id)} className={`min-h-9 shrink-0 rounded-full border px-3 text-[11px] font-semibold ${who === k.id ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{k.label}</button>)}
           </div>
         )}
-        <button className={dark} onClick={() => setCreating(v => !v)} data-testid="room-new"><Plus className="h-4 w-4" />{tx('New room', 'नया रूम')}</button>
+        <div className="flex gap-2">
+          <button className={dark} onClick={() => { setCreating(v => !v); setCreatingOwner(false); }} data-testid="room-new"><Plus className="h-4 w-4" />{tx('New room', 'नया रूम')}</button>
+          {!d.staffOf && <button className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800" onClick={() => { setCreatingOwner(v => !v); setCreating(false); }} data-testid="room-new-owner">🏠 {tx('Owner room', 'मालिक का रूम')}</button>}
+        </div>
       </div>
+      {creatingOwner && <NewOwnerRoom onDone={(link, name, phone, id) => { setCreatingOwner(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
       {creating && <NewRoom defaults={prefill || undefined} onDone={(link, name, phone, id) => { setCreating(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
 
       {active.length === 0 && !creating ? (
@@ -177,6 +181,33 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   );
 };
 
+/** v70 — the room of a property owner: only for my listings whose mandate is signed by both. The owner sees numbers, chats, confirms visits by scanning the buyer's QR. */
+const NewOwnerRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id: string) => void }> = ({ onDone }) => {
+  const tx = useTx();
+  const [homes, setHomes] = useState<any[] | null>(null); const [pid, setPid] = useState(''); const [f, setF] = useState({ ownerName: '', phone: '', consent: false });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  useEffect(() => { api.crOwnerReady().then(x => setHomes(x.homes || [])).catch(() => setHomes([])); }, []);
+  const pick = (id: string) => { setPid(id); const h = (homes || []).find(x => x.id === id); if (h) setF(v => ({ ...v, ownerName: h.ownerName || v.ownerName, phone: h.ownerPhone || v.phone })); };
+  const go = async () => { setBusy(true); setErr(''); try { const r = await api.crOwnerCreate({ propertyId: pid, ownerName: f.ownerName, phone: f.phone, consent: f.consent }); onDone(r.link, f.ownerName, f.phone.replace(/\D/g, '').slice(-10), r.room.id); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  return (
+    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid="owner-room-form">
+      <p className="text-xs text-slate-600">{tx('Only for a listing whose mandate is signed by both of you. The owner sees only numbers (how many are viewing / interested), chats with you and confirms visits by scanning the buyer’s QR.', 'सिर्फ़ उस लिस्टिंग का जिसका मंडेट दोनों ने साइन किया है। मालिक को सिर्फ़ संख्या दिखती है (कितने देख रहे / दिलचस्पी), आपसे चैट और ख़रीदार का QR स्कैन करके विज़िट पक्की करता है।')}</p>
+      {homes === null ? <Loader2 className="h-4 w-4 animate-spin" /> : homes.length === 0
+        ? <p className="rounded-lg bg-amber-50 p-2 text-xs text-slate-700" data-testid="owner-room-none">{tx('No listing is ready — a signed (active) owner mandate is needed first.', 'कोई लिस्टिंग तैयार नहीं — पहले मालिक का साइन किया (एक्टिव) मंडेट चाहिए।')}</p>
+        : <>
+          <select className={inp} value={pid} onChange={e => pick(e.target.value)} data-testid="owner-room-home"><option value="">{tx('Choose the property', 'प्रॉपर्टी चुनें')}</option>{homes.map(h => <option key={h.id} value={h.id}>{h.title}</option>)}</select>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <input className={inp} placeholder={tx('Owner name', 'मालिक का नाम')} value={f.ownerName} onChange={e => setF({ ...f, ownerName: e.target.value })} data-testid="owner-room-name" />
+            <input className={inp} inputMode="numeric" placeholder={tx('Owner mobile (10 digits)', 'मालिक का मोबाइल (10 अंक)')} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} data-testid="owner-room-phone" />
+          </div>
+          <label className="flex items-start gap-2 text-[11px] font-semibold"><input type="checkbox" className="mt-0.5 h-5 w-5" checked={f.consent} onChange={e => setF({ ...f, consent: e.target.checked })} data-testid="owner-room-consent" />{tx('The owner agreed to use this room.', 'मालिक इस रूम के लिए राज़ी है।')}</label>
+          {err && <p className="text-xs font-medium text-red-700" role="alert">{err}</p>}
+          <button className={dark + ' w-full'} disabled={busy || !pid || !f.consent || f.phone.replace(/\D/g, '').length < 10} onClick={go} data-testid="owner-room-create">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Open owner room', 'मालिक का रूम खोलें')}</button>
+        </>}
+    </div>
+  );
+};
+
 const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id: string) => void; defaults?: { clientName?: string; phone?: string; kind?: string; note?: string; homeId?: string; homeTitle?: string } }> = ({ onDone, defaults }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [f, setF] = useState({ clientName: defaults?.clientName || '', phone: defaults?.phone || '', kind: defaults?.kind || 'BUYER', note: defaults?.note || '', consent: false });
@@ -197,7 +228,7 @@ const NewRoom: React.FC<{ onDone: (link: string, name: string, phone: string, id
         <input className={inp} placeholder={tx('Client name', 'क्लाइंट का नाम')} value={f.clientName} onChange={e => setF({ ...f, clientName: e.target.value })} data-testid="room-name" />
         <input className={inp} inputMode="numeric" placeholder={tx('Client mobile (10 digits)', 'क्लाइंट का मोबाइल (10 अंक)')} value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} data-testid="room-phone" />
       </div>
-      <select className={inp} value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}>{ROOM_KINDS.map(k => <option key={k.id} value={k.id}>{hi ? k.hi : k.en}</option>)}</select>
+      <select className={inp} value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}>{ROOM_KINDS.filter(k => k.id !== 'OWNER').map(k => <option key={k.id} value={k.id}>{hi ? k.hi : k.en}</option>)}</select>
       <input className={inp} placeholder={tx('Private note for yourself (optional)', 'अपने लिए निजी नोट (वैकल्पिक)')} maxLength={300} value={f.note} onChange={e => setF({ ...f, note: e.target.value })} />
       <label className="flex items-start gap-2 text-[11px] font-semibold"><input type="checkbox" className="mt-0.5 h-5 w-5" checked={f.consent} onChange={e => setF({ ...f, consent: e.target.checked })} data-testid="room-consent" />{tx('My client agreed to get properties from me and chat in this room. His mobile is kept only as a one-way hash plus its last 4 digits.', 'मेरे क्लाइंट ने मुझसे प्रॉपर्टी पाने और इस रूम में चैट करने की सहमति दी है। उसका मोबाइल सिर्फ़ एक-तरफ़ा हैश और आख़िरी 4 अंकों के रूप में रखा जाता है।')}</label>
       {err && <p className="text-xs font-medium text-red-700" role="alert">{err}</p>}
@@ -276,9 +307,11 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
   const reqs = r.items.flatMap((i: any) => i.visitRequests.map((v: any) => ({ ...v, item: i })));
   const openReqs = reqs.filter((v: any) => v.status === 'REQUESTED').length;
   const kindLabel = (k: string) => { const x = ROOM_KINDS.find(y => y.id === k); return x ? (hi ? x.hi : x.en) : k; };
-  const tabs: [typeof tab, string, string, number | undefined][] = [
+  const isOwnerRoom = r.kind === 'OWNER';
+  const tabs0: [typeof tab, string, string, number | undefined][] = [
     ['chat', 'Chat', 'चैट', undefined], ['homes', 'Homes', 'प्रॉपर्टी', r.items.length], ['visits', 'Visits', 'विज़िट', openReqs || undefined], ['papers', 'Papers', 'काग़ज़', (r.docs || []).length || undefined], ['info', 'Info', 'जानकारी', undefined],
   ];
+  const tabs = isOwnerRoom ? tabs0.filter(t => t[0] === 'chat' || t[0] === 'papers' || t[0] === 'info') : tabs0;
   // v55 — a paper shown to this client: how often he opened it, until when, and "Stop"
   const paperCard = (m: any) => {
     const d = (papers || []).find((x: any) => (x.clientShares || []).some((c: any) => c.id === m.paper.shareId));
@@ -476,6 +509,9 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
       {tab === 'papers' && (
         <section className="space-y-2 text-xs" data-testid="room-papers">
           <p className="rounded-lg bg-slate-50 p-3 text-slate-600">{tx('Files your client sent from his room. They are stored encrypted and erased when the room closes. ID copies (🪪) can be opened by you only — not by your office staff.', 'क्लाइंट ने अपने रूम से जो फ़ाइलें भेजीं। ये एन्क्रिप्टेड रखी जाती हैं और रूम बंद होने पर मिट जाती हैं। ID कॉपी (🪪) सिर्फ़ आप खोल सकते हैं — ऑफ़िस स्टाफ़ नहीं।')}</p>
+          {!staff && (r.fullAadhaar?.on
+            ? <button type="button" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-left font-semibold text-slate-800" data-testid="room-full-aadhaar" onClick={() => void run(() => api.crFullAadhaar(r.id, !r.fullAadhaar.asked))}>🪪 {r.fullAadhaar.asked ? tx('Full Aadhaar requested — tap to withdraw', 'पूरा आधार माँगा गया — वापस लेने के लिए छुएँ') : tx('Ask for FULL Aadhaar (for a paper I am making)', 'पूरा आधार माँगें (काग़ज़ बनाने के लिए)')}<span className="block text-[11px] font-normal text-slate-500">{tx('Sealed, only you can open it, erased after 7 days.', 'सील्ड, सिर्फ़ आप खोल सकते हैं, 7 दिन बाद मिट जाता है।')}</span></button>
+            : <p className="rounded-lg bg-slate-50 p-3 text-[11px] text-slate-500" data-testid="room-full-aadhaar-off">🪪 {tx('Full Aadhaar is switched off on this server (waiting for the advocate). Clients send it masked.', 'पूरा आधार इस सर्वर पर बंद है (वकील की राय तक)। क्लाइंट मास्क्ड भेजते हैं।')}</p>)}
           {!r.docsOn && <p className="rounded-lg bg-amber-50 p-3 text-slate-700">{tx('File sending is off on this server (no vault key), so clients cannot send files yet.', 'इस सर्वर पर फ़ाइल भेजना बंद है (vault key नहीं), इसलिए क्लाइंट अभी फ़ाइल नहीं भेज सकते।')}</p>}
           {(r.docs || []).length === 0 && <p className="text-slate-500" data-testid="room-papers-empty">{tx('Nothing sent yet.', 'अभी कुछ नहीं भेजा।')}</p>}
           {(r.docs || []).map((d: any) => (
@@ -496,6 +532,12 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
       )}
       {tab === 'info' && (
         <section className="space-y-3 text-xs" data-testid="room-info">
+          {isOwnerRoom && r.ownerStats && (
+            <div className="rounded-lg bg-indigo-50 p-3" data-testid="owner-stats">
+              <div className="font-semibold text-indigo-900">🏠 {r.propertyTitle || r.propertyId}</div>
+              <div className="mt-1 text-slate-700">{tx('The owner sees these numbers only', 'मालिक को सिर्फ़ ये संख्याएँ दिखती हैं')}: {tx('viewing', 'देख रहे')} {r.ownerStats.viewing} · {tx('interested', 'दिलचस्पी')} {r.ownerStats.interested} · {tx('visits planned', 'विज़िट तय')} {r.ownerStats.visitsPlanned} · {tx('done', 'हुई')} {r.ownerStats.visitsDone}</div>
+            </div>
+          )}
           {!r.smsOn && <p className="rounded-lg bg-amber-50 p-3 text-slate-700">{tx('The code is not sent by SMS — it appears here when your client asks for it. Read it out to him by phone.', 'कोड SMS से नहीं जाता — क्लाइंट के माँगने पर वह यहाँ दिखता है। उसे फ़ोन पर बता दें।')}</p>}
           <div className="rounded-lg bg-slate-50 p-3">
             <div className="font-semibold text-slate-700">{tx('My private note', 'मेरा निजी नोट')}</div>

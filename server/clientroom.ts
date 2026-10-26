@@ -23,7 +23,8 @@ import fs from 'fs';
 import path from 'path';
 import { pushTo, pushToRoom, dropRoomPush, roomPushKey, vapidKeys, allowedEndpoint } from './webpush.js';
 import { sniffMime } from '../src/shared/propDocs.js';
-import { DOC_KINDS, DOC_LIMITS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
+import { DOC_KINDS, DOC_LIMITS, FULL_AADHAAR_DAYS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
+import { ackFor, ackLinkFor, ackBlock } from './visitack.js';
 import { stripPhones } from '../src/shared/waParse.js';
 import { ROOM_KINDS, ROOM_LIMITS as L, containsPhone, PHONE_IN_CHAT_MSG } from '../src/shared/clientRoomRules.js';
 import { joinFooter } from './publicFooter.js';
@@ -141,7 +142,8 @@ function detail(r: ClientRoom) {
   const props = st().properties;
   const awaiting = r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
   return {
-    ...summary(r), note: r.note, messages: r.messages, events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(),
+    ...summary(r), note: r.note, messages: r.messages, events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
+    ...(r.kind === 'OWNER' ? { propertyId: r.propertyId, propertyTitle: st().properties.find(p => p.id === r.propertyId)?.title, ownerStats: ownerStats(r) } : {}),
     items: r.items.map(i => {
       const p = props.find(x => x.id === i.propertyId);
       const avail = p ? shareableMedia({ id: r.brokerId }, p) : { photos: [], videos: [] };
@@ -163,6 +165,14 @@ export function createClientRoomRouter() {
   const r = Router();
   r.use(needs('clientroom:use'));
 
+  /** v70 — my listings that have an ACTIVE mandate and no open owner room yet (what the "Owner room" form offers) */
+  r.get('/owner-ready', (_req, res) => {
+    const u = me(); if (isStaff(u)) return res.json({ success: true, homes: [] });
+    const homes = st().ownerMandates.filter(m => m.brokerId === u.id && m.status === 'ACTIVE' && m.isConfirmed)
+      .filter(m => !st().clientRooms.some(c => c.kind === 'OWNER' && c.propertyId === m.propertyId && c.brokerId === u.id && c.status === 'ACTIVE'))
+      .map(m => { const p = st().properties.find(x => x.id === m.propertyId); const ph = phone10((p as any)?.ownerPhone); return p ? { id: p.id, title: p.title, ownerName: p.ownerName || '', ownerPhone: PHONE_RE.test(ph) && !/[xX•*]/.test(String((p as any).ownerPhone)) ? ph : '' } : null; }).filter(Boolean);
+    res.json({ success: true, homes });
+  });
   r.get('/', (_req, res) => {
     const list = st().clientRooms.filter(x => x.brokerId === roomOwnerOf(me())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const u = me();
@@ -174,7 +184,7 @@ export function createClientRoomRouter() {
     const u = me();
     const name = String(req.body?.clientName || '').trim().slice(0, 80);
     const phone = phone10(req.body?.phone);
-    const kind = ROOM_KINDS.find(k => k.id === req.body?.kind)?.id || 'BUYER';
+    const kind = ROOM_KINDS.find(k => k.id === req.body?.kind && k.id !== 'OWNER')?.id || 'BUYER';
     if (name.length < 2) return bad(res, 'Enter your client\'s name');
     if (!PHONE_RE.test(phone)) return bad(res, 'Enter your client\'s 10-digit mobile number');
     if (req.body?.consent !== true) return bad(res, 'Confirm that your client agreed to receive properties and chat in this room');
@@ -182,7 +192,7 @@ export function createClientRoomRouter() {
     if (st().clientRooms.filter(x => x.brokerId === owner && x.status === 'ACTIVE').length >= L.activeRooms) return bad(res, `You can keep ${L.activeRooms} client rooms open — close some old ones`);
     { const pb = partyBlock(phone, 'buyer'); if (pb) return res.status(403).json(pb); } // v35 — Network Watch
     const phoneKey = hmac('cr-phone', phone);
-    if (st().clientRooms.some(x => x.brokerId === owner && x.status === 'ACTIVE' && x.phoneKey === phoneKey)) return bad(res, 'You already have an open room for this mobile number', 409);
+    if (st().clientRooms.some(x => x.brokerId === owner && x.status === 'ACTIVE' && x.phoneKey === phoneKey && x.kind !== 'OWNER')) return bad(res, 'You already have an open room for this mobile number', 409);
     const token = newToken();
     const room: ClientRoom = {
       id: rid('CRM'), brokerId: owner, clientName: name, kind, note: String(req.body?.note || '').trim().slice(0, 300) || undefined,
@@ -343,6 +353,44 @@ export function createClientRoomRouter() {
   });
 
   /** v69 — a file the client sent. KYC copies only the broker opens (never his office staff); every open is counted and written to the audit trail. */
+  /** v70 — the room of a property OWNER: only for a property of this broker whose mandate is ACTIVE (both signed). The broker types the owner's mobile. */
+  r.post('/owner', rateLimit('cr-owner-create', 30, 3600_000), (req: Request, res: Response) => {
+    const u = me();
+    if (isStaff(u)) return bad(res, 'Owner rooms are opened by the broker himself', 403);
+    const prop = st().properties.find(p => p.id === String(req.body?.propertyId || ''));
+    if (!prop || prop.listingBrokerId !== u.id) return bad(res, 'Choose one of your own listings', 404);
+    const m = st().ownerMandates.find(x => x.propertyId === prop.id && x.brokerId === u.id && x.status === 'ACTIVE' && x.isConfirmed);
+    if (!m) return bad(res, 'The owner room opens only after the owner mandate for this property is signed by both of you (active)', 409, { code: 'NO_MANDATE' });
+    const phone = phone10(req.body?.phone);
+    const name = String(req.body?.ownerName || '').trim().slice(0, 80) || prop.ownerName || 'Owner';
+    if (!PHONE_RE.test(phone)) return bad(res, 'Enter the owner\'s 10-digit mobile number');
+    if (req.body?.consent !== true) return bad(res, 'Confirm that the owner agreed to use this room');
+    if (st().clientRooms.some(x => x.kind === 'OWNER' && x.propertyId === prop.id && x.brokerId === u.id && x.status === 'ACTIVE')) return bad(res, 'This property already has an open owner room', 409);
+    if (st().clientRooms.filter(x => x.brokerId === u.id && x.status === 'ACTIVE').length >= L.activeRooms) return bad(res, `You can keep ${L.activeRooms} rooms open — close some old ones`);
+    const token = newToken();
+    const room: ClientRoom = {
+      id: rid('CRM'), brokerId: u.id, clientName: name, kind: 'OWNER', propertyId: prop.id, mandateId: m.id,
+      phoneKey: hmac('cr-phone', phone), phoneLast4: phone.slice(-4), tokenHash: sha(token), sessVersion: 1, status: 'ACTIVE',
+      createdAt: nowIso(), updatedAt: nowIso(), expiresAt: new Date(Date.now() + L.linkDays * 86400_000).toISOString(),
+      items: [], messages: [], events: [],
+    };
+    sealPhone(room, phone);
+    ev(room, `Owner room opened for ${prop.id} (mandate ${m.id})`);
+    st().clientRooms.push(room); db.save();
+    db.appendAuditEvent(u.id, u.role, 'LEAD', room.id, 'OWNER_ROOM_OPENED', `Owner room opened for ${prop.id}, mobile ending ${room.phoneLast4}`);
+    res.json({ success: true, room: detail(room), link: `/r/${token}` });
+  });
+  /** v70 — ask this client for his FULL Aadhaar (a paper is being made). Refused while the server switch is off. */
+  r.post('/:id/full-aadhaar', (req: Request, res: Response) => {
+    const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    if (isStaff(me())) return bad(res, 'Only the broker can ask for ID papers', 403);
+    if (!fullAadhaarOn()) return bad(res, 'Full Aadhaar is switched off on this server (pending the advocate’s opinion). Ask for the masked Aadhaar instead.', 403, { code: 'FULL_AADHAAR_OFF' });
+    room.fullAadhaarAsk = req.body?.ask !== false;
+    ev(room, room.fullAadhaarAsk ? 'Broker asked for the full Aadhaar (for a paper being made)' : 'Broker withdrew the full-Aadhaar request');
+    room.messages.push({ id: rid('CRX'), from: 'BROKER', text: room.fullAadhaarAsk ? '🪪 काग़ज़ बनाने के लिए पूरा आधार चाहिए — नीचे “काग़ज़ भेजें” में चुनकर भेजें। 7 दिन बाद यह अपने आप मिट जाएगा।' : 'पूरा आधार अब नहीं चाहिए।', at: nowIso() });
+    db.save(); tell(room, 'Message from your broker', 'Open your room.');
+    res.json({ success: true, room: detail(room) });
+  });
   r.get('/:id/docs/:docId', rateLimit('cr-doc-open', 200, 3600_000), (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     const d = (room.docs || []).find(x => x.id === req.params.docId); if (!d) return bad(res, 'Not found', 404);
@@ -391,6 +439,21 @@ function eraseRoomFiles(room: ClientRoom) {
   dropRoomPush(room.id);
 }
 const docView = (d: NonNullable<ClientRoom['docs']>[number]) => ({ id: d.id, kind: d.kind, kyc: isKycKind(d.kind), name: d.name, mime: d.mime, size: d.size, at: d.at, note: d.note, opened: d.openedByBroker || 0 });
+/** v70 — full Aadhaar is OFF on every server until the advocate says yes: set FULL_AADHAAR_OK=1 to allow a broker to ask for it */
+export const fullAadhaarOn = () => process.env.FULL_AADHAAR_OK === '1';
+/** v70 — set by server.ts: marks a site visit verified (the same step the on-site OTP / QR check-in takes) */
+let verifyVisit: ((visit: any, method: 'OTP' | 'QR', note: string) => void) | null = null;
+export const setVisitVerifier = (fn: typeof verifyVisit) => { verifyVisit = fn; };
+/** v70 — what a property owner may see: NUMBERS only (never who). Counts the broker's own clients' rooms, QR-page interest and enquiries on this property. */
+export function ownerStats(room: ClientRoom) {
+  const s = st(); const pid = room.propertyId || '';
+  const shown = s.clientRooms.filter(c => c.kind !== 'OWNER' && c.status === 'ACTIVE' && c.items.some(i => i.propertyId === pid));
+  const likes = shown.filter(c => c.items.some(i => i.propertyId === pid && i.reaction === 'LIKE')).length;
+  const qr = (s.partnerLeads || []).filter((l: any) => l.homeId === pid).length;
+  const enq = (s.pageEnquiries || []).filter(e => e.propertyId === pid && e.status !== 'SPAM').length;
+  const visits = s.siteVisits.filter(v => v.propertyId === pid);
+  return { viewing: shown.length + qr + enq, interested: likes + qr + enq, visitsPlanned: visits.filter(v => !v.isVerified && Date.parse(v.scheduledTime) > Date.now() - 12 * 3600_000).length, visitsDone: visits.filter(v => v.isVerified).length };
+}
 const pingBroker = (room: ClientRoom, title: string, body: string) => {
   void pushTo(room.brokerId, { kind: 'deals', title, body, url: '/?tab=clientroom' });
   for (const m of roomTeam(room.brokerId)) void pushTo(m.id, { kind: 'deals', title, body, url: '/?tab=clientroom' }); // v58 — his office staff who work the rooms
@@ -484,6 +547,10 @@ var btn=df.querySelector('button[type=submit]');btn.disabled=true;msg.textConten
 var send=function(data,name,mime){fetch('/r/'+TOK+'/doc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:$('dockind').value,name:name,data:data,note:$('docnote').value,consent:true})}).then(function(x){return x.json().then(function(j){return{ok:x.ok,j:j}})}).then(function(r){if(r.ok){location.href='/r/'+TOK+'?doc=1#docs'}else{btn.disabled=false;msg.textContent=(r.j&&r.j.error)||'नहीं भेज पाए। / Could not send.'}}).catch(function(){btn.disabled=false;msg.textContent='नेटवर्क की दिक्कत — दोबारा कोशिश करें। / Network problem — try again.'})};
 if(f.type==='application/pdf'){if(f.size>2400000){btn.disabled=false;msg.textContent='PDF 2.4 MB से छोटी हो। / The PDF must be under 2.4 MB.';return}var fr=new FileReader();fr.onload=function(){send(String(fr.result).split(',')[1],f.name,f.type)};fr.readAsDataURL(f);return}
 var url=URL.createObjectURL(f),im=new Image();im.onload=function(){var k=Math.min(1,1600/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*k));cv.height=Math.max(1,Math.round(im.height*k));cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);var d=cv.toDataURL('image/jpeg',0.8);URL.revokeObjectURL(url);send(d.split(',')[1],f.name,'image/jpeg')};im.onerror=function(){btn.disabled=false;msg.textContent='यह फ़ोटो पढ़ी नहीं जा सकी। / This photo could not be read.'};im.src=url})}
+var sbtn=$('scan-btn');if(sbtn){var sm=$('scan-msg');function sendScan(c){sm.textContent='जाँच रहे हैं… / Checking…';fetch('/r/'+TOK+'/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:c})}).then(function(x){return x.json().then(function(j){return{ok:x.ok,j:j}})}).then(function(r){sm.textContent=r.ok?'✅ विज़िट पक्की हो गई ('+(r.j.who||'')+') / Visit confirmed':((r.j&&r.j.error)||'नहीं हो पाया। / Could not confirm.');if(r.ok){setTimeout(function(){location.reload()},1800)}}).catch(function(){sm.textContent='नेटवर्क की दिक्कत। / Network problem.'})}
+var sg=$('scan-go');if(sg)sg.addEventListener('click',function(){sendScan($('scan-code').value)});
+sbtn.addEventListener('click',function(){if(!('BarcodeDetector' in window)||!navigator.mediaDevices){sm.textContent='इस फ़ोन में स्कैनर नहीं है — नीचे 6 अंकों का कोड डालें। / No scanner on this phone — type the 6-digit code below.';return}
+var vid=$('scan-video');navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(st){vid.srcObject=st;vid.style.display='block';vid.play();var det=new BarcodeDetector({formats:['qr_code']}),done=false;(function loop(){if(done)return;det.detect(vid).then(function(b){if(b&&b.length){done=true;st.getTracks().forEach(function(t){t.stop()});vid.style.display='none';sendScan(b[0].rawValue)}else setTimeout(loop,300)}).catch(function(){setTimeout(loop,500)})})()}).catch(function(){sm.textContent='कैमरा नहीं खुला — कोड डालें। / Camera did not open — type the code.'})})}
 var dl=document.querySelectorAll('[data-deldoc]');for(var j=0;j<dl.length;j++){(function(b){b.addEventListener('click',function(){if(!confirm('यह फ़ाइल हटाएँ? / Remove this file?'))return;fetch('/r/'+TOK+'/doc/'+b.getAttribute('data-deldoc')+'/delete',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.href='/r/'+TOK+'#docs'})})})(dl[j])}
 })();`;
 
@@ -516,7 +583,12 @@ const dayHi = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'num
 export function createClientRoomPageRouter() {
   const r = Router();
   const form = express.urlencoded({ extended: false, limit: '20kb' });
-  const find = (token: string) => {
+  /** v70 — `go-<roomId>`: my OTHER room (same mobile). Works only on a phone that already has a valid session for that room. */
+  const find = (token: string, req?: Request) => {
+    if (req && /^go-CRM-[a-f0-9]{10}$/.test(token)) {
+      const rm = st().clientRooms.find(c => c.id === token.slice(3));
+      return rm && sessionFor(req, rm) ? rm : undefined;
+    }
     if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return undefined;
     const h = sha(token);
     return st().clientRooms.find(c => safeEqual(c.tokenHash, h));
@@ -547,7 +619,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 
   r.get('/:token', rateLimit('cr-view', 120, 60_000), (req: Request, res: Response) => {
     headers(res);
-    const room = find(req.params.token); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
+    const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     const dev = sessionFor(req, room);
     if (!dev) return gate(res, room, req.params.token);
     slide(req, res, room, dev);
@@ -557,7 +629,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   // 1. the client types his mobile → a code is made (SMS, or read out by the broker when no gateway is set)
   r.post('/:token/otp', rateLimit('cr-otp', 30, 3600_000), form, async (req: Request, res: Response) => {
     headers(res);
-    const room = find(req.params.token); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
+    const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     const phone = phone10(req.body?.phone);
     if (!phone) return gate(res, room, req.params.token, 'अपना मोबाइल नंबर डालें। / Enter your mobile number.');
     if (hit(`cr-phone:${room.id}`, 8, 3600_000, 3600_000) > 0) return gate(res, room, req.params.token, 'बहुत बार कोशिश हो चुकी। एक घंटे बाद फिर करें। / Too many tries — please wait an hour.', 'phone', 429);
@@ -576,7 +648,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   // 2. the code
   r.post('/:token/verify', rateLimit('cr-verify', 40, 3600_000), form, (req: Request, res: Response) => {
     headers(res);
-    const room = find(req.params.token); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
+    const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     if (!room.otpHash || !room.otpExpires || Date.parse(room.otpExpires) < Date.now()) return gate(res, room, req.params.token, 'कोड की मियाद ख़त्म — नया कोड मँगाएँ। / The code has expired — ask for a new one.');
     if ((room.otpTries || 0) >= L.otpTries) { room.otpHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, 'बहुत बार ग़लत कोड — नया कोड मँगाएँ। / Too many wrong codes — ask for a new one.'); }
     const code = String(req.body?.code || '').trim();
@@ -599,6 +671,13 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     const label = devices.find(d => d.id === dev)!.label;
     ev(room, fresh ? `Client opened the room on a new phone (${label}) — mobile verified` : `Client signed in again on the same phone (${label})`);
     slide(req, res, room, dev);
+    // v70 — the same mobile has another room (e.g. he sells a home and also looks for one): the code he just typed opens that one too
+    for (const sib of st().clientRooms.filter(c => c.id !== room.id && c.status === 'ACTIVE' && Date.parse(c.expiresAt) > Date.now() && c.phoneKey === room.phoneKey)) {
+      const sd = sib.devices || (sib.devices = []);
+      let sdev = knownDevice(req, sib);
+      if (!sdev) { if (sd.length >= L.devices) continue; sdev = crypto.randomBytes(6).toString('hex'); sd.push({ id: sdev, label: deviceLabel(req.headers['user-agent']), firstAt: nowIso(), lastAt: nowIso() }); ev(sib, 'Opened on a phone through his other room (same mobile)'); }
+      setSession(req, res, sib, sdev);
+    }
     db.save();
     pingBroker(room, fresh && devices.length > 1 ? 'Your client room opened on a second phone' : 'Your client is in the room',
       fresh && devices.length > 1 ? `${room.clientName}'s room is now open on ${devices.length} phones (${label}). If that is not your client, remove it in Client Rooms → Info.` : `${room.clientName} opened the room.`);
@@ -608,7 +687,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   // 3. inside: react, ask for a visit, chat
   const authed = (req: Request, res: Response) => {
     headers(res);
-    const room = find(req.params.token); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) { gone(res); return null; }
+    const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) { gone(res); return null; }
     const dev = sessionFor(req, room);
     if (!dev) { res.redirect(303, `/r/${req.params.token}`); return null; }
     slide(req, res, room, dev);
@@ -675,7 +754,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 
   r.get('/:token/pp/:pt', (req: Request, res: Response) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     const dev = room && room.status === 'ACTIVE' ? sessionFor(req, room) : null;
     if (!room || !dev) return res.status(403).end();
     const c = useViewToken(req.params.pt, 'CRDOC', `cr:${room.id}:${dev}`);
@@ -695,7 +774,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 
   // ───────── v69 — the room as an app: its own manifest, alerts on the client's phone, papers / KYC sent to the broker ─────────
   r.get('/:token/manifest.webmanifest', (req: Request, res: Response) => {
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== 'ACTIVE') return res.status(404).end();
     const base = `/r/${req.params.token}`;
     res.set({ 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
@@ -710,7 +789,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   const jerr = (res: Response, code: number, error: string) => res.status(code).json({ success: false, error });
   const jsonAuth = (req: Request, res: Response) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) { jerr(res, 404, 'यह लिंक बंद हो चुका है। / This link is closed.'); return null; }
     const dev = sessionFor(req, room);
     if (!dev) { jerr(res, 401, 'फिर से खोलें और कोड डालें। / Open the link again and enter the code.'); return null; }
@@ -737,6 +816,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     const kind = req.body?.kind;
     if (!isDocKind(kind)) return jerr(res, 400, 'किस तरह की फ़ाइल है, चुनें। / Choose what kind of file it is.');
     if (req.body?.consent !== true) return jerr(res, 400, 'सहमति पर टिक करें। / Please tick the consent.');
+    if (kind === 'KYC_AADHAAR_FULL' && !(fullAadhaarOn() && room.fullAadhaarAsk)) return jerr(res, 403, 'पूरा आधार अभी नहीं लिया जा रहा — मास्क्ड भेजें। / Full Aadhaar is not being taken — send it masked.');
     if (!vaultReady()) return jerr(res, 503, 'फ़ाइल भेजना अभी उपलब्ध नहीं — ब्रोकर को बताएँ। / Sending files is not available right now — tell your broker.');
     const docs = room.docs || (room.docs = []);
     if (docs.length >= DOC_LIMITS.perRoom) return jerr(res, 400, `एक रूम में ${DOC_LIMITS.perRoom} से ज़्यादा फ़ाइल नहीं। / At most ${DOC_LIMITS.perRoom} files per room.`);
@@ -755,7 +835,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       fs.mkdirSync(DOCDIR(room.id), { recursive: true });
       fs.writeFileSync(docFile(room.id, id), seal(buf.toString('base64'), docAad(room.id, id)));
     } catch { return jerr(res, 500, 'सेव नहीं हो पाया — दोबारा कोशिश करें। / Could not save — try again.'); }
-    docs.push({ id, kind, name, mime, size: buf.length, at: nowIso(), sha256: crypto.createHash('sha256').update(buf).digest('hex'), note, consentAt: nowIso() });
+    docs.push({ id, kind, name, mime, size: buf.length, at: nowIso(), sha256: crypto.createHash('sha256').update(buf).digest('hex'), note, consentAt: nowIso(), ...(kind === 'KYC_AADHAAR_FULL' ? { eraseAfter: new Date(Date.now() + FULL_AADHAAR_DAYS * 86400_000).toISOString() } : {}) });
     const label = DOC_KINDS.find(d => d.id === kind)!;
     room.messages.push({ id: rid('CRX'), from: 'CLIENT', text: `📎 ${label.hi} भेजा / Sent: ${label.en}`, at: nowIso() });
     room.lastClientSeenAt = nowIso(); ev(room, `Client sent a file: ${label.en}${isKycKind(kind) ? ' (ID — broker only)' : ''}`);
@@ -771,6 +851,29 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     room.docs = (room.docs || []).filter(x => x.id !== d.id);
     ev(room, `Client removed a file he had sent (${d.kind})`); db.save();
     res.json({ success: true });
+  });
+
+  /** v70 — the OWNER confirms a visit on the spot: he scans the buyer's QR (or types the 6-digit code on the buyer's phone). Only visits of HIS property. */
+  r.post('/:token/scan', rateLimit('cr-scan', 40, 600_000), jsonBody, (req: Request, res: Response) => {
+    const room = jsonAuth(req, res); if (!room) return;
+    if (room.kind !== 'OWNER' || !room.propertyId) return jerr(res, 403, 'यह सिर्फ़ मालिक के रूम में होता है। / Only in an owner room.');
+    if (!verifyVisit) return jerr(res, 503, 'अभी उपलब्ध नहीं। / Not available right now.');
+    if (hit(`cr-scan:${room.id}`, 12, 600_000, 600_000) > 0) return jerr(res, 429, 'बहुत बार कोशिश — थोड़ी देर बाद। / Too many tries — wait a little.');
+    const raw = String(req.body?.code || '').trim().slice(0, 700);
+    let visitId = ''; let secret = ''; let otp = '';
+    let j: any = null; try { j = JSON.parse(raw); } catch { /* a typed code */ }
+    if (j && typeof j === 'object') { visitId = String(j.visitId || ''); secret = String(j.secret || ''); } else otp = raw.replace(/\D/g, '');
+    if (!secret && otp.length !== 6) return jerr(res, 400, 'QR पढ़ा नहीं गया या कोड 6 अंकों का नहीं। / The QR could not be read, or the code is not 6 digits.');
+    const v = st().siteVisits.find(x => x.propertyId === room.propertyId && !x.isVerified && (!visitId || x.id === visitId)
+      && (secret ? !!x.qrToken && safeEqual(String(x.qrToken), secret) : safeEqual(String(x.otpCode), otp)));
+    if (!v) return jerr(res, 404, 'यह QR / कोड आपकी प्रॉपर्टी की किसी बाक़ी विज़िट से नहीं मिला। / This QR / code does not match any open visit of your property.');
+    if (v.otpExpiresAt && Date.parse(v.otpExpiresAt) < Date.now()) return jerr(res, 410, 'इस विज़िट का कोड पुराना हो गया — ब्रोकर नई विज़िट तय करे। / This visit code has expired.');
+    const blk = ackBlock('VISIT', v.id); if (blk) return jerr(res, 409, 'ख़रीदार ने अभी “सीधा सौदा नहीं” की सहमति नहीं दी — उसे पहले अपना QR पेज खोलकर पूरा करने को कहें। / The buyer has not yet confirmed the “no direct deal” promise.');
+    verifyVisit(v, secret ? 'QR' : 'OTP', `Confirmed on the spot by the property owner in his room (${secret ? 'QR scanned' : 'code typed'}).`);
+    ev(room, `Owner confirmed visit ${v.id}`); db.save();
+    pingBroker(room, 'Visit confirmed by the owner', `${room.clientName} confirmed the visit ${v.id} on the spot.`);
+    const ini = String(v.customerName || '').split(/\s+/).filter(Boolean).map(w => w[0]!.toUpperCase()).join('.');
+    res.json({ success: true, visit: v.id, who: ini });
   });
 
   function render(req: Request, res: Response, room: ClientRoom, msg = '') {
@@ -794,7 +897,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       }).join('');
       const booked = (i.visits || []).filter(v => Date.parse(v.when) > Date.now() - 6 * 3600_000).sort((a, b) => a.when.localeCompare(b.when))[0];
       return `<div class="card ${pub.available ? '' : 'sold'}" id="p-${esc(i.id)}"><div class="prop">${pub.image ? `<img src="${esc(pub.image)}" alt="" loading="lazy">` : ''}<div><b>${esc(pub.title)}</b><br><small>${esc(pub.locality)}, ${esc(pub.city)} · ${esc(pub.type)} · ${esc(pub.deal)}</small><div class="price">${esc(inr(pub.price))}${pub.deal === 'Rent' ? ' / माह' : ''}</div>${area ? `<small>${esc(area)}</small>` : ''}</div></div>
-${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">🗓 <b>विज़िट तय: ${esc(new Date(booked.when).toLocaleString('hi-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }))}</b><br><small>Visit fixed — your broker will send the visit pass / code.</small></p></div>` : ''}
+${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">🗓 <b>विज़िट तय: ${esc(new Date(booked.when).toLocaleString('hi-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }))}</b><br><small>Visit fixed — your broker will send the visit pass / code.</small></p>${(() => { const ak = ackFor('VISIT', booked.visitId); return ak ? `<div class="row"><a class="btn g" href="${esc(ackLinkFor(ak))}">📲 मेरा QR दिखाएँ / Show my QR</a></div><small>विज़िट पर मालिक या ब्रोकर इसे स्कैन करेंगे — इसके बिना विज़िट पक्की नहीं मानी जाएगी। / The owner or broker scans it at the visit — without it the visit does not count.</small>` : ''; })()}</div>` : ''}
 ${gallery}${vids}
 ${i.note ? `<p class="t"><b>ब्रोकर का नोट:</b> ${esc(i.note)}</p>` : ''}${pub.tags.length ? `<div>${pub.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
 ${pub.description ? `<details><summary>ब्यौरा / Details</summary><p class="t">${esc(pub.description)}</p></details>` : ''}
@@ -812,10 +915,21 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
     };
     const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text)}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)` : esc(b?.name || 'Broker')} · ${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
     db.save();
+    const sibs = st().clientRooms.filter(c => c.id !== room.id && c.status === 'ACTIVE' && c.phoneKey === room.phoneKey && sessionFor(req, c));
+    const sibsHtml = sibs.length ? `<div class="card"><p class="small">मेरे दूसरे रूम / My other rooms</p><div class="row">${sibs.map(c => `<a class="btn l" href="/r/go-${esc(c.id)}">${c.kind === 'OWNER' ? `🏠 मेरी प्रॉपर्टी / My property${props.find(x => x.id === c.propertyId) ? ' — ' + esc(props.find(x => x.id === c.propertyId)!.title.slice(0, 28)) : ''}` : `🔍 मेरी तलाश / My search — ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')}`}</a>`).join('')}</div></div>` : '';
+    const ow = room.kind === 'OWNER' ? ownerStats(room) : null; const op = props.find(x => x.id === room.propertyId);
+    const stat = (n: number, hi: string, en: string) => `<div style="flex:1;min-width:70px;background:#f3f5fa;border-radius:12px;padding:10px;text-align:center"><div style="font-size:24px;font-weight:800">${n}</div><small>${hi}<br>${en}</small></div>`;
+    const ownerBlock = ow ? `<h2>आपकी प्रॉपर्टी / Your property</h2><div class="card"><p class="h"><b>🏠 ${esc(op?.title || room.propertyId || '')}</b></p>${op ? `<small>${esc(op.locality)}, ${esc(op.city)}</small>` : ''}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${stat(ow.viewing, 'लोग देख रहे', 'viewing')}${stat(ow.interested, 'दिलचस्पी', 'interested')}${stat(ow.visitsPlanned, 'विज़िट तय', 'visits planned')}${stat(ow.visitsDone, 'विज़िट हुई', 'visits done')}</div>
+<p class="small">सिर्फ़ संख्या दिखती है — कौन देख रहा है यह नहीं बताया जाता। / Only numbers — never who.</p></div>
+<h2 id="scan">📷 विज़िट पक्की करें / Confirm a visit</h2><div class="card"><p class="small">जब ख़रीदार आए, उसके फ़ोन का QR स्कैन करें, या उसके फ़ोन पर दिखा 6 अंकों का कोड डालें। इसके बिना विज़िट पक्की नहीं मानी जाती — इसी से सीधा सौदा रुकता है। / When the buyer arrives, scan the QR on his phone or type the 6-digit code he shows. Without this the visit is not counted.</p>
+<div class="row"><button type="button" class="g" id="scan-btn">📷 QR स्कैन करें / Scan QR</button></div><video id="scan-video" playsinline muted style="display:none;width:100%;border-radius:12px;margin-top:8px"></video>
+<label>या कोड डालें / Or type the code</label><input type="text" id="scan-code" inputmode="numeric" maxlength="6" placeholder="000000"><div class="row"><button type="button" class="l" id="scan-go">कोड से पक्का करें / Confirm with code</button></div><p class="small" id="scan-msg"></p></div>` : '';
     // v46 — the client's own name over the page: a screenshot forwarded to someone else still shows whose room it was
     const mark = esc(`${room.clientName} ••${room.phoneLast4} · ${b?.name || 'GENZ'}`);
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join('')}</div>`;
-    res.send(shell('Your private room', `${wm}<div class="top"><h1>नमस्ते ${esc(room.clientName.split(' ')[0])} 🙏</h1><p>${esc(b?.name || 'आपके ब्रोकर')} ने आपके लिए ये प्रॉपर्टी चुनी हैं · Properties picked for you</p></div>
+    res.send(shell('Your private room', `${wm}<div class="top"><h1>नमस्ते ${esc(room.clientName.split(' ')[0])} 🙏</h1><p>${room.kind === 'OWNER' ? `${esc(b?.name || 'आपके ब्रोकर')} के साथ आपकी प्रॉपर्टी का रूम · Your property room` : `${esc(b?.name || 'आपके ब्रोकर')} ने आपके लिए ये प्रॉपर्टी चुनी हैं · Properties picked for you`}</p></div>
+${sibsHtml}
 ${req.query.sent === '1' ? '<div class="card ok"><p class="t">आपका विज़िट अनुरोध ब्रोकर को भेज दिया गया। / Your visit request has been sent.</p></div>' : ''}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 ${req.query.doc === '1' ? '<div class="card ok"><p class="t">फ़ाइल ब्रोकर को भेज दी गई। / File sent to your broker.</p></div>' : ''}
 ${brokerCard(b)}
@@ -825,11 +939,11 @@ ${brokerCard(b)}
 <p class="small" id="app-ios" style="display:none">iPhone: नीचे Share (⬆) दबाएँ → “Add to Home Screen”। फिर ऐप खोलकर अलर्ट चालू करें। (अलर्ट के लिए iOS 16.4+) / iPhone: tap Share → Add to Home Screen, then open the app and turn on alerts (needs iOS 16.4+).</p>
 <p class="small" id="app-push-msg"></p></div>
 <p class="small" style="margin:10px 4px">📌 इस पेज को बुकमार्क / होम स्क्रीन पर रख लें — इसी फ़ोन पर अगली बार बिना कोड के खुलेगा (${L.sessionDays} दिन में एक बार खोलते रहें)। यह पेज सिर्फ़ आपके लिए है, इसका लिंक या स्क्रीनशॉट आगे न भेजें।<br>Bookmark this page or add it to your home screen — on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
-<h2>आपके लिए प्रॉपर्टी / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">अभी कोई प्रॉपर्टी नहीं भेजी गई। / Nothing shared yet — your broker will add some.</p></div>'}
+${room.kind === 'OWNER' ? ownerBlock : `<h2>आपके लिए प्रॉपर्टी / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">अभी कोई प्रॉपर्टी नहीं भेजी गई। / Nothing shared yet — your broker will add some.</p></div>'}`}
 ${(() => {
   const kycOn = vaultReady();
   const list = (room.docs || []).map(d => { const k = DOC_KINDS.find(x => x.id === d.kind); return `<div class="m mc">${isKycKind(d.kind) ? '🪪' : '📎'} ${esc(k?.hi || d.kind)} · <small>${esc(d.name)} · ${Math.max(1, Math.round(d.size / 1024))} KB · ${esc(dayHi(d.at))}</small> <button type="button" class="l" data-deldoc="${esc(d.id)}" style="padding:4px 10px">हटाएँ / Remove</button></div>`; }).join('');
-  return `<h2 id="docs">ब्रोकर को फ़ोटो / काग़ज़ / ID भेजें / Send a photo, paper or ID</h2><div class="card">${kycOn ? `<form id="docform"><label>क्या भेज रहे हैं? / What is it?</label><select id="dockind" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">${DOC_KINDS.map(d => `<option value="${d.id}">${esc(d.hi)} / ${esc(d.en)}</option>`).join('')}</select>
+  return `<h2 id="docs">ब्रोकर को फ़ोटो / काग़ज़ / ID भेजें / Send a photo, paper or ID</h2><div class="card">${kycOn ? `<form id="docform"><label>क्या भेज रहे हैं? / What is it?</label><select id="dockind" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">${DOC_KINDS.filter(d => d.id !== 'KYC_AADHAAR_FULL' || (fullAadhaarOn() && room.fullAadhaarAsk)).map(d => `<option value="${d.id}">${esc(d.hi)} / ${esc(d.en)}</option>`).join('')}</select>
 <input type="file" id="docfile" accept="image/*,application/pdf" style="margin:8px 0;width:100%"><input type="text" id="docnote" maxlength="120" placeholder="छोटा नोट (वैकल्पिक) / Short note (optional)" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">
 <p class="small">⚠ आधार सिर्फ़ <b>मास्क्ड</b> भेजें (पहले 8 अंक ढके)। पूरा आधार न भेजें। नंबर चैट में न लिखें। / Send Aadhaar only <b>masked</b> (first 8 digits covered). Never the full Aadhaar.</p>
 <label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="docok" style="width:auto;margin-top:3px"><span class="small">मैं यह फ़ाइल अपनी मर्ज़ी से इस सौदे के लिए ${esc(b?.name || 'ब्रोकर')} को भेज रहा/रही हूँ। यह सुरक्षित (एन्क्रिप्टेड) रखी जाएगी, सिर्फ़ ब्रोकर खोल सकेगा, और रूम बंद होने पर मिट जाएगी। / I send this willingly for this deal. It is kept encrypted, only the broker can open it, and it is erased when the room closes.</span></label>
@@ -841,7 +955,7 @@ ${(() => {
 <form method="post" action="/r/${tok}/msg"><textarea name="text" id="msgtext" rows="2" maxlength="${L.textChars}" placeholder="संदेश लिखें / Write a message" required></textarea>
 ${room.items.length ? `<label>किस प्रॉपर्टी के बारे में? (वैकल्पिक) / About which property?</label><select name="item" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px"><option value="">—</option>${room.items.map(i => `<option value="${esc(i.id)}">${esc(props.find(x => x.id === i.propertyId)?.title || i.propertyId)}</option>`).join('')}</select>` : ''}<div class="row"><button class="g" type="submit">भेजें / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">GENZ एक न्यूट्रल प्लेटफ़ॉर्म है; कीमत और शर्तें आपके, मालिक और ब्रोकर के बीच तय होती हैं। GENZ आपसे पैसा नहीं माँगता। आपका मोबाइल नंबर सिर्फ़ इस रूम को खोलने के लिए जाँचा गया है और सुरक्षित रूप (hash) में रखा जाता है।<br>GENZ is a neutral platform; price and terms are between you, the owner and the broker. GENZ never asks you for money. Your mobile number is only used to open this room and is stored in a one-way hashed form.</p>
-${joinFooter(b, b?.city)}`, 'hi', `<link rel="manifest" href="/r/${tok}/manifest.webmanifest"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="मेरा रूम"><link rel="apple-touch-icon" href="/icon-192.png">`).replace('<body>', '<body data-live="1">'));
+${joinFooter(b, b?.city)}`, 'hi', `<link rel="manifest" href="/r/${tok}/manifest.webmanifest" crossorigin="use-credentials"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="मेरा रूम"><link rel="apple-touch-icon" href="/icon-192.png">`).replace('<body>', '<body data-live="1">'));
   }
   return r;
 }
@@ -852,6 +966,7 @@ export function sweepClientRooms() {
   for (const r of s.clientRooms) {
     if (r.status === 'ACTIVE' && Date.parse(r.expiresAt) < now) { r.status = 'CLOSED'; r.closedAt = nowIso(); r.phoneSealed = undefined; eraseRoomFiles(r); ev(r, 'Closed — the link ran out'); n++; }
   }
+  for (const r of s.clientRooms) for (const d of (r.docs || []).filter(x => x.eraseAfter && Date.parse(x.eraseAfter) < now)) { try { fs.rmSync(docFile(r.id, d.id), { force: true }); } catch { /* gone */ } r.docs = (r.docs || []).filter(x => x.id !== d.id); ev(r, 'A full-Aadhaar file was erased (7 days passed)'); n++; }
   const before = s.clientRooms.length;
   s.clientRooms = s.clientRooms.filter(r => !(r.status === 'CLOSED' && r.closedAt && Date.parse(r.closedAt) + L.purgeClosedDays * 86400_000 < now));
   if (s.clientRooms.length !== before) n += before - s.clientRooms.length;

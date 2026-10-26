@@ -1139,7 +1139,11 @@ export interface ClientRoom {
   /** v58 — opened by one of the broker's office staff */
   createdById?: string; createdByName?: string;
   clientName: string;
-  kind: 'BUYER' | 'RENTER' | 'TENANT' | 'OTHER';
+  kind: 'BUYER' | 'RENTER' | 'TENANT' | 'OTHER' | 'OWNER';
+  /** v70 — kind OWNER: the room of a property owner whose mandate with this broker is ACTIVE (he sees numbers, never who) */
+  propertyId?: string; mandateId?: string;
+  /** v70 — the broker asked this client for his FULL Aadhaar to have a paper made (only while the server switch is on); erased 7 days after it comes */
+  fullAadhaarAsk?: boolean;
   note?: string;                   // the broker's own note, never shown to the client
   /** client's mobile: HMAC + last 4 only (the client types it on the link to get the code) */
   phoneKey: string; phoneLast4: string;
@@ -1170,7 +1174,7 @@ export interface ClientRoom {
   /** v69 — papers / photos / ID copies the CLIENT sent from his page. The file itself is AES-sealed on disk (data/clientdocs); erased when the room closes. */
   docs?: ClientRoomDoc[];
 }
-export interface ClientRoomDoc { id: string; kind: 'KYC_PAN' | 'KYC_AADHAAR_MASKED' | 'KYC_OTHER_ID' | 'PAPER' | 'PHOTO'; name: string; mime: string; size: number; at: string; sha256: string; note?: string; consentAt: string; openedByBroker?: number }
+export interface ClientRoomDoc { id: string; kind: 'KYC_PAN' | 'KYC_AADHAAR_MASKED' | 'KYC_AADHAAR_FULL' | 'KYC_OTHER_ID' | 'PAPER' | 'PHOTO'; name: string; mime: string; size: number; at: string; sha256: string; note?: string; consentAt: string; openedByBroker?: number; eraseAfter?: string }
 /** v56 — a home a member saved (buyer shortlist) */
 export interface SavedProperty { id: string; userId: string; propertyId: string; at: string }
 /** v57 — an enquiry sent from a broker's public page (/c/<code>). It belongs to the PAGE broker only — also when it is about another

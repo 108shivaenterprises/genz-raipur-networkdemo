@@ -147,7 +147,7 @@ import { mandateShareAt } from './src/shared/mandateShare.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
-import { roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
+import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
@@ -2732,6 +2732,8 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
   return deal;
 }
 
+// v70 — the property owner confirms a visit in his client-room page (scan the buyer's QR / type the code): the very same step as the on-site check-in
+setVisitVerifier((visit, method, note) => { finishVisitVerification(visit, method, note, { id: 'SYSTEM', role: 'SUPERADMIN' } as any, method === 'QR' ? 'SITE_VISIT_QR_CHECKIN' : 'SITE_VISIT_CONFIRMED', `Site visit ${visit.id} confirmed by the property owner in his room (${method}). Anti-bypass evidence stamped for property ${visit.propertyId}.`); });
 app.post('/api/site-visits/:id/verify-otp', needs('sitevisit:verify'), rateLimit('otp', 30, 10 * 60_000), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { otpCode, feedbackNotes } = req.body || {};

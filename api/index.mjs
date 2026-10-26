@@ -74313,7 +74313,8 @@ var ROOM_KINDS = [
   { id: "BUYER", en: "Buyer", hi: "\u0916\u0930\u0940\u0926\u093E\u0930" },
   { id: "RENTER", en: "Renter", hi: "\u0915\u093F\u0930\u093E\u090F \u092A\u0930 \u0932\u0947\u0928\u0947 \u0935\u093E\u0932\u093E" },
   { id: "TENANT", en: "Tenant", hi: "\u0915\u093F\u0930\u093E\u090F\u0926\u093E\u0930" },
-  { id: "OTHER", en: "Other client", hi: "\u0905\u0928\u094D\u092F \u0915\u094D\u0932\u093E\u0907\u0902\u091F" }
+  { id: "OTHER", en: "Other client", hi: "\u0905\u0928\u094D\u092F \u0915\u094D\u0932\u093E\u0907\u0902\u091F" },
+  { id: "OWNER", en: "Property owner", hi: "\u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u092E\u093E\u0932\u093F\u0915" }
 ];
 var ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1e3, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 60, purgeClosedDays: 90, devices: 2, maxLifeDays: 365 };
 function containsPhone(text) {
@@ -74327,12 +74328,14 @@ var PHONE_IN_CHAT_MSG = {
 var DOC_KINDS = [
   { id: "KYC_PAN", kyc: true, en: "PAN card", hi: "\u092A\u0948\u0928 \u0915\u093E\u0930\u094D\u0921" },
   { id: "KYC_AADHAAR_MASKED", kyc: true, en: "Aadhaar (masked \u2014 first 8 digits covered)", hi: "\u0906\u0927\u093E\u0930 (\u092E\u093E\u0938\u094D\u0915\u094D\u0921 \u2014 \u092A\u0939\u0932\u0947 8 \u0905\u0902\u0915 \u0922\u0915\u0947 \u0939\u0941\u090F)" },
+  { id: "KYC_AADHAAR_FULL", kyc: true, en: "Full Aadhaar (only for a paper the broker is making)", hi: "\u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 (\u0938\u093F\u0930\u094D\u092B\u093C \u092C\u094D\u0930\u094B\u0915\u0930 \u091C\u094B \u0915\u093E\u0917\u093C\u091C\u093C \u092C\u0928\u093E \u0930\u0939\u093E \u0939\u0948 \u0909\u0938\u0915\u0947 \u0932\u093F\u090F)" },
   { id: "KYC_OTHER_ID", kyc: true, en: "Other photo ID", hi: "\u0905\u0928\u094D\u092F \u092B\u093C\u094B\u091F\u094B \u092A\u0939\u091A\u093E\u0928 \u092A\u0924\u094D\u0930" },
   { id: "PAPER", kyc: false, en: "Paper / document", hi: "\u0915\u093E\u0917\u093C\u091C\u093C / \u0926\u0938\u094D\u0924\u093E\u0935\u0947\u091C\u093C" },
   { id: "PHOTO", kyc: false, en: "Photo", hi: "\u092B\u093C\u094B\u091F\u094B" }
 ];
 var isDocKind = (k) => DOC_KINDS.some((d) => d.id === k);
 var isKycKind = (k) => DOC_KINDS.some((d) => d.id === k && d.kyc);
+var FULL_AADHAAR_DAYS = 7;
 var DOC_LIMITS = { maxBytes: 25e5, perRoom: 12 };
 
 // server/propdocs.ts
@@ -89345,6 +89348,8 @@ function detail(r) {
     events: r.events.slice(-30),
     docs: (r.docs || []).map(docView),
     docsOn: vaultReady(),
+    fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
+    ...r.kind === "OWNER" ? { propertyId: r.propertyId, propertyTitle: st24().properties.find((p) => p.id === r.propertyId)?.title, ownerStats: ownerStats(r) } : {},
     items: r.items.map((i) => {
       const p = props.find((x) => x.id === i.propertyId);
       const avail = p ? shareableMedia({ id: r.brokerId }, p) : { photos: [], videos: [] };
@@ -89371,6 +89376,16 @@ function detail(r) {
 function createClientRoomRouter() {
   const r = (0, import_express58.Router)();
   r.use(needs("clientroom:use"));
+  r.get("/owner-ready", (_req, res) => {
+    const u = me26();
+    if (isStaff4(u)) return res.json({ success: true, homes: [] });
+    const homes = st24().ownerMandates.filter((m) => m.brokerId === u.id && m.status === "ACTIVE" && m.isConfirmed).filter((m) => !st24().clientRooms.some((c) => c.kind === "OWNER" && c.propertyId === m.propertyId && c.brokerId === u.id && c.status === "ACTIVE")).map((m) => {
+      const p = st24().properties.find((x) => x.id === m.propertyId);
+      const ph = phone108(p?.ownerPhone);
+      return p ? { id: p.id, title: p.title, ownerName: p.ownerName || "", ownerPhone: PHONE_RE8.test(ph) && !/[xX•*]/.test(String(p.ownerPhone)) ? ph : "" } : null;
+    }).filter(Boolean);
+    res.json({ success: true, homes });
+  });
   r.get("/", (_req, res) => {
     const list = st24().clientRooms.filter((x) => x.brokerId === roomOwnerOf(me26())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const u = me26();
@@ -89385,7 +89400,7 @@ function createClientRoomRouter() {
     const u = me26();
     const name = String(req.body?.clientName || "").trim().slice(0, 80);
     const phone = phone108(req.body?.phone);
-    const kind = ROOM_KINDS.find((k) => k.id === req.body?.kind)?.id || "BUYER";
+    const kind = ROOM_KINDS.find((k) => k.id === req.body?.kind && k.id !== "OWNER")?.id || "BUYER";
     if (name.length < 2) return bad26(res, "Enter your client's name");
     if (!PHONE_RE8.test(phone)) return bad26(res, "Enter your client's 10-digit mobile number");
     if (req.body?.consent !== true) return bad26(res, "Confirm that your client agreed to receive properties and chat in this room");
@@ -89396,7 +89411,7 @@ function createClientRoomRouter() {
       if (pb) return res.status(403).json(pb);
     }
     const phoneKey = hmac4("cr-phone", phone);
-    if (st24().clientRooms.some((x) => x.brokerId === owner && x.status === "ACTIVE" && x.phoneKey === phoneKey)) return bad26(res, "You already have an open room for this mobile number", 409);
+    if (st24().clientRooms.some((x) => x.brokerId === owner && x.status === "ACTIVE" && x.phoneKey === phoneKey && x.kind !== "OWNER")) return bad26(res, "You already have an open room for this mobile number", 409);
     const token = newToken2();
     const room = {
       id: rid3("CRM"),
@@ -89587,6 +89602,58 @@ function createClientRoomRouter() {
     db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "CLIENT_ROOM_PHONE_SAVED", `Client room mobile saved (ending ${room.phoneLast4})`);
     res.json({ success: true, room: detail(room) });
   });
+  r.post("/owner", rateLimit("cr-owner-create", 30, 36e5), (req, res) => {
+    const u = me26();
+    if (isStaff4(u)) return bad26(res, "Owner rooms are opened by the broker himself", 403);
+    const prop = st24().properties.find((p) => p.id === String(req.body?.propertyId || ""));
+    if (!prop || prop.listingBrokerId !== u.id) return bad26(res, "Choose one of your own listings", 404);
+    const m = st24().ownerMandates.find((x) => x.propertyId === prop.id && x.brokerId === u.id && x.status === "ACTIVE" && x.isConfirmed);
+    if (!m) return bad26(res, "The owner room opens only after the owner mandate for this property is signed by both of you (active)", 409, { code: "NO_MANDATE" });
+    const phone = phone108(req.body?.phone);
+    const name = String(req.body?.ownerName || "").trim().slice(0, 80) || prop.ownerName || "Owner";
+    if (!PHONE_RE8.test(phone)) return bad26(res, "Enter the owner's 10-digit mobile number");
+    if (req.body?.consent !== true) return bad26(res, "Confirm that the owner agreed to use this room");
+    if (st24().clientRooms.some((x) => x.kind === "OWNER" && x.propertyId === prop.id && x.brokerId === u.id && x.status === "ACTIVE")) return bad26(res, "This property already has an open owner room", 409);
+    if (st24().clientRooms.filter((x) => x.brokerId === u.id && x.status === "ACTIVE").length >= ROOM_LIMITS.activeRooms) return bad26(res, `You can keep ${ROOM_LIMITS.activeRooms} rooms open \u2014 close some old ones`);
+    const token = newToken2();
+    const room = {
+      id: rid3("CRM"),
+      brokerId: u.id,
+      clientName: name,
+      kind: "OWNER",
+      propertyId: prop.id,
+      mandateId: m.id,
+      phoneKey: hmac4("cr-phone", phone),
+      phoneLast4: phone.slice(-4),
+      tokenHash: sha5(token),
+      sessVersion: 1,
+      status: "ACTIVE",
+      createdAt: nowIso37(),
+      updatedAt: nowIso37(),
+      expiresAt: new Date(Date.now() + ROOM_LIMITS.linkDays * 864e5).toISOString(),
+      items: [],
+      messages: [],
+      events: []
+    };
+    sealPhone(room, phone);
+    ev(room, `Owner room opened for ${prop.id} (mandate ${m.id})`);
+    st24().clientRooms.push(room);
+    db.save();
+    db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "OWNER_ROOM_OPENED", `Owner room opened for ${prop.id}, mobile ending ${room.phoneLast4}`);
+    res.json({ success: true, room: detail(room), link: `/r/${token}` });
+  });
+  r.post("/:id/full-aadhaar", (req, res) => {
+    const room = mine2(req);
+    if (!room) return bad26(res, "Room not found", 404);
+    if (isStaff4(me26())) return bad26(res, "Only the broker can ask for ID papers", 403);
+    if (!fullAadhaarOn()) return bad26(res, "Full Aadhaar is switched off on this server (pending the advocate\u2019s opinion). Ask for the masked Aadhaar instead.", 403, { code: "FULL_AADHAAR_OFF" });
+    room.fullAadhaarAsk = req.body?.ask !== false;
+    ev(room, room.fullAadhaarAsk ? "Broker asked for the full Aadhaar (for a paper being made)" : "Broker withdrew the full-Aadhaar request");
+    room.messages.push({ id: rid3("CRX"), from: "BROKER", text: room.fullAadhaarAsk ? "\u{1FAAA} \u0915\u093E\u0917\u093C\u091C\u093C \u092C\u0928\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 \u091A\u093E\u0939\u093F\u090F \u2014 \u0928\u0940\u091A\u0947 \u201C\u0915\u093E\u0917\u093C\u091C\u093C \u092D\u0947\u091C\u0947\u0902\u201D \u092E\u0947\u0902 \u091A\u0941\u0928\u0915\u0930 \u092D\u0947\u091C\u0947\u0902\u0964 7 \u0926\u093F\u0928 \u092C\u093E\u0926 \u092F\u0939 \u0905\u092A\u0928\u0947 \u0906\u092A \u092E\u093F\u091F \u091C\u093E\u090F\u0917\u093E\u0964" : "\u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 \u0905\u092C \u0928\u0939\u0940\u0902 \u091A\u093E\u0939\u093F\u090F\u0964", at: nowIso37() });
+    db.save();
+    tell(room, "Message from your broker", "Open your room.");
+    res.json({ success: true, room: detail(room) });
+  });
   r.get("/:id/docs/:docId", rateLimit("cr-doc-open", 200, 36e5), (req, res) => {
     const room = mine2(req);
     if (!room) return bad26(res, "Room not found", 404);
@@ -89661,6 +89728,21 @@ function eraseRoomFiles(room) {
   dropRoomPush(room.id);
 }
 var docView = (d) => ({ id: d.id, kind: d.kind, kyc: isKycKind(d.kind), name: d.name, mime: d.mime, size: d.size, at: d.at, note: d.note, opened: d.openedByBroker || 0 });
+var fullAadhaarOn = () => process.env.FULL_AADHAAR_OK === "1";
+var verifyVisit = null;
+var setVisitVerifier = (fn) => {
+  verifyVisit = fn;
+};
+function ownerStats(room) {
+  const s = st24();
+  const pid = room.propertyId || "";
+  const shown = s.clientRooms.filter((c) => c.kind !== "OWNER" && c.status === "ACTIVE" && c.items.some((i) => i.propertyId === pid));
+  const likes = shown.filter((c) => c.items.some((i) => i.propertyId === pid && i.reaction === "LIKE")).length;
+  const qr = (s.partnerLeads || []).filter((l) => l.homeId === pid).length;
+  const enq = (s.pageEnquiries || []).filter((e) => e.propertyId === pid && e.status !== "SPAM").length;
+  const visits = s.siteVisits.filter((v) => v.propertyId === pid);
+  return { viewing: shown.length + qr + enq, interested: likes + qr + enq, visitsPlanned: visits.filter((v) => !v.isVerified && Date.parse(v.scheduledTime) > Date.now() - 12 * 36e5).length, visitsDone: visits.filter((v) => v.isVerified).length };
+}
 var pingBroker = (room, title, body) => {
   void pushTo(room.brokerId, { kind: "deals", title, body, url: "/?tab=clientroom" });
   for (const m of roomTeam(room.brokerId)) void pushTo(m.id, { kind: "deals", title, body, url: "/?tab=clientroom" });
@@ -89744,6 +89826,10 @@ var btn=df.querySelector('button[type=submit]');btn.disabled=true;msg.textConten
 var send=function(data,name,mime){fetch('/r/'+TOK+'/doc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:$('dockind').value,name:name,data:data,note:$('docnote').value,consent:true})}).then(function(x){return x.json().then(function(j){return{ok:x.ok,j:j}})}).then(function(r){if(r.ok){location.href='/r/'+TOK+'?doc=1#docs'}else{btn.disabled=false;msg.textContent=(r.j&&r.j.error)||'\u0928\u0939\u0940\u0902 \u092D\u0947\u091C \u092A\u093E\u090F\u0964 / Could not send.'}}).catch(function(){btn.disabled=false;msg.textContent='\u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u0915\u0940 \u0926\u093F\u0915\u094D\u0915\u0924 \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Network problem \u2014 try again.'})};
 if(f.type==='application/pdf'){if(f.size>2400000){btn.disabled=false;msg.textContent='PDF 2.4 MB \u0938\u0947 \u091B\u094B\u091F\u0940 \u0939\u094B\u0964 / The PDF must be under 2.4 MB.';return}var fr=new FileReader();fr.onload=function(){send(String(fr.result).split(',')[1],f.name,f.type)};fr.readAsDataURL(f);return}
 var url=URL.createObjectURL(f),im=new Image();im.onload=function(){var k=Math.min(1,1600/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*k));cv.height=Math.max(1,Math.round(im.height*k));cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);var d=cv.toDataURL('image/jpeg',0.8);URL.revokeObjectURL(url);send(d.split(',')[1],f.name,'image/jpeg')};im.onerror=function(){btn.disabled=false;msg.textContent='\u092F\u0939 \u092B\u093C\u094B\u091F\u094B \u092A\u0922\u093C\u0940 \u0928\u0939\u0940\u0902 \u091C\u093E \u0938\u0915\u0940\u0964 / This photo could not be read.'};im.src=url})}
+var sbtn=$('scan-btn');if(sbtn){var sm=$('scan-msg');function sendScan(c){sm.textContent='\u091C\u093E\u0901\u091A \u0930\u0939\u0947 \u0939\u0948\u0902\u2026 / Checking\u2026';fetch('/r/'+TOK+'/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:c})}).then(function(x){return x.json().then(function(j){return{ok:x.ok,j:j}})}).then(function(r){sm.textContent=r.ok?'\u2705 \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0915\u094D\u0915\u0940 \u0939\u094B \u0917\u0908 ('+(r.j.who||'')+') / Visit confirmed':((r.j&&r.j.error)||'\u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E\u0964 / Could not confirm.');if(r.ok){setTimeout(function(){location.reload()},1800)}}).catch(function(){sm.textContent='\u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u0915\u0940 \u0926\u093F\u0915\u094D\u0915\u0924\u0964 / Network problem.'})}
+var sg=$('scan-go');if(sg)sg.addEventListener('click',function(){sendScan($('scan-code').value)});
+sbtn.addEventListener('click',function(){if(!('BarcodeDetector' in window)||!navigator.mediaDevices){sm.textContent='\u0907\u0938 \u092B\u093C\u094B\u0928 \u092E\u0947\u0902 \u0938\u094D\u0915\u0948\u0928\u0930 \u0928\u0939\u0940\u0902 \u0939\u0948 \u2014 \u0928\u0940\u091A\u0947 6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0915\u094B\u0921 \u0921\u093E\u0932\u0947\u0902\u0964 / No scanner on this phone \u2014 type the 6-digit code below.';return}
+var vid=$('scan-video');navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(st){vid.srcObject=st;vid.style.display='block';vid.play();var det=new BarcodeDetector({formats:['qr_code']}),done=false;(function loop(){if(done)return;det.detect(vid).then(function(b){if(b&&b.length){done=true;st.getTracks().forEach(function(t){t.stop()});vid.style.display='none';sendScan(b[0].rawValue)}else setTimeout(loop,300)}).catch(function(){setTimeout(loop,500)})})()}).catch(function(){sm.textContent='\u0915\u0948\u092E\u0930\u093E \u0928\u0939\u0940\u0902 \u0916\u0941\u0932\u093E \u2014 \u0915\u094B\u0921 \u0921\u093E\u0932\u0947\u0902\u0964 / Camera did not open \u2014 type the code.'})})}
 var dl=document.querySelectorAll('[data-deldoc]');for(var j=0;j<dl.length;j++){(function(b){b.addEventListener('click',function(){if(!confirm('\u092F\u0939 \u092B\u093C\u093E\u0907\u0932 \u0939\u091F\u093E\u090F\u0901? / Remove this file?'))return;fetch('/r/'+TOK+'/doc/'+b.getAttribute('data-deldoc')+'/delete',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.href='/r/'+TOK+'#docs'})})})(dl[j])}
 })();`;
 var PV_JS = `(function(){var R=document.getElementById('pv');if(!R)return;var T=JSON.parse(R.getAttribute('data-t')||'[]'),B=R.getAttribute('data-base')||'',W=R.getAttribute('data-wm')||'',H=document.getElementById('pv-pages'),C=document.getElementById('pv-cover');
@@ -89766,7 +89852,11 @@ var dayHi = (iso) => new Date(iso).toLocaleString("en-IN", { day: "numeric", mon
 function createClientRoomPageRouter() {
   const r = (0, import_express58.Router)();
   const form = import_express59.default.urlencoded({ extended: false, limit: "20kb" });
-  const find = (token) => {
+  const find = (token, req) => {
+    if (req && /^go-CRM-[a-f0-9]{10}$/.test(token)) {
+      const rm = st24().clientRooms.find((c) => c.id === token.slice(3));
+      return rm && sessionFor(req, rm) ? rm : void 0;
+    }
     if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return void 0;
     const h = sha5(token);
     return st24().clientRooms.find((c) => safeEqual(c.tokenHash, h));
@@ -89801,7 +89891,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
   };
   r.get("/:token", rateLimit("cr-view", 120, 6e4), (req, res) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== "ACTIVE" || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     const dev = sessionFor(req, room);
     if (!dev) return gate(res, room, req.params.token);
@@ -89810,7 +89900,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
   });
   r.post("/:token/otp", rateLimit("cr-otp", 30, 36e5), form, async (req, res) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== "ACTIVE" || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     const phone = phone108(req.body?.phone);
     if (!phone) return gate(res, room, req.params.token, "\u0905\u092A\u0928\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0921\u093E\u0932\u0947\u0902\u0964 / Enter your mobile number.");
@@ -89830,7 +89920,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
   });
   r.post("/:token/verify", rateLimit("cr-verify", 40, 36e5), form, (req, res) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== "ACTIVE" || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     if (!room.otpHash || !room.otpExpires || Date.parse(room.otpExpires) < Date.now()) return gate(res, room, req.params.token, "\u0915\u094B\u0921 \u0915\u0940 \u092E\u093F\u092F\u093E\u0926 \u0916\u093C\u0924\u094D\u092E \u2014 \u0928\u092F\u093E \u0915\u094B\u0921 \u092E\u0901\u0917\u093E\u090F\u0901\u0964 / The code has expired \u2014 ask for a new one.");
     if ((room.otpTries || 0) >= ROOM_LIMITS.otpTries) {
@@ -89867,6 +89957,17 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     const label2 = devices.find((d) => d.id === dev).label;
     ev(room, fresh ? `Client opened the room on a new phone (${label2}) \u2014 mobile verified` : `Client signed in again on the same phone (${label2})`);
     slide(req, res, room, dev);
+    for (const sib of st24().clientRooms.filter((c) => c.id !== room.id && c.status === "ACTIVE" && Date.parse(c.expiresAt) > Date.now() && c.phoneKey === room.phoneKey)) {
+      const sd = sib.devices || (sib.devices = []);
+      let sdev = knownDevice(req, sib);
+      if (!sdev) {
+        if (sd.length >= ROOM_LIMITS.devices) continue;
+        sdev = crypto37.randomBytes(6).toString("hex");
+        sd.push({ id: sdev, label: deviceLabel(req.headers["user-agent"]), firstAt: nowIso37(), lastAt: nowIso37() });
+        ev(sib, "Opened on a phone through his other room (same mobile)");
+      }
+      setSession(req, res, sib, sdev);
+    }
     db.save();
     pingBroker(
       room,
@@ -89877,7 +89978,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
   });
   const authed = (req, res) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== "ACTIVE" || Date.parse(room.expiresAt) < Date.now()) {
       gone(res);
       return null;
@@ -89962,7 +90063,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
   });
   r.get("/:token/pp/:pt", (req, res) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     const dev = room && room.status === "ACTIVE" ? sessionFor(req, room) : null;
     if (!room || !dev) return res.status(403).end();
     const c = useViewToken(req.params.pt, "CRDOC", `cr:${room.id}:${dev}`);
@@ -89980,7 +90081,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     res.send(page2);
   });
   r.get("/:token/manifest.webmanifest", (req, res) => {
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== "ACTIVE") return res.status(404).end();
     const base = `/r/${req.params.token}`;
     res.set({ "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
@@ -90002,7 +90103,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
   const jerr = (res, code, error62) => res.status(code).json({ success: false, error: error62 });
   const jsonAuth = (req, res) => {
     headers(res);
-    const room = find(req.params.token);
+    const room = find(req.params.token, req);
     if (!room || room.status !== "ACTIVE" || Date.parse(room.expiresAt) < Date.now()) {
       jerr(res, 404, "\u092F\u0939 \u0932\u093F\u0902\u0915 \u092C\u0902\u0926 \u0939\u094B \u091A\u0941\u0915\u093E \u0939\u0948\u0964 / This link is closed.");
       return null;
@@ -90044,6 +90145,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     const kind = req.body?.kind;
     if (!isDocKind(kind)) return jerr(res, 400, "\u0915\u093F\u0938 \u0924\u0930\u0939 \u0915\u0940 \u092B\u093C\u093E\u0907\u0932 \u0939\u0948, \u091A\u0941\u0928\u0947\u0902\u0964 / Choose what kind of file it is.");
     if (req.body?.consent !== true) return jerr(res, 400, "\u0938\u0939\u092E\u0924\u093F \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902\u0964 / Please tick the consent.");
+    if (kind === "KYC_AADHAAR_FULL" && !(fullAadhaarOn() && room.fullAadhaarAsk)) return jerr(res, 403, "\u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 \u0905\u092D\u0940 \u0928\u0939\u0940\u0902 \u0932\u093F\u092F\u093E \u091C\u093E \u0930\u0939\u093E \u2014 \u092E\u093E\u0938\u094D\u0915\u094D\u0921 \u092D\u0947\u091C\u0947\u0902\u0964 / Full Aadhaar is not being taken \u2014 send it masked.");
     if (!vaultReady()) return jerr(res, 503, "\u092B\u093C\u093E\u0907\u0932 \u092D\u0947\u091C\u0928\u093E \u0905\u092D\u0940 \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092C\u0924\u093E\u090F\u0901\u0964 / Sending files is not available right now \u2014 tell your broker.");
     const docs = room.docs || (room.docs = []);
     if (docs.length >= DOC_LIMITS.perRoom) return jerr(res, 400, `\u090F\u0915 \u0930\u0942\u092E \u092E\u0947\u0902 ${DOC_LIMITS.perRoom} \u0938\u0947 \u091C\u093C\u094D\u092F\u093E\u0926\u093E \u092B\u093C\u093E\u0907\u0932 \u0928\u0939\u0940\u0902\u0964 / At most ${DOC_LIMITS.perRoom} files per room.`);
@@ -90064,7 +90166,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     } catch {
       return jerr(res, 500, "\u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not save \u2014 try again.");
     }
-    docs.push({ id, kind, name, mime, size: buf.length, at: nowIso37(), sha256: crypto37.createHash("sha256").update(buf).digest("hex"), note: note5, consentAt: nowIso37() });
+    docs.push({ id, kind, name, mime, size: buf.length, at: nowIso37(), sha256: crypto37.createHash("sha256").update(buf).digest("hex"), note: note5, consentAt: nowIso37(), ...kind === "KYC_AADHAAR_FULL" ? { eraseAfter: new Date(Date.now() + FULL_AADHAAR_DAYS * 864e5).toISOString() } : {} });
     const label2 = DOC_KINDS.find((d) => d.id === kind);
     room.messages.push({ id: rid3("CRX"), from: "CLIENT", text: `\u{1F4CE} ${label2.hi} \u092D\u0947\u091C\u093E / Sent: ${label2.en}`, at: nowIso37() });
     room.lastClientSeenAt = nowIso37();
@@ -90087,6 +90189,38 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     db.save();
     res.json({ success: true });
   });
+  r.post("/:token/scan", rateLimit("cr-scan", 40, 6e5), jsonBody, (req, res) => {
+    const room = jsonAuth(req, res);
+    if (!room) return;
+    if (room.kind !== "OWNER" || !room.propertyId) return jerr(res, 403, "\u092F\u0939 \u0938\u093F\u0930\u094D\u092B\u093C \u092E\u093E\u0932\u093F\u0915 \u0915\u0947 \u0930\u0942\u092E \u092E\u0947\u0902 \u0939\u094B\u0924\u093E \u0939\u0948\u0964 / Only in an owner room.");
+    if (!verifyVisit) return jerr(res, 503, "\u0905\u092D\u0940 \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902\u0964 / Not available right now.");
+    if (hit(`cr-scan:${room.id}`, 12, 6e5, 6e5) > 0) return jerr(res, 429, "\u092C\u0939\u0941\u0924 \u092C\u093E\u0930 \u0915\u094B\u0936\u093F\u0936 \u2014 \u0925\u094B\u0921\u093C\u0940 \u0926\u0947\u0930 \u092C\u093E\u0926\u0964 / Too many tries \u2014 wait a little.");
+    const raw = String(req.body?.code || "").trim().slice(0, 700);
+    let visitId = "";
+    let secret2 = "";
+    let otp = "";
+    let j = null;
+    try {
+      j = JSON.parse(raw);
+    } catch {
+    }
+    if (j && typeof j === "object") {
+      visitId = String(j.visitId || "");
+      secret2 = String(j.secret || "");
+    } else otp = raw.replace(/\D/g, "");
+    if (!secret2 && otp.length !== 6) return jerr(res, 400, "QR \u092A\u0922\u093C\u093E \u0928\u0939\u0940\u0902 \u0917\u092F\u093E \u092F\u093E \u0915\u094B\u0921 6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0928\u0939\u0940\u0902\u0964 / The QR could not be read, or the code is not 6 digits.");
+    const v = st24().siteVisits.find((x) => x.propertyId === room.propertyId && !x.isVerified && (!visitId || x.id === visitId) && (secret2 ? !!x.qrToken && safeEqual(String(x.qrToken), secret2) : safeEqual(String(x.otpCode), otp)));
+    if (!v) return jerr(res, 404, "\u092F\u0939 QR / \u0915\u094B\u0921 \u0906\u092A\u0915\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0940 \u0915\u093F\u0938\u0940 \u092C\u093E\u0915\u093C\u0940 \u0935\u093F\u091C\u093C\u093F\u091F \u0938\u0947 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u0964 / This QR / code does not match any open visit of your property.");
+    if (v.otpExpiresAt && Date.parse(v.otpExpiresAt) < Date.now()) return jerr(res, 410, "\u0907\u0938 \u0935\u093F\u091C\u093C\u093F\u091F \u0915\u093E \u0915\u094B\u0921 \u092A\u0941\u0930\u093E\u0928\u093E \u0939\u094B \u0917\u092F\u093E \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0908 \u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F \u0915\u0930\u0947\u0964 / This visit code has expired.");
+    const blk = ackBlock("VISIT", v.id);
+    if (blk) return jerr(res, 409, "\u0916\u093C\u0930\u0940\u0926\u093E\u0930 \u0928\u0947 \u0905\u092D\u0940 \u201C\u0938\u0940\u0927\u093E \u0938\u094C\u0926\u093E \u0928\u0939\u0940\u0902\u201D \u0915\u0940 \u0938\u0939\u092E\u0924\u093F \u0928\u0939\u0940\u0902 \u0926\u0940 \u2014 \u0909\u0938\u0947 \u092A\u0939\u0932\u0947 \u0905\u092A\u0928\u093E QR \u092A\u0947\u091C \u0916\u094B\u0932\u0915\u0930 \u092A\u0942\u0930\u093E \u0915\u0930\u0928\u0947 \u0915\u094B \u0915\u0939\u0947\u0902\u0964 / The buyer has not yet confirmed the \u201Cno direct deal\u201D promise.");
+    verifyVisit(v, secret2 ? "QR" : "OTP", `Confirmed on the spot by the property owner in his room (${secret2 ? "QR scanned" : "code typed"}).`);
+    ev(room, `Owner confirmed visit ${v.id}`);
+    db.save();
+    pingBroker(room, "Visit confirmed by the owner", `${room.clientName} confirmed the visit ${v.id} on the spot.`);
+    const ini = String(v.customerName || "").split(/\s+/).filter(Boolean).map((w) => w[0].toUpperCase()).join(".");
+    res.json({ success: true, visit: v.id, who: ini });
+  });
   function render(req, res, room, msg = "") {
     const b = st24().users.find((u) => u.id === room.brokerId);
     room.lastClientSeenAt = nowIso37();
@@ -90107,7 +90241,10 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
       }).join("");
       const booked = (i.visits || []).filter((v) => Date.parse(v.when) > Date.now() - 6 * 36e5).sort((a, b2) => a.when.localeCompare(b2.when))[0];
       return `<div class="card ${pub.available ? "" : "sold"}" id="p-${esc14(i.id)}"><div class="prop">${pub.image ? `<img src="${esc14(pub.image)}" alt="" loading="lazy">` : ""}<div><b>${esc14(pub.title)}</b><br><small>${esc14(pub.locality)}, ${esc14(pub.city)} \xB7 ${esc14(pub.type)} \xB7 ${esc14(pub.deal)}</small><div class="price">${esc14(inr14(pub.price))}${pub.deal === "Rent" ? " / \u092E\u093E\u0939" : ""}</div>${area ? `<small>${esc14(area)}</small>` : ""}</div></div>
-${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">\u{1F5D3} <b>\u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F: ${esc14(new Date(booked.when).toLocaleString("hi-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }))}</b><br><small>Visit fixed \u2014 your broker will send the visit pass / code.</small></p></div>` : ""}
+${booked ? `<div class="card ok" style="margin:8px 0 0;padding:10px"><p class="t" style="margin:0">\u{1F5D3} <b>\u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F: ${esc14(new Date(booked.when).toLocaleString("hi-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }))}</b><br><small>Visit fixed \u2014 your broker will send the visit pass / code.</small></p>${(() => {
+        const ak = ackFor("VISIT", booked.visitId);
+        return ak ? `<div class="row"><a class="btn g" href="${esc14(ackLinkFor(ak))}">\u{1F4F2} \u092E\u0947\u0930\u093E QR \u0926\u093F\u0916\u093E\u090F\u0901 / Show my QR</a></div><small>\u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0930 \u092E\u093E\u0932\u093F\u0915 \u092F\u093E \u092C\u094D\u0930\u094B\u0915\u0930 \u0907\u0938\u0947 \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0947\u0902\u0917\u0947 \u2014 \u0907\u0938\u0915\u0947 \u092C\u093F\u0928\u093E \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0915\u094D\u0915\u0940 \u0928\u0939\u0940\u0902 \u092E\u093E\u0928\u0940 \u091C\u093E\u090F\u0917\u0940\u0964 / The owner or broker scans it at the visit \u2014 without it the visit does not count.</small>` : "";
+      })()}</div>` : ""}
 ${gallery}${vids}
 ${i.note ? `<p class="t"><b>\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u094B\u091F:</b> ${esc14(i.note)}</p>` : ""}${pub.tags.length ? `<div>${pub.tags.map((t) => `<span class="tag">${esc14(t)}</span>`).join("")}</div>` : ""}
 ${pub.description ? `<details><summary>\u092C\u094D\u092F\u094C\u0930\u093E / Details</summary><p class="t">${esc14(pub.description)}</p></details>` : ""}
@@ -90123,9 +90260,21 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok2}/react
     };
     const chat = room.messages.map((m) => `<div class="m ${m.from === "CLIENT" ? "mc" : "mb"}">${esc14(m.text)}${m.paper ? paperLine(m.paper) : ""}${m.propertyId ? `<small>\u21B3 ${esc14(m.propertyId)}</small>` : ""}<small>${m.from === "CLIENT" ? "\u0906\u092A" : m.byName ? `${esc14(m.byName)} (${esc14(b?.name || "Broker")} \u0915\u093E \u0911\u092B\u093C\u093F\u0938 / office)` : esc14(b?.name || "Broker")} \xB7 ${new Date(m.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></div>`).join("");
     db.save();
+    const sibs = st24().clientRooms.filter((c) => c.id !== room.id && c.status === "ACTIVE" && c.phoneKey === room.phoneKey && sessionFor(req, c));
+    const sibsHtml = sibs.length ? `<div class="card"><p class="small">\u092E\u0947\u0930\u0947 \u0926\u0942\u0938\u0930\u0947 \u0930\u0942\u092E / My other rooms</p><div class="row">${sibs.map((c) => `<a class="btn l" href="/r/go-${esc14(c.id)}">${c.kind === "OWNER" ? `\u{1F3E0} \u092E\u0947\u0930\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / My property${props.find((x) => x.id === c.propertyId) ? " \u2014 " + esc14(props.find((x) => x.id === c.propertyId).title.slice(0, 28)) : ""}` : `\u{1F50D} \u092E\u0947\u0930\u0940 \u0924\u0932\u093E\u0936 / My search \u2014 ${esc14(st24().users.find((u) => u.id === c.brokerId)?.name || "Broker")}`}</a>`).join("")}</div></div>` : "";
+    const ow = room.kind === "OWNER" ? ownerStats(room) : null;
+    const op = props.find((x) => x.id === room.propertyId);
+    const stat = (n2, hi, en) => `<div style="flex:1;min-width:70px;background:#f3f5fa;border-radius:12px;padding:10px;text-align:center"><div style="font-size:24px;font-weight:800">${n2}</div><small>${hi}<br>${en}</small></div>`;
+    const ownerBlock = ow ? `<h2>\u0906\u092A\u0915\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Your property</h2><div class="card"><p class="h"><b>\u{1F3E0} ${esc14(op?.title || room.propertyId || "")}</b></p>${op ? `<small>${esc14(op.locality)}, ${esc14(op.city)}</small>` : ""}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${stat(ow.viewing, "\u0932\u094B\u0917 \u0926\u0947\u0916 \u0930\u0939\u0947", "viewing")}${stat(ow.interested, "\u0926\u093F\u0932\u091A\u0938\u094D\u092A\u0940", "interested")}${stat(ow.visitsPlanned, "\u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F", "visits planned")}${stat(ow.visitsDone, "\u0935\u093F\u091C\u093C\u093F\u091F \u0939\u0941\u0908", "visits done")}</div>
+<p class="small">\u0938\u093F\u0930\u094D\u092B\u093C \u0938\u0902\u0916\u094D\u092F\u093E \u0926\u093F\u0916\u0924\u0940 \u0939\u0948 \u2014 \u0915\u094C\u0928 \u0926\u0947\u0916 \u0930\u0939\u093E \u0939\u0948 \u092F\u0939 \u0928\u0939\u0940\u0902 \u092C\u0924\u093E\u092F\u093E \u091C\u093E\u0924\u093E\u0964 / Only numbers \u2014 never who.</p></div>
+<h2 id="scan">\u{1F4F7} \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0915\u094D\u0915\u0940 \u0915\u0930\u0947\u0902 / Confirm a visit</h2><div class="card"><p class="small">\u091C\u092C \u0916\u093C\u0930\u0940\u0926\u093E\u0930 \u0906\u090F, \u0909\u0938\u0915\u0947 \u092B\u093C\u094B\u0928 \u0915\u093E QR \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0947\u0902, \u092F\u093E \u0909\u0938\u0915\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0926\u093F\u0916\u093E 6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0915\u094B\u0921 \u0921\u093E\u0932\u0947\u0902\u0964 \u0907\u0938\u0915\u0947 \u092C\u093F\u0928\u093E \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0915\u094D\u0915\u0940 \u0928\u0939\u0940\u0902 \u092E\u093E\u0928\u0940 \u091C\u093E\u0924\u0940 \u2014 \u0907\u0938\u0940 \u0938\u0947 \u0938\u0940\u0927\u093E \u0938\u094C\u0926\u093E \u0930\u0941\u0915\u0924\u093E \u0939\u0948\u0964 / When the buyer arrives, scan the QR on his phone or type the 6-digit code he shows. Without this the visit is not counted.</p>
+<div class="row"><button type="button" class="g" id="scan-btn">\u{1F4F7} QR \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0947\u0902 / Scan QR</button></div><video id="scan-video" playsinline muted style="display:none;width:100%;border-radius:12px;margin-top:8px"></video>
+<label>\u092F\u093E \u0915\u094B\u0921 \u0921\u093E\u0932\u0947\u0902 / Or type the code</label><input type="text" id="scan-code" inputmode="numeric" maxlength="6" placeholder="000000"><div class="row"><button type="button" class="l" id="scan-go">\u0915\u094B\u0921 \u0938\u0947 \u092A\u0915\u094D\u0915\u093E \u0915\u0930\u0947\u0902 / Confirm with code</button></div><p class="small" id="scan-msg"></p></div>` : "";
     const mark = esc14(`${room.clientName} \u2022\u2022${room.phoneLast4} \xB7 ${b?.name || "GENZ"}`);
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join("")}</div>`;
-    res.send(shell3("Your private room", `${wm}<div class="top"><h1>\u0928\u092E\u0938\u094D\u0924\u0947 ${esc14(room.clientName.split(" ")[0])} \u{1F64F}</h1><p>${esc14(b?.name || "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0928\u0947 \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092F\u0947 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u091A\u0941\u0928\u0940 \u0939\u0948\u0902 \xB7 Properties picked for you</p></div>
+    res.send(shell3("Your private room", `${wm}<div class="top"><h1>\u0928\u092E\u0938\u094D\u0924\u0947 ${esc14(room.clientName.split(" ")[0])} \u{1F64F}</h1><p>${room.kind === "OWNER" ? `${esc14(b?.name || "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0915\u0947 \u0938\u093E\u0925 \u0906\u092A\u0915\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u093E \u0930\u0942\u092E \xB7 Your property room` : `${esc14(b?.name || "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0928\u0947 \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092F\u0947 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u091A\u0941\u0928\u0940 \u0939\u0948\u0902 \xB7 Properties picked for you`}</p></div>
+${sibsHtml}
 ${req.query.sent === "1" ? '<div class="card ok"><p class="t">\u0906\u092A\u0915\u093E \u0935\u093F\u091C\u093C\u093F\u091F \u0905\u0928\u0941\u0930\u094B\u0927 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092D\u0947\u091C \u0926\u093F\u092F\u093E \u0917\u092F\u093E\u0964 / Your visit request has been sent.</p></div>' : ""}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
 ${req.query.doc === "1" ? '<div class="card ok"><p class="t">\u092B\u093C\u093E\u0907\u0932 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092D\u0947\u091C \u0926\u0940 \u0917\u0908\u0964 / File sent to your broker.</p></div>' : ""}
 ${brokerCard2(b)}
@@ -90135,14 +90284,14 @@ ${brokerCard2(b)}
 <p class="small" id="app-ios" style="display:none">iPhone: \u0928\u0940\u091A\u0947 Share (\u2B06) \u0926\u092C\u093E\u090F\u0901 \u2192 \u201CAdd to Home Screen\u201D\u0964 \u092B\u093F\u0930 \u0910\u092A \u0916\u094B\u0932\u0915\u0930 \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902\u0964 (\u0905\u0932\u0930\u094D\u091F \u0915\u0947 \u0932\u093F\u090F iOS 16.4+) / iPhone: tap Share \u2192 Add to Home Screen, then open the app and turn on alerts (needs iOS 16.4+).</p>
 <p class="small" id="app-push-msg"></p></div>
 <p class="small" style="margin:10px 4px">\u{1F4CC} \u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 / \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u0930\u0916 \u0932\u0947\u0902 \u2014 \u0907\u0938\u0940 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0917\u0932\u0940 \u092C\u093E\u0930 \u092C\u093F\u0928\u093E \u0915\u094B\u0921 \u0915\u0947 \u0916\u0941\u0932\u0947\u0917\u093E (${ROOM_LIMITS.sessionDays} \u0926\u093F\u0928 \u092E\u0947\u0902 \u090F\u0915 \u092C\u093E\u0930 \u0916\u094B\u0932\u0924\u0947 \u0930\u0939\u0947\u0902)\u0964 \u092F\u0939 \u092A\u0947\u091C \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0939\u0948, \u0907\u0938\u0915\u093E \u0932\u093F\u0902\u0915 \u092F\u093E \u0938\u094D\u0915\u094D\u0930\u0940\u0928\u0936\u0949\u091F \u0906\u0917\u0947 \u0928 \u092D\u0947\u091C\u0947\u0902\u0964<br>Bookmark this page or add it to your home screen \u2014 on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
-<h2>\u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">\u0905\u092D\u0940 \u0915\u094B\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0928\u0939\u0940\u0902 \u092D\u0947\u091C\u0940 \u0917\u0908\u0964 / Nothing shared yet \u2014 your broker will add some.</p></div>'}
+${room.kind === "OWNER" ? ownerBlock : `<h2>\u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">\u0905\u092D\u0940 \u0915\u094B\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0928\u0939\u0940\u0902 \u092D\u0947\u091C\u0940 \u0917\u0908\u0964 / Nothing shared yet \u2014 your broker will add some.</p></div>'}`}
 ${(() => {
       const kycOn = vaultReady();
       const list = (room.docs || []).map((d) => {
         const k = DOC_KINDS.find((x) => x.id === d.kind);
         return `<div class="m mc">${isKycKind(d.kind) ? "\u{1FAAA}" : "\u{1F4CE}"} ${esc14(k?.hi || d.kind)} \xB7 <small>${esc14(d.name)} \xB7 ${Math.max(1, Math.round(d.size / 1024))} KB \xB7 ${esc14(dayHi(d.at))}</small> <button type="button" class="l" data-deldoc="${esc14(d.id)}" style="padding:4px 10px">\u0939\u091F\u093E\u090F\u0901 / Remove</button></div>`;
       }).join("");
-      return `<h2 id="docs">\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092B\u093C\u094B\u091F\u094B / \u0915\u093E\u0917\u093C\u091C\u093C / ID \u092D\u0947\u091C\u0947\u0902 / Send a photo, paper or ID</h2><div class="card">${kycOn ? `<form id="docform"><label>\u0915\u094D\u092F\u093E \u092D\u0947\u091C \u0930\u0939\u0947 \u0939\u0948\u0902? / What is it?</label><select id="dockind" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">${DOC_KINDS.map((d) => `<option value="${d.id}">${esc14(d.hi)} / ${esc14(d.en)}</option>`).join("")}</select>
+      return `<h2 id="docs">\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092B\u093C\u094B\u091F\u094B / \u0915\u093E\u0917\u093C\u091C\u093C / ID \u092D\u0947\u091C\u0947\u0902 / Send a photo, paper or ID</h2><div class="card">${kycOn ? `<form id="docform"><label>\u0915\u094D\u092F\u093E \u092D\u0947\u091C \u0930\u0939\u0947 \u0939\u0948\u0902? / What is it?</label><select id="dockind" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">${DOC_KINDS.filter((d) => d.id !== "KYC_AADHAAR_FULL" || fullAadhaarOn() && room.fullAadhaarAsk).map((d) => `<option value="${d.id}">${esc14(d.hi)} / ${esc14(d.en)}</option>`).join("")}</select>
 <input type="file" id="docfile" accept="image/*,application/pdf" style="margin:8px 0;width:100%"><input type="text" id="docnote" maxlength="120" placeholder="\u091B\u094B\u091F\u093E \u0928\u094B\u091F (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915) / Short note (optional)" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">
 <p class="small">\u26A0 \u0906\u0927\u093E\u0930 \u0938\u093F\u0930\u094D\u092B\u093C <b>\u092E\u093E\u0938\u094D\u0915\u094D\u0921</b> \u092D\u0947\u091C\u0947\u0902 (\u092A\u0939\u0932\u0947 8 \u0905\u0902\u0915 \u0922\u0915\u0947)\u0964 \u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 \u0928 \u092D\u0947\u091C\u0947\u0902\u0964 \u0928\u0902\u092C\u0930 \u091A\u0948\u091F \u092E\u0947\u0902 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 / Send Aadhaar only <b>masked</b> (first 8 digits covered). Never the full Aadhaar.</p>
 <label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="docok" style="width:auto;margin-top:3px"><span class="small">\u092E\u0948\u0902 \u092F\u0939 \u092B\u093C\u093E\u0907\u0932 \u0905\u092A\u0928\u0940 \u092E\u0930\u094D\u091C\u093C\u0940 \u0938\u0947 \u0907\u0938 \u0938\u094C\u0926\u0947 \u0915\u0947 \u0932\u093F\u090F ${esc14(b?.name || "\u092C\u094D\u0930\u094B\u0915\u0930")} \u0915\u094B \u092D\u0947\u091C \u0930\u0939\u093E/\u0930\u0939\u0940 \u0939\u0942\u0901\u0964 \u092F\u0939 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 (\u090F\u0928\u094D\u0915\u094D\u0930\u093F\u092A\u094D\u091F\u0947\u0921) \u0930\u0916\u0940 \u091C\u093E\u090F\u0917\u0940, \u0938\u093F\u0930\u094D\u092B\u093C \u092C\u094D\u0930\u094B\u0915\u0930 \u0916\u094B\u0932 \u0938\u0915\u0947\u0917\u093E, \u0914\u0930 \u0930\u0942\u092E \u092C\u0902\u0926 \u0939\u094B\u0928\u0947 \u092A\u0930 \u092E\u093F\u091F \u091C\u093E\u090F\u0917\u0940\u0964 / I send this willingly for this deal. It is kept encrypted, only the broker can open it, and it is erased when the room closes.</span></label>
@@ -90154,7 +90303,7 @@ ${(() => {
 <form method="post" action="/r/${tok2}/msg"><textarea name="text" id="msgtext" rows="2" maxlength="${ROOM_LIMITS.textChars}" placeholder="\u0938\u0902\u0926\u0947\u0936 \u0932\u093F\u0916\u0947\u0902 / Write a message" required></textarea>
 ${room.items.length ? `<label>\u0915\u093F\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0947 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902? (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915) / About which property?</label><select name="item" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px"><option value="">\u2014</option>${room.items.map((i) => `<option value="${esc14(i.id)}">${esc14(props.find((x) => x.id === i.propertyId)?.title || i.propertyId)}</option>`).join("")}</select>` : ""}<div class="row"><button class="g" type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">GENZ \u090F\u0915 \u0928\u094D\u092F\u0942\u091F\u094D\u0930\u0932 \u092A\u094D\u0932\u0947\u091F\u092B\u093C\u0949\u0930\u094D\u092E \u0939\u0948; \u0915\u0940\u092E\u0924 \u0914\u0930 \u0936\u0930\u094D\u0924\u0947\u0902 \u0906\u092A\u0915\u0947, \u092E\u093E\u0932\u093F\u0915 \u0914\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u092C\u0940\u091A \u0924\u092F \u0939\u094B\u0924\u0940 \u0939\u0948\u0902\u0964 GENZ \u0906\u092A\u0938\u0947 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964 \u0906\u092A\u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u0907\u0938 \u0930\u0942\u092E \u0915\u094B \u0916\u094B\u0932\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u091C\u093E\u0901\u091A\u093E \u0917\u092F\u093E \u0939\u0948 \u0914\u0930 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0930\u0942\u092A (hash) \u092E\u0947\u0902 \u0930\u0916\u093E \u091C\u093E\u0924\u093E \u0939\u0948\u0964<br>GENZ is a neutral platform; price and terms are between you, the owner and the broker. GENZ never asks you for money. Your mobile number is only used to open this room and is stored in a one-way hashed form.</p>
-${joinFooter(b, b?.city)}`, "hi", `<link rel="manifest" href="/r/${tok2}/manifest.webmanifest"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="\u092E\u0947\u0930\u093E \u0930\u0942\u092E"><link rel="apple-touch-icon" href="/icon-192.png">`).replace("<body>", '<body data-live="1">'));
+${joinFooter(b, b?.city)}`, "hi", `<link rel="manifest" href="/r/${tok2}/manifest.webmanifest" crossorigin="use-credentials"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="\u092E\u0947\u0930\u093E \u0930\u0942\u092E"><link rel="apple-touch-icon" href="/icon-192.png">`).replace("<body>", '<body data-live="1">'));
   }
   return r;
 }
@@ -90171,6 +90320,15 @@ function sweepClientRooms() {
       ev(r, "Closed \u2014 the link ran out");
       n2++;
     }
+  }
+  for (const r of s.clientRooms) for (const d of (r.docs || []).filter((x) => x.eraseAfter && Date.parse(x.eraseAfter) < now)) {
+    try {
+      fs12.rmSync(docFile(r.id, d.id), { force: true });
+    } catch {
+    }
+    r.docs = (r.docs || []).filter((x) => x.id !== d.id);
+    ev(r, "A full-Aadhaar file was erased (7 days passed)");
+    n2++;
   }
   const before = s.clientRooms.length;
   s.clientRooms = s.clientRooms.filter((r) => !(r.status === "CLOSED" && r.closedAt && Date.parse(r.closedAt) + ROOM_LIMITS.purgeClosedDays * 864e5 < now));
@@ -93308,6 +93466,9 @@ function finishVisitVerification(visit2, method, feedback, user, auditAction, au
   db.appendAuditEvent(user.id, user.role, "VISIT", visit2.id, auditAction, auditText);
   return deal;
 }
+setVisitVerifier((visit2, method, note5) => {
+  finishVisitVerification(visit2, method, note5, { id: "SYSTEM", role: "SUPERADMIN" }, method === "QR" ? "SITE_VISIT_QR_CHECKIN" : "SITE_VISIT_CONFIRMED", `Site visit ${visit2.id} confirmed by the property owner in his room (${method}). Anti-bypass evidence stamped for property ${visit2.propertyId}.`);
+});
 app.post("/api/site-visits/:id/verify-otp", needs("sitevisit:verify"), rateLimit("otp", 30, 10 * 6e4), (req, res) => {
   const currentUser2 = getCurrentUser();
   const { otpCode, feedbackNotes } = req.body || {};
