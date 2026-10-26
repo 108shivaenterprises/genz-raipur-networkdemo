@@ -10,6 +10,7 @@ import { sha256 } from './db.js';
 import { purgeUserDocs } from './propdocs.js';
 import { purgeUserIdDocs } from './idreview.js';
 import { purgeUserPhotos } from './profilephoto.js';
+import { purgeOwnerFiles } from './ownermedia.js';
 import { purgeKyc, kycFlags } from './kycvault.js';
 import { erasePhoto } from './workphotos.js';
 
@@ -129,6 +130,7 @@ export function createPrivacyRouter() {
       target.erasedAt = new Date().toISOString();
       purgeUserDocs(s, target.id); // property papers they uploaded or that sit on their properties: files are deleted from the server
       purgeUserPhotos(s, target.id); // v36: the profile photo
+      purgeOwnerFiles(s, target.id); // v73: owner photos / verification papers
       purgeUserIdDocs(s, target.id); // v19: PAN / Aadhaar scans and the ID-review task
       purgeKyc(s, target.id); // v25: the encrypted full Aadhaar + address
       target.autoVerifiedAt = undefined; target.autoVerifiedBy = undefined;

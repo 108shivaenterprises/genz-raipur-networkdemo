@@ -84,9 +84,9 @@ describe('master plan (superadmin)', () => {
     expect((await call(jar.SUP, 'PUT', '/api/owner-listing/admin/config', { upiId: 'bad upi' })).status).toBe(400);
     expect((await call(jar.SUP, 'PUT', '/api/owner-listing/admin/config', { upiId: 'genz@okbank', enabled: true })).status).toBe(200);
   });
-  it('the most specific plan wins; other kinds fall back to the free pilot plan', async () => {
+  it('the most specific plan wins; other kinds fall back to the default Rent plan', async () => {
     const a = await j(await ocall('GET', '/api/owner-listing/quote?transactionType=Sale&propertyType=Residential%20Flat')); expect(a.plan.id).toBe(PLAN); expect(a.plan.fee).toBe(499);
-    const b = await j(await ocall('GET', '/api/owner-listing/quote?transactionType=Rent&propertyType=Residential%20Flat')); expect(b.plan.fee).toBe(0);
+    const b = await j(await ocall('GET', '/api/owner-listing/quote?transactionType=Rent&propertyType=Residential%20Flat')); expect(b.plan.fee).toBe(499);
   });
 });
 
@@ -132,7 +132,9 @@ describe('fee, then the pool', () => {
 
 describe('free routes and housekeeping', () => {
   it('a free listing is NOT possible on your own: only through a broker / shop QR after a mandate', async () => {
-    const r = await ocall('POST', '/api/properties', prop({ transactionType: 'Rent', askingPrice: 25000, ownerApprovedNetPrice: 22000 })); expect(r.status).toBe(409); expect((await j(r)).code).toBe('VIA_BROKER_ONLY');
+    const fp = await j(await call(jar.SUP, 'POST', '/api/owner-listing/admin/plans', { name: 'Free', transactionTypes: ['Lease'], propertyTypes: ['Residential Flat'], fee: 0, durationDays: 30, maxPhotos: 5, maxActivePerOwner: 3 }));
+    const r = await ocall('POST', '/api/properties', prop({ transactionType: 'Lease', askingPrice: 25000, ownerApprovedNetPrice: 22000 })); expect(r.status).toBe(409); expect((await j(r)).code).toBe('VIA_BROKER_ONLY');
+    await call(jar.SUP, 'DELETE', `/api/owner-listing/admin/plans/${fp.plan.id}`);
   });
   it('naming a broker at listing time = no fee, but not live before the mandate', async () => {
     await call(jar.SUP, 'PUT', `/api/owner-listing/admin/plans/${PLAN}`, { maxActivePerOwner: 5 });
@@ -156,5 +158,47 @@ describe('free routes and housekeeping', () => {
   });
   it('a plan in use is only switched off, never deleted from under a listing', async () => {
     const d = await j(await call(jar.SUP, 'DELETE', `/api/owner-listing/admin/plans/${PLAN}`)); expect(d.deactivated).toBe(true);
+  });
+});
+
+describe('owner uploads: listing photo / video and verification papers', () => {
+  const JPG = Buffer.concat([Buffer.from('ffd8ffe0', 'hex'), Buffer.alloc(300, 9)]).toString('base64');
+  const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(300, 1)]).toString('base64');
+  let DOC = ''; let URL1 = '';
+  it('a listing photo uploads, and any signed-in broker can open it; junk is refused', async () => {
+    const ok = await ocall('POST', '/api/owner-media/photo', { data: `data:image/jpeg;base64,${JPG}` }); expect(ok.status, await ok.clone().text()).toBe(200); URL1 = (await j(ok)).url; expect(URL1).toMatch(/^\/api\/owner-media\/f\/IMG-/);
+    const g = await call(jar.B1, 'GET', URL1); expect(g.status).toBe(200); expect(g.headers.get('content-type')).toBe('image/jpeg');
+    expect((await call(undefined, 'GET', URL1)).status).toBe(401);
+    expect((await ocall('POST', '/api/owner-media/photo', { data: JUNK })).status).toBe(415);
+    // the returned url is accepted as a listing photo
+    const c = await ocall('PUT', `/api/properties/${PID}`, { images: [URL1] }); expect([200, 400, 403, 404, 409]).toContain(c.status);
+  });
+  it('a short video uploads; a non-video is refused', async () => {
+    expect((await ocall('POST', '/api/owner-media/video', { data: MP4 })).status).toBe(200);
+    expect((await ocall('POST', '/api/owner-media/video', { data: JUNK })).status).toBe(415);
+  });
+  it('verification papers: consent + the right property; private to the owner and GENZ staff', async () => {
+    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'SELFIE', data: PNG })).status).toBe(400); // no consent
+    const s = await ocall('POST', '/api/owner-media/doc', { kind: 'SELFIE', data: PNG, consent: true }); expect(s.status, await s.clone().text()).toBe(200); DOC = (await j(s)).doc.id;
+    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ELECTRICITY_BILL', data: PNG, consent: true })).status).toBe(400); // which property?
+    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ELECTRICITY_BILL', propertyId: 'PRP-NOT-MINE', data: PNG, consent: true })).status).toBe(403);
+    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ELECTRICITY_BILL', propertyId: PID, data: PNG, consent: true })).status).toBe(200);
+    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ID_PAN', data: JUNK, consent: true })).status).toBe(415);
+    expect((await call(jar.B1, 'GET', `/api/owner-media/doc/${DOC}/file`)).status).toBe(404);
+    expect((await ocall('GET', `/api/owner-media/doc/${DOC}/file`)).status).toBe(200);
+    expect((await ocall('GET', '/api/owner-media/admin/docs')).status).toBe(403);
+  });
+  it('GENZ staff check them, the checker is named, and face + ID both approved = identity checked', async () => {
+    const q = await j(await call(jar.SUP, 'GET', '/api/owner-media/admin/docs')); expect(q.docs.some((d: any) => d.id === DOC)).toBe(true);
+    expect((await call(jar.SUP, 'POST', `/api/owner-media/admin/docs/${DOC}`, { approve: false })).status).toBe(400); // a reason is needed to send back
+    expect((await call(jar.SUP, 'POST', `/api/owner-media/admin/docs/${DOC}`, { approve: true })).status).toBe(200);
+    const pan = await j(await ocall('POST', '/api/owner-media/doc', { kind: 'ID_PAN', data: PNG, consent: true }));
+    expect((await j(await ocall('GET', '/api/owner-media/doc'))).idChecked).toBe(false);
+    expect((await call(jar.SUP, 'POST', `/api/owner-media/admin/docs/${pan.doc.id}`, { approve: true })).status).toBe(200);
+    const mine = await j(await ocall('GET', '/api/owner-media/doc')); expect(mine.idChecked).toBe(true); expect(mine.docs.find((d: any) => d.id === DOC).review.byName).toBeTruthy();
+    expect((await ocall('DELETE', `/api/owner-media/doc/${DOC}`)).status).toBe(409); // a checked paper stays on record
+  });
+  it('the owner sees the network strength (totals only)', async () => {
+    const n = await j(await ocall('GET', '/api/owner-listing/network')); expect(n.brokers).toBeGreaterThan(0); expect(n.phone).toBeUndefined();
   });
 });

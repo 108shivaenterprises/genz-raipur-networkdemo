@@ -1,3 +1,4 @@
+import { OwnerPanel } from './OwnerListings.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { PageTitle } from './PageTitle.js';
 import { Property, UserProfile } from '../types/index.js';
@@ -189,6 +190,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
     <div className="space-y-6">
       {showDrafts && <ListingDrafts openId={draftOpenId} onClose={() => { setShowDrafts(false); setDraftOpenId(''); try { const u = new URL(window.location.href); u.searchParams.delete('drafts'); u.searchParams.delete('draft'); window.history.replaceState(null, '', u.toString()); } catch { /* */ } }} onPublished={() => onPropertyUpdated?.()} />}
       {may('property:moderate') && <ConsentQueue />}
+      {isOwner && <OwnerPanel onNew={onOpenAddProperty} refreshKey={properties.length} />}
       {/* Header and Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -200,7 +202,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               ? tx('Verified Properties', 'वेरिफ़ाइड प्रॉपर्टी')
               : tx('Properties on the network', 'नेटवर्क की प्रॉपर्टी')} meta={remote ? tx(`${remote.list.length} of ${remote.total}`, `${remote.total} में से ${remote.list.length}`) : shownList.length} help={<>{tx('Total asking value of the properties shown', 'दिख रही प्रॉपर्टी का कुल मूल्य')}: {formatINR(shownList.reduce((s, p) => s + (p.askingPrice || 0), 0))}</>} /></div>
 
-        {may('property:create') && (
+        {may('property:create') && !isOwner && (
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
         {isBroker && <button onClick={() => setShowDrafts(true)} data-testid="open-wa-drafts"
           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700">

@@ -119,6 +119,7 @@ import { createRevenueRouter, createPublicStrengthRouter, sweepRevenue } from '.
 import { createProtectionRouter, checkDays, daysFor } from './server/protection.js';
 import { verifySigningPassword } from './server/signing.js';
 import { createProfilePhotoRouter } from './server/profilephoto.js';
+import { createOwnerMediaRouter } from './server/ownermedia.js';
 import { createDealHubRouter } from './server/dealhub.js';
 import { createChatsRouter } from './server/chats.js';
 import { createSavedRouter } from './server/saved.js';
@@ -204,7 +205,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Protected-document and property-paper uploads need a larger body; those routes parse their own JSON with their own limit.
 const jsonParser = express.json({ limit: '256kb' });
-app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
+app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/api\/owner-media\/(photo|video|doc)$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
 
 // Structured one-line access log for /api (no bodies, no cookies, no query strings -> no PII in logs).
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -5552,6 +5553,7 @@ app.use('/api/consent', createConsentRouter());
 app.use('/api/buyer-bonds', createBuyerBondRouter());
 app.use('/api/party-watch', createPartyWatchRouter());
 app.use('/api/profile-photo', createProfilePhotoRouter());
+app.use('/api/owner-media', createOwnerMediaRouter());
 app.use('/api/deal-hub', createDealHubRouter());
 app.use('/api/chats', createChatsRouter());
 app.use('/api/saved', createSavedRouter());
@@ -5614,6 +5616,22 @@ app.get('/api/geo/pincode/:pin', requireAuth, rateLimit('pincode', 60, 60_000), 
   } catch {
     return res.json({ success: true, found: false, unavailable: true });
   }
+});
+
+// v73 — "use my location" on the owner sign-in: coordinates (rounded to ~1 km) → state / city / PIN. Optional: any failure = the owner types it.
+app.get('/api/geo/reverse', rateLimit('georev', 30, 60_000), async (req: Request, res: Response) => {
+  const lat = Number(req.query.lat); const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: 'Bad location' });
+  try {
+    const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 4000);
+    const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&localityLanguage=en`, { signal: ctl.signal });
+    clearTimeout(timer);
+    const j: any = await r.json();
+    const state = findState(String(j?.principalSubdivision || ''))?.name || '';
+    const city = String(j?.city || j?.locality || '').slice(0, 60);
+    if (!state && !city) return res.json({ success: true, found: false });
+    return res.json({ success: true, found: true, country: String(j?.countryName || 'India').slice(0, 60), state, city, pincode: /^\d{6}$/.test(String(j?.postcode || '')) ? String(j.postcode) : '' });
+  } catch { return res.json({ success: true, found: false, unavailable: true }); }
 });
 
 app.get('/api/health', async (_req: Request, res: Response) => {

@@ -1134,6 +1134,13 @@ export interface ProfilePhoto {
   mime: string; size: number; sha256: string; consentAt: string; createdAt: string;
   review?: { byId: string; byName: string; at: string; note?: string };
 }
+/** v73 — what an owner uploads: listing photos / a video (served to signed-in members) and verification papers (private: the owner + GENZ staff) */
+export interface OwnerMedia { id: string; userId: string; kind: 'PHOTO' | 'VIDEO'; mime: string; size: number; createdAt: string }
+export type OwnerDocKind = 'SELFIE' | 'ID_AADHAAR_MASKED' | 'ID_PAN' | 'ID_VOTER' | 'ID_DL' | 'ELECTRICITY_BILL' | 'TAX_RECEIPT' | 'TITLE_DEED' | 'OTHER';
+export interface OwnerDoc {
+  id: string; userId: string; propertyId?: string; kind: OwnerDocKind; name: string; mime: string; size: number; sha256: string; createdAt: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'; review?: { byId: string; byName: string; at: string; note?: string };
+}
 /** v35 — Network Watch: one record per mobile number (HMAC) that brokers reported for refusing commission / going direct. Names are never shown to the network. */
 export interface PartyReport {
   id: string; brokerId: string; partyKind: 'BUYER' | 'OWNER'; category: 'COMMISSION_REFUSED' | 'WENT_DIRECT' | 'FAKE_ENQUIRY' | 'ABUSIVE';
@@ -1589,6 +1596,8 @@ export interface DatabaseState {
   shopPartners: ShopPartner[];
   paymentRequests: PaymentRequest[];
   partnerLeads: PartnerLead[];
+  ownerMedia: OwnerMedia[];
+  ownerDocs: OwnerDoc[];
   ownerListPlans: import('../src/shared/ownerListRules.js').OwnerListPlan[];
   ownerListCfg: import('../src/shared/ownerListRules.js').OwnerListCfg;
   visitAcks: VisitAck[];
@@ -2754,7 +2763,7 @@ function getInitialSeedData(): DatabaseState {
     resetRequests: [],
     privacyRequests: [],
     connectorReferrals: [],
-    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
   };
 }
 
@@ -2883,7 +2892,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
+  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
   (parsed as any).ownerListCfg = { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON', ...((parsed as any).ownerListCfg || {}) };
   (parsed as any).legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...((parsed as any).legalSettings || {}) };
   // v11: listings created before freshness tracking start their 30-day clock now (nothing expires on upgrade)

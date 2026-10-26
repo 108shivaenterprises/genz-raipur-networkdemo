@@ -212,7 +212,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('audit:read_all', 'audit:read_own') ? [{ id: 'audit', label: t('nav.audit', 'Activity Record'), icon: History }] : []),
     ...(has('users:invite', 'users:review') ? [{ id: 'onboarding', label: t('nav.onboarding', 'Invite & KYC'), icon: KeyRound }] : []),
     ...(has('users:review') ? [{ id: 'idreview', label: t('nav.idreview', 'ID Review'), icon: FileSearch, badge: idBadge }] : []),
-    ...(isOwner && has('property:create') ? [{ id: 'ownerlist', label: t('nav.ownerlistOwner', 'My Listings'), icon: Building }] : has('ownerlist:manage') ? [{ id: 'ownerlist', label: t('nav.ownerlistAdmin', 'Owner Listing Plans'), icon: BadgeIndianRupee }] : []),
+    ...(has('ownerlist:manage') ? [{ id: 'ownerlist', label: t('nav.ownerlistAdmin', 'Owner Listing Plans'), icon: BadgeIndianRupee }] : []),
     ...(has('billing:manage') ? [{ id: 'plans', label: t('nav.plansAdmin', 'Plans & Fees'), icon: BadgeIndianRupee, badge: billing.count }] : has('billing:self') && (billing.relevant || activeTab === 'plans') ? [{ id: 'plans', label: t('nav.plans', 'GENZ Membership'), icon: BadgeIndianRupee, badge: billing.count }] : []),
     ...(has('legal:manage') ? [{ id: 'legal', label: t('nav.legalAdmin', 'Legal Help'), icon: ScaleIcon, badge: legalBadge }] : []),
     ...(has('admin:control_center') ? [{ id: 'revenue', label: t('nav.revenue', 'Revenue & Growth'), icon: IndianRupee }] : []),
@@ -246,7 +246,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['plans'], key: 'nav.feesShort', en: 'Fees' }],
     SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'plans'], key: 'nav.controlShort', en: 'Control' }],
     LEGAL_COUNSEL: [HOME, { ids: ['legal'], key: 'nav.legalShort', en: 'Legal' }, { ids: ['due_diligence'], key: 'nav.ddShort', en: 'Title' }, { ids: ['propdocs', 'pdocs'], key: 'nav.papersShort', en: 'Papers' }],
-    PROPERTY_OWNER: [HOME, { ids: ['ownerlist'], key: 'nav.listShort', en: 'Listings' }, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
+    PROPERTY_OWNER: [HOME, { ids: ['properties'], key: 'nav.myPropShort', en: 'My Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
     CONTRACTOR: [HOME, { ids: ['construction'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['team'], key: 'nav.teamShort', en: 'Team' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }],
   };
   const bottom = simple ? (BOTTOM[role] || [HOME, ...tabs.filter(x => x.id !== 'dashboard').slice(0, 3).map(x => ({ ids: [x.id], key: '', en: '' }))])

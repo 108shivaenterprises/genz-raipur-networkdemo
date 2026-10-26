@@ -1,3 +1,4 @@
+import { NetworkStrip } from './OwnerListings.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, Building2, Briefcase, CalendarClock, Handshake, ShieldCheck, Scale, Search, Sparkles, UserCheck, Layers,
@@ -110,6 +111,7 @@ const OwnerHome: React.FC<Props> = ({ currentUser, permissions, properties, deal
   const tp = { onNavigate };
   return (
     <div className="space-y-6" data-testid="owner-home">
+      <NetworkStrip />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile {...tp} testId="tile-owner-props" tab="properties" label={tx('My properties', 'मेरी प्रॉपर्टी')} value={String(mine.length)} sub={tx(`${verified} verified · ${mine.length - verified} awaiting · ${formatINR(mine.reduce((a, p) => a + (p.askingPrice || 0), 0))} asking`, `${verified} वेरिफ़ाइड · ${mine.length - verified} बाकी · ${formatINR(mine.reduce((a, p) => a + (p.askingPrice || 0), 0))} माँग`)} icon={<Building2 className="h-4 w-4 text-slate-500" />} />
         {canDesk && <Tile {...tp} testId="tile-owner-offers" tab="desk" label={tx('Offers to decide', 'फ़ैसले वाले ऑफ़र')} value={offers ? String(toDecide.length) : '—'} sub={tx(`${tokenDue.length} token(s) to record`, `${tokenDue.length} टोकन दर्ज करना बाकी`)} tone={toDecide.length ? 'warn' : undefined} icon={<Handshake className="h-4 w-4 text-amber-600" />} />}

@@ -6,6 +6,8 @@ import { ScanPointSelect, ScanLineNote } from './ScanPoint.js';
 import { SiteVisit, UserProfile } from '../types/index.js';
 import { PROPERTY_TYPES, INDIA_STATES, citiesOf, localitiesOf, findState, stateOfCity } from '../shared/india.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
+import { shrinkImage, readAsDataUrl } from '../lib/imgShrink.js';
+import { formatINR } from '../lib/utils.js';
 import { TagPicker } from './TagPicker.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -67,14 +69,16 @@ export const AddPropertyModal: React.FC<{
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
   
   // Photo Media State (URL + Gallery upload)
-  const [photoSourceMode, setPhotoSourceMode] = useState<'GALLERY' | 'URL'>('URL');
+  const [photoSourceMode, setPhotoSourceMode] = useState<'GALLERY' | 'URL'>('GALLERY');
   const [imageUrl, setImageUrl] = useState('');
   const [galleryImages, setGalleryImages] = useState<Array<{ id: string; name: string; url: string; size?: number }>>([]);
   const [isPhotoDragging, setIsPhotoDragging] = useState(false);
   const photoFileInputRef = useRef<HTMLInputElement>(null);
 
   // Video Media State (Gallery upload + URL)
-  const [videoSourceMode, setVideoSourceMode] = useState<'GALLERY' | 'URL'>('URL');
+  const [videoSourceMode, setVideoSourceMode] = useState<'GALLERY' | 'URL'>('GALLERY');
+  const [mediaBusy, setMediaBusy] = useState(false); const [mediaErr, setMediaErr] = useState(''); const [quote, setQuote] = useState<any>(null);
+  useEffect(() => { if (!isOpen || !isOwnerUser) return; let live = true; api.olQuote(transactionType, propertyType).then(q => { if (live) setQuote(q.plan || { none: true }); }).catch(() => { if (live) setQuote(null); }); return () => { live = false; }; }, [isOpen, isOwnerUser, transactionType, propertyType]);
   const [videoUrl, setVideoUrl] = useState('');
   const [uploadedVideo, setUploadedVideo] = useState<{ name: string; url: string; size?: number } | null>(null);
   const [isVideoDragging, setIsVideoDragging] = useState(false);
@@ -90,51 +94,30 @@ export const AddPropertyModal: React.FC<{
   const [error, setError] = useState('');
 
   // Handle Photo File Upload from Device / Gallery
-  const handlePhotoFiles = (files: FileList | null) => {
+  const handlePhotoFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const newImgs: Array<{ id: string; name: string; url: string; size?: number }> = [];
-
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        if (dataUrl) {
-          setGalleryImages((prev) => [
-            ...prev,
-            {
-              id: `IMG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              name: file.name,
-              url: dataUrl,
-              size: file.size,
-            },
-          ]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    setMediaBusy(true); setMediaErr('');
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) { setMediaErr(hi ? 'सिर्फ़ फ़ोटो चुनें (JPG / PNG / WebP)।' : 'Choose photos only (JPG / PNG / WebP).'); continue; }
+      try {
+        const small = await shrinkImage(file, 1280, 400 * 1024);
+        const r = await api.omPhoto(small);
+        setGalleryImages((prev) => [...prev, { id: `IMG-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name: file.name, url: r.url, size: file.size }]);
+      } catch (e: any) { setMediaErr(e?.message === 'bad image' ? (hi ? 'यह फ़ोटो पढ़ी नहीं जा सकी।' : 'This photo could not be read.') : (e?.message || (hi ? 'फ़ोटो अपलोड नहीं हुई।' : 'The photo did not upload.'))); }
+    }
+    setMediaBusy(false);
   };
 
   // Handle Video File Upload from Device / Gallery
-  const handleVideoFile = (files: FileList | null) => {
+  const handleVideoFile = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    if (!file.type.startsWith('video/')) {
-      alert(hi ? 'सही वीडियो फ़ाइल चुनें (MP4, WebM, MOV)।' : 'Please select a valid video file (MP4, WebM, MOV).');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      if (dataUrl) {
-        setUploadedVideo({
-          name: file.name,
-          url: dataUrl,
-          size: file.size,
-        });
-      }
-    };
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith('video/')) { setMediaErr(hi ? 'सही वीडियो फ़ाइल चुनें (MP4, WebM, MOV)।' : 'Please select a valid video file (MP4, WebM, MOV).'); return; }
+    if (file.size > 3 * 1024 * 1024) { setMediaErr(hi ? 'वीडियो 3 MB से बड़ा है — छोटी क्लिप (लगभग 15–20 सेकंड) बनाएँ, या YouTube / Drive का लिंक डालें।' : 'This video is over 3 MB — record a shorter clip (about 15–20 s) or paste a YouTube / Drive link.'); return; }
+    setMediaBusy(true); setMediaErr('');
+    try { const r = await api.omVideo(await readAsDataUrl(file)); setUploadedVideo({ name: file.name, url: r.url, size: file.size }); }
+    catch (e: any) { setMediaErr(e?.message || (hi ? 'वीडियो अपलोड नहीं हुआ।' : 'The video did not upload.')); }
+    finally { setMediaBusy(false); }
   };
 
   if (!isOpen) return null;
@@ -157,7 +140,7 @@ export const AddPropertyModal: React.FC<{
         locality: loc.locality,
         district: loc.district || undefined,
         tags,
-        listingBrokerId: (isOwnerUser || isStaffUser) && listingBrokerId ? listingBrokerId : undefined,
+        listingBrokerId: isStaffUser && listingBrokerId ? listingBrokerId : undefined,
         village: village || undefined,
         street: street || undefined,
         pincode: loc.pincode || undefined,
@@ -183,7 +166,7 @@ export const AddPropertyModal: React.FC<{
       });
       const rn = created?.resaleNotice;
       const approval = created?.ownerApproval?.draftId as string | undefined;
-      alert((hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.') + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
+      alert((isOwnerUser && created?.property?.ownerListing?.feeStatus === 'PENDING' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में लिस्टिंग फ़ीस UPI से दें और UTR लिखें — GENZ पक्का करेगा, फिर लिस्टिंग लाइव होगी।' : 'Listing saved. Now pay the listing fee by UPI in “My Property” and write the UTR — GENZ confirms it and the listing goes live.') : (hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.')) + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
         + (approval ? (hi ? '\n\nअब मालिक को WhatsApp पर अप्रूवल भेजें — मालिक की हाँ से बायपास सुरक्षा शुरू होती है।' : '\n\nNow send the owner the approval on WhatsApp — his yes starts your bypass protection.') : ''));
       onSuccess();
       onClose();
@@ -222,6 +205,13 @@ export const AddPropertyModal: React.FC<{
         {error && (
           <div className="mx-5 mt-4 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 border border-red-200 shrink-0">
             {error}
+          </div>
+        )}
+        {isOwnerUser && quote && (
+          <div className={`mx-5 mt-4 rounded-lg p-2.5 text-xs border shrink-0 ${quote.none ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`} data-testid="form-plan-quote">
+            {quote.none
+              ? tx('GENZ has no plan for this kind of property yet — ask a GENZ broker to list it for you.', 'GENZ का इस तरह की प्रॉपर्टी के लिए अभी कोई प्लान नहीं — किसी GENZ ब्रोकर से लिस्ट करवाएँ।')
+              : <>{tx('Your plan', 'आपका प्लान')}: <b>{quote.name}</b> · <b>{quote.fee > 0 ? `₹${Number(quote.fee).toLocaleString('en-IN')}` : tx('free', 'मुफ़्त')}</b> · {quote.durationDays} {tx('days live', 'दिन लाइव')} · {quote.maxPhotos} {tx('photos max', 'फ़ोटो तक')}. {tx('You pay GENZ by UPI after you save this; brokers take their fee from the buyer only.', 'यह सेव करने के बाद GENZ को UPI से दें; ब्रोकर की फ़ीस सिर्फ़ ख़रीदार से।')}</>}
           </div>
         )}
 
@@ -353,7 +343,7 @@ export const AddPropertyModal: React.FC<{
 
           <TagPicker value={tags} onChange={setTags} />
 
-          {(isOwnerUser || isStaffUser) && (
+          {isStaffUser && (
             <div>
               <label className="text-xs font-semibold text-slate-700">{isStaffUser ? (hi ? 'लिस्टिंग ब्रोकर (ज़रूरी — GENZ किसी ब्रोकर की ओर से लिस्ट करता है)' : 'Listing broker (required — GENZ lists on behalf of a broker)') : (hi ? 'लिस्टिंग ब्रोकर (वैकल्पिक — बाद में भी चुन सकते हैं)' : 'Listing broker (optional — can be appointed later)')}</label>
               <select value={listingBrokerId} required={isStaffUser} onChange={(e) => setListingBrokerId(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900">
@@ -367,6 +357,8 @@ export const AddPropertyModal: React.FC<{
 
           {/* Media Section: Photos & Video with Gallery Upload & URL Support */}
           <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+            {mediaBusy && <p className="text-[11px] font-semibold text-blue-700">{tx('Uploading…', 'अपलोड हो रहा है…')}</p>}
+            {mediaErr && <p className="rounded-lg bg-red-50 p-2 text-[11px] text-red-700" role="alert">{mediaErr}</p>}
             {/* 1. Property Photos (Upload from Gallery / Camera / URL) */}
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -383,9 +375,8 @@ export const AddPropertyModal: React.FC<{
                 <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 text-[11px]">
                   <button
                     type="button"
-                    disabled title={tx('Direct photo upload is not available yet — paste a photo link', 'फ़ोन से सीधी फ़ोटो अपलोड अभी उपलब्ध नहीं — फ़ोटो का लिंक डालें')}
                     onClick={() => setPhotoSourceMode('GALLERY')}
-                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 opacity-40 cursor-not-allowed ${
+                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${
                       photoSourceMode === 'GALLERY'
                         ? 'bg-slate-900 text-white shadow-2xs'
                         : 'text-slate-600 hover:text-slate-900'
@@ -524,9 +515,8 @@ export const AddPropertyModal: React.FC<{
                 <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 text-[11px]">
                   <button
                     type="button"
-                    disabled title={tx('Direct video upload is not available yet — paste a video link', 'सीधा वीडियो अपलोड अभी उपलब्ध नहीं — वीडियो का लिंक डालें')}
                     onClick={() => setVideoSourceMode('GALLERY')}
-                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 opacity-40 cursor-not-allowed ${
+                    className={`px-2.5 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${
                       videoSourceMode === 'GALLERY'
                         ? 'bg-slate-900 text-white shadow-2xs'
                         : 'text-slate-600 hover:text-slate-900'
@@ -640,7 +630,7 @@ export const AddPropertyModal: React.FC<{
 
             <div className="rounded-lg bg-purple-50 p-2 border border-purple-200">
               <label className="text-xs font-semibold text-purple-900 flex items-center gap-1">
-                <Lock className="h-3 w-3" /> {hi ? 'मालिक की नेट कीमत (गोपनीय ₹)' : 'Owner Net Price (Confidential ₹)'}:
+                <Lock className="h-3 w-3" /> {isOwnerUser ? (hi ? 'सबसे कम कीमत जो आप लेंगे (गोपनीय ₹)' : 'Lowest price you will accept (private ₹)') : (hi ? 'मालिक की नेट कीमत (गोपनीय ₹)' : 'Owner Net Price (Confidential ₹)')}:
               </label>
               <input
                 type="number"

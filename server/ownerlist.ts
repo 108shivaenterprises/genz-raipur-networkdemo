@@ -23,6 +23,8 @@ import { sendSms } from './notify.js';
 import { alert } from './alerts.js';
 import { issueSignCode } from './signing.js';
 import { effectivePermissions } from './permissions.js';
+import { findState } from '../src/shared/india.js';
+import { networkStrength } from './revenue.js';
 import { pickOwnerPlan, planProblem, inPool, type OwnerListPlan, type OwnerListingState } from '../src/shared/ownerListRules.js';
 
 const st = () => db.getState();
@@ -41,9 +43,14 @@ const OPEN = ['draft', 'pending_verification', 'active', 'under_negotiation'];
 export { inPool };
 export function ensureOwnerPlans() {
   const s = st();
-  if (s.ownerListPlans.length) return;
   const now = nowIso();
-  s.ownerListPlans.push({ id: rid('OLP'), name: 'Pilot — free listing', active: true, transactionTypes: [], propertyTypes: [], fee: 0, durationDays: 60, maxPhotos: 12, maxActivePerOwner: 3, refundable: false, note: 'Change the fee here when the pilot ends.', createdAt: now, updatedAt: now });
+  // the first build seeded a ₹0 "pilot" plan only — an owner then could not buy anything. Replace that lone seed with real (editable) plans.
+  const onlySeed = s.ownerListPlans.length === 1 && s.ownerListPlans[0].name === 'Pilot — free listing' && s.ownerListPlans[0].fee === 0;
+  if (s.ownerListPlans.length && !onlySeed) return;
+  s.ownerListPlans = [
+    { id: rid('OLP'), name: 'Sale / Lease listing', active: true, transactionTypes: ['Sale', 'Lease'], propertyTypes: [], fee: 999, durationDays: 90, maxPhotos: 15, maxActivePerOwner: 3, refundable: false, note: 'Starting figure — the superadmin sets the real fee in Owner Listing Plans.', createdAt: now, updatedAt: now },
+    { id: rid('OLP'), name: 'Rent listing', active: true, transactionTypes: ['Rent'], propertyTypes: [], fee: 499, durationDays: 45, maxPhotos: 12, maxActivePerOwner: 3, refundable: false, note: 'Starting figure — the superadmin sets the real fee in Owner Listing Plans.', createdAt: now, updatedAt: now },
+  ];
   db.save();
 }
 
@@ -121,7 +128,7 @@ export function createOwnerAuthRouter() {
       if (s.users.some(x => phone10(x.phone) === phone && x.role !== 'PROPERTY_OWNER')) return bad(res, 'This number belongs to another kind of GENZ account.', 409);
       if (req.body?.consent !== true) return bad(res, 'Please agree to GENZ keeping your name and mobile number to run your listing', 400, 'CONSENT_REQUIRED');
       u = {
-        id: `USR-OWN-${Date.now()}${crypto.randomBytes(2).toString('hex')}`, name, email: `owner-${phone}@phone.genz.local`, phone: `+91 ${phone}`, role: 'PROPERTY_OWNER', city: str(req.body?.city, 60),
+        id: `USR-OWN-${Date.now()}${crypto.randomBytes(2).toString('hex')}`, name, email: `owner-${phone}@phone.genz.local`, phone: `+91 ${phone}`, role: 'PROPERTY_OWNER', city: str(req.body?.city, 60), state: findState(str(req.body?.state, 60))?.name,
         consent: { policyVersion: 'owner-1', acceptedAt: now }, verificationStatus: 'VERIFIED', verificationNotes: 'Self sign-up with mobile OTP (mobile verified; ID / title checks are separate).',
         createdAt: now, sessionVersion: 1, selfSignup: true,
       } as UserProfile;
@@ -169,6 +176,11 @@ export function createOwnerListingRouter() {
   r.get('/quote', needs('property:read'), (req, res) => {
     const p = pickOwnerPlan(st().ownerListPlans, String(req.query.transactionType || ''), String(req.query.propertyType || ''));
     res.json({ success: true, plan: p ? { id: p.id, name: p.name, fee: p.fee, durationDays: p.durationDays, maxPhotos: p.maxPhotos, refundable: p.refundable, note: p.note } : null });
+  });
+  /** the strength of the network, totals only — shown to an owner so he sees what his fee puts his property in front of */
+  r.get('/network', needs('property:read'), (_req, res) => {
+    const n = networkStrength('');
+    res.json({ success: true, brokers: n.brokers.verified, activeBrokers: n.brokers.active30d, liveListings: n.inventory.liveListings, localities: n.inventory.localities, buyerNeeds: n.inventory.buyerNeeds, visits90d: n.work.verifiedSiteVisits90d, bookings12m: n.sales.bookings12m });
   });
   r.get('/mine', needs('property:read'), (_req, res) => {
     const u = me(); const s = st();

@@ -20,3 +20,12 @@
 
 वकील से जँचवाना: "सीधी डील नहीं करूँगा" की हामी का शब्द, मोबाइल-कोड से साइन।
 टेस्ट: tests/v73-owner-listing (15)।
+
+## V73d — owner UI theek kiya (testing ke baad)
+- Owner ke liye **ek hi tab "My Property"** (alag "Listings" tab hata); uske upar: GENZ network ki taakat, **plan cards (khareedne ka option)**, fee/UPI/UTR, aur **Verification**.
+- Default plans: Sale/Lease ₹999 (90 din), Rent ₹499 (45 din) — **sirf shuruaati placeholder**, superadmin badle.
+- Form: owner ko broker chunne ka dropdown nahi; plan ka daam form ke upar dikhta hai.
+- **Photo upload** (phone se, chhoti karke server par) aur **video upload** (≤3 MB; bada ho to link).
+- **KYC upload**: selfie, ID (Aadhaar masked / PAN / Voter / DL), property ke kaagaz (bijli bill, tax receipt, title). Sirf owner + GENZ staff dekhe; staff jaanch kare, jaanchne wale ka naam dikhe. Selfie + ID dono approve = "Identity checked".
+- Owner login: country/state/city **location se auto-bhare**, badal sakte hain.
+- Owner Home par network strength card.
