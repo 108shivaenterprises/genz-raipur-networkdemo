@@ -147,9 +147,9 @@ import { mandateShareAt } from './src/shared/mandateShare.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
-import { createHisaabRouter, createHisaabListRouter } from './server/hisaab.js';
+import { createHisaabRouter, createHisaabListRouter, leadShareEstimate } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
-import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners } from './server/shopPartners.js';
+import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
 import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
@@ -2209,7 +2209,7 @@ function noteAdminDealAccess(user: UserProfile, deal: DealRoom, state: DatabaseS
  */
 function shapeDealFor(deal0: DealRoom, user: UserProfile, state: DatabaseState = db.getState(), open?: Set<string>) {
   // v71 — each broker's brokerage book is private: it never leaves in a deal object (it has its own हिसाब endpoint)
-  const { brokerBook: _bb, ...deal } = deal0 as DealRoom & { brokerBook?: unknown }; void _bb;
+  const { brokerBook: _bb, feePlans: _fp, ...deal } = deal0 as DealRoom & { brokerBook?: unknown; feePlans?: unknown }; void _bb; void _fp;
   const dealValue = dealValueOf(deal as DealRoom);
   // Only the two brokers (and a GENZ admin while a dispute is open) may see the brokerage amount / split and the brokers' working notes.
   // The property owner and legal counsel see the deal, but never what the brokers agreed between themselves.
@@ -2736,6 +2736,7 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
 }
 
 // v70 — the property owner confirms a visit in his client-room page (scan the buyer's QR / type the code): the very same step as the on-site check-in
+setLeadShareEstimator((l, dealId) => leadShareEstimate(l, dealId));
 setVisitVerifier((visit, method, note) => { finishVisitVerification(visit, method, note, { id: 'SYSTEM', role: 'SUPERADMIN' } as any, method === 'QR' ? 'SITE_VISIT_QR_CHECKIN' : 'SITE_VISIT_CONFIRMED', `Site visit ${visit.id} confirmed by the property owner in his room (${method}). Anti-bypass evidence stamped for property ${visit.propertyId}.`); });
 app.post('/api/site-visits/:id/verify-otp', needs('sitevisit:verify'), rateLimit('otp', 30, 10 * 60_000), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
@@ -5533,7 +5534,7 @@ app.use('/api/chats', createChatsRouter());
 app.use('/api/saved', createSavedRouter());
 app.use('/api/public-page', createPublicPageRouter());
 // v71 — a broker's private brokerage book can never leave inside any response (it has its own computed हिसाब view)
-app.set('json replacer', (k: string, v: unknown) => (k === 'brokerBook' ? undefined : v));
+app.set('json replacer', (k: string, v: unknown) => (k === 'brokerBook' || k === 'feePlans' ? undefined : v));
 app.use('/api/deals', createSidesRouter());
 app.use('/api/deals', createHisaabRouter());
 app.use('/api/hisaab', createHisaabListRouter());

@@ -122,6 +122,33 @@ export function promoteNext(p: Property): PropertyOffer | undefined {
   return b;
 }
 
+/** v72 — the property OWNER answers an offer from his room page (he has no account): accept, counter or reject. Same rules as /:id/decide. */
+export function ownerDecideOffer(o: PropertyOffer, p: Property, by: { id: string; name: string }, action: string, counterAmount?: number, note?: string): { ok: true; result?: string } | { error: string; status: number } {
+  if (o.propertyId !== p.id) return { error: 'Offer not found', status: 404 };
+  if (!['SUBMITTED', 'COUNTERED'].includes(o.status)) return { error: `Offer is ${o.status.toLowerCase()} — nothing to decide`, status: 409 };
+  if (Date.parse(o.validUntil) < Date.now()) { o.status = 'EXPIRED'; db.save(); return { error: 'This offer has expired', status: 409 }; }
+  if (!PUBLIC.includes(p.listingStatus)) return { error: 'This listing is no longer open', status: 409 };
+  const u = { id: by.id, name: by.name, role: 'OWNER' as any };
+  if (action === 'REJECT') {
+    o.status = 'REJECTED'; o.reason = String(note || 'Declined by the owner').trim().slice(0, 200); o.decidedById = u.id; o.decidedByName = u.name; o.decidedAt = nowIso(); log(o, u, `Rejected: ${o.reason}`);
+    audit(u, o, 'OFFER_REJECTED', o.reason);
+  } else if (action === 'COUNTER') {
+    const c = Number(counterAmount);
+    if (!Number.isFinite(c) || c <= 0) return { error: 'Counter amount is required', status: 400 };
+    if (o.rounds >= MAX_COUNTER_ROUNDS) return { error: `At most ${MAX_COUNTER_ROUNDS} counter rounds — accept or reject`, status: 409 };
+    const err = checkOfferAmount(c, p.askingPrice, 0); if (err) return { error: err, status: 400 };
+    o.status = 'COUNTERED'; o.counterAmount = c; o.counterNote = note ? String(note).slice(0, 200) : undefined; o.rounds++; o.decidedById = u.id; o.decidedByName = u.name; o.decidedAt = nowIso();
+    o.validUntil = new Date(Math.max(Date.parse(o.validUntil), Date.now() + 24 * 3600_000)).toISOString();
+    log(o, u, `Counter ₹${c.toLocaleString('en-IN')}${o.counterNote ? ` — ${o.counterNote}` : ''}`); audit(u, o, 'OFFER_COUNTERED', `Counter ₹${c}`);
+  } else if (action === 'ACCEPT') {
+    if (o.status !== 'SUBMITTED') return { error: 'You already sent a counter — wait for the buyer side to answer', status: 409 };
+    o.decidedById = u.id; o.decidedByName = u.name; o.decidedAt = nowIso();
+    const out = acceptOffer(o, p, u); db.save(); return { ok: true, result: out };
+  } else return { error: 'action must be ACCEPT, COUNTER or REJECT', status: 400 };
+  db.save(); promoteNext(p); db.save();
+  return { ok: true };
+}
+
 function unlockIfFree(p: Property) {
   if (p.listingStatus === 'under_negotiation' && !st().propertyOffers.some(x => x.propertyId === p.id && x.status === 'TOKEN_HELD')) p.listingStatus = 'active';
 }

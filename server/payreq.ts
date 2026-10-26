@@ -9,6 +9,7 @@
  * a "tax invoice" only when the broker has a GSTIN and charges GST, otherwise it says so. Reminders go on the broker's own WhatsApp
  * (no paid SMS); GENZ counts them and nudges the broker when a bill is past its due date.
  */
+import { priceOf, cutAt } from './hisaab.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'crypto';
@@ -64,6 +65,9 @@ function prefillFor(d: DealRoom, u: UserProfile) {
     const price = d.dealValue || m?.advertisedPrice || p?.askingPrice || 0;
     if (m && price) ownerHint = mandateShareAt(m, price).broker;
   }
+  // v72 — the buyer-side fee I wrote as % of the final price (or fixed) fills the buyer's bill by itself
+  const plan = d.feePlans?.[u.id]?.buyerSide;
+  if (plan) buyerHint = cutAt(plan, priceOf(d).price);
   const last = s.paymentRequests.filter(x => x.brokerId === u.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   return {
     property: { id: d.propertyId, title: p?.title || d.propertyId, locality: p?.locality || '', city: p?.city || '', dealValue: d.dealValue || p?.askingPrice || 0, transactionType: p?.transactionType },

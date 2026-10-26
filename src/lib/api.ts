@@ -900,6 +900,7 @@ export const api = {
   hisaabVoid: (dealId: string, pid: string, reason: string) => request<any>(`/api/deals/${dealId}/hisaab/payments/${pid}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
   hisaabBook: (dealId: string, b: any) => request<any>(`/api/deals/${dealId}/hisaab/book`, { method: 'POST', body: JSON.stringify(b) }),
   hisaabBookVoid: (dealId: string, eid: string, reason: string) => request<any>(`/api/deals/${dealId}/hisaab/book/${eid}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  hisaabPlan: (dealId: string, body: { buyerSide?: { mode: string; value: number } | null; shareOut?: { mode: string; value: number } | null }) => request<any>(`/api/deals/${dealId}/hisaab/plan`, { method: 'PUT', body: JSON.stringify(body) }),
   hisaabDue: (dealId: string, amount: number | null) => request<any>(`/api/deals/${dealId}/hisaab/due`, { method: 'PUT', body: JSON.stringify({ amount }) }),
   hisaabList: () => request<any>('/api/hisaab'),
   lsAlerts: () => request<any>('/api/listings/alerts'),

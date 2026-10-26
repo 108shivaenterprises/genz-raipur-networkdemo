@@ -113,12 +113,18 @@ export interface PropertyOffer {
 
 export type PayMode = 'UPI' | 'BANK' | 'CASH' | 'CHEQUE';
 export interface DealPayment {
-  id: string; kind: 'TOKEN' | 'PART' | 'FINAL' | 'REFUND'; amount: number; mode: PayMode; ref?: string; paidOn: string; note?: string;
+  /** TO_BROKER (v72) = the buyer paid this part straight to a deal broker (his brokerage), not to the owner */
+  id: string; kind: 'TOKEN' | 'PART' | 'FINAL' | 'REFUND' | 'TO_BROKER'; amount: number; mode: PayMode; ref?: string; paidOn: string; note?: string;
+  toBrokerId?: string;
   byId: string; byName: string; at: string;
   /** the owner (or the other deal broker) confirmed he saw it */
   ack?: { byId: string; byName: string; at: string };
   void?: { at: string; byId: string; reason: string };
 }
+/** v72 — a fee written as % of the FINAL price (follows it) or a fixed ₹ */
+export interface FeeCut { mode: 'PCT' | 'FIXED'; value: number }
+/** v72 — one broker's private fee plan: what he takes from the buyer, and what he gives the co-broker (the co-broker sees only that last cut) */
+export interface FeePlan { buyerSide?: FeeCut; shareOut?: FeeCut }
 export interface BrokerBookEntry {
   id: string; dir: 'IN' | 'OUT'; party: 'OWNER' | 'BUYER' | 'BROKER' | 'OTHER'; amount: number; mode: PayMode; ref?: string; paidOn: string; note?: string; at: string;
   void?: { at: string; reason: string };
@@ -785,6 +791,8 @@ export interface DealRoom {
   payments?: DealPayment[];
   /** v71 — हिसाब: each broker's PRIVATE brokerage book (what he received / paid out); the other broker never sees it */
   brokerBook?: Record<string, { due?: number; entries: BrokerBookEntry[] }>;
+  /** v72 — private per broker; shaped out of every response except the co-broker's `shareIn` line */
+  feePlans?: Record<string, FeePlan>;
   disputeId?: string;
   /** v47 — the deal did not happen: asked by one broker, agreed by the other (or no reply in 7 days) → CLOSED; can be reopened */
   closure?: import('../src/shared/dealClose.js').DealClosure;
@@ -814,6 +822,8 @@ export interface SiteVisit {
   verifiedAt?: string;
   verificationMethod: 'OTP' | 'QR' | 'ADMIN_OVERRIDE';
   feedbackNotes?: string;
+  /** v72 — the owner's reply from his room page: may the visit go ahead? */
+  ownerOk?: { answer: 'YES' | 'NO'; at: string };
   createdAt: string;
 }
 

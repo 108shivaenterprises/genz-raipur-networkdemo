@@ -34,6 +34,7 @@ import { clientPaperState, viewerPages, logDocOpen } from './propdocs.js';
 import { makeViewToken, useViewToken, stampFor } from './viewToken.js';
 import { seal, unseal, vaultReady } from './vaultCrypto.js';
 import { policyOf } from '../src/shared/pcontrolRules.js';
+import { ownerDecideOffer } from './offers.js';
 
 const st = () => db.getState();
 const nowIso = () => new Date().toISOString();
@@ -876,6 +877,31 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     res.json({ success: true, visit: v.id, who: ini });
   });
 
+  /** v72 — the OWNER answers an offer on his property from his room (no account): accept / counter / decline. Never shows who the buyer is. */
+  r.post('/:token/offer/:oid', rateLimit('cr-offer', 40, 3600_000), form, (req: Request, res: Response) => {
+    const room = authed(req, res); if (!room) return;
+    if (room.kind !== 'OWNER' || !room.propertyId) return render(req, res, room, 'यह सिर्फ़ मालिक के रूम में होता है। / Only in an owner room.');
+    const p = st().properties.find(x => x.id === room.propertyId); const o = st().propertyOffers.find(x => x.id === req.params.oid && x.propertyId === room.propertyId);
+    if (!p || !o) return render(req, res, room, 'ऑफ़र नहीं मिला। / Offer not found.');
+    const action = ['ACCEPT', 'COUNTER', 'REJECT'].includes(String(req.body?.action)) ? String(req.body.action) : '';
+    const out = ownerDecideOffer(o, p, { id: `owner-room:${room.id}`, name: `${room.clientName} (owner room)` }, action, Number(String(req.body?.amount || '').replace(/\D/g, '')), String(req.body?.note || '').trim());
+    if ('error' in out) return render(req, res, room, `${esc(out.error)}`);
+    ev(room, `Owner ${action.toLowerCase()}ed an offer`); db.save();
+    pingBroker(room, 'Owner replied to an offer', `${room.clientName}: ${action === 'ACCEPT' ? 'accepted' : action === 'COUNTER' ? 'countered' : 'declined'} an offer on ${p.title}.`);
+    res.redirect(303, `/r/${req.params.token}#offers`);
+  });
+  /** v72 — the OWNER says yes / not now to an upcoming visit of his property (numbers and time only, never the buyer's name) */
+  r.post('/:token/visit/:vid', rateLimit('cr-visit-ok', 40, 3600_000), form, (req: Request, res: Response) => {
+    const room = authed(req, res); if (!room) return;
+    if (room.kind !== 'OWNER' || !room.propertyId) return render(req, res, room, 'यह सिर्फ़ मालिक के रूम में होता है। / Only in an owner room.');
+    const v = st().siteVisits.find(x => x.id === req.params.vid && x.propertyId === room.propertyId && !x.isVerified);
+    if (!v) return render(req, res, room, 'विज़िट नहीं मिली। / Visit not found.');
+    const answer = req.body?.answer === 'NO' ? 'NO' : 'YES';
+    v.ownerOk = { answer, at: nowIso() }; ev(room, `Owner said ${answer} to visit ${v.id}`); db.save();
+    pingBroker(room, answer === 'YES' ? 'Owner is fine with the visit' : 'Owner asks to change the visit', `${room.clientName}: visit ${v.id} — ${answer === 'YES' ? 'OK' : 'please fix another time'}.`);
+    res.redirect(303, `/r/${req.params.token}#visits`);
+  });
+
   function render(req: Request, res: Response, room: ClientRoom, msg = '') {
     const b = st().users.find(u => u.id === room.brokerId);
     room.lastClientSeenAt = nowIso();
@@ -918,11 +944,19 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
     const sibs = st().clientRooms.filter(c => c.id !== room.id && c.status === 'ACTIVE' && c.phoneKey === room.phoneKey && sessionFor(req, c));
     const sibsHtml = sibs.length ? `<div class="card"><p class="small">मेरे दूसरे रूम / My other rooms</p><div class="row">${sibs.map(c => `<a class="btn l" href="/r/go-${esc(c.id)}">${c.kind === 'OWNER' ? `🏠 मेरी प्रॉपर्टी / My property${props.find(x => x.id === c.propertyId) ? ' — ' + esc(props.find(x => x.id === c.propertyId)!.title.slice(0, 28)) : ''}` : `🔍 मेरी तलाश / My search — ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')}`}</a>`).join('')}</div></div>` : '';
     const ow = room.kind === 'OWNER' ? ownerStats(room) : null; const op = props.find(x => x.id === room.propertyId);
+    const ownerOffers = room.kind === 'OWNER' ? st().propertyOffers.filter(o => o.propertyId === room.propertyId && ['SUBMITTED', 'COUNTERED'].includes(o.status) && Date.parse(o.validUntil) > Date.now()) : [];
+    const ownerVisits = room.kind === 'OWNER' ? st().siteVisits.filter(v => v.propertyId === room.propertyId && !v.isVerified && Date.parse(v.scheduledTime) > Date.now() - 12 * 3600_000).sort((a, z) => a.scheduledTime.localeCompare(z.scheduledTime)).slice(0, 8) : [];
+    const offersHtml = room.kind !== 'OWNER' ? '' : `<h2 id="offers">💬 ऑफ़र / Offers (${ownerOffers.length})</h2><div class="card">${ownerOffers.length ? ownerOffers.map(o => `<div class="lead" data-testid="owner-offer"><b>${inr(o.status === 'COUNTERED' && o.counterAmount ? o.counterAmount : o.amount)}</b> <small>${o.status === 'COUNTERED' ? 'आपका काउंटर / your counter' : 'एक ख़रीदार का ऑफ़र / from a buyer'} · ${esc(dayHi(o.validUntil))} तक</small>${o.status === 'SUBMITTED' ? `
+<form method="post" action="/r/${tok}/offer/${esc(o.id)}"><input type="hidden" name="action" value="ACCEPT"><div class="row"><button class="g" type="submit">✔ मंज़ूर / Accept</button></div></form>
+<form method="post" action="/r/${tok}/offer/${esc(o.id)}"><input type="hidden" name="action" value="COUNTER"><input type="text" name="amount" inputmode="numeric" placeholder="आपकी कीमत ₹ / Your price ₹" required><div class="row"><button class="l" type="submit">↔ काउंटर / Counter</button></div></form>
+<form method="post" action="/r/${tok}/offer/${esc(o.id)}"><input type="hidden" name="action" value="REJECT"><input type="text" name="note" maxlength="150" placeholder="कारण (वैकल्पिक) / Reason (optional)"><div class="row"><button class="r" type="submit">✖ मना / Decline</button></div></form>` : '<br><small>ख़रीदार के जवाब का इंतज़ार। / Waiting for the buyer.</small>'}</div>`).join('') : '<p class="t">अभी कोई नया ऑफ़र नहीं। / No new offer.</p>'}<p class="small">ख़रीदार का नाम नहीं दिखता। मंज़ूर करने पर टोकन और आगे की बात आपके ब्रोकर के साथ चलती है। / The buyer\'s name is not shown.</p></div>`;
+    const visitsHtml = room.kind !== 'OWNER' ? '' : `<h2 id="visits">🗓 आने वाली विज़िट / Upcoming visits (${ownerVisits.length})</h2><div class="card">${ownerVisits.length ? ownerVisits.map(v => `<div class="lead" data-testid="owner-visit"><b>${esc(new Date(v.scheduledTime).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</b>${v.ownerOk ? ` <span class="chip ${v.ownerOk.answer === 'YES' ? 'ok' : 'x'}">${v.ownerOk.answer === 'YES' ? 'आपने हाँ कहा' : 'आपने बदलने को कहा'}</span>` : ''}
+<form method="post" action="/r/${tok}/visit/${esc(v.id)}"><div class="row"><button class="g" name="answer" value="YES" type="submit">✔ ठीक है / OK</button><button class="l" name="answer" value="NO" type="submit">⏰ दूसरा समय / Another time</button></div></form></div>`).join('') : '<p class="t">अभी कोई विज़िट तय नहीं। / No visit planned.</p>'}</div>`;
     const stat = (n: number, hi: string, en: string) => `<div style="flex:1;min-width:70px;background:#f3f5fa;border-radius:12px;padding:10px;text-align:center"><div style="font-size:24px;font-weight:800">${n}</div><small>${hi}<br>${en}</small></div>`;
     const ownerBlock = ow ? `<h2>आपकी प्रॉपर्टी / Your property</h2><div class="card"><p class="h"><b>🏠 ${esc(op?.title || room.propertyId || '')}</b></p>${op ? `<small>${esc(op.locality)}, ${esc(op.city)}</small>` : ''}
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${stat(ow.viewing, 'लोग देख रहे', 'viewing')}${stat(ow.interested, 'दिलचस्पी', 'interested')}${stat(ow.visitsPlanned, 'विज़िट तय', 'visits planned')}${stat(ow.visitsDone, 'विज़िट हुई', 'visits done')}</div>
 <p class="small">सिर्फ़ संख्या दिखती है — कौन देख रहा है यह नहीं बताया जाता। / Only numbers — never who.</p></div>
-<h2 id="scan">📷 विज़िट पक्की करें / Confirm a visit</h2><div class="card"><p class="small">जब ख़रीदार आए, उसके फ़ोन का QR स्कैन करें, या उसके फ़ोन पर दिखा 6 अंकों का कोड डालें। इसके बिना विज़िट पक्की नहीं मानी जाती — इसी से सीधा सौदा रुकता है। / When the buyer arrives, scan the QR on his phone or type the 6-digit code he shows. Without this the visit is not counted.</p>
+${offersHtml}${visitsHtml}<h2 id="scan">📷 विज़िट पक्की करें / Confirm a visit</h2><div class="card"><p class="small">जब ख़रीदार आए, उसके फ़ोन का QR स्कैन करें, या उसके फ़ोन पर दिखा 6 अंकों का कोड डालें। इसके बिना विज़िट पक्की नहीं मानी जाती — इसी से सीधा सौदा रुकता है। / When the buyer arrives, scan the QR on his phone or type the 6-digit code he shows. Without this the visit is not counted.</p>
 <div class="row"><button type="button" class="g" id="scan-btn">📷 QR स्कैन करें / Scan QR</button></div><video id="scan-video" playsinline muted style="display:none;width:100%;border-radius:12px;margin-top:8px"></video>
 <label>या कोड डालें / Or type the code</label><input type="text" id="scan-code" inputmode="numeric" maxlength="6" placeholder="000000"><div class="row"><button type="button" class="l" id="scan-go">कोड से पक्का करें / Confirm with code</button></div><p class="small" id="scan-msg"></p></div>` : '';
     // v46 — the client's own name over the page: a screenshot forwarded to someone else still shows whose room it was

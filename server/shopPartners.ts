@@ -88,6 +88,24 @@ export function flagsFor(l: PartnerLead, links = linksFor(l)) {
   if (l.status !== 'WON' && links.some(x => x.done && (x.kind === 'DEAL' || x.kind === 'CLIENT'))) f.push({ code: 'DEAL_NOT_RECORDED', en: 'Looks like a deal — the partner’s share is not written yet', hi: 'डील लगती है — पार्टनर का हिस्सा अभी दर्ज नहीं' });
   return f;
 }
+/** v72 — hook (wired in server.ts) giving the partner's estimated share on a deal; the deal price never reaches the shop page */
+let shareEstimator: (l: PartnerLead, dealId: string) => number = () => 0;
+export const setLeadShareEstimator = (fn: (l: PartnerLead, dealId: string) => number) => { shareEstimator = fn; };
+const DEAL_STEPS = [['Lead', 'लीड'], ['Visit', 'विज़िट'], ['Offer', 'ऑफ़र'], ['Agreement', 'एग्रीमेंट'], ['Closed', 'पूरा']] as const;
+/** how far this lead has got, in 5 plain steps (Lead → Visit → Offer → Agreement → Closed) — no price, no names */
+export function progressFor(l: PartnerLead, links = linksFor(l)) {
+  const s = st(); const dl = links.find(x => x.kind === 'DEAL'); const d = dl ? s.dealRooms.find(x => x.id === dl.id) : undefined;
+  const order = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'];
+  const at = d ? order.indexOf(d.stage) : -1;
+  let step = 0;
+  if (links.some(x => x.kind === 'VISIT') || at >= 2) step = 1;
+  if (at >= 3 || (d && s.propertyOffers.some(o => o.dealRoomId === d.id))) step = 2;
+  if (at >= 4) step = 3;
+  if (l.status === 'WON' || at >= 6) step = 4;
+  if (l.status === 'LOST') step = Math.min(step, 4);
+  const share = d && step >= 3 ? shareEstimator(l, d.id) : 0;
+  return { step, steps: DEAL_STEPS.map(x => x[1]), stepsEn: DEAL_STEPS.map(x => x[0]), share, final: !!l.won, lost: l.status === 'LOST' };
+}
 const locked = (l: PartnerLead) => Date.parse(l.lockUntil) > Date.now();
 
 // ───────────────────────────── views ─────────────────────────────
@@ -263,7 +281,7 @@ label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}input[type=
 button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;font-size:15px;font-weight:700;background:#14213d;color:#fff;text-decoration:none;cursor:pointer}.g{background:#1fa855}.l{background:#eee;color:#222}.r{background:#c0392b}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kinds label{margin:0;display:flex;align-items:center;gap:8px;border:1px solid #ccc;border-radius:12px;padding:12px;font-size:14px;background:#fff}
 .ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px}.ck input{width:20px;height:20px;margin-top:2px}.hp{position:absolute;left:-9999px}
-.lead{border-top:1px solid #eee;padding:10px 0}.chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;background:#eef1f7;margin:2px 4px 0 0}.chip.ok{background:#dcfce7;color:#166534}.chip.w{background:#fef3c7;color:#92400e}.chip.x{background:#fee2e2;color:#991b1b}
+.lead{border-top:1px solid #eee;padding:10px 0}.prog{display:flex;gap:3px;margin:8px 0 4px}.prog .st{flex:1;text-align:center;font-size:10px;font-weight:700;padding:5px 0;border-radius:6px;background:#eef1f7;color:#64748b}.prog .st.on{background:#16a34a;color:#fff}.prog .st.now{background:#fde68a;color:#92400e}.chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;background:#eef1f7;margin:2px 4px 0 0}.chip.ok{background:#dcfce7;color:#166534}.chip.w{background:#fef3c7;color:#92400e}.chip.x{background:#fee2e2;color:#991b1b}
 .hms{display:grid;gap:10px;margin-top:8px}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
 .hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
 .net{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;margin-top:6px}.big2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.big2 .btn{text-align:center;padding:14px 8px}.pick{background:#e9f7ee;border:1px solid #86efac}
@@ -473,11 +491,14 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       const kind = LEAD_KINDS.find(k => k.id === l.kind)!; const stt = LEAD_STATUSES.find(x => x.id === l.status)!;
       const links = linksFor(l); const flags = flagsFor(l, links);
       const pay = l.payout ? PAYOUT_LABEL[l.payout.status] : null;
+      const pg = progressFor(l, links);
+      const prog = l.status === 'LOST' ? '' : `<div class="prog" data-testid="lead-progress">${pg.steps.map((t, i) => `<span class="st ${i < pg.step ? 'on' : i === pg.step ? 'now' : ''}">${t}</span>`).join('')}</div>${pg.share > 0 && !l.won ? `<small>आपका हिस्सा (अनुमान): <b>${inr(pg.share)}</b> — डील पूरी होने पर तय</small>` : ''}`;
       const act = l.payout && ['DUE', 'PAID'].includes(l.payout.status)
         ? `<div class="row">${l.payout.status === 'PAID' ? `<form method="post" action="/sp/${tok}/lead/${esc(l.id)}/received"><button class="g" type="submit">✔ पैसा मिल गया / Received</button></form>` : ''}
 <form method="post" action="/sp/${tok}/lead/${esc(l.id)}/not-received" style="flex:1"><input type="text" name="note" maxlength="200" required placeholder="क्या हुआ? / What happened?"><div class="row"><button class="r" type="submit">✖ नहीं मिला / Not received</button></div></form></div>` : '';
       return `<div class="lead"><b>${kind.hi}</b> · ${esc(l.locality)} · ••${esc(l.phoneLast4)} <small>(${when(l.createdAt)})</small><br>
 <span class="chip ${l.status === 'WON' ? 'ok' : l.status === 'LOST' ? 'x' : ''}">${stt.hi}</span>${links.map(x => `<span class="chip">${esc(x.hi)}</span>`).join('')}${flags.map(f => `<span class="chip x">⚠ ${esc(f.hi)}</span>`).join('')}
+${prog}
 ${l.status === 'LOST' && l.lostReason ? `<br><small>कारण: ${esc(l.lostReason)}</small>` : ''}
 ${l.won ? `<br><b>आपका हिस्सा: ${inr(l.won.amount)}</b> ${pay ? `<span class="chip ${l.payout!.status === 'RECEIVED' ? 'ok' : l.payout!.status === 'NOT_RECEIVED' ? 'x' : 'w'}">${pay.hi}</span>` : ''}` : ''}
 <br><small>${locked(l) ? `यह लीड ${when(l.lockUntil)} तक आपकी है` : 'सुरक्षा का समय पूरा'}</small>${act}</div>`;

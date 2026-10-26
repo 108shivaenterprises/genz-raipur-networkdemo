@@ -91,7 +91,7 @@ describe('deal accounts', () => {
     const b1 = (await hs(jar.B1)).hisaab.brokerage; const b2 = (await hs(jar.B2)).hisaab.brokerage;
     const g = await j(await call(jar.B1, 'POST', `/api/deals/${DEAL}/hisaab/book`, { dir: 'IN', party: 'OWNER', amount: 120000, mode: 'CASH', note: 'advance brokerage' }));
     expect(g.hisaab.brokerage.received).toBe(b1.received + 120000);
-    const o = await j(await call(jar.B1, 'POST', `/api/deals/${DEAL}/hisaab/book`, { dir: 'OUT', party: 'BROKER', amount: 20000, mode: 'UPI', ref: 'SHARE001' }));
+    const o = await j(await call(jar.B1, 'POST', `/api/deals/${DEAL}/hisaab/book`, { dir: 'OUT', party: 'OTHER', amount: 20000, mode: 'UPI', ref: 'SHARE001' }));
     expect(o.hisaab.brokerage.paidOut).toBe(20000); expect(o.hisaab.brokerage.inHand).toBe(o.hisaab.brokerage.received - 20000);
     expect((await hs(jar.B2)).hisaab.brokerage.received).toBe(b2.received);
     for (const c of [jar.B2, jar.OWN, jar.B1]) { const t = await (await call(c, 'GET', `/api/deals/${DEAL}`)).text(); expect(t).not.toContain('brokerBook'); expect(t).not.toContain('advance brokerage'); }

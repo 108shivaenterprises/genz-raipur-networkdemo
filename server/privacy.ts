@@ -46,7 +46,7 @@ export function createPrivacyRouter() {
       profile,
       properties: mine(s.properties, 'ownerId', 'listingBrokerId'),
       requirements: mine(s.requirements, 'brokerId', 'ownerId', 'createdBy'),
-      dealRooms: s.dealRooms.filter(d => d.introducingBrokerId === u.id || d.closingBrokerId === u.id || d.ownerId === u.id).map(d => ({ ...d, brokerBook: undefined, myBrokerBook: d.brokerBook?.[u.id] })), // v71 — only MY brokerage book
+      dealRooms: s.dealRooms.filter(d => d.introducingBrokerId === u.id || d.closingBrokerId === u.id || d.ownerId === u.id).map(d => ({ ...d, brokerBook: undefined, feePlans: undefined, myBrokerBook: d.brokerBook?.[u.id], myFeePlan: d.feePlans?.[u.id] })), // v71 — only MY brokerage book
       siteVisits: mine(s.siteVisits, 'brokerId'),
       crmLeads: mine(s.crmLeads, 'associateId', 'builderId'),
       crmBookings: mine(s.crmBookings, 'associateId', 'builderId'),
