@@ -147,6 +147,8 @@ import { mandateShareAt } from './src/shared/mandateShare.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
+import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans } from './server/ownerlist.js';
+import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator } from './server/shopPartners.js';
@@ -1021,6 +1023,12 @@ function sanitizeProperty(p: any, user: UserProfile, state = db.getState()) {
   const out: any = { ...p };
   delete out.duplicateHash;
   delete out.ownerKeyHash;
+  // v73 — fee / payment / requests of a self-listed property are for its owner, the assigned broker and GENZ staff only
+  if (p.ownerListing) {
+    const mineL = isAdmin(user) || p.ownerId === user.id || p.listingBrokerId === user.id;
+    out.ownerListed = true; out.inPool = inPool(p);
+    if (!mineL) delete out.ownerListing; else if (p.ownerId !== user.id && !isAdmin(user)) out.ownerListing = { feeStatus: p.ownerListing.feeStatus, assignedBrokerId: p.ownerListing.assignedBrokerId, matchedAt: p.ownerListing.matchedAt, requests: [] };
+  }
   // v27 — the closing price / note / winning offer are private to the owner, the listing broker and GENZ staff
   if (!isAdmin(user) && p.ownerId !== user.id && p.listingBrokerId !== user.id) { delete out.soldPrice; delete out.soldNote; delete out.soldOfferId; }
   if (!commercial) {
@@ -1286,6 +1294,13 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
     createdAt: now,
     updatedAt: now,
   };
+
+  // v73 — an owner's own listing: fee first (master plan), then the broker pool; matched only after he assigns a broker and the mandate is signed
+  if (currentUser.role === 'PROPERTY_OWNER') {
+    const ol = applyOwnerListing(currentUser, { transactionType: data.transactionType, propertyType: data.propertyType, images: data.images }, listingBrokerId);
+    if ('error' in ol) return res.status(ol.status).json({ error: ol.error, code: ol.code });
+    Object.assign(newProperty, ol.patch);
+  }
 
   // Automatically register primary photo into Property Media Vault
   if (newProperty.images && newProperty.images.length > 0) {
@@ -2866,6 +2881,10 @@ app.get('/api/owner-mandates', needs('mandate:read'), (req: Request, res: Respon
 
 app.post('/api/owner-mandates', needs('mandate:owner_create'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
+  // v73 — an owner who listed himself and paid GENZ's listing fee owes the broker NO brokerage: the broker earns from the buyer only
+  const directProp = db.byId('properties', String(req.body?.propertyId || ''));
+  const ownerPaysNothing = !!directProp && directProp.ownerId === currentUser.id && ['PAID', 'FREE'].includes(directProp.ownerListing?.feeStatus || '');
+  if (ownerPaysNothing) req.body = { propertyId: req.body.propertyId, advertisedPrice: req.body.advertisedPrice, protectionPeriodDays: req.body.protectionPeriodDays, password: req.body.password, remunerationBasis: 'FIXED_FEE', fixedFeeAmount: 1 };
   const parseResult = ownerMandateCreateSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ error: parseResult.error.issues[0]?.message || 'Validation error' });
@@ -2875,7 +2894,7 @@ app.post('/api/owner-mandates', needs('mandate:owner_create'), (req: Request, re
   { const pp = protectionPeriodDays === undefined ? null : checkDays(protectionPeriodDays); if (pp) return res.status(400).json({ error: pp.en, hi: pp.hi, code: pp.code }); }
   const approvedNetPrice = remunerationBasis === 'SURPLUS_ABOVE_NET' ? parseResult.data.approvedNetPrice! : 0;
   const commissionPct = remunerationBasis === 'PERCENTAGE' ? parseResult.data.commissionPct! : 0;
-  const fixedFeeAmount = remunerationBasis === 'FIXED_FEE' ? parseResult.data.fixedFeeAmount! : 0;
+  const fixedFeeAmount = ownerPaysNothing ? 0 : remunerationBasis === 'FIXED_FEE' ? parseResult.data.fixedFeeAmount! : 0;
   const state = db.getState();
 
   const prop = db.byId('properties', propertyId);
@@ -2915,6 +2934,7 @@ app.post('/api/owner-mandates', needs('mandate:owner_create'), (req: Request, re
     remunerationBasis,
     agreedCommissionPct: commissionPct,
     fixedFeeAmount,
+    ...(ownerPaysNothing ? { ownerFeeWaived: true } : {}),
     protectionPeriodDays: daysFor(protectionPeriodDays),
     agreementHash: generateMandateHash({ propertyId, ownerId: currentUser.id, approvedNetPrice, agreedCommissionPct: commissionPct, remunerationBasis, fixedFeeAmount, timestamp: now }),
     status: 'PENDING_BROKER',
@@ -2960,6 +2980,7 @@ app.post('/api/owner-mandates/:id/accept', needs('mandate:broker_respond'), (req
   mandate.brokerSignedAt = now;
   mandate.isConfirmed = true;
   mandate.confirmedAt = now;
+  onMandateActive(prop);
   mandate.agreementHash = generateMandateHash({
     propertyId: mandate.propertyId, ownerId: mandate.ownerId, approvedNetPrice: mandate.approvedNetPrice,
     agreedCommissionPct: mandate.agreedCommissionPct, remunerationBasis: mandate.remunerationBasis, fixedFeeAmount: mandate.fixedFeeAmount, timestamp: now,
@@ -5525,6 +5546,8 @@ app.use('/api/id-review', createIdReviewRouter());
 app.use('/api/kyc-vault', createKycVaultRouter());
 app.use('/api/protection', createProtectionRouter());
 app.use('/api/auth/2fa', createTwoFactorRouter());
+app.use('/api/owner', createOwnerAuthRouter());
+app.use('/api/owner-listing', createOwnerListingRouter());
 app.use('/api/consent', createConsentRouter());
 app.use('/api/buyer-bonds', createBuyerBondRouter());
 app.use('/api/party-watch', createPartyWatchRouter());
@@ -5677,10 +5700,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

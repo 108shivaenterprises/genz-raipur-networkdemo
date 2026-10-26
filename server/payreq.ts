@@ -98,6 +98,7 @@ export function createPaymentRequestRouter() {
     if (STAGES.indexOf(d.stage) < STAGES.indexOf(BILL_FROM_STAGE)) return bad(res, `A brokerage bill can be sent from the “${BILL_FROM_STAGE}” stage on`, 409);
     const party = b.party === 'OWNER' || b.party === 'BUYER' ? b.party : null;
     if (!party) return bad(res, 'Choose who pays: the owner or the buyer');
+    { const pr = st().properties.find(x => x.id === d.propertyId); if (party === 'OWNER' && pr?.ownerListing && ['PAID', 'FREE'].includes(pr.ownerListing.feeStatus)) return bad(res, 'यह मालिक ने ख़ुद GENZ पर लिस्ट की है और GENZ को फ़ीस दी है — मालिक से ब्रोकरेज नहीं माँग सकते, सिर्फ़ ख़रीदार से। / The owner listed this himself and paid GENZ — you cannot bill him brokerage, only the buyer.', 409); }
     const partyName = str(b.partyName, 80); const partyPhone = phone10(b.partyPhone);
     if (partyName.length < 2) return bad(res, 'Write the name of the person who pays');
     if (!PHONE_RE.test(partyPhone)) return bad(res, 'Write his 10-digit mobile number (the reminder goes there on WhatsApp)');

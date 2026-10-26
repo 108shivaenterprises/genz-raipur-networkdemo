@@ -36,6 +36,7 @@ const ControlCenter = lazyView(() => import('./components/ControlCenter.js'), 'C
 const LaunchDesk = lazyView(() => import('./components/LaunchDesk.js'), 'LaunchDesk');
 const NetworkHub = lazyView(() => import('./components/NetworkHub.js'), 'NetworkHub');
 const IdReviewView = lazyView(() => import('./components/IdReviewView.js'), 'IdReviewView');
+const OwnerListingsTab = lazyView(() => import('./components/OwnerListings.js'), 'OwnerListingsTab');
 const PlansFeesView = lazyView(() => import('./components/PlansFees.js'), 'PlansFeesView');
 const LegalHelpView = lazyView(() => import('./components/LegalHelp.js'), 'LegalHelpView');
 const RevenueGrowthView = lazyView(() => import('./components/RevenueGrowthView.js'), 'RevenueGrowthView');
@@ -88,7 +89,7 @@ const FileDisputeModal = lazyView(() => import('./components/Modals.js'), 'FileD
 const AddConstructionLeadModal = lazyView(() => import('./components/Modals.js'), 'AddConstructionLeadModal');
 
 const TAB_KEY = 'genz.tab';
-const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats'];
+const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats', 'ownerlist'];
 
 export default function App() {
   const tx = useTx();
@@ -662,6 +663,7 @@ export default function App() {
 
         {activeTab === 'idreview' && hasPerm(permissions, 'users:review') && <IdReviewView currentUser={currentUser} />}
 
+        {activeTab === 'ownerlist' && (hasPerm(permissions, 'ownerlist:manage') || currentUser.role === 'BROKER' || currentUser.role === 'PROPERTY_OWNER') && <OwnerListingsTab role={currentUser.role} goto={(t: string) => setActiveTab(t as TabType)} />}
         {activeTab === 'plans' && (hasPerm(permissions, 'billing:manage') || hasPerm(permissions, 'billing:self')) && <PlansFeesView permissions={permissions} />}
         {activeTab === 'legal' && (hasPerm(permissions, 'legal:desk') || hasPerm(permissions, 'legal:manage')) && <LegalHelpView currentUser={currentUser} permissions={permissions} />}
         {activeTab === 'revenue' && hasPerm(permissions, 'admin:control_center') && <RevenueGrowthView />}

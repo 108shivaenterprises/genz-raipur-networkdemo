@@ -2,6 +2,7 @@
  * Resource-level access rules ("may THIS user touch THIS record?").
  * Route-level permissions live in permissions.ts; these helpers add ownership / participation checks.
  */
+import { inPool } from '../src/shared/ownerListRules.js';
 import type { DatabaseState, UserProfile, DealRoom, Property } from './db.js';
 import { digits } from './auth.js';
 import { SOLD_VISIBLE_DAYS } from '../src/shared/dealRules.js';
@@ -99,11 +100,12 @@ export function canSeeDealCommercials(u: U, deal: Pick<DealRoom, 'id' | 'introdu
 }
 
 /** Who may see a property in listings: admins, its owner / listing broker, and (for network members) verified live listings. Owners never see other owners' properties. */
-export function canBrowseProperty(u: U, p: Pick<Property, 'ownerId' | 'listingBrokerId' | 'verificationStatus' | 'listingStatus'> & { expiredAt?: string; heldAt?: string }) {
+export function canBrowseProperty(u: U, p: Pick<Property, 'ownerId' | 'listingBrokerId' | 'verificationStatus' | 'listingStatus' | 'ownerListing'> & { expiredAt?: string; heldAt?: string }) {
   if (isAdmin(u)) return true;
   if (p.ownerId === u.id || p.listingBrokerId === u.id) return true;
   if (u.role === 'PROPERTY_OWNER') return false;
   if (p.expiredAt || p.heldAt) return false; // stale or reported listings stay hidden from the network until refreshed / reviewed
+  if (u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' && inPool(p as any)) return true; // v73 — an owner's own listing sits in the pool: seen, never matched
   return p.verificationStatus === 'VERIFIED' && (p.listingStatus === 'active' || p.listingStatus === 'under_negotiation');
 }
 

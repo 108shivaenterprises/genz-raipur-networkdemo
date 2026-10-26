@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { JoinView } from './JoinView.js';
 import { AccessRequest } from './AccessRequest.js';
+import { OwnerSignIn } from './OwnerListings.js';
 import { BrandMark } from './BrandMark.js';
 import { IdDocSlot } from './IdDocSlot.js';
 import { ID_DOC_NOTE } from '../shared/idRules.js';
@@ -32,7 +33,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
   const [error, setError] = useState('');
   const [joining, setJoining] = useState(false);
   const refParam = (() => { try { return new URLSearchParams(window.location.search).get('ref') || ''; } catch { return ''; } })();
-  const [panel, setPanel] = useState<'' | 'access' | 'forgot'>(refParam ? 'access' : '');
+  const [panel, setPanel] = useState<'' | 'access' | 'forgot' | 'owner'>(refParam ? 'access' : '');
   const [ticket, setTicket] = useState('');
   const [code, setCode] = useState('');
 
@@ -79,6 +80,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
   );
 
   if (joining) return <JoinView onBack={() => setJoining(false)} />;
+  if (panel === 'owner') return <OwnerSignIn onLoggedIn={onLoggedIn as any} onBack={() => setPanel('')} />;
   if (panel) return <div className="mx-auto max-w-5xl px-4 py-10"><AccessRequest mode={panel} refCode={refParam} onBack={() => setPanel('')} /></div>;
 
   return (
@@ -110,6 +112,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
           <button type="button" onClick={() => setJoining(true)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:border-slate-900">
             <KeyRound className="h-4 w-4 text-amber-500" /> {t('login.join', 'Have an invitation code? Join here')}
           </button>
+          <button type="button" onClick={() => setPanel('owner')} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900" data-testid="login-owner">🏠 {tx('I am a property owner — sign in with mobile', 'मैं प्रॉपर्टी मालिक हूँ — मोबाइल से साइन-इन')}</button>
           <p className="mt-3 flex justify-between text-[11px]">
             <button type="button" onClick={() => setPanel('access')} className="font-semibold text-blue-700 underline">{tx('Request access', 'एक्सेस माँगें')}</button>
             <button type="button" onClick={() => setPanel('forgot')} className="font-semibold text-blue-700 underline">{tx('Forgot password?', 'पासवर्ड भूल गए?')}</button>

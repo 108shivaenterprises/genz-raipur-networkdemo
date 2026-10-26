@@ -43,6 +43,7 @@ import { useI18n } from '../lib/i18n.js';
 
 export type TabType =
   | 'dashboard'
+  | 'ownerlist'
   | 'builder'
   | 'properties'
   | 'requirements'
@@ -211,6 +212,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('audit:read_all', 'audit:read_own') ? [{ id: 'audit', label: t('nav.audit', 'Activity Record'), icon: History }] : []),
     ...(has('users:invite', 'users:review') ? [{ id: 'onboarding', label: t('nav.onboarding', 'Invite & KYC'), icon: KeyRound }] : []),
     ...(has('users:review') ? [{ id: 'idreview', label: t('nav.idreview', 'ID Review'), icon: FileSearch, badge: idBadge }] : []),
+    ...(isOwner && has('property:create') ? [{ id: 'ownerlist', label: t('nav.ownerlistOwner', 'My Listings'), icon: Building }] : currentUser?.role === 'BROKER' ? [{ id: 'ownerlist', label: t('nav.ownerlistBroker', 'Owner Pool'), icon: Building }] : has('ownerlist:manage') ? [{ id: 'ownerlist', label: t('nav.ownerlistAdmin', 'Owner Listing Plans'), icon: BadgeIndianRupee }] : []),
     ...(has('billing:manage') ? [{ id: 'plans', label: t('nav.plansAdmin', 'Plans & Fees'), icon: BadgeIndianRupee, badge: billing.count }] : has('billing:self') && (billing.relevant || activeTab === 'plans') ? [{ id: 'plans', label: t('nav.plans', 'GENZ Membership'), icon: BadgeIndianRupee, badge: billing.count }] : []),
     ...(has('legal:manage') ? [{ id: 'legal', label: t('nav.legalAdmin', 'Legal Help'), icon: ScaleIcon, badge: legalBadge }] : []),
     ...(has('admin:control_center') ? [{ id: 'revenue', label: t('nav.revenue', 'Revenue & Growth'), icon: IndianRupee }] : []),
@@ -244,7 +246,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['plans'], key: 'nav.feesShort', en: 'Fees' }],
     SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'plans'], key: 'nav.controlShort', en: 'Control' }],
     LEGAL_COUNSEL: [HOME, { ids: ['legal'], key: 'nav.legalShort', en: 'Legal' }, { ids: ['due_diligence'], key: 'nav.ddShort', en: 'Title' }, { ids: ['propdocs', 'pdocs'], key: 'nav.papersShort', en: 'Papers' }],
-    PROPERTY_OWNER: [HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
+    PROPERTY_OWNER: [HOME, { ids: ['ownerlist'], key: 'nav.listShort', en: 'Listings' }, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
     CONTRACTOR: [HOME, { ids: ['construction'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['team'], key: 'nav.teamShort', en: 'Team' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }],
   };
   const bottom = simple ? (BOTTOM[role] || [HOME, ...tabs.filter(x => x.id !== 'dashboard').slice(0, 3).map(x => ({ ids: [x.id], key: '', en: '' }))])
@@ -254,7 +256,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   // v31 — a broker's ~23 tabs in 6 groups, each in priority order (the order of `ids` is the order shown; a group opens on its first tab). Every tab is still reachable: a group lists the tabs below, and anything not named lands in “Other”.
   const BROKER_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'chats', 'daily', 'visits'] },
-    { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'requirements', 'matches', 'mypage', 'share', 'propdocs', 'pdocs', 'landrecords'] },
+    { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'ownerlist', 'requirements', 'matches', 'mypage', 'share', 'propdocs', 'pdocs', 'landrecords'] },
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
     { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'rentdesk', 'legal', 'due_diligence', 'disputes', 'audit'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'partners', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },
@@ -263,7 +265,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   // v62 — GENZ staff: the day's checks first, then money & growth, the market, sales, and the controls & records
   const ADMIN_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'onboarding', 'idreview', 'disputes', 'legal'] },
-    { id: 'money', key: 'nav.g.money', en: 'Money & Growth', ids: ['plans', 'revenue', 'citylaunch', 'launchdesk', 'grow', 'network', 'community'] },
+    { id: 'money', key: 'nav.g.money', en: 'Money & Growth', ids: ['plans', 'ownerlist', 'revenue', 'citylaunch', 'launchdesk', 'grow', 'network', 'community'] },
     { id: 'market', key: 'nav.g.market', en: 'Listings & Deals', ids: ['properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'landrecords', 'propdocs', 'pdocs'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'partners', 'team'] },
     { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'audit'] },

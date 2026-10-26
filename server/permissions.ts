@@ -200,6 +200,7 @@ export const PERMISSION_CATALOG = {
   'legal:settings': 'Superadmin: set the legal-help platform fee, member fee, membership price and time limits',
 
   // ── Plans & Fees (v23) ──────────────────────────────────────────────────
+  'ownerlist:manage': 'GENZ staff: master plan for owner self-listing (fee, days in the pool, limits per kind of property), UPI to pay, confirm or reject an owner\'s listing fee',
   'billing:manage': 'GENZ staff: create fee rules (flat / %, per group, state, person), membership plans, member-only features; confirm, reject or waive payments',
   'billing:self': 'See the GENZ fees and plans that apply to me, take a membership, mark my GENZ dues paid',
 
@@ -242,7 +243,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'pcontrol:oversee',
     'inventory:read', 'landrecord:manage', 'launch:manage',
     'report:manage', 'chapter:read', 'chapter:manage', 'loan:manage', 'academy:read', 'propdoc:use',
-    'legal:manage', 'billing:manage', 'partner:oversee',
+    'legal:manage', 'billing:manage', 'ownerlist:manage', 'partner:oversee',
   ],
 
   // Verified RERA broker — the core network participant.
