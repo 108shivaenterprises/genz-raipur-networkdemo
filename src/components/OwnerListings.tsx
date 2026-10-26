@@ -10,6 +10,7 @@ import { prepareDoc, shrinkImage } from '../lib/imgShrink.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
+import { FreeRouteOffer, OwnerBrokerRoute } from './LeadBoard.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50';
@@ -58,7 +59,7 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
               <select className={inp} value={stateName} onChange={e => { touched.current = true; setStateName(e.target.value); }} data-testid="owner-state"><option value="">{tx('State / UT', 'राज्य / केंद्र शासित')}</option>{INDIA_STATES.map(x => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
               <input className={inp} placeholder={tx('City / town', 'शहर / क़स्बा')} value={city} onChange={e => { touched.current = true; setCity(e.target.value); }} data-testid="owner-city" />
               {locNote && <p className="text-[11px] text-slate-500">{locNote}</p>}
-              <label className="flex items-start gap-2 text-[11px] text-slate-600"><input type="checkbox" className="mt-0.5" checked={ok} onChange={e => setOk(e.target.checked)} data-testid="owner-consent" />{tx('I agree to GENZ keeping my name and mobile number to run my listing (privacy policy).', 'मैं सहमत हूँ कि GENZ मेरी लिस्टिंग चलाने के लिए मेरा नाम और मोबाइल नंबर रखे (प्राइवेसी पॉलिसी)।')}</label>
+              <label className="flex items-start gap-2 text-[11px] text-slate-600"><input type="checkbox" className="mt-0.5" checked={ok} onChange={e => setOk(e.target.checked)} data-testid="owner-consent" />{tx('I agree to GENZ keeping my name and mobile number to run my listing. If I give GENZ my face photo / ID, GENZ may keep them sealed for 3 years even after I delete my account (privacy policy).', 'मैं सहमत हूँ कि GENZ मेरी लिस्टिंग चलाने के लिए मेरा नाम और मोबाइल नंबर रखे। अगर मैं अपनी फ़ोटो / ID दूँ तो अकाउंट डिलीट करने के बाद भी GENZ उन्हें 3 साल सील करके रख सकता है (प्राइवेसी पॉलिसी)।')}</label>
             </>}
             {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
             <button className={btn + ' w-full'} disabled={busy || code.length !== 6 || (!exists && (!ok || name.trim().length < 2))} data-testid="owner-go">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Sign in', 'साइन-इन')}</button>
@@ -121,7 +122,7 @@ const PlanCards: React.FC<{ onNew: () => void }> = ({ onNew }) => {
       <ul className="space-y-0.5 text-[11px] text-slate-600">
         <li>• {tx('The plan is picked by your deal kind and property kind. You pay GENZ by UPI after you list, GENZ confirms, and it goes live.', 'प्लान आपकी डील और प्रॉपर्टी के प्रकार से अपने-आप चुनता है। लिस्ट करने के बाद GENZ को UPI से दें, GENZ पक्का करे, और लिस्टिंग लाइव।')}</li>
         <li>• {tx('Brokers earn from the buyer only — never from you. You only promise not to deal directly with a buyer they bring.', 'ब्रोकर की कमाई सिर्फ़ ख़रीदार से — आपसे कभी नहीं। आप बस वादा करते हैं कि उनके लाए ख़रीदार से सीधी डील नहीं करेंगे।')}</li>
-        <li>• {tx('Free listing: only through a GENZ broker or a shop QR / referral, after a mandate with that broker.', 'मुफ़्त लिस्टिंग: सिर्फ़ GENZ ब्रोकर या शॉप-QR / रेफ़रल से, उस ब्रोकर से मंडेट के बाद।')}</li>
+        <li>• {tx('Free route: choose one broker from the Leadership Board (Top 10) of your city, agree his brokerage, sign the mandate — then it goes live with him. Papers and brokers stay in your control.', 'मुफ़्त रूट: अपने शहर के लीडरशिप बोर्ड (टॉप 10) से एक ब्रोकर चुनें, उसकी ब्रोकरेज तय करें, मंडेट साइन करें — फिर उसके साथ लाइव। काग़ज़ और ब्रोकर आपके कंट्रोल में रहते हैं।')}</li>
       </ul>
     </section>
   );
@@ -132,15 +133,13 @@ const DOC_LABEL: Record<string, [string, string]> = {
   ELECTRICITY_BILL: ['Electricity bill', 'बिजली बिल'], TAX_RECEIPT: ['Property tax receipt', 'प्रॉपर्टी टैक्स रसीद'], TITLE_DEED: ['Title / registry', 'टाइटल / रजिस्ट्री'], OTHER: ['Other paper', 'अन्य काग़ज़'],
 };
 const ID_KINDS = ['ID_AADHAAR_MASKED', 'ID_PAN', 'ID_VOTER', 'ID_DL'];
-const PAPER_KINDS = ['ELECTRICITY_BILL', 'TAX_RECEIPT', 'TITLE_DEED', 'OTHER'];
 
 /** face + ID for me, papers for each property — photographed or picked from the phone; GENZ staff check them and the checker is named */
 const VerifySection: React.FC<{ listings: any[] }> = ({ listings }) => {
   const tx = useTx(); const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [consent, setConsent] = useState(false);
-  const [idKind, setIdKind] = useState('ID_AADHAAR_MASKED'); const [pKind, setPKind] = useState('ELECTRICITY_BILL'); const [pid, setPid] = useState(listings[0]?.propertyId || '');
+  const [idKind, setIdKind] = useState('ID_AADHAAR_MASKED');
   const load = useCallback(() => api.odocList().then(setD).catch(e => setErr(e.message)), []);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!pid && listings[0]) setPid(listings[0].propertyId); }, [listings, pid]);
   const send = async (kind: string, f: File | undefined, propertyId?: string) => {
     if (!f) return; setBusy(true); setErr('');
     try { const data = kind === 'SELFIE' ? await shrinkImage(f, 900, 350 * 1024) : await prepareDoc(f); await api.odocUpload({ kind, propertyId, data, name: f.name, consent }); await load(); }
@@ -163,14 +162,13 @@ const VerifySection: React.FC<{ listings: any[] }> = ({ listings }) => {
       {label}<input type="file" className="hidden" accept={opts.capture ? 'image/*' : 'image/*,application/pdf'} {...(opts.capture ? { capture: 'user' as const } : {})} onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} data-testid={opts.testId} />
     </label>
   );
-  const myProps = listings;
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="owner-verify">
       <div className="flex items-start justify-between gap-2"><div><h3 className="flex items-center gap-1.5 text-sm font-bold"><ShieldCheck className="h-4 w-4 text-emerald-600" />{tx('Verification — who you are, and your papers', 'वेरिफ़िकेशन — आप कौन हैं और आपके काग़ज़')}</h3>
         <p className="text-[11px] text-slate-500">{tx('Upload from the camera or the phone. GENZ staff check them and your name tick shows who checked. Only you and GENZ staff can open them.', 'कैमरे या फ़ोन से अपलोड करें। GENZ स्टाफ़ जाँचता है और टिक पर जाँचने वाले का नाम दिखता है। सिर्फ़ आप और GENZ स्टाफ़ इन्हें खोल सकते हैं।')}</p></div>
         {d.idChecked && <Chip tone="ok">✔ {tx('Identity checked', 'पहचान जाँची गई')}</Chip>}</div>
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
-      <label className="flex items-start gap-2 text-[11px]"><input type="checkbox" className="mt-0.5" checked={consent} onChange={e => setConsent(e.target.checked)} data-testid="odoc-consent" />{tx('I agree to GENZ keeping these papers only to check me and my property (privacy policy).', 'मैं सहमत हूँ कि GENZ ये काग़ज़ सिर्फ़ मेरी और मेरी प्रॉपर्टी की जाँच के लिए रखे (प्राइवेसी पॉलिसी)।')}</label>
+      <label className="flex items-start gap-2 text-[11px]"><input type="checkbox" className="mt-0.5" checked={consent} onChange={e => setConsent(e.target.checked)} data-testid="odoc-consent" />{tx('I agree to GENZ keeping my face photo and ID to check me. Even if I later delete my account, GENZ may keep them sealed for 3 years for fraud / legal checks, then deletes them (privacy policy).', 'मैं सहमत हूँ कि GENZ मेरी जाँच के लिए मेरी चेहरे की फ़ोटो और ID रखे। बाद में मैं अकाउंट डिलीट भी कर दूँ तो भी GENZ धोखाधड़ी / क़ानूनी जाँच के लिए इन्हें 3 साल सील करके रख सकता है, फिर मिटा देता है (प्राइवेसी पॉलिसी)।')}</label>
 
       <div className="space-y-2">
         <div className="text-xs font-bold">1. {tx('Your face photo', 'आपकी चेहरे की फ़ोटो')}</div>
@@ -183,14 +181,11 @@ const VerifySection: React.FC<{ listings: any[] }> = ({ listings }) => {
         <select className={inp} value={idKind} onChange={e => setIdKind(e.target.value)} data-testid="odoc-idkind">{ID_KINDS.map(k => <option key={k} value={k}>{tx(...DOC_LABEL[k] as [string, string])}</option>)}</select>
         {pick(<><Upload className="h-4 w-4" />{tx('Upload ID (photo or PDF)', 'ID अपलोड करें (फ़ोटो या PDF)')}</>, f => send(idKind, f), { testId: 'odoc-id' })}
       </div>
-      <div className="space-y-2">
-        <div className="text-xs font-bold">3. {tx('Property papers — electricity bill, tax receipt, title / registry', 'प्रॉपर्टी के काग़ज़ — बिजली बिल, टैक्स रसीद, टाइटल / रजिस्ट्री')}</div>
-        {myProps.length === 0 ? <p className="text-[11px] text-slate-500">{tx('Add a listing first, then upload its papers here.', 'पहले लिस्टिंग बनाएँ, फिर उसके काग़ज़ यहाँ डालें।')}</p> : <>
-          <select className={inp} value={pid} onChange={e => setPid(e.target.value)} data-testid="odoc-prop">{myProps.map((l: any) => <option key={l.propertyId} value={l.propertyId}>{l.title}</option>)}</select>
-          {mine(PAPER_KINDS, pid).map(row)}
-          <select className={inp} value={pKind} onChange={e => setPKind(e.target.value)} data-testid="odoc-pkind">{PAPER_KINDS.map(k => <option key={k} value={k}>{tx(...DOC_LABEL[k] as [string, string])}</option>)}</select>
-          {pick(<><Upload className="h-4 w-4" />{tx('Upload paper (photo or PDF)', 'काग़ज़ अपलोड करें (फ़ोटो या PDF)')}</>, f => send(pKind, f, pid), { testId: 'odoc-paper' })}
-          <p className="text-[11px] text-slate-500">{tx('The “GENZ verified property” tick comes only after the title is checked (by a broker or an advocate) — uploading is the first step.', '“GENZ वेरिफ़ाइड प्रॉपर्टी” का टिक तभी आता है जब टाइटल जाँचा जाए (ब्रोकर या वकील से) — अपलोड पहला क़दम है।')}</p></>}
+      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5">
+        <div className="text-xs font-bold">3. {tx('Property papers — bill, tax receipt, title / registry', 'प्रॉपर्टी के काग़ज़ — बिल, टैक्स रसीद, टाइटल / रजिस्ट्री')}</div>
+        <p className="text-[11px] text-slate-600">{tx('Upload each paper ONCE, property by property, in Property Papers. Then, when you talk to a broker, share it with him for the days and the number of views you choose — and you can see who opened it.', 'हर काग़ज़ प्रॉपर्टी के हिसाब से सिर्फ़ एक बार “Property Papers” में अपलोड करें। फिर ब्रोकर से बात होने पर उसे उतने दिन और उतनी बार देखने के लिए शेयर करें जितना आप तय करें — और देखें कि किसने खोला।')}</p>
+        <button type="button" className={ghost + ' w-full'} onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'propdocs' }))} data-testid="owner-open-papers"><ExternalLink className="h-4 w-4" />{tx('Open Property Papers', 'Property Papers खोलें')}</button>
+        <p className="text-[11px] text-slate-500">{tx('The “GENZ verified property” tick comes only after the title is checked (by a broker or an advocate).', '“GENZ वेरिफ़ाइड प्रॉपर्टी” का टिक तभी आता है जब टाइटल जाँचा जाए (ब्रोकर या वकील से)।')}</p>
       </div>
     </section>
   );
@@ -206,7 +201,7 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = 
   return (
     <div className="space-y-3" data-testid="owner-listings">
       <div className="flex items-center justify-between gap-2">
-        <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Pay the fee → listing is live: any number of brokers can view, take visits and bring offers. You only agree not to deal directly with a buyer they bring.', 'फ़ीस दो → लिस्टिंग लाइव: कितने भी ब्रोकर देखें, विज़िट लें, ऑफ़र लाएँ। आप सिर्फ़ यह मानते हैं कि लाए गए ख़रीदार से सीधी डील नहीं करेंगे।')}</p></div>
+        <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Two ways: pay GENZ’s plan and go live for all brokers, or choose one broker free from your city’s Top 10 and go live after his mandate.', 'दो रास्ते: GENZ का प्लान देकर सभी ब्रोकरों के लिए लाइव, या अपने शहर के टॉप 10 में से एक ब्रोकर मुफ़्त चुनें और उसके मंडेट के बाद लाइव।')}</p></div>
         <button type="button" className={btn} onClick={onNew} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>
       </div>
       <NetworkStrip />
@@ -230,7 +225,9 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = 
                 <div className="flex gap-2"><input className={inp} placeholder="UTR / Ref" value={ref[l.propertyId] || ''} onChange={e => setRef({ ...ref, [l.propertyId]: e.target.value })} data-testid="owner-utr" /><button type="button" className={btn} disabled={busy || !nd[l.propertyId] || (ref[l.propertyId] || '').length < 3} onClick={() => run(() => api.olPay(l.propertyId, { ref: ref[l.propertyId], noDirectDeal: !!nd[l.propertyId] }))} data-testid="owner-pay">{tx('Send', 'भेजें')}</button></div>
               </div>
             )}
-            {l.feeStatus === 'EXPIRED' && <button type="button" className={btn} disabled={busy} onClick={() => run(() => api.olRenew(l.propertyId))}>{tx('Renew', 'फिर चालू करें')}</button>}
+            {l.feeStatus === 'EXPIRED' && l.fee > 0 && <button type="button" className={btn} disabled={busy} onClick={() => run(() => api.olRenew(l.propertyId))}>{tx('Renew', 'फिर चालू करें')}</button>}
+            {['PENDING', 'REJECTED', 'EXPIRED'].includes(l.feeStatus) && <FreeRouteOffer l={l} onDone={load} />}
+            {l.feeStatus === 'WAIVED_BROKER' && <OwnerBrokerRoute l={l} onDone={load} />}
             {l.inPool && <p className="text-[11px] text-slate-600" data-testid="owner-live-note">{tx('Any GENZ broker can see your listing (not your phone or address), bring buyers and take visits. The broker is paid by the buyer only — you pay no brokerage.', 'कोई भी GENZ ब्रोकर आपकी लिस्टिंग देख सकता है (आपका फ़ोन या पता नहीं), ख़रीदार ला सकता है और विज़िट ले सकता है। ब्रोकर को पैसा सिर्फ़ ख़रीदार देगा — आप ब्रोकरेज नहीं देंगे।')}{l.liveUntil ? ` ${tx('Live till', 'लाइव')} ${String(l.liveUntil).slice(0, 10)}.` : ''}</p>}
           </div>
         );

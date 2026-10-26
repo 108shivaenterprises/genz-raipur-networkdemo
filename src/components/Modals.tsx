@@ -9,6 +9,7 @@ import { LocationFields, LocationValue } from './LocationFields.js';
 import { shrinkImage, readAsDataUrl } from '../lib/imgShrink.js';
 import { formatINR } from '../lib/utils.js';
 import { TagPicker } from './TagPicker.js';
+import { BoardPicker, Face } from './LeadBoard.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import {
@@ -63,6 +64,9 @@ export const AddPropertyModal: React.FC<{
   const [loc, setLoc] = useState<LocationValue>({ state: findState(currentUser?.state)?.name || stateOfCity(currentUser?.city) || '', city: currentUser?.city || '', locality: '', pincode: '' });
   const [tags, setTags] = useState<string[]>([]);
   const [listingBrokerId, setListingBrokerId] = useState('');
+  // v74 — an owner lists either on GENZ's paid plan (live for all brokers) or FREE with one broker of his city's Leadership Board
+  const [route, setRoute] = useState<'PAID' | 'FREE'>('PAID'); const [freeBroker, setFreeBroker] = useState<{ id: string; firstName: string; photoUrl: string } | null>(null);
+  useEffect(() => { setFreeBroker(null); }, [loc.city]);
   const [village, setVillage] = useState('');
   const [street, setStreet] = useState('');
   const [landmark, setLandmark] = useState('');
@@ -124,6 +128,7 @@ export const AddPropertyModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOwnerUser && route === 'FREE' && !freeBroker) { setError(hi ? 'मुफ़्त रूट के लिए अपने शहर के बोर्ड से एक ब्रोकर चुनें — या GENZ प्लान वाला रूट चुनें।' : 'For the free route, choose one broker from your city’s board — or switch to the GENZ plan.'); return; }
     setLoading(true);
     setError('');
     // v28 — owner approval: the normal form also ends at the owner's WhatsApp approval (or, when GENZ requires consent first, becomes a draft)
@@ -140,7 +145,7 @@ export const AddPropertyModal: React.FC<{
         locality: loc.locality,
         district: loc.district || undefined,
         tags,
-        listingBrokerId: isStaffUser && listingBrokerId ? listingBrokerId : undefined,
+        listingBrokerId: isStaffUser && listingBrokerId ? listingBrokerId : isOwnerUser && route === 'FREE' && freeBroker ? freeBroker.id : undefined,
         village: village || undefined,
         street: street || undefined,
         pincode: loc.pincode || undefined,
@@ -166,7 +171,7 @@ export const AddPropertyModal: React.FC<{
       });
       const rn = created?.resaleNotice;
       const approval = created?.ownerApproval?.draftId as string | undefined;
-      alert((isOwnerUser && created?.property?.ownerListing?.feeStatus === 'PENDING' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में लिस्टिंग फ़ीस UPI से दें और UTR लिखें — GENZ पक्का करेगा, फिर लिस्टिंग लाइव होगी।' : 'Listing saved. Now pay the listing fee by UPI in “My Property” and write the UTR — GENZ confirms it and the listing goes live.') : (hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.')) + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
+      alert((isOwnerUser && created?.property?.ownerListing?.feeStatus === 'WAIVED_BROKER' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में आपका ब्रोकर अपनी ब्रोकरेज बताएगा; आप दोनों के मानने पर आप मंडेट साइन करेंगे और लिस्टिंग लाइव होगी।' : 'Listing saved. In “My Property” your broker will tell his brokerage; when you both agree you sign the mandate and the listing goes live.') : isOwnerUser && created?.property?.ownerListing?.feeStatus === 'PENDING' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में लिस्टिंग फ़ीस UPI से दें और UTR लिखें — GENZ पक्का करेगा, फिर लिस्टिंग लाइव होगी।' : 'Listing saved. Now pay the listing fee by UPI in “My Property” and write the UTR — GENZ confirms it and the listing goes live.') : (hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.')) + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
         + (approval ? (hi ? '\n\nअब मालिक को WhatsApp पर अप्रूवल भेजें — मालिक की हाँ से बायपास सुरक्षा शुरू होती है।' : '\n\nNow send the owner the approval on WhatsApp — his yes starts your bypass protection.') : ''));
       onSuccess();
       onClose();
@@ -207,7 +212,7 @@ export const AddPropertyModal: React.FC<{
             {error}
           </div>
         )}
-        {isOwnerUser && quote && (
+        {isOwnerUser && route === 'PAID' && quote && (
           <div className={`mx-5 mt-4 rounded-lg p-2.5 text-xs border shrink-0 ${quote.none ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`} data-testid="form-plan-quote">
             {quote.none
               ? tx('GENZ has no plan for this kind of property yet — ask a GENZ broker to list it for you.', 'GENZ का इस तरह की प्रॉपर्टी के लिए अभी कोई प्लान नहीं — किसी GENZ ब्रोकर से लिस्ट करवाएँ।')
@@ -342,6 +347,17 @@ export const AddPropertyModal: React.FC<{
           </div>
 
           <TagPicker value={tags} onChange={setTags} />
+
+          {isOwnerUser && (
+            <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white p-3" data-testid="form-route">
+              <div className="text-xs font-bold text-slate-900">{tx('How do you want to list?', 'आप कैसे लिस्ट करना चाहते हैं?')}</div>
+              <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 text-xs ${route === 'PAID' ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}><input type="radio" name="route" className="mt-0.5" checked={route === 'PAID'} onChange={() => setRoute('PAID')} data-testid="route-paid" /><span><b>{tx('GENZ plan — live for ALL brokers', 'GENZ प्लान — सभी ब्रोकरों के लिए लाइव')}</b><br /><span className="text-slate-600">{tx('You pay GENZ’s plan fee; any number of brokers show it. You owe them no brokerage — they earn from the buyer.', 'आप GENZ की प्लान फ़ीस देते हैं; कितने भी ब्रोकर दिखाएँ। आप ब्रोकरेज नहीं देते — वे ख़रीदार से कमाते हैं।')}</span></span></label>
+              <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 text-xs ${route === 'FREE' ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}><input type="radio" name="route" className="mt-0.5" checked={route === 'FREE'} onChange={() => setRoute('FREE')} data-testid="route-free" /><span><b>{tx('Free — choose ONE broker from your city’s Top 10', 'मुफ़्त — अपने शहर के टॉप 10 से एक ब्रोकर चुनें')}</b><br /><span className="text-slate-600">{tx('No GENZ fee. You and the broker agree his brokerage and sign a mandate; it goes live with him after that.', 'GENZ की फ़ीस नहीं। आप और ब्रोकर उसकी ब्रोकरेज तय करके मंडेट साइन करते हैं; उसके बाद उसी के साथ लाइव।')}</span></span></label>
+              {route === 'FREE' && (freeBroker
+                ? <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 p-2.5" data-testid="route-free-picked"><div className="flex items-center gap-2"><Face src={freeBroker.photoUrl} name={freeBroker.firstName} size={40} /><div className="text-xs"><div className="font-bold text-emerald-950">{freeBroker.firstName}</div><div className="text-emerald-800">{tx('your broker', 'आपका ब्रोकर')}</div></div></div><button type="button" className="text-xs font-semibold underline" onClick={() => setFreeBroker(null)}>{tx('Change', 'बदलें')}</button></div>
+                : <BoardPicker city={loc.city} confirmLabel={['Choose', 'चुनें']} onPick={(id, firstName, photoUrl) => setFreeBroker({ id, firstName, photoUrl })} />)}
+            </div>
+          )}
 
           {isStaffUser && (
             <div>

@@ -40,8 +40,8 @@ export function pinProblem(raw: unknown): KycProblem | null {
 
 /** What the member agrees to — one tick on the join screen and on “My PAN & Aadhaar”. */
 export const KYC_CONSENT = {
-  en: 'I agree that GENZ keeps my PAN, my full Aadhaar number and my address — the Aadhaar number and address are stored encrypted and are opened only by the GENZ superadmin, with a written reason that is recorded and shown to me, for ID checks and for legal or dispute matters. I can ask for them to be deleted (subject to the law).',
-  hi: 'मैं सहमत हूँ कि GENZ मेरा PAN, मेरा पूरा आधार नंबर और मेरा पता रखे — आधार नंबर और पता एन्क्रिप्ट करके रखे जाते हैं और सिर्फ़ GENZ का सुपरएडमिन, लिखित कारण के साथ, ID जाँच तथा क़ानूनी या विवाद के मामलों के लिए खोल सकता है; हर बार खुलना दर्ज होता है और मुझे दिखता है। मैं इन्हें हटाने को कह सकता/सकती हूँ (क़ानून की सीमा में)।',
+  en: 'I agree that GENZ keeps my PAN, my full Aadhaar number and my address — the Aadhaar number and address are stored encrypted and are opened only by the GENZ superadmin, with a written reason that is recorded and shown to me, for ID checks and for legal or dispute matters. I can ask for them to be deleted (subject to the law); if I delete my account, GENZ may keep them sealed for 3 years for fraud / legal checks and then deletes them.',
+  hi: 'मैं सहमत हूँ कि GENZ मेरा PAN, मेरा पूरा आधार नंबर और मेरा पता रखे — आधार नंबर और पता एन्क्रिप्ट करके रखे जाते हैं और सिर्फ़ GENZ का सुपरएडमिन, लिखित कारण के साथ, ID जाँच तथा क़ानूनी या विवाद के मामलों के लिए खोल सकता है; हर बार खुलना दर्ज होता है और मुझे दिखता है। मैं इन्हें हटाने को कह सकता/सकती हूँ (क़ानून की सीमा में); अकाउंट डिलीट करूँ तो भी GENZ धोखाधड़ी / क़ानूनी जाँच के लिए इन्हें 3 साल सील करके रख सकता है, फिर मिटा देता है।',
 } as const;
 
 export const KYC_VAULT_NOTE = {
@@ -68,3 +68,9 @@ export const VAULT_ORPHAN_DAYS = 14;
 
 /** 123456789012 → “XXXX XXXX 9012” */
 export const maskedFull = (n: string) => { const d = normAadhaar(n); return d.length === 12 ? `XXXX XXXX ${d.slice(-4)}` : ''; };
+
+/**
+ * v74 — after a member deletes his account (DPDP erasure), GENZ still keeps his KYC — face photo, ID scans, the full Aadhaar + address in the vault and his identity details —
+ * sealed, for this many days (3 years), for fraud / legal / RERA checks. Opened only by a superadmin, with a reason. (Period and wording: to be confirmed by GENZ's advocate.)
+ */
+export const KYC_RETAIN_DAYS = 1095;

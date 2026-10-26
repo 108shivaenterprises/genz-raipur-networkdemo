@@ -27,6 +27,18 @@ export interface OwnerListCfg {
 export const DEFAULT_OWNER_LIST_CFG: OwnerListCfg = { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' };
 export const PLAN_LIMITS = { fee: 100_000, days: [1, 365] as const, photos: [1, 40] as const, active: [1, 50] as const };
 
+export interface OwnerTerms {
+  basis: 'PERCENTAGE' | 'FIXED_FEE'; value: number; by: 'BROKER' | 'OWNER'; status: 'PROPOSED' | 'AGREED'; note?: string; at: string;
+  history: { by: 'BROKER' | 'OWNER'; basis: string; value: number; at: string; action: 'PROPOSE' | 'COUNTER' | 'ACCEPT' }[];
+}
+export const TERMS_LIMITS = { pct: [0.1, 10] as const };
+export function termsProblem(basis: unknown, value: unknown, price: number): string | null {
+  if (basis !== 'PERCENTAGE' && basis !== 'FIXED_FEE') return 'Choose a percentage or a fixed amount';
+  const v = Number(value); if (!Number.isFinite(v)) return 'Write the brokerage';
+  if (basis === 'PERCENTAGE' && (v < TERMS_LIMITS.pct[0] || v > TERMS_LIMITS.pct[1])) return `Brokerage must be ${TERMS_LIMITS.pct[0]}% – ${TERMS_LIMITS.pct[1]}%`;
+  if (basis === 'FIXED_FEE' && (!Number.isInteger(v) || v < 1 || v >= price)) return 'The fixed brokerage must be a whole rupee amount below the price';
+  return null;
+}
 export type ListFeeStatus = 'FREE' | 'PENDING' | 'WAITING_CONFIRM' | 'PAID' | 'REJECTED' | 'WAIVED_BROKER' | 'EXPIRED';
 export interface OwnerListingState {
   planId: string; planName: string; fee: number; durationDays: number; refundable: boolean;
@@ -40,6 +52,8 @@ export interface OwnerListingState {
   assignedBrokerId?: string; assignedAt?: string;
   requests: { brokerId: string; brokerName: string; note?: string; at: string }[];
   matchedAt?: string;
+  /** free route: the brokerage the chosen broker and the owner settle on before the mandate is made (the mandate is built from the AGREED terms only) */
+  terms?: OwnerTerms;
   /** the owner's written undertaking: no direct deal with a buyer / renter brought by GENZ brokers (set when he pays the listing fee) */
   noDirectDealAt?: string;
   createdAt: string;

@@ -53,7 +53,7 @@ export function createProfilePhotoRouter() {
 
   r.post('/mine', needs('self:update'), rateLimit('photo-up', 10, 86400_000), (req: Request, res: Response) => {
     const u = me();
-    if (req.body?.consent !== true) return bad(res, 'Tick that you agree to GENZ keeping your photo for your ID card.', 400, { hi: 'टिक करें कि आप अपनी ID कार्ड के लिए फ़ोटो GENZ के पास रखने पर सहमत हैं।', code: 'NO_CONSENT' });
+    if (req.body?.consent !== true) return bad(res, 'Tick that you agree to GENZ keeping your photo for your ID card (and, if you delete your account, sealed for 3 years for fraud / legal checks).', 400, { hi: 'टिक करें कि आप अपनी ID कार्ड के लिए फ़ोटो GENZ के पास रखने पर सहमत हैं (अकाउंट डिलीट करने पर भी धोखाधड़ी / क़ानूनी जाँच के लिए 3 साल सील करके)।', code: 'NO_CONSENT' });
     const raw = String(req.body?.data ?? '').replace(/^data:[^;]+;base64,/, '');
     if (!/^[A-Za-z0-9+/=\r\n]+$/.test(raw) || raw.length < 100) return bad(res, 'The photo could not be read. Please choose it again.');
     const buf = Buffer.from(raw, 'base64');

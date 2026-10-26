@@ -120,6 +120,8 @@ import { createProtectionRouter, checkDays, daysFor } from './server/protection.
 import { verifySigningPassword } from './server/signing.js';
 import { createProfilePhotoRouter } from './server/profilephoto.js';
 import { createOwnerMediaRouter } from './server/ownermedia.js';
+import { createLeadBoardRouter } from './server/leadboard.js';
+import { createKycRetainRouter, sweepKycHolds } from './server/kycretain.js';
 import { createDealHubRouter } from './server/dealhub.js';
 import { createChatsRouter } from './server/chats.js';
 import { createSavedRouter } from './server/saved.js';
@@ -1298,7 +1300,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
 
   // v73 — an owner's own listing: fee first (master plan), then the broker pool; matched only after he assigns a broker and the mandate is signed
   if (currentUser.role === 'PROPERTY_OWNER') {
-    const ol = applyOwnerListing(currentUser, { transactionType: data.transactionType, propertyType: data.propertyType, images: data.images }, listingBrokerId);
+    const ol = applyOwnerListing(currentUser, { transactionType: data.transactionType, propertyType: data.propertyType, images: data.images, city: data.city }, listingBrokerId);
     if ('error' in ol) return res.status(ol.status).json({ error: ol.error, code: ol.code });
     Object.assign(newProperty, ol.patch);
   }
@@ -2885,6 +2887,13 @@ app.post('/api/owner-mandates', needs('mandate:owner_create'), (req: Request, re
   // v73 — an owner who listed himself and paid GENZ's listing fee owes the broker NO brokerage: the broker earns from the buyer only
   const directProp = db.byId('properties', String(req.body?.propertyId || ''));
   const ownerPaysNothing = !!directProp && directProp.ownerId === currentUser.id && ['PAID', 'FREE'].includes(directProp.ownerListing?.feeStatus || '');
+  // v73 — the free route: the mandate is built ONLY from the brokerage the owner and his chosen broker agreed
+  const viaBroker = !!directProp && directProp.ownerId === currentUser.id && directProp.ownerListing?.feeStatus === 'WAIVED_BROKER';
+  if (viaBroker) {
+    const t = directProp!.ownerListing!.terms;
+    if (!t || t.status !== 'AGREED') return res.status(409).json({ error: 'पहले ब्रोकर की ब्रोकरेज तय करें और दोनों हाँ कहें, फिर मंडेट बनेगा। / Agree the brokerage with your broker first — the mandate is made from it.', code: 'TERMS_FIRST' });
+    req.body = { propertyId: req.body.propertyId, advertisedPrice: req.body.advertisedPrice, protectionPeriodDays: req.body.protectionPeriodDays, password: req.body.password, remunerationBasis: t.basis, ...(t.basis === 'PERCENTAGE' ? { commissionPct: t.value } : { fixedFeeAmount: t.value }) };
+  }
   if (ownerPaysNothing) req.body = { propertyId: req.body.propertyId, advertisedPrice: req.body.advertisedPrice, protectionPeriodDays: req.body.protectionPeriodDays, password: req.body.password, remunerationBasis: 'FIXED_FEE', fixedFeeAmount: 1 };
   const parseResult = ownerMandateCreateSchema.safeParse(req.body);
   if (!parseResult.success) {
@@ -5554,6 +5563,8 @@ app.use('/api/buyer-bonds', createBuyerBondRouter());
 app.use('/api/party-watch', createPartyWatchRouter());
 app.use('/api/profile-photo', createProfilePhotoRouter());
 app.use('/api/owner-media', createOwnerMediaRouter());
+app.use('/api/leadboard', createLeadBoardRouter());
+app.use('/api/kyc-retain', createKycRetainRouter());
 app.use('/api/deal-hub', createDealHubRouter());
 app.use('/api/chats', createChatsRouter());
 app.use('/api/saved', createSavedRouter());
@@ -5718,10 +5729,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepKycHolds(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

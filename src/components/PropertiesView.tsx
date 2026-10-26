@@ -1,4 +1,5 @@
 import { OwnerPanel } from './OwnerListings.js';
+import { OwnerRequests, BrokerBoardLine } from './LeadBoard.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { PageTitle } from './PageTitle.js';
 import { Property, UserProfile } from '../types/index.js';
@@ -191,6 +192,8 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
       {showDrafts && <ListingDrafts openId={draftOpenId} onClose={() => { setShowDrafts(false); setDraftOpenId(''); try { const u = new URL(window.location.href); u.searchParams.delete('drafts'); u.searchParams.delete('draft'); window.history.replaceState(null, '', u.toString()); } catch { /* */ } }} onPublished={() => onPropertyUpdated?.()} />}
       {may('property:moderate') && <ConsentQueue />}
       {isOwner && <OwnerPanel onNew={onOpenAddProperty} refreshKey={properties.length} />}
+      {isBroker && <OwnerRequests />}
+      {isBroker && <BrokerBoardLine city={currentUser.city} userId={currentUser.id} />}
       {/* Header and Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

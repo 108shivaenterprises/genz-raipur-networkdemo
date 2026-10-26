@@ -44,6 +44,14 @@ afterAll(async () => { proc?.kill('SIGTERM'); await new Promise(r => setTimeout(
 
 
 
+const JPGB = Buffer.concat([Buffer.from('ffd8ffe0', 'hex'), Buffer.alloc(300, 9)]).toString('base64');
+/** a broker gets a GENZ-approved face photo — the only way onto the Leadership Board */
+async function boardify(brokerJar: string, brokerId: string) {
+  expect((await call(brokerJar, 'POST', '/api/profile-photo/mine', { data: `data:image/jpeg;base64,${JPGB}`, consent: true })).status).toBe(200);
+  const q = await j(await call(jar.SUP, 'GET', '/api/profile-photo/admin')); const ph = q.photos.find((x: any) => x.userId === brokerId); expect(ph).toBeTruthy();
+  expect((await call(jar.SUP, 'POST', `/api/profile-photo/admin/${ph.id}`, { verdict: 'APPROVE' })).status).toBe(200);
+}
+
 const PH = '9876512345';
 let OWNER = ''; let PID = ''; let PLAN = ''; let OWNER_ID = '';
 const prop = (extra: any = {}) => ({ title: 'Self listed flat in Raipur ' + Math.random().toString(36).slice(2, 7), description: 'A flat the owner lists himself in Raipur.', propertyType: 'Residential Flat', transactionType: 'Sale', state: 'Chhattisgarh', city: 'Raipur', locality: 'Shankar Nagar', pincode: '492001', addressHidden: 'Flat 4, Test Society, Shankar Nagar', askingPrice: 5000000 + Math.floor(Math.random() * 100000), ownerApprovedNetPrice: 4500000, ownerName: 'Self Owner', ownerPhone: PH, tags: [], ...extra });
@@ -130,26 +138,78 @@ describe('fee, then the pool', () => {
   });
 });
 
+describe('Leadership Board (the free route)', () => {
+  it('only VERIFIED brokers with a GENZ-approved face photo are on it; an owner sees rank + first name + photo and nothing else', async () => {
+    const before = await j(await ocall('GET', '/api/leadboard?city=Raipur')); expect(before.board.some((b: any) => b.brokerId === 'USR-BRK-001')).toBe(false);
+    await boardify(jar.B1, 'USR-BRK-001');
+    const r = await j(await ocall('GET', '/api/leadboard?city=Raipur')); const row = r.board.find((b: any) => b.brokerId === 'USR-BRK-001');
+    expect(row).toBeTruthy(); expect(row.firstName).toBeTruthy(); expect(row.firstName).not.toContain(' '); expect(row.photoUrl).toMatch(/^\/api\/profile-photo\/u\//); expect(row.rank).toBeGreaterThan(0);
+    expect(Object.keys(row).sort()).toEqual(['brokerId', 'firstName', 'isNew', 'photoUrl', 'rank']);
+    const raw = JSON.stringify(r); expect(raw).not.toMatch(/9425|9826|@|Realty|Estate|CGRERA/);
+    expect(r.board.length).toBeLessThanOrEqual(10);
+    expect(r.board.map((b: any) => b.rank)).toEqual(r.board.map((_: any, i: number) => i + 1));
+  });
+  it('every city has its own board; the owner can open it, the photo opens for him, and anonymous callers cannot', async () => {
+    const other = await j(await ocall('GET', '/api/leadboard?city=Mumbai')); expect(other.board).toEqual([]);
+    const lb = await j(await ocall('GET', '/api/leadboard?city=Raipur')); expect((await ocall('GET', lb.board[0].photoUrl)).status).toBe(200);
+    expect((await call(undefined, 'GET', '/api/leadboard?city=Raipur')).status).toBe(401);
+  });
+});
+
 describe('free routes and housekeeping', () => {
   it('a free listing is NOT possible on your own: only through a broker / shop QR after a mandate', async () => {
     const fp = await j(await call(jar.SUP, 'POST', '/api/owner-listing/admin/plans', { name: 'Free', transactionTypes: ['Lease'], propertyTypes: ['Residential Flat'], fee: 0, durationDays: 30, maxPhotos: 5, maxActivePerOwner: 3 }));
     const r = await ocall('POST', '/api/properties', prop({ transactionType: 'Lease', askingPrice: 25000, ownerApprovedNetPrice: 22000 })); expect(r.status).toBe(409); expect((await j(r)).code).toBe('VIA_BROKER_ONLY');
     await call(jar.SUP, 'DELETE', `/api/owner-listing/admin/plans/${fp.plan.id}`);
   });
-  it('naming a broker at listing time = no fee, but not live before the mandate', async () => {
-    await call(jar.SUP, 'PUT', `/api/owner-listing/admin/plans/${PLAN}`, { maxActivePerOwner: 5 });
+  it('naming a broker who is NOT on the Leadership Board of the city is refused', async () => {
+    const r = await ocall('POST', '/api/properties', prop({ listingBrokerId: 'USR-BRK-002' })); expect(r.status).toBe(400); expect((await j(r)).code).toBe('NOT_ON_BOARD');
+    const r2 = await ocall('POST', '/api/properties', prop({ listingBrokerId: 'USR-NOBODY' })); expect(r2.status).toBe(400);
+  });
+  it('naming a broker of the board = no fee, brokerage agreed in the open, mandate only from the AGREED terms, live only after the mandate', async () => {
+    await boardify(jar.B2, 'USR-BRK-002');
+    await call(jar.SUP, 'PUT', `/api/owner-listing/admin/plans/${PLAN}`, { maxActivePerOwner: 9 });
     const r = await ocall('POST', '/api/properties', prop({ listingBrokerId: 'USR-BRK-002' })); expect(r.status, await r.clone().text()).toBe(200);
     const p = (await j(r)).property; expect(p.ownerListing.feeStatus).toBe('WAIVED_BROKER'); expect(p.listingStatus).toBe('pending_verification');
     expect((await call(jar.B1, 'GET', `/api/properties/${p.id}`)).status).toBe(404);
-    // the owner signs the mandate with a mobile code (no password); the broker signs; ONLY THEN is it active for matching
-    const sc = await j(await ocall('POST', '/api/owner/sign-code')); expect(sc.devCode).toMatch(/^\d{6}$/);
-    expect((await ocall('POST', '/api/owner-mandates', { propertyId: p.id, approvedNetPrice: 4500000, protectionPeriodDays: 30, password: '000000' })).status).toBe(400);
-    const sc2 = await j(await ocall('POST', '/api/owner/sign-code'));
-    const m = await ocall('POST', '/api/owner-mandates', { propertyId: p.id, approvedNetPrice: 4500000, protectionPeriodDays: 30, password: sc2.devCode });
-    expect(m.status, await m.clone().text()).toBe(200); const id = (await j(m)).mandate.id;
+    const sc0 = await j(await ocall('POST', '/api/owner/sign-code'));
+    const early = await ocall('POST', '/api/owner-mandates', { propertyId: p.id, protectionPeriodDays: 30, password: sc0.devCode }); expect(early.status).toBe(409); expect((await j(early)).code).toBe('TERMS_FIRST');
+    const T = `/api/owner-listing/${p.id}/terms`;
+    expect((await ocall('POST', T, { action: 'PROPOSE', basis: 'PERCENTAGE', value: 1 })).status).toBe(409);          // the broker states his brokerage first
+    expect((await call(jar.B1, 'POST', T, { action: 'PROPOSE', basis: 'PERCENTAGE', value: 1 })).status).toBe(404);   // a broker who was not chosen cannot
+    expect((await call(jar.B2, 'POST', T, { action: 'PROPOSE', basis: 'PERCENTAGE', value: 0.01 })).status).toBe(400);
+    expect((await call(jar.B2, 'POST', T, { action: 'PROPOSE', basis: 'PERCENTAGE', value: 40 })).status).toBe(400);
+    expect((await call(jar.B2, 'POST', T, { action: 'PROPOSE', basis: 'FIXED_FEE', value: 999999999 })).status).toBe(400); // more than the price
+    const pr = await call(jar.B2, 'POST', T, { action: 'PROPOSE', basis: 'PERCENTAGE', value: 2 }); expect(pr.status, await pr.clone().text()).toBe(200);
+    expect((await call(jar.B2, 'POST', T, { action: 'ACCEPT' })).status).toBe(409);   // he cannot accept his own offer
+    const mid = await ocall('POST', '/api/owner-mandates', { propertyId: p.id, protectionPeriodDays: 30, password: (await j(await ocall('POST', '/api/owner/sign-code'))).devCode });
+    expect(mid.status).toBe(409); expect((await j(mid)).code).toBe('TERMS_FIRST');    // an offer is not an agreement
+    const ct = await j(await ocall('POST', T, { action: 'PROPOSE', basis: 'PERCENTAGE', value: 1 })); expect(ct.listing.terms.by).toBe('OWNER'); expect(ct.listing.terms.history.map((h: any) => h.action)).toEqual(['PROPOSE', 'COUNTER']);
+    expect((await ocall('POST', T, { action: 'ACCEPT' })).status).toBe(409);          // the owner cannot accept his own counter
+    const ok = await j(await call(jar.B2, 'POST', T, { action: 'ACCEPT' })); expect(ok.listing.terms.status).toBe('AGREED'); expect(ok.listing.terms.value).toBe(1);
+    // the mandate is made from the agreed brokerage whatever the owner types
+    const m = await ocall('POST', '/api/owner-mandates', { propertyId: p.id, protectionPeriodDays: 30, remunerationBasis: 'FIXED_FEE', fixedFeeAmount: 1, commissionPct: 9, password: (await j(await ocall('POST', '/api/owner/sign-code'))).devCode });
+    expect(m.status, await m.clone().text()).toBe(200); const mm = (await j(m)).mandate; expect(mm.remunerationBasis).toBe('PERCENTAGE'); expect(mm.agreedCommissionPct).toBe(1);
+    expect((await call(jar.B2, 'POST', T, { action: 'PROPOSE', basis: 'PERCENTAGE', value: 3 })).status).toBe(409);  // made — no more changing
     expect((await call(jar.B1, 'GET', `/api/properties/${p.id}`)).status).toBe(404);
-    const ok = await call(jar.B2, 'POST', `/api/owner-mandates/${id}/accept`, { password: cfg.demoPassword }); expect(ok.status, await ok.clone().text()).toBe(200);
+    const acc = await call(jar.B2, 'POST', `/api/owner-mandates/${mm.id}/accept`, { password: cfg.demoPassword }); expect(acc.status, await acc.clone().text()).toBe(200);
     const q = (await j(await call(jar.B2, 'GET', `/api/properties/${p.id}`))).property; expect(q.listingStatus).toBe('active'); expect(q.verificationStatus).toBe('VERIFIED');
+    const as = await j(await call(jar.B2, 'GET', '/api/owner-listing/assigned')); const row = as.listings.find((x: any) => x.propertyId === p.id);
+    expect(row.terms.status).toBe('AGREED'); expect(row.live).toBe(true); expect(row.ownerFirstName).toBe('Self'); expect(JSON.stringify(row)).not.toContain(PH);
+  });
+  it('the chosen broker can say no; the owner is back to "choose again" and can change his pick or take it back', async () => {
+    const r = await ocall('POST', '/api/properties', prop({ listingBrokerId: 'USR-BRK-002' })); const p = (await j(r)).property;
+    const d = await call(jar.B2, 'POST', `/api/owner-listing/${p.id}/decline`); expect(d.status).toBe(200);
+    const mine = (await j(await ocall('GET', '/api/owner-listing/mine'))).listings.find((x: any) => x.propertyId === p.id);
+    expect(mine.feeStatus).toBe('PENDING'); expect(mine.assignedBrokerId).toBeUndefined(); expect(mine.listingStatus).toBe('draft'); expect(mine.fee).toBeGreaterThan(0); // the paid route is open again
+    expect((await call(jar.B2, 'POST', `/api/owner-listing/${p.id}/decline`)).status).toBe(404);
+    // a pick outside the board is refused; a board broker is accepted; and it can be taken back
+    expect((await ocall('POST', `/api/owner-listing/${p.id}/via-broker`, { brokerId: 'USR-BRK-003' })).status).toBe(400);
+    const v = await ocall('POST', `/api/owner-listing/${p.id}/via-broker`, { brokerId: 'USR-BRK-002' }); expect(v.status, await v.clone().text()).toBe(200);
+    expect((await j(v)).listing.broker.firstName).toBe('Amit'); expect((await ocall('POST', `/api/owner-listing/${p.id}/via-broker`, { brokerId: 'USR-BRK-002' })).status).toBe(409);
+    const u = await ocall('POST', `/api/owner-listing/${p.id}/unassign`); expect(u.status).toBe(200);
+    expect((await j(await ocall('GET', '/api/owner-listing/mine'))).listings.find((x: any) => x.propertyId === p.id).feeStatus).toBe('PENDING');
+    expect((await ocall('POST', `/api/owner-listing/${p.id}/unassign`)).status).toBe(409);
   });
   it('switching owner listing off stops self-listing but brokers can still list for owners', async () => {
     await call(jar.SUP, 'PUT', '/api/owner-listing/admin/config', { enabled: false });
@@ -180,9 +240,8 @@ describe('owner uploads: listing photo / video and verification papers', () => {
   it('verification papers: consent + the right property; private to the owner and GENZ staff', async () => {
     expect((await ocall('POST', '/api/owner-media/doc', { kind: 'SELFIE', data: PNG })).status).toBe(400); // no consent
     const s = await ocall('POST', '/api/owner-media/doc', { kind: 'SELFIE', data: PNG, consent: true }); expect(s.status, await s.clone().text()).toBe(200); DOC = (await j(s)).doc.id;
-    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ELECTRICITY_BILL', data: PNG, consent: true })).status).toBe(400); // which property?
-    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ELECTRICITY_BILL', propertyId: 'PRP-NOT-MINE', data: PNG, consent: true })).status).toBe(403);
-    expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ELECTRICITY_BILL', propertyId: PID, data: PNG, consent: true })).status).toBe(200);
+    // property papers are NOT uploaded here: they live in Property Papers (one upload per property, shared per broker with days + views)
+    const pp = await ocall('POST', '/api/owner-media/doc', { kind: 'ELECTRICITY_BILL', propertyId: PID, data: PNG, consent: true }); expect(pp.status).toBe(400); expect((await j(pp)).code).toBe('USE_PROPERTY_PAPERS');
     expect((await ocall('POST', '/api/owner-media/doc', { kind: 'ID_PAN', data: JUNK, consent: true })).status).toBe(415);
     expect((await call(jar.B1, 'GET', `/api/owner-media/doc/${DOC}/file`)).status).toBe(404);
     expect((await ocall('GET', `/api/owner-media/doc/${DOC}/file`)).status).toBe(200);

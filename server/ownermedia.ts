@@ -106,7 +106,7 @@ export function createOwnerMediaRouter() {
   });
 
   // ── verification papers ──
-  r.get('/doc-kinds', needs('self:read'), (_req, res) => res.json({ success: true, kinds: DOC_KINDS, maxBytes: DOC_MAX }));
+  r.get('/doc-kinds', needs('self:read'), (_req, res) => res.json({ success: true, kinds: Object.fromEntries(Object.entries(DOC_KINDS).filter(([, v]) => v.group !== 'PAPER')), maxBytes: DOC_MAX }));
   r.get('/doc', needs('self:read'), (_req, res) => {
     const u = me(); const s = st();
     res.json({ success: true, docs: s.ownerDocs.filter(d => d.userId === u.id).map(docView), idChecked: ownerIdChecked(s, u.id) });
@@ -117,7 +117,8 @@ export function createOwnerMediaRouter() {
     if (b.consent !== true) return bad(res, 'Tick that you agree to GENZ keeping this paper to check you / your property.', 400, { hi: 'टिक करें कि आप इस काग़ज़ को जाँच के लिए GENZ के पास रखने से सहमत हैं।' });
     const propertyId = b.propertyId ? String(b.propertyId) : undefined;
     if (propertyId && !s.properties.some(p => p.id === propertyId && p.ownerId === u.id)) return bad(res, 'Choose one of your own properties', 403);
-    if (DOC_KINDS[kind].group === 'PAPER' && !propertyId) return bad(res, 'Choose which property this paper is for');
+    // property papers (bill, tax receipt, deed…) are uploaded ONCE in Property Papers and shared per broker with days + views — not here
+    if (DOC_KINDS[kind].group === 'PAPER') return bad(res, 'Property papers go in the “Property Papers” tab — upload once, share with each broker for a limited time.', 400, { code: 'USE_PROPERTY_PAPERS', hi: 'प्रॉपर्टी के काग़ज़ “Property Papers” टैब में डालें — एक बार अपलोड, हर ब्रोकर को सीमित समय के लिए शेयर।' });
     if (s.ownerDocs.filter(d => d.userId === u.id).length >= MAX_DOCS_PER_USER) return bad(res, 'Too many papers — remove an old one first', 429);
     const buf = readData(b); if (!buf) return bad(res, 'The file could not be read. Please choose it again.');
     if (buf.length > DOC_MAX) return bad(res, 'This file is too big (max 1.5 MB). Take the photo again or scan smaller.', 413);

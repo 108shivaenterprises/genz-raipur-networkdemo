@@ -70,7 +70,7 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string }> = (
 
   const file = async (type: 'ERASURE' | 'GRIEVANCE' | 'CORRECTION') => {
     try {
-      if (type === 'ERASURE' && !confirm(tx('Request deletion of your account? Records required by law are retained in anonymised form.', 'अपना अकाउंट हटाने का अनुरोध करें? क़ानून के लिए ज़रूरी रिकॉर्ड गुमनाम रूप में रखे जाते हैं।'))) return;
+      if (type === 'ERASURE' && !confirm(tx('Request deletion of your account? Records required by law are retained in anonymised form. If you gave GENZ KYC (face photo, ID, Aadhaar), it is kept sealed for 3 years for fraud / legal checks and then deleted.', 'अपना अकाउंट हटाने का अनुरोध करें? क़ानून के लिए ज़रूरी रिकॉर्ड गुमनाम रूप में रखे जाते हैं। अगर आपने GENZ को KYC (फ़ोटो, ID, आधार) दिया है तो वह धोखाधड़ी / क़ानूनी जाँच के लिए 3 साल सील करके रखा जाता है, फिर मिटा दिया जाता है।'))) return;
       await j('/api/privacy/requests', { method: 'POST', body: JSON.stringify({ type, details: text }) });
       setText(''); setMsg({ ok: true, text: tx('Request filed. The Grievance Officer will respond within 15 days.', 'अनुरोध दर्ज हो गया। शिकायत अधिकारी 15 दिन में जवाब देंगे।') }); load();
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }

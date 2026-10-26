@@ -12,6 +12,7 @@ import { purgeUserIdDocs } from './idreview.js';
 import { purgeUserPhotos } from './profilephoto.js';
 import { purgeOwnerFiles } from './ownermedia.js';
 import { purgeKyc, kycFlags } from './kycvault.js';
+import { holdKyc } from './kycretain.js';
 import { erasePhoto } from './workphotos.js';
 
 export const POLICY_VERSION = '2026-10-17';
@@ -27,7 +28,7 @@ export function legalConfig() {
       phone: process.env.GRIEVANCE_PHONE || '',
       responseDays: 15,
     },
-    retentionNote: 'Audit-ledger and transaction records are retained for 8 years for legal, tax and RERA compliance; they are anonymised, not deleted, on erasure.',
+    retentionNote: 'Audit-ledger and transaction records are retained for 8 years for legal, tax and RERA compliance; they are anonymised, not deleted, on erasure. KYC (face photo, ID scans, Aadhaar / address in the vault and identity details) is kept sealed for 3 years after account deletion for fraud, legal and RERA checks, opened only by a superadmin with a written reason, and then deleted. Property papers, listing photos and chats are deleted.',
   };
 }
 
@@ -112,6 +113,9 @@ export function createPrivacyRouter() {
       const open = s.dealRooms.some(d => d.stage !== 'Settled' && (d.introducingBrokerId === target.id || d.closingBrokerId === target.id || d.ownerId === target.id));
       const crmOpen = s.crmBookings.some(b => (b.associateId === target.id || b.builderId === target.id) && b.status === 'APPROVED' && b.brokeragePaidAmount < b.brokerageAmount);
       if (open || crmOpen) return res.status(409).json({ error: 'The user has open deals or unsettled brokerage. Close them first — records needed for legal compliance are retained.' });
+      // v74 — KYC stays with GENZ for 3 years even after deletion: a SEALED copy is made first; if that is not possible nothing is deleted
+      const held = holdKyc(s, target);
+      if (!held.ok) return res.status(409).json({ error: held.error, code: 'KYC_HOLD_FAILED' });
       // Anonymise personal data; keep the ledger rows (ids) so audit and accounting stay consistent.
       const anon = sha256(target.id).slice(0, 10);
       target.name = `Deleted user ${anon}`;
@@ -132,7 +136,8 @@ export function createPrivacyRouter() {
       purgeUserPhotos(s, target.id); // v36: the profile photo
       purgeOwnerFiles(s, target.id); // v73: owner photos / verification papers
       purgeUserIdDocs(s, target.id); // v19: PAN / Aadhaar scans and the ID-review task
-      purgeKyc(s, target.id); // v25: the encrypted full Aadhaar + address
+      purgeKyc(s, target.id); // v25: the encrypted full Aadhaar + address (the sealed copy kept by v74 stays in kycHolds)
+      if (held.hold) db.appendAuditEvent(actor.id, actor.role, 'VERIFICATION', held.hold.id, 'KYC_HELD_ON_ERASURE', `KYC of ${target.id} kept sealed after erasure: ${held.hold.files.length} file(s)${held.hold.vault ? ' + vault' : ''} until ${held.hold.retainUntil.slice(0, 10)}`);
       target.autoVerifiedAt = undefined; target.autoVerifiedBy = undefined;
       for (const a of s.tier2Applications) if (a.userId === target.id) { a.panNumber = undefined; a.aadhaarLast4 = undefined; a.companyName = undefined; } // what the sponsor typed about this person
       // v60 — his Rent desk: the owners' and tenants' names and numbers he kept for his own work go with him

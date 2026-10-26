@@ -246,7 +246,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['plans'], key: 'nav.feesShort', en: 'Fees' }],
     SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'plans'], key: 'nav.controlShort', en: 'Control' }],
     LEGAL_COUNSEL: [HOME, { ids: ['legal'], key: 'nav.legalShort', en: 'Legal' }, { ids: ['due_diligence'], key: 'nav.ddShort', en: 'Title' }, { ids: ['propdocs', 'pdocs'], key: 'nav.papersShort', en: 'Papers' }],
-    PROPERTY_OWNER: [HOME, { ids: ['properties'], key: 'nav.myPropShort', en: 'My Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
+    PROPERTY_OWNER: [HOME, { ids: ['properties', 'propdocs'], key: 'nav.myPropShort', en: 'My Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
     CONTRACTOR: [HOME, { ids: ['construction'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['team'], key: 'nav.teamShort', en: 'Team' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }],
   };
   const bottom = simple ? (BOTTOM[role] || [HOME, ...tabs.filter(x => x.id !== 'dashboard').slice(0, 3).map(x => ({ ids: [x.id], key: '', en: '' }))])

@@ -23,8 +23,10 @@ import { sendSms } from './notify.js';
 import { alert } from './alerts.js';
 import { issueSignCode } from './signing.js';
 import { effectivePermissions } from './permissions.js';
+import { boardFor } from './leadboard.js';
 import { findState } from '../src/shared/india.js';
 import { networkStrength } from './revenue.js';
+import { termsProblem } from '../src/shared/ownerListRules.js';
 import { pickOwnerPlan, planProblem, inPool, type OwnerListPlan, type OwnerListingState } from '../src/shared/ownerListRules.js';
 
 const st = () => db.getState();
@@ -55,11 +57,13 @@ export function ensureOwnerPlans() {
 }
 
 /** called by POST /api/properties for a listing an owner makes on his own (or names a broker for). Returns an error or the fields to merge. */
-export function applyOwnerListing(owner: UserProfile, data: { transactionType: string; propertyType: string; images?: string[] }, listingBrokerId: string): { error: string; status: number; code?: string } | { patch: Partial<Property> } {
+export function applyOwnerListing(owner: UserProfile, data: { transactionType: string; propertyType: string; images?: string[]; city?: string }, listingBrokerId: string): { error: string; status: number; code?: string } | { patch: Partial<Property> } {
   const s = st();
   if (!s.ownerListCfg.enabled && !listingBrokerId) return { error: 'Owners cannot list on their own right now — ask a GENZ broker to list it for you.', status: 403, code: 'OWNER_LISTING_OFF' };
   const now = nowIso();
   if (listingBrokerId) {
+    // the free route: the owner picks one of the city's Top 10 (Leadership Board); live only after the agreed mandate is signed by both
+    if (!boardFor(String(data.city || '')).some(b => b.brokerId === listingBrokerId)) return { error: 'Choose a broker from the Leadership Board of your city.', status: 400, code: 'NOT_ON_BOARD' };
     // brought through a GENZ broker: no listing fee, live only after his mandate is signed
     return { patch: { listingStatus: 'pending_verification', verificationStatus: 'PENDING', ownerListing: { planId: '', planName: 'Via broker', fee: 0, durationDays: 0, refundable: false, feeStatus: 'WAIVED_BROKER', assignedBrokerId: listingBrokerId, assignedAt: now, requests: [], createdAt: now } } };
   }
@@ -156,8 +160,9 @@ export function createOwnerAuthRouter() {
 // ───────────────────────────── owner + broker + admin ─────────────────────────────
 const feeView = (p: Property) => {
   const o = p.ownerListing!;
-  return { ...o, propertyId: p.id, title: p.title, listingStatus: p.listingStatus, locality: p.locality, city: p.city, askingPrice: p.askingPrice, transactionType: p.transactionType, propertyType: p.propertyType, inPool: inPool(p), listingBrokerId: p.listingBrokerId || '' };
+  return { ...o, propertyId: p.id, title: p.title, listingStatus: p.listingStatus, locality: p.locality, city: p.city, askingPrice: p.askingPrice, transactionType: p.transactionType, propertyType: p.propertyType, inPool: inPool(p), listingBrokerId: p.listingBrokerId || '', broker: brokerCard(o.assignedBrokerId) };
 };
+const brokerCard = (id?: string) => { const b = id ? st().users.find(x => x.id === id) : undefined; return b ? { id: b.id, firstName: String(b.name).trim().split(/\s+/)[0], photoUrl: b.avatarUrl || '' } : undefined; };
 const mineProp = (req: Request, res: Response): Property | null => {
   const u = me(); const p = st().properties.find(x => x.id === req.params.pid);
   if (!p || !p.ownerListing || p.ownerId !== u.id) { bad(res, 'Listing not found', 404); return null; }
@@ -184,7 +189,7 @@ export function createOwnerListingRouter() {
   });
   r.get('/mine', needs('property:read'), (_req, res) => {
     const u = me(); const s = st();
-    const rows = s.properties.filter(p => p.ownerId === u.id && p.ownerListing).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(feeView);
+    const rows = s.properties.filter(p => p.ownerId === u.id && p.ownerListing).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(p => { const m = mandateOf(p.id); return { ...feeView(p), mandateId: m?.id || null, mandateStatus: m?.status || null }; });
     res.json({ success: true, listings: rows, upiId: s.ownerListCfg.upiId, payeeName: s.ownerListCfg.payeeName });
   });
 
@@ -210,15 +215,86 @@ export function createOwnerListingRouter() {
     o.feeStatus = 'PENDING';
     p.updatedAt = nowIso(); db.save(); res.json({ success: true, listing: feeView(p) });
   });
+  const mandateOf = (pid: string) => st().ownerMandates.filter(m => m.propertyId === pid).sort((x: any, y: any) => String(y.createdAt || '').localeCompare(String(x.createdAt || '')))[0] as any;
+  /** back to "not chosen": the paid route is open again (a listing that began with a broker has no plan yet — give it the current one) */
+  const clearBroker = (p: Property, _to: 'PENDING') => {
+    const o = p.ownerListing!; o.assignedBrokerId = undefined; o.assignedAt = undefined; o.terms = undefined; p.listingBrokerId = '';
+    o.feeStatus = 'PENDING'; p.listingStatus = 'draft'; p.updatedAt = nowIso();
+    if (!(o.fee > 0)) { const plan = pickOwnerPlan(st().ownerListPlans, p.transactionType, p.propertyType); if (plan && plan.fee > 0) { o.planId = plan.id; o.planName = plan.name; o.fee = plan.fee; o.durationDays = plan.durationDays; o.refundable = plan.refundable; } }
+  };
+  /** the free route: the owner picks a broker of his city's Leadership Board (before he pays, or to change his pick while no mandate is signed) */
   r.post('/:pid/via-broker', needs('property:create'), (req, res) => {
     const p = mineProp(req, res); if (!p) return; const o = p.ownerListing!; const u = me();
-    if (!['PENDING', 'REJECTED', 'EXPIRED'].includes(o.feeStatus)) return bad(res, 'This listing is already paid for or with a broker', 409);
-    const b = st().users.find(x => x.id === String(req.body?.brokerId) && x.role === 'BROKER' && x.verificationStatus === 'VERIFIED');
-    if (!b) return bad(res, 'Choose a verified GENZ broker');
-    o.feeStatus = 'WAIVED_BROKER'; o.assignedBrokerId = b.id; o.assignedAt = nowIso(); p.listingBrokerId = b.id; p.listingStatus = 'pending_verification'; p.updatedAt = nowIso(); db.save();
-    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_VIA_BROKER', `Owner chose ${b.name} — no listing fee, live after the mandate`);
-    alert(b.id, 'deals', 'An owner chose you', `${p.title} — create / sign the mandate to take it live.`, '/');
+    const changing = o.feeStatus === 'WAIVED_BROKER' && !o.matchedAt && mandateOf(p.id)?.status !== 'ACTIVE';
+    if (!['PENDING', 'REJECTED', 'EXPIRED'].includes(o.feeStatus) && !changing) return bad(res, 'This listing is already paid for or its mandate is signed', 409);
+    const bid = String(req.body?.brokerId || '');
+    if (!boardFor(p.city).some(x => x.brokerId === bid)) return bad(res, 'Choose a broker from the Leadership Board of your city', 400, 'NOT_ON_BOARD');
+    const b = st().users.find(x => x.id === bid)!;
+    if (o.assignedBrokerId === b.id) return bad(res, 'You already chose this broker', 409);
+    const was = o.assignedBrokerId;
+    if (st().ownerMandates.some(m => m.propertyId === p.id && m.status === 'PENDING_BROKER')) return bad(res, 'A mandate is waiting for the broker — withdraw it first to change the broker', 409);
+    o.terms = undefined; o.feeStatus = 'WAIVED_BROKER'; o.assignedBrokerId = b.id; o.assignedAt = nowIso(); p.listingBrokerId = b.id; p.listingStatus = 'pending_verification'; p.updatedAt = nowIso(); db.save();
+    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_VIA_BROKER', `Owner chose a Leadership Board broker — no listing fee; brokerage to be agreed, live after the mandate`);
+    alert(b.id, 'deals', 'An owner chose you', `${p.title} (${p.city}) — open Owner Requests and tell the owner your brokerage.`, '/');
+    if (was) alert(was, 'deals', 'The owner chose another broker', `${p.title} is no longer assigned to you.`, '/');
     res.json({ success: true, listing: feeView(p) });
+  });
+  /** back to the paid route (or just undo the pick) while no mandate is signed */
+  r.post('/:pid/unassign', needs('property:create'), (req, res) => {
+    const p = mineProp(req, res); if (!p) return; const o = p.ownerListing!; const u = me();
+    if (o.feeStatus !== 'WAIVED_BROKER' || o.matchedAt || mandateOf(p.id)?.status === 'ACTIVE') return bad(res, 'Nothing to take back', 409);
+    if (st().ownerMandates.some(m => m.propertyId === p.id && m.status === 'PENDING_BROKER')) return bad(res, 'A mandate is waiting for the broker — withdraw it first', 409);
+    const was = o.assignedBrokerId; clearBroker(p, 'PENDING'); db.save();
+    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_UNASSIGNED', 'Owner took the listing back before any mandate was signed');
+    if (was) alert(was, 'deals', 'The owner changed his mind', `${p.title} is no longer assigned to you.`, '/');
+    res.json({ success: true, listing: feeView(p) });
+  });
+  /** the brokerage, settled in the open: the broker states it first; the other side accepts or counters. Only AGREED terms become the mandate. */
+  r.post('/:pid/terms', needs('property:read'), rateLimit('olist-terms', 60, 3600_000), (req, res) => {
+    const u = me(); const p = st().properties.find(x => x.id === req.params.pid); const o = p?.ownerListing;
+    if (!p || !o || o.feeStatus !== 'WAIVED_BROKER' || !o.assignedBrokerId || o.matchedAt) return bad(res, 'Nothing to agree on this listing', 404);
+    const side: 'OWNER' | 'BROKER' | null = p.ownerId === u.id ? 'OWNER' : o.assignedBrokerId === u.id ? 'BROKER' : null;
+    if (!side) return bad(res, 'Listing not found', 404);
+    if (['PENDING_BROKER', 'ACTIVE'].includes(mandateOf(p.id)?.status)) return bad(res, 'The mandate is already made — withdraw it to change the brokerage', 409);
+    const action = String(req.body?.action || 'PROPOSE'); const now = nowIso(); const t = o.terms;
+    if (action === 'ACCEPT') {
+      if (!t || t.status !== 'PROPOSED' || t.by === side) return bad(res, 'There is no offer from the other side to accept', 409);
+      t.status = 'AGREED'; t.at = now; t.history.push({ by: side, basis: t.basis, value: t.value, at: now, action: 'ACCEPT' }); p.updatedAt = now; db.save();
+      db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_TERMS_AGREED', `Brokerage agreed: ${t.basis === 'PERCENTAGE' ? t.value + '%' : '₹' + t.value}`);
+      alert(side === 'OWNER' ? o.assignedBrokerId : p.ownerId, 'deals', 'Brokerage agreed ✔', `${p.title}: ${t.basis === 'PERCENTAGE' ? t.value + '%' : '₹' + t.value}. ${side === 'OWNER' ? 'The owner now makes the mandate.' : 'Make the mandate.'}`, '/');
+      return res.json({ success: true, listing: feeView(p) });
+    }
+    if (action !== 'PROPOSE') return bad(res, 'Unknown action');
+    if (side === 'OWNER' && !t) return bad(res, 'Wait for the broker to say his brokerage first', 409);
+    if (t?.status === 'AGREED') return bad(res, 'The brokerage is already agreed', 409);
+    if (t && t.status === 'PROPOSED' && t.by === side) { /* he may revise his own pending offer */ }
+    const problem = termsProblem(req.body?.basis, req.body?.value, p.askingPrice); if (problem) return bad(res, problem);
+    const basis = req.body.basis as 'PERCENTAGE' | 'FIXED_FEE'; const value = Number(req.body.value);
+    const hist = t?.history || [];
+    hist.push({ by: side, basis, value, at: now, action: t && t.by !== side ? 'COUNTER' : 'PROPOSE' });
+    o.terms = { basis, value, by: side, status: 'PROPOSED', note: str(req.body?.note, 200) || undefined, at: now, history: hist.slice(-20) }; p.updatedAt = now; db.save();
+    alert(side === 'OWNER' ? o.assignedBrokerId : p.ownerId, 'deals', side === 'BROKER' ? 'The broker told his brokerage' : 'The owner made a counter offer', `${p.title}: ${basis === 'PERCENTAGE' ? value + '%' : '₹' + value}.`, '/');
+    res.json({ success: true, listing: feeView(p) });
+  });
+  /** the chosen broker says no */
+  r.post('/:pid/decline', needs('property:read'), (req, res) => {
+    const u = me(); const p = st().properties.find(x => x.id === req.params.pid); const o = p?.ownerListing;
+    if (!p || !o || o.feeStatus !== 'WAIVED_BROKER' || o.assignedBrokerId !== u.id || o.matchedAt) return bad(res, 'Nothing to decline', 404);
+    if (mandateOf(p.id)?.status === 'ACTIVE') return bad(res, 'The mandate is already signed', 409);
+    if (st().ownerMandates.some(m => m.propertyId === p.id && m.status === 'PENDING_BROKER')) return bad(res, 'Reject the mandate first', 409);
+    const ownerId = p.ownerId; clearBroker(p, 'PENDING'); db.save();
+    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_BROKER_DECLINED', 'The chosen broker declined');
+    alert(ownerId, 'deals', 'The broker said no', `${p.title}: choose another broker from the board, or pay the plan and go live.`, '/');
+    res.json({ success: true });
+  });
+  /** the chosen broker's list: owners who picked him */
+  r.get('/assigned', needs('property:read'), (_req, res) => {
+    const u = me(); const s = st();
+    const rows = s.properties.filter(p => p.ownerListing?.feeStatus === 'WAIVED_BROKER' && p.ownerListing.assignedBrokerId === u.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(p => {
+      const m = mandateOf(p.id);
+      return { propertyId: p.id, title: p.title, locality: p.locality, city: p.city, askingPrice: p.askingPrice, transactionType: p.transactionType, propertyType: p.propertyType, listingStatus: p.listingStatus, ownerFirstName: String(p.ownerName || '').trim().split(/\s+/)[0] || 'Owner', terms: p.ownerListing!.terms, mandateStatus: m?.status || null, mandateId: m?.id || null, live: !!p.ownerListing!.matchedAt };
+    });
+    res.json({ success: true, listings: rows });
   });
   r.get('/admin/overview', manage, (_req, res) => {
     const s = st();
