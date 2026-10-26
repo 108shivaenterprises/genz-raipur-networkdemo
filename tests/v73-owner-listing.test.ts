@@ -90,6 +90,7 @@ describe('master plan (superadmin)', () => {
   });
 });
 
+let OID = '';
 describe('fee, then the pool', () => {
   it('limits of the plan: photos and open listings', async () => {
     const r = await ocall('POST', '/api/properties', prop({ images: ['https://example.com/a.jpg', 'https://example.com/b.jpg', 'https://example.com/c.jpg'] })); expect(r.status).toBe(400); expect((await j(r)).code).toBe('PHOTO_LIMIT');
@@ -103,59 +104,50 @@ describe('fee, then the pool', () => {
   });
   it('the owner writes the payment; staff may reject, he writes it again, staff confirm', async () => {
     expect((await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: '' })).status).toBe(400);
-    const w = await j(await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR111222333' })); expect(w.listing.feeStatus).toBe('WAITING_CONFIRM');
+    expect((await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR111222333' })).status).toBe(400); // the no-direct-deal promise is required
+    const w = await j(await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR111222333', noDirectDeal: true })); expect(w.listing.feeStatus).toBe('WAITING_CONFIRM'); expect(w.listing.noDirectDealAt).toBeTruthy();
     expect((await ocall('POST', `/api/owner-listing/${PID}/confirm`)).status).toBe(403);
     const ov = await j(await call(jar.SUP, 'GET', '/api/owner-listing/admin/overview')); expect(ov.waiting.some((x: any) => x.propertyId === PID)).toBe(true);
     expect((await call(jar.SUP, 'POST', `/api/owner-listing/${PID}/reject`, { note: '' })).status).toBe(400);
     expect((await j(await call(jar.SUP, 'POST', `/api/owner-listing/${PID}/reject`, { note: 'UTR not found in bank' }))).listing.feeStatus).toBe('REJECTED');
-    await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR999888777' });
+    await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR999888777', noDirectDeal: true });
     const ok = await j(await call(jar.SUP, 'POST', `/api/owner-listing/${PID}/confirm`)); expect(ok.listing.feeStatus).toBe('PAID'); expect(ok.listing.inPool).toBe(true);
   });
   it('once the fee is paid it is live: a broker SEES it (no owner phone, no fee data) and can bring an offer even before a mandate', async () => {
     const g = await j(await call(jar.B1, 'GET', `/api/properties/${PID}`)); expect(g.property.ownerListed).toBe(true); expect(g.property.inPool).toBe(true);
     expect(g.property.ownerListing).toBeUndefined(); expect(g.property.ownerPhone).not.toContain(PH); expect(g.property.listingStatus).toBe('active');
     const off = await call(jar.B2, 'POST', '/api/offers', { propertyId: PID, buyerName: 'Buyer Name', buyerPhone: '9822233344', amount: 4000000, tokenProposed: 0, consent: true }); expect(off.status, await off.clone().text()).toBe(200);
-    // the owner accepts it, but no TOKEN can be recorded before a broker is chosen and the mandate is signed
-    const oid = (await j(off)).offer.id; const ac = await ocall('POST', `/api/offers/${oid}/decide`, { action: 'ACCEPT' }); expect(ac.status, await ac.clone().text()).toBe(200);
-    const tk = await ocall('POST', `/api/offers/${oid}/token/received`, { amount: 100000, ref: 'UTR123456' }); expect(tk.status).toBe(409);
+    OID = (await j(off)).offer.id;
   });
-  it('a broker asks for the mandate (once); a stranger and the owner cannot', async () => {
-    expect((await call(jar.B1, 'POST', `/api/owner-listing/${PID}/request`, { note: 'I have a client' })).status).toBe(200);
-    expect((await call(jar.B1, 'POST', `/api/owner-listing/${PID}/request`, {})).status).toBe(409);
-    await call(jar.B2, 'POST', `/api/owner-listing/${PID}/request`, {});
-    expect((await ocall('POST', `/api/owner-listing/${PID}/request`, {})).status).toBe(403);
-    const mine = await j(await ocall('GET', '/api/owner-listing/mine')); expect(mine.listings[0].requests.map((x: any) => x.brokerName).length).toBe(2);
+  it('any number of brokers can bring offers on a paid listing (no single broker, no mandate)', async () => {
+    const off = await call(jar.B1, 'POST', '/api/offers', { propertyId: PID, buyerName: 'Second Buyer', buyerPhone: '9822233355', amount: 4100000, tokenProposed: 0, consent: true }); expect(off.status, await off.clone().text()).toBe(200);
+    expect((await call(jar.B1, 'POST', `/api/owner-listing/${PID}/request`, {})).status).toBe(404); // the old ask-for-mandate flow is gone
   });
-  it('the owner gives it to ONE broker: the pool closes for the others, matching still waits for the mandate', async () => {
-    expect((await ocall('POST', `/api/owner-listing/${PID}/assign`, { brokerId: 'USR-NOBODY' })).status).toBe(400);
-    const a = await j(await ocall('POST', `/api/owner-listing/${PID}/assign`, { brokerId: 'USR-BRK-001' })); expect(a.listing.assignedBrokerId).toBe('USR-BRK-001'); expect(a.listing.inPool).toBe(false);
-    const g = await j(await call(jar.B1, 'GET', `/api/properties/${PID}`)); expect(g.property.listingStatus).toBe('active');
-  });
-  it('the owner signs the mandate with a mobile code (no password); the broker signs; ONLY THEN is it active for matching', async () => {
-    const sc = await j(await ocall('POST', '/api/owner/sign-code')); expect(sc.devCode).toMatch(/^\d{6}$/);
-    const bad = await ocall('POST', '/api/owner-mandates', { propertyId: PID, approvedNetPrice: 4500000, protectionPeriodDays: 30, password: '000000' }); expect(bad.status).toBe(400);
-    const sc2 = await j(await ocall('POST', '/api/owner/sign-code'));
-    const m = await ocall('POST', '/api/owner-mandates', { propertyId: PID, approvedNetPrice: 4500000, protectionPeriodDays: 30, password: sc2.devCode });
-    expect(m.status, await m.clone().text()).toBe(200); const mj = await j(m); const id = mj.mandate.id;
-    // the owner paid GENZ, so the broker's share from the owner is ZERO whatever the owner typed
-    expect(mj.mandate.ownerFeeWaived).toBe(true); expect(mj.mandate.fixedFeeAmount).toBe(0); expect(mj.mandate.approvedNetPrice).toBe(0);
-    expect((await call(jar.SUP, 'GET', `/api/properties/${PID}`).then(j)).property.listingStatus).toBe('active');
-    const ok = await call(jar.B1, 'POST', `/api/owner-mandates/${id}/accept`, { password: cfg.demoPassword }); expect(ok.status, await ok.clone().text()).toBe(200);
-    const p = (await j(await call(jar.B1, 'GET', `/api/properties/${PID}`))).property; expect(p.listingStatus).toBe('active'); expect(p.verificationStatus).toBe('VERIFIED');
+  it('a PAID owner listing needs no mandate for a token: any broker may bring the offer', async () => {
+    // the owner PAID GENZ: any broker may bring offers, and a token needs no mandate
+    const oid = OID; const ac = await ocall('POST', `/api/offers/${oid}/decide`, { action: 'ACCEPT' }); expect(ac.status, await ac.clone().text()).toBe(200);
+    const tk = await ocall('POST', `/api/offers/${oid}/token/received`, { amount: 100000, ref: 'UTR123456' }); expect(tk.status, await tk.clone().text()).toBe(200);
   });
 });
 
 describe('free routes and housekeeping', () => {
-  it('a free-plan listing goes straight to the pool; the owner may take a broker instead (no fee) and then waits for the mandate', async () => {
-    const r = await ocall('POST', '/api/properties', prop({ transactionType: 'Rent', askingPrice: 25000, ownerApprovedNetPrice: 22000 })); expect(r.status, await r.clone().text()).toBe(200);
-    const p = (await j(r)).property; expect(p.ownerListing.feeStatus).toBe('FREE'); expect(p.listingStatus).toBe('active');
-    expect((await j(await call(jar.B2, 'GET', `/api/properties/${p.id}`))).property.inPool).toBe(true);
+  it('a free listing is NOT possible on your own: only through a broker / shop QR after a mandate', async () => {
+    const r = await ocall('POST', '/api/properties', prop({ transactionType: 'Rent', askingPrice: 25000, ownerApprovedNetPrice: 22000 })); expect(r.status).toBe(409); expect((await j(r)).code).toBe('VIA_BROKER_ONLY');
   });
   it('naming a broker at listing time = no fee, but not live before the mandate', async () => {
     await call(jar.SUP, 'PUT', `/api/owner-listing/admin/plans/${PLAN}`, { maxActivePerOwner: 5 });
     const r = await ocall('POST', '/api/properties', prop({ listingBrokerId: 'USR-BRK-002' })); expect(r.status, await r.clone().text()).toBe(200);
     const p = (await j(r)).property; expect(p.ownerListing.feeStatus).toBe('WAIVED_BROKER'); expect(p.listingStatus).toBe('pending_verification');
     expect((await call(jar.B1, 'GET', `/api/properties/${p.id}`)).status).toBe(404);
+    // the owner signs the mandate with a mobile code (no password); the broker signs; ONLY THEN is it active for matching
+    const sc = await j(await ocall('POST', '/api/owner/sign-code')); expect(sc.devCode).toMatch(/^\d{6}$/);
+    expect((await ocall('POST', '/api/owner-mandates', { propertyId: p.id, approvedNetPrice: 4500000, protectionPeriodDays: 30, password: '000000' })).status).toBe(400);
+    const sc2 = await j(await ocall('POST', '/api/owner/sign-code'));
+    const m = await ocall('POST', '/api/owner-mandates', { propertyId: p.id, approvedNetPrice: 4500000, protectionPeriodDays: 30, password: sc2.devCode });
+    expect(m.status, await m.clone().text()).toBe(200); const id = (await j(m)).mandate.id;
+    expect((await call(jar.B1, 'GET', `/api/properties/${p.id}`)).status).toBe(404);
+    const ok = await call(jar.B2, 'POST', `/api/owner-mandates/${id}/accept`, { password: cfg.demoPassword }); expect(ok.status, await ok.clone().text()).toBe(200);
+    const q = (await j(await call(jar.B2, 'GET', `/api/properties/${p.id}`))).property; expect(q.listingStatus).toBe('active'); expect(q.verificationStatus).toBe('VERIFIED');
   });
   it('switching owner listing off stops self-listing but brokers can still list for owners', async () => {
     await call(jar.SUP, 'PUT', '/api/owner-listing/admin/config', { enabled: false });

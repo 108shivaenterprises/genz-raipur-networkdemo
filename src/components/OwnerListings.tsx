@@ -53,15 +53,14 @@ const STATUS: Record<string, [string, string, string]> = {
   PENDING: ['Pay the fee to go live', 'फ़ीस देकर लाइव करें', 'bg-amber-100 text-amber-900'],
   WAITING_CONFIRM: ['GENZ is checking your payment', 'GENZ आपका भुगतान जाँच रहा है', 'bg-sky-100 text-sky-900'],
   REJECTED: ['Payment not found — write it again', 'भुगतान नहीं मिला — दोबारा लिखें', 'bg-red-100 text-red-800'],
-  PAID: ['Live in the broker pool', 'ब्रोकर पूल में लाइव', 'bg-emerald-100 text-emerald-900'],
-  FREE: ['Live in the broker pool (free)', 'ब्रोकर पूल में लाइव (मुफ़्त)', 'bg-emerald-100 text-emerald-900'],
-  WAIVED_BROKER: ['With your broker — live after the mandate', 'आपके ब्रोकर के पास — मंडेट के बाद लाइव', 'bg-indigo-100 text-indigo-900'],
+  PAID: ['Live — all GENZ brokers can see it', 'लाइव — सभी GENZ ब्रोकर देख सकते हैं', 'bg-emerald-100 text-emerald-900'],
+    WAIVED_BROKER: ['With your broker — live after the mandate', 'आपके ब्रोकर के पास — मंडेट के बाद लाइव', 'bg-indigo-100 text-indigo-900'],
   EXPIRED: ['Time over — renew', 'समय पूरा — फिर चालू करें', 'bg-slate-200 text-slate-700'],
 };
 
 const OwnerHome: React.FC<{ goto: (t: string) => void }> = ({ goto }) => {
   const tx = useTx(); const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
-  const [ref, setRef] = useState<Record<string, string>>({});
+  const [ref, setRef] = useState<Record<string, string>>({}); const [nd, setNd] = useState<Record<string, boolean>>({});
   const load = useCallback(() => api.olMine().then(setD).catch(e => setErr(e.message)), []);
   useEffect(() => { void load(); }, [load]);
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); await load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
@@ -69,7 +68,7 @@ const OwnerHome: React.FC<{ goto: (t: string) => void }> = ({ goto }) => {
   return (
     <div className="space-y-3" data-testid="owner-listings">
       <div className="flex items-center justify-between gap-2">
-        <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Fee first → listing is live: matches and offers start → before any token or payment, choose a broker and sign the mandate.', 'पहले फ़ीस → लिस्टिंग लाइव: मैच और ऑफ़र शुरू → टोकन / पेमेंट से पहले ब्रोकर चुनें और मंडेट साइन करें।')}</p></div>
+        <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Pay the fee → listing is live: any number of brokers can view, take visits and bring offers. You only agree not to deal directly with a buyer they bring.', 'फ़ीस दो → लिस्टिंग लाइव: कितने भी ब्रोकर देखें, विज़िट लें, ऑफ़र लाएँ। आप सिर्फ़ यह मानते हैं कि लाए गए ख़रीदार से सीधी डील नहीं करेंगे।')}</p></div>
         <button type="button" className={btn} onClick={() => goto('properties')} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>
       </div>
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
@@ -85,54 +84,16 @@ const OwnerHome: React.FC<{ goto: (t: string) => void }> = ({ goto }) => {
               <div className="space-y-2 rounded-lg bg-amber-50 p-2.5 text-xs">
                 <div>{tx('Listing fee', 'लिस्टिंग फ़ीस')}: <b>{formatINR(l.fee)}</b> · {l.durationDays} {tx('days in the pool', 'दिन पूल में')}{l.refundable ? ` · ${tx('refundable on title check / deal', 'टाइटल जाँच / डील पर वापस')}` : ''}</div>
                 <div>{tx('Pay by UPI to', 'UPI से दें')}: <b>{d.upiId || tx('(GENZ will share)', '(GENZ बताएगा)')}</b>{d.payeeName ? ` (${d.payeeName})` : ''}. {tx('Then write the reference (UTR):', 'फिर रेफ़रेंस (UTR) लिखें:')}</div>
+                <label className="flex items-start gap-2 text-[11px]"><input type="checkbox" className="mt-0.5" checked={!!nd[l.propertyId]} onChange={e => setNd({ ...nd, [l.propertyId]: e.target.checked })} data-testid="owner-nodirect" />{tx('I will not deal directly with any buyer or renter brought by GENZ brokers. Any number of brokers may show my property and take visits.', 'GENZ के ब्रोकर जो ख़रीदार / किराएदार लाएँगे, उससे मैं सीधी डील नहीं करूँगा। कितने भी ब्रोकर मेरी प्रॉपर्टी दिखा सकते हैं और विज़िट ले सकते हैं।')}</label>
                 {l.rejectNote && <div className="text-red-700">{l.rejectNote}</div>}
-                <div className="flex gap-2"><input className={inp} placeholder="UTR / Ref" value={ref[l.propertyId] || ''} onChange={e => setRef({ ...ref, [l.propertyId]: e.target.value })} data-testid="owner-utr" /><button type="button" className={btn} disabled={busy || (ref[l.propertyId] || '').length < 3} onClick={() => run(() => api.olPay(l.propertyId, { ref: ref[l.propertyId] }))} data-testid="owner-pay">{tx('Send', 'भेजें')}</button></div>
+                <div className="flex gap-2"><input className={inp} placeholder="UTR / Ref" value={ref[l.propertyId] || ''} onChange={e => setRef({ ...ref, [l.propertyId]: e.target.value })} data-testid="owner-utr" /><button type="button" className={btn} disabled={busy || !nd[l.propertyId] || (ref[l.propertyId] || '').length < 3} onClick={() => run(() => api.olPay(l.propertyId, { ref: ref[l.propertyId], noDirectDeal: !!nd[l.propertyId] }))} data-testid="owner-pay">{tx('Send', 'भेजें')}</button></div>
               </div>
             )}
             {l.feeStatus === 'EXPIRED' && <button type="button" className={btn} disabled={busy} onClick={() => run(() => api.olRenew(l.propertyId))}>{tx('Renew', 'फिर चालू करें')}</button>}
-            {l.inPool && (
-              <div className="space-y-2 rounded-lg bg-slate-50 p-2.5 text-xs" data-testid="owner-requests">
-                <div className="font-semibold">{tx('Brokers who asked for your mandate', 'जिन ब्रोकर ने आपका मंडेट माँगा')} ({l.requests.length})</div>
-                {l.requests.length === 0 && <p className="text-slate-500">{tx('Waiting — brokers can see your listing (not your phone or address).', 'इंतज़ार — ब्रोकर आपकी लिस्टिंग देख सकते हैं (आपका फ़ोन या पता नहीं)।')}</p>}
-                {l.requests.map((q: any) => (
-                  <div key={q.brokerId} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2"><span className="min-w-0"><b>{q.brokerName}</b>{q.note ? <span className="block text-[11px] text-slate-500">{q.note}</span> : null}</span>
-                    <button type="button" className={btn + ' !min-h-9 !px-3'} disabled={busy} onClick={() => run(() => api.olAssign(l.propertyId, q.brokerId))} data-testid={`owner-assign-${q.brokerId}`}><Check className="h-3.5 w-3.5" />{tx('Choose', 'चुनें')}</button></div>
-                ))}
-              </div>
-            )}
-            {l.assignedBrokerId && l.listingStatus !== 'active' && (
-              <div className="space-y-2 rounded-lg bg-indigo-50 p-2.5 text-xs">
-                <p>{tx('You chose a broker. Token / payment entries start after you both sign the mandate. You paid GENZ the listing fee, so the broker cannot ask you for brokerage — he earns from the buyer only.', 'आपने ब्रोकर चुन लिया। आप दोनों के मंडेट पर साइन करने के बाद टोकन / पेमेंट की एंट्री शुरू होगी। आपने GENZ को लिस्टिंग फ़ीस दी है, इसलिए ब्रोकर आपसे ब्रोकरेज नहीं माँग सकता — वह सिर्फ़ ख़रीदार से लेगा।')}</p>
-                <div className="flex gap-2"><button type="button" className={btn} onClick={() => goto('properties')}>{tx('Make the mandate', 'मंडेट बनाएँ')}</button><button type="button" className={ghost} disabled={busy} onClick={() => run(() => api.olUnassign(l.propertyId))}>{tx('Take back', 'वापस लें')}</button></div>
-              </div>
-            )}
+            {l.inPool && <p className="text-[11px] text-slate-600" data-testid="owner-live-note">{tx('Any GENZ broker can see your listing (not your phone or address), bring buyers and take visits. The broker is paid by the buyer only — you pay no brokerage.', 'कोई भी GENZ ब्रोकर आपकी लिस्टिंग देख सकता है (आपका फ़ोन या पता नहीं), ख़रीदार ला सकता है और विज़िट ले सकता है। ब्रोकर को पैसा सिर्फ़ ख़रीदार देगा — आप ब्रोकरेज नहीं देंगे।')}{l.liveUntil ? ` ${tx('Live till', 'लाइव')} ${String(l.liveUntil).slice(0, 10)}.` : ''}</p>}
           </div>
         );
       })}
-    </div>
-  );
-};
-
-const OwnerPool: React.FC = () => {
-  const tx = useTx(); const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [note, setNote] = useState<Record<string, string>>({});
-  const load = useCallback(() => api.olPool().then(setD).catch(e => setErr(e.message)), []);
-  useEffect(() => { void load(); }, [load]);
-  if (!d) return err ? <p className="text-xs text-red-700">{err}</p> : <Loader2 className="h-4 w-4 animate-spin" />;
-  return (
-    <div className="space-y-3" data-testid="owner-pool">
-      <div><h2 className="text-base font-bold text-slate-900">{tx('Owner pool', 'मालिक पूल')}</h2><p className="text-[11px] text-slate-500">{tx('Homes listed by owners themselves. You can see them, and can bring buyers and offers now; a token or payment can be recorded only after the owner chooses you and the mandate is signed. Owner phone and address stay hidden.', 'मालिकों की ख़ुद डाली लिस्टिंग। आप इन्हें देख सकते हैं, और ख़रीदार / ऑफ़र अभी ला सकते हैं; टोकन या पेमेंट की एंट्री तभी होगी जब मालिक आपको चुने और मंडेट साइन हो। मालिक का फ़ोन और पता छिपा रहता है।')}</p></div>
-      {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
-      {d.pool.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No owner listing in the pool now.', 'अभी पूल में कोई मालिक-लिस्टिंग नहीं।')}</p>}
-      {d.pool.map((p: any) => (
-        <div key={p.id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid={`pool-${p.id}`}>
-          <div className="text-sm font-bold text-slate-900">{p.title}</div>
-          <div className="text-[11px] text-slate-500">{p.locality}, {p.city} · {p.propertyType} · {p.transactionType} · {formatINR(p.askingPrice)}</div>
-          {p.requested ? <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-900">✔ {tx('You asked for the mandate', 'आपने मंडेट माँगा')}</span> : (
-            <div className="flex gap-2"><input className={inp} placeholder={tx('Short note to the owner (optional)', 'मालिक के लिए छोटा नोट (वैकल्पिक)')} maxLength={200} value={note[p.id] || ''} onChange={e => setNote({ ...note, [p.id]: e.target.value })} />
-              <button type="button" className={btn} disabled={busy} data-testid={`pool-ask-${p.id}`} onClick={async () => { setBusy(true); setErr(''); try { await api.olRequest(p.id, note[p.id]); await load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}>{tx('Ask mandate', 'मंडेट माँगें')}</button></div>
-          )}
-        </div>
-      ))}
     </div>
   );
 };
@@ -203,6 +164,5 @@ const OwnerPlansAdmin: React.FC = () => {
 
 export const OwnerListingsTab: React.FC<{ role: string; goto: (t: string) => void }> = ({ role, goto }) => {
   if (role === 'PROPERTY_OWNER') return <OwnerHome goto={goto} />;
-  if (role === 'BROKER') return <OwnerPool />;
   return <OwnerPlansAdmin />;
 };

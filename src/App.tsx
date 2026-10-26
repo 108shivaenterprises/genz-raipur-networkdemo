@@ -663,7 +663,7 @@ export default function App() {
 
         {activeTab === 'idreview' && hasPerm(permissions, 'users:review') && <IdReviewView currentUser={currentUser} />}
 
-        {activeTab === 'ownerlist' && (hasPerm(permissions, 'ownerlist:manage') || currentUser.role === 'BROKER' || currentUser.role === 'PROPERTY_OWNER') && <OwnerListingsTab role={currentUser.role} goto={(t: string) => setActiveTab(t as TabType)} />}
+        {activeTab === 'ownerlist' && (hasPerm(permissions, 'ownerlist:manage') || currentUser.role === 'PROPERTY_OWNER') && <OwnerListingsTab role={currentUser.role} goto={(t: string) => setActiveTab(t as TabType)} />}
         {activeTab === 'plans' && (hasPerm(permissions, 'billing:manage') || hasPerm(permissions, 'billing:self')) && <PlansFeesView permissions={permissions} />}
         {activeTab === 'legal' && (hasPerm(permissions, 'legal:desk') || hasPerm(permissions, 'legal:manage')) && <LegalHelpView currentUser={currentUser} permissions={permissions} />}
         {activeTab === 'revenue' && hasPerm(permissions, 'admin:control_center') && <RevenueGrowthView />}

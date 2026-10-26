@@ -40,6 +40,8 @@ export interface OwnerListingState {
   assignedBrokerId?: string; assignedAt?: string;
   requests: { brokerId: string; brokerName: string; note?: string; at: string }[];
   matchedAt?: string;
+  /** the owner's written undertaking: no direct deal with a buyer / renter brought by GENZ brokers (set when he pays the listing fee) */
+  noDirectDealAt?: string;
   createdAt: string;
 }
 
@@ -62,5 +64,5 @@ export function planProblem(p: Partial<OwnerListPlan>): string | null {
 /** is a self-listed property in the broker pool (seen by brokers, never matched)? */
 export const inPool = (p: { ownerListing?: OwnerListingState; listingStatus: string }, now = Date.now()) => {
   const o = p.ownerListing; if (!o || !['pending_verification', 'active'].includes(p.listingStatus)) return false;
-  return (o.feeStatus === 'FREE' || o.feeStatus === 'PAID') && !o.assignedBrokerId && !!o.liveUntil && Date.parse(o.liveUntil) > now;
+  return o.feeStatus === 'PAID' && !o.assignedBrokerId && !!o.liveUntil && Date.parse(o.liveUntil) > now;
 };

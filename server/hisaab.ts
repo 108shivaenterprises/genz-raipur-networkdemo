@@ -14,7 +14,6 @@
  *   PUT  /api/deals/:id/hisaab/due                 { amount }   (my brokerage amount, when the automatic figure is not right)
  *   GET  /api/hisaab                                my deals at a glance
  */
-import { needsMandateFirst, MANDATE_FIRST_MSG } from './ownerlist.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'crypto';
 import { db } from './db.js';
@@ -177,7 +176,6 @@ export function createHisaabRouter() {
     const e = readEntry(req.body); if ('error' in e) return bad(res, e.error || 'Check the entry');
     const kind = ['TOKEN', 'PART', 'FINAL', 'REFUND', 'TO_BROKER'].includes(req.body?.kind) ? req.body.kind as DealPayment['kind'] : null; if (!kind) return bad(res, 'Choose what this payment is (token / part / final / refund)');
     if (kind === 'TOKEN' && st().propertyOffers.some(o => o.dealRoomId === d.id && o.token)) return bad(res, 'The token is already recorded on the accepted offer — it is counted here by itself', 409, { code: 'TOKEN_FROM_OFFER' });
-    if (needsMandateFirst(st().properties.find(x => x.id === d.propertyId))) return bad(res, MANDATE_FIRST_MSG, 409, { code: 'MANDATE_FIRST' });
     let toBrokerId: string | undefined;
     if (kind === 'TO_BROKER') { toBrokerId = str(req.body?.toBrokerId, 80) || u.id; const tb = st().users.find(x => x.id === toBrokerId); if (!tb || !isDealBroker(tb, d)) return bad(res, 'Choose which broker of this deal received it'); }
     const list = d.payments || (d.payments = []);

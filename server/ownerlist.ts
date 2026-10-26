@@ -10,7 +10,7 @@
  *
  *  POST /api/owner/otp {phone,name?}  /api/owner/verify {phone,code,name?}          (public)
  *  GET  /api/owner-listing/config | quote | mine                                     (owner)
- *  POST /api/owner-listing/:pid/pay | renew | via-broker | assign | unassign        (owner)
+ *  POST /api/owner-listing/:pid/pay | renew | via-broker        (owner)
  *  POST /api/owner-listing/:pid/request                                              (verified broker asks to take the mandate)
  *  GET/POST/PUT/DELETE /api/owner-listing/admin/*                                    (GENZ staff: master plan, config, confirm payments)
  */
@@ -39,9 +39,6 @@ const safeRef = (v: unknown) => { const r = str(v, 60); return /^[A-Za-z0-9][A-Z
 const OPEN = ['draft', 'pending_verification', 'active', 'under_negotiation'];
 
 export { inPool };
-/** v73 — a self-listed property (owner paid GENZ) is matched and gets offers at once, but NO token / payment entry before a broker is chosen and the mandate is signed */
-export const needsMandateFirst = (p?: Property) => !!p?.ownerListing && ['PAID', 'FREE'].includes(p.ownerListing.feeStatus) && !p.ownerListing.matchedAt;
-export const MANDATE_FIRST_MSG = 'पहले मालिक ब्रोकर चुने और मंडेट साइन हो — उसके बाद ही टोकन / पेमेंट की एंट्री होगी। / Choose a broker and sign the mandate first — only then a token or payment can be recorded.';
 export function ensureOwnerPlans() {
   const s = st();
   if (s.ownerListPlans.length) return;
@@ -64,8 +61,8 @@ export function applyOwnerListing(owner: UserProfile, data: { transactionType: s
   const live = s.properties.filter(p => p.ownerId === owner.id && p.ownerListing && OPEN.includes(p.listingStatus)).length;
   if (live >= plan.maxActivePerOwner) return { error: `You can keep ${plan.maxActivePerOwner} listing(s) open at a time on this plan. Close or withdraw one first.`, status: 429, code: 'PLAN_LIMIT' };
   if ((data.images || []).length > plan.maxPhotos) return { error: `This plan allows ${plan.maxPhotos} photos per listing.`, status: 400, code: 'PHOTO_LIMIT' };
-  const ol: OwnerListingState = { planId: plan.id, planName: plan.name, fee: plan.fee, durationDays: plan.durationDays, refundable: plan.refundable, feeStatus: plan.fee > 0 ? 'PENDING' : 'FREE', requests: [], createdAt: now };
-  if (plan.fee === 0) { ol.liveFrom = now; ol.liveUntil = new Date(Date.now() + plan.durationDays * DAY).toISOString(); return { patch: { listingStatus: 'active', verificationStatus: 'VERIFIED', ownerListing: ol } }; }
+  if (!(plan.fee > 0)) return { error: 'मुफ़्त लिस्टिंग सिर्फ़ GENZ ब्रोकर या शॉप-QR / रेफ़रल के ज़रिए, ब्रोकर से मंडेट के बाद होती है। अपनी लिस्टिंग के लिए फ़ीस वाला प्लान चाहिए। / A free listing comes only through a GENZ broker or a shop-QR / referral, after a mandate with the broker. Listing on your own needs a paid plan.', status: 409, code: 'VIA_BROKER_ONLY' };
+  const ol: OwnerListingState = { planId: plan.id, planName: plan.name, fee: plan.fee, durationDays: plan.durationDays, refundable: plan.refundable, feeStatus: 'PENDING', requests: [], createdAt: now };
   return { patch: { listingStatus: 'draft', verificationStatus: 'PENDING', ownerListing: ol } };
 }
 
@@ -82,7 +79,7 @@ export function sweepOwnerListings(now = Date.now()): number {
   let n = 0;
   for (const p of st().properties) {
     const o = p.ownerListing; if (!o || !['pending_verification', 'active'].includes(p.listingStatus) || o.assignedBrokerId || o.matchedAt) continue;
-    if (['FREE', 'PAID'].includes(o.feeStatus) && o.liveUntil && Date.parse(o.liveUntil) < now) {
+    if (o.feeStatus === 'PAID' && o.liveUntil && Date.parse(o.liveUntil) < now) {
       o.feeStatus = 'EXPIRED'; p.listingStatus = 'draft'; p.updatedAt = nowIso(); n++;
       alert(p.ownerId, 'deals', 'Your listing time is over', `${p.title} — renew to show it to brokers again.`, '/');
     }
@@ -179,22 +176,15 @@ export function createOwnerListingRouter() {
     res.json({ success: true, listings: rows, upiId: s.ownerListCfg.upiId, payeeName: s.ownerListCfg.payeeName });
   });
 
-  /** verified brokers: the owner-listed homes open in the pool (seen, not matched) and whether I already asked */
-  r.get('/pool', needs('property:read'), (_req, res) => {
-    const u = me(); if (u.role !== 'BROKER') return res.json({ success: true, pool: [] });
-    const rows = st().properties.filter(p => inPool(p)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 100).map(p => ({
-      id: p.id, title: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType, transactionType: p.transactionType, askingPrice: p.askingPrice, image: p.images?.[0] || '',
-      requested: !!p.ownerListing!.requests.find(x => x.brokerId === u.id), requests: p.ownerListing!.requests.length, liveUntil: p.ownerListing!.liveUntil }));
-    res.json({ success: true, pool: rows });
-  });
   r.post('/:pid/pay', needs('property:create'), rateLimit('olist-pay', 30, 3600_000), (req, res) => {
     const p = mineProp(req, res); if (!p) return; const o = p.ownerListing!; const u = me();
     if (!['PENDING', 'REJECTED', 'EXPIRED'].includes(o.feeStatus) || !(o.fee > 0)) return bad(res, 'Nothing to pay on this listing', 409);
     const ref = safeRef(req.body?.ref); if (!ref) return bad(res, 'Write the UPI / bank reference (UTR) of your payment');
+    if (req.body?.noDirectDeal !== true) return bad(res, 'मालिक की हामी ज़रूरी: GENZ के ज़रिए आए ख़रीदार / किराएदार से आप सीधी डील नहीं करेंगे। / Please confirm you will not deal directly with a buyer or renter that GENZ brokers bring.', 400, 'NO_DIRECT_DEAL');
     const paidOn = str(req.body?.paidOn, 10) || nowIso().slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn) || Date.parse(paidOn) > Date.now() + DAY) return bad(res, 'Choose the date you paid (not a future date)');
     if (st().properties.some(x => x.id !== p.id && x.ownerListing?.ref === ref && ['WAITING_CONFIRM', 'PAID'].includes(x.ownerListing.feeStatus))) return bad(res, 'This reference is already used on another listing', 409);
-    o.ref = ref; o.paidOn = paidOn; o.payNote = str(req.body?.note, 200) || undefined; o.rejectNote = undefined; o.feeStatus = 'WAITING_CONFIRM'; p.updatedAt = nowIso(); db.save();
+    o.noDirectDealAt = nowIso(); o.ref = ref; o.paidOn = paidOn; o.payNote = str(req.body?.note, 200) || undefined; o.rejectNote = undefined; o.feeStatus = 'WAITING_CONFIRM'; p.updatedAt = nowIso(); db.save();
     db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_WRITTEN', `Owner wrote the listing fee payment ₹${o.fee} (ref ${ref})`);
     staffAlert('Listing fee to confirm', `${u.name}: ₹${o.fee} for ${p.title} (ref ${ref}).`);
     res.json({ success: true, listing: feeView(p) });
@@ -204,7 +194,8 @@ export function createOwnerListingRouter() {
     if (o.feeStatus !== 'EXPIRED') return bad(res, 'Only a listing whose time is over can be renewed', 409);
     const plan = pickOwnerPlan(st().ownerListPlans, p.transactionType, p.propertyType); if (!plan) return bad(res, 'No listing plan covers this kind of property now', 409, 'NO_PLAN');
     Object.assign(o, { planId: plan.id, planName: plan.name, fee: plan.fee, durationDays: plan.durationDays, refundable: plan.refundable, ref: undefined, paidOn: undefined, confirmedAt: undefined, confirmedById: undefined });
-    if (plan.fee === 0) { o.feeStatus = 'FREE'; o.liveFrom = nowIso(); o.liveUntil = new Date(Date.now() + plan.durationDays * DAY).toISOString(); p.listingStatus = 'active'; p.verificationStatus = 'VERIFIED'; } else o.feeStatus = 'PENDING';
+    if (!(plan.fee > 0)) return bad(res, 'A free listing comes only through a GENZ broker or a shop-QR / referral, after a mandate.', 409, 'VIA_BROKER_ONLY');
+    o.feeStatus = 'PENDING';
     p.updatedAt = nowIso(); db.save(); res.json({ success: true, listing: feeView(p) });
   });
   r.post('/:pid/via-broker', needs('property:create'), (req, res) => {
@@ -217,39 +208,6 @@ export function createOwnerListingRouter() {
     alert(b.id, 'deals', 'An owner chose you', `${p.title} — create / sign the mandate to take it live.`, '/');
     res.json({ success: true, listing: feeView(p) });
   });
-  r.post('/:pid/request', needs('property:read'), rateLimit('olist-req', 40, 3600_000), (req, res) => {
-    const u = me(); const p = st().properties.find(x => x.id === req.params.pid);
-    if (u.role !== 'BROKER' || u.verificationStatus !== 'VERIFIED') return bad(res, 'Only a verified GENZ broker can ask for a mandate', 403);
-    if (!p || !p.ownerListing || !inPool(p)) return bad(res, 'This listing is not open in the pool', 404);
-    const o = p.ownerListing;
-    if (o.requests.some(x => x.brokerId === u.id)) return bad(res, 'You have already asked for this listing', 409);
-    if (o.requests.length >= 20) return bad(res, 'Enough brokers have asked already', 409);
-    o.requests.push({ brokerId: u.id, brokerName: u.name, note: str(req.body?.note, 200) || undefined, at: nowIso() }); p.updatedAt = nowIso(); db.save();
-    alert(p.ownerId, 'deals', 'A broker wants your property', `${u.name} asked to take the mandate for ${p.title}.`, '/');
-    res.json({ success: true });
-  });
-  r.post('/:pid/assign', needs('property:create'), (req, res) => {
-    const p = mineProp(req, res); if (!p) return; const o = p.ownerListing!; const u = me();
-    if (!inPool(p)) return bad(res, 'Only a listing that is open in the pool can be given to a broker', 409);
-    const rq = o.requests.find(x => x.brokerId === String(req.body?.brokerId)); if (!rq) return bad(res, 'Choose one of the brokers who asked', 400);
-    const b = st().users.find(x => x.id === rq.brokerId && x.role === 'BROKER' && x.verificationStatus === 'VERIFIED'); if (!b) return bad(res, 'That broker is not active now', 409);
-    o.assignedBrokerId = b.id; o.assignedAt = nowIso(); p.listingBrokerId = b.id; p.updatedAt = nowIso(); db.save();
-    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_ASSIGNED', `Owner gave the listing to ${b.name} — matched only after the mandate is signed`);
-    alert(b.id, 'deals', 'The owner chose you ✔', `${p.title} — create / sign the mandate to start matching.`, '/');
-    res.json({ success: true, listing: feeView(p) });
-  });
-  r.post('/:pid/unassign', needs('property:create'), (req, res) => {
-    const p = mineProp(req, res); if (!p) return; const o = p.ownerListing!; const u = me();
-    if (!o.assignedBrokerId || p.listingStatus === 'active' || o.matchedAt) return bad(res, 'The mandate is already signed — use the mandate to change the broker', 409);
-    const was = o.assignedBrokerId; o.assignedBrokerId = undefined; o.assignedAt = undefined; p.listingBrokerId = '';
-    if (o.feeStatus === 'WAIVED_BROKER') { o.feeStatus = 'PENDING'; p.listingStatus = 'draft'; }
-    p.updatedAt = nowIso(); db.save();
-    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_UNASSIGNED', 'Owner took the listing back before the mandate was signed');
-    alert(was, 'deals', 'The owner changed his mind', `${p.title} is no longer assigned to you.`, '/');
-    res.json({ success: true, listing: feeView(p) });
-  });
-
-  // ── GENZ staff ──
   r.get('/admin/overview', manage, (_req, res) => {
     const s = st();
     const waiting = s.properties.filter(p => p.ownerListing?.feeStatus === 'WAITING_CONFIRM').map(p => ({ ...feeView(p), ownerName: p.ownerName, ownerId: p.ownerId }));
@@ -293,8 +251,8 @@ export function createOwnerListingRouter() {
     if (!p || !o || o.feeStatus !== 'WAITING_CONFIRM') return bad(res, 'No payment is waiting on this listing', 404);
     o.feeStatus = 'PAID'; o.confirmedById = u.id; o.confirmedAt = nowIso(); o.liveFrom = nowIso(); o.liveUntil = new Date(Date.now() + o.durationDays * DAY).toISOString();
     p.listingStatus = 'active'; p.verificationStatus = 'VERIFIED'; p.updatedAt = nowIso(); db.save();
-    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_CONFIRMED', `Listing fee ₹${o.fee} confirmed — listing is in the pool for ${o.durationDays} days`);
-    alert(p.ownerId, 'deals', 'Your listing is live ✔', `${p.title} — it is live — buyers can be matched and offers can come. Before any token or payment, choose a broker and sign the mandate.`, '/');
+    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_CONFIRMED', `Listing fee ₹${o.fee} confirmed — listing is live for ${o.durationDays} days`);
+    alert(p.ownerId, 'deals', 'Your listing is live ✔', `${p.title} — it is live. Any number of GENZ brokers can see it, bring buyers and take visits. The broker earns from the buyer only.`, '/');
     res.json({ success: true, listing: feeView(p) });
   });
   r.post('/:pid/reject', manage, (req, res) => {

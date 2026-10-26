@@ -212,7 +212,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('audit:read_all', 'audit:read_own') ? [{ id: 'audit', label: t('nav.audit', 'Activity Record'), icon: History }] : []),
     ...(has('users:invite', 'users:review') ? [{ id: 'onboarding', label: t('nav.onboarding', 'Invite & KYC'), icon: KeyRound }] : []),
     ...(has('users:review') ? [{ id: 'idreview', label: t('nav.idreview', 'ID Review'), icon: FileSearch, badge: idBadge }] : []),
-    ...(isOwner && has('property:create') ? [{ id: 'ownerlist', label: t('nav.ownerlistOwner', 'My Listings'), icon: Building }] : currentUser?.role === 'BROKER' ? [{ id: 'ownerlist', label: t('nav.ownerlistBroker', 'Owner Pool'), icon: Building }] : has('ownerlist:manage') ? [{ id: 'ownerlist', label: t('nav.ownerlistAdmin', 'Owner Listing Plans'), icon: BadgeIndianRupee }] : []),
+    ...(isOwner && has('property:create') ? [{ id: 'ownerlist', label: t('nav.ownerlistOwner', 'My Listings'), icon: Building }] : has('ownerlist:manage') ? [{ id: 'ownerlist', label: t('nav.ownerlistAdmin', 'Owner Listing Plans'), icon: BadgeIndianRupee }] : []),
     ...(has('billing:manage') ? [{ id: 'plans', label: t('nav.plansAdmin', 'Plans & Fees'), icon: BadgeIndianRupee, badge: billing.count }] : has('billing:self') && (billing.relevant || activeTab === 'plans') ? [{ id: 'plans', label: t('nav.plans', 'GENZ Membership'), icon: BadgeIndianRupee, badge: billing.count }] : []),
     ...(has('legal:manage') ? [{ id: 'legal', label: t('nav.legalAdmin', 'Legal Help'), icon: ScaleIcon, badge: legalBadge }] : []),
     ...(has('admin:control_center') ? [{ id: 'revenue', label: t('nav.revenue', 'Revenue & Growth'), icon: IndianRupee }] : []),
