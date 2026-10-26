@@ -1076,7 +1076,7 @@ export interface OwnerConsent {
   events: { at: string; text: string }[];
   createdAt: string; updatedAt: string;
 }
-export interface PushSub { id: string; userId: string; endpoint: string; p256dh: string; auth: string; ua: string; createdAt: string; lastOkAt?: string; fails: number }
+export interface PushSub { id: string; userId: string; endpoint: string; p256dh: string; auth: string; ua: string; createdAt: string; lastOkAt?: string; fails: number; /** v69 — a client-room phone: the page to open when the alert is tapped */ url?: string }
 export interface PushPref { id: string; userId: string; matches: boolean; deals: boolean; consent: boolean; broadcast: boolean; digest: boolean; quiet: boolean; lastDigestDay?: string; sentToday?: { day: string; n: number }; /** v59 — the app language on his phone: alerts that have a Hindi line use it */ lang?: 'en' | 'hi' }
 /** "Mere client ko ye chahiye" sent to the brokers who hold matching listings. */
 export interface Broadcast {
@@ -1167,7 +1167,10 @@ export interface ClientRoom {
     /** v55 — a protected property paper the broker showed his client (opens view-only, with the client's name stamped) */
     paper?: { shareId: string; docId: string; title: string } }[];
   events: { at: string; text: string }[];
+  /** v69 — papers / photos / ID copies the CLIENT sent from his page. The file itself is AES-sealed on disk (data/clientdocs); erased when the room closes. */
+  docs?: ClientRoomDoc[];
 }
+export interface ClientRoomDoc { id: string; kind: 'KYC_PAN' | 'KYC_AADHAAR_MASKED' | 'KYC_OTHER_ID' | 'PAPER' | 'PHOTO'; name: string; mime: string; size: number; at: string; sha256: string; note?: string; consentAt: string; openedByBroker?: number }
 /** v56 — a home a member saved (buyer shortlist) */
 export interface SavedProperty { id: string; userId: string; propertyId: string; at: string }
 /** v57 — an enquiry sent from a broker's public page (/c/<code>). It belongs to the PAGE broker only — also when it is about another

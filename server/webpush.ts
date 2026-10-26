@@ -147,6 +147,46 @@ export function prefsOf(userId: string): PushPref {
   return p;
 }
 
+/** the sending part: encrypt + POST to each device's push service; dead devices (404 / 410, or 8 failures in a row) are dropped. Never throws. */
+async function deliver(subs: PushSub[], words: { title: string; body: string }, msg: PushMsg): Promise<number> {
+  const s = db.getState();
+  const keys = vapidKeys();
+  if (!keys || !subs.length) return 0;
+  const urlOf = (sub: PushSub) => (sub.url && sub.url.startsWith('/') ? sub.url : msg.url && msg.url.startsWith('/') ? msg.url : '/');
+  let ok = 0;
+  await Promise.all(subs.map(async sub => {
+    if (!allowedEndpoint(sub.endpoint)) return;
+    try {
+      const payload = Buffer.from(JSON.stringify({ t: words.title.slice(0, 80), b: words.body.slice(0, 180), u: urlOf(sub), g: msg.tag || msg.kind }));
+      const body = encryptPayload(payload, sub.p256dh, sub.auth);
+      const r = await fetchImpl(sub.endpoint, { method: 'POST', headers: { TTL: '86400', Urgency: msg.kind === 'consent' ? 'high' : 'normal', 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', Authorization: vapidAuth(sub.endpoint, keys, subject()) }, body: body as any, signal: AbortSignal.timeout(8000) });
+      if (r.status === 404 || r.status === 410) { s.pushSubs = s.pushSubs.filter(x => x.id !== sub.id); return; }
+      if (r.ok) { ok++; sub.lastOkAt = nowIso(); sub.fails = 0; } else sub.fails = (sub.fails || 0) + 1;
+    } catch { sub.fails = (sub.fails || 0) + 1; }
+    if (sub.fails >= 8) s.pushSubs = s.pushSubs.filter(x => x.id !== sub.id);
+  }));
+  return ok;
+}
+
+/** v69 — a client room's phones (no account): the key is `room:<roomId>`; each phone keeps the room link it was opened from (`url`). At most ROOM_DAILY alerts a day per room. */
+const ROOM_DAILY = 30;
+const roomDay = new Map<string, { day: string; n: number }>();
+export const roomPushKey = (roomId: string) => `room:${roomId}`;
+export async function pushToRoom(roomId: string, title: string, body: string, tag = 'room'): Promise<number> {
+  try {
+    const s = db.getState(); const key = roomPushKey(roomId);
+    const subs = s.pushSubs.filter(x => x.userId === key);
+    if (!subs.length) return 0;
+    const day = istDay(); const c = roomDay.get(key); if (!c || c.day !== day) roomDay.set(key, { day, n: 0 });
+    const cur = roomDay.get(key)!; if (cur.n >= ROOM_DAILY) return 0; cur.n++;
+    pushLog.push({ userId: key, msg: { kind: 'deals', title, body }, endpoints: subs.length, at: nowIso() }); if (pushLog.length > 500) pushLog.shift();
+    const ok = await deliver(subs, { title, body }, { kind: 'deals', title, body, tag });
+    db.save();
+    return ok;
+  } catch (e) { console.error('[PUSH] room send failed:', (e as Error).message); return 0; }
+}
+export function dropRoomPush(roomId: string) { const s = db.getState(); const key = roomPushKey(roomId); const n = s.pushSubs.length; s.pushSubs = s.pushSubs.filter(x => x.userId !== key); return n - s.pushSubs.length; }
+
 /** never throws, never blocks the request that caused it */
 export async function pushTo(userId: string, msg: PushMsg): Promise<number> {
   try {
@@ -163,21 +203,8 @@ export async function pushTo(userId: string, msg: PushMsg): Promise<number> {
     if (p.sentToday.n >= DAILY_CAP) return 0;
     p.sentToday.n++;
     pushLog.push({ userId, msg, endpoints: subs.length, at: nowIso() }); if (pushLog.length > 500) pushLog.shift();
-    const keys = vapidKeys();
-    if (!keys || !subs.length) return 0;
     const words = p.lang === 'hi' && msg.hi ? msg.hi : msg;
-    const payload = Buffer.from(JSON.stringify({ t: words.title.slice(0, 80), b: words.body.slice(0, 180), u: msg.url && msg.url.startsWith('/') ? msg.url : '/', g: msg.tag || msg.kind }));
-    let ok = 0;
-    await Promise.all(subs.map(async sub => {
-      if (!allowedEndpoint(sub.endpoint)) return;
-      try {
-        const body = encryptPayload(payload, sub.p256dh, sub.auth);
-        const r = await fetchImpl(sub.endpoint, { method: 'POST', headers: { TTL: '86400', Urgency: msg.kind === 'consent' ? 'high' : 'normal', 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', Authorization: vapidAuth(sub.endpoint, keys, subject()) }, body: body as any, signal: AbortSignal.timeout(8000) });
-        if (r.status === 404 || r.status === 410) { s.pushSubs = s.pushSubs.filter(x => x.id !== sub.id); return; }
-        if (r.ok) { ok++; sub.lastOkAt = nowIso(); sub.fails = 0; } else sub.fails = (sub.fails || 0) + 1;
-      } catch { sub.fails = (sub.fails || 0) + 1; }
-      if (sub.fails >= 8) s.pushSubs = s.pushSubs.filter(x => x.id !== sub.id);
-    }));
+    const ok = await deliver(subs, words, msg);
     db.save();
     return ok;
   } catch (e) {

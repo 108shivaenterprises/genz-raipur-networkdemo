@@ -599,6 +599,7 @@ export const api = {
   crAddItem: (id: string, propertyId: string, note?: string) => request<any>(`/api/client-rooms/${id}/items`, { method: 'POST', body: JSON.stringify({ propertyId, note }) }),
   crDelItem: (id: string, itemId: string) => request<any>(`/api/client-rooms/${id}/items/${itemId}`, { method: 'DELETE' }),
   crSend: (id: string, text: string, propertyId?: string) => request<any>(`/api/client-rooms/${id}/messages`, { method: 'POST', body: JSON.stringify({ text, propertyId }) }),
+  crDocDel: (id: string, docId: string) => request<any>(`/api/client-rooms/${id}/docs/${docId}`, { method: 'DELETE' }),
   crRead: (id: string) => request<any>(`/api/client-rooms/${id}/read`, { method: 'POST' }),
   crVisitHandled: (id: string, itemId: string, vid: string) => request<any>(`/api/client-rooms/${id}/visit/${itemId}/${vid}/handled`, { method: 'POST' }),
   // v40 — photos & video shown to the client

@@ -19,7 +19,11 @@ import { db } from './db.js';
 import type { ClientRoom, UserProfile, Property } from './db.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, setSessionCookie as _unused } from './auth.js';
 import { sendSms } from './notify.js';
-import { pushTo } from './webpush.js';
+import fs from 'fs';
+import path from 'path';
+import { pushTo, pushToRoom, dropRoomPush, roomPushKey, vapidKeys, allowedEndpoint } from './webpush.js';
+import { sniffMime } from '../src/shared/propDocs.js';
+import { DOC_KINDS, DOC_LIMITS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
 import { stripPhones } from '../src/shared/waParse.js';
 import { ROOM_KINDS, ROOM_LIMITS as L, containsPhone, PHONE_IN_CHAT_MSG } from '../src/shared/clientRoomRules.js';
 import { joinFooter } from './publicFooter.js';
@@ -104,6 +108,7 @@ export function linkVisitToRoom(room: ClientRoom, item: ClientRoom['items'][numb
   (item.visits ||= []).push({ visitId: visit.id, when: visit.scheduledTime, at: nowIso() });
   const req = requestId ? item.visitRequests.find(v => v.id === requestId) : item.visitRequests.find(v => v.status === 'REQUESTED');
   if (req) { req.status = 'HANDLED'; req.visitId = visit.id; }
+  tell(room, 'विज़िट तय / Visit booked', 'तारीख़ और समय देखने के लिए खोलें / Open to see the date and time');
   ev(room, `Visit booked for ${new Date(visit.scheduledTime).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${visit.id})`);
 }
 
@@ -136,7 +141,7 @@ function detail(r: ClientRoom) {
   const props = st().properties;
   const awaiting = r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
   return {
-    ...summary(r), note: r.note, messages: r.messages, events: r.events.slice(-30),
+    ...summary(r), note: r.note, messages: r.messages, events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(),
     items: r.items.map(i => {
       const p = props.find(x => x.id === i.propertyId);
       const avail = p ? shareableMedia({ id: r.brokerId }, p) : { photos: [], videos: [] };
@@ -211,7 +216,7 @@ export function createClientRoomRouter() {
     room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note, visitRequests: [], ...(media && (media.photos.length || media.videos.length) ? { media } : {}) });
     ev(room, `${isStaff(me()) ? `${me().name}: ` : ''}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? ' + video' : ''}` : ''}`);
     db.save();
-    void pushIfSeen(room);
+    tell(room, 'नई प्रॉपर्टी / A new property', 'आपके ब्रोकर ने आपके लिए एक प्रॉपर्टी जोड़ी / Your broker added a property for you');
     res.json({ success: true, room: detail(room) });
   });
 
@@ -260,6 +265,7 @@ export function createClientRoomRouter() {
     room.messages.push({ id: rid('CRX'), from: 'BROKER', text, at: nowIso(), propertyId: validPropRef(room, req.body?.propertyId), ...(isStaff(u) ? { byId: u.id, byName: u.name } : {}) });
     room.lastBrokerSeenAt = nowIso(); ev(room, isStaff(u) ? `${u.name} (office team) wrote` : 'Broker wrote');
     db.save();
+    tell(room, 'आपके ब्रोकर का संदेश / Message from your broker', 'पढ़ने के लिए खोलें / Tap to read');
     res.json({ success: true, room: detail(room) });
   });
 
@@ -283,7 +289,7 @@ export function createClientRoomRouter() {
     if (room.status !== 'ACTIVE') return bad(res, 'This room is closed', 409);
     const token = newToken();
     room.tokenHash = sha(token); room.sessVersion += 1; room.otpHash = undefined; room.otpPlain = undefined; room.otpExpires = undefined;
-    room.devices = []; room.linkAt = nowIso();
+    room.devices = []; room.linkAt = nowIso(); dropRoomPush(room.id); // the old link is dead — so are the alerts that opened it
     room.expiresAt = new Date(Date.now() + L.linkDays * 86400_000).toISOString();
     ev(room, 'New link made — the old link stopped working'); db.save();
     db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_LINK_RENEWED', 'Client room link renewed');
@@ -336,10 +342,32 @@ export function createClientRoomRouter() {
     res.json({ success: true, room: detail(room) });
   });
 
+  /** v69 — a file the client sent. KYC copies only the broker opens (never his office staff); every open is counted and written to the audit trail. */
+  r.get('/:id/docs/:docId', rateLimit('cr-doc-open', 200, 3600_000), (req: Request, res: Response) => {
+    const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    const d = (room.docs || []).find(x => x.id === req.params.docId); if (!d) return bad(res, 'Not found', 404);
+    if (isKycKind(d.kind) && isStaff(me())) return bad(res, 'ID copies are opened by the broker only', 403, { code: 'KYC_BROKER_ONLY' });
+    let buf: Buffer;
+    try { buf = Buffer.from(unseal(fs.readFileSync(docFile(room.id, d.id), 'utf8'), docAad(room.id, d.id)), 'base64'); } catch { return bad(res, 'This file can no longer be opened', 410); }
+    d.openedByBroker = (d.openedByBroker || 0) + 1; ev(room, `${me().name} opened a file the client sent (${d.kind})`); db.save();
+    db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_DOC_OPENED', `Client-room file ${d.id} (${d.kind}) opened`);
+    res.set({ 'Content-Type': d.mime, 'Content-Disposition': `inline; filename="${d.id}.${d.mime === 'application/pdf' ? 'pdf' : d.mime === 'image/png' ? 'png' : d.mime === 'image/webp' ? 'webp' : 'jpg'}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'" });
+    res.send(buf);
+  });
+  r.delete('/:id/docs/:docId', (req: Request, res: Response) => {
+    const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    const d = (room.docs || []).find(x => x.id === req.params.docId); if (!d) return bad(res, 'Not found', 404);
+    if (isKycKind(d.kind) && isStaff(me())) return bad(res, 'ID copies are removed by the broker only', 403, { code: 'KYC_BROKER_ONLY' });
+    try { fs.rmSync(docFile(room.id, d.id), { force: true }); } catch { /* already gone */ }
+    room.docs = (room.docs || []).filter(x => x.id !== d.id); ev(room, `${me().name} removed a file the client sent`); db.save();
+    db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_DOC_REMOVED', `Client-room file ${d.id} (${d.kind}) removed`);
+    res.json({ success: true, room: detail(room) });
+  });
+
   r.post('/:id/close', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     if (isStaff(me())) return bad(res, 'Only the broker can close a client room', 403, { code: 'STAFF_CANNOT_CLOSE' });
-    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPlain = undefined; room.phoneSealed = undefined;
+    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPlain = undefined; room.phoneSealed = undefined; eraseRoomFiles(room);
     ev(room, 'Room closed'); db.save();
     db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_CLOSED', 'Client room closed');
     res.json({ success: true, room: detail(room) });
@@ -350,6 +378,19 @@ export function createClientRoomRouter() {
 const validPropRef = (room: ClientRoom, id: unknown) => { const s = String(id || ''); return room.items.some(i => i.propertyId === s) ? s : undefined; };
 /** broker pushes: only when the client has an account-free session already; the push is to the BROKER, so it never carries chat text */
 function pushIfSeen(_room: ClientRoom) { /* the client has no app: the broker sends the link on WhatsApp */ }
+
+// ───────────────────────────── v69 — the client's phones (alerts) and the papers he sends ─────────────────────────────
+const tell = (room: ClientRoom, title: string, body: string) => { void pushToRoom(room.id, title, body, `room-${room.id}`); };
+const DOCDIR = (roomId: string) => path.resolve(process.cwd(), 'data', 'clientdocs', roomId.replace(/[^A-Za-z0-9-]/g, ''));
+const docFile = (roomId: string, docId: string) => path.join(DOCDIR(roomId), docId.replace(/[^A-Za-z0-9-]/g, '') + '.bin');
+const docAad = (roomId: string, docId: string) => `clientroom:${roomId}:doc:${docId}`;
+/** DPDP — every file the client sent leaves the disk when the room closes or runs out (and the alerts to his phones stop) */
+function eraseRoomFiles(room: ClientRoom) {
+  try { fs.rmSync(DOCDIR(room.id), { recursive: true, force: true }); } catch { /* nothing there */ }
+  room.docs = [];
+  dropRoomPush(room.id);
+}
+const docView = (d: NonNullable<ClientRoom['docs']>[number]) => ({ id: d.id, kind: d.kind, kyc: isKycKind(d.kind), name: d.name, mime: d.mime, size: d.size, at: d.at, note: d.note, opened: d.openedByBroker || 0 });
 const pingBroker = (room: ClientRoom, title: string, body: string) => {
   void pushTo(room.brokerId, { kind: 'deals', title, body, url: '/?tab=clientroom' });
   for (const m of roomTeam(room.brokerId)) void pushTo(m.id, { kind: 'deals', title, body, url: '/?tab=clientroom' }); // v58 — his office staff who work the rooms
@@ -415,12 +456,36 @@ button,.btn{display:inline-block;padding:11px 16px;border-radius:11px;border:0;f
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.gal{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scroll-snap-type:x mandatory}.gal img{width:150px;height:110px;object-fit:cover;border-radius:10px;flex:none;background:#eee;scroll-snap-align:start}.vid{position:relative;margin-top:10px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9}.vid iframe,.vid video{position:absolute;inset:0;width:100%;height:100%;border:0}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}
 .wm{position:fixed;inset:-20%;pointer-events:none;z-index:50;display:flex;flex-wrap:wrap;gap:60px 40px;align-content:space-around;justify-content:space-around;transform:rotate(-24deg);opacity:.07;font-size:15px;font-weight:800;color:#000;user-select:none}`;
 
-function shell(title: string, body: string, lang = 'hi') {
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div><script src="/r/cr.js" defer></script></body></html>`;
+function shell(title: string, body: string, lang = 'hi', head = '') {
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png">${head}<title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div><script src="/r/cr.js" defer></script></body></html>`;
 }
-const CR_JS = `(function(){var im=document.querySelectorAll('.prop img,.gal img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
+const CR_JS = `(function(){var TOK=(location.pathname.match(/^\\/r\\/([A-Za-z0-9_-]+)/)||[])[1]||'';var im=document.querySelectorAll('.prop img,.gal img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
-var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}})();`;
+var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}
+function $(i){return document.getElementById(i)}
+// v69 — the room as an app: service worker, "add to home", alerts, sending papers
+var sw=null;if('serviceWorker' in navigator&&TOK&&$('app-card')){navigator.serviceWorker.register('/sw.js').then(function(r){sw=r;setup()}).catch(function(){setup()})}else{setup()}
+var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b)b.style.display='inline-block'});
+function standalone(){return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
+function setup(){var c=$('app-card');if(!c)return;if(standalone()){var i=$('app-install');if(i)i.style.display='none';var ih=$('app-ios');if(ih)ih.style.display='none'}
+var ios=/iphone|ipad|ipod/i.test(navigator.userAgent);if(ios&&!standalone()&&$('app-ios'))$('app-ios').style.display='block';
+var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
+var bp=$('app-push');var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator&&(!ios||standalone());
+if(bp&&can){bp.style.display='inline-block';if(Notification.permission==='granted'){reg(true)}bp.addEventListener('click',function(){reg(false)})}else if(bp&&ios&&!standalone()){/* iPhone needs the app on the home screen first */}
+}
+function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o}
+function reg(quiet){var bp=$('app-push');var m=$('app-push-msg');navigator.serviceWorker.ready.then(function(r){return Notification.requestPermission().then(function(p){if(p!=='granted'){if(m)m.textContent='अलर्ट बंद हैं — फ़ोन की सेटिंग में अनुमति दें। / Alerts are off — allow them in the phone settings.';return}
+return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){if(m)m.textContent='अलर्ट अभी चालू नहीं हैं। / Alerts are not on yet.';return}
+return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/r/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){if(bp)bp.style.display='none';if(m)m.textContent='🔔 अलर्ट चालू हैं / Alerts are on'}else if(m&&!quiet)m.textContent='अलर्ट चालू नहीं हो पाए — दोबारा कोशिश करें। / Could not turn alerts on — try again.'})})})})}).catch(function(){if(m&&!quiet)m.textContent='इस फ़ोन पर अलर्ट नहीं चल सकते। / Alerts do not work on this phone.'})}
+// sending a paper / photo / ID copy: a photo is made smaller on the phone first
+var df=$('docform');if(df){df.addEventListener('submit',function(e){e.preventDefault();var msg=$('docmsg'),f=$('docfile').files[0];if(!f){msg.textContent='फ़ाइल चुनें। / Choose a file.';return}
+if(!$('docok').checked){msg.textContent='सहमति पर टिक करें। / Please tick the consent.';return}
+var btn=df.querySelector('button[type=submit]');btn.disabled=true;msg.textContent='भेज रहे हैं… / Sending…';
+var send=function(data,name,mime){fetch('/r/'+TOK+'/doc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:$('dockind').value,name:name,data:data,note:$('docnote').value,consent:true})}).then(function(x){return x.json().then(function(j){return{ok:x.ok,j:j}})}).then(function(r){if(r.ok){location.href='/r/'+TOK+'?doc=1#docs'}else{btn.disabled=false;msg.textContent=(r.j&&r.j.error)||'नहीं भेज पाए। / Could not send.'}}).catch(function(){btn.disabled=false;msg.textContent='नेटवर्क की दिक्कत — दोबारा कोशिश करें। / Network problem — try again.'})};
+if(f.type==='application/pdf'){if(f.size>2400000){btn.disabled=false;msg.textContent='PDF 2.4 MB से छोटी हो। / The PDF must be under 2.4 MB.';return}var fr=new FileReader();fr.onload=function(){send(String(fr.result).split(',')[1],f.name,f.type)};fr.readAsDataURL(f);return}
+var url=URL.createObjectURL(f),im=new Image();im.onload=function(){var k=Math.min(1,1600/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*k));cv.height=Math.max(1,Math.round(im.height*k));cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);var d=cv.toDataURL('image/jpeg',0.8);URL.revokeObjectURL(url);send(d.split(',')[1],f.name,'image/jpeg')};im.onerror=function(){btn.disabled=false;msg.textContent='यह फ़ोटो पढ़ी नहीं जा सकी। / This photo could not be read.'};im.src=url})}
+var dl=document.querySelectorAll('[data-deldoc]');for(var j=0;j<dl.length;j++){(function(b){b.addEventListener('click',function(){if(!confirm('यह फ़ाइल हटाएँ? / Remove this file?'))return;fetch('/r/'+TOK+'/doc/'+b.getAttribute('data-deldoc')+'/delete',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.href='/r/'+TOK+'#docs'})})})(dl[j])}
+})();`;
 
 /**
  * v55 — the client's view-only paper viewer (vanilla JS, served from /r/pv.js because the page allows only 'self' scripts).
@@ -628,6 +693,86 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     res.send(page);
   });
 
+  // ───────── v69 — the room as an app: its own manifest, alerts on the client's phone, papers / KYC sent to the broker ─────────
+  r.get('/:token/manifest.webmanifest', (req: Request, res: Response) => {
+    const room = find(req.params.token);
+    if (!room || room.status !== 'ACTIVE') return res.status(404).end();
+    const base = `/r/${req.params.token}`;
+    res.set({ 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+    res.send(JSON.stringify({
+      name: 'GENZ — मेरा रूम', short_name: 'मेरा रूम', description: 'Your private property room with your broker',
+      id: base, start_url: base, scope: base + '/', display: 'standalone', orientation: 'portrait',
+      background_color: '#ffffff', theme_color: '#0f766e',
+      icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
+    }));
+  });
+  const jsonBody = express.json({ limit: '4mb' });
+  const jerr = (res: Response, code: number, error: string) => res.status(code).json({ success: false, error });
+  const jsonAuth = (req: Request, res: Response) => {
+    headers(res);
+    const room = find(req.params.token);
+    if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) { jerr(res, 404, 'यह लिंक बंद हो चुका है। / This link is closed.'); return null; }
+    const dev = sessionFor(req, room);
+    if (!dev) { jerr(res, 401, 'फिर से खोलें और कोड डालें। / Open the link again and enter the code.'); return null; }
+    slide(req, res, room, dev);
+    return room;
+  };
+  r.post('/:token/push', rateLimit('cr-push', 30, 3600_000), jsonBody, (req: Request, res: Response) => {
+    const room = jsonAuth(req, res); if (!room) return;
+    const endpoint = String(req.body?.endpoint || ''); const k = req.body?.keys || {};
+    const p256dh = String(k.p256dh || ''); const auth = String(k.auth || '');
+    if (!endpoint || endpoint.length > 1000 || p256dh.length < 80 || p256dh.length > 120 || auth.length < 16 || auth.length > 40) return jerr(res, 400, 'Unusable push address.');
+    if (!allowedEndpoint(endpoint)) return jerr(res, 400, 'This browser’s push service is not supported.');
+    const state = db.getState(); const key = roomPushKey(room.id);
+    const id = crypto.createHash('sha256').update(endpoint).digest('hex').slice(0, 32);
+    state.pushSubs = state.pushSubs.filter(x => x.id !== id);
+    const mine = state.pushSubs.filter(x => x.userId === key);
+    if (mine.length >= 3) { const oldest = mine.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]; state.pushSubs = state.pushSubs.filter(x => x.id !== oldest.id); }
+    state.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers['user-agent'] || '').slice(0, 120), createdAt: nowIso(), fails: 0, url: `/r/${req.params.token}` });
+    ev(room, 'Client turned on alerts on a phone'); db.save();
+    res.json({ success: true });
+  });
+  r.post('/:token/doc', rateLimit('cr-doc', 20, 3600_000), jsonBody, (req: Request, res: Response) => {
+    const room = jsonAuth(req, res); if (!room) return;
+    const kind = req.body?.kind;
+    if (!isDocKind(kind)) return jerr(res, 400, 'किस तरह की फ़ाइल है, चुनें। / Choose what kind of file it is.');
+    if (req.body?.consent !== true) return jerr(res, 400, 'सहमति पर टिक करें। / Please tick the consent.');
+    if (!vaultReady()) return jerr(res, 503, 'फ़ाइल भेजना अभी उपलब्ध नहीं — ब्रोकर को बताएँ। / Sending files is not available right now — tell your broker.');
+    const docs = room.docs || (room.docs = []);
+    if (docs.length >= DOC_LIMITS.perRoom) return jerr(res, 400, `एक रूम में ${DOC_LIMITS.perRoom} से ज़्यादा फ़ाइल नहीं। / At most ${DOC_LIMITS.perRoom} files per room.`);
+    const b64 = String(req.body?.data || '');
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) return jerr(res, 400, 'फ़ाइल पढ़ी नहीं जा सकी। / The file could not be read.');
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.length < 100) return jerr(res, 400, 'फ़ाइल पढ़ी नहीं जा सकी। / The file could not be read.');
+    if (buf.length > DOC_LIMITS.maxBytes) return jerr(res, 413, 'फ़ाइल बड़ी है (2.5 MB तक)। / The file is too big (2.5 MB max).');
+    const mime = sniffMime(buf);
+    if (!mime) return jerr(res, 400, 'सिर्फ़ फ़ोटो (JPG/PNG) या PDF भेजें। / Send a photo (JPG/PNG) or a PDF only.');
+    if (kind === 'PHOTO' && mime === 'application/pdf') return jerr(res, 400, 'फ़ोटो के लिए तस्वीर चुनें। / Choose an image for a photo.');
+    const note = stripPhones(String(req.body?.note || '').trim()).slice(0, 120) || undefined;
+    const name = String(req.body?.name || 'file').replace(/[^\w.\- ]/g, '').slice(0, 60) || 'file';
+    const id = rid('CRD');
+    try {
+      fs.mkdirSync(DOCDIR(room.id), { recursive: true });
+      fs.writeFileSync(docFile(room.id, id), seal(buf.toString('base64'), docAad(room.id, id)));
+    } catch { return jerr(res, 500, 'सेव नहीं हो पाया — दोबारा कोशिश करें। / Could not save — try again.'); }
+    docs.push({ id, kind, name, mime, size: buf.length, at: nowIso(), sha256: crypto.createHash('sha256').update(buf).digest('hex'), note, consentAt: nowIso() });
+    const label = DOC_KINDS.find(d => d.id === kind)!;
+    room.messages.push({ id: rid('CRX'), from: 'CLIENT', text: `📎 ${label.hi} भेजा / Sent: ${label.en}`, at: nowIso() });
+    room.lastClientSeenAt = nowIso(); ev(room, `Client sent a file: ${label.en}${isKycKind(kind) ? ' (ID — broker only)' : ''}`);
+    db.save();
+    pingBroker(room, `${room.clientName} sent a ${isKycKind(kind) ? 'document' : 'file'}`, 'Open Client Rooms → Papers.');
+    res.json({ success: true, id });
+  });
+  r.post('/:token/doc/:id/delete', rateLimit('cr-doc-del', 30, 3600_000), jsonBody, (req: Request, res: Response) => {
+    const room = jsonAuth(req, res); if (!room) return;
+    const d = (room.docs || []).find(x => x.id === req.params.id);
+    if (!d) return res.json({ success: true });
+    try { fs.rmSync(docFile(room.id, d.id), { force: true }); } catch { /* gone anyway */ }
+    room.docs = (room.docs || []).filter(x => x.id !== d.id);
+    ev(room, `Client removed a file he had sent (${d.kind})`); db.save();
+    res.json({ success: true });
+  });
+
   function render(req: Request, res: Response, room: ClientRoom, msg = '') {
     const b = st().users.find(u => u.id === room.brokerId);
     room.lastClientSeenAt = nowIso();
@@ -672,16 +817,31 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join('')}</div>`;
     res.send(shell('Your private room', `${wm}<div class="top"><h1>नमस्ते ${esc(room.clientName.split(' ')[0])} 🙏</h1><p>${esc(b?.name || 'आपके ब्रोकर')} ने आपके लिए ये प्रॉपर्टी चुनी हैं · Properties picked for you</p></div>
 ${req.query.sent === '1' ? '<div class="card ok"><p class="t">आपका विज़िट अनुरोध ब्रोकर को भेज दिया गया। / Your visit request has been sent.</p></div>' : ''}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
+${req.query.doc === '1' ? '<div class="card ok"><p class="t">फ़ाइल ब्रोकर को भेज दी गई। / File sent to your broker.</p></div>' : ''}
 ${brokerCard(b)}
+<div class="card" id="app-card"><p class="h">📲 इसे ऐप की तरह रखें / Keep this as an app</p>
+<p class="small">होम स्क्रीन पर जोड़ें — हर बार लिंक खोलने या WhatsApp में ढूँढने की ज़रूरत नहीं। ब्रोकर का संदेश आएगा तो फ़ोन पर अलर्ट मिलेगा। / Add it to your home screen — no hunting for the link. You get an alert when your broker writes.</p>
+<div class="row"><button type="button" class="g" id="app-install" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to Home</button> <button type="button" class="l" id="app-push" style="display:none">🔔 अलर्ट चालू करें / Turn on alerts</button></div>
+<p class="small" id="app-ios" style="display:none">iPhone: नीचे Share (⬆) दबाएँ → “Add to Home Screen”। फिर ऐप खोलकर अलर्ट चालू करें। (अलर्ट के लिए iOS 16.4+) / iPhone: tap Share → Add to Home Screen, then open the app and turn on alerts (needs iOS 16.4+).</p>
+<p class="small" id="app-push-msg"></p></div>
 <p class="small" style="margin:10px 4px">📌 इस पेज को बुकमार्क / होम स्क्रीन पर रख लें — इसी फ़ोन पर अगली बार बिना कोड के खुलेगा (${L.sessionDays} दिन में एक बार खोलते रहें)। यह पेज सिर्फ़ आपके लिए है, इसका लिंक या स्क्रीनशॉट आगे न भेजें।<br>Bookmark this page or add it to your home screen — on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
 <h2>आपके लिए प्रॉपर्टी / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">अभी कोई प्रॉपर्टी नहीं भेजी गई। / Nothing shared yet — your broker will add some.</p></div>'}
+${(() => {
+  const kycOn = vaultReady();
+  const list = (room.docs || []).map(d => { const k = DOC_KINDS.find(x => x.id === d.kind); return `<div class="m mc">${isKycKind(d.kind) ? '🪪' : '📎'} ${esc(k?.hi || d.kind)} · <small>${esc(d.name)} · ${Math.max(1, Math.round(d.size / 1024))} KB · ${esc(dayHi(d.at))}</small> <button type="button" class="l" data-deldoc="${esc(d.id)}" style="padding:4px 10px">हटाएँ / Remove</button></div>`; }).join('');
+  return `<h2 id="docs">ब्रोकर को फ़ोटो / काग़ज़ / ID भेजें / Send a photo, paper or ID</h2><div class="card">${kycOn ? `<form id="docform"><label>क्या भेज रहे हैं? / What is it?</label><select id="dockind" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">${DOC_KINDS.map(d => `<option value="${d.id}">${esc(d.hi)} / ${esc(d.en)}</option>`).join('')}</select>
+<input type="file" id="docfile" accept="image/*,application/pdf" style="margin:8px 0;width:100%"><input type="text" id="docnote" maxlength="120" placeholder="छोटा नोट (वैकल्पिक) / Short note (optional)" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">
+<p class="small">⚠ आधार सिर्फ़ <b>मास्क्ड</b> भेजें (पहले 8 अंक ढके)। पूरा आधार न भेजें। नंबर चैट में न लिखें। / Send Aadhaar only <b>masked</b> (first 8 digits covered). Never the full Aadhaar.</p>
+<label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="docok" style="width:auto;margin-top:3px"><span class="small">मैं यह फ़ाइल अपनी मर्ज़ी से इस सौदे के लिए ${esc(b?.name || 'ब्रोकर')} को भेज रहा/रही हूँ। यह सुरक्षित (एन्क्रिप्टेड) रखी जाएगी, सिर्फ़ ब्रोकर खोल सकेगा, और रूम बंद होने पर मिट जाएगी। / I send this willingly for this deal. It is kept encrypted, only the broker can open it, and it is erased when the room closes.</span></label>
+<div class="row"><button type="submit" class="g">📤 भेजें / Send</button></div><p class="small" id="docmsg"></p></form>` : '<p class="t">फ़ाइल भेजना अभी उपलब्ध नहीं है — ब्रोकर को चैट में बताएँ। / Sending files is not available right now — tell your broker in the chat.</p>'}${list ? `<div class="chat" style="max-height:none;margin-top:8px">${list}</div>` : ''}</div>`;
+})()}
 <h2 id="chat">ब्रोकर से बात / Chat with your broker</h2>
 <div class="card"><p class="small">${roomTeam(room.brokerId).length ? 'यह चैट सिर्फ़ आप, आपके ब्रोकर और उनकी ऑफ़िस टीम देख सकते हैं। फ़ोन नंबर चैट में न लिखें। / Only you, your broker and his office team can read this chat. Please do not type phone numbers.' : 'यह चैट सिर्फ़ आप और आपके ब्रोकर देख सकते हैं। फ़ोन नंबर चैट में न लिखें। / Only you and your broker can read this chat. Please do not type phone numbers.'}</p>
 <div class="chat" id="chat-box">${chat || '<small>अभी कोई संदेश नहीं। / No messages yet.</small>'}</div>
 <form method="post" action="/r/${tok}/msg"><textarea name="text" id="msgtext" rows="2" maxlength="${L.textChars}" placeholder="संदेश लिखें / Write a message" required></textarea>
 ${room.items.length ? `<label>किस प्रॉपर्टी के बारे में? (वैकल्पिक) / About which property?</label><select name="item" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px"><option value="">—</option>${room.items.map(i => `<option value="${esc(i.id)}">${esc(props.find(x => x.id === i.propertyId)?.title || i.propertyId)}</option>`).join('')}</select>` : ''}<div class="row"><button class="g" type="submit">भेजें / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">GENZ एक न्यूट्रल प्लेटफ़ॉर्म है; कीमत और शर्तें आपके, मालिक और ब्रोकर के बीच तय होती हैं। GENZ आपसे पैसा नहीं माँगता। आपका मोबाइल नंबर सिर्फ़ इस रूम को खोलने के लिए जाँचा गया है और सुरक्षित रूप (hash) में रखा जाता है।<br>GENZ is a neutral platform; price and terms are between you, the owner and the broker. GENZ never asks you for money. Your mobile number is only used to open this room and is stored in a one-way hashed form.</p>
-${joinFooter(b, b?.city)}`).replace('<body>', '<body data-live="1">'));
+${joinFooter(b, b?.city)}`, 'hi', `<link rel="manifest" href="/r/${tok}/manifest.webmanifest"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="मेरा रूम"><link rel="apple-touch-icon" href="/icon-192.png">`).replace('<body>', '<body data-live="1">'));
   }
   return r;
 }
@@ -690,7 +850,7 @@ ${joinFooter(b, b?.city)}`).replace('<body>', '<body data-live="1">'));
 export function sweepClientRooms() {
   const s = st(); const now = Date.now(); let n = 0;
   for (const r of s.clientRooms) {
-    if (r.status === 'ACTIVE' && Date.parse(r.expiresAt) < now) { r.status = 'CLOSED'; r.closedAt = nowIso(); r.phoneSealed = undefined; ev(r, 'Closed — the link ran out'); n++; }
+    if (r.status === 'ACTIVE' && Date.parse(r.expiresAt) < now) { r.status = 'CLOSED'; r.closedAt = nowIso(); r.phoneSealed = undefined; eraseRoomFiles(r); ev(r, 'Closed — the link ran out'); n++; }
   }
   const before = s.clientRooms.length;
   s.clientRooms = s.clientRooms.filter(r => !(r.status === 'CLOSED' && r.closedAt && Date.parse(r.closedAt) + L.purgeClosedDays * 86400_000 < now));

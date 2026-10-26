@@ -1656,15 +1656,15 @@ var require_pg_connection_string = __commonJS({
       if (config2.sslnegotiation === "direct" && config2.ssl === void 0) {
         config2.ssl = true;
       }
-      const fs13 = config2.sslcert || config2.sslkey || config2.sslrootcert ? __require("fs") : null;
+      const fs14 = config2.sslcert || config2.sslkey || config2.sslrootcert ? __require("fs") : null;
       if (config2.sslcert) {
-        config2.ssl.cert = fs13.readFileSync(config2.sslcert).toString();
+        config2.ssl.cert = fs14.readFileSync(config2.sslcert).toString();
       }
       if (config2.sslkey) {
-        config2.ssl.key = fs13.readFileSync(config2.sslkey).toString();
+        config2.ssl.key = fs14.readFileSync(config2.sslkey).toString();
       }
       if (config2.sslrootcert) {
-        config2.ssl.ca = fs13.readFileSync(config2.sslrootcert).toString();
+        config2.ssl.ca = fs14.readFileSync(config2.sslrootcert).toString();
       }
       if (options.useLibpqCompat && config2.uselibpqcompat) {
         throw new Error("Both useLibpqCompat and uselibpqcompat are set. Please use only one of them.");
@@ -3492,7 +3492,7 @@ var require_split2 = __commonJS({
 var require_helper = __commonJS({
   "node_modules/pgpass/lib/helper.js"(exports, module) {
     "use strict";
-    var path14 = __require("path");
+    var path15 = __require("path");
     var Stream = __require("stream").Stream;
     var split = require_split2();
     var util = __require("util");
@@ -3531,7 +3531,7 @@ var require_helper = __commonJS({
     };
     module.exports.getFileName = function(rawEnv) {
       var env = rawEnv || process.env;
-      var file2 = env.PGPASSFILE || (isWin ? path14.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path14.join(env.HOME || "./", ".pgpass"));
+      var file2 = env.PGPASSFILE || (isWin ? path15.join(env.APPDATA || "./", "postgresql", "pgpass.conf") : path15.join(env.HOME || "./", ".pgpass"));
       return file2;
     };
     module.exports.usePgPass = function(stats2, fname) {
@@ -3663,16 +3663,16 @@ var require_helper = __commonJS({
 var require_lib = __commonJS({
   "node_modules/pgpass/lib/index.js"(exports, module) {
     "use strict";
-    var path14 = __require("path");
-    var fs13 = __require("fs");
+    var path15 = __require("path");
+    var fs14 = __require("fs");
     var helper = require_helper();
     module.exports = function(connInfo, cb) {
       var file2 = helper.getFileName();
-      fs13.stat(file2, function(err, stat) {
+      fs14.stat(file2, function(err, stat) {
         if (err || !helper.usePgPass(stat, file2)) {
           return cb(void 0);
         }
-        var st25 = fs13.createReadStream(file2);
+        var st25 = fs14.createReadStream(file2);
         helper.getPassword(connInfo, st25, cb);
       });
     };
@@ -5689,19 +5689,19 @@ CREATE TABLE IF NOT EXISTS ${T_FILES} (
         const { rows } = await this.pool.query(`SELECT path, sha, deleted FROM ${T_FILES}`);
         return rows;
       }
-      async fileGet(path14) {
-        const { rows } = await this.pool.query(`SELECT data FROM ${T_FILES} WHERE path=$1 AND NOT deleted`, [path14]);
+      async fileGet(path15) {
+        const { rows } = await this.pool.query(`SELECT data FROM ${T_FILES} WHERE path=$1 AND NOT deleted`, [path15]);
         return rows.length ? rows[0].data : null;
       }
-      async filePut(path14, sha7, data) {
-        await this.pool.query(`INSERT INTO ${T_FILES}(path, sha, data, deleted) VALUES ($1,$2,$3,false) ON CONFLICT (path) DO UPDATE SET sha=$2, data=$3, deleted=false, updated_at=now()`, [path14, sha7, data]);
+      async filePut(path15, sha7, data) {
+        await this.pool.query(`INSERT INTO ${T_FILES}(path, sha, data, deleted) VALUES ($1,$2,$3,false) ON CONFLICT (path) DO UPDATE SET sha=$2, data=$3, deleted=false, updated_at=now()`, [path15, sha7, data]);
       }
       /** tests only: empty the file table */
       async pool_query_clear() {
         await this.pool.query(`DELETE FROM ${T_FILES}`);
       }
-      async fileDel(path14) {
-        await this.pool.query(`UPDATE ${T_FILES} SET deleted=true, data=NULL, sha='-', updated_at=now() WHERE path=$1`, [path14]);
+      async fileDel(path15) {
+        await this.pool.query(`UPDATE ${T_FILES} SET deleted=true, data=NULL, sha='-', updated_at=now() WHERE path=$1`, [path15]);
       }
       async close() {
         await this.flush().catch(() => {
@@ -7024,8 +7024,8 @@ var require_node = __commonJS({
           }
           break;
         case "FILE":
-          var fs13 = __require("fs");
-          stream2 = new fs13.SyncWriteStream(fd2, { autoClose: false });
+          var fs14 = __require("fs");
+          stream2 = new fs14.SyncWriteStream(fd2, { autoClose: false });
           stream2._type = "fs";
           break;
         case "PIPE":
@@ -19812,11 +19812,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path14) {
-      if (!path14 || typeof path14 !== "string") {
+    function lookup(path15) {
+      if (!path15 || typeof path15 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path14).toLowerCase().substr(1);
+      var extension2 = extname("x." + path15).toLowerCase().substr(1);
       if (!extension2) {
         return false;
       }
@@ -23429,7 +23429,7 @@ var require_path_to_regexp = __commonJS({
   "node_modules/path-to-regexp/index.js"(exports, module) {
     module.exports = pathToRegexp;
     var MATCHING_GROUP_REGEXP = /\\.|\((?:\?<(.*?)>)?(?!\?)/g;
-    function pathToRegexp(path14, keys, options) {
+    function pathToRegexp(path15, keys, options) {
       options = options || {};
       keys = keys || [];
       var strict = options.strict;
@@ -23443,8 +23443,8 @@ var require_path_to_regexp = __commonJS({
       var pos = 0;
       var backtrack = "";
       var m;
-      if (path14 instanceof RegExp) {
-        while (m = MATCHING_GROUP_REGEXP.exec(path14.source)) {
+      if (path15 instanceof RegExp) {
+        while (m = MATCHING_GROUP_REGEXP.exec(path15.source)) {
           if (m[0][0] === "\\") continue;
           keys.push({
             name: m[1] || name++,
@@ -23452,18 +23452,18 @@ var require_path_to_regexp = __commonJS({
             offset: m.index
           });
         }
-        return path14;
+        return path15;
       }
-      if (Array.isArray(path14)) {
-        path14 = path14.map(function(value) {
+      if (Array.isArray(path15)) {
+        path15 = path15.map(function(value) {
           return pathToRegexp(value, keys, options).source;
         });
-        return new RegExp(path14.join("|"), flags);
+        return new RegExp(path15.join("|"), flags);
       }
-      if (typeof path14 !== "string") {
+      if (typeof path15 !== "string") {
         throw new TypeError("path must be a string, array of strings, or regular expression");
       }
-      path14 = path14.replace(
+      path15 = path15.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
         function(match, slash, format, key, capture, star, optional2, offset) {
           if (match[0] === "\\") {
@@ -23480,7 +23480,7 @@ var require_path_to_regexp = __commonJS({
           if (slash || format) {
             backtrack = "";
           } else {
-            backtrack += path14.slice(pos, offset);
+            backtrack += path15.slice(pos, offset);
           }
           pos = offset + match.length;
           if (match === "*") {
@@ -23510,7 +23510,7 @@ var require_path_to_regexp = __commonJS({
           return result;
         }
       );
-      while (m = MATCHING_GROUP_REGEXP.exec(path14)) {
+      while (m = MATCHING_GROUP_REGEXP.exec(path15)) {
         if (m[0][0] === "\\") continue;
         if (keysOffset + i === keys.length || keys[keysOffset + i].offset > m.index) {
           keys.splice(keysOffset + i, 0, {
@@ -23522,13 +23522,13 @@ var require_path_to_regexp = __commonJS({
         }
         i++;
       }
-      path14 += strict ? "" : path14[path14.length - 1] === "/" ? "?" : "/?";
+      path15 += strict ? "" : path15[path15.length - 1] === "/" ? "?" : "/?";
       if (end) {
-        path14 += "$";
-      } else if (path14[path14.length - 1] !== "/") {
-        path14 += lookahead ? "(?=/|$)" : "(?:/|$)";
+        path15 += "$";
+      } else if (path15[path15.length - 1] !== "/") {
+        path15 += lookahead ? "(?=/|$)" : "(?:/|$)";
       }
-      return new RegExp("^" + path14, flags);
+      return new RegExp("^" + path15, flags);
     }
   }
 });
@@ -23541,19 +23541,19 @@ var require_layer = __commonJS({
     var debug = require_src()("express:router:layer");
     var hasOwnProperty = Object.prototype.hasOwnProperty;
     module.exports = Layer;
-    function Layer(path14, options, fn) {
+    function Layer(path15, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path14, options, fn);
+        return new Layer(path15, options, fn);
       }
-      debug("new %o", path14);
+      debug("new %o", path15);
       var opts = options || {};
       this.handle = fn;
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.regexp = pathRegexp(path14, this.keys = [], opts);
-      this.regexp.fast_star = path14 === "*";
-      this.regexp.fast_slash = path14 === "/" && opts.end === false;
+      this.regexp = pathRegexp(path15, this.keys = [], opts);
+      this.regexp.fast_star = path15 === "*";
+      this.regexp.fast_slash = path15 === "/" && opts.end === false;
     }
     Layer.prototype.handle_error = function handle_error(error62, req, res, next2) {
       var fn = this.handle;
@@ -23577,20 +23577,20 @@ var require_layer = __commonJS({
         next2(err);
       }
     };
-    Layer.prototype.match = function match(path14) {
+    Layer.prototype.match = function match(path15) {
       var match2;
-      if (path14 != null) {
+      if (path15 != null) {
         if (this.regexp.fast_slash) {
           this.params = {};
           this.path = "";
           return true;
         }
         if (this.regexp.fast_star) {
-          this.params = { "0": decode_param(path14) };
-          this.path = path14;
+          this.params = { "0": decode_param(path15) };
+          this.path = path15;
           return true;
         }
-        match2 = this.regexp.exec(path14);
+        match2 = this.regexp.exec(path15);
       }
       if (!match2) {
         this.params = void 0;
@@ -23683,10 +23683,10 @@ var require_route = __commonJS({
     var slice = Array.prototype.slice;
     var toString = Object.prototype.toString;
     module.exports = Route;
-    function Route(path14) {
-      this.path = path14;
+    function Route(path15) {
+      this.path = path15;
       this.stack = [];
-      debug("new %o", path14);
+      debug("new %o", path15);
       this.methods = {};
     }
     Route.prototype._handles_method = function _handles_method(method) {
@@ -23898,8 +23898,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next2, err);
         }
-        var path14 = getPathname(req);
-        if (path14 == null) {
+        var path15 = getPathname(req);
+        if (path15 == null) {
           return done(layerError);
         }
         var layer;
@@ -23907,7 +23907,7 @@ var require_router = __commonJS({
         var route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path14);
+          match = matchLayer(layer, path15);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -23945,18 +23945,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handle_request(req, res, next2);
           } else {
-            trim_prefix(layer, layerError, layerPath, path14);
+            trim_prefix(layer, layerError, layerPath, path15);
           }
           sync = 0;
         });
       }
-      function trim_prefix(layer, layerError, layerPath, path14) {
+      function trim_prefix(layer, layerError, layerPath, path15) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path14.slice(0, layerPath.length)) {
+          if (layerPath !== path15.slice(0, layerPath.length)) {
             next2(layerError);
             return;
           }
-          var c = path14[layerPath.length];
+          var c = path15[layerPath.length];
           if (c && c !== "/" && c !== ".") return next2(layerError);
           debug("trim prefix (%s) from url %s", layerPath, req.url);
           removed = layerPath;
@@ -24034,7 +24034,7 @@ var require_router = __commonJS({
     };
     proto.use = function use(fn) {
       var offset = 0;
-      var path14 = "/";
+      var path15 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -24042,7 +24042,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path14 = fn;
+          path15 = fn;
         }
       }
       var callbacks = flatten(slice.call(arguments, offset));
@@ -24054,8 +24054,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("Router.use() requires a middleware function but got a " + gettype(fn));
         }
-        debug("use %o %s", path14, fn.name || "<anonymous>");
-        var layer = new Layer(path14, {
+        debug("use %o %s", path15, fn.name || "<anonymous>");
+        var layer = new Layer(path15, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -24065,9 +24065,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    proto.route = function route(path14) {
-      var route2 = new Route(path14);
-      var layer = new Layer(path14, {
+    proto.route = function route(path15) {
+      var route2 = new Route(path15);
+      var layer = new Layer(path15, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -24077,8 +24077,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      proto[method] = function(path14) {
-        var route = this.route(path14);
+      proto[method] = function(path15) {
+        var route = this.route(path15);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -24114,9 +24114,9 @@ var require_router = __commonJS({
       }
       return toString.call(obj).replace(objectRegExp, "$1");
     }
-    function matchLayer(layer, path14) {
+    function matchLayer(layer, path15) {
       try {
-        return layer.match(path14);
+        return layer.match(path15);
       } catch (err) {
         return err;
       }
@@ -24234,13 +24234,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports, module) {
     "use strict";
     var debug = require_src()("express:view");
-    var path14 = __require("path");
-    var fs13 = __require("fs");
-    var dirname = path14.dirname;
-    var basename = path14.basename;
-    var extname = path14.extname;
-    var join = path14.join;
-    var resolve = path14.resolve;
+    var path15 = __require("path");
+    var fs14 = __require("fs");
+    var dirname = path15.dirname;
+    var basename = path15.basename;
+    var extname = path15.extname;
+    var join = path15.join;
+    var resolve = path15.resolve;
     module.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -24269,17 +24269,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path15;
+      var path16;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i = 0; i < roots.length && !path15; i++) {
+      for (var i = 0; i < roots.length && !path16; i++) {
         var root2 = roots[i];
         var loc = resolve(root2, name);
         var dir = dirname(loc);
         var file2 = basename(loc);
-        path15 = this.resolve(dir, file2);
+        path16 = this.resolve(dir, file2);
       }
-      return path15;
+      return path16;
     };
     View.prototype.render = function render(options, callback) {
       debug('render "%s"', this.path);
@@ -24287,21 +24287,21 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve2(dir, file2) {
       var ext = this.ext;
-      var path15 = join(dir, file2);
-      var stat = tryStat(path15);
+      var path16 = join(dir, file2);
+      var stat = tryStat(path16);
       if (stat && stat.isFile()) {
-        return path15;
+        return path16;
       }
-      path15 = join(dir, basename(file2, ext), "index" + ext);
-      stat = tryStat(path15);
+      path16 = join(dir, basename(file2, ext), "index" + ext);
+      stat = tryStat(path16);
       if (stat && stat.isFile()) {
-        return path15;
+        return path16;
       }
     };
-    function tryStat(path15) {
-      debug('stat "%s"', path15);
+    function tryStat(path16) {
+      debug('stat "%s"', path16);
       try {
-        return fs13.statSync(path15);
+        return fs14.statSync(path16);
       } catch (e) {
         return void 0;
       }
@@ -24655,8 +24655,8 @@ var require_types = __commonJS({
 // node_modules/mime/mime.js
 var require_mime = __commonJS({
   "node_modules/mime/mime.js"(exports, module) {
-    var path14 = __require("path");
-    var fs13 = __require("fs");
+    var path15 = __require("path");
+    var fs14 = __require("fs");
     function Mime() {
       this.types = /* @__PURE__ */ Object.create(null);
       this.extensions = /* @__PURE__ */ Object.create(null);
@@ -24677,7 +24677,7 @@ var require_mime = __commonJS({
     };
     Mime.prototype.load = function(file2) {
       this._loading = file2;
-      var map2 = {}, content = fs13.readFileSync(file2, "ascii"), lines = content.split(/[\r\n]+/);
+      var map2 = {}, content = fs14.readFileSync(file2, "ascii"), lines = content.split(/[\r\n]+/);
       lines.forEach(function(line) {
         var fields = line.replace(/\s*#.*|^\s*|\s*$/g, "").split(/\s+/);
         map2[fields.shift()] = fields;
@@ -24685,8 +24685,8 @@ var require_mime = __commonJS({
       this.define(map2);
       this._loading = null;
     };
-    Mime.prototype.lookup = function(path15, fallback) {
-      var ext = path15.replace(/^.*[\.\/\\]/, "").toLowerCase();
+    Mime.prototype.lookup = function(path16, fallback) {
+      var ext = path16.replace(/^.*[\.\/\\]/, "").toLowerCase();
       return this.types[ext] || fallback || this.default_type;
     };
     Mime.prototype.extension = function(mimeType) {
@@ -24915,33 +24915,33 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs13 = __require("fs");
+    var fs14 = __require("fs");
     var mime = require_mime();
     var ms = require_ms2();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path14 = __require("path");
+    var path15 = __require("path");
     var statuses = require_statuses();
     var Stream = __require("stream");
     var util = __require("util");
-    var extname = path14.extname;
-    var join = path14.join;
-    var normalize = path14.normalize;
-    var resolve = path14.resolve;
-    var sep = path14.sep;
+    var extname = path15.extname;
+    var join = path15.join;
+    var normalize = path15.normalize;
+    var resolve = path15.resolve;
+    var sep = path15.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module.exports = send;
     module.exports.mime = mime;
-    function send(req, path15, options) {
-      return new SendStream(req, path15, options);
+    function send(req, path16, options) {
+      return new SendStream(req, path16, options);
     }
-    function SendStream(req, path15, options) {
+    function SendStream(req, path16, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path15;
+      this.path = path16;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -24987,8 +24987,8 @@ var require_send = __commonJS({
       this._index = index2;
       return this;
     }, "send.index: pass index as option");
-    SendStream.prototype.root = function root2(path15) {
-      this._root = resolve(String(path15));
+    SendStream.prototype.root = function root2(path16) {
+      this._root = resolve(String(path16));
       debug("root %s", this._root);
       return this;
     };
@@ -25101,10 +25101,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path15) {
+    SendStream.prototype.redirect = function redirect(path16) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path15);
+        this.emit("directory", res, path16);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -25124,42 +25124,42 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe2(res) {
       var root2 = this._root;
       this.res = res;
-      var path15 = decode3(this.path);
-      if (path15 === -1) {
+      var path16 = decode3(this.path);
+      if (path16 === -1) {
         this.error(400);
         return res;
       }
-      if (~path15.indexOf("\0")) {
+      if (~path16.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root2 !== null) {
-        if (path15) {
-          path15 = normalize("." + sep + path15);
+        if (path16) {
+          path16 = normalize("." + sep + path16);
         }
-        if (UP_PATH_REGEXP.test(path15)) {
-          debug('malicious path "%s"', path15);
+        if (UP_PATH_REGEXP.test(path16)) {
+          debug('malicious path "%s"', path16);
           this.error(403);
           return res;
         }
-        parts = path15.split(sep);
-        path15 = normalize(join(root2, path15));
+        parts = path16.split(sep);
+        path16 = normalize(join(root2, path16));
       } else {
-        if (UP_PATH_REGEXP.test(path15)) {
-          debug('malicious path "%s"', path15);
+        if (UP_PATH_REGEXP.test(path16)) {
+          debug('malicious path "%s"', path16);
           this.error(403);
           return res;
         }
-        parts = normalize(path15).split(sep);
-        path15 = resolve(path15);
+        parts = normalize(path16).split(sep);
+        path16 = resolve(path16);
       }
       if (containsDotFile(parts)) {
         var access = this._dotfiles;
         if (access === void 0) {
           access = parts[parts.length - 1][0] === "." ? this._hidden ? "allow" : "ignore" : "allow";
         }
-        debug('%s dotfile "%s"', access, path15);
+        debug('%s dotfile "%s"', access, path16);
         switch (access) {
           case "allow":
             break;
@@ -25173,13 +25173,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path15);
+        this.sendIndex(path16);
         return res;
       }
-      this.sendFile(path15);
+      this.sendFile(path16);
       return res;
     };
-    SendStream.prototype.send = function send2(path15, stat) {
+    SendStream.prototype.send = function send2(path16, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -25191,9 +25191,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path15);
-      this.setHeader(path15, stat);
-      this.type(path15);
+      debug('pipe "%s"', path16);
+      this.setHeader(path16, stat);
+      this.type(path16);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -25242,28 +25242,28 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path15, opts);
+      this.stream(path16, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path15) {
+    SendStream.prototype.sendFile = function sendFile(path16) {
       var i = 0;
       var self = this;
-      debug('stat "%s"', path15);
-      fs13.stat(path15, function onstat(err, stat) {
-        if (err && err.code === "ENOENT" && !extname(path15) && path15[path15.length - 1] !== sep) {
+      debug('stat "%s"', path16);
+      fs14.stat(path16, function onstat(err, stat) {
+        if (err && err.code === "ENOENT" && !extname(path16) && path16[path16.length - 1] !== sep) {
           return next2(err);
         }
         if (err) return self.onStatError(err);
-        if (stat.isDirectory()) return self.redirect(path15);
-        self.emit("file", path15, stat);
-        self.send(path15, stat);
+        if (stat.isDirectory()) return self.redirect(path16);
+        self.emit("file", path16, stat);
+        self.send(path16, stat);
       });
       function next2(err) {
         if (self._extensions.length <= i) {
           return err ? self.onStatError(err) : self.error(404);
         }
-        var p = path15 + "." + self._extensions[i++];
+        var p = path16 + "." + self._extensions[i++];
         debug('stat "%s"', p);
-        fs13.stat(p, function(err2, stat) {
+        fs14.stat(p, function(err2, stat) {
           if (err2) return next2(err2);
           if (stat.isDirectory()) return next2();
           self.emit("file", p, stat);
@@ -25271,7 +25271,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path15) {
+    SendStream.prototype.sendIndex = function sendIndex(path16) {
       var i = -1;
       var self = this;
       function next2(err) {
@@ -25279,9 +25279,9 @@ var require_send = __commonJS({
           if (err) return self.onStatError(err);
           return self.error(404);
         }
-        var p = join(path15, self._index[i]);
+        var p = join(path16, self._index[i]);
         debug('stat "%s"', p);
-        fs13.stat(p, function(err2, stat) {
+        fs14.stat(p, function(err2, stat) {
           if (err2) return next2(err2);
           if (stat.isDirectory()) return next2();
           self.emit("file", p, stat);
@@ -25290,10 +25290,10 @@ var require_send = __commonJS({
       }
       next2();
     };
-    SendStream.prototype.stream = function stream(path15, options) {
+    SendStream.prototype.stream = function stream(path16, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs13.createReadStream(path15, options);
+      var stream2 = fs14.createReadStream(path16, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -25308,10 +25308,10 @@ var require_send = __commonJS({
         self.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path15) {
+    SendStream.prototype.type = function type(path16) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var type2 = mime.lookup(path15);
+      var type2 = mime.lookup(path16);
       if (!type2) {
         debug("no content-type");
         return;
@@ -25320,9 +25320,9 @@ var require_send = __commonJS({
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2 + (charset ? "; charset=" + charset : ""));
     };
-    SendStream.prototype.setHeader = function setHeader(path15, stat) {
+    SendStream.prototype.setHeader = function setHeader(path16, stat) {
       var res = this.res;
-      this.emit("headers", res, path15, stat);
+      this.emit("headers", res, path16, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -25381,9 +25381,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode3(path15) {
+    function decode3(path16) {
       try {
-        return decodeURIComponent(path15);
+        return decodeURIComponent(path16);
       } catch (err) {
         return -1;
       }
@@ -26308,10 +26308,10 @@ var require_utils4 = __commonJS({
     var querystring = __require("querystring");
     exports.etag = createETagGenerator({ weak: false });
     exports.wetag = createETagGenerator({ weak: true });
-    exports.isAbsolute = function(path14) {
-      if ("/" === path14[0]) return true;
-      if (":" === path14[1] && ("\\" === path14[2] || "/" === path14[2])) return true;
-      if ("\\\\" === path14.substring(0, 2)) return true;
+    exports.isAbsolute = function(path15) {
+      if ("/" === path15[0]) return true;
+      if (":" === path15[1] && ("\\" === path15[2] || "/" === path15[2])) return true;
+      if ("\\\\" === path15.substring(0, 2)) return true;
     };
     exports.flatten = deprecate.function(
       flatten,
@@ -26523,7 +26523,7 @@ var require_application = __commonJS({
     };
     app2.use = function use(fn) {
       var offset = 0;
-      var path14 = "/";
+      var path15 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -26531,7 +26531,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path14 = fn;
+          path15 = fn;
         }
       }
       var fns = flatten(slice.call(arguments, offset));
@@ -26542,12 +26542,12 @@ var require_application = __commonJS({
       var router = this._router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path14, fn2);
+          return router.use(path15, fn2);
         }
-        debug(".use app under %s", path14);
-        fn2.mountpath = path14;
+        debug(".use app under %s", path15);
+        fn2.mountpath = path15;
         fn2.parent = this;
-        router.use(path14, function mounted_app(req, res, next2) {
+        router.use(path15, function mounted_app(req, res, next2) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -26559,9 +26559,9 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app2.route = function route(path14) {
+    app2.route = function route(path15) {
       this.lazyrouter();
-      return this._router.route(path14);
+      return this._router.route(path15);
     };
     app2.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -26612,7 +26612,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app2.path = function path14() {
+    app2.path = function path15() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app2.enabled = function enabled(setting) {
@@ -26628,19 +26628,19 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app2[method] = function(path14) {
+      app2[method] = function(path15) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path14);
+          return this.set(path15);
         }
         this.lazyrouter();
-        var route = this._router.route(path14);
+        var route = this._router.route(path15);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app2.all = function all(path14) {
+    app2.all = function all(path15) {
       this.lazyrouter();
-      var route = this._router.route(path14);
+      var route = this._router.route(path15);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
         route[methods[i]].apply(route, args);
@@ -27399,7 +27399,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname3) ? hostname3.split(".").reverse() : [hostname3];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path14() {
+    defineGetter(req, "path", function path15() {
       return parse3(this).pathname;
     });
     defineGetter(req, "hostname", function hostname3() {
@@ -27721,7 +27721,7 @@ var require_response = __commonJS({
     var http = __require("http");
     var isAbsolute = require_utils4().isAbsolute;
     var onFinished = require_on_finished();
-    var path14 = __require("path");
+    var path15 = __require("path");
     var statuses = require_statuses();
     var merge2 = require_utils_merge();
     var sign3 = require_cookie_signature().sign;
@@ -27730,9 +27730,9 @@ var require_response = __commonJS({
     var setCharset = require_utils4().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path14.extname;
+    var extname = path15.extname;
     var mime = send.mime;
-    var resolve = path14.resolve;
+    var resolve = path15.resolve;
     var vary = require_vary();
     var res = Object.create(http.ServerResponse.prototype);
     module.exports = res;
@@ -27909,26 +27909,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path15, options, callback) {
+    res.sendFile = function sendFile(path16, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next2 = req.next;
       var opts = options || {};
-      if (!path15) {
+      if (!path16) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path15 !== "string") {
+      if (typeof path16 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !isAbsolute(path15)) {
+      if (!opts.root && !isAbsolute(path16)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path15);
+      var pathname = encodeURI(path16);
       var file2 = send(req, pathname, opts);
       sendfile(res2, file2, opts, function(err) {
         if (done) return done(err);
@@ -27938,7 +27938,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.sendfile = function(path15, options, callback) {
+    res.sendfile = function(path16, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
@@ -27948,7 +27948,7 @@ var require_response = __commonJS({
         done = options;
         opts = {};
       }
-      var file2 = send(req, path15, opts);
+      var file2 = send(req, path16, opts);
       sendfile(res2, file2, opts, function(err) {
         if (done) return done(err);
         if (err && err.code === "EISDIR") return next2();
@@ -27961,7 +27961,7 @@ var require_response = __commonJS({
       res.sendfile,
       "res.sendfile: Use res.sendFile instead"
     );
-    res.download = function download(path15, filename, options, callback) {
+    res.download = function download(path16, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -27978,7 +27978,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path15)
+        "Content-Disposition": contentDisposition(name || path16)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -27991,7 +27991,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path15) : path15;
+      var fullPath = !opts.root ? resolve(path16) : path16;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -28292,11 +28292,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path14 = parseUrl(req).pathname;
-        if (path14 === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path14 = "";
+        var path15 = parseUrl(req).pathname;
+        if (path15 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path15 = "";
         }
-        var stream = send(req, path14, opts);
+        var stream = send(req, path15, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -29973,10 +29973,10 @@ var require_segments = __commonJS({
       const segs = getSegmentsFromString(data, Utils.isKanjiModeEnabled());
       const nodes = buildNodes(segs);
       const graph = buildGraph(nodes, version2);
-      const path14 = dijkstra.find_path(graph.map, "start", "end");
+      const path15 = dijkstra.find_path(graph.map, "start", "end");
       const optimizedSegs = [];
-      for (let i = 1; i < path14.length - 1; i++) {
-        optimizedSegs.push(graph.table[path14[i]].node);
+      for (let i = 1; i < path15.length - 1; i++) {
+        optimizedSegs.push(graph.table[path15[i]].node);
       }
       return exports.fromArray(mergeSegments(optimizedSegs));
     };
@@ -32412,7 +32412,7 @@ var require_utils6 = __commonJS({
 // node_modules/qrcode/lib/renderer/png.js
 var require_png2 = __commonJS({
   "node_modules/qrcode/lib/renderer/png.js"(exports) {
-    var fs13 = __require("fs");
+    var fs14 = __require("fs");
     var PNG = require_png().PNG;
     var Utils = require_utils6();
     exports.render = function render(qrData, options) {
@@ -32453,7 +32453,7 @@ var require_png2 = __commonJS({
       });
       png.pack();
     };
-    exports.renderToFile = function renderToFile(path14, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path15, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
@@ -32464,7 +32464,7 @@ var require_png2 = __commonJS({
         called = true;
         cb.apply(null, args);
       };
-      const stream = fs13.createWriteStream(path14);
+      const stream = fs14.createWriteStream(path15);
       stream.on("error", done);
       stream.on("close", done);
       exports.renderToFileStream(stream, qrData, options);
@@ -32526,14 +32526,14 @@ var require_utf8 = __commonJS({
       }
       return output2;
     };
-    exports.renderToFile = function renderToFile(path14, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path15, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
       }
-      const fs13 = __require("fs");
+      const fs14 = __require("fs");
       const utf8 = exports.render(qrData, options);
-      fs13.writeFile(path14, utf8, cb);
+      fs14.writeFile(path15, utf8, cb);
     };
   }
 });
@@ -32654,7 +32654,7 @@ var require_svg_tag = __commonJS({
       return str6;
     }
     function qrToPath(data, size, margin) {
-      let path14 = "";
+      let path15 = "";
       let moveBy = 0;
       let newRow = false;
       let lineLength = 0;
@@ -32665,19 +32665,19 @@ var require_svg_tag = __commonJS({
         if (data[i]) {
           lineLength++;
           if (!(i > 0 && col > 0 && data[i - 1])) {
-            path14 += newRow ? svgCmd("M", col + margin, 0.5 + row + margin) : svgCmd("m", moveBy, 0);
+            path15 += newRow ? svgCmd("M", col + margin, 0.5 + row + margin) : svgCmd("m", moveBy, 0);
             moveBy = 0;
             newRow = false;
           }
           if (!(col + 1 < size && data[i + 1])) {
-            path14 += svgCmd("h", lineLength);
+            path15 += svgCmd("h", lineLength);
             lineLength = 0;
           }
         } else {
           moveBy++;
         }
       }
-      return path14;
+      return path15;
     }
     exports.render = function render(qrData, options, cb) {
       const opts = Utils.getOptions(options);
@@ -32685,10 +32685,10 @@ var require_svg_tag = __commonJS({
       const data = qrData.modules.data;
       const qrcodesize = size + opts.margin * 2;
       const bg = !opts.color.light.a ? "" : "<path " + getColorAttrib(opts.color.light, "fill") + ' d="M0 0h' + qrcodesize + "v" + qrcodesize + 'H0z"/>';
-      const path14 = "<path " + getColorAttrib(opts.color.dark, "stroke") + ' d="' + qrToPath(data, size, opts.margin) + '"/>';
+      const path15 = "<path " + getColorAttrib(opts.color.dark, "stroke") + ' d="' + qrToPath(data, size, opts.margin) + '"/>';
       const viewBox = 'viewBox="0 0 ' + qrcodesize + " " + qrcodesize + '"';
       const width = !opts.width ? "" : 'width="' + opts.width + '" height="' + opts.width + '" ';
-      const svgTag = '<svg xmlns="http://www.w3.org/2000/svg" ' + width + viewBox + ' shape-rendering="crispEdges">' + bg + path14 + "</svg>\n";
+      const svgTag = '<svg xmlns="http://www.w3.org/2000/svg" ' + width + viewBox + ' shape-rendering="crispEdges">' + bg + path15 + "</svg>\n";
       if (typeof cb === "function") {
         cb(null, svgTag);
       }
@@ -32702,15 +32702,15 @@ var require_svg = __commonJS({
   "node_modules/qrcode/lib/renderer/svg.js"(exports) {
     var svgTagRenderer = require_svg_tag();
     exports.render = svgTagRenderer.render;
-    exports.renderToFile = function renderToFile(path14, qrData, options, cb) {
+    exports.renderToFile = function renderToFile(path15, qrData, options, cb) {
       if (typeof cb === "undefined") {
         cb = options;
         options = void 0;
       }
-      const fs13 = __require("fs");
+      const fs14 = __require("fs");
       const svgTag = exports.render(qrData, options);
       const xmlStr = '<?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">' + svgTag;
-      fs13.writeFile(path14, xmlStr, cb);
+      fs14.writeFile(path15, xmlStr, cb);
     };
   }
 });
@@ -32868,8 +32868,8 @@ var require_server = __commonJS({
         cb
       };
     }
-    function getTypeFromFilename(path14) {
-      return path14.slice((path14.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
+    function getTypeFromFilename(path15) {
+      return path15.slice((path15.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
     }
     function getRendererFromType(type) {
       switch (type) {
@@ -32933,17 +32933,17 @@ var require_server = __commonJS({
       const renderer = getRendererFromType(params.opts.type);
       return render(renderer.renderToBuffer, text, params);
     };
-    exports.toFile = function toFile(path14, text, opts, cb) {
-      if (typeof path14 !== "string" || !(typeof text === "string" || typeof text === "object")) {
+    exports.toFile = function toFile(path15, text, opts, cb) {
+      if (typeof path15 !== "string" || !(typeof text === "string" || typeof text === "object")) {
         throw new Error("Invalid argument");
       }
       if (arguments.length < 3 && !canPromise()) {
         throw new Error("Too few arguments provided");
       }
       const params = checkParams(text, opts, cb);
-      const type = params.opts.type || getTypeFromFilename(path14);
+      const type = params.opts.type || getTypeFromFilename(path15);
       const renderer = getRendererFromType(type);
-      const renderToFile = renderer.renderToFile.bind(null, path14);
+      const renderToFile = renderer.renderToFile.bind(null, path15);
       return render(renderToFile, text, params);
     };
     exports.toFileStream = function toFileStream(stream, text, opts) {
@@ -44004,10 +44004,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path14) {
-  if (!path14)
+function getElementAtPath(obj, path15) {
+  if (!path15)
     return obj;
-  return path14.reduce((acc, key) => acc?.[key], obj);
+  return path15.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -44347,11 +44347,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path14, issues) {
+function prefixIssues(path15, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path14);
+    iss.path.unshift(path15);
     return iss;
   });
 }
@@ -44813,16 +44813,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path14 = []) => {
+  const processError = (error63, path15 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else {
-        const fullpath = [...path14, ...issue2.path];
+        const fullpath = [...path15, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -44861,17 +44861,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path14 = []) => {
+  const processError = (error63, path15 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else {
-        const fullpath = [...path14, ...issue2.path];
+        const fullpath = [...path15, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -44910,8 +44910,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path14 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path14) {
+  const path15 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path15) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -62049,13 +62049,13 @@ function resolveRef(ref, ctx3) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path14 = ref.slice(1).split("/").filter(Boolean);
-  if (path14.length === 0) {
+  const path15 = ref.slice(1).split("/").filter(Boolean);
+  if (path15.length === 0) {
     return ctx3.rootSchema;
   }
   const defsKey = ctx3.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path14[0] === defsKey) {
-    const key = path14[1] === void 0 ? void 0 : decodeJSONPointerSegment(path14[1]);
+  if (path15[0] === defsKey) {
+    const key = path15[1] === void 0 ? void 0 : decodeJSONPointerSegment(path15[1]);
     if (!key || !ctx3.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -63958,9 +63958,9 @@ function buildConnectorDemo(existing = [], now = /* @__PURE__ */ new Date()) {
     const assigned = !["SUBMITTED", "DUPLICATE", "REJECTED"].includes(status);
     const events = [{ at: created, byId: p.id, byName: p.name, byRole: "GENZ_CONNECTOR", action: "SUBMITTED" }];
     if (assigned) events.push({ at: iso(59 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "ASSIGNED", note: `Assigned to ${worker.name}` });
-    const path14 = ["CONTACTED", "QUALIFIED", "IN_PROGRESS", "CLOSED_WON"];
+    const path15 = ["CONTACTED", "QUALIFIED", "IN_PROGRESS", "CLOSED_WON"];
     const upto = status === "CLOSED_WON" ? 4 : { CONTACTED: 1, QUALIFIED: 2, IN_PROGRESS: 3 }[status] ?? 0;
-    for (let k = 0; k < upto; k++) events.push({ at: iso(58 - i + k), byId: worker.id, byName: worker.name, byRole: worker.role, action: `STATUS:${path14[k]}` });
+    for (let k = 0; k < upto; k++) events.push({ at: iso(58 - i + k), byId: worker.id, byName: worker.name, byRole: worker.role, action: `STATUS:${path15[k]}` });
     if (status === "CLOSED_LOST") events.push({ at: iso(40 - i % 10), byId: worker.id, byName: worker.name, byRole: worker.role, action: "STATUS:CLOSED_LOST", note: "Customer postponed the decision" });
     if (status === "DUPLICATE") events.push({ at: iso(55 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "STATUS:DUPLICATE", note: "Already registered by another partner" });
     if (status === "REJECTED") events.push({ at: iso(55 - i), byId: "USR-ADMIN-1", byName: "Pooja Tiwari", byRole: "ADMIN", action: "STATUS:REJECTED", note: "Customer could not be reached / not interested" });
@@ -67566,6 +67566,66 @@ function prefsOf(userId) {
   }
   return p;
 }
+async function deliver(subs, words, msg) {
+  const s = db.getState();
+  const keys = vapidKeys();
+  if (!keys || !subs.length) return 0;
+  const urlOf = (sub2) => sub2.url && sub2.url.startsWith("/") ? sub2.url : msg.url && msg.url.startsWith("/") ? msg.url : "/";
+  let ok = 0;
+  await Promise.all(subs.map(async (sub2) => {
+    if (!allowedEndpoint(sub2.endpoint)) return;
+    try {
+      const payload = Buffer.from(JSON.stringify({ t: words.title.slice(0, 80), b: words.body.slice(0, 180), u: urlOf(sub2), g: msg.tag || msg.kind }));
+      const body = encryptPayload(payload, sub2.p256dh, sub2.auth);
+      const r = await fetchImpl(sub2.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: msg.kind === "consent" ? "high" : "normal", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: vapidAuth(sub2.endpoint, keys, subject()) }, body, signal: AbortSignal.timeout(8e3) });
+      if (r.status === 404 || r.status === 410) {
+        s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
+        return;
+      }
+      if (r.ok) {
+        ok++;
+        sub2.lastOkAt = nowIso();
+        sub2.fails = 0;
+      } else sub2.fails = (sub2.fails || 0) + 1;
+    } catch {
+      sub2.fails = (sub2.fails || 0) + 1;
+    }
+    if (sub2.fails >= 8) s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
+  }));
+  return ok;
+}
+var ROOM_DAILY = 30;
+var roomDay = /* @__PURE__ */ new Map();
+var roomPushKey = (roomId) => `room:${roomId}`;
+async function pushToRoom(roomId, title, body, tag = "room") {
+  try {
+    const s = db.getState();
+    const key = roomPushKey(roomId);
+    const subs = s.pushSubs.filter((x) => x.userId === key);
+    if (!subs.length) return 0;
+    const day3 = istDay();
+    const c = roomDay.get(key);
+    if (!c || c.day !== day3) roomDay.set(key, { day: day3, n: 0 });
+    const cur = roomDay.get(key);
+    if (cur.n >= ROOM_DAILY) return 0;
+    cur.n++;
+    pushLog.push({ userId: key, msg: { kind: "deals", title, body }, endpoints: subs.length, at: nowIso() });
+    if (pushLog.length > 500) pushLog.shift();
+    const ok = await deliver(subs, { title, body }, { kind: "deals", title, body, tag });
+    db.save();
+    return ok;
+  } catch (e) {
+    console.error("[PUSH] room send failed:", e.message);
+    return 0;
+  }
+}
+function dropRoomPush(roomId) {
+  const s = db.getState();
+  const key = roomPushKey(roomId);
+  const n2 = s.pushSubs.length;
+  s.pushSubs = s.pushSubs.filter((x) => x.userId !== key);
+  return n2 - s.pushSubs.length;
+}
 async function pushTo(userId, msg) {
   try {
     const s = db.getState();
@@ -67585,30 +67645,8 @@ async function pushTo(userId, msg) {
     p.sentToday.n++;
     pushLog.push({ userId, msg, endpoints: subs.length, at: nowIso() });
     if (pushLog.length > 500) pushLog.shift();
-    const keys = vapidKeys();
-    if (!keys || !subs.length) return 0;
     const words = p.lang === "hi" && msg.hi ? msg.hi : msg;
-    const payload = Buffer.from(JSON.stringify({ t: words.title.slice(0, 80), b: words.body.slice(0, 180), u: msg.url && msg.url.startsWith("/") ? msg.url : "/", g: msg.tag || msg.kind }));
-    let ok = 0;
-    await Promise.all(subs.map(async (sub2) => {
-      if (!allowedEndpoint(sub2.endpoint)) return;
-      try {
-        const body = encryptPayload(payload, sub2.p256dh, sub2.auth);
-        const r = await fetchImpl(sub2.endpoint, { method: "POST", headers: { TTL: "86400", Urgency: msg.kind === "consent" ? "high" : "normal", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: vapidAuth(sub2.endpoint, keys, subject()) }, body, signal: AbortSignal.timeout(8e3) });
-        if (r.status === 404 || r.status === 410) {
-          s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
-          return;
-        }
-        if (r.ok) {
-          ok++;
-          sub2.lastOkAt = nowIso();
-          sub2.fails = 0;
-        } else sub2.fails = (sub2.fails || 0) + 1;
-      } catch {
-        sub2.fails = (sub2.fails || 0) + 1;
-      }
-      if (sub2.fails >= 8) s.pushSubs = s.pushSubs.filter((x) => x.id !== sub2.id);
-    }));
+    const ok = await deliver(subs, words, msg);
     db.save();
     return ok;
   } catch (e) {
@@ -74286,6 +74324,16 @@ var PHONE_IN_CHAT_MSG = {
   en: "Please do not type phone numbers in this chat. The owner's number is shared only after a verified visit, and your broker's number is already on this page.",
   hi: "\u0915\u0943\u092A\u092F\u093E \u0907\u0938 \u091A\u0948\u091F \u092E\u0947\u0902 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 \u092E\u093E\u0932\u093F\u0915 \u0915\u093E \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u0915\u0947 \u092C\u093E\u0926 \u092E\u093F\u0932\u0924\u093E \u0939\u0948, \u0914\u0930 \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0928\u0902\u092C\u0930 \u0907\u0938\u0940 \u092A\u0947\u091C \u092A\u0930 \u0939\u0948\u0964"
 };
+var DOC_KINDS = [
+  { id: "KYC_PAN", kyc: true, en: "PAN card", hi: "\u092A\u0948\u0928 \u0915\u093E\u0930\u094D\u0921" },
+  { id: "KYC_AADHAAR_MASKED", kyc: true, en: "Aadhaar (masked \u2014 first 8 digits covered)", hi: "\u0906\u0927\u093E\u0930 (\u092E\u093E\u0938\u094D\u0915\u094D\u0921 \u2014 \u092A\u0939\u0932\u0947 8 \u0905\u0902\u0915 \u0922\u0915\u0947 \u0939\u0941\u090F)" },
+  { id: "KYC_OTHER_ID", kyc: true, en: "Other photo ID", hi: "\u0905\u0928\u094D\u092F \u092B\u093C\u094B\u091F\u094B \u092A\u0939\u091A\u093E\u0928 \u092A\u0924\u094D\u0930" },
+  { id: "PAPER", kyc: false, en: "Paper / document", hi: "\u0915\u093E\u0917\u093C\u091C\u093C / \u0926\u0938\u094D\u0924\u093E\u0935\u0947\u091C\u093C" },
+  { id: "PHOTO", kyc: false, en: "Photo", hi: "\u092B\u093C\u094B\u091F\u094B" }
+];
+var isDocKind = (k) => DOC_KINDS.some((d) => d.id === k);
+var isKycKind = (k) => DOC_KINDS.some((d) => d.id === k && d.kyc);
+var DOC_LIMITS = { maxBytes: 25e5, perRoom: 12 };
 
 // server/propdocs.ts
 var me5 = () => ctx().user;
@@ -79234,8 +79282,8 @@ function createShopPartnerRouter() {
     db.save();
     res.json({ success: true, partner: partnerView(p) });
   });
-  for (const [path14, to, text] of [["pause", "PAUSED", "Paused \u2014 the QR form says \u201Cnot taking requests right now\u201D"], ["resume", "ACTIVE", "Resumed"], ["end", "ENDED", "Partnership ended \u2014 the QR stops; leads already in keep their terms"]]) {
-    r.post(`/:id/${path14}`, needs("partner:manage"), (req, res) => {
+  for (const [path15, to, text] of [["pause", "PAUSED", "Paused \u2014 the QR form says \u201Cnot taking requests right now\u201D"], ["resume", "ACTIVE", "Resumed"], ["end", "ENDED", "Partnership ended \u2014 the QR stops; leads already in keep their terms"]]) {
+    r.post(`/:id/${path15}`, needs("partner:manage"), (req, res) => {
       const p = mine3(req.params.id);
       if (!p) return bad10(res, "Partner not found", 404);
       if (p.status === "ENDED") return bad10(res, "This partnership has ended", 409);
@@ -79248,7 +79296,7 @@ function createShopPartnerRouter() {
       }
       hist(p, "BROKER", text);
       db.save();
-      audit2(p.id, `SHOP_PARTNER_${path14.toUpperCase()}`, `Shop QR partner ${p.id}: ${text}`);
+      audit2(p.id, `SHOP_PARTNER_${path15.toUpperCase()}`, `Shop QR partner ${p.id}: ${text}`);
       res.json({ success: true, partner: partnerView(p) });
     });
   }
@@ -84032,29 +84080,29 @@ var ring = { serverErrors: [], slow: [], client: [] };
 var counts3 = { serverErrors: 0, slow: 0, client: 0, rejections: 0, requests: 0 };
 var startedAt = (/* @__PURE__ */ new Date()).toISOString();
 var SLOW_MS = Number(process.env.SLOW_REQUEST_MS || 1500);
-function push2(list, path14, detail2, ms) {
-  const hit2 = list.find((e) => e.path === path14 && e.detail === detail2);
+function push2(list, path15, detail2, ms) {
+  const hit2 = list.find((e) => e.path === path15 && e.detail === detail2);
   if (hit2) {
     hit2.n++;
     hit2.at = (/* @__PURE__ */ new Date()).toISOString();
     if (ms && (!hit2.ms || ms > hit2.ms)) hit2.ms = ms;
     return;
   }
-  list.unshift({ at: (/* @__PURE__ */ new Date()).toISOString(), path: path14, detail: detail2, ms, n: 1 });
+  list.unshift({ at: (/* @__PURE__ */ new Date()).toISOString(), path: path15, detail: detail2, ms, n: 1 });
   if (list.length > MAX) list.length = MAX;
 }
 var pathKey = (p) => p.replace(/\/[A-Z]{2,}[-_][A-Z0-9_-]+/g, "/:id").replace(/\/\d{3,}/g, "/:n").slice(0, 120);
-function noteRequest(path14, status, ms) {
+function noteRequest(path15, status, ms) {
   counts3.requests++;
   if (ms >= SLOW_MS) {
     counts3.slow++;
-    push2(ring.slow, pathKey(path14), `${status}`, ms);
+    push2(ring.slow, pathKey(path15), `${status}`, ms);
   }
 }
-function noteServerError(path14, err) {
+function noteServerError(path15, err) {
   counts3.serverErrors++;
   const msg = err instanceof Error ? err.message : String(err);
-  push2(ring.serverErrors, pathKey(path14), msg.replace(/\b\d{10,}\b/g, "[n]").slice(0, 300));
+  push2(ring.serverErrors, pathKey(path15), msg.replace(/\b\d{10,}\b/g, "[n]").slice(0, 300));
 }
 function noteRejection(err) {
   counts3.rejections++;
@@ -89152,6 +89200,8 @@ function checkCard(i) {
 var import_express58 = __toESM(require_express2(), 1);
 var import_express59 = __toESM(require_express2(), 1);
 import crypto37 from "crypto";
+import fs12 from "fs";
+import path12 from "path";
 var st24 = () => db.getState();
 var nowIso37 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me26 = () => ctx().user;
@@ -89236,6 +89286,7 @@ function linkVisitToRoom(room, item, requestId, visit2) {
     req.status = "HANDLED";
     req.visitId = visit2.id;
   }
+  tell(room, "\u0935\u093F\u091C\u093C\u093F\u091F \u0924\u092F / Visit booked", "\u0924\u093E\u0930\u0940\u0916\u093C \u0914\u0930 \u0938\u092E\u092F \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0916\u094B\u0932\u0947\u0902 / Open to see the date and time");
   ev(room, `Visit booked for ${new Date(visit2.scheduledTime).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (${visit2.id})`);
 }
 var roomOwnerOf = (u) => u.role === "TEAM_MEMBER" && u.employerId ? u.employerId : u.id;
@@ -89292,6 +89343,8 @@ function detail(r) {
     note: r.note,
     messages: r.messages,
     events: r.events.slice(-30),
+    docs: (r.docs || []).map(docView),
+    docsOn: vaultReady(),
     items: r.items.map((i) => {
       const p = props.find((x) => x.id === i.propertyId);
       const avail = p ? shareableMedia({ id: r.brokerId }, p) : { photos: [], videos: [] };
@@ -89389,7 +89442,7 @@ function createClientRoomRouter() {
     room.items.push({ id: rid3("CRI"), propertyId: p.id, sharedAt: nowIso37(), note: note5, visitRequests: [], ...media && (media.photos.length || media.videos.length) ? { media } : {} });
     ev(room, `${isStaff4(me26()) ? `${me26().name}: ` : ""}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? " + video" : ""}` : ""}`);
     db.save();
-    void pushIfSeen(room);
+    tell(room, "\u0928\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / A new property", "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u090F\u0915 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u091C\u094B\u0921\u093C\u0940 / Your broker added a property for you");
     res.json({ success: true, room: detail(room) });
   });
   r.get("/:id/items/:itemId/media", (req, res) => {
@@ -89445,6 +89498,7 @@ function createClientRoomRouter() {
     room.lastBrokerSeenAt = nowIso37();
     ev(room, isStaff4(u) ? `${u.name} (office team) wrote` : "Broker wrote");
     db.save();
+    tell(room, "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0938\u0902\u0926\u0947\u0936 / Message from your broker", "\u092A\u0922\u093C\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0916\u094B\u0932\u0947\u0902 / Tap to read");
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/read", (req, res) => {
@@ -89476,6 +89530,7 @@ function createClientRoomRouter() {
     room.otpExpires = void 0;
     room.devices = [];
     room.linkAt = nowIso37();
+    dropRoomPush(room.id);
     room.expiresAt = new Date(Date.now() + ROOM_LIMITS.linkDays * 864e5).toISOString();
     ev(room, "New link made \u2014 the old link stopped working");
     db.save();
@@ -89532,6 +89587,41 @@ function createClientRoomRouter() {
     db.appendAuditEvent(u.id, u.role, "LEAD", room.id, "CLIENT_ROOM_PHONE_SAVED", `Client room mobile saved (ending ${room.phoneLast4})`);
     res.json({ success: true, room: detail(room) });
   });
+  r.get("/:id/docs/:docId", rateLimit("cr-doc-open", 200, 36e5), (req, res) => {
+    const room = mine2(req);
+    if (!room) return bad26(res, "Room not found", 404);
+    const d = (room.docs || []).find((x) => x.id === req.params.docId);
+    if (!d) return bad26(res, "Not found", 404);
+    if (isKycKind(d.kind) && isStaff4(me26())) return bad26(res, "ID copies are opened by the broker only", 403, { code: "KYC_BROKER_ONLY" });
+    let buf;
+    try {
+      buf = Buffer.from(unseal(fs12.readFileSync(docFile(room.id, d.id), "utf8"), docAad(room.id, d.id)), "base64");
+    } catch {
+      return bad26(res, "This file can no longer be opened", 410);
+    }
+    d.openedByBroker = (d.openedByBroker || 0) + 1;
+    ev(room, `${me26().name} opened a file the client sent (${d.kind})`);
+    db.save();
+    db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_DOC_OPENED", `Client-room file ${d.id} (${d.kind}) opened`);
+    res.set({ "Content-Type": d.mime, "Content-Disposition": `inline; filename="${d.id}.${d.mime === "application/pdf" ? "pdf" : d.mime === "image/png" ? "png" : d.mime === "image/webp" ? "webp" : "jpg"}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'" });
+    res.send(buf);
+  });
+  r.delete("/:id/docs/:docId", (req, res) => {
+    const room = mine2(req);
+    if (!room) return bad26(res, "Room not found", 404);
+    const d = (room.docs || []).find((x) => x.id === req.params.docId);
+    if (!d) return bad26(res, "Not found", 404);
+    if (isKycKind(d.kind) && isStaff4(me26())) return bad26(res, "ID copies are removed by the broker only", 403, { code: "KYC_BROKER_ONLY" });
+    try {
+      fs12.rmSync(docFile(room.id, d.id), { force: true });
+    } catch {
+    }
+    room.docs = (room.docs || []).filter((x) => x.id !== d.id);
+    ev(room, `${me26().name} removed a file the client sent`);
+    db.save();
+    db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_DOC_REMOVED", `Client-room file ${d.id} (${d.kind}) removed`);
+    res.json({ success: true, room: detail(room) });
+  });
   r.post("/:id/close", (req, res) => {
     const room = mine2(req);
     if (!room) return bad26(res, "Room not found", 404);
@@ -89544,6 +89634,7 @@ function createClientRoomRouter() {
     room.otpHash = void 0;
     room.otpPlain = void 0;
     room.phoneSealed = void 0;
+    eraseRoomFiles(room);
     ev(room, "Room closed");
     db.save();
     db.appendAuditEvent(me26().id, me26().role, "LEAD", room.id, "CLIENT_ROOM_CLOSED", "Client room closed");
@@ -89555,8 +89646,21 @@ var validPropRef = (room, id) => {
   const s = String(id || "");
   return room.items.some((i) => i.propertyId === s) ? s : void 0;
 };
-function pushIfSeen(_room) {
+var tell = (room, title, body) => {
+  void pushToRoom(room.id, title, body, `room-${room.id}`);
+};
+var DOCDIR = (roomId) => path12.resolve(process.cwd(), "data", "clientdocs", roomId.replace(/[^A-Za-z0-9-]/g, ""));
+var docFile = (roomId, docId2) => path12.join(DOCDIR(roomId), docId2.replace(/[^A-Za-z0-9-]/g, "") + ".bin");
+var docAad = (roomId, docId2) => `clientroom:${roomId}:doc:${docId2}`;
+function eraseRoomFiles(room) {
+  try {
+    fs12.rmSync(DOCDIR(room.id), { recursive: true, force: true });
+  } catch {
+  }
+  room.docs = [];
+  dropRoomPush(room.id);
 }
+var docView = (d) => ({ id: d.id, kind: d.kind, kyc: isKycKind(d.kind), name: d.name, mime: d.mime, size: d.size, at: d.at, note: d.note, opened: d.openedByBroker || 0 });
 var pingBroker = (room, title, body) => {
   void pushTo(room.brokerId, { kind: "deals", title, body, url: "/?tab=clientroom" });
   for (const m of roomTeam(room.brokerId)) void pushTo(m.id, { kind: "deals", title, body, url: "/?tab=clientroom" });
@@ -89612,12 +89716,36 @@ button,.btn{display:inline-block;padding:11px 16px;border-radius:11px;border:0;f
 .chat{max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px 0}.m{max-width:85%;padding:8px 11px;border-radius:12px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}.mc{align-self:flex-end;background:#dff3e5}.mb{align-self:flex-start;background:#eef1f7}.m small{display:block;margin-top:3px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.gal{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scroll-snap-type:x mandatory}.gal img{width:150px;height:110px;object-fit:cover;border-radius:10px;flex:none;background:#eee;scroll-snap-align:start}.vid{position:relative;margin-top:10px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9}.vid iframe,.vid video{position:absolute;inset:0;width:100%;height:100%;border:0}.sold{opacity:.6}details summary{cursor:pointer;font-size:13px;font-weight:600;margin-top:8px}h2{font-size:15px;margin:16px 4px 0}
 .wm{position:fixed;inset:-20%;pointer-events:none;z-index:50;display:flex;flex-wrap:wrap;gap:60px 40px;align-content:space-around;justify-content:space-around;transform:rotate(-24deg);opacity:.07;font-size:15px;font-weight:800;color:#000;user-select:none}`;
-function shell3(title, body, lang = "hi") {
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc14(title)}</title><style>${CSS5}</style></head><body><div class="w">${body}</div><script src="/r/cr.js" defer></script></body></html>`;
+function shell3(title, body, lang = "hi", head = "") {
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png">${head}<title>${esc14(title)}</title><style>${CSS5}</style></head><body><div class="w">${body}</div><script src="/r/cr.js" defer></script></body></html>`;
 }
-var CR_JS = `(function(){var im=document.querySelectorAll('.prop img,.gal img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
+var CR_JS = `(function(){var TOK=(location.pathname.match(/^\\/r\\/([A-Za-z0-9_-]+)/)||[])[1]||'';var im=document.querySelectorAll('.prop img,.gal img');for(var i=0;i<im.length;i++){(function(e){var h=function(){e.style.display='none'};e.addEventListener('error',h);if(e.complete&&e.naturalWidth===0)h()})(im[i])}
 var c=document.getElementById('chat-box');if(c){c.scrollTop=c.scrollHeight}
-var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}})();`;
+var f=document.getElementById('msgtext');if(f&&document.body.getAttribute('data-live')==='1'){setInterval(function(){if(document.hidden)return;if(f.value&&f.value.length>0)return;if(document.activeElement&&document.activeElement.tagName==='INPUT')return;location.reload()},30000)}
+function $(i){return document.getElementById(i)}
+// v69 \u2014 the room as an app: service worker, "add to home", alerts, sending papers
+var sw=null;if('serviceWorker' in navigator&&TOK&&$('app-card')){navigator.serviceWorker.register('/sw.js').then(function(r){sw=r;setup()}).catch(function(){setup()})}else{setup()}
+var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b)b.style.display='inline-block'});
+function standalone(){return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
+function setup(){var c=$('app-card');if(!c)return;if(standalone()){var i=$('app-install');if(i)i.style.display='none';var ih=$('app-ios');if(ih)ih.style.display='none'}
+var ios=/iphone|ipad|ipod/i.test(navigator.userAgent);if(ios&&!standalone()&&$('app-ios'))$('app-ios').style.display='block';
+var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
+var bp=$('app-push');var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator&&(!ios||standalone());
+if(bp&&can){bp.style.display='inline-block';if(Notification.permission==='granted'){reg(true)}bp.addEventListener('click',function(){reg(false)})}else if(bp&&ios&&!standalone()){/* iPhone needs the app on the home screen first */}
+}
+function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o}
+function reg(quiet){var bp=$('app-push');var m=$('app-push-msg');navigator.serviceWorker.ready.then(function(r){return Notification.requestPermission().then(function(p){if(p!=='granted'){if(m)m.textContent='\u0905\u0932\u0930\u094D\u091F \u092C\u0902\u0926 \u0939\u0948\u0902 \u2014 \u092B\u093C\u094B\u0928 \u0915\u0940 \u0938\u0947\u091F\u093F\u0902\u0917 \u092E\u0947\u0902 \u0905\u0928\u0941\u092E\u0924\u093F \u0926\u0947\u0902\u0964 / Alerts are off \u2014 allow them in the phone settings.';return}
+return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){if(m)m.textContent='\u0905\u0932\u0930\u094D\u091F \u0905\u092D\u0940 \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u0948\u0902\u0964 / Alerts are not on yet.';return}
+return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/r/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){if(bp)bp.style.display='none';if(m)m.textContent='\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0939\u0948\u0902 / Alerts are on'}else if(m&&!quiet)m.textContent='\u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on \u2014 try again.'})})})})}).catch(function(){if(m&&!quiet)m.textContent='\u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u091A\u0932 \u0938\u0915\u0924\u0947\u0964 / Alerts do not work on this phone.'})}
+// sending a paper / photo / ID copy: a photo is made smaller on the phone first
+var df=$('docform');if(df){df.addEventListener('submit',function(e){e.preventDefault();var msg=$('docmsg'),f=$('docfile').files[0];if(!f){msg.textContent='\u092B\u093C\u093E\u0907\u0932 \u091A\u0941\u0928\u0947\u0902\u0964 / Choose a file.';return}
+if(!$('docok').checked){msg.textContent='\u0938\u0939\u092E\u0924\u093F \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902\u0964 / Please tick the consent.';return}
+var btn=df.querySelector('button[type=submit]');btn.disabled=true;msg.textContent='\u092D\u0947\u091C \u0930\u0939\u0947 \u0939\u0948\u0902\u2026 / Sending\u2026';
+var send=function(data,name,mime){fetch('/r/'+TOK+'/doc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:$('dockind').value,name:name,data:data,note:$('docnote').value,consent:true})}).then(function(x){return x.json().then(function(j){return{ok:x.ok,j:j}})}).then(function(r){if(r.ok){location.href='/r/'+TOK+'?doc=1#docs'}else{btn.disabled=false;msg.textContent=(r.j&&r.j.error)||'\u0928\u0939\u0940\u0902 \u092D\u0947\u091C \u092A\u093E\u090F\u0964 / Could not send.'}}).catch(function(){btn.disabled=false;msg.textContent='\u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u0915\u0940 \u0926\u093F\u0915\u094D\u0915\u0924 \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Network problem \u2014 try again.'})};
+if(f.type==='application/pdf'){if(f.size>2400000){btn.disabled=false;msg.textContent='PDF 2.4 MB \u0938\u0947 \u091B\u094B\u091F\u0940 \u0939\u094B\u0964 / The PDF must be under 2.4 MB.';return}var fr=new FileReader();fr.onload=function(){send(String(fr.result).split(',')[1],f.name,f.type)};fr.readAsDataURL(f);return}
+var url=URL.createObjectURL(f),im=new Image();im.onload=function(){var k=Math.min(1,1600/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*k));cv.height=Math.max(1,Math.round(im.height*k));cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);var d=cv.toDataURL('image/jpeg',0.8);URL.revokeObjectURL(url);send(d.split(',')[1],f.name,'image/jpeg')};im.onerror=function(){btn.disabled=false;msg.textContent='\u092F\u0939 \u092B\u093C\u094B\u091F\u094B \u092A\u0922\u093C\u0940 \u0928\u0939\u0940\u0902 \u091C\u093E \u0938\u0915\u0940\u0964 / This photo could not be read.'};im.src=url})}
+var dl=document.querySelectorAll('[data-deldoc]');for(var j=0;j<dl.length;j++){(function(b){b.addEventListener('click',function(){if(!confirm('\u092F\u0939 \u092B\u093C\u093E\u0907\u0932 \u0939\u091F\u093E\u090F\u0901? / Remove this file?'))return;fetch('/r/'+TOK+'/doc/'+b.getAttribute('data-deldoc')+'/delete',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.href='/r/'+TOK+'#docs'})})})(dl[j])}
+})();`;
 var PV_JS = `(function(){var R=document.getElementById('pv');if(!R)return;var T=JSON.parse(R.getAttribute('data-t')||'[]'),B=R.getAttribute('data-base')||'',W=R.getAttribute('data-wm')||'',H=document.getElementById('pv-pages'),C=document.getElementById('pv-cover');
 function st(img){var c=document.createElement('canvas'),k=Math.min(1,1200/img.width);c.width=Math.max(1,Math.round(img.width*k));c.height=Math.max(1,Math.round(img.height*k));var g=c.getContext('2d'),w=c.width,h=c.height;g.drawImage(img,0,0,w,h);
 var ini=(W.split(' \xB7 ')[0]||'').slice(0,8);if(ini){g.save();g.globalAlpha=0.13;g.fillStyle='#b91c1c';g.textAlign='center';g.textBaseline='middle';g.font='800 '+Math.round(Math.min(w,h)/3.2)+'px system-ui,sans-serif';g.translate(w/2,h/2);g.rotate(-Math.PI/7);g.fillText(ini,0,0);g.restore()}
@@ -89851,6 +89979,114 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.send(page2);
   });
+  r.get("/:token/manifest.webmanifest", (req, res) => {
+    const room = find(req.params.token);
+    if (!room || room.status !== "ACTIVE") return res.status(404).end();
+    const base = `/r/${req.params.token}`;
+    res.set({ "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+    res.send(JSON.stringify({
+      name: "GENZ \u2014 \u092E\u0947\u0930\u093E \u0930\u0942\u092E",
+      short_name: "\u092E\u0947\u0930\u093E \u0930\u0942\u092E",
+      description: "Your private property room with your broker",
+      id: base,
+      start_url: base,
+      scope: base + "/",
+      display: "standalone",
+      orientation: "portrait",
+      background_color: "#ffffff",
+      theme_color: "#0f766e",
+      icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }, { src: "/icon-512.png", sizes: "512x512", type: "image/png" }]
+    }));
+  });
+  const jsonBody = import_express59.default.json({ limit: "4mb" });
+  const jerr = (res, code, error62) => res.status(code).json({ success: false, error: error62 });
+  const jsonAuth = (req, res) => {
+    headers(res);
+    const room = find(req.params.token);
+    if (!room || room.status !== "ACTIVE" || Date.parse(room.expiresAt) < Date.now()) {
+      jerr(res, 404, "\u092F\u0939 \u0932\u093F\u0902\u0915 \u092C\u0902\u0926 \u0939\u094B \u091A\u0941\u0915\u093E \u0939\u0948\u0964 / This link is closed.");
+      return null;
+    }
+    const dev = sessionFor(req, room);
+    if (!dev) {
+      jerr(res, 401, "\u092B\u093F\u0930 \u0938\u0947 \u0916\u094B\u0932\u0947\u0902 \u0914\u0930 \u0915\u094B\u0921 \u0921\u093E\u0932\u0947\u0902\u0964 / Open the link again and enter the code.");
+      return null;
+    }
+    slide(req, res, room, dev);
+    return room;
+  };
+  r.post("/:token/push", rateLimit("cr-push", 30, 36e5), jsonBody, (req, res) => {
+    const room = jsonAuth(req, res);
+    if (!room) return;
+    const endpoint = String(req.body?.endpoint || "");
+    const k = req.body?.keys || {};
+    const p256dh = String(k.p256dh || "");
+    const auth = String(k.auth || "");
+    if (!endpoint || endpoint.length > 1e3 || p256dh.length < 80 || p256dh.length > 120 || auth.length < 16 || auth.length > 40) return jerr(res, 400, "Unusable push address.");
+    if (!allowedEndpoint(endpoint)) return jerr(res, 400, "This browser\u2019s push service is not supported.");
+    const state = db.getState();
+    const key = roomPushKey(room.id);
+    const id = crypto37.createHash("sha256").update(endpoint).digest("hex").slice(0, 32);
+    state.pushSubs = state.pushSubs.filter((x) => x.id !== id);
+    const mine3 = state.pushSubs.filter((x) => x.userId === key);
+    if (mine3.length >= 3) {
+      const oldest = mine3.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      state.pushSubs = state.pushSubs.filter((x) => x.id !== oldest.id);
+    }
+    state.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers["user-agent"] || "").slice(0, 120), createdAt: nowIso37(), fails: 0, url: `/r/${req.params.token}` });
+    ev(room, "Client turned on alerts on a phone");
+    db.save();
+    res.json({ success: true });
+  });
+  r.post("/:token/doc", rateLimit("cr-doc", 20, 36e5), jsonBody, (req, res) => {
+    const room = jsonAuth(req, res);
+    if (!room) return;
+    const kind = req.body?.kind;
+    if (!isDocKind(kind)) return jerr(res, 400, "\u0915\u093F\u0938 \u0924\u0930\u0939 \u0915\u0940 \u092B\u093C\u093E\u0907\u0932 \u0939\u0948, \u091A\u0941\u0928\u0947\u0902\u0964 / Choose what kind of file it is.");
+    if (req.body?.consent !== true) return jerr(res, 400, "\u0938\u0939\u092E\u0924\u093F \u092A\u0930 \u091F\u093F\u0915 \u0915\u0930\u0947\u0902\u0964 / Please tick the consent.");
+    if (!vaultReady()) return jerr(res, 503, "\u092B\u093C\u093E\u0907\u0932 \u092D\u0947\u091C\u0928\u093E \u0905\u092D\u0940 \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092C\u0924\u093E\u090F\u0901\u0964 / Sending files is not available right now \u2014 tell your broker.");
+    const docs = room.docs || (room.docs = []);
+    if (docs.length >= DOC_LIMITS.perRoom) return jerr(res, 400, `\u090F\u0915 \u0930\u0942\u092E \u092E\u0947\u0902 ${DOC_LIMITS.perRoom} \u0938\u0947 \u091C\u093C\u094D\u092F\u093E\u0926\u093E \u092B\u093C\u093E\u0907\u0932 \u0928\u0939\u0940\u0902\u0964 / At most ${DOC_LIMITS.perRoom} files per room.`);
+    const b64 = String(req.body?.data || "");
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) return jerr(res, 400, "\u092B\u093C\u093E\u0907\u0932 \u092A\u0922\u093C\u0940 \u0928\u0939\u0940\u0902 \u091C\u093E \u0938\u0915\u0940\u0964 / The file could not be read.");
+    const buf = Buffer.from(b64, "base64");
+    if (buf.length < 100) return jerr(res, 400, "\u092B\u093C\u093E\u0907\u0932 \u092A\u0922\u093C\u0940 \u0928\u0939\u0940\u0902 \u091C\u093E \u0938\u0915\u0940\u0964 / The file could not be read.");
+    if (buf.length > DOC_LIMITS.maxBytes) return jerr(res, 413, "\u092B\u093C\u093E\u0907\u0932 \u092C\u0921\u093C\u0940 \u0939\u0948 (2.5 MB \u0924\u0915)\u0964 / The file is too big (2.5 MB max).");
+    const mime = sniffMime(buf);
+    if (!mime) return jerr(res, 400, "\u0938\u093F\u0930\u094D\u092B\u093C \u092B\u093C\u094B\u091F\u094B (JPG/PNG) \u092F\u093E PDF \u092D\u0947\u091C\u0947\u0902\u0964 / Send a photo (JPG/PNG) or a PDF only.");
+    if (kind === "PHOTO" && mime === "application/pdf") return jerr(res, 400, "\u092B\u093C\u094B\u091F\u094B \u0915\u0947 \u0932\u093F\u090F \u0924\u0938\u094D\u0935\u0940\u0930 \u091A\u0941\u0928\u0947\u0902\u0964 / Choose an image for a photo.");
+    const note5 = stripPhones(String(req.body?.note || "").trim()).slice(0, 120) || void 0;
+    const name = String(req.body?.name || "file").replace(/[^\w.\- ]/g, "").slice(0, 60) || "file";
+    const id = rid3("CRD");
+    try {
+      fs12.mkdirSync(DOCDIR(room.id), { recursive: true });
+      fs12.writeFileSync(docFile(room.id, id), seal(buf.toString("base64"), docAad(room.id, id)));
+    } catch {
+      return jerr(res, 500, "\u0938\u0947\u0935 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u092F\u093E \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not save \u2014 try again.");
+    }
+    docs.push({ id, kind, name, mime, size: buf.length, at: nowIso37(), sha256: crypto37.createHash("sha256").update(buf).digest("hex"), note: note5, consentAt: nowIso37() });
+    const label2 = DOC_KINDS.find((d) => d.id === kind);
+    room.messages.push({ id: rid3("CRX"), from: "CLIENT", text: `\u{1F4CE} ${label2.hi} \u092D\u0947\u091C\u093E / Sent: ${label2.en}`, at: nowIso37() });
+    room.lastClientSeenAt = nowIso37();
+    ev(room, `Client sent a file: ${label2.en}${isKycKind(kind) ? " (ID \u2014 broker only)" : ""}`);
+    db.save();
+    pingBroker(room, `${room.clientName} sent a ${isKycKind(kind) ? "document" : "file"}`, "Open Client Rooms \u2192 Papers.");
+    res.json({ success: true, id });
+  });
+  r.post("/:token/doc/:id/delete", rateLimit("cr-doc-del", 30, 36e5), jsonBody, (req, res) => {
+    const room = jsonAuth(req, res);
+    if (!room) return;
+    const d = (room.docs || []).find((x) => x.id === req.params.id);
+    if (!d) return res.json({ success: true });
+    try {
+      fs12.rmSync(docFile(room.id, d.id), { force: true });
+    } catch {
+    }
+    room.docs = (room.docs || []).filter((x) => x.id !== d.id);
+    ev(room, `Client removed a file he had sent (${d.kind})`);
+    db.save();
+    res.json({ success: true });
+  });
   function render(req, res, room, msg = "") {
     const b = st24().users.find((u) => u.id === room.brokerId);
     room.lastClientSeenAt = nowIso37();
@@ -89891,16 +90127,34 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok2}/react
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join("")}</div>`;
     res.send(shell3("Your private room", `${wm}<div class="top"><h1>\u0928\u092E\u0938\u094D\u0924\u0947 ${esc14(room.clientName.split(" ")[0])} \u{1F64F}</h1><p>${esc14(b?.name || "\u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930")} \u0928\u0947 \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092F\u0947 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u091A\u0941\u0928\u0940 \u0939\u0948\u0902 \xB7 Properties picked for you</p></div>
 ${req.query.sent === "1" ? '<div class="card ok"><p class="t">\u0906\u092A\u0915\u093E \u0935\u093F\u091C\u093C\u093F\u091F \u0905\u0928\u0941\u0930\u094B\u0927 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092D\u0947\u091C \u0926\u093F\u092F\u093E \u0917\u092F\u093E\u0964 / Your visit request has been sent.</p></div>' : ""}${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
+${req.query.doc === "1" ? '<div class="card ok"><p class="t">\u092B\u093C\u093E\u0907\u0932 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092D\u0947\u091C \u0926\u0940 \u0917\u0908\u0964 / File sent to your broker.</p></div>' : ""}
 ${brokerCard2(b)}
+<div class="card" id="app-card"><p class="h">\u{1F4F2} \u0907\u0938\u0947 \u0910\u092A \u0915\u0940 \u0924\u0930\u0939 \u0930\u0916\u0947\u0902 / Keep this as an app</p>
+<p class="small">\u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 \u2014 \u0939\u0930 \u092C\u093E\u0930 \u0932\u093F\u0902\u0915 \u0916\u094B\u0932\u0928\u0947 \u092F\u093E WhatsApp \u092E\u0947\u0902 \u0922\u0942\u0901\u0922\u0928\u0947 \u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0928\u0939\u0940\u0902\u0964 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0938\u0902\u0926\u0947\u0936 \u0906\u090F\u0917\u093E \u0924\u094B \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u092E\u093F\u0932\u0947\u0917\u093E\u0964 / Add it to your home screen \u2014 no hunting for the link. You get an alert when your broker writes.</p>
+<div class="row"><button type="button" class="g" id="app-install" style="display:none">\u{1F4F2} \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 / Add to Home</button> <button type="button" class="l" id="app-push" style="display:none">\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902 / Turn on alerts</button></div>
+<p class="small" id="app-ios" style="display:none">iPhone: \u0928\u0940\u091A\u0947 Share (\u2B06) \u0926\u092C\u093E\u090F\u0901 \u2192 \u201CAdd to Home Screen\u201D\u0964 \u092B\u093F\u0930 \u0910\u092A \u0916\u094B\u0932\u0915\u0930 \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902\u0964 (\u0905\u0932\u0930\u094D\u091F \u0915\u0947 \u0932\u093F\u090F iOS 16.4+) / iPhone: tap Share \u2192 Add to Home Screen, then open the app and turn on alerts (needs iOS 16.4+).</p>
+<p class="small" id="app-push-msg"></p></div>
 <p class="small" style="margin:10px 4px">\u{1F4CC} \u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 / \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u0930\u0916 \u0932\u0947\u0902 \u2014 \u0907\u0938\u0940 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0917\u0932\u0940 \u092C\u093E\u0930 \u092C\u093F\u0928\u093E \u0915\u094B\u0921 \u0915\u0947 \u0916\u0941\u0932\u0947\u0917\u093E (${ROOM_LIMITS.sessionDays} \u0926\u093F\u0928 \u092E\u0947\u0902 \u090F\u0915 \u092C\u093E\u0930 \u0916\u094B\u0932\u0924\u0947 \u0930\u0939\u0947\u0902)\u0964 \u092F\u0939 \u092A\u0947\u091C \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u0939\u0948, \u0907\u0938\u0915\u093E \u0932\u093F\u0902\u0915 \u092F\u093E \u0938\u094D\u0915\u094D\u0930\u0940\u0928\u0936\u0949\u091F \u0906\u0917\u0947 \u0928 \u092D\u0947\u091C\u0947\u0902\u0964<br>Bookmark this page or add it to your home screen \u2014 on this phone it opens without a code next time. It is only for you: please do not forward the link or screenshots.</p>
 <h2>\u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 / Properties (${room.items.length})</h2>${cards || '<div class="card"><p class="t">\u0905\u092D\u0940 \u0915\u094B\u0908 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0928\u0939\u0940\u0902 \u092D\u0947\u091C\u0940 \u0917\u0908\u0964 / Nothing shared yet \u2014 your broker will add some.</p></div>'}
+${(() => {
+      const kycOn = vaultReady();
+      const list = (room.docs || []).map((d) => {
+        const k = DOC_KINDS.find((x) => x.id === d.kind);
+        return `<div class="m mc">${isKycKind(d.kind) ? "\u{1FAAA}" : "\u{1F4CE}"} ${esc14(k?.hi || d.kind)} \xB7 <small>${esc14(d.name)} \xB7 ${Math.max(1, Math.round(d.size / 1024))} KB \xB7 ${esc14(dayHi(d.at))}</small> <button type="button" class="l" data-deldoc="${esc14(d.id)}" style="padding:4px 10px">\u0939\u091F\u093E\u090F\u0901 / Remove</button></div>`;
+      }).join("");
+      return `<h2 id="docs">\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092B\u093C\u094B\u091F\u094B / \u0915\u093E\u0917\u093C\u091C\u093C / ID \u092D\u0947\u091C\u0947\u0902 / Send a photo, paper or ID</h2><div class="card">${kycOn ? `<form id="docform"><label>\u0915\u094D\u092F\u093E \u092D\u0947\u091C \u0930\u0939\u0947 \u0939\u0948\u0902? / What is it?</label><select id="dockind" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">${DOC_KINDS.map((d) => `<option value="${d.id}">${esc14(d.hi)} / ${esc14(d.en)}</option>`).join("")}</select>
+<input type="file" id="docfile" accept="image/*,application/pdf" style="margin:8px 0;width:100%"><input type="text" id="docnote" maxlength="120" placeholder="\u091B\u094B\u091F\u093E \u0928\u094B\u091F (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915) / Short note (optional)" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px">
+<p class="small">\u26A0 \u0906\u0927\u093E\u0930 \u0938\u093F\u0930\u094D\u092B\u093C <b>\u092E\u093E\u0938\u094D\u0915\u094D\u0921</b> \u092D\u0947\u091C\u0947\u0902 (\u092A\u0939\u0932\u0947 8 \u0905\u0902\u0915 \u0922\u0915\u0947)\u0964 \u092A\u0942\u0930\u093E \u0906\u0927\u093E\u0930 \u0928 \u092D\u0947\u091C\u0947\u0902\u0964 \u0928\u0902\u092C\u0930 \u091A\u0948\u091F \u092E\u0947\u0902 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 / Send Aadhaar only <b>masked</b> (first 8 digits covered). Never the full Aadhaar.</p>
+<label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="docok" style="width:auto;margin-top:3px"><span class="small">\u092E\u0948\u0902 \u092F\u0939 \u092B\u093C\u093E\u0907\u0932 \u0905\u092A\u0928\u0940 \u092E\u0930\u094D\u091C\u093C\u0940 \u0938\u0947 \u0907\u0938 \u0938\u094C\u0926\u0947 \u0915\u0947 \u0932\u093F\u090F ${esc14(b?.name || "\u092C\u094D\u0930\u094B\u0915\u0930")} \u0915\u094B \u092D\u0947\u091C \u0930\u0939\u093E/\u0930\u0939\u0940 \u0939\u0942\u0901\u0964 \u092F\u0939 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 (\u090F\u0928\u094D\u0915\u094D\u0930\u093F\u092A\u094D\u091F\u0947\u0921) \u0930\u0916\u0940 \u091C\u093E\u090F\u0917\u0940, \u0938\u093F\u0930\u094D\u092B\u093C \u092C\u094D\u0930\u094B\u0915\u0930 \u0916\u094B\u0932 \u0938\u0915\u0947\u0917\u093E, \u0914\u0930 \u0930\u0942\u092E \u092C\u0902\u0926 \u0939\u094B\u0928\u0947 \u092A\u0930 \u092E\u093F\u091F \u091C\u093E\u090F\u0917\u0940\u0964 / I send this willingly for this deal. It is kept encrypted, only the broker can open it, and it is erased when the room closes.</span></label>
+<div class="row"><button type="submit" class="g">\u{1F4E4} \u092D\u0947\u091C\u0947\u0902 / Send</button></div><p class="small" id="docmsg"></p></form>` : '<p class="t">\u092B\u093C\u093E\u0907\u0932 \u092D\u0947\u091C\u0928\u093E \u0905\u092D\u0940 \u0909\u092A\u0932\u092C\u094D\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u091A\u0948\u091F \u092E\u0947\u0902 \u092C\u0924\u093E\u090F\u0901\u0964 / Sending files is not available right now \u2014 tell your broker in the chat.</p>'}${list ? `<div class="chat" style="max-height:none;margin-top:8px">${list}</div>` : ""}</div>`;
+    })()}
 <h2 id="chat">\u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u092C\u093E\u0924 / Chat with your broker</h2>
 <div class="card"><p class="small">${roomTeam(room.brokerId).length ? "\u092F\u0939 \u091A\u0948\u091F \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A, \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0914\u0930 \u0909\u0928\u0915\u0940 \u0911\u092B\u093C\u093F\u0938 \u091F\u0940\u092E \u0926\u0947\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u091A\u0948\u091F \u092E\u0947\u0902 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 / Only you, your broker and his office team can read this chat. Please do not type phone numbers." : "\u092F\u0939 \u091A\u0948\u091F \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A \u0914\u0930 \u0906\u092A\u0915\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0926\u0947\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u091A\u0948\u091F \u092E\u0947\u0902 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 / Only you and your broker can read this chat. Please do not type phone numbers."}</p>
 <div class="chat" id="chat-box">${chat || "<small>\u0905\u092D\u0940 \u0915\u094B\u0908 \u0938\u0902\u0926\u0947\u0936 \u0928\u0939\u0940\u0902\u0964 / No messages yet.</small>"}</div>
 <form method="post" action="/r/${tok2}/msg"><textarea name="text" id="msgtext" rows="2" maxlength="${ROOM_LIMITS.textChars}" placeholder="\u0938\u0902\u0926\u0947\u0936 \u0932\u093F\u0916\u0947\u0902 / Write a message" required></textarea>
 ${room.items.length ? `<label>\u0915\u093F\u0938 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0947 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902? (\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915) / About which property?</label><select name="item" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px"><option value="">\u2014</option>${room.items.map((i) => `<option value="${esc14(i.id)}">${esc14(props.find((x) => x.id === i.propertyId)?.title || i.propertyId)}</option>`).join("")}</select>` : ""}<div class="row"><button class="g" type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">GENZ \u090F\u0915 \u0928\u094D\u092F\u0942\u091F\u094D\u0930\u0932 \u092A\u094D\u0932\u0947\u091F\u092B\u093C\u0949\u0930\u094D\u092E \u0939\u0948; \u0915\u0940\u092E\u0924 \u0914\u0930 \u0936\u0930\u094D\u0924\u0947\u0902 \u0906\u092A\u0915\u0947, \u092E\u093E\u0932\u093F\u0915 \u0914\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u092C\u0940\u091A \u0924\u092F \u0939\u094B\u0924\u0940 \u0939\u0948\u0902\u0964 GENZ \u0906\u092A\u0938\u0947 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964 \u0906\u092A\u0915\u093E \u092E\u094B\u092C\u093E\u0907\u0932 \u0928\u0902\u092C\u0930 \u0938\u093F\u0930\u094D\u092B\u093C \u0907\u0938 \u0930\u0942\u092E \u0915\u094B \u0916\u094B\u0932\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u091C\u093E\u0901\u091A\u093E \u0917\u092F\u093E \u0939\u0948 \u0914\u0930 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0930\u0942\u092A (hash) \u092E\u0947\u0902 \u0930\u0916\u093E \u091C\u093E\u0924\u093E \u0939\u0948\u0964<br>GENZ is a neutral platform; price and terms are between you, the owner and the broker. GENZ never asks you for money. Your mobile number is only used to open this room and is stored in a one-way hashed form.</p>
-${joinFooter(b, b?.city)}`).replace("<body>", '<body data-live="1">'));
+${joinFooter(b, b?.city)}`, "hi", `<link rel="manifest" href="/r/${tok2}/manifest.webmanifest"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="\u092E\u0947\u0930\u093E \u0930\u0942\u092E"><link rel="apple-touch-icon" href="/icon-192.png">`).replace("<body>", '<body data-live="1">'));
   }
   return r;
 }
@@ -89913,6 +90167,7 @@ function sweepClientRooms() {
       r.status = "CLOSED";
       r.closedAt = nowIso37();
       r.phoneSealed = void 0;
+      eraseRoomFiles(r);
       ev(r, "Closed \u2014 the link ran out");
       n2++;
     }
@@ -90829,10 +91084,10 @@ function createConnectorRouter() {
 
 // server.ts
 var import_compression = __toESM(require_compression(), 1);
-import path12 from "node:path";
+import path13 from "node:path";
 import { fileURLToPath } from "node:url";
 var __filename = fileURLToPath(import.meta.url);
-var __dirname = path12.dirname(__filename);
+var __dirname = path13.dirname(__filename);
 var app = (0, import_express63.default)();
 var port = Number(process.env.PORT) || 3e3;
 var HOST = process.env.HOST || (IS_PROD ? "0.0.0.0" : "127.0.0.1");
@@ -90862,7 +91117,7 @@ app.use((req, res, next2) => {
   next2();
 });
 var jsonParser = import_express63.default.json({ limit: "256kb" });
-app.use((req, res, next2) => req.method === "POST" && (req.path === "/api/pdocs" || req.path === "/api/property-docs" || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path)) ? next2() : jsonParser(req, res, next2));
+app.use((req, res, next2) => req.method === "POST" && (req.path === "/api/pdocs" || req.path === "/api/property-docs" || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next2() : jsonParser(req, res, next2));
 app.use("/api", (req, res, next2) => {
   const t0 = Date.now();
   res.on("finish", () => {
@@ -95756,21 +96011,21 @@ async function startServer() {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
-    const distPath = process.env.DIST_DIR || path12.resolve(__dirname, "dist");
+    const distPath = process.env.DIST_DIR || path13.resolve(__dirname, "dist");
     app.use(
       import_express63.default.static(distPath, {
         index: false,
         setHeaders: (res, file2) => {
-          const base = path12.basename(file2);
+          const base = path13.basename(file2);
           if (base === "sw.js" || base === "index.html" || base === "manifest.webmanifest") res.setHeader("Cache-Control", "no-cache");
-          else if (file2.includes(`${path12.sep}assets${path12.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          else if (file2.includes(`${path13.sep}assets${path13.sep}`)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
           else res.setHeader("Cache-Control", "public, max-age=86400");
         }
       })
     );
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-cache");
-      res.sendFile(path12.resolve(distPath, "index.html"));
+      res.sendFile(path13.resolve(distPath, "index.html"));
     });
   }
   app.use((err, req, res, _next) => {
@@ -95855,39 +96110,39 @@ init_pgstore();
 
 // server/fileSync.ts
 init_pgstore();
-import fs12 from "node:fs";
-import path13 from "node:path";
+import fs13 from "node:fs";
+import path14 from "node:path";
 import { createHash as createHash2 } from "node:crypto";
 var MAX_FILE = 12 * 1024 * 1024;
-var root = () => path13.resolve(process.cwd(), "data");
+var root = () => path14.resolve(process.cwd(), "data");
 var sha6 = (b) => createHash2("sha256").update(b).digest("hex");
 function walk() {
   const out = [];
   const base = root();
   let dirs = [];
   try {
-    dirs = fs12.readdirSync(base, { withFileTypes: true });
+    dirs = fs13.readdirSync(base, { withFileTypes: true });
   } catch {
     return out;
   }
   const rec2 = (dir, rel) => {
     let ents = [];
     try {
-      ents = fs12.readdirSync(dir, { withFileTypes: true });
+      ents = fs13.readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const e of ents) {
       const r = `${rel}/${e.name}`;
-      if (e.isDirectory()) rec2(path13.join(dir, e.name), r);
+      if (e.isDirectory()) rec2(path14.join(dir, e.name), r);
       else if (e.isFile() && !e.name.endsWith(".tmp")) out.push(r);
     }
   };
-  for (const d of dirs) if (d.isDirectory()) rec2(path13.join(base, d.name), d.name);
+  for (const d of dirs) if (d.isDirectory()) rec2(path14.join(base, d.name), d.name);
   return out;
 }
-var abs = (rel) => path13.join(root(), ...rel.split("/"));
-var safe = (rel) => !!rel && !rel.split("/").some((p) => p === ".." || p === "" || p === ".") && !path13.isAbsolute(rel);
+var abs = (rel) => path14.join(root(), ...rel.split("/"));
+var safe = (rel) => !!rel && !rel.split("/").some((p) => p === ".." || p === "" || p === ".") && !path14.isAbsolute(rel);
 function createFileSync() {
   const known = /* @__PURE__ */ new Map();
   let lastSig = null;
@@ -95901,9 +96156,9 @@ function createFileSync() {
     for (const r of rows) {
       if (!safe(r.path)) continue;
       if (r.deleted) {
-        if (known.has(r.path) || fs12.existsSync(abs(r.path))) {
+        if (known.has(r.path) || fs13.existsSync(abs(r.path))) {
           try {
-            fs12.rmSync(abs(r.path), { force: true });
+            fs13.rmSync(abs(r.path), { force: true });
           } catch {
           }
           known.delete(r.path);
@@ -95911,12 +96166,12 @@ function createFileSync() {
         continue;
       }
       inDb.add(r.path);
-      if (known.get(r.path)?.sha === r.sha && fs12.existsSync(abs(r.path))) continue;
+      if (known.get(r.path)?.sha === r.sha && fs13.existsSync(abs(r.path))) continue;
       const buf = await s.fileGet(r.path);
       if (!buf) continue;
-      fs12.mkdirSync(path13.dirname(abs(r.path)), { recursive: true });
-      fs12.writeFileSync(abs(r.path), buf);
-      const st25 = fs12.statSync(abs(r.path));
+      fs13.mkdirSync(path14.dirname(abs(r.path)), { recursive: true });
+      fs13.writeFileSync(abs(r.path), buf);
+      const st25 = fs13.statSync(abs(r.path));
       known.set(r.path, { sha: r.sha, mtimeMs: st25.mtimeMs, size: st25.size });
     }
     lastSig = sig;
@@ -95930,14 +96185,14 @@ function createFileSync() {
       here.add(rel);
       let st25;
       try {
-        st25 = fs12.statSync(abs(rel));
+        st25 = fs13.statSync(abs(rel));
       } catch {
         continue;
       }
       const k = known.get(rel);
       if (k && k.mtimeMs === st25.mtimeMs && k.size === st25.size) continue;
       if (st25.size > MAX_FILE) continue;
-      const buf = fs12.readFileSync(abs(rel));
+      const buf = fs13.readFileSync(abs(rel));
       const h = sha6(buf);
       if (k?.sha !== h) {
         await s.filePut(rel, h, buf);

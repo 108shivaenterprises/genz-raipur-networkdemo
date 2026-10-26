@@ -11,7 +11,7 @@ import { ClientPaperPicker } from './PaperShare.js';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
-import { ROOM_KINDS } from '../shared/clientRoomRules.js';
+import { ROOM_KINDS, DOC_KINDS } from '../shared/clientRoomRules.js';
 import { lazyView } from '../lib/lazyView.js';
 
 /** v40 — the same "Schedule Verified Site Visit" form as everywhere else, opened from a room (client + home already filled in) */
@@ -241,7 +241,7 @@ const ClientPhone: React.FC<{ r: any; id: string; onRoom: (r: any) => void }> = 
 
 export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: string) => void; onBack?: () => void; fresh?: { link: string; phone: string; name: string } | null; onFreshDone?: () => void }> = ({ id, onChange, onLink, onBack, fresh, onFreshDone }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
-  const [tab, setTab] = useState<'chat' | 'homes' | 'visits' | 'info'>('chat');
+  const [tab, setTab] = useState<'chat' | 'homes' | 'visits' | 'papers' | 'info'>('chat');
   const [r, setR] = useState<any>(null); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [about, setAbout] = useState('');
   const [pq, setPq] = useState(''); const [props, setProps] = useState<any[]>([]); const [pick, setPick] = useState(''); const [pnote, setPnote] = useState('');
   const [book, setBook] = useState<null | { item: any; req?: any }>(null);   // v40 — visit booked from the room
@@ -277,7 +277,7 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
   const openReqs = reqs.filter((v: any) => v.status === 'REQUESTED').length;
   const kindLabel = (k: string) => { const x = ROOM_KINDS.find(y => y.id === k); return x ? (hi ? x.hi : x.en) : k; };
   const tabs: [typeof tab, string, string, number | undefined][] = [
-    ['chat', 'Chat', 'चैट', undefined], ['homes', 'Homes', 'प्रॉपर्टी', r.items.length], ['visits', 'Visits', 'विज़िट', openReqs || undefined], ['info', 'Info', 'जानकारी', undefined],
+    ['chat', 'Chat', 'चैट', undefined], ['homes', 'Homes', 'प्रॉपर्टी', r.items.length], ['visits', 'Visits', 'विज़िट', openReqs || undefined], ['papers', 'Papers', 'काग़ज़', (r.docs || []).length || undefined], ['info', 'Info', 'जानकारी', undefined],
   ];
   // v55 — a paper shown to this client: how often he opened it, until when, and "Stop"
   const paperCard = (m: any) => {
@@ -473,6 +473,27 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
         </section>
       )}
 
+      {tab === 'papers' && (
+        <section className="space-y-2 text-xs" data-testid="room-papers">
+          <p className="rounded-lg bg-slate-50 p-3 text-slate-600">{tx('Files your client sent from his room. They are stored encrypted and erased when the room closes. ID copies (🪪) can be opened by you only — not by your office staff.', 'क्लाइंट ने अपने रूम से जो फ़ाइलें भेजीं। ये एन्क्रिप्टेड रखी जाती हैं और रूम बंद होने पर मिट जाती हैं। ID कॉपी (🪪) सिर्फ़ आप खोल सकते हैं — ऑफ़िस स्टाफ़ नहीं।')}</p>
+          {!r.docsOn && <p className="rounded-lg bg-amber-50 p-3 text-slate-700">{tx('File sending is off on this server (no vault key), so clients cannot send files yet.', 'इस सर्वर पर फ़ाइल भेजना बंद है (vault key नहीं), इसलिए क्लाइंट अभी फ़ाइल नहीं भेज सकते।')}</p>}
+          {(r.docs || []).length === 0 && <p className="text-slate-500" data-testid="room-papers-empty">{tx('Nothing sent yet.', 'अभी कुछ नहीं भेजा।')}</p>}
+          {(r.docs || []).map((d: any) => (
+            <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 p-2.5" data-testid={`room-doc-${d.id}`}>
+              <div className="min-w-0">
+                <div className="truncate font-semibold text-slate-800">{d.kyc ? '🪪 ' : '📎 '}{(DOC_KINDS.find(k => k.id === d.kind) as any)?.[hi ? 'hi' : 'en'] || d.kind}</div>
+                <div className="truncate text-[11px] text-slate-500">{d.name} · {Math.max(1, Math.round(d.size / 1024))} KB · {when(d.at)}{d.opened ? ` · ${tx('opened', 'खोला')} ${d.opened}×` : ''}</div>
+                {d.note && <div className="text-[11px] text-slate-600">{d.note}</div>}
+              </div>
+              <div className="flex shrink-0 gap-1.5">
+                {!(d.kyc && staff) && <a className="inline-flex min-h-10 items-center rounded-lg bg-slate-900 px-3 font-semibold text-white" target="_blank" rel="noopener noreferrer" href={`/api/client-rooms/${r.id}/docs/${d.id}`} data-testid={`room-doc-open-${d.id}`} onClick={() => setTimeout(load, 1500)}>{tx('Open', 'खोलें')}</a>}
+                {!(d.kyc && staff) && <button type="button" className="inline-flex min-h-10 items-center rounded-lg border border-rose-200 px-3 font-semibold text-rose-700" onClick={() => { if (window.confirm(tx('Remove this file?', 'यह फ़ाइल हटाएँ?'))) void run(() => api.crDocDel(r.id, d.id)); }}>{tx('Remove', 'हटाएँ')}</button>}
+                {d.kyc && staff && <span className="self-center text-[11px] text-slate-500">{tx('Broker only', 'सिर्फ़ ब्रोकर')}</span>}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
       {tab === 'info' && (
         <section className="space-y-3 text-xs" data-testid="room-info">
           {!r.smsOn && <p className="rounded-lg bg-amber-50 p-3 text-slate-700">{tx('The code is not sent by SMS — it appears here when your client asks for it. Read it out to him by phone.', 'कोड SMS से नहीं जाता — क्लाइंट के माँगने पर वह यहाँ दिखता है। उसे फ़ोन पर बता दें।')}</p>}

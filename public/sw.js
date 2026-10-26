@@ -1,5 +1,5 @@
 /* GENZ service worker: app-shell caching only. API calls (/api/*) are NEVER cached — they carry private data. */
-const CACHE = 'genz-shell-v4'; // v36.2: new name → every older cache is deleted on activate
+const CACHE = 'genz-shell-v5'; // v36.2: new name → every older cache is deleted on activate
 // v20: the app is split into many small screen files; keep only the most recent ones so old versions do not pile up
 const MAX_ENTRIES = 160;
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png'];
@@ -22,7 +22,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   // v25: the OCR engine files (several MB) are never put in this cache — the browser's own HTTP cache and the OCR library keep them
-  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ocr/')) return;
+  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ocr/') || url.pathname.startsWith('/r/')) return; // v69: client rooms are private pages — never cached, never replaced by the broker app shell
 
   if (req.mode === 'navigate') {
     // network first so deployments show up immediately; fall back to cached shell when offline

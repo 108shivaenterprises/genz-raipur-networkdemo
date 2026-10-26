@@ -20,3 +20,17 @@ export const PHONE_IN_CHAT_MSG = {
   en: 'Please do not type phone numbers in this chat. The owner\'s number is shared only after a verified visit, and your broker\'s number is already on this page.',
   hi: 'कृपया इस चैट में फ़ोन नंबर न लिखें। मालिक का नंबर सिर्फ़ वेरिफ़ाइड विज़िट के बाद मिलता है, और आपके ब्रोकर का नंबर इसी पेज पर है।',
 };
+
+/** v69 — what a client may send from his page. KYC kinds need the vault key (the file is AES-sealed) and a tick; Aadhaar only masked. */
+export const DOC_KINDS = [
+  { id: 'KYC_PAN', kyc: true, en: 'PAN card', hi: 'पैन कार्ड' },
+  { id: 'KYC_AADHAAR_MASKED', kyc: true, en: 'Aadhaar (masked — first 8 digits covered)', hi: 'आधार (मास्क्ड — पहले 8 अंक ढके हुए)' },
+  { id: 'KYC_OTHER_ID', kyc: true, en: 'Other photo ID', hi: 'अन्य फ़ोटो पहचान पत्र' },
+  { id: 'PAPER', kyc: false, en: 'Paper / document', hi: 'काग़ज़ / दस्तावेज़' },
+  { id: 'PHOTO', kyc: false, en: 'Photo', hi: 'फ़ोटो' },
+] as const;
+export type DocKind = (typeof DOC_KINDS)[number]['id'];
+export const isDocKind = (k: unknown): k is DocKind => DOC_KINDS.some(d => d.id === k);
+export const isKycKind = (k: unknown) => DOC_KINDS.some(d => d.id === k && d.kyc);
+/** a file is at most 2.5 MB (a phone photo is made smaller on the phone first); a room holds at most 12 files */
+export const DOC_LIMITS = { maxBytes: 2_500_000, perRoom: 12 } as const;
