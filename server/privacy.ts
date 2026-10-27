@@ -16,6 +16,7 @@ import { holdKyc } from './kycretain.js';
 import { erasePhoto } from './workphotos.js';
 import { eraseHr, exportHr } from './hr.js';
 import { eraseInbox } from './inbox.js';
+import { eraseProfileData, exportProfileData } from './profiles.js';
 
 export const POLICY_VERSION = '2026-10-17';
 
@@ -79,6 +80,8 @@ export function createPrivacyRouter() {
       hr: exportHr(s, u.id),
       // v77 — the lines still in his notification bell
       notifications: (s.inbox || []).filter(x => x.userId === u.id).map(({ userId: _u, ...x }) => x),
+      // v78 — his profile text, the reviews about him and the ones he wrote
+      profileAndReviews: exportProfileData(s, u.id),
       auditEventsByYou: s.auditEvents.filter(e => e.actorId === u.id),
     };
     db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'DATA_EXPORT', 'User exported their personal data (DPDP access right)');
@@ -160,6 +163,7 @@ export function createPrivacyRouter() {
       purgeUserIdDocs(s, target.id); // v19: PAN / Aadhaar scans and the ID-review task
       purgeKyc(s, target.id); // v25: the encrypted full Aadhaar + address (the sealed copy kept by v74 stays in kycHolds)
       eraseInbox(s, target.id); // v77 — his notification bell
+      eraseProfileData(s, target.id); // v78 — his profile text and every review he wrote or got
       eraseHr(s, target.id, target.name); // v76 — HR: a member's rows lose name / GPS / selfies / free text; an employer's whole HR record goes
       if (held.hold) db.appendAuditEvent(actor.id, actor.role, 'VERIFICATION', held.hold.id, 'KYC_HELD_ON_ERASURE', `KYC of ${target.id} kept sealed after erasure: ${held.hold.files.length} file(s)${held.hold.vault ? ' + vault' : ''} until ${held.hold.retainUntil.slice(0, 10)}`);
       target.autoVerifiedAt = undefined; target.autoVerifiedBy = undefined;

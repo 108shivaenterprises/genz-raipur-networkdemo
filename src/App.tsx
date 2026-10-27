@@ -21,6 +21,7 @@ import { AlertsNudge } from './components/AlertsCard.js';
 import { syncPush, disablePush } from './lib/push.js';
 import { Navbar } from './components/Navbar.js';
 import { NavigationTabs, TabType } from './components/NavigationTabs.js';
+import { ProfilesView } from './components/ProfilesView.js';
 import { useChatBadge } from './lib/useChatBadge.js';
 import { GrowthNudge } from './components/GrowthNudge.js';
 import { Loader2, ShieldCheck, MapPin, Building2, Eye } from 'lucide-react';
@@ -89,7 +90,7 @@ const FileDisputeModal = lazyView(() => import('./components/Modals.js'), 'FileD
 const AddConstructionLeadModal = lazyView(() => import('./components/Modals.js'), 'AddConstructionLeadModal');
 
 const TAB_KEY = 'genz.tab';
-const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats', 'ownerlist'];
+const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats', 'ownerlist', 'people'];
 
 export default function App() {
   const tx = useTx();
@@ -123,7 +124,9 @@ export default function App() {
     }
     return 'dashboard';
   });
-  const setActiveTab = (t: TabType) => { setActiveTabRaw(t); try { sessionStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ } };
+  // v78: the menu's "My profile & reviews" lands on My profile; the Profiles tab in the bar lands on Find
+  const [peopleStart, setPeopleStart] = useState<'find' | 'mine'>('find');
+  const setActiveTab = (t: TabType) => { setActiveTabRaw(t); if (t !== 'people') setPeopleStart('find'); try { sessionStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ } };
   const chatBadge = useChatBadge(permissions, activeTab);
   // v23: a screen can ask to open another tab ("Open Plans & Fees")
   useEffect(() => {
@@ -393,6 +396,7 @@ export default function App() {
         onViewAs={handleViewAs}
         onLogout={handleLogout}
         onOpenPrivacy={() => setShowPrivacy(true)}
+        onOpenProfile={hasPerm(permissions, 'profile:use') ? () => { setPeopleStart('mine'); setActiveTab('people'); } : undefined}
         onOpenInviteModal={() => setActiveTab('onboarding')}
         onOpenBrokerQrModal={currentUser.role === 'BROKER' ? () => setShowQrMenu(true) : undefined}
         onOpenScan={currentUser.role !== 'BROKER' && hasPerm(permissions, 'sitevisit:verify', 'visit:scan') ? () => setShowQuickScan(true) : undefined}
@@ -647,6 +651,8 @@ export default function App() {
 
         {activeTab === 'control' && hasPerm(permissions, 'admin:control_center') && <ControlCenter onNavigate={setActiveTab} />}
         {activeTab === 'launchdesk' && hasPerm(permissions, 'launch:manage') && <LaunchDesk />}
+
+        {activeTab === 'people' && hasPerm(permissions, 'profile:use') && <ProfilesView role={currentUser.role} permissions={permissions} startOn={peopleStart} />}
 
         {activeTab === 'audit' && <AuditTrailView />}
 

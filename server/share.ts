@@ -20,6 +20,7 @@ import { ctx, needs, rateLimit, digits } from './auth.js';
 import { actorFor, seenBy } from './invaccess.js';
 import { policyOf } from '../src/shared/pcontrolRules.js';
 import { docAccessFor } from './projdocs.js';
+import { embedFor, stampName, stampInitials, watermarkTile } from '../src/shared/docViewRules.js';
 import { impliedFeatures, featureLabel, facingLabel, roadSidesLabel, kindWord } from '../src/shared/inventoryRules.js';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -126,8 +127,8 @@ export function createShareRouter() {
 // ───────────────────────── public pages ─────────────────────────
 const seen = new Map<string, number>();
 const T = {
-  en: { price: 'Price', config: 'Configurations', amen: 'Amenities', loc: 'Location', plans: 'Plans & pricing', over: 'Overview', call: 'Call', wa: 'WhatsApp', rera: 'RERA', by: 'Shared by', unavailable: 'This link is no longer active.', note: 'Information is indicative. Please verify RERA registration and all approvals before booking.', from: 'Starting from', stage: 'Stage', possession: 'Completion target', area: 'Area', type: 'Type', units: 'Available now', onReq: 'Price on request', gone: 'were sold or are on hold since this link was made', none: 'These units are no longer available. Ask for the current list.', size: 'Size', doc: 'Document', openDoc: 'Open the document' },
-  hi: { price: 'कीमत', config: 'विकल्प', amen: 'सुविधाएँ', loc: 'लोकेशन', plans: 'प्लान और कीमत', over: 'विवरण', call: 'कॉल', wa: 'व्हाट्सऐप', rera: 'रेरा', by: 'भेजने वाले', unavailable: 'यह लिंक अब सक्रिय नहीं है।', note: 'जानकारी संकेतात्मक है। बुकिंग से पहले रेरा पंजीयन और सभी अनुमतियाँ जाँच लें।', from: 'शुरुआती कीमत', stage: 'चरण', possession: 'पूर्णता लक्ष्य', area: 'क्षेत्रफल', type: 'प्रकार', units: 'अभी उपलब्ध', onReq: 'कीमत पूछें', gone: 'इस लिंक के बाद बिक गईं या होल्ड पर हैं', none: 'ये यूनिट अब उपलब्ध नहीं हैं। ताज़ा सूची माँगें।', size: 'साइज़', doc: 'दस्तावेज़', openDoc: 'दस्तावेज़ खोलें' },
+  en: { price: 'Price', config: 'Configurations', amen: 'Amenities', loc: 'Location', plans: 'Plans & pricing', over: 'Overview', call: 'Call', wa: 'WhatsApp', rera: 'RERA', by: 'Shared by', unavailable: 'This link is no longer active.', note: 'Information is indicative. Please verify RERA registration and all approvals before booking.', from: 'Starting from', stage: 'Stage', possession: 'Completion target', area: 'Area', type: 'Type', units: 'Available now', onReq: 'Price on request', gone: 'were sold or are on hold since this link was made', none: 'These units are no longer available. Ask for the current list.', size: 'Size', doc: 'Document', openDoc: 'Open the document', notShowing: 'Not showing here? Open the document', sentBy: 'Sent to you by', noFwd: 'please do not forward' },
+  hi: { price: 'कीमत', config: 'विकल्प', amen: 'सुविधाएँ', loc: 'लोकेशन', plans: 'प्लान और कीमत', over: 'विवरण', call: 'कॉल', wa: 'व्हाट्सऐप', rera: 'रेरा', by: 'भेजने वाले', unavailable: 'यह लिंक अब सक्रिय नहीं है।', note: 'जानकारी संकेतात्मक है। बुकिंग से पहले रेरा पंजीयन और सभी अनुमतियाँ जाँच लें।', from: 'शुरुआती कीमत', stage: 'चरण', possession: 'पूर्णता लक्ष्य', area: 'क्षेत्रफल', type: 'प्रकार', units: 'अभी उपलब्ध', onReq: 'कीमत पूछें', gone: 'इस लिंक के बाद बिक गईं या होल्ड पर हैं', none: 'ये यूनिट अब उपलब्ध नहीं हैं। ताज़ा सूची माँगें।', size: 'साइज़', doc: 'दस्तावेज़', openDoc: 'दस्तावेज़ खोलें', notShowing: 'यहाँ नहीं दिख रहा? दस्तावेज़ खोलें', sentBy: 'आपको भेजने वाले', noFwd: 'कृपया आगे न भेजें' },
 } as const;
 
 function pageShell(title: string, desc: string, image: string | undefined, body: string, token?: string) {
@@ -140,6 +141,9 @@ function pageShell(title: string, desc: string, image: string | undefined, body:
 h2{font-size:15px;margin:0 0 8px;color:#14213d}.row{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:6px 0;border-bottom:1px solid #eee}.row:last-child{border:0}
 .tags span{display:inline-block;background:#eef1f7;border-radius:999px;padding:4px 10px;margin:3px 4px 3px 0;font-size:12px}.imgs{display:flex;gap:8px;overflow-x:auto;margin-top:12px}.imgs img{height:150px;border-radius:10px}
 .broker{display:flex;gap:12px;align-items:center}.broker img{width:56px;height:56px;border-radius:12px;object-fit:contain;background:#fff}.btns{display:flex;gap:8px;margin-top:10px}
+.vw{position:relative;overflow:hidden;min-height:220px;border-radius:10px;border:1px solid #e3e3e3;background:#fff;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.vw img,.vw iframe{display:block;width:100%;border:0}.vw iframe{height:68vh;min-height:420px}
+.vw .wmo{position:absolute;inset:0;pointer-events:none;background-repeat:repeat}.vw .wmi{position:absolute;left:0;right:0;top:42%;text-align:center;font-size:84px;font-weight:800;color:#b91c1c;opacity:.12;transform:rotate(-24deg);pointer-events:none}
+.vw .wmb{position:absolute;left:0;right:0;bottom:0;padding:7px 10px;background:rgba(15,23,42,.88);color:#fff;font-size:11px;line-height:1.3;pointer-events:none}@media print{.vw{display:none}}
 .btns a{flex:1;text-align:center;padding:11px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px}.call{background:#14213d;color:#fff}.wa{background:#1fa855;color:#fff}.small{font-size:11px;color:#666;margin-top:12px}</style></head>
 <body><div class="w">${body}</div>${token ? `<script src="/s/track.js" data-token="${esc(token)}" defer></script>` : ''}</body></html>`;
 }
@@ -153,6 +157,7 @@ var s=document.currentScript,t=s&&s.getAttribute('data-token');if(!t)return;
 var acc={},cur={},last=Date.now();
 var io='IntersectionObserver' in window?new IntersectionObserver(function(es){es.forEach(function(e){cur[e.target.getAttribute('data-sec')]=e.isIntersecting})},{threshold:0.35}):null;
 document.querySelectorAll('[data-sec]').forEach(function(el){if(io)io.observe(el);else cur[el.getAttribute('data-sec')]=true});
+document.querySelectorAll('.vw').forEach(function(el){el.addEventListener('contextmenu',function(e){e.preventDefault()})});
 function tick(){var n=Date.now(),d=(n-last)/1000;last=n;if(document.visibilityState!=='visible'||d>15)return;for(var k in cur){if(cur[k])acc[k]=(acc[k]||0)+d}}
 function flush(){tick();var out={};for(var k in acc){var v=Math.round(acc[k]);if(v>0)out[k]=v}if(!Object.keys(out).length)return;acc={};
 var b=JSON.stringify({s:out});try{navigator.sendBeacon('/s/'+t+'/ping',new Blob([b],{type:'application/json'}))}catch(e){}}
@@ -226,7 +231,13 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       title = p.projectName; sub = doc.title; image = p.images?.find(i => /^https:\/\//.test(i));
       overview = `<div class="row"><span>${t.type}</span><b>${esc(p.projectType)}</b></div><div class="row"><span>${t.stage}</span><b>${esc(p.projectStage)}</b></div>${p.reraNumber ? `<div class="row"><span>${t.rera}</span><b>${esc(p.reraNumber)}</b></div>` : ''}`;
       plansHead = t.doc;
-      plans = `<p style="font-size:15px;margin:0 0 10px"><b>${esc(doc.title)}</b></p><div class="btns"><a class="call" href="${esc(doc.url)}" target="_blank" rel="noopener noreferrer">${t.openDoc}</a></div>`;
+      // v78 — the paper is shown inside the page with the SENDER's name laid over it (tiled + large initials + a band at the foot): a screenshot or a photo of the screen
+      // shows whose link it was. A paper that is only a link cannot carry the stamp once opened on its own, so that fallback is a plain link below the frame.
+      const who = stampName(owner, brandOf(card).displayName); const when = new Date().toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' });
+      const emb = embedFor(doc.url);
+      const frame = !emb ? '' : `<div class="vw">${emb.mode === 'image' ? `<img src="${esc(emb.src)}" alt="${esc(doc.title)}" draggable="false">` : `<iframe src="${esc(emb.src)}" title="${esc(doc.title)}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`}`
+        + `<div class="wmo" style='background-image:url("${watermarkTile(who)}")'></div><div class="wmi">${esc(stampInitials(who))}</div><div class="wmb">${t.sentBy} ${esc(who)} · ${esc(when)} · ${t.noFwd}</div></div>`;
+      plans = `<p style="font-size:15px;margin:0 0 10px"><b>${esc(doc.title)}</b></p>${frame}<div class="btns"><a class="call" href="${esc(doc.url)}" target="_blank" rel="noopener noreferrer">${emb ? t.notShowing : t.openDoc}</a></div>`;
       location = `<div class="row"><span>${t.loc}</span><b>${esc(p.locality)}, ${esc(p.city)}</b></div>`;
     } else if (l.kind === 'PROJECT') {
       const p = db.byId('builderProjects', l.refId);
@@ -267,6 +278,8 @@ ${image ? `<div class="imgs"><img src="${esc(image)}" alt="" loading="lazy"></di
 <div class="card"><div class="broker">${b.logo ? `<img src="${esc(b.logo)}" alt="">` : ''}<div><div class="small" style="margin:0">${t.by}</div><b>${esc(b.displayName)}</b>${b.company ? `<div style="font-size:13px">${esc(b.company)}</div>` : ''}${b.reraId ? `<div style="font-size:12px;color:#555">${t.rera}: ${esc(b.reraId)}</div>` : ''}${b.tagline ? `<div style="font-size:12px;color:#555">${esc(b.tagline)}</div>` : ''}</div></div>
 <div class="btns"><a class="call" href="tel:+91${esc(b.phone)}">${t.call}</a><a class="wa" href="${esc(wa)}">${t.wa}</a></div></div>
 <p class="small">${t.note}</p>${joinFooter(card)}`;
+    // the shared page frames the paper's own host, so its CSP differs from the app's (which allows only YouTube frames); nothing here runs outside our own script
+    if (l.kind === 'DOC') res.set('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src https:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     res.send(pageShell(`${title} — ${b.displayName}`, sub, image, body, l.token));
   });
 

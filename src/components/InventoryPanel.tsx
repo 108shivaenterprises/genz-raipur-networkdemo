@@ -29,18 +29,18 @@ const left = (iso: string | null | undefined, hi = false) => {
 const audLabel = (v: any, tx: (a: string, b: string) => string) =>
   !v ? '' : v.audience === 'HIDDEN' ? tx('Only me', 'सिर्फ़ मैं') : v.audience === 'SELECTED' ? tx(`${v.brokerIds.length} chosen partner(s)`, `${v.brokerIds.length} चुने पार्टनर`) : tx('All partners', 'सभी पार्टनर');
 
-interface Props { role: string; leads: any[] }
+interface Props { role: string; leads: any[]; /** v78 — opened from inside one project (the builder's project room): that project is fixed and the project picker is hidden */ fixedProjectId?: string }
 
 type SheetState = null | { kind: 'rate' | 'vis' | 'facts' | 'share' | 'post' | 'edit' | 'projvis' | 'kind'; ids?: string[]; unit?: any };
 
-export const InventoryPanel: React.FC<Props> = ({ role, leads }) => {
+export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId }) => {
   const tx = useTx();
   const { lang, t } = useI18n();
   const hi = lang === 'hi';
   const lbl = (k: string) => (hi ? LABEL_HI[k] : LABEL[k]) || k;
   const [projects, setProjects] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [pid, setPid] = useState('');
+  const [pid, setPid] = useState(fixedProjectId || '');
   const [data, setData] = useState<any>(null);
   const [board, setBoard] = useState<any>(null);
   const [sel, setSel] = useState<any>(null);
@@ -155,9 +155,9 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads }) => {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <select value={pid} onChange={e => setPid(e.target.value)} aria-label={tx('Project', 'प्रोजेक्ट')} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-xs">
+        {!fixedProjectId && <select value={pid} onChange={e => setPid(e.target.value)} aria-label={tx('Project', 'प्रोजेक्ट')} className="min-h-10 rounded-lg border border-slate-300 px-3 py-2 text-xs">
           {projects.map(p => <option key={p.id} value={p.id}>{p.projectName} ({p.available}/{p.units} {tx('available', 'उपलब्ध')})</option>)}
-        </select>
+        </select>}
         {caps.seesPrice !== false && <button type="button" onClick={togglePrice} className={btnLine} title={tx('Hide every rate on this screen — handy when a customer is looking', 'इस स्क्रीन पर हर रेट छुपाएँ — ग्राहक सामने बैठा हो तो काम आता है')}>{hidePrice ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{hidePrice ? tx('Rates hidden', 'रेट छुपे हैं') : tx('Hide rates on my screen', 'मेरी स्क्रीन पर रेट छुपाएँ')}</button>}
         <button type="button" onClick={() => setSelectMode(!selectMode)} className={selectMode ? btnDark : btnLine}><ListChecks className="h-4 w-4" />{selectMode ? tx('Done selecting', 'चुनना बंद') : tx('Select units', 'यूनिट चुनें')}</button>
         <button type="button" onClick={() => setShowFilters(!showFilters)} className={showFilters || filtersOn ? btnDark : btnLine}><SlidersHorizontal className="h-4 w-4" />{tx('Filters', 'फ़िल्टर')}{filtersOn ? ' •' : ''}</button>

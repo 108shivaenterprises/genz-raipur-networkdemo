@@ -2,6 +2,7 @@ import { goto } from '../lib/goto.js';
 import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
+  Star as StarIcon,
   Network,
   Building,
   UserCheck,
@@ -79,7 +80,8 @@ export type TabType =
   | 'partners'
   | 'mypage'
   | 'rentdesk'
-  | 'chats';
+  | 'chats'
+  | 'people';
 
 interface NavigationTabsProps {
   activeTab: TabType;
@@ -196,6 +198,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     // v49: Protected Docs is a section of Property Papers for whoever has both
     ...(has('pdoc:use') && !has('propdoc:use') ? [{ id: 'pdocs', label: t('nav.pdocs', 'Protected Docs'), icon: FileLock2 }] : []),
     ...(has('chapter:read', 'academy:read', 'loan:manage', 'report:manage') ? [{ id: 'community', label: t('nav.community', 'Community'), icon: GraduationCap }] : []),
+    // v78 — profiles, ratings and reviews: search a person, see his rating, keep my own profile (GENZ staff also get the reported-reviews queue)
+    ...(has('profile:use') ? [{ id: 'people', label: t('nav.people', 'Profiles & Reviews'), icon: StarIcon }] : []),
     ...(has('growth:nominate') ? [{ id: 'grow', label: t('nav.grow', 'Grow Network'), icon: Users }] : []),
     ...(has('launch:manage') ? [{ id: 'launchdesk', label: t('nav.launchdesk', 'Launch Desk'), icon: Rocket }] : []),
     ...(has('growth:manage') ? [{ id: 'citylaunch', label: t('nav.citylaunch', 'City Launch'), icon: Rocket }] : []),
@@ -264,7 +268,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
     { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'rentdesk', 'legal', 'due_diligence', 'disputes', 'audit'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'partners', 'builder', 'pcontrol', 'connector', 'construction', 'team'] },
-    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['network', 'community', 'grow', 'plans', 'launchdesk', 'citylaunch'] },
+    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['network', 'people', 'community', 'grow', 'plans', 'launchdesk', 'citylaunch'] },
   ];
   // v62 — GENZ staff: the day's checks first, then money & growth, the market, sales, and the controls & records
   const ADMIN_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
@@ -272,24 +276,24 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     { id: 'money', key: 'nav.g.money', en: 'Money & Growth', ids: ['plans', 'ownerlist', 'revenue', 'citylaunch', 'launchdesk', 'grow', 'network', 'community'] },
     { id: 'market', key: 'nav.g.market', en: 'Listings & Deals', ids: ['properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'landrecords', 'propdocs', 'pdocs'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'partners', 'team'] },
-    { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'audit'] },
+    { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'people', 'audit'] },
   ];
   // v75 — a builder, a lawyer and a contractor each get a few plain groups of their own (not the broker's "Property & Buyers / Deals / Sales & Team")
   const BUILDER_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'crm', 'chats', 'visits'] },
     { id: 'projects', key: 'nav.g.projects', en: 'Projects & partners', ids: ['builder', 'pcontrol', 'network', 'share'] },
     { id: 'team', key: 'nav.g.teamrec', en: 'Team & records', ids: ['team', 'propdocs', 'pdocs', 'disputes', 'audit'] },
-    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['community', 'grow', 'plans'] },
+    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['people', 'community', 'grow', 'plans'] },
   ];
   const LEGAL_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'legal', 'due_diligence', 'deals'] },
     { id: 'papers', key: 'nav.g.papers', en: 'Papers & records', ids: ['propdocs', 'pdocs', 'landrecords', 'properties', 'audit'] },
-    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['community', 'grow', 'plans'] },
+    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['people', 'community', 'grow', 'plans'] },
   ];
   const CONTRACTOR_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
     { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'construction', 'team'] },
     { id: 'docs', key: 'nav.g.docs', en: 'Papers & disputes', ids: ['pdocs', 'disputes', 'audit'] },
-    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['connector', 'community', 'grow', 'plans'] },
+    { id: 'grow', key: 'nav.g.grow', en: 'Network & Growth', ids: ['people', 'connector', 'community', 'grow', 'plans'] },
   ];
   const GROUP_DEFS = role === 'ADMIN' || role === 'SUPERADMIN' ? ADMIN_GROUP_DEFS : role === 'DEVELOPER_BUILDER' ? BUILDER_GROUP_DEFS : role === 'LEGAL_COUNSEL' ? LEGAL_GROUP_DEFS : role === 'CONTRACTOR' ? CONTRACTOR_GROUP_DEFS : BROKER_GROUP_DEFS;
   const groups = (() => {

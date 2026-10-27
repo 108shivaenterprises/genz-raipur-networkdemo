@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types/index.js';
-import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, MessageCircle, LogOut, ShieldCheck, ChevronDown } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, MessageCircle, LogOut, ShieldCheck, ChevronDown, Star } from 'lucide-react';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -14,6 +14,8 @@ interface NavbarProps {
   onViewAs?: (userId: string) => void;
   onLogout: () => void;
   onOpenPrivacy?: () => void;
+  /** v78 — "My profile & reviews" in the profile menu */
+  onOpenProfile?: () => void;
   onOpenInviteModal?: () => void;
   onOpenBrokerQrModal?: () => void;
   onOpenBrokerSafetyModal?: () => void;
@@ -37,6 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onViewAs,
   onLogout,
   onOpenPrivacy,
+  onOpenProfile,
   onOpenBrokerQrModal,
   onOpenScan,
   onOpenChats,
@@ -114,6 +117,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span className="text-sm font-semibold text-slate-700">{t('common.language', 'Language')}</span>
                     <LangToggle className="min-h-9 px-3" />
                   </div>
+                  {onOpenProfile && (
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); onOpenProfile(); }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50" data-testid="menu-profile"><Star className="h-4 w-4 text-slate-500" />{tx('My profile & reviews', 'मेरी प्रोफ़ाइल और रिव्यू')}</button>
+                  )}
                   {onOpenPrivacy && (
                     <button type="button" role="menuitem" onClick={() => { setMenu(false); onOpenPrivacy(); }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50" data-testid="menu-mydata"><ShieldCheck className="h-4 w-4 text-slate-500" />{t('common.myData', 'My data')}</button>
                   )}

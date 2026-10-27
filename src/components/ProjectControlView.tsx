@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { BuilderLaunchPanel } from './LaunchDesk.js';
-import { Loader2, ArrowLeft, PauseCircle, PlayCircle, Ban, CheckCircle2, XCircle, Megaphone, FileText, Settings, UserCheck, Users, Trash2, ShieldCheck, Lock, Unlock, MessageCircle, Camera, X } from 'lucide-react';
+import { Loader2, ArrowLeft, PauseCircle, PlayCircle, Ban, CheckCircle2, XCircle, Megaphone, FileText, Settings, UserCheck, Users, Trash2, ShieldCheck, Lock, Unlock, MessageCircle, Camera, X, Boxes } from 'lucide-react';
+import { InventoryPanel } from './InventoryPanel.js';
 import { openPartnerChat } from './PartnerChat.js';
 import { preparePhoto } from '../lib/photoFile.js';
 import { api } from '../lib/api.js';
@@ -48,7 +49,7 @@ const ReasonForm: React.FC<{ label: string; confirm: string; min?: number; extra
   );
 };
 
-type Sub = 'partners' | 'verify' | 'notices' | 'settings' | 'staff';
+type Sub = 'partners' | 'inventory' | 'verify' | 'notices' | 'settings' | 'staff';
 
 export const ProjectControlView: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => {
   const tx = useTx();
@@ -59,7 +60,7 @@ export const ProjectControlView: React.FC<{ currentUser: UserProfile }> = ({ cur
   useEffect(() => { loadList(); }, [loadList]);
   if (err) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
   if (!list) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>;
-  if (sel) return <ProjectRoom id={sel} canWrite={currentUser.role !== 'ADMIN'} onBack={() => { setSel(null); loadList(); }} />;
+  if (sel) return <ProjectRoom id={sel} role={currentUser.role} canWrite={currentUser.role !== 'ADMIN'} onBack={() => { setSel(null); loadList(); }} />;
   return (
     <div className="space-y-4">
       <div>
@@ -91,7 +92,7 @@ export const ProjectControlView: React.FC<{ currentUser: UserProfile }> = ({ cur
   );
 };
 
-const ProjectRoom: React.FC<{ id: string; canWrite: boolean; onBack: () => void }> = ({ id, canWrite, onBack }) => {
+const ProjectRoom: React.FC<{ id: string; role: string; canWrite: boolean; onBack: () => void }> = ({ id, role, canWrite, onBack }) => {
   const tx = useTx();
   const [d, setD] = useState<any>(null);
   const [sub, setSub] = useState<Sub>('partners');
@@ -105,6 +106,8 @@ const ProjectRoom: React.FC<{ id: string; canWrite: boolean; onBack: () => void 
   const pending = d.partners.filter((m: any) => ['APPLIED', 'SHORTLISTED'].includes(m.status)).length;
   const tabs: [Sub, string, string, React.ElementType, number][] = [
     ['partners', 'Partners', 'पार्टनर', Users, pending],
+    // v78 — the units of this project (kinds, numbers, codes, rates, holds) are managed here, not only under CRM
+    ...(canWrite ? [['inventory', 'Inventory', 'इन्वेंटरी', Boxes, 0] as [Sub, string, string, React.ElementType, number]] : []),
     ['verify', 'Verify leads', 'लीड वेरिफाई', UserCheck, d.verification.length],
     ['notices', 'Notices & files', 'सूचना और फ़ाइलें', Megaphone, 0],
     ['settings', 'Rules', 'नियम', Settings, 0],
@@ -118,7 +121,7 @@ const ProjectRoom: React.FC<{ id: string; canWrite: boolean; onBack: () => void 
         <div className="text-xs text-slate-300">{p.locality}, {p.city} · {formatINR(p.priceStartingFrom)}–{formatINR(p.priceMax)} · {p.channelPartnerCommissionPct}% {tx('default commission', 'डिफ़ॉल्ट कमीशन')}</div>
         <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
           <span className="rounded bg-white/10 px-2 py-0.5">{d.summary.leads} {tx('leads', 'लीड')} · {d.summary.open} {tx('open', 'खुली')} · {d.summary.booked} {tx('booked', 'बुक')}</span>
-          <span className="rounded bg-white/10 px-2 py-0.5">{d.units.total ? <>{d.units.AVAILABLE}/{d.units.total} {tx('units free', 'यूनिट खाली')}</> : <>{d.project.availableUnits}/{d.project.totalUnits} {tx('units free · unit list not added yet (Associates CRM → Inventory)', 'यूनिट खाली · यूनिट लिस्ट अभी नहीं डाली (एसोसिएट्स CRM → इन्वेंटरी)')}</>}</span>
+          <span className="rounded bg-white/10 px-2 py-0.5">{d.units.total ? <>{d.units.AVAILABLE}/{d.units.total} {tx('units free', 'यूनिट खाली')}</> : <>{d.project.availableUnits}/{d.project.totalUnits} {tx('units free · unit list not added yet — open the Inventory tab', 'यूनिट खाली · यूनिट लिस्ट अभी नहीं डाली — इन्वेंटरी टैब खोलें')}</>}</span>
           <span className="rounded bg-white/10 px-2 py-0.5" title={tx('Brokers have lined up these clients for your project (names stay private)', 'ब्रोकर्स ने इन क्लाइंट्स को आपके प्रोजेक्ट के लिए शॉर्टलिस्ट किया है (नाम निजी रहते हैं)')}>★ {d.demand.clients} {tx('clients shortlisted by', 'क्लाइंट शॉर्टलिस्ट —')} {d.demand.partners} {tx('brokers', 'ब्रोकर')}</span>
         </div>
         {p.leadIntake === 'PAUSED' && <div className="mt-2 rounded bg-red-500/20 px-2 py-1 text-[11px] text-red-100">⏸ {tx('New lead registrations are paused', 'नई लीड रजिस्ट्रेशन बंद है')}{p.intakeNote ? ` — ${p.intakeNote}` : ''}</div>}
@@ -127,12 +130,13 @@ const ProjectRoom: React.FC<{ id: string; canWrite: boolean; onBack: () => void 
       {toast && <div className={`rounded-lg px-3 py-2 text-xs font-medium ${toast.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`} role="status">{toast.msg}</div>}
       <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist">
         {tabs.map(([k, en, hi, Icon, n]) => (
-          <button key={k} role="tab" aria-selected={sub === k} onClick={() => setSub(k)} className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-xs font-semibold ${sub === k ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>
+          <button key={k} role="tab" aria-selected={sub === k} onClick={() => { if (sub === 'inventory' && k !== 'inventory') load(); setSub(k); }} data-testid={`pcv-tab-${k}`} className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-xs font-semibold ${sub === k ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>
             <Icon className="h-4 w-4" />{tx(en, hi)}{n > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-white">{n}</span>}
           </button>
         ))}
       </div>
       {sub === 'partners' && <PartnersTab d={d} canWrite={canWrite} act={act} />}
+      {sub === 'inventory' && canWrite && <div data-testid="pcv-inventory"><InventoryPanel role={role} leads={[]} fixedProjectId={id} /></div>}
       {sub === 'verify' && <VerifyTab d={d} canWrite={canWrite} act={act} />}
       {sub === 'notices' && <NoticesTab d={d} canWrite={canWrite} act={act} />}
       {sub === 'settings' && <RulesTab d={d} canWrite={canWrite} act={act} />}

@@ -635,6 +635,8 @@ export interface UserProfile {
   /** GENZ_CONNECTOR only: shop / community-partner details */
   connector?: ConnectorProfile;
   avatarUrl?: string;
+  /** v78 — what this person shows on his profile (found only by search). Everything is optional; `visible` false hides a professional from name search. */
+  profile?: { visible?: boolean; showPhoto?: boolean; about?: string; areas?: string[]; languages?: string[]; years?: number; updatedAt?: string };
   createdAt: string;
 
   // ── Authentication (never serialised to clients) ──
@@ -1187,6 +1189,29 @@ export interface OwnerConsent {
   events: { at: string; text: string }[];
   createdAt: string; updatedAt: string;
 }
+/** v78 — one person's review of another, shown on the reviewed person's profile. One record per (reviewer, target): editing updates it. */
+export interface ProfileReview {
+  id: string;
+  targetId: string;
+  reviewerId: string;
+  /** what the server found that proves they worked together (never typed in by the reviewer) */
+  evidenceKind: import('../src/shared/reviewRules.js').EvidenceKind;
+  /** every piece of proof already used by this reviewer for this target */
+  evidenceIds: string[];
+  rating: number;
+  tags: string[];
+  remark: string;
+  at: string;
+  editedAt?: string;
+  /** the reviewed person's one public reply */
+  reply?: { text: string; at: string };
+  /** VISIBLE counts and shows; HIDDEN = GENZ staff removed it (the reason stays for the two people) */
+  status: 'VISIBLE' | 'HIDDEN';
+  hiddenReason?: string; hiddenAt?: string; hiddenBy?: string;
+  /** members who reported it (once each); the reviewed person's report marks it "disputed" */
+  reports: { by: string; reason: string; note?: string; at: string }[];
+}
+
 export interface PushSub { id: string; userId: string; endpoint: string; p256dh: string; auth: string; ua: string; createdAt: string; lastOkAt?: string; fails: number; /** v69 — a client-room phone: the page to open when the alert is tapped */ url?: string }
 export interface PushPref { id: string; userId: string; matches: boolean; deals: boolean; consent: boolean; broadcast: boolean; digest: boolean; quiet: boolean; lastDigestDay?: string; sentToday?: { day: string; n: number }; /** v59 — the app language on his phone: alerts that have a Hindi line use it */ lang?: 'en' | 'hi' }
 /** "Mere client ko ye chahiye" sent to the brokers who hold matching listings. */
@@ -1679,6 +1704,8 @@ export interface DatabaseState {
   inbox: InboxItem[];
   broadcasts: Broadcast[];
   peerConfirms: PeerConfirm[];
+  /** v78 — ratings and reviews between members who worked together */
+  reviews: ProfileReview[];
   /** v29 — buyer ↔ broker bonds per property (who brought this buyer first) */
   buyerBonds: BuyerBond[];
   partyAlerts: PartyAlert[];
@@ -2866,7 +2893,7 @@ function getInitialSeedData(): DatabaseState {
     resetRequests: [],
     privacyRequests: [],
     connectorReferrals: [],
-    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], reviews: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
   };
 }
 
@@ -2997,7 +3024,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'inbox', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
+  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'inbox', 'broadcasts', 'peerConfirms', 'reviews', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
   (parsed as any).ownerListCfg = { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON', ...((parsed as any).ownerListCfg || {}) };
   (parsed as any).legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...((parsed as any).legalSettings || {}) };
   // v11: listings created before freshness tracking start their 30-day clock now (nothing expires on upgrade)

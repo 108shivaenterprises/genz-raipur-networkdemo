@@ -137,6 +137,7 @@ import { createConsentRouter, createOwnerConsentPageRouter, sweepConsents, findB
 import { createPushRouter } from './server/webpush.js';
 import { createInboxRouter, sweepInbox } from './server/inbox.js';
 import { createProjDocsRouter } from './server/projdocs.js';
+import { createProfilesRouter, seedDemoReviews } from './server/profiles.js';
 import { createBroadcastRouter, alertNewListing, sweepDigestPush } from './server/broadcast.js';
 import { createReputationRouter, createHomeRouter } from './server/reputation.js';
 import { createReportRouter } from './server/report.js';
@@ -5585,6 +5586,7 @@ app.use('/api', createPaymentRequestRouter());
 app.use('/pay', createPaymentPageRouter());
 app.use('/api/push', createPushRouter());
 app.use('/api/inbox', createInboxRouter()); // v77 — the notification bell
+app.use('/api/profiles', createProfilesRouter()); // v78 — profiles, ratings and reviews
 app.use('/api/projdocs', createProjDocsRouter()); // v77 — project papers: builder → partner → team → client
 app.use('/api/broadcast', createBroadcastRouter());
 app.use('/api/reputation', createReputationRouter());
@@ -5681,6 +5683,7 @@ async function startServer() {
   try { seedDemoPartners(); } catch (e) { console.error('[DEMO] shop partners seed failed', e); }
   try { seedDemoPage(); } catch (e) { console.error('[DEMO] public page seed failed', e); }
   try { seedDemoRent(); } catch (e) { console.error('[DEMO] rent desk seed failed', e); }
+  try { seedDemoReviews(); } catch (e) { console.error('[DEMO] reviews seed failed', e); }
   // Unknown API paths must not fall through to the SPA shell.
   app.use('/api', (_req: Request, res: Response) => res.status(404).json({ error: 'Not found' }));
 

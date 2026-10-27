@@ -148,6 +148,8 @@ export const PERMISSION_CATALOG = {
   'hr:manage': 'HR for own people: day attendance, leave approvals, monthly targets, pay statements, expense claims, assets and holidays (the features depend on who employs)',
   'hr:self': 'Employee: punch in / out for the day, ask for leave, see own targets, a pay statement the employer has shared, file expense claims and see assigned assets',
   'share:use': 'Branded flyers, tracked share links and message templates',
+  'profile:use': 'Profiles & reviews: find a person (by name, firm, mobile or GZ code), see his rating and reviews, keep your own profile, and review people you worked with',
+  'review:moderate': 'GENZ staff: see reported reviews, hide a review that breaks the rules (with a reason), restore it',
   'partywatch:report': 'Network Watch: check a buyer / owner mobile and report one who refuses commission or goes direct',
   'partywatch:review': 'Network Watch: GENZ staff review reports, block or clear a mobile, answer appeals',
   'clientroom:use': 'Client Rooms: a private room (link + mobile OTP) to share properties and chat with your own client',
@@ -216,7 +218,7 @@ export const PERMISSION_CATALOG = {
 export type Permission = keyof typeof PERMISSION_CATALOG;
 export const ALL_PERMISSIONS = Object.keys(PERMISSION_CATALOG) as Permission[];
 
-const SELF: Permission[] = ['self:read', 'self:update', 'metrics:own', 'activity:read', 'directory:read'];
+const SELF: Permission[] = ['self:read', 'self:update', 'metrics:own', 'activity:read', 'directory:read', 'profile:use'];
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   // Founder / platform owner → everything.
@@ -245,7 +247,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'pcontrol:oversee',
     'inventory:read', 'landrecord:manage', 'launch:manage',
     'report:manage', 'chapter:read', 'chapter:manage', 'loan:manage', 'academy:read', 'propdoc:use',
-    'legal:manage', 'billing:manage', 'ownerlist:manage', 'partner:oversee',
+    'legal:manage', 'billing:manage', 'ownerlist:manage', 'partner:oversee', 'review:moderate',
   ],
 
   // Verified RERA broker — the core network participant.
@@ -350,7 +352,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   // allots: CRM leads, deal rooms, and (v16.8) the unit grid as far as the employer's Team Control allows — the route
   // checks his policy, so these two permissions alone show nothing. Never sees brokerage, splits, payouts, bonus or mandates. The money-trail permissions exist for him too, but the route checks the employer's two switches (collect / confirm money), default OFF.
   TEAM_MEMBER: [
-    'self:read', 'self:update',
+    'self:read', 'self:update', 'profile:use',
     'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm',
     'deal:read', 'deal:chat', 'task:read', 'task:manage',
     'inventory:read', 'inventory:share',
@@ -375,7 +377,7 @@ export interface StaffSwitches { listings?: 'OFF' | 'READ' | 'ADDRESS'; rooms?: 
 
 /** An employee's powers depend on who employs them: always a subset of the employer's own. */
 export function memberPermissions(employerRole?: UserRole, sw?: StaffSwitches): Permission[] {
-  const base: Permission[] = ['self:read', 'self:update', 'team:checkin', 'task:read'];
+  const base: Permission[] = ['self:read', 'self:update', 'profile:use', 'team:checkin', 'task:read'];
   switch (employerRole) {
     case 'ADMIN': case 'SUPERADMIN': return [...base, 'connector:desk'];
     case 'CONTRACTOR': return [...base, 'lead:read', 'hr:self'];
