@@ -178,7 +178,7 @@ export const PublicPageView: React.FC = () => {
                 {e.watch && <p className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-800" data-testid="pp-enq-watch"><AlertTriangle className="h-3.5 w-3.5" />{e.watch === 'BLOCKED' ? tx('GENZ Network Watch: this number is blocked after reports — be careful.', 'GENZ नेटवर्क वॉच: शिकायतों के बाद यह नंबर ब्लॉक है — सावधान रहें।') : tx('GENZ Network Watch: caution reports on this number.', 'GENZ नेटवर्क वॉच: इस नंबर पर सावधानी की रिपोर्ट है।')}</p>}
                 <div className="flex flex-wrap gap-1.5">
                   <button type="button" className={dark} data-testid="pp-enq-room" onClick={() => {
-                    try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: e.name, phone: e.phone, kind, note: `Public page enquiry ${e.id}${e.home ? ` · ${e.home.id}` : ''}` })); } catch { /* storage blocked: the form opens empty */ }
+                    try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: e.name, phone: e.phone, kind, note: `Public page enquiry ${e.id}${e.home ? ` · ${e.home.id}` : ''}`, ...(e.home?.live ? { homeId: e.home.id, homeTitle: e.home.title } : {}) })); } catch { /* storage blocked: the form opens empty */ }
                     window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
                   }}><MessagesSquare className="h-4 w-4" />{tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
                   <a className={light} href={`tel:+91${e.phone}`}><Phone className="h-4 w-4" />{e.phone}</a>

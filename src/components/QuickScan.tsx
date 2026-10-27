@@ -1,7 +1,8 @@
 /**
  * v45 — scan a visit QR straight from the header (the "QR" button), without first opening Visit QR / a deal room.
  *  - a broker-to-broker property-visit QR (the buyer's pass, JSON with visitId + VISIT-PASS-…): if this visit is on MY
- *    property (owner / listing broker) the check-in opens right away with the scanned secret;
+ *    property (owner / listing broker) the check-in opens right away with the scanned secret; if I cannot confirm it (v79: I booked it,
+ *    it is too early, the window closed …) the pass opens with the reason and what to do next;
  *  - a builder-project pass (GENZV:… or /v/CODE): only the builder's team may scan it → Visit QR opens with that code;
  *  - anything else: a plain message saying what it is and who scans it.
  * Same rules as the Visit QR screen (v34): never verify a visit you booked yourself, never someone else's visit.
@@ -63,6 +64,9 @@ export const QuickScan: React.FC<{ currentUser: UserProfile; canBuilderScan: boo
         const v = (r.siteVisits || []).find((x: SiteVisit) => x.id === j.visitId);
         if (!v) return setMsg(tx('This is a GENZ visit QR, but NOT yours — it is not a visit on your property, so you cannot scan it.', 'यह GENZ का विज़िट QR है, पर आपका नहीं — यह आपकी प्रॉपर्टी की विज़िट नहीं है, इसलिए आप इसे स्कैन नहीं कर सकते।'));
         if (v.isVerified) return setMsg(tx('This visit is already verified.', 'यह विज़िट पहले ही वेरिफाई हो चुकी है।'));
+        // v79 — a visit I cannot confirm (I booked it, it is too early / past its window …) opens the pass with the reason and the way forward,
+        // instead of a dead-end line; only a visit I CAN confirm is checked in with the scanned QR
+        if (v.gate && !v.gate.ok) { setOpen({ visit: v, raw: '' }); return; }
         if (v.brokerId === currentUser.id) return setMsg(tx('You booked this visit, so you cannot verify it yourself — the owner or the listing broker scans the buyer’s QR.', 'यह विज़िट आपने बुक की है, इसलिए आप खुद वेरिफाई नहीं कर सकते — खरीदार का QR मालिक या लिस्टिंग ब्रोकर स्कैन करेगा।'));
         setOpen({ visit: v, raw: t });
       } catch (e: any) { setMsg(e?.message || 'Error'); } finally { setBusy(false); }

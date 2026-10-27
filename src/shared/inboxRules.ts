@@ -12,6 +12,10 @@ export interface InboxItem {
   /** the same tag again while the old one is still unread = one line (moved to the top), not two */
   tag?: string;
   at: string; read?: boolean;
+  /** v79 — a “to do” line (tag todo:…) keeps the number it was last written for, so it knows when the number grew */
+  n?: number;
+  /** v79 — a “to do” line the person removed: it stays out of sight until its number grows again */
+  hidden?: boolean;
 }
 
 /** most lines kept per person, and for how many days */
@@ -55,10 +59,10 @@ export function inboxTrim(all: InboxItem[], userId: string, now = Date.now()): n
 
 /** the lines of one person, newest first, in his language */
 export function inboxView(all: InboxItem[], userId: string, lang: 'en' | 'hi') {
-  return all.filter(x => x.userId === userId).sort((a, b) => b.at.localeCompare(a.at)).slice(0, INBOX_CAP)
-    .map(x => ({ id: x.id, kind: x.kind, title: lang === 'hi' && x.hi ? x.hi.title : x.title, body: lang === 'hi' && x.hi ? x.hi.body : x.body, url: x.url, at: x.at, read: !!x.read }));
+  return all.filter(x => x.userId === userId && !x.hidden).sort((a, b) => b.at.localeCompare(a.at)).slice(0, INBOX_CAP)
+    .map(x => ({ id: x.id, kind: x.kind, title: lang === 'hi' && x.hi ? x.hi.title : x.title, body: lang === 'hi' && x.hi ? x.hi.body : x.body, url: x.url, at: x.at, read: !!x.read, ...(x.tag && x.tag.startsWith('todo:') ? { todo: true, n: x.n } : {}) }));
 }
-export const inboxUnread = (all: InboxItem[], userId: string) => all.reduce((n, x) => n + (x.userId === userId && !x.read ? 1 : 0), 0);
+export const inboxUnread = (all: InboxItem[], userId: string) => all.reduce((n, x) => n + (x.userId === userId && !x.read && !x.hidden ? 1 : 0), 0);
 
 /** "5 min ago" style — shared so the bell and the tests agree */
 export function agoLabel(iso: string, now = Date.now(), hi = false): string {

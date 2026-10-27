@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { agoLabel } from '../shared/inboxRules.js';
 
-type Row = { id: string; kind: string; title: string; body: string; url?: string; at: string; read: boolean };
+type Row = { id: string; kind: string; title: string; body: string; url?: string; at: string; read: boolean; todo?: boolean; n?: number };
 const POLL_MS = 45_000;
 
 /** where a tap goes: a tab of this app (/?tab=…) opens in place; any other in-app path is opened as a page */
@@ -13,7 +13,16 @@ export function openInboxUrl(url: string | undefined) {
   try {
     const u = new URL(url, window.location.origin);
     const tab = u.searchParams.get('tab');
-    if (u.pathname === '/' && tab) { window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: tab })); return; }
+    if (u.pathname === '/' && tab) {
+      // v79 — the other query parameters (?view=proposals, ?drafts=1, ?sub=bonds …) are what the Home tiles set before they open a tab:
+      // set them here too, so a line in the bell lands on the same sub-screen as the Home counter it came from
+      try {
+        const cur = new URL(window.location.href);
+        u.searchParams.forEach((v, k) => { if (k !== 'tab') cur.searchParams.set(k, v); });
+        window.history.replaceState(window.history.state, '', cur.toString());
+      } catch { /* old browser */ }
+      window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: tab })); return;
+    }
     window.location.assign(u.pathname + u.search + u.hash);
   } catch { /* an unusable link: do nothing */ }
 }
@@ -98,7 +107,7 @@ export const NotificationBell: React.FC = () => {
                       <button type="button" onClick={() => tap(x)} className="flex min-h-14 min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-left">
                         <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${x.read ? 'bg-transparent' : 'bg-rose-500'}`} aria-hidden />
                         <span className="min-w-0 flex-1">
-                          <span className={`block text-[13px] leading-snug text-slate-900 ${x.read ? 'font-medium' : 'font-bold'}`}>{x.title}</span>
+                          <span className={`block text-[13px] leading-snug text-slate-900 ${x.read ? 'font-medium' : 'font-bold'}`}>{x.todo && <span className="mr-1.5 inline-block rounded bg-slate-900 px-1.5 py-px align-middle text-[10px] font-bold uppercase tracking-wide text-white" data-testid="bell-todo-chip">{tx('To do', 'करना है')}{x.n ? ` · ${x.n}` : ''}</span>}{x.title}</span>
                           {x.body && <span className="mt-0.5 block break-words text-xs leading-snug text-slate-600">{x.body}</span>}
                           <span className="mt-1 block text-[11px] text-slate-400">{agoLabel(x.at, now, hi)}</span>
                         </span>

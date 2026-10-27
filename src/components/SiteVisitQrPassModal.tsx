@@ -7,6 +7,7 @@ import { QrScanner } from './QrScanner.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { VisitAckPanel } from './VisitAckPanel.js';
 import { ScanLineNote } from './ScanPoint.js';
+import { gateWords } from '../shared/visitGateRules.js';
 import {
   QrCode,
   CheckCircle2,
@@ -22,6 +23,8 @@ import {
   AlertCircle,
   Smartphone,
   Navigation,
+  BellRing,
+  CalendarClock,
 } from 'lucide-react';
 
 interface SiteVisitQrPassModalProps {
@@ -35,6 +38,69 @@ interface SiteVisitQrPassModalProps {
   /** v45: a QR already scanned elsewhere (header Scan) — check in with it at once */
   initialScan?: string;
 }
+
+
+/** `YYYY-MM-DDTHH:mm` in the phone's own time, for a datetime-local box */
+const toLocalInput = (ms: number) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+
+/**
+ * v79 — shown instead of the confirm buttons when THIS person cannot confirm the visit now. It says why, in plain words, and gives the
+ * way forward: the broker who booked it can remind the property side or set a new time; everyone else sees whose job it is.
+ */
+export const VisitGateNotice: React.FC<{ visit: SiteVisit; onFresh: (v: SiteVisit) => void }> = ({ visit, onFresh }) => {
+  const tx = useTx(); const { lang } = useI18n(); const hi = lang === 'hi';
+  const g = visit.gate!;
+  const expired = !!visit.otpExpiresAt && Date.now() > Date.parse(visit.otpExpiresAt);
+  const code = g.iAmBooker && expired ? 'EXPIRED' : g.code;
+  const w = gateWords(code, { hi, selfDeal: g.selfDeal, sch: formatDateTime(visit.scheduledTime), iAmBooker: g.iAmBooker });
+  const [busy, setBusy] = useState('');
+  const [done, setDone] = useState('');
+  const [err, setErr] = useState('');
+  const [moveOpen, setMoveOpen] = useState(expired);
+  const [when, setWhen] = useState(() => toLocalInput(Date.now() + 3600_000));
+  const remind = async () => {
+    setBusy('remind'); setErr(''); setDone('');
+    try { await api.remindSiteVisit(visit.id); setDone(tx('Told them — they will get a notification.', 'उन्हें बता दिया — नोटिफ़िकेशन चला गया।')); }
+    catch (e: any) { setErr(e?.message || tx('Could not send the reminder', 'याद दिलाना नहीं हो सका')); } finally { setBusy(''); }
+  };
+  const move = async () => {
+    setBusy('move'); setErr(''); setDone('');
+    try {
+      const r = await api.rescheduleSiteVisit(visit.id, new Date(when).toISOString());
+      onFresh(r.siteVisit); setMoveOpen(false);
+      setDone(tx('New time saved — the same pass is open again and the property side is told.', 'नया समय सेव — वही पास फिर चालू है और प्रॉपर्टी की तरफ़ वालों को बता दिया।'));
+      window.dispatchEvent(new Event('genz:visits-changed'));
+    } catch (e: any) { setErr(e?.message || tx('Could not change the time', 'समय बदला नहीं जा सका')); } finally { setBusy(''); }
+  };
+  const tone = code === 'EXPIRED' || code === 'LOCKED' ? 'border-red-200 bg-red-50 text-red-900' : 'border-amber-200 bg-amber-50 text-amber-900';
+  return (
+    <div className={`space-y-2 rounded-xl border p-4 text-[11px] leading-relaxed ${tone}`} data-testid="visit-gate" data-gate={code}>
+      <p className="text-xs font-bold">{w.title}</p>
+      <p>{w.body}</p>
+      {g.iAmBooker && code !== 'EXPIRED' && (
+        <button type="button" onClick={remind} disabled={busy === 'remind'} data-testid="visit-remind" className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white disabled:opacity-50">
+          <BellRing className="h-4 w-4" aria-hidden />{busy === 'remind' ? tx('Sending…', 'भेज रहे हैं…') : tx('Remind the owner / listing broker', 'मालिक / लिस्टिंग ब्रोकर को याद दिलाएँ')}
+        </button>
+      )}
+      {g.iAmBooker && (moveOpen ? (
+        <div className="space-y-1.5 rounded-lg bg-white/70 p-2" data-testid="visit-move">
+          <label className="block text-[11px] font-semibold text-slate-700">{tx('New visit time', 'विज़िट का नया समय')}
+            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900" data-testid="visit-move-time" />
+          </label>
+          <button type="button" onClick={move} disabled={busy === 'move' || !when} data-testid="visit-move-save" className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white disabled:opacity-50">
+            <CalendarClock className="h-4 w-4" aria-hidden />{busy === 'move' ? tx('Saving…', 'सेव हो रहा है…') : tx('Save the new time', 'नया समय सेव करें')}
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setMoveOpen(true)} data-testid="visit-move-open" className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">
+          <CalendarClock className="h-4 w-4" aria-hidden />{tx('Change the visit time', 'विज़िट का समय बदलें')}
+        </button>
+      ))}
+      {done && <p className="font-semibold text-emerald-800" role="status" data-testid="visit-gate-done">{done}</p>}
+      {err && <p className="font-semibold text-red-700" role="alert">{err}</p>}
+    </div>
+  );
+};
 
 export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
   isOpen,
@@ -61,6 +127,9 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
   const [ackLive, setAckLive] = useState<'NONE' | 'PENDING' | 'ACKED' | undefined>(visit.ackStatus);
   useEffect(() => setAckLive(visit.ackStatus), [visit.id, visit.ackStatus]);
   const ackPending = ackLive === 'PENDING' && !checkinSuccess;
+  // v79 — after the booker moves the visit, the server's fresh copy (new time, new window, new gate) replaces what the parent passed
+  const [fresh, setFresh] = useState<SiteVisit | null>(null);
+  const V: SiteVisit = fresh && fresh.id === visit.id ? { ...visit, ...fresh, qrToken: fresh.qrToken || visit.qrToken, otpCode: fresh.otpCode || visit.otpCode } : visit;
   const onScanned = (text: string) => {
     setScanning(false);
     try {
@@ -204,7 +273,7 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
           {error && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
-              <span>{error}</span>
+              <span>{error}{/km from the property/.test(error) && <span className="mt-1 block font-semibold" data-testid="visit-far-hint">{tx('Your phone shows a place far from the property. Ask the buyer for his 6-digit code and use “Verify OTP” below — it needs no location.', 'आपका फ़ोन प्रॉपर्टी से दूर की जगह दिखा रहा है। खरीदार से 6-अंकों का कोड लेकर नीचे “OTP सत्यापित करें” दबाएँ — इसमें लोकेशन नहीं लगती।')}</span>}</span>
             </div>
           )}
 
@@ -257,7 +326,7 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
                   {tx('Scheduled Arrival:', 'तय आगमन:')}
                 </span>
                 <span className="font-semibold text-slate-800 block mt-0.5">
-                  {formatDateTime(visit.scheduledTime)}
+                  {formatDateTime(V.scheduledTime)}
                 </span>
               </div>
             </div>
@@ -303,7 +372,9 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
           </div>
 
           {/* INTERACTIVE SCANNER / INSTANT CHECK-IN SECTION */}
-          {!checkinSuccess && visit.brokerId === currentUser.id && currentUser.role !== 'PROPERTY_OWNER' ? (
+          {!checkinSuccess && V.gate && !V.gate.ok ? (
+            <VisitGateNotice visit={V} onFresh={setFresh} />
+          ) : !checkinSuccess && !V.gate && visit.brokerId === currentUser.id && currentUser.role !== 'PROPERTY_OWNER' ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-[11px] text-amber-900 leading-relaxed">
               <strong>{tx('You cannot verify this visit:', 'आप यह विज़िट सत्यापित नहीं कर सकते:')}</strong>{' '}{tx('you scheduled it, so the scan / OTP check must be done by the property side (owner or listing broker). Ask them to scan the customer’s QR.', 'विज़िट आपने तय की है, इसलिए स्कैन / OTP सत्यापन प्रॉपर्टी की तरफ़ से (मालिक या लिस्टिंग ब्रोकर) होगा। ग्राहक का QR उनसे स्कैन करवाएँ।')}
             </div>

@@ -4,28 +4,113 @@
  * Cards show a customer's first name only; GENZ staff do not read these chats (server/partnerchat.ts).
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Contact, Home as HomeIcon, Loader2, ReceiptText, Lock } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Camera, ChevronRight, Contact, Home as HomeIcon, Loader2, ReceiptText, Lock, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { preparePhoto } from '../lib/photoFile.js';
+import { formatINR } from '../lib/utils.js';
+import { featureLabel, kindLabel } from '../shared/inventoryRules.js';
 
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 const ICON: Record<string, React.ElementType> = { LEAD: Contact, BOOKING: ReceiptText, UNIT: HomeIcon };
 
+const STATUS: Record<string, [string, string, string]> = {
+  AVAILABLE: ['Available', 'उपलब्ध', 'bg-emerald-100 text-emerald-800'], HOLD: ['On hold', 'होल्ड पर', 'bg-amber-100 text-amber-800'],
+  BOOKED: ['Booked', 'बुक हो चुकी', 'bg-slate-200 text-slate-700'], RESERVED: ['Reserved', 'रिज़र्व', 'bg-slate-200 text-slate-700'],
+};
+
+/** v79 — tap a UNIT card: the unit's own details (what the builder shared with this partner; the price only if the builder allowed it) */
+export const UnitSheet: React.FC<{ threadId: string; unitId: string; onClose: () => void }> = ({ threadId, unitId, onClose }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
+  useEffect(() => { api.pchatUnit(threadId, unitId).then(setD).catch(e => setErr(e?.message || tx('Could not open the unit', 'यूनिट खुल नहीं सकी'))); }, [threadId, unitId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const u = d?.unit; const pr = d?.project;
+  const st = u ? (STATUS[u.status] || [u.status, u.status, 'bg-slate-200 text-slate-700']) : null;
+  const facts: Array<[string, string]> = u ? ([
+    [tx('Type', 'प्रकार'), kindLabel(u.kind, hi)],
+    [tx('Unit no.', 'यूनिट नं.'), u.label + (u.code ? ` · ${u.code}` : '')],
+    [tx('Block / tower', 'ब्लॉक / टावर'), u.group],
+    [tx('Floor', 'मंज़िल'), u.floor !== undefined && u.floor !== null ? String(u.floor) : ''],
+    [tx('Size', 'साइज़'), u.areaSqft ? `${Number(u.areaSqft).toLocaleString('en-IN')} sq.ft` : ''],
+    [tx('Rate', 'रेट'), u.ratePerSqft ? `${formatINR(u.ratePerSqft)} / sq.ft` : ''],
+    [tx('Facing', 'फ़ेसिंग'), u.facing || ''],
+    [tx('Road sides', 'सड़क की तरफ़'), u.roadSides ? String(u.roadSides) : ''],
+    [tx('Road width', 'सड़क की चौड़ाई'), u.roadWidthFt ? `${u.roadWidthFt} ft` : ''],
+    [tx('Plot size', 'प्लॉट का नाप'), u.dimensions || ''],
+  ] as Array<[string, string]>).filter(([, v]) => v) : [];
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/50 sm:items-center sm:p-4" onClick={onClose} data-testid="pc-unit-sheet">
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 pb-6 shadow-xl sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-700">{tx('Unit', 'यूनिट')}</p>
+            <h3 className="truncate text-base font-bold text-slate-900">{u ? `${u.label} · ${u.config || kindLabel(u.kind, hi)}` : tx('Loading…', 'लोड हो रहा है…')}</h3>
+            {pr && <p className="truncate text-xs text-slate-500">{pr.projectName}{[pr.locality, pr.city].filter(Boolean).length ? ` · ${[pr.locality, pr.city].filter(Boolean).join(', ')}` : ''}</p>}
+          </div>
+          <button type="button" onClick={onClose} aria-label={tx('Close', 'बंद करें')} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" data-testid="pc-unit-close"><X className="h-5 w-5" /></button>
+        </div>
+        {err && <p className="rounded-lg bg-red-50 p-2 text-xs font-semibold text-red-700" role="alert">{err}</p>}
+        {!u && !err && <Loader2 className="mx-auto my-6 h-5 w-5 animate-spin text-slate-400" />}
+        {u && st && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+              <div>
+                <p className="text-[11px] text-slate-500">{tx('Price', 'कीमत')}</p>
+                <p className="text-lg font-extrabold text-slate-900" data-testid="pc-unit-price">{u.priceHidden ? tx('On request', 'पूछने पर') : formatINR(u.price)}</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${st[2]}`} data-testid="pc-unit-status">{tx(st[0], st[1])}</span>
+            </div>
+            {facts.length > 0 && (
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs" data-testid="pc-unit-facts">
+                {facts.map(([k, v]) => <div key={k}><dt className="text-[11px] text-slate-500">{k}</dt><dd className="font-semibold text-slate-900">{v}</dd></div>)}
+              </dl>
+            )}
+            {u.features?.length > 0 && <div className="flex flex-wrap gap-1">{u.features.map((f: string) => <span key={f} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-800">{featureLabel(f, hi)}</span>)}</div>}
+            {u.note && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">{u.note}</p>}
+            {pr && (pr.stage || pr.completion || pr.rera) && (
+              <p className="text-[11px] text-slate-500">{[pr.stage, pr.completion ? tx(`Completion ${pr.completion}`, `पूरा होना ${pr.completion}`) : '', pr.rera ? `RERA ${pr.rera}` : ''].filter(Boolean).join(' · ')}</p>
+            )}
+            {u.heldByMe && <p className="text-xs font-semibold text-emerald-700">{tx('This unit is on hold for you.', 'यह यूनिट आपके लिए होल्ड पर है।')}</p>}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
 /** one card inside a bubble */
-export const PartnerCard: React.FC<{ card: { kind: string; refId: string; label: string; sub?: string } }> = ({ card }) => {
+export const PartnerCard: React.FC<{ card: { kind: string; refId: string; label: string; sub?: string }; threadId?: string }> = ({ card, threadId }) => {
   const tx = useTx();
+  const [openUnit, setOpenUnit] = useState(false);
   if (card.kind === 'PHOTO') {
     const src = `/api/partner-chats/photo/${encodeURIComponent(card.refId)}`;
     return <a href={src} target="_blank" rel="noopener noreferrer" className="mb-1 block overflow-hidden rounded-xl bg-slate-200" data-testid="pc-photo"><img src={src} alt={tx('Photo', 'फ़ोटो')} loading="lazy" className="max-h-64 w-full object-cover" /></a>;
   }
   const Icon = ICON[card.kind] || Contact;
   const kind = card.kind === 'LEAD' ? tx('Lead', 'लीड') : card.kind === 'BOOKING' ? tx('Booking', 'बुकिंग') : tx('Unit', 'यूनिट');
+  const inner = (
+    <>
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700"><Icon className="h-4 w-4" /></span>
+      <span className="min-w-0 flex-1"><span className="block text-[11px] font-bold uppercase tracking-wide text-indigo-700">{kind}</span><span className="block truncate text-sm font-semibold text-slate-900">{card.label}</span>{card.sub && <span className="block truncate text-xs text-slate-500">{card.sub}</span>}</span>
+    </>
+  );
+  // v79 — a unit card opens the unit's details
+  if (card.kind === 'UNIT' && threadId) {
+    return (
+      <>
+        <button type="button" onClick={() => setOpenUnit(true)} className="mb-1 flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white/80 p-2 text-left hover:bg-white" data-testid="pc-card-UNIT" aria-label={tx('Open the unit details', 'यूनिट की जानकारी खोलें')}>
+          {inner}<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+        </button>
+        {openUnit && <UnitSheet threadId={threadId} unitId={card.refId} onClose={() => setOpenUnit(false)} />}
+      </>
+    );
+  }
   return (
     <div className="mb-1 flex items-start gap-2 rounded-xl border border-slate-200 bg-white/80 p-2" data-testid={`pc-card-${card.kind}`}>
-      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700"><Icon className="h-4 w-4" /></span>
-      <span className="min-w-0"><span className="block text-[11px] font-bold uppercase tracking-wide text-indigo-700">{kind}</span><span className="block truncate text-sm font-semibold text-slate-900">{card.label}</span>{card.sub && <span className="block truncate text-xs text-slate-500">{card.sub}</span>}</span>
+      {inner}
     </div>
   );
 };
@@ -66,7 +151,7 @@ export const PartnerChatPane: React.FC<{ id: string; fallbackTitle: string; onBa
     try { const r = await api.pchatSend(id, b); setT((x: any) => x ? { ...x, messages: [...x.messages, r.message] } : x); window.dispatchEvent(new Event('genz:chats-changed')); return true; }
     catch (e: any) { setErr(e.message || tx('Could not send the message', 'संदेश भेजा नहीं जा सका')); return false; }
   };
-  const msgs: ThreadMsg[] = (t?.messages || []).map((m: any) => ({ id: m.id, mine: m.mine, who: m.byName, text: m.text, at: m.at, by: m.by, card: m.card ? <PartnerCard card={m.card} /> : undefined, hideText: !m.text }));
+  const msgs: ThreadMsg[] = (t?.messages || []).map((m: any) => ({ id: m.id, mine: m.mine, who: m.byName, text: m.text, at: m.at, by: m.by, card: m.card ? <PartnerCard card={m.card} threadId={id} /> : undefined, hideText: !m.text }));
   const quick = side === 'BUILDER' ? [
     { en: 'Lead accepted — please plan the site visit.', hi: 'लीड मंज़ूर — साइट विज़िट तय करें।' },
     { en: 'Booking approved — please collect the booking amount.', hi: 'बुकिंग मंज़ूर — बुकिंग अमाउंट ले लें।' },

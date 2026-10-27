@@ -87,8 +87,16 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
       );
     }
     case 'LOCATION': {
-      const url = p?.googleMapsUrl || (p?.latitude && p?.longitude ? `https://www.google.com/maps?q=${p.latitude},${p.longitude}` : '');
-      const shielded = !!p?.addressHidden;
+      // v79 — the card always opens a map. Exact pin: sent by the property side on purpose (m.pin), or the reader may see it himself
+      // (his own property, a booked visit that is still open, a verified visit). Otherwise the area of the locality, with the reason.
+      const shielded = /^Address protected/i.test(p?.addressHidden || '');
+      const exact = !!m.pin?.url || !shielded || !!p?.visitPin;
+      const coords = p?.latitude && p?.longitude ? `https://www.google.com/maps?q=${p.latitude},${p.longitude}` : '';
+      const areaQuery = [p?.locality, p?.city, p?.state].filter(Boolean).join(', ');
+      const area = coords || (areaQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(areaQuery)}` : '');
+      const exactUrl = m.pin?.url || (exact ? (p?.googleMapsUrl || coords) : '');
+      const url = exactUrl || area;
+      const isExact = !!exactUrl;
       return (
         <div className={`${box} cursor-default`} data-testid="chat-card-LOCATION">
           <div className="flex items-center gap-2.5">
@@ -98,8 +106,9 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
               <span className="block truncate text-xs text-slate-500">{[p?.locality, p?.city].filter(Boolean).join(', ') || '…'}</span>
             </span>
           </div>
-          {url && <a href={url} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg bg-white px-2.5 text-xs font-semibold text-blue-700 ring-1 ring-slate-200" data-testid="chat-card-maps"><ExternalLink className="h-3.5 w-3.5" aria-hidden />{shielded ? tx('Open approximate area', 'मोटा इलाक़ा खोलें') : tx('Open in Maps', 'मैप में खोलें')}</a>}
-          {shielded && <p className="mt-1 text-[11px] text-slate-500">{tx('The exact address opens after a verified site visit.', 'सही पता वेरिफ़ाइड साइट विज़िट के बाद खुलता है।')}</p>}
+          {url && <a href={url} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex min-h-10 items-center gap-1 rounded-lg bg-white px-3 text-xs font-semibold text-blue-700 ring-1 ring-slate-200" data-testid="chat-card-maps" data-exact={isExact ? '1' : '0'}><ExternalLink className="h-3.5 w-3.5" aria-hidden />{isExact ? tx('Open the exact pin in Maps', 'मैप में सही पिन खोलें') : tx('Open the area in Maps', 'मैप में इलाक़ा खोलें')}</a>}
+          {isExact && shielded && <p className="mt-1 text-[11px] text-slate-500" data-testid="chat-card-pin-note">{tx('Pin only — the written address opens after the visit is verified.', 'सिर्फ़ पिन — लिखा हुआ पता विज़िट वेरिफ़ाई होने के बाद खुलता है।')}</p>}
+          {!isExact && shielded && <p className="mt-1 text-[11px] text-slate-500" data-testid="chat-card-area-note">{tx('The exact pin opens as soon as a site visit is booked for this property.', 'इस प्रॉपर्टी की साइट विज़िट बुक होते ही सही पिन खुल जाता है।')}</p>}
         </div>
       );
     }
@@ -111,7 +120,7 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700"><CalendarClock className="h-5 w-5" aria-hidden /></span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-bold text-slate-900">{tx('Site visit', 'साइट विज़िट')}{v ? ` · ${when(v.scheduledTime)}` : ''}</span>
-              <span className={`block text-xs ${v?.isVerified ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{v ? (v.isVerified ? tx('Verified on site', 'साइट पर वेरिफ़ाइड') : tx('Scheduled — not verified yet', 'तय — अभी वेरिफ़ाई नहीं')) : data ? tx('Open the deal room for details', 'ब्योरे के लिए डील रूम खोलें') : '…'}</span>
+              <span className={`block text-xs ${v?.isVerified ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{v ? (v.isVerified ? tx('Verified on site', 'साइट पर वेरिफ़ाइड') : (v.otpExpiresAt && Date.now() > Date.parse(v.otpExpiresAt)) ? tx('Pass window closed — open the pass', 'पास की समय-सीमा निकल गई — पास खोलें') : tx('Scheduled — not verified yet', 'तय — अभी वेरिफ़ाई नहीं')) : data ? tx('Open the deal room for details', 'ब्योरे के लिए डील रूम खोलें') : '…'}</span>
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
           </button>

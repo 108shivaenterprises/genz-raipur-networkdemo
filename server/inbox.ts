@@ -17,8 +17,13 @@ import { db } from './db.js';
 import type { UserProfile } from './db.js';
 import { ctx, requireAuth } from './auth.js';
 import { inboxAdd, inboxTrim, inboxView, inboxUnread, type InboxKind } from '../src/shared/inboxRules.js';
+import { isTodoLine } from '../src/shared/homeTodoRules.js';
 
 const nowIso = () => new Date().toISOString();
+
+/** v79 — set by homebell.ts: brings a person's “to do” lines (the Home counters) in step before the bell is read */
+let todoSync: ((u: UserProfile) => void) | null = null;
+export const setTodoSync = (fn: (u: UserProfile) => void) => { todoSync = fn; };
 const newId = () => `NTF-${Date.now().toString(36)}${crypto.randomBytes(3).toString('hex')}`;
 
 /** called by pushTo for every alert that is for this person (before his phone settings, quiet hours or the daily cap — those are about interrupting, not about keeping a record) */
@@ -51,12 +56,14 @@ export function createInboxRouter() {
   const langOf = () => (db.getState().pushPrefs.find(p => p.userId === me().id)?.lang === 'hi' ? 'hi' : 'en') as 'en' | 'hi';
 
   r.get('/', requireAuth, (req: Request, res: Response) => {
+    todoSync?.(me());
     const s = db.getState(); const id = me().id;
     const lang = req.query.lang === 'hi' ? 'hi' : req.query.lang === 'en' ? 'en' : langOf();
     res.json({ success: true, items: inboxView(s.inbox, id, lang), unread: inboxUnread(s.inbox, id) });
   });
 
   r.get('/count', requireAuth, (_req: Request, res: Response) => {
+    todoSync?.(me());
     res.json({ success: true, unread: inboxUnread(db.getState().inbox, me().id) });
   });
 
@@ -72,18 +79,24 @@ export function createInboxRouter() {
 
   r.delete('/:id', requireAuth, (req: Request, res: Response) => {
     const s = db.getState(); const id = me().id;
-    const row = s.inbox.find(x => x.id === req.params.id && x.userId === id);
+    const row = s.inbox.find(x => x.id === req.params.id && x.userId === id && !x.hidden);
     if (!row) return res.status(404).json({ error: 'Notification not found' });
-    s.inbox = s.inbox.filter(x => x !== row); db.save();
+    // v79 — a “to do” line is kept out of sight (it comes back only if its number grows); every other line is removed
+    if (isTodoLine(row)) { row.hidden = true; row.read = true; } else s.inbox = s.inbox.filter(x => x !== row);
+    db.save();
     res.json({ success: true, unread: inboxUnread(s.inbox, id) });
   });
 
   r.delete('/', requireAuth, (_req: Request, res: Response) => {
     const s = db.getState(); const id = me().id;
-    const before = s.inbox.length;
-    s.inbox = s.inbox.filter(x => x.userId !== id);
-    if (s.inbox.length !== before) db.save();
-    res.json({ success: true, cleared: before - s.inbox.length, unread: 0 });
+    let cleared = 0;
+    s.inbox = s.inbox.filter(x => {
+      if (x.userId !== id) return true;
+      if (isTodoLine(x)) { if (!x.hidden) cleared++; x.hidden = true; x.read = true; return true; }   // v79 — to-do lines stay (out of sight) until their number grows
+      cleared++; return false;
+    });
+    if (cleared) db.save();
+    res.json({ success: true, cleared, unread: 0 });
   });
 
   return r;

@@ -84,6 +84,7 @@ import {
   canSeeClosedProperty,
   isPropertyPrincipal,
   canSeeProtectedPropertyData,
+  canSeeVisitPin,
   canSeeOwnerCommercials,
   canAccessPropertyWorkspace,
   customerMatchesUser,
@@ -135,7 +136,8 @@ import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } fro
 import { createBuyerBondRouter, buyerBondBlock, makeBuyerBond } from './server/buyerbond.js';
 import { createConsentRouter, createOwnerConsentPageRouter, sweepConsents, findBlockingBond, blockedAnswer, consentForPublish, markPublished, listingKey, signatureSummary, draftForProperty } from './server/consent.js';
 import { createPushRouter } from './server/webpush.js';
-import { createInboxRouter, sweepInbox } from './server/inbox.js';
+import { createInboxRouter, sweepInbox, setTodoSync } from './server/inbox.js';
+import { syncHomeBell } from './server/homebell.js';
 import { createProjDocsRouter } from './server/projdocs.js';
 import { createProfilesRouter, seedDemoReviews } from './server/profiles.js';
 import { createBroadcastRouter, alertNewListing, sweepDigestPush } from './server/broadcast.js';
@@ -151,6 +153,7 @@ import { createListingsRouter, createPublicPosterRouter, sweepSoldPurge } from '
 import { createVisitRouter, createPublicVisitRouter, sweepVisitPasses } from './server/visitpass.js';
 import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
 import { mandateShareAt } from './src/shared/mandateShare.js';
+import { visitGate, windowEnd, rescheduleError, REMIND_EVERY_MIN } from './src/shared/visitGateRules.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
@@ -1044,13 +1047,18 @@ function sanitizeProperty(p: any, user: UserProfile, state = db.getState()) {
     out.ownerName = 'Owner (identity protected)';
   }
   if (!protectedOk) {
+    // v79 — a broker with an open booked visit gets the map pin (never the written address) so he can actually get there
+    const pinOk = canSeeVisitPin(state, user, p);
     out.addressHidden = 'Address protected by GENZ Privacy Shield (Disclosed upon verified site visit)';
     out.street = '';
-    out.googleMapsUrl = '';
-    out.googleMapsDirectionsUrl = '';
-    out.latitude = roundCoord(p.latitude);
-    out.longitude = roundCoord(p.longitude);
-    out.locationPrecision = p.locationPrecision === 'EXACT_PIN' ? 'GENERAL_AREA' : p.locationPrecision;
+    if (pinOk) out.visitPin = true;
+    else {
+      out.googleMapsUrl = '';
+      out.googleMapsDirectionsUrl = '';
+      out.latitude = roundCoord(p.latitude);
+      out.longitude = roundCoord(p.longitude);
+      out.locationPrecision = p.locationPrecision === 'EXACT_PIN' ? 'GENERAL_AREA' : p.locationPrecision;
+    }
     out.documents = [];
   }
   // v58 — a broker's office staff never gets papers (the address alone, if the broker allowed it)
@@ -2492,6 +2500,11 @@ function sanitizeVisit(v: any, user: UserProfile, state = db.getState()) {
     (user.role === 'BUYER_TENANT' && customerMatchesUser(v.customerPhone, user)) ||
     (DEMO_MODE && v.brokerId === user.id);
   const out: any = { ...v, otpAttempts: undefined, otpExpiresAt: v.otpExpiresAt, ackStatus: visitAckStatus('VISIT', v.id) };
+  // v79 — what THIS viewer may do with the visit right now (the same decision the server makes when he taps confirm)
+  {
+    const g = gateFor(v, user);
+    out.gate = { code: g.code, ok: g.ok, selfDeal: g.selfDeal, propertySide: g.propertySide, iAmBooker: v.brokerId === user.id };
+  }
   // v54.1 — the buyer's mobile and full name stay with the broker who brought him (his own staff), the buyer himself and GENZ admins.
   // The owner and the other broker of the deal see initials and a masked number — the v20 anti-bypass rule, now also for site visits.
   const clientSide = isAdmin(user) || v.brokerId === user.id || (!!user.employerId && user.employerId === v.brokerId) ||
@@ -2690,51 +2703,37 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   res.json({ success: true, siteVisit: sanitizeVisit(newVisit, currentUser, state), dealRoom: deal, watch: (customerPhone && partyCaution(customerPhone)) || undefined });
 });
 
+/** v79 — the same decision the screens show: can THIS user confirm this visit now (src/shared/visitGateRules.ts) */
+function gateFor(visit: any, user: UserProfile) {
+  const vprop = db.byId('properties', visit.propertyId);
+  return visitGate({
+    isVerified: !!visit.isVerified, bookerId: visit.brokerId, userId: user.id, ownerId: vprop?.ownerId || '', listingBrokerId: vprop?.listingBrokerId || '',
+    isSuper: isSuper(user), ackBlocked: !!visitAckBlock('VISIT', visit.id), scheduledAt: visit.scheduledTime, expiresAt: visit.otpExpiresAt, attempts: visit.otpAttempts || 0, now: Date.now(),
+  });
+}
+
 /** Shared guard for OTP / QR verification. Returns the visit or sends the error itself. */
 function loadVerifiableVisit(req: Request, res: Response, user: UserProfile) {
-  const state = db.getState();
   const visit = db.byId('siteVisits', req.params.id);
   if (!visit) {
     res.status(404).json({ error: 'Site visit record not found' });
     return null;
   }
-  const deal = visitDeal(state, visit);
   // v14 maker ≠ checker: whoever scheduled the visit (buyer side) can never verify it. The PROPERTY side does:
   // the owner, or the listing broker. If the listing broker scheduled it himself (own buyer), only the owner may verify.
-  const vprop = db.byId('properties', visit.propertyId);
-  const selfDeal = !!vprop && visit.brokerId === vprop.listingBrokerId;
-  const propertySide = !!vprop && (vprop.ownerId === user.id || (vprop.listingBrokerId === user.id && !selfDeal));
-  if (visit.brokerId === user.id && !(vprop && vprop.ownerId === user.id)) {
-    res.status(403).json({ error: 'You scheduled this visit, so you cannot verify it yourself. The property owner or the listing broker confirms it on the spot (the customer shows them the QR / code).', code: 'MAKER_CHECKER' });
-    return null;
-  }
-  if (!propertySide && !isSuper(user)) {
-    res.status(403).json({ error: selfDeal ? 'The listing broker brought this customer himself — only the property owner can verify this visit' : 'Only the property side (the owner or the listing broker) can verify this visit', code: 'PROPERTY_SIDE_ONLY' });
-    return null;
-  }
-  if (visit.isVerified) {
-    res.status(409).json({ error: 'This site visit is already verified' });
-    return null;
-  }
-  // v33 — the buyer must have confirmed “no direct deal” (tick + his mobile code) first
-  const ackMsg = visitAckBlock('VISIT', visit.id);
-  if (ackMsg) {
-    res.status(409).json({ error: ackMsg, code: 'ACK_REQUIRED' });
-    return null;
-  }
-  if (Date.now() < Date.parse(visit.scheduledTime) - 6 * 3600_000) {
-    res.status(400).json({ error: 'Too early: a visit can only be verified on the day of the scheduled visit' });
-    return null;
-  }
-  if (visit.otpExpiresAt && Date.now() > Date.parse(visit.otpExpiresAt)) {
-    res.status(410).json({ error: 'Verification window has expired. Schedule a new visit.' });
-    return null;
-  }
-  if ((visit.otpAttempts || 0) >= 5) {
-    res.status(429).json({ error: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.' });
-    return null;
-  }
-  return visit;
+  const g = gateFor(visit, user);
+  if (g.ok) return visit;
+  const errors: Record<string, string> = {
+    MAKER_CHECKER: 'You scheduled this visit, so you cannot verify it yourself. The property owner or the listing broker confirms it on the spot (the customer shows them the QR / code).',
+    PROPERTY_SIDE_ONLY: g.selfDeal ? 'The listing broker brought this customer himself — only the property owner can verify this visit' : 'Only the property side (the owner or the listing broker) can verify this visit',
+    DONE: 'This site visit is already verified',
+    ACK_REQUIRED: visitAckBlock('VISIT', visit.id) || 'The buyer has not yet confirmed the “no direct deal” acknowledgement',
+    TOO_EARLY: 'Too early: a visit can only be verified on the day of the scheduled visit',
+    EXPIRED: 'Verification window has expired. The broker who booked it can set a new time — then it opens again.',
+    LOCKED: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.',
+  };
+  res.status(g.status).json({ error: errors[g.code] || 'This visit cannot be confirmed now', code: g.code === 'MAKER_CHECKER' || g.code === 'PROPERTY_SIDE_ONLY' || g.code === 'ACK_REQUIRED' ? g.code : g.code });
+  return null;
 }
 
 function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: string, user: UserProfile, auditAction: string, auditText: string) {
@@ -2819,6 +2818,62 @@ app.post('/api/site-visits/:id/checkin-qr', needs('sitevisit:verify'), rateLimit
   res.json({ success: true, siteVisit: sanitizeVisit(visit, currentUser), dealRoom: deal });
 });
 
+
+// v79 — the broker who booked a visit cannot confirm it himself (maker ≠ checker), so he gets two ways forward instead of a dead end:
+//   remind     tell the property side (owner + listing broker) to confirm it on the spot (at most one reminder every 30 minutes)
+//   reschedule the pass window has closed (or the slot moved): a new time re-opens the SAME pass; the property side is told
+const visitWhen = (iso: string) => { try { return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
+function ownVisit(req: Request, res: Response, user: UserProfile) {
+  const visit = db.byId('siteVisits', req.params.id);
+  if (!visit) { res.status(404).json({ error: 'Site visit record not found' }); return null; }
+  if (visit.brokerId !== user.id && !isSuper(user)) { res.status(403).json({ error: 'Only the broker who booked this visit can do this', code: 'NOT_BOOKER' }); return null; }
+  if (visit.isVerified) { res.status(409).json({ error: 'This site visit is already verified', code: 'DONE' }); return null; }
+  return visit;
+}
+app.post('/api/site-visits/:id/remind', needs('sitevisit:create'), rateLimit('visitremind', 30, 3600_000), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const visit = ownVisit(req, res, currentUser); if (!visit) return;
+  const prop = db.byId('properties', visit.propertyId);
+  const to = [...new Set([prop?.ownerId, prop?.listingBrokerId].filter((x): x is string => !!x && x !== visit.brokerId))];
+  if (!to.length) return res.status(409).json({ error: 'There is nobody on the property side to remind yet', code: 'NO_PROPERTY_SIDE' });
+  const waitMs = REMIND_EVERY_MIN * 60_000 - (Date.now() - Date.parse(visit.lastRemindAt || '1970-01-01'));
+  if (waitMs > 0) return res.status(429).json({ error: `You reminded them a moment ago — try again in ${Math.ceil(waitMs / 60_000)} minute(s)`, code: 'REMIND_WAIT' });
+  visit.lastRemindAt = new Date().toISOString();
+  db.save();
+  const who = clientInitials(visit.customerName);
+  const when = visitWhen(visit.scheduledTime);
+  alert(to, 'deals', `Please confirm visit ${visit.id} on the spot`, `${who} · ${prop?.title || visit.propertyId} · ${when}. When he arrives, scan his QR or type his code.`, `/?tab=deals&deal=${visit.dealRoomId}`, {
+    tag: `visit-remind-${visit.id}`, hi: [`विज़िट ${visit.id} साइट पर कन्फ़र्म करें`, `${who} · ${prop?.title || visit.propertyId} · ${when}। वे पहुँचें तो उनका QR स्कैन करें या कोड डालें।`],
+  });
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'VISIT', visit.id, 'SITE_VISIT_REMINDER', `Property side reminded to confirm visit ${visit.id}`);
+  res.json({ success: true, notified: to.length });
+});
+
+app.post('/api/site-visits/:id/reschedule', needs('sitevisit:create'), rateLimit('visitresched', 20, 3600_000), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const visit = ownVisit(req, res, currentUser); if (!visit) return;
+  const scheduledTime = String(req.body?.scheduledTime || '');
+  const bad = rescheduleError(scheduledTime, Date.now());
+  if (bad) return res.status(400).json({ error: bad, code: 'BAD_TIME' });
+  if ((visit.otpAttempts || 0) >= 5) return res.status(429).json({ error: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.', code: 'LOCKED' });
+  const before = visit.scheduledTime;
+  visit.scheduledTime = new Date(scheduledTime).toISOString();
+  visit.otpExpiresAt = windowEnd(visit.scheduledTime, Date.now());   // the same pass and code, a fresh 24 h window
+  visit.rescheduledAt = new Date().toISOString();
+  visit.rescheduleCount = (visit.rescheduleCount || 0) + 1;
+  // the card in the deal chat tells the new time
+  const card = (db.getState().dealMessages || []).find((m: any) => m.dealRoomId === visit.dealRoomId && m.kind === 'VISIT' && m.refId === visit.id);
+  if (card) card.text = `Site visit on ${visitWhen(visit.scheduledTime)}`;
+  db.save();
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'VISIT', visit.id, 'SITE_VISIT_RESCHEDULED', `Visit ${visit.id} moved from ${before} to ${visit.scheduledTime}`);
+  const prop = db.byId('properties', visit.propertyId);
+  const to = [...new Set([prop?.ownerId, prop?.listingBrokerId].filter((x): x is string => !!x && x !== visit.brokerId))];
+  const when = visitWhen(visit.scheduledTime);
+  alert(to, 'deals', `Visit ${visit.id} moved to ${when}`, `${clientInitials(visit.customerName)} · ${prop?.title || visit.propertyId}`, `/?tab=deals&deal=${visit.dealRoomId}`, {
+    tag: `visit-moved-${visit.id}`, hi: [`विज़िट ${visit.id} अब ${when} पर`, `${clientInitials(visit.customerName)} · ${prop?.title || visit.propertyId}`],
+  });
+  res.json({ success: true, siteVisit: sanitizeVisit(visit, currentUser) });
+});
 
 // ==========================================
 // 9. OWNER ⇄ LISTING-BROKER NET-AMOUNT MANDATE & ANTI-BYPASS TAIL CLAUSE
@@ -5485,6 +5540,17 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
   }
   if (isFlood(currentUser.id, card ? `card:${card.kind}:${card.refId}:${text}` : text)) return res.status(429).json({ error: card ? 'You already shared this a moment ago.' : 'You already sent this exact message a moment ago.' });
 
+  // v79 — the property side (owner / listing broker) sharing the location puts HIS exact pin on the card: it is his own information, sent on purpose,
+  // so the others in the room can open it. Anyone else can only point at what the reader may already see.
+  let pin: { lat?: number; lng?: number; url: string } | undefined;
+  if (card?.kind === 'LOCATION') {
+    const lp: any = db.byId('properties', deal.propertyId);
+    if (lp && (lp.ownerId === currentUser.id || lp.listingBrokerId === currentUser.id)) {
+      const hasPin = typeof lp.latitude === 'number' && typeof lp.longitude === 'number';
+      const url = (lp.googleMapsUrl && isSafeUrl(lp.googleMapsUrl)) ? String(lp.googleMapsUrl) : hasPin ? `https://www.google.com/maps?q=${lp.latitude},${lp.longitude}` : '';
+      if (url) pin = { ...(hasPin ? { lat: lp.latitude, lng: lp.longitude } : {}), url };
+    }
+  }
   const newMsg: DealMessage = {
     id: `MSG-${deal.id}-${Date.now().toString(36)}`,
     dealRoomId: deal.id,
@@ -5496,6 +5562,7 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
     mediaUrl: card ? card.mediaUrl : (b.mediaUrl ? String(b.mediaUrl).slice(0, 500) : undefined),
     mediaType: card ? (card.mediaUrl ? 'IMAGE' : undefined) : (b.mediaUrl ? mediaType : undefined),
     ...(card ? { kind: card.kind, refId: card.refId, ...(text ? {} : { auto: true }) } : {}),
+    ...(pin ? { pin } : {}),
     timestamp: new Date().toISOString(),
   };
   state.dealMessages.push(newMsg);
@@ -5585,6 +5652,7 @@ app.use('/api/deals', createDealCloseRouter());
 app.use('/api', createPaymentRequestRouter());
 app.use('/pay', createPaymentPageRouter());
 app.use('/api/push', createPushRouter());
+setTodoSync(u => { syncHomeBell(u); }); // v79 — the Home counters are also lines in the bell
 app.use('/api/inbox', createInboxRouter()); // v77 — the notification bell
 app.use('/api/profiles', createProfilesRouter()); // v78 — profiles, ratings and reviews
 app.use('/api/projdocs', createProjDocsRouter()); // v77 — project papers: builder → partner → team → client

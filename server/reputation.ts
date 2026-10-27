@@ -19,6 +19,7 @@ import { partnerCounts } from './shopPartners.js';
 import { pageCounts, pageSummary } from './publicPage.js';
 import { rentCounts } from './rentdesk.js';
 import { billCounts } from './payreq.js';
+import { syncHomeBell } from './homebell.js';
 
 const nowIso = () => new Date().toISOString();
 const st = () => db.getState();
@@ -56,6 +57,32 @@ function pendingFor(u: UserProfile) {
   return out.slice(0, 20);
 }
 
+/**
+ * The numbers on a broker's Home — and, since v79, the very same numbers in the notification bell (server/homebell.ts), so a counter
+ * on the Home can never be missing from the bell. `offersWaiting` = co-broking offers sent to me that I have not answered.
+ */
+export function brokerHomeCounts(u: UserProfile) {
+  const s = st(); const now = Date.now();
+  const myListings = s.properties.filter(p => p.listingBrokerId === u.id && ['active', 'under_negotiation', 'pending_verification', 'draft'].includes(p.listingStatus));
+  const drafts = s.listingDrafts.filter(d => d.brokerId === u.id && ['DRAFT', 'CONSENT_PENDING', 'READY'].includes(d.status));
+  const reqs = s.requirements.filter(x => x.assignedBrokerId === u.id && ['active', 'matching'].includes(x.status));
+  const clients = s.clientCards.filter(c => c.brokerId === u.id && c.stage !== 'LOST');
+  const inbox = s.broadcasts.filter(b => b.status === 'OPEN' && Date.parse(b.closesAt) > now && b.recipients.includes(u.id) && !b.responses.some(x => x.brokerId === u.id)).length;
+  const answers = s.broadcasts.filter(b => b.brokerId === u.id && b.status === 'OPEN').reduce((a, b) => a + b.responses.length, 0);
+  const followUps = clients.filter(c => c.followUpAt && Date.parse(c.followUpAt) <= now + 86400_000).length;
+  // v29 — buyer bonds: active ones, co-broke requests on them (last 14 days), and "your buyer's property was marked sold"
+  const myBonds = (s.buyerBonds || []).filter(b => b.brokerId === u.id && b.status === 'ACTIVE' && Date.parse(b.expiresAt) > now);
+  return {
+    listings: myListings.length, drafts: drafts.length, readyToPublish: drafts.filter(d => d.status === 'READY').length,
+    waitingOwner: drafts.filter(d => d.status === 'CONSENT_PENDING').length, protectedListings: myListings.filter(p => p.protectionUntil && Date.parse(p.protectionUntil) > now).length,
+    requirements: reqs.length, clients: clients.length, followUps, inbox, answers, toConfirm: pendingFor(u).length,
+    buyerBonds: myBonds.length,
+    offersWaiting: s.offers.filter(o => o.receivingBrokerId === u.id && o.status === 'PENDING').length,
+    ...roomCounts(s, u.id), ...shareCounts(s, u.id), ...partnerCounts(u.id), ...pageCounts(u.id), ...billCounts(u.id), ...rentCounts(u.id),
+    bondAsks: myBonds.reduce((n, b) => n + b.asks.filter(x => Date.parse(x.at) > now - 14 * 86400_000).length, 0), bondAlerts: myBonds.filter(b => b.closedNotice).length,
+  };
+}
+
 export function createReputationRouter() {
   const r = Router();
   r.get('/pending', needs('deal:read'), (_req: Request, res: Response) => {
@@ -85,31 +112,20 @@ export function createHomeRouter() {
   r.get('/insights', needs('self:read'), (_req: Request, res: Response) => res.json({ success: true, insights: insightsFor(me()) }));
   r.get('/broker', needs('self:read'), (_req: Request, res: Response) => {
     const u = me(); const s = st(); const now = Date.now();
+    syncHomeBell(u, true);   // v79 — the Home counters are also lines in the bell
     const myListings = s.properties.filter(p => p.listingBrokerId === u.id && ['active', 'under_negotiation', 'pending_verification', 'draft'].includes(p.listingStatus));
-    const drafts = s.listingDrafts.filter(d => d.brokerId === u.id && ['DRAFT', 'CONSENT_PENDING', 'READY'].includes(d.status));
     const reqs = s.requirements.filter(x => x.assignedBrokerId === u.id && ['active', 'matching'].includes(x.status));
     const clients = s.clientCards.filter(c => c.brokerId === u.id && c.stage !== 'LOST');
-    const inbox = s.broadcasts.filter(b => b.status === 'OPEN' && Date.parse(b.closesAt) > now && b.recipients.includes(u.id) && !b.responses.some(x => x.brokerId === u.id)).length;
-    const answers = s.broadcasts.filter(b => b.brokerId === u.id && b.status === 'OPEN').reduce((a, b) => a + b.responses.length, 0);
-    const followUps = clients.filter(c => c.followUpAt && Date.parse(c.followUpAt) <= now + 86400_000).length;
     const chapter = u.chapterId ? s.chapters.find(c => c.id === u.chapterId) : undefined;
     const nextMeet = chapter ? s.chapterMeets.filter(m => m.chapterId === chapter.id && Date.parse(m.at) >= now - 3 * 3600_000).sort((a, b) => a.at.localeCompare(b.at))[0] : undefined;
     const month = nowIso().slice(0, 7);
-    // v29 — buyer bonds: active ones, co-broke requests on them (last 14 days), and "your buyer's property was marked sold"
-    const myBonds = (s.buyerBonds || []).filter(b => b.brokerId === u.id && b.status === 'ACTIVE' && Date.parse(b.expiresAt) > now);
     const pool = s.users.filter(x => x.role === 'BROKER' && x.verificationStatus === 'VERIFIED' && (u.chapterId ? x.chapterId === u.chapterId : String(x.city || '').toLowerCase() === String(u.city || '').toLowerCase()));
     const pts = (id: string) => s.pointEvents.filter(e => e.userId === id && e.points > 0 && e.at.startsWith(month)).reduce((a, e) => a + e.points, 0);
     const ranked = pool.map(x => ({ id: x.id, p: pts(x.id) })).sort((a, b) => b.p - a.p);
     res.json({
       success: true,
       firstRun: { listing: myListings.length > 0 || s.properties.some(p => p.listingBrokerId === u.id), client: reqs.length > 0 || clients.length > 0, card: !!u.publicCard?.enabled },
-      counts: {
-        listings: myListings.length, drafts: drafts.length, readyToPublish: drafts.filter(d => d.status === 'READY').length,
-        waitingOwner: drafts.filter(d => d.status === 'CONSENT_PENDING').length, protectedListings: myListings.filter(p => p.protectionUntil && Date.parse(p.protectionUntil) > now).length,
-        requirements: reqs.length, clients: clients.length, followUps, inbox, answers, toConfirm: pendingFor(u).length,
-        buyerBonds: myBonds.length,
-        ...roomCounts(s, u.id), ...shareCounts(s, u.id), ...partnerCounts(u.id), ...pageCounts(u.id), ...billCounts(u.id), ...rentCounts(u.id), bondAsks: myBonds.reduce((n, b) => n + b.asks.filter(x => Date.parse(x.at) > now - 14 * 86400_000).length, 0), bondAlerts: myBonds.filter(b => b.closedNotice).length,
-      },
+      counts: brokerHomeCounts(u),
       reputation: reputationOf(u.id),
       page: u.role === 'BROKER' ? pageSummary(u) : null,
       chapter: chapter ? { id: chapter.id, name: chapter.name, captain: (db.byId('users', chapter.captainId) as UserProfile | undefined)?.name || null, isCaptain: chapter.captainId === u.id, nextMeet: nextMeet ? { title: nextMeet.title, at: nextMeet.at, venue: nextMeet.venue } : null } : null,

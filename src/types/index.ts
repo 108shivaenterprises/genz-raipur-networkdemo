@@ -268,6 +268,8 @@ export interface DealMessage {
   refId?: string;
   /** v53 — `text` was written by the server (a one-line English fallback), not typed by the sender */
   auto?: boolean;
+  /** v79 — a LOCATION card sent by the property side carries his exact map pin (his own data, shared on purpose) */
+  pin?: { lat?: number; lng?: number; url: string };
   timestamp: string;
 }
 
@@ -401,6 +403,11 @@ export interface SiteVisit {
   verifiedAt?: string;
   verificationMethod: 'OTP' | 'QR' | 'ADMIN_OVERRIDE';
   feedbackNotes?: string;
+  /** v79 — end of the confirm window (ISO) */
+  otpExpiresAt?: string;
+  /** v79 — what THIS viewer may do with the visit right now (server-computed; see shared/visitGateRules) */
+  gate?: { code: 'OK' | 'DONE' | 'MAKER_CHECKER' | 'PROPERTY_SIDE_ONLY' | 'ACK_REQUIRED' | 'TOO_EARLY' | 'EXPIRED' | 'LOCKED'; ok: boolean; selfDeal: boolean; propertySide: boolean; iAmBooker: boolean };
+  lastRemindAt?: string;
   createdAt: string;
 }
 

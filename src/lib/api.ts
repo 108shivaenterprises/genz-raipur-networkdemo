@@ -296,6 +296,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ otpCode, feedbackNotes }),
     }),
+  /** v79 — the broker who booked a visit asks the property side to confirm it / moves it to a new time (same pass, fresh 24 h window) */
+  remindSiteVisit: (id: string) => request<{ success: boolean; notified: number }>(`/api/site-visits/${id}/remind`, { method: 'POST', body: '{}' }),
+  rescheduleSiteVisit: (id: string, scheduledTime: string) =>
+    request<{ success: boolean; siteVisit: SiteVisit }>(`/api/site-visits/${id}/reschedule`, { method: 'POST', body: JSON.stringify({ scheduledTime }) }),
   checkinSiteVisitQr: (id: string, qrToken?: string, feedbackNotes?: string, latitude?: number, longitude?: number) =>
     request<{ success: boolean; siteVisit: SiteVisit; dealRoom?: DealRoom }>(`/api/site-visits/${id}/checkin-qr`, {
       method: 'POST',
@@ -884,6 +888,8 @@ export const api = {
   pchatList: () => request<any>('/api/partner-chats'),
   pchatOpen: (withId: string) => request<any>('/api/partner-chats/open', { method: 'POST', body: JSON.stringify({ withId }) }),
   pchatGet: (id: string) => request<any>(`/api/partner-chats/${encodeURIComponent(id)}`),
+  /** v79 — the details of a unit that was shared as a card in this partner chat */
+  pchatUnit: (id: string, unitId: string) => request<any>(`/api/partner-chats/${encodeURIComponent(id)}/unit/${encodeURIComponent(unitId)}`),
   pchatCards: (id: string) => request<any>(`/api/partner-chats/${encodeURIComponent(id)}/cards`),
   pchatSend: (id: string, b: { text?: string; card?: { kind: string; refId: string }; photo?: string }) => request<any>(`/api/partner-chats/${encodeURIComponent(id)}/messages`, { method: 'POST', body: JSON.stringify(b) }),
   // v60 — Rent desk

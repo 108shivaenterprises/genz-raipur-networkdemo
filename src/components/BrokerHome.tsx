@@ -14,6 +14,7 @@ import type { TabType } from './NavigationTabs.js';
 import { AlertsCard } from './AlertsCard.js';
 import { pushState } from '../lib/push.js';
 import { goto } from '../lib/goto.js';
+import { HOME_TODOS } from '../shared/homeTodoRules.js';
 import { GrowthNudge } from './GrowthNudge.js';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import type { UserProfile } from '../types/index.js';
@@ -55,34 +56,21 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
     { done: !!alertsOn, icon: Bell, en: 'Turn on phone alerts', hi: 'फ़ोन अलर्ट चालू करें', go: () => { setShowAlerts(true); window.setTimeout(() => document.getElementById('home-alerts')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }, testId: 'step-alerts' },
   ];
   const left = steps.filter(s => !s.done).length;
-  const tiles = [
-    { n: offersWaiting, icon: Handshake, en: 'A broker sent you a co-broking offer — answer it', hi: 'किसी ब्रोकर ने को-ब्रोकिंग ऑफ़र भेजा है — जवाब दें', go: () => goto('deals', { view: 'proposals' }, onNavigate), tone: 'amber', testId: 'tile-offers' },
-    { n: c.billsToConfirm || 0, icon: CheckCircle2, en: 'A client says the brokerage is paid — check & confirm', hi: 'क्लाइंट ने ब्रोकरेज चुकाया बताया — जाँचें और पुष्टि करें', go: () => goto('deals', {}, onNavigate), tone: 'emerald', testId: 'tile-bills-confirm' },
-    { n: c.billsOverdue || 0, icon: Clock, en: 'Brokerage bills past due — send a reminder', hi: 'ब्रोकरेज बिल की तारीख़ निकल गई — रिमाइंडर भेजें', go: () => goto('deals', {}, onNavigate), tone: 'amber', testId: 'tile-bills-overdue' },
-    { n: c.partnerCodes || 0, icon: Lock, en: 'A shop partner is waiting for his code — read it out', hi: 'दुकान पार्टनर कोड माँग रहे हैं — उन्हें बताएँ', go: () => goto('partners', { }, onNavigate), tone: 'amber', testId: 'tile-sp-codes' },
-    { n: c.partnerNew || 0, icon: Store, en: 'New leads from your shop QR — call them', hi: 'दुकान QR से नई लीड — कॉल करें', go: () => onNavigate('partners'), tone: 'emerald', testId: 'tile-sp-new' },
-    { n: c.pageNew || 0, icon: Globe, en: 'New enquiries from your public page — reply to them', hi: 'आपके पब्लिक पेज से नई पूछताछ — जवाब दें', go: () => onNavigate('mypage'), tone: 'emerald', testId: 'tile-page-enq' },
-    { n: c.rentEnding || 0, icon: DoorOpen, en: 'Rent agreements ending soon — ask owner & tenant: renew or re-let?', hi: 'किराया अनुबंध जल्द ख़त्म — मालिक और किरायेदार से पूछें: रिन्यू या नया किरायेदार?', go: () => onNavigate('rentdesk'), tone: 'amber', testId: 'tile-rent-ending' },
-    { n: c.rentPolice || 0, icon: ShieldCheck, en: 'Tenant police verification pending', hi: 'किरायेदार का पुलिस वेरिफ़िकेशन बाक़ी', go: () => onNavigate('rentdesk'), tone: 'amber', testId: 'tile-rent-police' },
-    { n: c.rentToRecord || 0, icon: DoorOpen, en: 'A rent deal is done — put it on your Rent desk', hi: 'किराये की डील हो गई — किराया डेस्क पर दर्ज करें', go: () => onNavigate('rentdesk'), tone: 'indigo', testId: 'tile-rent-record' },
-    { n: c.partnerDue || 0, icon: Store, en: 'Shop partner’s share to pay', hi: 'दुकान पार्टनर का हिस्सा देना है', go: () => onNavigate('partners'), tone: 'amber', testId: 'tile-sp-due' },
-    { n: c.roomCodes || 0, icon: Lock, en: 'A client is asking for his room code — read it out', hi: 'क्लाइंट रूम का कोड माँग रहा है — उसे बताएँ', go: () => onNavigate('clientroom'), tone: 'amber', testId: 'tile-room-codes' },
-    { n: c.roomMsgs || 0, icon: MessageCircle, en: 'New messages from your clients', hi: 'आपके क्लाइंट के नए संदेश', go: () => onNavigate('clientroom'), tone: 'indigo', testId: 'tile-room-msgs' },
-    { n: c.roomVisits || 0, icon: Clock, en: 'Clients asking to visit a property', hi: 'क्लाइंट प्रॉपर्टी देखने आना चाहते हैं', go: () => onNavigate('clientroom'), tone: 'amber', testId: 'tile-room-visits' },
-    { n: c.shareAsks || 0, icon: Handshake, en: 'A connector proposed a % share — answer', hi: 'कनेक्टर ने % हिस्सा रखा है — जवाब दें', go: () => onNavigate('connector'), tone: 'amber', testId: 'tile-share-asks' },
-    { n: c.shareToPay || 0, icon: Handshake, en: 'Connector share to work out / pay', hi: 'कनेक्टर का हिस्सा निकालना / चुकाना है', go: () => onNavigate('connector'), tone: 'emerald', testId: 'tile-share-pay' },
-    { n: c.bondAlerts || 0, icon: ShieldCheck, en: 'Your buyer’s property was marked sold — check', hi: 'आपके खरीदार की प्रॉपर्टी बिकी दर्ज हुई — देखें', go: () => goto('desk', { sub: 'bonds' }, onNavigate), tone: 'amber', testId: 'tile-bond-alerts' },
-    { n: c.bondAsks || 0, icon: Handshake, en: 'Brokers asking to co-broke your buyer', hi: 'आपके खरीदार पर को-ब्रोकिंग माँग रहे ब्रोकर', go: () => goto('desk', { sub: 'bonds' }, onNavigate), tone: 'indigo', testId: 'tile-bond-asks' },
-    { n: c.readyToPublish, icon: CheckCircle2, en: 'Owner said yes — publish', hi: 'मालिक ने हाँ कहा — लाइव करें', go: () => goto('properties', { drafts: '1' }, onNavigate), tone: 'emerald' },
-    { n: c.inbox, icon: Inbox, en: 'Brokers looking for what you have', hi: 'ब्रोकरों को आपकी प्रॉपर्टी चाहिए', go: () => onNavigate('requirements'), tone: 'indigo' },
-    { n: c.answers, icon: Handshake, en: 'Answers to your buyer needs', hi: 'आपकी खरीदार ज़रूरत के जवाब', go: () => onNavigate('requirements'), tone: 'indigo' },
-    { n: c.followUps, icon: Clock, en: 'Client follow-ups due', hi: 'क्लाइंट फ़ॉलो-अप बाकी', go: () => onNavigate('daily'), tone: 'amber' },
-    { n: c.waitingOwner, icon: MessageCircle, en: 'Waiting for owner’s yes', hi: 'मालिक की हाँ का इंतज़ार', go: () => goto('properties', { drafts: '1' }, onNavigate), tone: 'slate' },
-    { n: c.protectedListings, icon: ShieldCheck, en: 'Listings with bypass protection', hi: 'बायपास सुरक्षा वाली लिस्टिंग', go: () => onNavigate('properties'), tone: 'slate' },
-    { n: c.buyerBonds || 0, icon: ShieldCheck, en: 'Buyers protected to you', hi: 'आपसे सुरक्षित खरीदार', go: () => goto('desk', { sub: 'bonds' }, onNavigate), tone: 'slate', testId: 'tile-bond' },
-  ].filter(t => t.n > 0);
+  // v79 — the tiles come from the shared list (src/shared/homeTodoRules.ts), the same one the notification bell is built from
+  const TILE_ICON: Record<string, React.ElementType> = {
+    offersWaiting: Handshake, billsToConfirm: CheckCircle2, billsOverdue: Clock, partnerCodes: Lock, partnerNew: Store, pageNew: Globe, rentEnding: DoorOpen, rentPolice: ShieldCheck,
+    rentToRecord: DoorOpen, partnerDue: Store, roomCodes: Lock, roomMsgs: MessageCircle, roomVisits: Clock, shareAsks: Handshake, shareToPay: Handshake, bondAlerts: ShieldCheck,
+    bondAsks: Handshake, readyToPublish: CheckCircle2, inbox: Inbox, answers: Handshake, followUps: Clock, waitingOwner: MessageCircle, protectedListings: ShieldCheck, buyerBonds: ShieldCheck,
+  };
+  const tiles = HOME_TODOS.map(d => ({
+    n: d.key === 'offersWaiting' ? offersWaiting : Number((c as any)[d.key]) || 0,
+    icon: TILE_ICON[d.key] || Inbox, en: d.en, hi: d.hi, tone: d.tone, testId: d.testId,
+    go: () => (d.params ? goto(d.tab as TabType, d.params, onNavigate) : onNavigate(d.tab as TabType)),
+  })).filter(t => t.n > 0);
   const toneCls: Record<string, string> = { emerald: 'border-emerald-300 bg-emerald-50 text-emerald-900', indigo: 'border-indigo-200 bg-indigo-50 text-indigo-900', amber: 'border-amber-300 bg-amber-50 text-amber-900', slate: 'border-slate-200 bg-white text-slate-800' };
   const reportUrl = `${window.location.origin}/report/${encodeURIComponent(String(h.city || 'Raipur'))}${h.refCode ? `?ref=${encodeURIComponent(h.refCode)}` : ''}`;
+  // v79 — with his public page ON, the WhatsApp link is HIS page (his homes + an enquiry form; the city report is a link inside it); with it OFF the city report, which now tells who shared it
+  const pageUrl = h.page?.on && h.refCode ? `${window.location.origin}/c/${encodeURIComponent(h.refCode)}` : '';
   const confirm = async (x: any) => { setBusy(x.refId + x.toId); try { await api.reputationConfirm(x.refId, x.toId); load(); } finally { setBusy(''); } };
 
   return (
@@ -123,7 +111,7 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
       </div>
       {(onOpenAddProperty || onOpenAddLead) && (
         <div className="flex flex-wrap gap-2" data-testid="home-more-adds">
-          {onOpenAddProperty && <button onClick={onOpenAddProperty} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-900"><Plus className="h-3.5 w-3.5" />{tx('Property (full form)', 'प्रॉपर्टी (पूरा फ़ॉर्म)')}</button>}
+          {onOpenAddProperty && <button onClick={onOpenAddProperty} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-900"><Plus className="h-3.5 w-3.5" />{tx('Add property', 'प्रॉपर्टी जोड़ें')}</button>}
           {onOpenAddLead && <button onClick={onOpenAddLead} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-900"><HardHat className="h-3.5 w-3.5 text-orange-500" />{tx('Construction lead', 'कंस्ट्रक्शन लीड')}</button>}
         </div>
       )}
@@ -174,8 +162,8 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
           <CalendarDays className="h-5 w-5 text-indigo-500" />
           <span className="text-xs text-slate-700">{h.chapter ? (h.chapter.nextMeet ? tx(`${h.chapter.name}: ${h.chapter.nextMeet.title}, ${new Date(h.chapter.nextMeet.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`, `${h.chapter.name}: ${h.chapter.nextMeet.title}, ${new Date(h.chapter.nextMeet.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`) : tx(`${h.chapter.name} · Captain ${h.chapter.captain || '—'}`, `${h.chapter.name} · कैप्टन ${h.chapter.captain || '—'}`)) : tx('Join your area’s chapter and its monthly meet', 'अपने इलाक़े के चैप्टर और मासिक मीट से जुड़ें')}</span>
         </button>
-        <a href={`https://wa.me/?text=${encodeURIComponent(`${h.city || 'Raipur'} property report — locality rates & buyer demand (GENZ): ${reportUrl}`)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left" data-testid="home-report">
-          <Share2 className="h-5 w-5 text-emerald-600" /><span className="text-xs text-slate-700">{tx(`Share the ${h.city || 'city'} property report on WhatsApp`, `${h.city || 'शहर'} की प्रॉपर्टी रिपोर्ट WhatsApp पर भेजें`)}</span>
+        <a href={`https://wa.me/?text=${encodeURIComponent(pageUrl ? `${h.city || 'Raipur'} ke verified ghar dekhein aur seedhe poochhein — ${name} (GENZ verified broker): ${pageUrl}` : `${h.city || 'Raipur'} property report — locality rates & buyer demand (GENZ): ${reportUrl}`)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left" data-testid="home-report" data-target={pageUrl ? 'page' : 'report'}>
+          <Share2 className="h-5 w-5 text-emerald-600" /><span className="text-xs text-slate-700">{pageUrl ? tx('Share your public page on WhatsApp — customers see your homes and can ask', 'अपना पब्लिक पेज WhatsApp पर भेजें — ग्राहक आपके घर देखेंगे और पूछ सकेंगे') : tx(`Share the ${h.city || 'city'} property report on WhatsApp`, `${h.city || 'शहर'} की प्रॉपर्टी रिपोर्ट WhatsApp पर भेजें`)}</span>
         </a>
       </div>
     </section>

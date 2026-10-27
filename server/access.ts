@@ -144,6 +144,29 @@ export function canSeeProtectedPropertyData(state: DatabaseState, u: U, p: Prope
   return m.set.has(p.id);
 }
 
+/**
+ * v79 — the MAP PIN for a booked visit. A visit cannot happen without knowing where the property is, yet the written address opens only
+ * after a verified visit. So the broker who booked a visit (or his office staff) gets the exact map pin — not the written address,
+ * street, owner details or papers — while that visit is still open (not yet verified, confirm window not closed). It ends on its own.
+ */
+const pinMemo = new WeakMap<object, { arr: unknown; len: number; at: number; set: Set<string> }>();
+export function canSeeVisitPin(state: DatabaseState, u: U, p: Pick<Property, 'id'>) {
+  const now = Date.now();
+  let m = pinMemo.get(u);
+  if (!m || m.arr !== state.siteVisits || m.len !== state.siteVisits.length || now - m.at > 1000) {
+    const set = new Set<string>();
+    const booker = u.role === 'TEAM_MEMBER' && u.employerId ? u.employerId : u.id;
+    for (const v of state.siteVisits) {
+      if (v.isVerified || (v.brokerId !== u.id && v.brokerId !== booker)) continue;
+      if (v.otpExpiresAt && Date.parse(v.otpExpiresAt) < now) continue;
+      set.add(v.propertyId);
+    }
+    m = { arr: state.siteVisits, len: state.siteVisits.length, at: now, set };
+    pinMemo.set(u, m);
+  }
+  return m.set.has(p.id);
+}
+
 export function canSeeOwnerCommercials(u: U, p: Pick<Property, 'ownerId' | 'listingBrokerId'>) {
   return isAdmin(u) || p.ownerId === u.id || p.listingBrokerId === u.id;
 }

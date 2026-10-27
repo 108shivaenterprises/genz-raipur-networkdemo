@@ -22,6 +22,7 @@ import type { CrmLead, CrmBooking } from '../src/types/crm.js';
 import { ctx, needs, rateLimit } from './auth.js';
 import { alert, builderVerifiers, firstName, once } from './alerts.js';
 import { savePhoto, photoById, sendPhoto } from './workphotos.js';
+import { effectiveVis, impliedFeatures, ratePerSqft, unitKindOf } from '../src/shared/inventoryRules.js';
 
 const st = () => db.getState();
 const nowIso = () => new Date().toISOString();
@@ -137,6 +138,29 @@ export function createPartnerChatRouter() {
         .map(x => ({ kind: 'UNIT' as const, refId: x.id, label: `${x.label} · ${x.config}`, sub: `${s.builderProjects.find(p => p.id === x.projectId)?.projectName || ''}${x.vis?.priceHidden ? '' : ` · ${inr(x.price)}`}` }))
       : [];
     res.json({ success: true, leads, bookings, units });
+  });
+
+  /**
+   * v79 — tap a UNIT card: the unit's details. Only a unit that was really shared in THIS thread opens (no walking through unit ids), only
+   * for a project the two are linked by. The partner sees the price unless the builder hid it; holds, buyers and other partners never show.
+   */
+  r.get('/:id/unit/:uid', (req, res) => {
+    const l = load(req, res); if (!l) return; const { sd, t } = l; const s = st();
+    const link = linkOf(t.builderId, t.brokerId);
+    const x = s.inventoryUnits.find(y => y.id === req.params.uid && y.builderId === t.builderId && link.projectIds.includes(y.projectId));
+    if (!x || !t.messages.some(m => m.card?.kind === 'UNIT' && m.card.refId === x.id)) return bad(res, 'That unit was not shared in this chat', 404, 'UNIT_NOT_SHARED');
+    const project = s.builderProjects.find(p => p.id === x.projectId);
+    const showPrice = sd.side === 'BUILDER' || !effectiveVis(x.vis, project?.invVis).priceHidden;
+    res.json({
+      success: true, side: sd.side,
+      unit: {
+        id: x.id, label: x.label, code: x.code, group: x.group, kind: unitKindOf(x), floor: x.floor, config: x.config, areaSqft: x.areaSqft,
+        price: showPrice ? x.price : null, priceHidden: !showPrice, ratePerSqft: showPrice ? ratePerSqft(x.price, x.areaSqft) : undefined,
+        status: x.status, facing: x.facing, roadSides: x.roadSides, roadWidthFt: x.roadWidthFt, dimensions: x.dimensions, features: impliedFeatures(x), note: x.note, updatedAt: x.updatedAt,
+        heldByMe: sd.side === 'PARTNER' && x.hold?.brokerId === sd.brokerId,
+      },
+      project: project ? { id: project.id, projectName: project.projectName, locality: project.locality, city: project.city, stage: project.projectStage, completion: project.completionTarget, rera: project.reraNumber } : null,
+    });
   });
 
   r.post('/:id/messages', express.json({ limit: '1mb' }), rateLimit('pchat-msg', 300, 3600_000), (req, res) => {

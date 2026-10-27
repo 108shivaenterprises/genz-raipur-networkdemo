@@ -208,6 +208,7 @@ ${card.headline || b.tagline ? `<p class="hl">${esc(card.headline || b.tagline)}
 <div class="cta"><a class="btn g" href="#enquire">✉ पूछताछ / Enquire</a>${card.showPhone && PHONE_RE.test(phone) ? `<a class="btn wt" href="tel:+91${phone}">📞 कॉल / Call</a><a class="btn wt" href="${esc(wa(`Namaste ${b.displayName}, I saw your GENZ page.`))}" rel="noopener">WhatsApp</a>` : ''}</div></header>
 ${homesHtml || '<div class="card"><p class="empty">नए घर जल्द यहाँ दिखेंगे। अपनी ज़रूरत नीचे लिखें — मैं आपके लिए ढूँढूँगा।<br>New homes will show here soon. Write what you need below and I will find it for you.</p></div>'}
 ${form}${trust}
+${city ? `<div class="card"><a href="/report/${encodeURIComponent(city)}?ref=${esc(encodeURIComponent(code))}" style="font-weight:700;text-decoration:none">📊 ${esc(city)} प्रॉपर्टी रिपोर्ट — इलाक़े के रेट और माँग / ${esc(city)} property report — locality rates &amp; buyer demand →</a></div>` : ''}
 <p class="small">GENZ एक न्यूट्रल प्लेटफ़ॉर्म है: कीमत और शर्तें आपके, मालिक और ब्रोकर के बीच तय होती हैं, और GENZ आपका कोई पैसा नहीं रखता। कोई भी रक़म देने से पहले कागज़ और RERA ज़रूर जाँचें।<br>GENZ is a neutral platform: price and terms are between you, the owner and the broker, and GENZ never holds your money. Check the papers and RERA before you pay anything.</p>
 ${joinFooter(u, city)}</div><script src="/c/page.js" defer></script></body></html>`);
 }

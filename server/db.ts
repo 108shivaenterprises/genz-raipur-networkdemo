@@ -906,6 +906,8 @@ export interface SiteVisit {
   feedbackNotes?: string;
   /** v72 — the owner's reply from his room page: may the visit go ahead? */
   ownerOk?: { answer: 'YES' | 'NO'; at: string };
+  /** v79 — the booker nudged the property side to confirm / moved the visit to a new time (same pass, fresh 24 h window) */
+  lastRemindAt?: string; rescheduledAt?: string; rescheduleCount?: number;
   createdAt: string;
 }
 
