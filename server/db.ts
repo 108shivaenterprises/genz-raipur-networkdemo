@@ -603,6 +603,11 @@ export interface UserProfile {
   publicCard?: { enabled: boolean; showPhone: boolean; headline?: string; views?: number; homes?: string[]; areas?: string[]; ownerOkAt?: string };
   /** TEAM_MEMBER only: share (%) of brokerage on their closed leads paid to them as incentive */
   incentivePct?: number;
+  /** v76b — TEAM_MEMBER: 'PCT' (incentivePct; absent = PCT) or 'FIXED' (incentiveFixed ₹ for every approved booking) */
+  incentiveMode?: 'PCT' | 'FIXED';
+  incentiveFixed?: number;
+  /** v76b — broker / builder / contractor: how many team members he may add, set by the superadmin for this one person (beats the role limit) */
+  teamMaxOverride?: number;
   /** broker / builder branding for flyers and tracked links */
   brand?: { displayName?: string; tagline?: string; reraId?: string; logo?: string };
   /** GENZ_CONNECTOR only: shop / community-partner details */
@@ -1022,6 +1027,8 @@ export interface SystemSettings {
   bypassMaxChangedAt?: string;
   /** v26 — every new broker listing needs the owner's consent first (superadmin switch; absent = OFF) */
   ownerConsentRequired?: boolean;
+  /** v76b — how many team members each kind of employer may add (BROKER / DEVELOPER_BUILDER / CONTRACTOR); absent = the built-in figure. Only the superadmin changes it. */
+  teamMaxByRole?: Record<string, number>;
 }
 
 // ───────────────────────── v11: daily-use features ─────────────────────────

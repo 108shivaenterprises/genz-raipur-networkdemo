@@ -68333,6 +68333,18 @@ var inPool = (p, now = Date.now()) => {
   if (!o || !["pending_verification", "active"].includes(p.listingStatus)) return false;
   return o.feeStatus === "PAID" && !o.assignedBrokerId && !!o.liveUntil && Date.parse(o.liveUntil) > now;
 };
+var DAY_MS = 864e5;
+function expiryStep(p, now = Date.now()) {
+  const o = p.ownerListing;
+  if (!o || !["pending_verification", "active"].includes(p.listingStatus) || o.assignedBrokerId || o.matchedAt) return null;
+  if (o.feeStatus !== "PAID" || !o.liveUntil) return null;
+  const left = Date.parse(o.liveUntil) - now;
+  if (Number.isNaN(left)) return null;
+  if (left < 0) return "END";
+  if (left <= DAY_MS) return o.expWarn === 1 ? null : "WARN1";
+  if (left <= 3 * DAY_MS) return o.expWarn ? null : "WARN3";
+  return null;
+}
 
 // src/shared/dealRules.ts
 var MAX_LIVE_OFFERS_PER_PROPERTY = 3;
@@ -70954,7 +70966,15 @@ var TEAM_ROLES = [
 var TEAM_ROLE_IDS = ids(TEAM_ROLES);
 var TEAM_MAX_BY_ROLE = { DEVELOPER_BUILDER: 60, CONTRACTOR: 30 };
 var TEAM_MAX_DEFAULT = 15;
-var teamMaxFor = (employerRole) => TEAM_MAX_BY_ROLE[String(employerRole || "")] ?? TEAM_MAX_DEFAULT;
+var TEAM_CAP_LIMITS = [1, 500];
+var TEAM_CAP_ROLES = ["BROKER", "DEVELOPER_BUILDER", "CONTRACTOR"];
+var teamMaxFor = (employerRole, byRole, personal) => {
+  const ok = (n2) => Number.isInteger(n2) && n2 >= TEAM_CAP_LIMITS[0] && n2 <= TEAM_CAP_LIMITS[1];
+  if (ok(personal)) return personal;
+  const set2 = byRole?.[String(employerRole || "")];
+  return ok(set2) ? set2 : TEAM_MAX_BY_ROLE[String(employerRole || "")] ?? TEAM_MAX_DEFAULT;
+};
+var teamCapProblem = (v) => Number.isInteger(v) && v >= TEAM_CAP_LIMITS[0] && v <= TEAM_CAP_LIMITS[1] ? null : `The team limit must be a whole number, ${TEAM_CAP_LIMITS[0]} \u2013 ${TEAM_CAP_LIMITS[1]}`;
 function inferTeamRole(title, role) {
   if (role && TEAM_ROLES.some((r) => r.id === role)) return role;
   const t = String(title || "").toLowerCase();
@@ -76985,6 +77005,46 @@ var ASSET_KINDS = [
   { id: "OTHER", en: "Other", hi: "\u0905\u0928\u094D\u092F" }
 ];
 
+// src/shared/incentiveRules.ts
+var INCENTIVE_MODES = ["PCT", "FIXED"];
+var INCENTIVE_LIMITS = { pctBroker: 50, pctBuilder: 10, fixed: 5e5 };
+var incentiveBaseFor = (employerRole) => employerRole === "BROKER" ? "BROKERAGE" : employerRole === "DEVELOPER_BUILDER" ? "VALUE" : null;
+var incentiveModeOf = (c) => c?.incentiveMode === "FIXED" ? "FIXED" : "PCT";
+var maxPctFor = (employerRole) => employerRole === "DEVELOPER_BUILDER" ? INCENTIVE_LIMITS.pctBuilder : INCENTIVE_LIMITS.pctBroker;
+var isOwnBooking = (employerRole, employerId, b) => employerRole === "BROKER" ? b.associateId === employerId : employerRole === "DEVELOPER_BUILDER" ? b.builderId === employerId : false;
+function cleanIncentive(employerRole, input2) {
+  if (!incentiveBaseFor(employerRole)) return "Only a broker or a builder can set an incentive";
+  const out = {};
+  if (input2.mode !== void 0) {
+    if (!INCENTIVE_MODES.includes(input2.mode)) return "Choose % or a fixed \u20B9 amount";
+    out.incentiveMode = input2.mode;
+  }
+  if (input2.pct !== void 0) {
+    const v = Number(input2.pct);
+    const max = maxPctFor(employerRole);
+    if (!Number.isFinite(v) || v < 0 || v > max) return employerRole === "DEVELOPER_BUILDER" ? `Incentive must be between 0% and ${max}% of the booking value` : `Incentive must be between 0% and ${max}% of brokerage`;
+    out.incentivePct = Math.round(v * 100) / 100;
+  }
+  if (input2.fixed !== void 0) {
+    const v = Number(input2.fixed);
+    if (!Number.isInteger(v) || v < 0 || v > INCENTIVE_LIMITS.fixed) return `The fixed incentive must be a whole rupee amount, 0 \u2013 ${INCENTIVE_LIMITS.fixed.toLocaleString("en-IN")} per booking`;
+    out.incentiveFixed = v;
+  }
+  return out;
+}
+function incentiveOf(cfg, employerRole, bookings) {
+  const base = incentiveBaseFor(employerRole);
+  if (!base || !bookings.length) return 0;
+  if (incentiveModeOf(cfg) === "FIXED") return Math.max(0, Math.round(cfg?.incentiveFixed || 0)) * bookings.length;
+  const sum = bookings.reduce((a, b) => a + (base === "BROKERAGE" ? b.brokerage : b.value), 0);
+  return Math.round(sum * (cfg?.incentivePct || 0) / 100);
+}
+function incentiveLabel(cfg, employerRole, hi = false) {
+  if (incentiveModeOf(cfg) === "FIXED") return `\u20B9${(cfg?.incentiveFixed || 0).toLocaleString("en-IN")} ${hi ? "\u092A\u094D\u0930\u0924\u093F \u092C\u0941\u0915\u093F\u0902\u0917" : "per booking"}`;
+  const of = incentiveBaseFor(employerRole) === "VALUE" ? hi ? "\u092C\u0941\u0915\u093F\u0902\u0917 \u092E\u0942\u0932\u094D\u092F \u0915\u093E" : "of booking value" : hi ? "\u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0915\u093E" : "of brokerage";
+  return `${cfg?.incentivePct || 0}% ${of}`;
+}
+
 // server/hr.ts
 var me11 = () => ctx().user;
 var S = () => db.getState();
@@ -77050,8 +77110,9 @@ var monthOfIso = (iso) => {
 };
 function actuals(employerId, ids2, month) {
   const s = S();
+  const role = s.users.find((x) => x.id === employerId)?.role;
   const out = /* @__PURE__ */ new Map();
-  const A = (id) => out.get(id) || out.set(id, { calls: 0, visits: 0, bookings: 0, brokerage: 0 }).get(id);
+  const A = (id) => out.get(id) || out.set(id, { calls: 0, visits: 0, bookings: 0, own: [] }).get(id);
   const holder = /* @__PURE__ */ new Map();
   for (const l of s.crmLeads) {
     if (l.assignedMemberId && ids2.has(l.assignedMemberId)) holder.set(l.id, l.assignedMemberId);
@@ -77068,11 +77129,11 @@ function actuals(employerId, ids2, month) {
     if (!h) continue;
     const x = A(h);
     x.bookings++;
-    if (b.associateId === employerId) x.brokerage += b.brokerageAmount || 0;
+    if (isOwnBooking(role, employerId, b)) x.own.push({ brokerage: b.brokerageAmount || 0, value: b.agreementValue || 0 });
   }
   return out;
 }
-var zero2 = () => ({ calls: 0, visits: 0, bookings: 0, brokerage: 0 });
+var zero2 = () => ({ calls: 0, visits: 0, bookings: 0, own: [] });
 var attView = (a) => a ? { id: a.id, date: a.date, inAt: a.inAt, outAt: a.outAt, lateMin: a.lateMin || 0, hasSelfie: !!a.inSelfie, manual: a.manual, note: a.note } : null;
 var leaveView = (l) => ({ id: l.id, userId: l.userId, userName: l.userName, from: l.from, to: l.to, days: l.days, type: l.type, reason: l.reason, status: l.status, createdAt: l.createdAt, decidedAt: l.decidedAt, decidedNote: l.decidedNote });
 var claimView = (c) => ({ id: c.id, userId: c.userId, userName: c.userName, date: c.date, kind: c.kind, amount: c.amount, note: c.note, status: c.status, createdAt: c.createdAt, decidedAt: c.decidedAt, decidedNote: c.decidedNote, paidAt: c.paidAt });
@@ -77349,6 +77410,8 @@ function createHrRouter() {
         suggested: suggestTarget(inferTeamRole(m.teamTitle, m.teamRole)),
         fixedPay: canPay ? tg?.fixedPay ?? null : void 0,
         incentivePct: canPay ? m.incentivePct || 0 : void 0,
+        incentiveEn: canPay ? incentiveLabel(m, u.role) : void 0,
+        incentiveHi: canPay ? incentiveLabel(m, u.role, true) : void 0,
         actual: { calls: a.calls, visits: a.visits, bookings: a.bookings },
         progress: target ? targetProgress(target, a, elapsed) : null
       };
@@ -77424,7 +77487,7 @@ function createHrRouter() {
       for (const l of lv) if (l.status === "APPROVED" && l.type === "UNPAID" && overlaps(l, { from, to: addDays2(from, days3 - 1) })) unpaid += leaveDays(st29, l.from < from ? from : l.from, l.to > addDays2(from, days3 - 1) ? addDays2(from, days3 - 1) : l.to);
       const a = act.get(m.id) || zero2();
       const tg = S().hrTargets.find((t) => t.userId === m.id);
-      const auto = u.role === "BROKER" ? Math.round(a.brokerage * (m.incentivePct || 0) / 100) : 0;
+      const auto = incentiveOf(m, u.role, a.own);
       if (!x) {
         x = { id: rid3("HRS"), employerId: u.id, userId: m.id, userName: m.name, month, fixed: tg?.fixedPay ?? 0, incentive: auto, adjustments: [], net: 0, calls: 0, visits: 0, bookings: 0, workingDays: 0, presentDays: 0, absentDays: 0, monthWorkDays, published: false, createdAt: nowIso13(), updatedAt: nowIso13() };
         S().hrStatements.push(x);
@@ -77890,6 +77953,21 @@ function createPrivacyRouter() {
     const u = me33();
     const s = db.getState();
     const mine3 = (rows, ...keys) => rows.filter((x) => keys.some((k) => x[k] === u.id));
+    if (u.role === "TEAM_MEMBER") {
+      const employer = s.users.find((x) => x.id === u.employerId);
+      const limited = {
+        exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        policyVersion: POLICY_VERSION,
+        scope: "LIMITED",
+        note: "This file holds your work profile and your own attendance, leave, expense, items and shared pay statements. Customer data and your employer's business records are not part of it.",
+        profile: { id: u.id, name: u.name, phone: u.phone, teamTitle: u.teamTitle, teamRole: u.teamRole, employer: employer?.companyName || employer?.name, joinedOn: u.createdAt, privacyPolicyAcceptedAt: u.consent?.acceptedAt },
+        hr: exportHr(s, u.id),
+        privacyRequests: mine3(s.privacyRequests, "userId")
+      };
+      db.appendAuditEvent(u.id, u.role, "SYSTEM", u.id, "DATA_EXPORT", "Team member exported his limited personal data (DPDP access right)");
+      res.setHeader("Content-Disposition", `attachment; filename="genz-my-data-${u.id}.json"`);
+      return res.json(limited);
+    }
     const { passwordHash: _p, sessionVersion: _s, mustChangePassword: _m, ...profile5 } = u;
     const bundle = {
       exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -77924,6 +78002,7 @@ function createPrivacyRouter() {
     const u = me33();
     const { type, details } = req.body || {};
     if (!["ERASURE", "CORRECTION", "GRIEVANCE"].includes(type)) return res.status(400).json({ error: "Invalid request type" });
+    if (type === "ERASURE" && u.role === "TEAM_MEMBER") return res.status(403).json({ error: "Your work records (attendance, leave, pay, expenses) are kept by your employer, so you cannot delete them yourself. You can ask for a correction or write a grievance here \u2014 or speak to your employer.", hi: "\u0906\u092A\u0915\u093E \u0915\u093E\u092E \u0915\u093E \u0930\u093F\u0915\u0949\u0930\u094D\u0921 (\u0939\u093E\u091C\u093C\u093F\u0930\u0940, \u091B\u0941\u091F\u094D\u091F\u0940, \u0935\u0947\u0924\u0928, \u0916\u093C\u0930\u094D\u091A\u093E) \u0906\u092A\u0915\u0947 \u0928\u093F\u092F\u094B\u0915\u094D\u0924\u093E \u0915\u0947 \u092A\u093E\u0938 \u0930\u0939\u0924\u093E \u0939\u0948, \u0907\u0938\u0932\u093F\u090F \u0906\u092A \u0907\u0938\u0947 \u0916\u093C\u0941\u0926 \u0928\u0939\u0940\u0902 \u092E\u093F\u091F\u093E \u0938\u0915\u0924\u0947\u0964 \u0938\u0941\u0927\u093E\u0930 \u092F\u093E \u0936\u093F\u0915\u093E\u092F\u0924 \u092F\u0939\u093E\u0901 \u0938\u0947 \u0915\u0930 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902 \u2014 \u092F\u093E \u0905\u092A\u0928\u0947 \u0928\u093F\u092F\u094B\u0915\u094D\u0924\u093E \u0938\u0947 \u092C\u093E\u0924 \u0915\u0930\u0947\u0902\u0964", code: "TEAM_MEMBER_NO_ERASE" });
     const text = String(details || "").trim().slice(0, 2e3);
     if (type !== "ERASURE" && text.length < 5) return res.status(400).json({ error: "Please describe your request" });
     const s = db.getState();
@@ -78027,6 +78106,7 @@ function createPrivacyRouter() {
 }
 
 // server/team.ts
+var capOf = (u) => teamMaxFor(u.role, db.getState().settings.teamMaxByRole, u.teamMaxOverride);
 var createSchema = external_exports.object({
   name: external_exports.string().trim().min(2, "Name is required").max(100),
   phone: phoneSchema,
@@ -78163,25 +78243,32 @@ function createTeamRouter() {
     const teamIds = new Set(team.map((m) => m.id));
     const leadsOf = /* @__PURE__ */ new Map();
     for (const l of state.crmLeads) if (l.assignedMemberId && teamIds.has(l.assignedMemberId)) (leadsOf.get(l.assignedMemberId) || leadsOf.set(l.assignedMemberId, /* @__PURE__ */ new Set()).get(l.assignedMemberId)).add(l.id);
+    const base = incentiveBaseFor(u.role);
     const rows = team.map((m) => {
       const leadIds = leadsOf.get(m.id) || /* @__PURE__ */ new Set();
-      const bs = state.crmBookings.filter((b) => b.status === "APPROVED" && leadIds.has(b.leadId) && b.associateId === u.id);
+      const bs = state.crmBookings.filter((b) => b.status === "APPROVED" && leadIds.has(b.leadId) && isOwnBooking(u.role, u.id, b));
       const brokerage = bs.reduce((a, b) => a + b.brokerageAmount, 0);
       const received = bs.reduce((a, b) => a + b.brokeragePaidAmount, 0);
-      const pct2 = m.incentivePct || 0;
+      const value = bs.reduce((a, b) => a + (b.agreementValue || 0), 0);
+      const accrued = incentiveOf(m, u.role, bs.map((b) => ({ brokerage: b.brokerageAmount, value: b.agreementValue || 0 })));
+      const onReceived = base === "BROKERAGE" ? incentiveModeOf(m) === "FIXED" ? (m.incentiveFixed || 0) * bs.filter((b) => b.brokerageAmount > 0 && b.brokeragePaidAmount >= b.brokerageAmount).length : Math.round(received * (m.incentivePct || 0) / 100) : accrued;
       return {
         id: m.id,
         name: m.name,
-        incentivePct: pct2,
+        incentiveMode: incentiveModeOf(m),
+        incentivePct: m.incentivePct || 0,
+        incentiveFixed: m.incentiveFixed || 0,
         bookings: bs.length,
         brokerage,
         received,
-        incentiveAccrued: Math.round(brokerage * pct2 / 100),
-        incentiveOnReceived: Math.round(received * pct2 / 100),
-        firmShareAccrued: brokerage - Math.round(brokerage * pct2 / 100)
+        value,
+        incentiveAccrued: accrued,
+        incentiveOnReceived: onReceived,
+        firmShareAccrued: base === "BROKERAGE" ? brokerage - accrued : 0
+        // a builder earns no brokerage on his own desk sale, so there is no "firm share" to split
       };
     });
-    res.json({ success: true, rows, note: "Incentive is calculated on brokerage of approved bookings of leads the member worked. GENZ only calculates \u2014 you pay your employee yourself. Members never see these figures." });
+    res.json({ success: true, rows, base: base || "BROKERAGE", note: base === "VALUE" ? "Incentive is calculated on the booking value (or a fixed \u20B9 per booking) of approved bookings of leads the member worked. GENZ only calculates \u2014 you pay your employee yourself. Members never see these figures." : "Incentive is calculated on brokerage \u2014 fixed when the project was assigned \u2014 (or a fixed \u20B9 per booking) of approved bookings of leads the member worked. GENZ only calculates \u2014 you pay your employee yourself. Members never see these figures." });
   });
   r.get("/", (_req, res) => {
     const u = me33();
@@ -78203,6 +78290,8 @@ function createTeamRouter() {
       teamTitle: m.teamTitle,
       teamRole: inferTeamRole(m.teamTitle, m.teamRole),
       incentivePct: m.incentivePct || 0,
+      incentiveMode: incentiveModeOf(m),
+      incentiveFixed: m.incentiveFixed || 0,
       status: m.verificationStatus,
       lastLoginAt: m.lastLoginAt,
       createdAt: m.createdAt,
@@ -78210,7 +78299,7 @@ function createTeamRouter() {
       openLeads: n2.get(m.id)?.open || 0,
       deals: n2.get(m.id)?.deals || 0
     }));
-    res.json({ success: true, members: members2, max: teamMaxFor(me33().role) });
+    res.json({ success: true, members: members2, max: capOf(me33()) });
   });
   r.post("/", rateLimit("team-create", 60, 60 * 6e4), (req, res) => {
     const u = me33();
@@ -78221,8 +78310,8 @@ function createTeamRouter() {
     const teamRole = inferTeamRole(p.data.title, p.data.role);
     const title = p.data.title || TEAM_ROLES.find((x) => x.id === teamRole)?.en || "Team member";
     const state = db.getState();
-    const cap = teamMaxFor(u.role);
-    if (mine3(u.id).filter((m2) => m2.verificationStatus !== "REJECTED").length >= cap) return res.status(409).json({ error: `You can add up to ${cap} team members` });
+    const cap = capOf(u);
+    if (mine3(u.id).filter((m2) => m2.verificationStatus !== "REJECTED").length >= cap) return res.status(409).json({ error: `You can add up to ${cap} team members. Need more? Ask the GENZ team to raise your limit.`, code: "TEAM_LIMIT", cap });
     const phone = digits(p.data.phone);
     if (state.users.some((x) => digits(x.phone) === phone)) return res.status(409).json({ error: "A GENZ account with this mobile number already exists" });
     const email3 = `${phone.slice(-10)}@phone.genz.local`;
@@ -78259,11 +78348,12 @@ function createTeamRouter() {
     const u = me33();
     const m = member(req.params.id, u.id);
     if (!m) return res.status(404).json({ error: "Team member not found" });
-    if (req.body?.incentivePct !== void 0) {
-      const v = Number(req.body.incentivePct);
-      if (!Number.isFinite(v) || v < 0 || v > 50) return res.status(400).json({ error: "Incentive must be between 0% and 50% of brokerage" });
-      m.incentivePct = Math.round(v * 100) / 100;
-      audit10("VERIFICATION", m.id, "TEAM_INCENTIVE_SET", `${u.name} set ${m.name}'s incentive to ${m.incentivePct}% of brokerage`);
+    if (req.body?.incentivePct !== void 0 || req.body?.incentiveMode !== void 0 || req.body?.incentiveFixed !== void 0) {
+      const c = cleanIncentive(u.role, { mode: req.body.incentiveMode, pct: req.body.incentivePct, fixed: req.body.incentiveFixed });
+      if (typeof c === "string") return res.status(400).json({ error: c });
+      Object.assign(m, c);
+      const how = incentiveModeOf(m) === "FIXED" ? `\u20B9${m.incentiveFixed || 0} for every approved booking` : `${m.incentivePct || 0}% of ${incentiveBaseFor(u.role) === "VALUE" ? "the booking value" : "brokerage"}`;
+      audit10("VERIFICATION", m.id, "TEAM_INCENTIVE_SET", `${u.name} set ${m.name}'s incentive to ${how}`);
     }
     const title = req.body?.teamTitle;
     if (typeof title === "string") {
@@ -78341,6 +78431,57 @@ function createTeamRouter() {
     db.save();
     audit10("DEAL", deal.id, "DEAL_TEAM_UPDATED", `${u.name} set ${ids2.length} team member(s) on deal ${deal.id}`);
     res.json({ success: true, teamMemberIds: deal.teamMemberIds.filter((id) => mineIds.has(id)) });
+  });
+  return r;
+}
+function createTeamLimitsRouter() {
+  const r = (0, import_express21.Router)();
+  const me33 = () => ctx().user;
+  r.use(needs("admin:control_center"));
+  r.use((_req, res, next2) => isSuper(me33()) ? next2() : res.status(403).json({ error: "Only the superadmin sets team limits", code: "SUPERADMIN_ONLY" }));
+  const used2 = (id) => db.getState().users.filter((x) => x.role === "TEAM_MEMBER" && x.employerId === id && x.verificationStatus !== "REJECTED").length;
+  const view8 = () => {
+    const s = db.getState();
+    return {
+      roles: TEAM_CAP_ROLES.map((role) => ({ role, cap: teamMaxFor(role, s.settings.teamMaxByRole), builtIn: teamMaxFor(role), custom: s.settings.teamMaxByRole?.[role] ?? null })),
+      employers: s.users.filter((x) => TEAM_CAP_ROLES.includes(x.role) && x.verificationStatus !== "REJECTED").map((x) => ({ id: x.id, name: x.name, role: x.role, city: x.city, used: used2(x.id), cap: capOf(x), override: x.teamMaxOverride ?? null })).sort((a, b) => (b.override !== null ? 1 : 0) - (a.override !== null ? 1 : 0) || b.used - a.used || a.name.localeCompare(b.name)).slice(0, 400)
+    };
+  };
+  r.get("/", (_req, res) => res.json({ success: true, ...view8() }));
+  r.put("/role", (req, res) => {
+    const u = me33();
+    const role = String(req.body?.role || "");
+    if (!TEAM_CAP_ROLES.includes(role)) return res.status(400).json({ error: "Pick broker, builder or contractor" });
+    const s = db.getState().settings;
+    const before = teamMaxFor(role, s.teamMaxByRole);
+    if (req.body?.max === null) {
+      if (s.teamMaxByRole) {
+        delete s.teamMaxByRole[role];
+        if (!Object.keys(s.teamMaxByRole).length) delete s.teamMaxByRole;
+      }
+    } else {
+      const p = teamCapProblem(req.body?.max);
+      if (p) return res.status(400).json({ error: p });
+      s.teamMaxByRole = { ...s.teamMaxByRole || {}, [role]: req.body.max };
+    }
+    db.save();
+    db.appendAuditEvent(u.id, u.role, "SYSTEM", `TEAM-LIMIT-${role}`, "TEAM_LIMIT_CHANGED", `Team limit for ${role}: ${before} \u2192 ${teamMaxFor(role, s.teamMaxByRole)}. Nobody is removed; only new additions are held back while a team is over the figure.`);
+    res.json({ success: true, ...view8() });
+  });
+  r.put("/user/:id", (req, res) => {
+    const u = me33();
+    const t = db.getState().users.find((x) => x.id === req.params.id && TEAM_CAP_ROLES.includes(x.role));
+    if (!t) return res.status(404).json({ error: "Broker, builder or contractor not found" });
+    const before = capOf(t);
+    if (req.body?.max === null) delete t.teamMaxOverride;
+    else {
+      const p = teamCapProblem(req.body?.max);
+      if (p) return res.status(400).json({ error: p });
+      t.teamMaxOverride = req.body.max;
+    }
+    db.save();
+    db.appendAuditEvent(u.id, u.role, "VERIFICATION", t.id, "TEAM_LIMIT_CHANGED", `Team limit for ${t.name} (${t.role}): ${before} \u2192 ${capOf(t)}${t.teamMaxOverride === void 0 ? " (his kind's figure)" : " (his own figure)"}`);
+    res.json({ success: true, ...view8() });
   });
   return r;
 }
@@ -81703,7 +81844,7 @@ var SHEET_NOTE = {
   en: "These are the terms the owner and the tenant agreed through their broker. This is not the rent agreement: make the agreement on stamp paper and sign it before a notary. A lease of a year or more must be registered \u2014 that is why most rent agreements are for 11 months. GENZ never holds rent or deposit; the tenant pays the owner directly.",
   hi: "\u092F\u0947 \u0935\u094B \u0936\u0930\u094D\u0924\u0947\u0902 \u0939\u0948\u0902 \u091C\u093F\u0928 \u092A\u0930 \u092E\u093E\u0932\u093F\u0915 \u0914\u0930 \u0915\u093F\u0930\u093E\u092F\u0947\u0926\u093E\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u091C\u093C\u0930\u093F\u090F \u0930\u093E\u091C\u093C\u0940 \u0939\u0941\u090F\u0964 \u092F\u0947 \u0915\u093F\u0930\u093E\u092F\u093E \u0905\u0928\u0941\u092C\u0902\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948: \u0905\u0928\u0941\u092C\u0902\u0927 \u0938\u094D\u091F\u093E\u092E\u094D\u092A \u092A\u0947\u092A\u0930 \u092A\u0930 \u092C\u0928\u0935\u093E\u090F\u0901 \u0914\u0930 \u0928\u094B\u091F\u0930\u0940 \u0915\u0947 \u0938\u093E\u092E\u0928\u0947 \u0938\u093E\u0907\u0928 \u0915\u0930\u0947\u0902\u0964 \u090F\u0915 \u0938\u093E\u0932 \u092F\u093E \u0909\u0938\u0938\u0947 \u0932\u0902\u092C\u0940 \u0932\u0940\u091C\u093C \u0930\u091C\u093F\u0938\u094D\u091F\u0930 \u0915\u0930\u093E\u0928\u0940 \u092A\u0921\u093C\u0924\u0940 \u0939\u0948 \u2014 \u0907\u0938\u0940\u0932\u093F\u090F \u091C\u093C\u094D\u092F\u093E\u0926\u093E\u0924\u0930 \u0905\u0928\u0941\u092C\u0902\u0927 11 \u092E\u0939\u0940\u0928\u0947 \u0915\u0947 \u0939\u094B\u0924\u0947 \u0939\u0948\u0902\u0964 GENZ \u0915\u093F\u0930\u093E\u092F\u093E \u092F\u093E \u0921\u093F\u092A\u0949\u091C\u093C\u093F\u091F \u0915\u092D\u0940 \u0928\u0939\u0940\u0902 \u0930\u0916\u0924\u093E; \u0915\u093F\u0930\u093E\u092F\u0947\u0926\u093E\u0930 \u0938\u0940\u0927\u0947 \u092E\u093E\u0932\u093F\u0915 \u0915\u094B \u0926\u0947\u0924\u093E \u0939\u0948\u0964"
 };
-var DAY_MS = 864e5;
+var DAY_MS2 = 864e5;
 var isDay = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && (/* @__PURE__ */ new Date(s + "T00:00:00Z")).toISOString().slice(0, 10) === s;
 var todayIst2 = (now = Date.now()) => new Date(now + 330 * 6e4).toISOString().slice(0, 10);
 function endOf(startOn, months) {
@@ -81719,7 +81860,7 @@ var addDays3 = (day3, n2) => {
   t.setUTCDate(t.getUTCDate() + n2);
   return t.toISOString().slice(0, 10);
 };
-var daysTo = (day3, now = Date.now()) => Math.round((Date.parse(day3 + "T00:00:00Z") - Date.parse(todayIst2(now) + "T00:00:00Z")) / DAY_MS);
+var daysTo = (day3, now = Date.now()) => Math.round((Date.parse(day3 + "T00:00:00Z") - Date.parse(todayIst2(now) + "T00:00:00Z")) / DAY_MS2);
 var humanDay = (day3, hi = false) => {
   try {
     return (/* @__PURE__ */ new Date(day3 + "T00:00:00Z")).toLocaleDateString(hi ? "hi-IN" : "en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
@@ -91378,14 +91519,16 @@ var safeRef2 = (v) => {
   return /^[A-Za-z0-9][A-Za-z0-9 \-\/_.,#:]{2,59}$/.test(r) ? r : "";
 };
 var OPEN = ["draft", "pending_verification", "active", "under_negotiation"];
+var DEFAULT_OWNER_PLAN = { name: "Owner listing \u2014 15 days", fee: 49, durationDays: 15, maxPhotos: 15, maxActivePerOwner: 3 };
+var isOldStarter = (p) => p.createdAt === p.updatedAt && (p.name === "Sale / Lease listing" && p.fee === 999 && p.durationDays === 90 || p.name === "Rent listing" && p.fee === 499 && p.durationDays === 45);
 function ensureOwnerPlans() {
   const s = st27();
   const now = nowIso41();
   const onlySeed = s.ownerListPlans.length === 1 && s.ownerListPlans[0].name === "Pilot \u2014 free listing" && s.ownerListPlans[0].fee === 0;
-  if (s.ownerListPlans.length && !onlySeed) return;
+  const untouchedOld = s.ownerListPlans.length > 0 && s.ownerListPlans.every(isOldStarter);
+  if (s.ownerListPlans.length && !onlySeed && !untouchedOld) return;
   s.ownerListPlans = [
-    { id: rid6("OLP"), name: "Sale / Lease listing", active: true, transactionTypes: ["Sale", "Lease"], propertyTypes: [], fee: 999, durationDays: 90, maxPhotos: 15, maxActivePerOwner: 3, refundable: false, note: "Starting figure \u2014 the superadmin sets the real fee in Owner Listing Plans.", createdAt: now, updatedAt: now },
-    { id: rid6("OLP"), name: "Rent listing", active: true, transactionTypes: ["Rent"], propertyTypes: [], fee: 499, durationDays: 45, maxPhotos: 12, maxActivePerOwner: 3, refundable: false, note: "Starting figure \u2014 the superadmin sets the real fee in Owner Listing Plans.", createdAt: now, updatedAt: now }
+    { id: rid6("OLP"), name: DEFAULT_OWNER_PLAN.name, active: true, transactionTypes: [], propertyTypes: [], fee: DEFAULT_OWNER_PLAN.fee, durationDays: DEFAULT_OWNER_PLAN.durationDays, maxPhotos: DEFAULT_OWNER_PLAN.maxPhotos, maxActivePerOwner: DEFAULT_OWNER_PLAN.maxActivePerOwner, refundable: false, note: "\u20B949 per listing for 15 days \u2014 the owner is reminded before it ends. The superadmin can change it or add bigger plans in Owner Listing Plans.", createdAt: now, updatedAt: now }
   ];
   db.save();
 }
@@ -91417,19 +91560,26 @@ function onMandateActive(prop) {
   if (!["PAID", "FREE", "WAIVED_BROKER"].includes(o.feeStatus)) o.feeStatus = "WAIVED_BROKER";
 }
 function sweepOwnerListings(now = Date.now()) {
-  let n2 = 0;
+  let n2 = 0, warned2 = 0;
   for (const p of st27().properties) {
     const o = p.ownerListing;
-    if (!o || !["pending_verification", "active"].includes(p.listingStatus) || o.assignedBrokerId || o.matchedAt) continue;
-    if (o.feeStatus === "PAID" && o.liveUntil && Date.parse(o.liveUntil) < now) {
+    const step = expiryStep(p, now);
+    if (!o || !step) continue;
+    if (step === "END") {
       o.feeStatus = "EXPIRED";
       p.listingStatus = "draft";
       p.updatedAt = nowIso41();
       n2++;
-      alert(p.ownerId, "deals", "Your listing time is over", `${p.title} \u2014 renew to show it to brokers again.`, "/");
+      alert(p.ownerId, "deals", "Your listing time is over", `${p.title} \u2014 renew for \u20B9${o.fee} to show it to brokers again.`, "/", { tag: `olx-end-${p.id}-${o.liveUntil}`, hi: ["\u0906\u092A\u0915\u0940 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u0915\u093E \u0938\u092E\u092F \u092A\u0942\u0930\u093E \u0939\u0941\u0906", `${p.title} \u2014 \u092C\u094D\u0930\u094B\u0915\u0930\u094B\u0902 \u0915\u094B \u092B\u093F\u0930 \u0926\u093F\u0916\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u20B9${o.fee} \u092E\u0947\u0902 \u0930\u0940\u0928\u094D\u092F\u0942 \u0915\u0930\u0947\u0902\u0964`] });
+      continue;
     }
+    const stage = step === "WARN1" ? 1 : 3;
+    o.expWarn = stage;
+    warned2++;
+    const d = Math.max(1, Math.ceil((Date.parse(o.liveUntil) - now) / DAY18));
+    alert(p.ownerId, "deals", "Your listing ends soon", `${p.title} leaves the broker pool in ${d} day${d > 1 ? "s" : ""} \u2014 renew for \u20B9${o.fee} to keep it live.`, "/", { tag: `olx-${stage}-${p.id}-${o.liveUntil}`, hi: ["\u0906\u092A\u0915\u0940 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u091C\u0932\u094D\u0926 \u0916\u093C\u0924\u094D\u092E \u0939\u094B\u0917\u0940", `${p.title} ${d} \u0926\u093F\u0928 \u092E\u0947\u0902 \u092C\u094D\u0930\u094B\u0915\u0930 \u092A\u0942\u0932 \u0938\u0947 \u0939\u091F \u091C\u093E\u090F\u0917\u0940 \u2014 \u0932\u093E\u0907\u0935 \u0930\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u20B9${o.fee} \u092E\u0947\u0902 \u0930\u0940\u0928\u094D\u092F\u0942 \u0915\u0930\u0947\u0902\u0964`] });
   }
-  if (n2) db.save();
+  if (n2 || warned2) db.save();
   return n2;
 }
 var OTPS = /* @__PURE__ */ new Map();
@@ -91523,9 +91673,23 @@ var mineProp = (req, res) => {
   return p;
 };
 var staffAlert = (text, body) => alert(st27().users.filter((a) => (a.role === "ADMIN" || a.role === "SUPERADMIN") && a.verificationStatus === "VERIFIED").slice(0, 20).map((a) => a.id), "deals", text, body, "/");
+var lastLazy = 0;
+var lazySweep2 = () => {
+  if (Date.now() - lastLazy < 6e4) return;
+  lastLazy = Date.now();
+  try {
+    sweepOwnerListings();
+  } catch (e) {
+    console.error("[OWNERLIST] sweep failed", e);
+  }
+};
 function createOwnerListingRouter() {
   const r = (0, import_express63.Router)();
   const manage = needs("ownerlist:manage");
+  r.use((_req, _res, next2) => {
+    lazySweep2();
+    next2();
+  });
   r.get("/config", needs("property:read"), (_req, res) => {
     const s = st27();
     res.json({ success: true, enabled: s.ownerListCfg.enabled, upiId: s.ownerListCfg.upiId, payeeName: s.ownerListCfg.payeeName, plans: s.ownerListPlans.filter((p) => p.active).map(({ id, name, transactionTypes, propertyTypes, fee, durationDays, maxPhotos, maxActivePerOwner, refundable, note: note5 }) => ({ id, name, transactionTypes, propertyTypes, fee, durationDays, maxPhotos, maxActivePerOwner, refundable, note: note5 })) });
@@ -91790,6 +91954,7 @@ function createOwnerListingRouter() {
     o.confirmedAt = nowIso41();
     o.liveFrom = nowIso41();
     o.liveUntil = new Date(Date.now() + o.durationDays * DAY18).toISOString();
+    o.expWarn = void 0;
     p.listingStatus = "active";
     p.verificationStatus = "VERIFIED";
     p.updatedAt = nowIso41();
@@ -98747,6 +98912,7 @@ app.use("/api/crm", createCrmPlusRouter());
 app.use("/api/crm", createCrmRouter());
 app.use("/api/connector", createConnectorRouter());
 app.use("/api/team", createTeamRouter());
+app.use("/api/admin/team-limits", createTeamLimitsRouter());
 app.use("/api/hr", createHrRouter());
 app.use("/api/inventory", createInventoryRouter());
 app.use("/api/invdesk", createInventoryDeskRouter());

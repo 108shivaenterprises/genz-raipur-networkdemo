@@ -92,9 +92,9 @@ describe('master plan (superadmin)', () => {
     expect((await call(jar.SUP, 'PUT', '/api/owner-listing/admin/config', { upiId: 'bad upi' })).status).toBe(400);
     expect((await call(jar.SUP, 'PUT', '/api/owner-listing/admin/config', { upiId: 'genz@okbank', enabled: true })).status).toBe(200);
   });
-  it('the most specific plan wins; other kinds fall back to the default Rent plan', async () => {
+  it('the most specific plan wins; other kinds fall back to the default ₹49 / 15-day plan', async () => {
     const a = await j(await ocall('GET', '/api/owner-listing/quote?transactionType=Sale&propertyType=Residential%20Flat')); expect(a.plan.id).toBe(PLAN); expect(a.plan.fee).toBe(499);
-    const b = await j(await ocall('GET', '/api/owner-listing/quote?transactionType=Rent&propertyType=Residential%20Flat')); expect(b.plan.fee).toBe(499);
+    const b = await j(await ocall('GET', '/api/owner-listing/quote?transactionType=Rent&propertyType=Residential%20Flat')); expect(b.plan.fee).toBe(49); expect(b.plan.durationDays).toBe(15);
   });
 });
 

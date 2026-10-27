@@ -25,6 +25,7 @@ import { sniffMime } from '../src/shared/propDocs.js';
 import { inferTeamRole } from '../src/shared/crmSales.js';
 import { policyOf } from '../src/shared/pcontrolRules.js';
 import * as H from '../src/shared/hrRules.js';
+import { incentiveOf, incentiveLabel, isOwnBooking, type IncentiveBooking } from '../src/shared/incentiveRules.js';
 
 type DbState = ReturnType<typeof db.getState>;
 const me = () => ctx().user as UserProfile;
@@ -75,12 +76,13 @@ function dropSelfie(a: HrAttendance) { try { fs.unlinkSync(selfieFile(a.id)); } 
 
 // ───────────────────────── numbers from the CRM ─────────────────────────
 const monthOfIso = (iso?: string) => { const t = Date.parse(iso || ''); return Number.isNaN(t) ? '' : H.istParts(t).date.slice(0, 7); };
-interface Actual extends H.TargetSet { brokerage: number }
+/** `own` = the approved bookings this person's employer earns on (a broker's own brokerage / a builder's own desk sales) — what his incentive is taken from */
+interface Actual extends H.TargetSet { own: IncentiveBooking[] }
 /** what each person did in a month, in one pass over the CRM: calls, site visits (incl. check-ins without a lead), approved bookings of leads he worked
- *  (+ the employer's brokerage on them — only a broker earns brokerage; it is used for the incentive and never shown to a member) */
+ *  (+ the bookings the employer earns on, for the incentive — brokerage / booking value are used for the incentive and never shown to a member) */
 export function actuals(employerId: string, ids: Set<string>, month: string): Map<string, Actual> {
-  const s = S(); const out = new Map<string, Actual>();
-  const A = (id: string) => out.get(id) || out.set(id, { calls: 0, visits: 0, bookings: 0, brokerage: 0 }).get(id)!;
+  const s = S(); const role = s.users.find(x => x.id === employerId)?.role; const out = new Map<string, Actual>();
+  const A = (id: string) => out.get(id) || out.set(id, { calls: 0, visits: 0, bookings: 0, own: [] }).get(id)!;
   const holder = new Map<string, string>();
   for (const l of s.crmLeads) {
     if (l.assignedMemberId && ids.has(l.assignedMemberId)) holder.set(l.id, l.assignedMemberId);
@@ -95,11 +97,11 @@ export function actuals(employerId: string, ids: Set<string>, month: string): Ma
     if (b.status !== 'APPROVED' || monthOfIso(b.decidedAt) !== month) continue;
     const h = holder.get(b.leadId); if (!h) continue;
     const x = A(h); x.bookings++;
-    if (b.associateId === employerId) x.brokerage += b.brokerageAmount || 0;
+    if (isOwnBooking(role, employerId, b)) x.own.push({ brokerage: b.brokerageAmount || 0, value: b.agreementValue || 0 });
   }
   return out;
 }
-const zero = (): Actual => ({ calls: 0, visits: 0, bookings: 0, brokerage: 0 });
+const zero = (): Actual => ({ calls: 0, visits: 0, bookings: 0, own: [] });
 
 // ───────────────────────── views ─────────────────────────
 const attView = (a?: HrAttendance) => a ? { id: a.id, date: a.date, inAt: a.inAt, outAt: a.outAt, lateMin: a.lateMin || 0, hasSelfie: !!a.inSelfie, manual: a.manual, note: a.note } : null;
@@ -323,7 +325,7 @@ export function createHrRouter() {
       const tg = S().hrTargets.find(t => t.userId === m.id);
       const target: H.TargetSet | null = tg && H.TARGET_METRICS.some(k => tg[k] > 0) ? { calls: tg.calls, visits: tg.visits, bookings: tg.bookings } : null;
       const a = act.get(m.id) || zero();
-      return { ...who(m), target, suggested: H.suggestTarget(inferTeamRole(m.teamTitle, m.teamRole)), fixedPay: canPay ? (tg?.fixedPay ?? null) : undefined, incentivePct: canPay ? (m.incentivePct || 0) : undefined,
+      return { ...who(m), target, suggested: H.suggestTarget(inferTeamRole(m.teamTitle, m.teamRole)), fixedPay: canPay ? (tg?.fixedPay ?? null) : undefined, incentivePct: canPay ? (m.incentivePct || 0) : undefined, incentiveEn: canPay ? incentiveLabel(m, u.role) : undefined, incentiveHi: canPay ? incentiveLabel(m, u.role, true) : undefined,
         actual: { calls: a.calls, visits: a.visits, bookings: a.bookings }, progress: target ? H.targetProgress(target, a, elapsed) : null };
     });
     res.json({ success: true, month, elapsed: Math.round(elapsed * 100), rows, metrics: H.METRIC_LABEL });
@@ -381,7 +383,7 @@ export function createHrRouter() {
       for (const l of lv) if (l.status === 'APPROVED' && l.type === 'UNPAID' && H.overlaps(l, { from, to: H.addDays(from, days - 1) })) unpaid += H.leaveDays(st, l.from < from ? from : l.from, l.to > H.addDays(from, days - 1) ? H.addDays(from, days - 1) : l.to);
       const a = act.get(m.id) || zero();
       const tg = S().hrTargets.find(t => t.userId === m.id);
-      const auto = u.role === 'BROKER' ? Math.round(a.brokerage * (m.incentivePct || 0) / 100) : 0;
+      const auto = incentiveOf(m, u.role, a.own);   // v76b: % of the brokerage (broker) / of the booking value (builder), or a fixed ₹ per approved booking
       if (!x) { x = { id: rid('HRS'), employerId: u.id, userId: m.id, userName: m.name, month, fixed: tg?.fixedPay ?? 0, incentive: auto, adjustments: [], net: 0, calls: 0, visits: 0, bookings: 0, workingDays: 0, presentDays: 0, absentDays: 0, monthWorkDays, published: false, createdAt: nowIso(), updatedAt: nowIso() }; S().hrStatements.push(x); }
       if (!x.incentiveEdited) x.incentive = auto;
       x.userName = m.name; x.calls = a.calls; x.visits = a.visits; x.bookings = a.bookings; x.workingDays = sum.workingDays; x.presentDays = sum.presentDays;

@@ -42,6 +42,20 @@ export function createPrivacyRouter() {
     const u = me();
     const s = db.getState();
     const mine = <T extends Record<string, any>>(rows: T[], ...keys: string[]) => rows.filter(x => keys.some(k => x[k] === u.id));
+    // v76b — a team member's file is a LIMITED one: who he is at work + his own HR record. Customer leads, deal rooms and the audit trail belong to his employer's business, not to him.
+    if (u.role === 'TEAM_MEMBER') {
+      const employer = s.users.find(x => x.id === u.employerId);
+      const limited = {
+        exportedAt: new Date().toISOString(), policyVersion: POLICY_VERSION, scope: 'LIMITED',
+        note: 'This file holds your work profile and your own attendance, leave, expense, items and shared pay statements. Customer data and your employer\'s business records are not part of it.',
+        profile: { id: u.id, name: u.name, phone: u.phone, teamTitle: u.teamTitle, teamRole: u.teamRole, employer: employer?.companyName || employer?.name, joinedOn: u.createdAt, privacyPolicyAcceptedAt: u.consent?.acceptedAt },
+        hr: exportHr(s, u.id),
+        privacyRequests: mine(s.privacyRequests, 'userId'),
+      };
+      db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'DATA_EXPORT', 'Team member exported his limited personal data (DPDP access right)');
+      res.setHeader('Content-Disposition', `attachment; filename="genz-my-data-${u.id}.json"`);
+      return res.json(limited);
+    }
     const { passwordHash: _p, sessionVersion: _s, mustChangePassword: _m, ...profile } = u as any;
     const bundle = {
       exportedAt: new Date().toISOString(),
@@ -74,6 +88,8 @@ export function createPrivacyRouter() {
     const u = me();
     const { type, details } = req.body || {};
     if (!['ERASURE', 'CORRECTION', 'GRIEVANCE'].includes(type)) return res.status(400).json({ error: 'Invalid request type' });
+    // v76b — a team member cannot delete his data: his attendance, leave, pay and expense records are his employer's books. He can still ask for a correction or write a grievance.
+    if (type === 'ERASURE' && u.role === 'TEAM_MEMBER') return res.status(403).json({ error: 'Your work records (attendance, leave, pay, expenses) are kept by your employer, so you cannot delete them yourself. You can ask for a correction or write a grievance here — or speak to your employer.', hi: 'आपका काम का रिकॉर्ड (हाज़िरी, छुट्टी, वेतन, ख़र्चा) आपके नियोक्ता के पास रहता है, इसलिए आप इसे ख़ुद नहीं मिटा सकते। सुधार या शिकायत यहाँ से कर सकते हैं — या अपने नियोक्ता से बात करें।', code: 'TEAM_MEMBER_NO_ERASE' });
     const text = String(details || '').trim().slice(0, 2000);
     if (type !== 'ERASURE' && text.length < 5) return res.status(400).json({ error: 'Please describe your request' });
     const s = db.getState();

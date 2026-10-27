@@ -48,6 +48,8 @@ export interface OwnerListingState {
   confirmedById?: string; confirmedAt?: string;
   /** in the broker pool (visible, never matched) */
   liveFrom?: string; liveUntil?: string;
+  /** v76b — the last "your listing ends soon" alert sent: 3 = three days left, 1 = one day left (reset when the owner renews) */
+  expWarn?: 3 | 1;
   /** the broker the owner chose; the listing is matched only after his mandate is signed */
   assignedBrokerId?: string; assignedAt?: string;
   requests: { brokerId: string; brokerName: string; note?: string; at: string }[];
@@ -80,3 +82,19 @@ export const inPool = (p: { ownerListing?: OwnerListingState; listingStatus: str
   const o = p.ownerListing; if (!o || !['pending_verification', 'active'].includes(p.listingStatus)) return false;
   return o.feeStatus === 'PAID' && !o.assignedBrokerId && !!o.liveUntil && Date.parse(o.liveUntil) > now;
 };
+
+/** v76b — what the hourly sweep must do for a self-listed property: tell the owner 3 days and 1 day before the paid days end ('WARN3' / 'WARN1', each once per period), and take it out of the pool when they are over ('END'). null = nothing. */
+export type ExpiryStep = 'WARN3' | 'WARN1' | 'END';
+const DAY_MS = 86_400_000;
+export function expiryStep(p: { ownerListing?: OwnerListingState; listingStatus: string }, now = Date.now()): ExpiryStep | null {
+  const o = p.ownerListing;
+  if (!o || !['pending_verification', 'active'].includes(p.listingStatus) || o.assignedBrokerId || o.matchedAt) return null;
+  if (o.feeStatus !== 'PAID' || !o.liveUntil) return null;
+  const left = Date.parse(o.liveUntil) - now;
+  if (Number.isNaN(left)) return null;
+  if (left < 0) return 'END';
+  if (left <= DAY_MS) return o.expWarn === 1 ? null : 'WARN1';
+  if (left <= 3 * DAY_MS) return o.expWarn ? null : 'WARN3';
+  return null;
+}
+

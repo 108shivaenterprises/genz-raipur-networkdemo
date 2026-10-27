@@ -86,11 +86,12 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string }> = (
         <a href="/api/privacy/export" className="mt-4 flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:border-slate-900">
           <Download className="h-4 w-4" /> {t('priv.export', 'Download my data (JSON)')}
         </a>
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder={tx('Describe your correction / grievance (optional for erasure)', 'अपना सुधार / शिकायत लिखें (अकाउंट हटाने के लिए ज़रूरी नहीं)')} className="mt-4 w-full rounded-lg border border-slate-300 p-2 text-sm" />
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder={role === 'TEAM_MEMBER' ? tx('Describe your correction / grievance', 'अपना सुधार / शिकायत लिखें') : tx('Describe your correction / grievance (optional for erasure)', 'अपना सुधार / शिकायत लिखें (अकाउंट हटाने के लिए ज़रूरी नहीं)')} className="mt-4 w-full rounded-lg border border-slate-300 p-2 text-sm" />
         <div className="mt-2 flex flex-wrap gap-2">
           <button onClick={() => file('GRIEVANCE')} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"><MessageSquareWarning className="h-3.5 w-3.5" /> {t('priv.grievance', 'Grievance / correction')}</button>
-          <button onClick={() => file('ERASURE')} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"><Trash2 className="h-3.5 w-3.5" /> {t('priv.erase', 'Request account erasure')}</button>
+          {role !== 'TEAM_MEMBER' && <button onClick={() => file('ERASURE')} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"><Trash2 className="h-3.5 w-3.5" /> {t('priv.erase', 'Request account erasure')}</button>}
         </div>
+        {role === 'TEAM_MEMBER' && <p className="mt-2 text-[11px] text-slate-500" data-testid="member-no-erase">{tx('Your attendance, leave, pay and expense records are kept by your employer, so they cannot be deleted from here. Your download holds your work profile and your own HR record only. For a correction or a complaint, use the button above.', 'आपकी हाज़िरी, छुट्टी, वेतन और ख़र्चे का रिकॉर्ड आपके नियोक्ता के पास रहता है, इसलिए यहाँ से मिटाया नहीं जा सकता। आपकी डाउनलोड फ़ाइल में सिर्फ़ आपकी काम की प्रोफ़ाइल और आपका अपना HR रिकॉर्ड है। सुधार या शिकायत के लिए ऊपर का बटन इस्तेमाल करें।')}</p>}
         {msg && <p className={`mt-3 text-xs font-medium ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>{msg.text}</p>}
         <PasswordSection />
         <TwoFactorCard />

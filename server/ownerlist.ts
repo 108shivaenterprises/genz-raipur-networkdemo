@@ -27,7 +27,7 @@ import { boardFor } from './leadboard.js';
 import { findState } from '../src/shared/india.js';
 import { networkStrength } from './revenue.js';
 import { termsProblem } from '../src/shared/ownerListRules.js';
-import { pickOwnerPlan, planProblem, inPool, type OwnerListPlan, type OwnerListingState } from '../src/shared/ownerListRules.js';
+import { pickOwnerPlan, planProblem, inPool, expiryStep, type OwnerListPlan, type OwnerListingState } from '../src/shared/ownerListRules.js';
 
 const st = () => db.getState();
 const me = () => ctx().user as UserProfile;
@@ -43,15 +43,19 @@ const safeRef = (v: unknown) => { const r = str(v, 60); return /^[A-Za-z0-9][A-Z
 const OPEN = ['draft', 'pending_verification', 'active', 'under_negotiation'];
 
 export { inPool };
+/** v76b — the starting plan: ₹49 for each listing, 15 days in the pool, every kind of property. The superadmin edits it and adds bigger plans in Owner Listing Plans. */
+export const DEFAULT_OWNER_PLAN = { name: 'Owner listing — 15 days', fee: 49, durationDays: 15, maxPhotos: 15, maxActivePerOwner: 3 } as const;
+/** the two plans an early build seeded (₹999 / 90 days and ₹499 / 45 days) — replaced only while nobody has edited them */
+const isOldStarter = (p: OwnerListPlan) => p.createdAt === p.updatedAt && ((p.name === 'Sale / Lease listing' && p.fee === 999 && p.durationDays === 90) || (p.name === 'Rent listing' && p.fee === 499 && p.durationDays === 45));
 export function ensureOwnerPlans() {
   const s = st();
   const now = nowIso();
-  // the first build seeded a ₹0 "pilot" plan only — an owner then could not buy anything. Replace that lone seed with real (editable) plans.
+  // the first build seeded a ₹0 "pilot" plan only — an owner then could not buy anything. Replace that lone seed with a real (editable) plan.
   const onlySeed = s.ownerListPlans.length === 1 && s.ownerListPlans[0].name === 'Pilot — free listing' && s.ownerListPlans[0].fee === 0;
-  if (s.ownerListPlans.length && !onlySeed) return;
+  const untouchedOld = s.ownerListPlans.length > 0 && s.ownerListPlans.every(isOldStarter);
+  if (s.ownerListPlans.length && !onlySeed && !untouchedOld) return;
   s.ownerListPlans = [
-    { id: rid('OLP'), name: 'Sale / Lease listing', active: true, transactionTypes: ['Sale', 'Lease'], propertyTypes: [], fee: 999, durationDays: 90, maxPhotos: 15, maxActivePerOwner: 3, refundable: false, note: 'Starting figure — the superadmin sets the real fee in Owner Listing Plans.', createdAt: now, updatedAt: now },
-    { id: rid('OLP'), name: 'Rent listing', active: true, transactionTypes: ['Rent'], propertyTypes: [], fee: 499, durationDays: 45, maxPhotos: 12, maxActivePerOwner: 3, refundable: false, note: 'Starting figure — the superadmin sets the real fee in Owner Listing Plans.', createdAt: now, updatedAt: now },
+    { id: rid('OLP'), name: DEFAULT_OWNER_PLAN.name, active: true, transactionTypes: [], propertyTypes: [], fee: DEFAULT_OWNER_PLAN.fee, durationDays: DEFAULT_OWNER_PLAN.durationDays, maxPhotos: DEFAULT_OWNER_PLAN.maxPhotos, maxActivePerOwner: DEFAULT_OWNER_PLAN.maxActivePerOwner, refundable: false, note: '₹49 per listing for 15 days — the owner is reminded before it ends. The superadmin can change it or add bigger plans in Owner Listing Plans.', createdAt: now, updatedAt: now },
   ];
   db.save();
 }
@@ -85,17 +89,22 @@ export function onMandateActive(prop: Property) {
   if (!['PAID', 'FREE', 'WAIVED_BROKER'].includes(o.feeStatus)) o.feeStatus = 'WAIVED_BROKER';
 }
 
-/** pool listings whose paid days ran out go back to the owner (renew to bring them back) */
+/** pool listings whose paid days ran out go back to the owner (renew to bring them back); v76b: the owner is warned 3 days and 1 day before */
 export function sweepOwnerListings(now = Date.now()): number {
-  let n = 0;
+  let n = 0, warned = 0;
   for (const p of st().properties) {
-    const o = p.ownerListing; if (!o || !['pending_verification', 'active'].includes(p.listingStatus) || o.assignedBrokerId || o.matchedAt) continue;
-    if (o.feeStatus === 'PAID' && o.liveUntil && Date.parse(o.liveUntil) < now) {
+    const o = p.ownerListing; const step = expiryStep(p, now); if (!o || !step) continue;
+    if (step === 'END') {
       o.feeStatus = 'EXPIRED'; p.listingStatus = 'draft'; p.updatedAt = nowIso(); n++;
-      alert(p.ownerId, 'deals', 'Your listing time is over', `${p.title} — renew to show it to brokers again.`, '/');
+      alert(p.ownerId, 'deals', 'Your listing time is over', `${p.title} — renew for ₹${o.fee} to show it to brokers again.`, '/', { tag: `olx-end-${p.id}-${o.liveUntil}`, hi: ['आपकी लिस्टिंग का समय पूरा हुआ', `${p.title} — ब्रोकरों को फिर दिखाने के लिए ₹${o.fee} में रीन्यू करें।`] });
+      continue;
     }
+    const stage: 3 | 1 = step === 'WARN1' ? 1 : 3;
+    o.expWarn = stage; warned++;
+    const d = Math.max(1, Math.ceil((Date.parse(o.liveUntil as string) - now) / DAY));
+    alert(p.ownerId, 'deals', 'Your listing ends soon', `${p.title} leaves the broker pool in ${d} day${d > 1 ? 's' : ''} — renew for ₹${o.fee} to keep it live.`, '/', { tag: `olx-${stage}-${p.id}-${o.liveUntil}`, hi: ['आपकी लिस्टिंग जल्द ख़त्म होगी', `${p.title} ${d} दिन में ब्रोकर पूल से हट जाएगी — लाइव रखने के लिए ₹${o.fee} में रीन्यू करें।`] });
   }
-  if (n) db.save();
+  if (n || warned) db.save();
   return n;
 }
 
@@ -170,9 +179,14 @@ const mineProp = (req: Request, res: Response): Property | null => {
 };
 const staffAlert = (text: string, body: string) => alert(st().users.filter(a => (a.role === 'ADMIN' || a.role === 'SUPERADMIN') && a.verificationStatus === 'VERIFIED').slice(0, 20).map(a => a.id), 'deals', text, body, '/');
 
+/** the hourly sweep also runs when someone opens the owner-listing screens (at most once a minute) — so the warnings work on a host with no timers too */
+let lastLazy = 0;
+const lazySweep = () => { if (Date.now() - lastLazy < 60_000) return; lastLazy = Date.now(); try { sweepOwnerListings(); } catch (e) { console.error('[OWNERLIST] sweep failed', e); } };
+
 export function createOwnerListingRouter() {
   const r = Router();
   const manage = needs('ownerlist:manage');
+  r.use((_req, _res, next) => { lazySweep(); next(); });
 
   r.get('/config', needs('property:read'), (_req, res) => {
     const s = st();
@@ -337,7 +351,7 @@ export function createOwnerListingRouter() {
   r.post('/:pid/confirm', manage, (req, res) => {
     const u = me(); const p = st().properties.find(x => x.id === req.params.pid); const o = p?.ownerListing;
     if (!p || !o || o.feeStatus !== 'WAITING_CONFIRM') return bad(res, 'No payment is waiting on this listing', 404);
-    o.feeStatus = 'PAID'; o.confirmedById = u.id; o.confirmedAt = nowIso(); o.liveFrom = nowIso(); o.liveUntil = new Date(Date.now() + o.durationDays * DAY).toISOString();
+    o.feeStatus = 'PAID'; o.confirmedById = u.id; o.confirmedAt = nowIso(); o.liveFrom = nowIso(); o.liveUntil = new Date(Date.now() + o.durationDays * DAY).toISOString(); o.expWarn = undefined;
     p.listingStatus = 'active'; p.verificationStatus = 'VERIFIED'; p.updatedAt = nowIso(); db.save();
     db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_CONFIRMED', `Listing fee ₹${o.fee} confirmed — listing is live for ${o.durationDays} days`);
     alert(p.ownerId, 'deals', 'Your listing is live ✔', `${p.title} — it is live. Any number of GENZ brokers can see it, bring buyers and take visits. The broker earns from the buyer only.`, '/');

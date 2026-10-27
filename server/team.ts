@@ -19,11 +19,15 @@ import { db } from './db.js';
 import type { UserProfile } from './db.js';
 import { ctx, needs, digits, rateLimit, hashPassword, randomPassword } from './auth.js';
 import { phoneSchema } from './validation.js';
-import { isDealBroker } from './access.js';
+import { isDealBroker, isSuper } from './access.js';
 import { releaseMemberLeads } from './leadflow.js';
 import { POLICY_VERSION } from './privacy.js';
 import type { SiteCheckin } from './db.js';
-import { TEAM_ROLE_IDS, TEAM_ROLES, inferTeamRole, teamMaxFor, TEAM_MAX_DEFAULT } from '../src/shared/crmSales.js';
+import { TEAM_ROLE_IDS, TEAM_ROLES, inferTeamRole, teamMaxFor, teamCapProblem, TEAM_MAX_DEFAULT, TEAM_CAP_ROLES } from '../src/shared/crmSales.js';
+import { cleanIncentive, incentiveOf, incentiveModeOf, incentiveBaseFor, isOwnBooking } from '../src/shared/incentiveRules.js';
+
+/** v76b — how many people this employer may add: the superadmin's figure for him, else for his kind of employer, else the built-in one */
+export const capOf = (u: Pick<UserProfile, 'role' | 'teamMaxOverride'>) => teamMaxFor(u.role, db.getState().settings.teamMaxByRole, u.teamMaxOverride);
 
 /** kept for older imports; the real limit depends on who employs (v75: a builder may add 60, a contractor 30, a broker 15) */
 export const MAX_TEAM = TEAM_MAX_DEFAULT;
@@ -153,20 +157,28 @@ export function createTeamRouter() {
     const team = mine(u.id); const teamIds = new Set(team.map(m => m.id));
     const leadsOf = new Map<string, Set<string>>(); // v20: one pass instead of one per member
     for (const l of state.crmLeads) if (l.assignedMemberId && teamIds.has(l.assignedMemberId)) (leadsOf.get(l.assignedMemberId) || leadsOf.set(l.assignedMemberId, new Set()).get(l.assignedMemberId)!).add(l.id);
+    const base = incentiveBaseFor(u.role);
     const rows = team.map(m => {
       const leadIds = leadsOf.get(m.id) || new Set<string>();
-      const bs = state.crmBookings.filter(b => b.status === 'APPROVED' && leadIds.has(b.leadId) && b.associateId === u.id);
+      const bs = state.crmBookings.filter(b => b.status === 'APPROVED' && leadIds.has(b.leadId) && isOwnBooking(u.role, u.id, b));
       const brokerage = bs.reduce((a, b) => a + b.brokerageAmount, 0);
       const received = bs.reduce((a, b) => a + b.brokeragePaidAmount, 0);
-      const pct = m.incentivePct || 0;
+      const value = bs.reduce((a, b) => a + (b.agreementValue || 0), 0);
+      const accrued = incentiveOf(m, u.role, bs.map(b => ({ brokerage: b.brokerageAmount, value: b.agreementValue || 0 })));
+      // "on received" is a broker's view: the share of what the builder has actually paid so far (a fixed ₹ counts once the booking's brokerage is fully in)
+      const onReceived = base === 'BROKERAGE'
+        ? (incentiveModeOf(m) === 'FIXED' ? (m.incentiveFixed || 0) * bs.filter(b => b.brokerageAmount > 0 && b.brokeragePaidAmount >= b.brokerageAmount).length : Math.round(received * (m.incentivePct || 0) / 100))
+        : accrued;
       return {
-        id: m.id, name: m.name, incentivePct: pct, bookings: bs.length,
-        brokerage, received,
-        incentiveAccrued: Math.round(brokerage * pct / 100), incentiveOnReceived: Math.round(received * pct / 100),
-        firmShareAccrued: brokerage - Math.round(brokerage * pct / 100),
+        id: m.id, name: m.name, incentiveMode: incentiveModeOf(m), incentivePct: m.incentivePct || 0, incentiveFixed: m.incentiveFixed || 0, bookings: bs.length,
+        brokerage, received, value,
+        incentiveAccrued: accrued, incentiveOnReceived: onReceived,
+        firmShareAccrued: base === 'BROKERAGE' ? brokerage - accrued : 0,   // a builder earns no brokerage on his own desk sale, so there is no "firm share" to split
       };
     });
-    res.json({ success: true, rows, note: 'Incentive is calculated on brokerage of approved bookings of leads the member worked. GENZ only calculates — you pay your employee yourself. Members never see these figures.' });
+    res.json({ success: true, rows, base: base || 'BROKERAGE', note: base === 'VALUE'
+      ? 'Incentive is calculated on the booking value (or a fixed ₹ per booking) of approved bookings of leads the member worked. GENZ only calculates — you pay your employee yourself. Members never see these figures.'
+      : 'Incentive is calculated on brokerage — fixed when the project was assigned — (or a fixed ₹ per booking) of approved bookings of leads the member worked. GENZ only calculates — you pay your employee yourself. Members never see these figures.' });
   });
 
   r.get('/', (_req: Request, res: Response) => {
@@ -178,13 +190,13 @@ export function createTeamRouter() {
     for (const l of state.crmLeads) if (l.assignedMemberId && ids.has(l.assignedMemberId)) { const x = N(l.assignedMemberId); x.leads++; if (!['BOOKED', 'LOST'].includes(l.stage)) x.open++; }
     for (const d of state.dealRooms) for (const m of d.teamMemberIds || []) if (ids.has(m)) N(m).deals++;
     const members = team.map(m => ({
-      id: m.id, name: m.name, phone: m.phone, teamTitle: m.teamTitle, teamRole: inferTeamRole(m.teamTitle, m.teamRole), incentivePct: m.incentivePct || 0, status: m.verificationStatus,
+      id: m.id, name: m.name, phone: m.phone, teamTitle: m.teamTitle, teamRole: inferTeamRole(m.teamTitle, m.teamRole), incentivePct: m.incentivePct || 0, incentiveMode: incentiveModeOf(m), incentiveFixed: m.incentiveFixed || 0, status: m.verificationStatus,
       lastLoginAt: m.lastLoginAt, createdAt: m.createdAt,
       leads: n.get(m.id)?.leads || 0,
       openLeads: n.get(m.id)?.open || 0,
       deals: n.get(m.id)?.deals || 0,
     }));
-    res.json({ success: true, members, max: teamMaxFor(me().role) });
+    res.json({ success: true, members, max: capOf(me()) });
   });
 
   r.post('/', rateLimit('team-create', 60, 60 * 60_000), (req: Request, res: Response) => {
@@ -196,8 +208,8 @@ export function createTeamRouter() {
     const teamRole = inferTeamRole(p.data.title, p.data.role);
     const title = p.data.title || TEAM_ROLES.find(x => x.id === teamRole)?.en || 'Team member';
     const state = db.getState();
-    const cap = teamMaxFor(u.role);
-    if (mine(u.id).filter(m => m.verificationStatus !== 'REJECTED').length >= cap) return res.status(409).json({ error: `You can add up to ${cap} team members` });
+    const cap = capOf(u);
+    if (mine(u.id).filter(m => m.verificationStatus !== 'REJECTED').length >= cap) return res.status(409).json({ error: `You can add up to ${cap} team members. Need more? Ask the GENZ team to raise your limit.`, code: 'TEAM_LIMIT', cap });
     const phone = digits(p.data.phone);
     if (state.users.some(x => digits(x.phone) === phone)) return res.status(409).json({ error: 'A GENZ account with this mobile number already exists' });
     const email = `${phone.slice(-10)}@phone.genz.local`;
@@ -226,11 +238,12 @@ export function createTeamRouter() {
     const u = me();
     const m = member(req.params.id, u.id);
     if (!m) return res.status(404).json({ error: 'Team member not found' });
-    if (req.body?.incentivePct !== undefined) {
-      const v = Number(req.body.incentivePct);
-      if (!Number.isFinite(v) || v < 0 || v > 50) return res.status(400).json({ error: 'Incentive must be between 0% and 50% of brokerage' });
-      m.incentivePct = Math.round(v * 100) / 100;
-      audit('VERIFICATION', m.id, 'TEAM_INCENTIVE_SET', `${u.name} set ${m.name}'s incentive to ${m.incentivePct}% of brokerage`);
+    if (req.body?.incentivePct !== undefined || req.body?.incentiveMode !== undefined || req.body?.incentiveFixed !== undefined) {
+      const c = cleanIncentive(u.role, { mode: req.body.incentiveMode, pct: req.body.incentivePct, fixed: req.body.incentiveFixed });
+      if (typeof c === 'string') return res.status(400).json({ error: c });
+      Object.assign(m, c);
+      const how = incentiveModeOf(m) === 'FIXED' ? `₹${m.incentiveFixed || 0} for every approved booking` : `${m.incentivePct || 0}% of ${incentiveBaseFor(u.role) === 'VALUE' ? 'the booking value' : 'brokerage'}`;
+      audit('VERIFICATION', m.id, 'TEAM_INCENTIVE_SET', `${u.name} set ${m.name}'s incentive to ${how}`);
     }
     const title = req.body?.teamTitle;
     if (typeof title === 'string') {
@@ -316,5 +329,51 @@ export function createTeamRouter() {
     res.json({ success: true, teamMemberIds: deal.teamMemberIds.filter(id => mineIds.has(id)) });
   });
 
+  return r;
+}
+
+/**
+ * v76b — the superadmin decides how many team members each employer may add.
+ *  GET /api/admin/team-limits                  → the figure per kind of employer + every employer with his own override
+ *  PUT /api/admin/team-limits/role  {role, max|null}   → one figure for a whole kind (null = back to the built-in one)
+ *  PUT /api/admin/team-limits/user/:id {max|null}      → one person (beats his kind; null = back to his kind's figure)
+ * Lowering a limit never removes anyone: it only stops new additions until the team is under the figure again.
+ */
+export function createTeamLimitsRouter() {
+  const r = Router();
+  const me = () => ctx().user as UserProfile;
+  r.use(needs('admin:control_center'));
+  r.use((_req: Request, res: Response, next) => (isSuper(me()) ? next() : res.status(403).json({ error: 'Only the superadmin sets team limits', code: 'SUPERADMIN_ONLY' })));
+  const used = (id: string) => db.getState().users.filter(x => x.role === 'TEAM_MEMBER' && x.employerId === id && x.verificationStatus !== 'REJECTED').length;
+  const view = () => {
+    const s = db.getState();
+    return {
+      roles: TEAM_CAP_ROLES.map(role => ({ role, cap: teamMaxFor(role, s.settings.teamMaxByRole), builtIn: teamMaxFor(role), custom: s.settings.teamMaxByRole?.[role] ?? null })),
+      employers: s.users.filter(x => (TEAM_CAP_ROLES as readonly string[]).includes(x.role) && x.verificationStatus !== 'REJECTED')
+        .map(x => ({ id: x.id, name: x.name, role: x.role, city: x.city, used: used(x.id), cap: capOf(x), override: x.teamMaxOverride ?? null }))
+        .sort((a, b) => (b.override !== null ? 1 : 0) - (a.override !== null ? 1 : 0) || b.used - a.used || a.name.localeCompare(b.name)).slice(0, 400),
+    };
+  };
+  r.get('/', (_req: Request, res: Response) => res.json({ success: true, ...view() }));
+  r.put('/role', (req: Request, res: Response) => {
+    const u = me(); const role = String(req.body?.role || '');
+    if (!(TEAM_CAP_ROLES as readonly string[]).includes(role)) return res.status(400).json({ error: 'Pick broker, builder or contractor' });
+    const s = db.getState().settings; const before = teamMaxFor(role, s.teamMaxByRole);
+    if (req.body?.max === null) { if (s.teamMaxByRole) { delete s.teamMaxByRole[role]; if (!Object.keys(s.teamMaxByRole).length) delete s.teamMaxByRole; } }
+    else { const p = teamCapProblem(req.body?.max); if (p) return res.status(400).json({ error: p }); s.teamMaxByRole = { ...(s.teamMaxByRole || {}), [role]: req.body.max }; }
+    db.save();
+    db.appendAuditEvent(u.id, u.role, 'SYSTEM', `TEAM-LIMIT-${role}`, 'TEAM_LIMIT_CHANGED', `Team limit for ${role}: ${before} → ${teamMaxFor(role, s.teamMaxByRole)}. Nobody is removed; only new additions are held back while a team is over the figure.`);
+    res.json({ success: true, ...view() });
+  });
+  r.put('/user/:id', (req: Request, res: Response) => {
+    const u = me(); const t = db.getState().users.find(x => x.id === req.params.id && (TEAM_CAP_ROLES as readonly string[]).includes(x.role));
+    if (!t) return res.status(404).json({ error: 'Broker, builder or contractor not found' });
+    const before = capOf(t);
+    if (req.body?.max === null) delete t.teamMaxOverride;
+    else { const p = teamCapProblem(req.body?.max); if (p) return res.status(400).json({ error: p }); t.teamMaxOverride = req.body.max; }
+    db.save();
+    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', t.id, 'TEAM_LIMIT_CHANGED', `Team limit for ${t.name} (${t.role}): ${before} → ${capOf(t)}${t.teamMaxOverride === undefined ? ' (his kind\'s figure)' : ' (his own figure)'}`);
+    res.json({ success: true, ...view() });
+  });
   return r;
 }

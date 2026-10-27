@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { TEAM_ROLES, teamRolesFor, teamMaxFor } from '../shared/crmSales.js';
+import { incentiveLabel } from '../shared/incentiveRules.js';
 import { Loader2, UserPlus, Copy, PauseCircle, PlayCircle, KeyRound, Share2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { TeamControl } from './TeamControl.js';
@@ -10,12 +11,27 @@ interface Cred { name: string; loginId: string; password: string }
 
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 
-const ActivityTab: React.FC = () => {
+/** v76b — a member's incentive: pick % or a fixed ₹ for every approved booking, then the figure. The base of the % is the brokerage (broker) or the booking value (builder). */
+const IncentiveCell: React.FC<{ m: any; base: 'BROKERAGE' | 'VALUE'; save: (patch: { incentiveMode?: 'PCT' | 'FIXED'; incentivePct?: number; incentiveFixed?: number }) => Promise<void> }> = ({ m, base, save }) => {
   const tx = useTx();
+  const fixed = m.incentiveMode === 'FIXED'; const cur = fixed ? (m.incentiveFixed || 0) : (m.incentivePct || 0);
+  return (
+    <div data-testid="incentive-cell">
+      <div className="flex items-center gap-1">
+        <select value={fixed ? 'FIXED' : 'PCT'} aria-label={tx('Incentive type', 'इंसेंटिव का तरीक़ा')} onChange={e => save({ incentiveMode: e.target.value as 'PCT' | 'FIXED' })} className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"><option value="PCT">%</option><option value="FIXED">₹</option></select>
+        <input key={`${m.id}-${fixed}-${cur}`} inputMode="decimal" defaultValue={cur} aria-label={tx('Incentive amount', 'इंसेंटिव की रकम')} onBlur={e => { const v = Number(e.target.value); if (Number.isFinite(v) && v !== cur) save(fixed ? { incentiveFixed: v } : { incentivePct: v }); }} className="w-16 rounded border border-slate-300 px-1 py-0.5" />
+      </div>
+      <span className="block text-[10px] text-slate-500">{fixed ? tx('per booking', 'हर बुकिंग पर') : base === 'VALUE' ? tx('of booking value', 'बुकिंग मूल्य का') : tx('of brokerage', 'ब्रोकरेज का')}</span>
+    </div>
+  );
+};
+
+const ActivityTab: React.FC = () => {
+  const tx = useTx(); const { lang } = useI18n();
   const [days, setDays] = useState(7);
   const [rows, setRows] = useState<any[]>([]);
   const [chk, setChk] = useState<any[]>([]);
-  const [inc, setInc] = useState<{ rows: any[]; note: string } | null>(null);
+  const [inc, setInc] = useState<{ rows: any[]; note: string; base?: string } | null>(null);
   const [shot, setShot] = useState<string>('');
   useEffect(() => {
     api.teamActivity(days).then(r => setRows(r.rows)).catch(() => setRows([]));
@@ -50,15 +66,18 @@ const ActivityTab: React.FC = () => {
         {shot && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4" onClick={() => setShot('')}><img src={shot} alt="selfie" className="max-h-[80vh] rounded-xl" /></div>}
       </div>
 
-      {inc && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-2 text-sm font-bold">{tx('Firm share vs agent incentive', 'फ़र्म का हिस्सा बनाम एजेंट इंसेंटिव')}</div>
-          <table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-1">{tx('Member', 'सदस्य')}</th><th>{tx('Incentive %', 'इंसेंटिव %')}</th><th>{tx('Bookings', 'बुकिंग')}</th><th>{tx('Brokerage', 'ब्रोकरेज')}</th><th>{tx('Agent incentive', 'एजेंट इंसेंटिव')}</th><th>{tx('Firm share', 'फ़र्म का हिस्सा')}</th></tr></thead>
+      {inc && (() => {
+        const value = inc.base === 'VALUE'; const role = value ? 'DEVELOPER_BUILDER' : 'BROKER';
+        return (
+        <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid="incentive-table">
+          <div className="mb-2 text-sm font-bold">{value ? tx('Agent incentive', 'एजेंट इंसेंटिव') : tx('Firm share vs agent incentive', 'फ़र्म का हिस्सा बनाम एजेंट इंसेंटिव')}</div>
+          <table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-1">{tx('Member', 'सदस्य')}</th><th>{tx('Incentive', 'इंसेंटिव')}</th><th>{tx('Bookings', 'बुकिंग')}</th><th>{value ? tx('Booking value', 'बुकिंग मूल्य') : tx('Brokerage', 'ब्रोकरेज')}</th><th>{tx('Agent incentive', 'एजेंट इंसेंटिव')}</th>{!value && <th>{tx('Firm share', 'फ़र्म का हिस्सा')}</th>}</tr></thead>
             <tbody>{inc.rows.length === 0 && <tr><td colSpan={6} className="py-3 text-center text-slate-400">{tx('No members','कोई सदस्य नहीं')}</td></tr>}
-              {inc.rows.map(r => <tr key={r.id} className="border-t border-slate-100"><td className="py-1.5">{r.name}</td><td>{r.incentivePct}%</td><td>{r.bookings}</td><td>{inr(r.brokerage)}</td><td>{inr(r.incentiveAccrued)}</td><td>{inr(r.firmShareAccrued)}</td></tr>)}</tbody></table>
+              {inc.rows.map(r => <tr key={r.id} className="border-t border-slate-100"><td className="py-1.5">{r.name}</td><td>{incentiveLabel(r, role, lang === 'hi')}</td><td>{r.bookings}</td><td>{inr(value ? r.value : r.brokerage)}</td><td>{inr(r.incentiveAccrued)}</td>{!value && <td>{inr(r.firmShareAccrued)}</td>}</tr>)}</tbody></table>
           <p className="mt-2 text-[10px] text-slate-400">{inc.note}</p>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
@@ -158,7 +177,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50 text-slate-500"><tr>
-            <th className="p-2.5">{tx('Name', 'नाम')}</th><th>{tx('Mobile', 'मोबाइल')}</th><th>{tx('Role', 'भूमिका')}</th><th>{tx('Leads', 'लीड')}</th><th>{tx('Deals', 'डील')}</th><th>{tx('Incentive %', 'इंसेंटिव %')}</th><th>{tx('Last login', 'पिछला लॉगिन')}</th><th>{tx('Status', 'स्टेटस')}</th><th></th>
+            <th className="p-2.5">{tx('Name', 'नाम')}</th><th>{tx('Mobile', 'मोबाइल')}</th><th>{tx('Role', 'भूमिका')}</th><th>{tx('Leads', 'लीड')}</th><th>{tx('Deals', 'डील')}</th>{employerRole !== 'CONTRACTOR' && <th>{tx('Incentive', 'इंसेंटिव')}</th>}<th>{tx('Last login', 'पिछला लॉगिन')}</th><th>{tx('Status', 'स्टेटस')}</th><th></th>
           </tr></thead>
           <tbody>
             {members.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-slate-400">{tx('No team members yet','अभी कोई टीम सदस्य नहीं')}</td></tr>}
@@ -168,7 +187,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
                   <select value={m.teamRole || 'OTHER'} aria-label={tx('Role', 'भूमिका')} onChange={async e => { try { await api.teamUpdate(m.id, { teamRole: e.target.value }); flash(true, tx('Role saved', 'भूमिका सेव हुई')); await load(); } catch (err: any) { flash(false, err.message); } }} className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px]">{[...roleOpts, ...TEAM_ROLES.filter(r => r.id === (m.teamRole || 'OTHER') && !roleOpts.some(o => o.id === r.id))].map(r => <option key={r.id} value={r.id}>{lang === 'hi' ? r.hi : r.en}</option>)}</select>
                   {m.teamTitle && m.teamTitle.toLowerCase() !== (TEAM_ROLES.find(r => r.id === m.teamRole)?.en || '').toLowerCase() && <span className="block text-[10px] text-slate-500">{m.teamTitle}</span>}
                 </td>
-                <td>{m.openLeads}/{m.leads}</td><td>{m.deals}</td><td><input defaultValue={m.incentivePct} onBlur={async e => { const v = Number(e.target.value); if (v !== m.incentivePct) { try { await api.teamUpdate(m.id, { incentivePct: v } as any); flash(true, tx('Incentive saved', 'इंसेंटिव सेव हुआ')); await load(); } catch (x: any) { flash(false, x.message); } } }} className="w-14 rounded border border-slate-300 px-1 py-0.5" /></td>
+                <td>{m.openLeads}/{m.leads}</td><td>{m.deals}</td>{employerRole !== 'CONTRACTOR' && <td><IncentiveCell m={m} base={employerRole === 'DEVELOPER_BUILDER' ? 'VALUE' : 'BROKERAGE'} save={async patch => { try { await api.teamUpdate(m.id, patch); flash(true, tx('Incentive saved', 'इंसेंटिव सेव हुआ')); await load(); } catch (x: any) { flash(false, x.message); } }} /></td>}
                 <td>{m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleDateString('en-IN') : '—'}</td>
                 <td><span className={m.status === 'VERIFIED' ? 'text-emerald-700' : 'text-red-600'}>{m.status === 'VERIFIED' ? tx('Active', 'चालू') : m.status}</span></td>
                 <td className="space-x-2 whitespace-nowrap pr-2.5 text-right">

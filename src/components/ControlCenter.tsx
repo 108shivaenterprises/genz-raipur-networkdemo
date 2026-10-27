@@ -8,6 +8,7 @@ import { formatINR } from '../lib/utils.js';
 import type { TabType } from './NavigationTabs.js';
 import { NetworkPulse } from './NetworkPulse.js';
 import { ProtectionAdmin } from './ProtectionDays.js';
+import { TeamLimitsAdmin } from './TeamLimitsAdmin.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
 
 interface Props { onNavigate: (t: TabType) => void }
@@ -172,6 +173,7 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
           {msg && <p className={`mt-2 text-xs ${msg.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{msg.text}</p>}
         </div>
         <ProtectionAdmin />
+        <TeamLimitsAdmin />
         <div className="rounded-xl border border-slate-200 bg-white p-4"><TwoFactorCard /></div>
       </section>
 

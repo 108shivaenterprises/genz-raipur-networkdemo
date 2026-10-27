@@ -180,7 +180,16 @@ export function teamRolesFor(employerRole?: string): readonly Opt[] {
 /** v75 — how many people one employer may add: a builder runs a sales force, a broker a small office */
 export const TEAM_MAX_BY_ROLE: Record<string, number> = { DEVELOPER_BUILDER: 60, CONTRACTOR: 30 };
 export const TEAM_MAX_DEFAULT = 15;
-export const teamMaxFor = (employerRole?: string) => TEAM_MAX_BY_ROLE[String(employerRole || '')] ?? TEAM_MAX_DEFAULT;
+/** v76b — the superadmin may change the figure: per kind of employer (`byRole`) and for one person (`personal`, beats the kind). Absent = the built-in figures above. */
+export const TEAM_CAP_LIMITS = [1, 500] as const;
+export const TEAM_CAP_ROLES = ['BROKER', 'DEVELOPER_BUILDER', 'CONTRACTOR'] as const;
+export const teamMaxFor = (employerRole?: string, byRole?: Record<string, number>, personal?: number): number => {
+  const ok = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= TEAM_CAP_LIMITS[0] && (n as number) <= TEAM_CAP_LIMITS[1];
+  if (ok(personal)) return personal;
+  const set = byRole?.[String(employerRole || '')];
+  return ok(set) ? set : (TEAM_MAX_BY_ROLE[String(employerRole || '')] ?? TEAM_MAX_DEFAULT);
+};
+export const teamCapProblem = (v: unknown): string | null => (Number.isInteger(v) && (v as number) >= TEAM_CAP_LIMITS[0] && (v as number) <= TEAM_CAP_LIMITS[1] ? null : `The team limit must be a whole number, ${TEAM_CAP_LIMITS[0]} – ${TEAM_CAP_LIMITS[1]}`);
 /** Older members only have a free-text title ("Telecaller", "Site executive") — read the role out of it. */
 export function inferTeamRole(title: string | undefined, role?: string): string {
   if (role && TEAM_ROLES.some(r => r.id === role)) return role;

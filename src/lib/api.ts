@@ -714,7 +714,11 @@ export const api = {
   lrDelete: (id: string) => request<{ success: boolean }>(`/api/land-records/${id}`, { method: 'DELETE' }),
   teamList: () => request<{ success: boolean; members: any[]; max: number }>('/api/team'),
   teamAdd: (payload: { name: string; phone: string; title?: string; role?: string; consentAttested: boolean }) => request<{ success: boolean; member: any; loginId: string; temporaryPassword: string }>('/api/team', { method: 'POST', body: JSON.stringify(payload) }),
-  teamUpdate: (id: string, payload: { active?: boolean; teamTitle?: string; teamRole?: string; incentivePct?: number }) => request<{ success: boolean }>(`/api/team/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  // v76b — the superadmin's team limits
+  teamLimits: () => request<{ success: boolean; roles: { role: string; cap: number; builtIn: number; custom: number | null }[]; employers: { id: string; name: string; role: string; city?: string; used: number; cap: number; override: number | null }[] }>('/api/admin/team-limits'),
+  teamLimitRole: (role: string, max: number | null) => request<any>('/api/admin/team-limits/role', { method: 'PUT', body: JSON.stringify({ role, max }) }),
+  teamLimitUser: (id: string, max: number | null) => request<any>(`/api/admin/team-limits/user/${id}`, { method: 'PUT', body: JSON.stringify({ max }) }),
+  teamUpdate: (id: string, payload: { active?: boolean; teamTitle?: string; teamRole?: string; incentivePct?: number; incentiveMode?: 'PCT' | 'FIXED'; incentiveFixed?: number }) => request<{ success: boolean }>(`/api/team/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   teamReset: (id: string) => request<{ success: boolean; loginId: string; temporaryPassword: string }>(`/api/team/${id}/reset-password`, { method: 'POST', body: '{}' }),
   teamAllotLead: (leadId: string, memberId: string | null) => request<{ success: boolean }>('/api/team/allot/lead', { method: 'POST', body: JSON.stringify({ leadId, memberId }) }),
   teamAllotDeal: (dealId: string, memberIds: string[]) => request<{ success: boolean; teamMemberIds: string[] }>('/api/team/allot/deal', { method: 'POST', body: JSON.stringify({ dealId, memberIds }) }),

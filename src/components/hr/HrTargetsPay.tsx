@@ -109,7 +109,7 @@ const StatementCard: React.FC<{ s: any; reload: () => Promise<void>; flash: (ok:
 };
 
 export const HrPay: React.FC<{ ov: any }> = ({ ov }) => {
-  const tx = useTx();
+  const tx = useTx(); const { lang } = useI18n();
   const { flash, node } = useFlash();
   const [month, setMonth] = useState(nowMonth());
   const [d, setD] = useState<any>(null); const [t, setT] = useState<any>(null);
@@ -130,9 +130,9 @@ export const HrPay: React.FC<{ ov: any }> = ({ ov }) => {
       <details className={CARD}><summary className="cursor-pointer text-sm font-bold text-slate-900">{tx('Fixed monthly pay', 'तय मासिक वेतन')}</summary>
         {!t ? <Loader2 className="mt-2 h-4 w-4 animate-spin text-slate-400" /> : t.rows.length === 0 ? <p className="mt-2 text-xs text-slate-500">{tx('No team members yet.', 'अभी कोई टीम सदस्य नहीं।')}</p> : (
           <ul className="mt-2 divide-y divide-slate-100">{t.rows.map((r: any) => (
-            <li key={r.id} className="flex items-center justify-between gap-2 py-2 text-xs"><span className="min-w-0"><b className="block truncate text-slate-900">{r.name}</b><span className="text-slate-500">{tx('Incentive', 'इंसेंटिव')} {r.incentivePct || 0}%</span></span>
+            <li key={r.id} className="flex items-center justify-between gap-2 py-2 text-xs"><span className="min-w-0"><b className="block truncate text-slate-900">{r.name}</b><span className="text-slate-500">{tx('Incentive', 'इंसेंटिव')} {lang === 'hi' ? (r.incentiveHi || `${r.incentivePct || 0}%`) : (r.incentiveEn || `${r.incentivePct || 0}%`)}</span></span>
               <input type="number" inputMode="numeric" min={0} defaultValue={r.fixedPay ?? ''} key={`${r.id}-${r.fixedPay}`} placeholder="₹" onBlur={e => { if (e.target.value !== String(r.fixedPay ?? '')) setFixed(r.id, e.target.value); }} className={`${INPUT} w-28`} aria-label={tx('Fixed pay', 'तय वेतन')} /></li>))}</ul>)}
-        <p className="mt-2 text-[11px] text-slate-500">{tx('For a broker the incentive is worked out automatically: the member’s incentive % of the brokerage on bookings approved that month (set the % in Members). A builder adds incentive lines by hand.', 'ब्रोकर के लिए इंसेंटिव अपने-आप बनता है: उस महीने मंज़ूर बुकिंग की ब्रोकरेज का सदस्य का इंसेंटिव % (% सदस्य टैब में रखें)। बिल्डर इंसेंटिव ख़ुद जोड़ता है।')}</p>
+        <p className="mt-2 text-[11px] text-slate-500">{tx('The incentive is worked out automatically from the bookings approved that month: the member’s % (of the brokerage for a broker — fixed when the project was assigned — or of the booking value for a builder) or a fixed ₹ per booking. Set it in Members. You can still change the figure on the draft.', 'इंसेंटिव उस महीने मंज़ूर बुकिंग से अपने-आप बनता है: सदस्य का % (ब्रोकर के लिए ब्रोकरेज का — जो प्रोजेक्ट देते समय तय होती है — या बिल्डर के लिए बुकिंग मूल्य का) या हर बुकिंग पर तय ₹। इसे सदस्य टैब में रखें। ड्राफ़्ट पर रकम फिर भी बदल सकते हैं।')}</p>
       </details>
       <button disabled={busy} onClick={build} className={`${BTN_DARK} w-full`} data-testid="hr-build">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{d?.statements?.length ? tx('Refresh numbers from attendance & CRM', 'हाज़िरी और CRM से आँकड़े ताज़ा करें') : tx('Make this month’s statements', 'इस महीने के विवरण बनाएँ')}</button>
       {!d ? <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div> : (<>
