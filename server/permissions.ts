@@ -145,6 +145,8 @@ export const PERMISSION_CATALOG = {
   'launch:manage': 'GENZ desk: plan a staged network launch of a project (big RERA firms → independent brokers → local teaser), after the builder agrees',
   'launch:read': 'See network launches open to the caller\'s group (partners) or the local teaser board (local associates)',
   'team:checkin': 'Record a GPS + selfie site check-in',
+  'hr:manage': 'HR for own people: day attendance, leave approvals, monthly targets, pay statements, expense claims, assets and holidays (the features depend on who employs)',
+  'hr:self': 'Employee: punch in / out for the day, ask for leave, see own targets, a pay statement the employer has shared, file expense claims and see assigned assets',
   'share:use': 'Branded flyers, tracked share links and message templates',
   'partywatch:report': 'Network Watch: check a buyer / owner mobile and report one who refuses commission or goes direct',
   'partywatch:review': 'Network Watch: GENZ staff review reports, block or clear a mobile, answer appeals',
@@ -267,7 +269,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'offer:make', 'offer:decide', 'listing:lifecycle',
     'tier2:vouch', 'tieup:manage', 'network:use',
     'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm',
-    'connector:work', 'connector:sponsor', 'team:manage', 'growth:nominate',
+    'connector:work', 'connector:sponsor', 'team:manage', 'hr:manage', 'growth:nominate',
     'inventory:read', 'inventory:hold', 'inventory:share', 'launch:read', 'team:checkin', 'share:use', 'clientroom:use', 'partner:manage', 'publicpage:use', 'rent:use', 'pchat:use', 'partywatch:report', 'landrecord:manage',
     'daily:use', 'pdoc:use', 'propdoc:use', 'report:create', 'chapter:read', 'loan:submit', 'academy:read',
     'legal:request', 'billing:self',
@@ -304,7 +306,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'audit:read_own',
     'lead:read', 'lead:claim', 'lead:settle',
     'dispute:read', 'dispute:create',
-    'connector:work', 'team:manage', 'team:checkin', 'growth:nominate',
+    'connector:work', 'team:manage', 'hr:manage', 'team:checkin', 'growth:nominate',
     'pdoc:use', 'report:create', 'chapter:read', 'academy:read',
     'billing:self',
   ],
@@ -317,7 +319,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'builder:appoint_associate', 'builder:record_sale',
     'pcontrol:manage', 'network:use', 'pchat:use',
     'visit:pass', 'visit:scan',
-    'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:booking_decide', 'crm:payout', 'crm:money_collect', 'crm:money_confirm', 'crm:assign', 'crm:bonus_manage', 'team:manage',
+    'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:booking_decide', 'crm:payout', 'crm:money_collect', 'crm:money_confirm', 'crm:assign', 'crm:bonus_manage', 'team:manage', 'hr:manage',
     'inventory:read', 'inventory:manage', 'inventory:share', 'share:use', 'growth:nominate',
     'dispute:read', 'dispute:create',
     'pdoc:use', 'report:create', 'chapter:read', 'academy:read',
@@ -352,7 +354,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm',
     'deal:read', 'deal:chat', 'task:read', 'task:manage',
     'inventory:read', 'inventory:share',
-    'team:checkin',
+    'team:checkin', 'hr:self',
   ],
 
 };
@@ -376,9 +378,9 @@ export function memberPermissions(employerRole?: UserRole, sw?: StaffSwitches): 
   const base: Permission[] = ['self:read', 'self:update', 'team:checkin', 'task:read'];
   switch (employerRole) {
     case 'ADMIN': case 'SUPERADMIN': return [...base, 'connector:desk'];
-    case 'CONTRACTOR': return [...base, 'lead:read'];
+    case 'CONTRACTOR': return [...base, 'lead:read', 'hr:self'];
     case 'DEVELOPER_BUILDER': case 'BROKER': default: {
-      const out: Permission[] = [...base, 'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm', 'deal:read', 'deal:chat', 'task:manage', 'pcontrol:staff', 'visit:pass', 'visit:scan', 'inventory:read', 'inventory:share'];
+      const out: Permission[] = [...base, 'hr:self', 'crm:read', 'crm:lead_create', 'crm:lead_manage', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm', 'deal:read', 'deal:chat', 'task:manage', 'pcontrol:staff', 'visit:pass', 'visit:scan', 'inventory:read', 'inventory:share'];
       // v58 — a broker's office staff: only what the broker switched on for this person (the data stays the broker's — see the routers)
       if (employerRole === 'BROKER' && sw) {
         if (sw.listings === 'READ' || sw.listings === 'ADDRESS') out.push('property:read');

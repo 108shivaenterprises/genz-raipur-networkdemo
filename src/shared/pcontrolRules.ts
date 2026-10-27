@@ -33,6 +33,8 @@ export interface PolicyLike {
   scope: 'ASSIGNED' | 'PROJECTS';
   projectIds: string[];
   onLeave: boolean;
+  /** v76 — 'LEAVE' while an approved HR leave (not the employer's own switch) keeps him on leave */
+  onLeaveBy?: 'LEAVE';
   /** v58 — a BROKER's staff, resale / rent work (all off by default):
    *  listings: OFF · READ = network listings read-only like the employer sees them · ADDRESS = and the address of the employer's OWN listings
    *  (never an owner's name / number, never papers); rooms = work in the employer's client rooms; clients = the employer's client list */
@@ -82,6 +84,8 @@ export function cleanPolicy(input: any, current: PolicyLike): PolicyLike | strin
   for (const k of ['canRegister', 'canMarkLost', 'canClaim', 'canVerify', 'canScanVisits', 'canForward', 'canRequestBooking', 'canCollectMoney', 'canConfirmMoney', 'onLeave'] as const) {
     if (input[k] !== undefined) { if (typeof input[k] !== 'boolean') return `${k} must be true or false`; out[k] = input[k]; }
   }
+  // the employer's own leave switch takes over from an HR leave: the sweep must not lift (or re-apply) what he set by hand
+  if (input.onLeave !== undefined) delete out.onLeaveBy;
   if (input.maxOpenLeads !== undefined) {
     if (input.maxOpenLeads === null || input.maxOpenLeads === '') delete out.maxOpenLeads;
     else {

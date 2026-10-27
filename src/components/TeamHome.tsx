@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { UserProfile, DealRoom } from '../types/index.js';
 import { CheckinModal } from './CheckinModal.js';
 import { StaffDesk } from './StaffDesk.js';
+import { MyDay } from './hr/MyDay.js';
 import type { TabType } from './NavigationTabs.js';
 
 export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; onNavigate: (t: TabType) => void; permissions?: string[] }> = ({ currentUser, deals, onNavigate, permissions = [] }) => {
@@ -30,6 +31,8 @@ export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; o
         <h2 className="text-lg font-bold text-slate-900">{tx('Namaste', 'नमस्ते')}, {currentUser.name}</h2>
         <p className="text-xs text-slate-500">{currentUser.teamTitle || tx('Team member', 'टीम सदस्य')} · {tx('only the work your broker allotted or switched on for you appears here.', 'यहाँ सिर्फ़ वही काम दिखता है जो आपके ब्रोकर ने आपको दिया या चालू किया।')}</p>
       </div>
+      {/* v76 — attendance, leave, my target, expenses, items, pay slips (what this employer's account type has) */}
+      {['BROKER', 'DEVELOPER_BUILDER', 'CONTRACTOR'].includes(er || '') && <MyDay />}
       <button onClick={() => setCheckin(true)} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white">{tx('📍 Site check-in (GPS + selfie)', '📍 साइट चेक-इन (GPS + सेल्फ़ी)')}</button>
       {checkin && <CheckinModal onClose={() => setCheckin(false)} />}
       {!crmSide && (

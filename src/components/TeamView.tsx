@@ -4,6 +4,7 @@ import { TEAM_ROLES, teamRolesFor, teamMaxFor } from '../shared/crmSales.js';
 import { Loader2, UserPlus, Copy, PauseCircle, PlayCircle, KeyRound, Share2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { TeamControl } from './TeamControl.js';
+import { HrEmployer } from './hr/HrEmployer.js';
 
 interface Cred { name: string; loginId: string; password: string }
 
@@ -63,12 +64,15 @@ const ActivityTab: React.FC = () => {
 };
 
 /** `canControl`: lead routing / handover is a CRM feature, so only brokers and builders get that sub-tab (the server refuses everyone else). */
-export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> = ({ isBuilder = false, canControl = true }) => {
+/** `hr` (v76): the People tab — attendance, leave, targets, pay, expenses, assets — for brokers, builders and contractors (what each gets is decided on the server). */
+export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?: boolean }> = ({ isBuilder = false, canControl = true, hr = false }) => {
   const tx = useTx(); const { lang } = useI18n();
   // who employs: a builder runs a sales force, a broker a small office, a contractor site people (role names + member limit differ)
   const employerRole = isBuilder ? 'DEVELOPER_BUILDER' : canControl ? 'BROKER' : 'CONTRACTOR';
   const roleOpts = teamRolesFor(employerRole);
-  const [tab, setTab] = useState<'members' | 'control' | 'activity'>('members');
+  const [tab, setTab] = useState<'members' | 'people' | 'control' | 'activity'>('members');
+  const [hrPending, setHrPending] = useState(0);
+  const onHr = useCallback((n: number) => setHrPending(n), []);
   const [members, setMembers] = useState<any[]>([]);
   const [max, setMax] = useState(teamMaxFor(employerRole));
   const [loading, setLoading] = useState(true);
@@ -83,6 +87,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> =
     catch (e: any) { flash(false, e.message); } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (hr) api.hrOverview().then(r => setHrPending((r.pending?.leaves || 0) + (r.pending?.claims || 0))).catch(() => undefined); }, [hr]);
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,10 +119,11 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean }> =
         <h2 className="text-lg font-bold text-slate-900">{tx('My Team', 'मेरी टीम')}</h2>
         <p className="text-xs text-slate-500">{tx('Add employees such as telecallers / site executives. They see only the leads and deal rooms you allot — commission, split and payout stay hidden from them.','टेलीकॉलर / साइट एक्ज़ीक्यूटिव जैसे कर्मचारी जोड़ें। वे केवल वही लीड और डील रूम देखते हैं जो आप आवंटित करते हैं — कमीशन, स्प्लिट और पेआउट उन्हें नहीं दिखता।')} ({members.length}/{max})</p>
       </div>
-      <div className="flex gap-1 border-b border-slate-200">
-        {(['members', 'control', 'activity'] as const).filter(t => t !== 'control' || canControl).map(t => <button key={t} onClick={() => setTab(t)} data-testid={`team-tab-${t}`} className={`min-h-11 px-3 py-2 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500'}`}>{t === 'members' ? tx('Members', 'सदस्य') : t === 'control' ? (isBuilder ? tx('Lead control', 'लीड कंट्रोल') : tx('Access & leads', 'पहुँच और लीड')) : tx('Activity & incentives', 'गतिविधि और इंसेंटिव')}</button>)}
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
+        {(['members', 'people', 'control', 'activity'] as const).filter(t => (t !== 'control' || canControl) && (t !== 'people' || hr)).map(t => <button key={t} onClick={() => setTab(t)} data-testid={`team-tab-${t}`} className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500'}`}>{t === 'members' ? tx('Members', 'सदस्य') : t === 'people' ? tx('Attendance & HR', 'हाज़िरी और HR') : t === 'control' ? (isBuilder ? tx('Lead control', 'लीड कंट्रोल') : tx('Access & leads', 'पहुँच और लीड')) : tx('Activity & incentives', 'गतिविधि और इंसेंटिव')}{t === 'people' && hrPending > 0 && <span className="rounded-full bg-red-600 px-1.5 text-[10px] text-white">{hrPending}</span>}</button>)}
       </div>
       {tab === 'activity' && <ActivityTab />}
+      {tab === 'people' && hr && <HrEmployer onChanged={onHr} />}
       {tab === 'control' && <TeamControl isBuilder={isBuilder} />}
       {tab === 'members' && (<>
       {toast && <div className={`rounded-lg px-3 py-2 text-xs font-medium ${toast.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{toast.msg}</div>}

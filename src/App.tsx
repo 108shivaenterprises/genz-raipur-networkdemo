@@ -643,7 +643,7 @@ export default function App() {
 
         {activeTab === 'pcontrol' && !hasPerm(permissions, 'pcontrol:manage', 'pcontrol:oversee') && hasPerm(permissions, 'pcontrol:partner') && <MyProjectsView currentUser={currentUser} onNavigate={setActiveTab} />}
 
-        {activeTab === 'team' && hasPerm(permissions, 'team:manage') && <TeamView isBuilder={currentUser.role === 'DEVELOPER_BUILDER'} canControl={['BROKER', 'DEVELOPER_BUILDER'].includes(currentUser.role)} />}
+        {activeTab === 'team' && hasPerm(permissions, 'team:manage') && <TeamView isBuilder={currentUser.role === 'DEVELOPER_BUILDER'} canControl={['BROKER', 'DEVELOPER_BUILDER'].includes(currentUser.role)} hr={['BROKER', 'DEVELOPER_BUILDER', 'CONTRACTOR'].includes(currentUser.role)} />}
 
         {activeTab === 'control' && hasPerm(permissions, 'admin:control_center') && <ControlCenter onNavigate={setActiveTab} />}
         {activeTab === 'launchdesk' && hasPerm(permissions, 'launch:manage') && <LaunchDesk />}

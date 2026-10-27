@@ -14,6 +14,7 @@ import { purgeOwnerFiles } from './ownermedia.js';
 import { purgeKyc, kycFlags } from './kycvault.js';
 import { holdKyc } from './kycretain.js';
 import { erasePhoto } from './workphotos.js';
+import { eraseHr, exportHr } from './hr.js';
 
 export const POLICY_VERSION = '2026-10-17';
 
@@ -59,6 +60,8 @@ export function createPrivacyRouter() {
       partnerChatMessages: (s.partnerThreads || []).flatMap(t => t.messages.filter(m => m.byId === u.id).map(m => ({ thread: t.id, at: m.at, text: m.text, card: m.card ? { kind: m.card.kind, label: m.card.label } : undefined }))),
       // v25: the encrypted vault is summarised (what is kept, when, and who opened it) — the number itself is never put in an export file
       kycVault: (() => { const r = s.kycVault.find(x => x.userId === u.id); return r ? { ...kycFlags(u.id), openedBy: r.views.map(v => ({ at: v.at, by: v.byName, purpose: v.purpose, reason: v.reason })) } : null; })(),
+      // v76 — his own HR record (attendance times, leave, claims, assets, statements the employer shared) — no GPS, no employer-only notes
+      hr: exportHr(s, u.id),
       auditEventsByYou: s.auditEvents.filter(e => e.actorId === u.id),
     };
     db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'DATA_EXPORT', 'User exported their personal data (DPDP access right)');
@@ -137,6 +140,7 @@ export function createPrivacyRouter() {
       purgeOwnerFiles(s, target.id); // v73: owner photos / verification papers
       purgeUserIdDocs(s, target.id); // v19: PAN / Aadhaar scans and the ID-review task
       purgeKyc(s, target.id); // v25: the encrypted full Aadhaar + address (the sealed copy kept by v74 stays in kycHolds)
+      eraseHr(s, target.id, target.name); // v76 — HR: a member's rows lose name / GPS / selfies / free text; an employer's whole HR record goes
       if (held.hold) db.appendAuditEvent(actor.id, actor.role, 'VERIFICATION', held.hold.id, 'KYC_HELD_ON_ERASURE', `KYC of ${target.id} kept sealed after erasure: ${held.hold.files.length} file(s)${held.hold.vault ? ' + vault' : ''} until ${held.hold.retainUntil.slice(0, 10)}`);
       target.autoVerifiedAt = undefined; target.autoVerifiedBy = undefined;
       for (const a of s.tier2Applications) if (a.userId === target.id) { a.panNumber = undefined; a.aadhaarLast4 = undefined; a.companyName = undefined; } // what the sponsor typed about this person

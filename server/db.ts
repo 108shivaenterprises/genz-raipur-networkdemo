@@ -256,6 +256,8 @@ export interface TeamPolicy {
   scope: 'ASSIGNED' | 'PROJECTS';
   projectIds: string[];
   onLeave: boolean;
+  /** v76 — set when an APPROVED leave (not the employer's own switch) put him on leave; the hourly sweep lifts it when the leave is over */
+  onLeaveBy?: 'LEAVE';
   /** v58 — a BROKER's staff, resale / rent work (default off): listings read-only (+ the address of the employer's own listings),
    *  the employer's client rooms, the employer's client list */
   listings?: 'OFF' | 'READ' | 'ADDRESS';
@@ -368,6 +370,53 @@ export interface SiteCheckin {
   accuracy?: number;
   selfie?: string; // small JPEG data URL; never sent in list responses
   at: string;
+}
+
+// ───────────────────────── v76 — HR for an employer's own people ─────────────────────────
+/** one row per employer: working hours, weekly off, holidays, leave days a year (see src/shared/hrRules.ts) */
+export type HrSettings = import('../src/shared/hrRules.js').HrSettingsLike & { employerId: string; updatedAt: string };
+/** one person, one Indian date. Selfies are small thumbnails and are dropped after 30 days (the row stays). */
+export interface HrAttendance {
+  id: string; employerId: string; userId: string; userName: string;
+  date: string; inAt?: string; outAt?: string; lateMin?: number;
+  inLat?: number; inLng?: number; inAcc?: number; outLat?: number; outLng?: number;
+  /** a small selfie file exists (data/hrselfies/<id>.jpg); dropped after 30 days, the row stays */
+  inSelfie?: boolean;
+  /** the employer's own mark for a day (no punch needed) */
+  manual?: 'PRESENT' | 'HALF' | 'ABSENT'; note?: string; markedBy?: string;
+}
+export interface HrLeave {
+  id: string; employerId: string; userId: string; userName: string;
+  from: string; to: string; days: number; type: 'CASUAL' | 'SICK' | 'UNPAID'; reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  createdAt: string; decidedAt?: string; decidedNote?: string;
+  /** the "on leave" switch was already applied for this leave (so the employer can switch it back by hand without the sweep undoing it) */
+  applied?: boolean;
+}
+/** the monthly goal the employer set for one person (standing — it applies every month until changed) + his fixed monthly pay (broker / builder only) */
+export interface HrTarget { id: string; employerId: string; userId: string; calls: number; visits: number; bookings: number; fixedPay?: number; updatedAt: string }
+/** a month's pay statement. Figures are frozen when it is built; the member sees it only after the employer publishes it, and never sees brokerage. */
+export interface HrStatement {
+  id: string; employerId: string; userId: string; userName: string; month: string;
+  fixed: number; incentive: number; adjustments: { label: string; amount: number }[]; net: number;
+  calls: number; visits: number; bookings: number; workingDays: number; presentDays: number;
+  /** days he did not work (absent + ½ per half day + unpaid leave) and the working days of that month — the "suggest a deduction" button uses them */
+  absentDays: number; monthWorkDays: number;
+  /** the employer typed the incentive himself: a rebuild keeps it */
+  incentiveEdited?: boolean;
+  published: boolean; publishedAt?: string; paidAt?: string; createdAt: string; updatedAt: string;
+}
+export interface HrClaim {
+  id: string; employerId: string; userId: string; userName: string;
+  date: string; kind: string; amount: number; note: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
+  createdAt: string; decidedAt?: string; decidedNote?: string; paidAt?: string;
+}
+export interface HrAsset {
+  id: string; employerId: string; userId: string; userName: string;
+  kind: string; label: string; serial?: string; givenOn: string; note?: string;
+  /** the member tapped "received" */
+  ackAt?: string; returnedOn?: string;
 }
 
 export interface ShareLink {
@@ -1549,6 +1598,13 @@ export interface DatabaseState {
   /** v16.8 — an employer's "put these units in front of my team" posts */
   inventoryPosts: import('../src/shared/inventoryRules.js').TeamPost[];
   siteCheckins: SiteCheckin[];
+  hrSettings: HrSettings[];
+  hrAttendance: HrAttendance[];
+  hrLeaves: HrLeave[];
+  hrTargets: HrTarget[];
+  hrStatements: HrStatement[];
+  hrClaims: HrClaim[];
+  hrAssets: HrAsset[];
   shareLinks: ShareLink[];
   landRecords: LandRecord[];
   growthLeads: GrowthLead[];
@@ -2769,6 +2825,7 @@ function getInitialSeedData(): DatabaseState {
     inventoryUnits: [],
     inventoryPosts: [],
     siteCheckins: [],
+    hrSettings: [], hrAttendance: [], hrLeaves: [], hrTargets: [], hrStatements: [], hrClaims: [], hrAssets: [],
     shareLinks: [],
     landRecords: [],
     growthLeads: [],
@@ -2898,6 +2955,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.inventoryUnits ||= [];
   parsed.inventoryPosts ||= [];
   parsed.siteCheckins ||= [];
+  parsed.hrSettings ||= []; parsed.hrAttendance ||= []; parsed.hrLeaves ||= []; parsed.hrTargets ||= []; parsed.hrStatements ||= []; parsed.hrClaims ||= []; parsed.hrAssets ||= [];
   parsed.shareLinks ||= [];
   parsed.landRecords ||= [];
   parsed.growthLeads ||= [];
