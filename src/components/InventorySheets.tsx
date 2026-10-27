@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { Sheet, Err, useBusy, inp, btnDark, btnLine, inr } from './CrmPlus.js';
 import {
-  FACINGS, UNIT_FEATURES, MAX_FEATURES, NOTE_MAX, featureLabel, facingLabel, roadSidesLabel, unitShareLine, inrShort, RATE_PCT_MAX,
+  FACINGS, UNIT_FEATURES, MAX_FEATURES, NOTE_MAX, featureLabel, facingLabel, roadSidesLabel, unitShareLine, inrShort, RATE_PCT_MAX, UNIT_KINDS, CODE_MAX, unitKindOf, type UnitKind,
 } from '../shared/inventoryRules.js';
 
 /** v16.8 — sheets and cards for the plot / flat grid. All text is en + hi; every control is a real button (min 36px). */
@@ -193,6 +193,23 @@ export const FactsSheet: React.FC<{ pid: string; unitIds: string[]; onClose: () 
   );
 };
 
+// ───────────────────────── set the kind of many units ─────────────────────────
+export const KindSheet: React.FC<{ pid: string; unitIds: string[]; onClose: () => void; onDone: (msg: string) => void }> = ({ pid, unitIds, onClose, onDone }) => {
+  const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const [kind, setKind] = useState<UnitKind>('FLAT');
+  const { busy, err, go } = useBusy();
+  return (
+    <Sheet title={tx(`Kind of ${unitIds.length} unit(s)`, `${unitIds.length} यूनिट का प्रकार`)} onClose={onClose}>
+      <div className="space-y-3 text-xs">
+        <p className="text-slate-600">{tx('Tell GENZ what these are, so partners can filter by it and see a rate card for each kind.', 'GENZ को बताएँ ये क्या हैं, ताकि पार्टनर इससे छाँट सकें और हर प्रकार का रेट कार्ड देख सकें।')}</p>
+        <select value={kind} onChange={e => setKind(e.target.value as UnitKind)} className={inp} data-testid="bulk-kind">{UNIT_KINDS.map(k => <option key={k.id} value={k.id}>{hi ? k.hi : k.en}</option>)}</select>
+        <Err msg={err} />
+        <button type="button" disabled={busy} onClick={() => go(() => api.invBulk(pid, { unitIds, action: 'KIND', unitKind: kind }), () => onDone(tx(`Updated ${unitIds.length} unit(s)`, `${unitIds.length} यूनिट अपडेट हुईं`)))} className={`${btnDark} w-full`}>{tx('Apply to selected', 'चुनी हुई पर लागू करें')}</button>
+      </div>
+    </Sheet>
+  );
+};
+
 // ───────────────────────── one unit — full edit ─────────────────────────
 export const UnitEditSheet: React.FC<{ unit: any; onClose: () => void; onDone: (msg: string) => void }> = ({ unit, onClose, onDone }) => {
   const tx = useTx();
@@ -201,7 +218,7 @@ export const UnitEditSheet: React.FC<{ unit: any; onClose: () => void; onDone: (
   const [f, setF] = useState({
     price: String(unit.price ?? ''), reason: '', config: unit.config || '', areaSqft: unit.areaSqft ? String(unit.areaSqft) : '',
     facing: unit.facing || '', roadSides: unit.roadSides ? String(unit.roadSides) : '', roadWidthFt: unit.roadWidthFt ? String(unit.roadWidthFt) : '',
-    dimensions: unit.dimensions || '', note: unit.note || '',
+    dimensions: unit.dimensions || '', note: unit.note || '', kind: unitKindOf(unit) as UnitKind, code: unit.code || '',
   });
   const [feats, setFeats] = useState<string[]>(unit.features || []);
   const { busy, err, go } = useBusy();
@@ -209,6 +226,8 @@ export const UnitEditSheet: React.FC<{ unit: any; onClose: () => void; onDone: (
     const b: any = {};
     if (!locked && Number(f.price) > 0 && Number(f.price) !== unit.price) { b.price = Number(f.price); if (f.reason.trim()) b.reason = f.reason.trim(); }
     if (f.config.trim() !== (unit.config || '')) b.config = f.config.trim();
+    if (f.kind !== unitKindOf(unit)) b.kind = f.kind;
+    if (f.code.trim() !== (unit.code || '')) b.code = f.code.trim() || null;
     if (f.areaSqft && Number(f.areaSqft) !== unit.areaSqft) b.areaSqft = Number(f.areaSqft);
     if (f.facing !== (unit.facing || '')) b.facing = f.facing || null;
     if (f.roadSides !== (unit.roadSides ? String(unit.roadSides) : '')) b.roadSides = f.roadSides ? Number(f.roadSides) : null;
@@ -228,7 +247,9 @@ export const UnitEditSheet: React.FC<{ unit: any; onClose: () => void; onDone: (
             <input value={f.price} disabled={locked} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, '') })} inputMode="numeric" className={`${inp} mt-1 disabled:bg-slate-100`} /></label>
           {newRate > 0 && <div className="col-span-2 -mt-1 text-[10px] text-slate-500">≈ {inr(newRate)} {tx('per sq ft', 'प्रति वर्ग फ़ुट')}</div>}
           {!locked && b.price !== undefined && <input value={f.reason} onChange={e => setF({ ...f, reason: e.target.value.slice(0, 120) })} placeholder={tx('Reason for the rate change', 'रेट बदलने का कारण')} className={`${inp} col-span-2`} />}
-          <label>{tx('Type', 'प्रकार')}<input value={f.config} onChange={e => setF({ ...f, config: e.target.value })} className={`${inp} mt-1`} /></label>
+          <label>{tx('Kind', 'प्रकार (किस्म)')}<select value={f.kind} onChange={e => setF({ ...f, kind: e.target.value as UnitKind })} className={`${inp} mt-1`} data-testid="edit-kind">{UNIT_KINDS.map(k => <option key={k.id} value={k.id}>{hi ? k.hi : k.en}</option>)}</select></label>
+          <label>{tx('Code', 'कोड')}<input value={f.code} onChange={e => setF({ ...f, code: e.target.value.slice(0, CODE_MAX) })} placeholder="GR-0001" className={`${inp} mt-1`} data-testid="edit-code" /></label>
+          <label className="col-span-2">{tx('Type (2 BHK, 3 BHK, 30x50…)', 'प्रकार (2 BHK, 3 BHK, 30x50…)')}<input value={f.config} onChange={e => setF({ ...f, config: e.target.value })} className={`${inp} mt-1`} /></label>
           <label>{tx('Area (sq ft)', 'क्षेत्रफ़ल (वर्ग फ़ुट)')}<input value={f.areaSqft} onChange={e => setF({ ...f, areaSqft: e.target.value.replace(/[^\d.]/g, '') })} inputMode="decimal" className={`${inp} mt-1`} /></label>
           <label>{tx('Road sides', 'कितनी तरफ़ सड़क')}<select value={f.roadSides} onChange={e => setF({ ...f, roadSides: e.target.value })} className={`${inp} mt-1`}><option value="">—</option>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{roadSidesLabel(n, hi)}</option>)}</select></label>
           <label>{tx('Facing', 'दिशा')}<select value={f.facing} onChange={e => setF({ ...f, facing: e.target.value })} className={`${inp} mt-1`}><option value="">—</option>{FACINGS.map(x => <option key={x.id} value={x.id}>{hi ? x.hi : x.en}</option>)}</select></label>
@@ -437,8 +458,8 @@ export const MyLinksCard: React.FC<{ refreshKey: number }> = ({ refreshKey }) =>
 };
 
 // ───────────────────────── paste a sheet ─────────────────────────
-const COLS = ['group', 'label', 'config', 'areaSqft', 'price', 'floor', 'facing', 'roadSides', 'roadWidthFt', 'dimensions', 'features', 'note'];
-const TEMPLATE = `${COLS.join(',')}\nPhase 1,P-101,Plot,1500,2550000,,East,3,30,30 x 50 ft,Corner;Vastu-friendly,Corner plot near the park\nPhase 1,P-102,Plot,1200,1980000,,North,2,24,30 x 40 ft,Park facing,`;
+const COLS = ['group', 'label', 'kind', 'code', 'config', 'areaSqft', 'price', 'floor', 'facing', 'roadSides', 'roadWidthFt', 'dimensions', 'features', 'note'];
+const TEMPLATE = `${COLS.join(',')}\nPhase 1,P-101,Plot,GR-0101,Plot,1500,2550000,,East,3,30,30 x 50 ft,Corner;Vastu-friendly,Corner plot near the park\nPhase 1,P-102,Plot,GR-0102,Plot,1200,1980000,,North,2,24,30 x 40 ft,Park facing,\nTower A,A-1501,Penthouse,GR-0201,4 BHK,2600,21000000,15,East,,,,Terrace;Penthouse,Top floor\nPhase 2,V-7,Villa,GR-0301,3 BHK,1800,9500000,,North,2,30,40 x 50 ft,,Independent house`;
 
 function parseSheet(text: string): any[] {
   const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim());
@@ -464,7 +485,7 @@ export const ImportCard: React.FC<{ pid: string; onDone: (msg: string) => void }
   const download = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([TEMPLATE], { type: 'text/csv' })); a.download = 'genz-units-template.csv'; a.click(); URL.revokeObjectURL(a.href); };
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 text-xs">
-      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between text-left text-sm font-bold">{tx('Add / update many plots from a sheet', 'शीट से कई प्लॉट जोड़ें / अपडेट करें')}<span className="text-slate-400">{open ? '–' : '+'}</span></button>
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between text-left text-sm font-bold">{tx('Add / update many units from a sheet', 'शीट से कई यूनिट जोड़ें / अपडेट करें')}<span className="text-slate-400">{open ? '–' : '+'}</span></button>
       {open && (
         <div className="mt-3 space-y-2">
           <p className="text-slate-600">{tx('Copy rows from Excel / Google Sheets (with the header row) and paste here. Existing labels are updated (rate, size, features) unless they are held or booked; new labels are added. If any row is wrong, nothing is saved.', 'Excel / Google Sheets से हेडर समेत रो कॉपी करके यहाँ पेस्ट करें। जो लेबल पहले से हैं उनका रेट/साइज़/खूबियाँ अपडेट होंगी (होल्ड/बुक को छोड़कर); नए लेबल जुड़ेंगे। कोई रो गलत हो तो कुछ भी सेव नहीं होता।')}</p>

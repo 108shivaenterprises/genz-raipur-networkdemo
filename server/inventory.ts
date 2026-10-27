@@ -25,6 +25,7 @@ import { validateSlabs, slabProgress, leaderPoints, type CpSlab } from '../src/s
 import { actorFor, unitsFor, seenBy, shapeUnit, type Actor } from './invaccess.js';
 import {
   cleanUnitDetail, cleanVis, effectiveVis, partnerMaySee, validateRule, parseFeature, parseFacing, previewRateChange, PRICE_HISTORY_KEEP, PRICE_MAX, DEFAULT_VIS, MAX_FEATURES, type UnitVis,
+  UNIT_KIND_IDS, unitKindOf, isFloorWise, parseUnitKind, cleanCode, codeClash, nextCodes, kindLabel,
 } from '../src/shared/inventoryRules.js';
 
 export const MAX_UNITS_PER_PROJECT = 1000;
@@ -46,8 +47,11 @@ export function sweepHolds(now = Date.now()): number {
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
-export const findUnit = (projectId: string, label: string) =>
-  db.getState().inventoryUnits.find(u => u.projectId === projectId && norm(u.label) === norm(label));
+/** a unit is found by its number (label) — and, failing that, by its inventory code, so a booking that names the code still meets the grid */
+export const findUnit = (projectId: string, label: string) => {
+  const all = db.getState().inventoryUnits.filter(u => u.projectId === projectId);
+  return all.find(u => norm(u.label) === norm(label)) || (label.trim() ? all.find(u => !!u.code && norm(u.code) === norm(label)) : undefined);
+};
 
 /** Called by the CRM before a booking request is accepted. */
 export function checkBookingUnit(project: BuilderProject, unitNo: string, brokerId: string): { ok: true; unit?: InventoryUnit } | { ok: false; error: string } {
@@ -77,18 +81,28 @@ export function unitBookingDecided(projectId: string, unitNo: string, bookingId:
 }
 
 const generateSchema = z.object({
-  kind: z.enum(['TOWER', 'PLOTS']),
+  /** the old way to say it: TOWER = floor-wise flats, PLOTS = serial plots. Still accepted; `unitKind` says it better. */
+  kind: z.enum(['TOWER', 'PLOTS']).optional(),
+  /** v77 — what is being made: flat, penthouse, duplex, villa / independent house, plot, shop, office, other */
+  unitKind: z.enum(UNIT_KIND_IDS).optional(),
   group: z.string().trim().min(1).max(30),
   prefix: z.string().trim().max(8).default(''),
+  /** first floor number of a floor-wise set (a penthouse block may start at 15; shops at 0 = ground) */
+  startFloor: z.number().int().min(0).max(200).default(1),
   floors: z.number().int().min(1).max(60).default(1),
   perFloor: z.number().int().min(1).max(40),
   config: z.string().trim().max(60).default(''),
   areaSqft: z.number().positive().max(1_000_000).optional(),
-  basePrice: z.number().positive().max(100_000_000_000),
+  basePrice: z.number().positive().max(100_000_000_000).optional(),
+  /** v77 — or the rate per sq ft: every unit's price = rate × area */
+  ratePerSqft: z.number().positive().max(1_000_000).optional(),
   floorRise: z.number().min(0).max(100_000_000).default(0),
+  /** v77 — GR → GR-0001, GR-0002… */
+  codePrefix: z.string().trim().max(10).regex(/^[A-Za-z0-9]*$/, 'A code prefix can have letters and digits only').optional(),
 });
 
 const patchSchema = z.object({
+  kind: z.enum(UNIT_KIND_IDS).optional(),
   status: z.enum(['AVAILABLE', 'RESERVED']).optional(),
   price: z.number().positive().max(PRICE_MAX).optional(),
   config: z.string().trim().max(60).optional(),
@@ -123,6 +137,7 @@ export function applyDetail<T extends Partial<InventoryUnit>>(unit: T, detail: R
 const importRowSchema = z.object({
   group: z.string().trim().min(1).max(30),
   label: z.string().trim().min(1).max(20),
+  kind: z.enum(UNIT_KIND_IDS).optional(),
   config: z.string().trim().max(60).default(''),
   areaSqft: z.number().positive().max(1_000_000).optional(),
   price: z.number().positive().max(PRICE_MAX),
@@ -205,19 +220,31 @@ export function createInventoryRouter() {
     const detail = cleanUnitDetail(req.body || {});
     if (typeof detail === 'string') return res.status(400).json({ error: detail });
     const d = parsed.data; const st = db.getState();
+    const unitKind = d.unitKind ?? (d.kind === 'PLOTS' ? 'PLOT' : d.kind === 'TOWER' ? 'FLAT' : undefined);
+    if (!unitKind) return res.status(400).json({ error: 'Pick what you are creating (flat, plot, villa…)' });
+    // floor-wise kinds (flat, penthouse, duplex, shop, office) are numbered A-101; the rest serially P-12
+    const byFloor = isFloorWise(unitKind);
+    const unitPrice = (f: number) => {
+      const base = d.basePrice ?? (d.ratePerSqft && d.areaSqft ? d.ratePerSqft * d.areaSqft : 0);
+      return Math.round(base + (f - d.startFloor) * d.floorRise);
+    };
+    if (!d.basePrice && !(d.ratePerSqft && d.areaSqft)) return res.status(400).json({ error: 'Give the base price — or the rate per sq ft together with the area' });
+    if (unitPrice(d.startFloor) < 1) return res.status(400).json({ error: 'The price must be above zero' });
     const existing = st.inventoryUnits.filter(x => x.projectId === p.id);
-    const floors = d.kind === 'PLOTS' ? 1 : d.floors;
+    const floors = byFloor ? d.floors : 1;
     if (existing.length + floors * d.perFloor > MAX_UNITS_PER_PROJECT) return res.status(409).json({ error: `A project can have at most ${MAX_UNITS_PER_PROJECT} units` });
+    const codes = d.codePrefix ? nextCodes(existing.map(x => x.code), d.codePrefix, floors * d.perFloor) : [];
     const made: InventoryUnit[] = [];
-    for (let f = 1; f <= floors; f++) for (let n = 1; n <= d.perFloor; n++) {
-      const label = d.kind === 'PLOTS' ? `${d.prefix}${n}` : `${d.prefix}${f}${String(n).padStart(2, '0')}`;
+    for (let i = 0; i < floors; i++) for (let n = 1; n <= d.perFloor; n++) {
+      const f = d.startFloor + i;
+      const label = byFloor ? `${d.prefix}${f}${String(n).padStart(2, '0')}` : `${d.prefix}${n}`;
       if (existing.some(x => norm(x.label) === norm(label) && norm(x.group) === norm(d.group)) || made.some(x => norm(x.label) === norm(label))) {
         return res.status(409).json({ error: `Unit ${label} already exists in ${d.group}` });
       }
       made.push({
         id: `UNIT-${p.id}-${d.group.replace(/\W+/g, '').slice(0, 6)}-${label}`.replace(/\s+/g, ''),
-        projectId: p.id, builderId: p.builderId, group: d.group, label, floor: d.kind === 'TOWER' ? f : undefined,
-        config: d.config, areaSqft: d.areaSqft, price: Math.round(d.basePrice + (f - 1) * d.floorRise), status: 'AVAILABLE', updatedAt: nowIso(),
+        projectId: p.id, builderId: p.builderId, group: d.group, label, kind: unitKind, ...(codes.length ? { code: codes[made.length] } : {}), floor: byFloor ? f : undefined,
+        config: d.config, areaSqft: d.areaSqft, price: unitPrice(f), status: 'AVAILABLE', updatedAt: nowIso(),
         ...applyDetail({}, detail),
       });
     }
@@ -227,7 +254,7 @@ export function createInventoryRouter() {
     st.inventoryUnits.push(...made);
     p.availableUnits = Math.max(p.availableUnits, 0);
     db.save();
-    audit('SYSTEM', p.id, 'INVENTORY_GENERATED', `${u.name} added ${made.length} units to ${p.projectName} (${d.group})`);
+    audit('SYSTEM', p.id, 'INVENTORY_GENERATED', `${u.name} added ${made.length} ${kindLabel(unitKind, false).toLowerCase()} unit(s) to ${p.projectName} (${d.group})`);
     res.json({ success: true, added: made.length });
   });
 
@@ -239,6 +266,14 @@ export function createInventoryRouter() {
     const detail = cleanUnitDetail(req.body || {});
     if (typeof detail === 'string') return res.status(400).json({ error: detail });
     const project = db.byId('builderProjects', unit.projectId)!;
+    // v77 — the builder's own code for this unit (unique in the project) and what kind of unit it is
+    let code: string | null | undefined;
+    if (req.body?.code !== undefined) {
+      const c = cleanCode(req.body.code);
+      if (c !== null && typeof c === 'object') return res.status(400).json({ error: c.error });
+      if (c !== null && codeClash(db.getState().inventoryUnits.filter(x => x.projectId === unit.projectId), c, unit.id)) return res.status(409).json({ error: `Code ${c} is already used by another unit of this project` });
+      code = c;
+    }
     let vis: UnitVis | null | undefined;
     if (req.body?.vis !== undefined) {
       if (req.body.vis === null) vis = null; // back to the project default
@@ -259,6 +294,8 @@ export function createInventoryRouter() {
     }
     if (p.data.config !== undefined) unit.config = p.data.config;
     if (p.data.areaSqft !== undefined) unit.areaSqft = p.data.areaSqft;
+    if (p.data.kind !== undefined) unit.kind = p.data.kind;
+    if (code !== undefined) { if (code === null) delete unit.code; else unit.code = code; }
     applyDetail(unit, detail);
     if (vis !== undefined) { if (vis === null) delete unit.vis; else unit.vis = vis; }
     unit.updatedAt = nowIso(); db.save();
@@ -281,7 +318,7 @@ export function createInventoryRouter() {
       if (picked.length !== ids.size) return res.status(400).json({ error: 'Some units are not part of this project' });
     } else if (b.filter && typeof b.filter === 'object') {
       const f = b.filter;
-      picked = st.inventoryUnits.filter(x => x.projectId === p.id && (!f.group || x.group === f.group) && (!f.status || x.status === f.status) && (!f.config || x.config === f.config));
+      picked = st.inventoryUnits.filter(x => x.projectId === p.id && (!f.group || x.group === f.group) && (!f.status || x.status === f.status) && (!f.config || x.config === f.config) && (!f.kind || unitKindOf(x) === f.kind));
       if (picked.length === 0) return res.status(400).json({ error: 'No unit matches this selection' });
     } else return res.status(400).json({ error: 'Pick the units first' });
 
@@ -340,6 +377,13 @@ export function createInventoryRouter() {
       audit('SYSTEM', p.id, 'INVENTORY_FEATURES_SET', `${u.name} updated property facts on ${picked.length} unit(s) of ${p.projectName}`);
       return res.json({ success: true, applied: picked.length });
     }
+    if (action === 'KIND') {
+      if (!UNIT_KIND_IDS.includes(b.unitKind)) return res.status(400).json({ error: 'Pick a valid kind of unit' });
+      for (const unit of picked) { unit.kind = b.unitKind; unit.updatedAt = at; }
+      db.save();
+      audit('SYSTEM', p.id, 'INVENTORY_UNIT_UPDATED', `${u.name} set ${picked.length} unit(s) of ${p.projectName} to ${kindLabel(b.unitKind, false)}`);
+      return res.json({ success: true, applied: picked.length });
+    }
     if (action === 'STATUS') {
       if (!['AVAILABLE', 'RESERVED'].includes(b.status)) return res.status(400).json({ error: 'Status must be AVAILABLE or RESERVED' });
       let n = 0;
@@ -388,10 +432,22 @@ export function createInventoryRouter() {
     const st = db.getState(); const at = nowIso();
     const existing = st.inventoryUnits.filter(x => x.projectId === p.id);
     const errors: { row: number; error: string }[] = [];
-    const plan: { row: any; detail: Record<string, unknown>; unit?: InventoryUnit; features?: string[] }[] = [];
-    const seen = new Set<string>();
+    const plan: { row: any; detail: Record<string, unknown>; unit?: InventoryUnit; features?: string[]; code?: string }[] = [];
+    const seen = new Set<string>(); const seenCodes = new Set<string>();
     rows.forEach((raw: any, i: number) => {
+      // v77 — "kind" may be written the way people write it (flat, Penthouse, independent house, प्लॉट…) and "code" is the builder's own inventory code
+      const kindWord = raw.kind === undefined || String(raw.kind).trim() === '' ? undefined : parseUnitKind(raw.kind);
+      if (raw.kind !== undefined && String(raw.kind).trim() !== '' && !kindWord) { errors.push({ row: i + 1, error: `Unknown kind "${String(raw.kind).slice(0, 30)}" — use flat, penthouse, duplex, villa, plot, shop, office or other` }); return; }
+      let code: string | undefined;
+      if (raw.code !== undefined && String(raw.code).trim() !== '') {
+        const c = cleanCode(raw.code);
+        if (c !== null && typeof c === 'object') { errors.push({ row: i + 1, error: c.error }); return; }
+        code = c as string;
+        if (seenCodes.has(norm(code))) { errors.push({ row: i + 1, error: `Code ${code} appears twice in this sheet` }); return; }
+        seenCodes.add(norm(code));
+      }
       const parsed = importRowSchema.safeParse({
+        kind: kindWord,
         group: raw.group, label: String(raw.label ?? ''), config: raw.config ?? '', price: Number(raw.price),
         areaSqft: raw.areaSqft === undefined || raw.areaSqft === '' ? undefined : Number(raw.areaSqft),
         floor: raw.floor === undefined || raw.floor === '' ? undefined : Number(raw.floor),
@@ -409,7 +465,11 @@ export function createInventoryRouter() {
       seen.add(key);
       const unit = existing.find(x => norm(x.label) === key);
       if (unit && (unit.status === 'BOOKED' || unit.status === 'HOLD')) { errors.push({ row: i + 1, error: `${unit.label} is ${unit.status.toLowerCase()} — its details are locked` }); return; }
-      plan.push({ row: parsed.data, detail, unit });
+      if (code) {
+        const other = codeClash(existing, code, unit?.id);
+        if (other) { errors.push({ row: i + 1, error: `Code ${code} already belongs to ${other.label}` }); return; }
+      }
+      plan.push({ row: parsed.data, detail, unit, code });
     });
     if (errors.length) return res.status(400).json({ error: `${errors.length} row(s) need fixing — nothing was saved`, errors: errors.slice(0, 20) });
     const fresh = plan.filter(x => !x.unit).length;
@@ -419,11 +479,13 @@ export function createInventoryRouter() {
       if (x.unit) {
         if (x.row.price !== x.unit.price) { x.unit.priceHistory = [{ price: x.row.price, at, by: u.name, reason: 'Sheet import' }, ...(x.unit.priceHistory || [])].slice(0, PRICE_HISTORY_KEEP); x.unit.price = x.row.price; }
         x.unit.config = x.row.config || x.unit.config; if (x.row.areaSqft) x.unit.areaSqft = x.row.areaSqft;
+        if (x.row.kind) x.unit.kind = x.row.kind; if (x.code) x.unit.code = x.code;
         applyDetail(x.unit, x.detail); x.unit.updatedAt = at; updated++;
       } else {
         const unit: InventoryUnit = {
           id: `UNIT-${p.id}-${x.row.group.replace(/\W+/g, '').slice(0, 6)}-${x.row.label}`.replace(/\s+/g, ''),
-          projectId: p.id, builderId: p.builderId, group: x.row.group, label: x.row.label, floor: x.row.floor, config: x.row.config, areaSqft: x.row.areaSqft,
+          projectId: p.id, builderId: p.builderId, group: x.row.group, label: x.row.label, kind: x.row.kind ?? unitKindOf({ floor: x.row.floor }), ...(x.code ? { code: x.code } : {}),
+          floor: x.row.floor, config: x.row.config, areaSqft: x.row.areaSqft,
           price: x.row.price, status: 'AVAILABLE', updatedAt: at,
         };
         applyDetail(unit, x.detail); st.inventoryUnits.push(unit); created++;

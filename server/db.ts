@@ -33,14 +33,30 @@ import { DEMO_MODE, DEMO_PASSWORD, IS_PROD, hashPassword, unusablePasswordHash, 
 // Supported User Roles (single definition lives in permissions.ts)
 export type { UserRole } from './permissions.js';
 
+/** v77 — one line in a person's notification bell (the same words that went to his phone; Hindi kept when we have it) */
+export type InboxItem = import('../src/shared/inboxRules.js').InboxItem;
+
 export interface ProjectCollateral {
   id: string;
   title: string;
   kind: 'BROCHURE' | 'PRICE_LIST' | 'PAYMENT_PLAN' | 'RERA' | 'LAYOUT' | 'OTHER';
   url: string;
-  /** ASSOCIATES = appointed partners only; ALL_CPS = any verified broker who can see the project */
-  audience: 'ASSOCIATES' | 'ALL_CPS';
+  /** ASSOCIATES = appointed partners only; ALL_CPS = any verified broker who can see the project; SELECTED (v77) = only the partners named in `brokerIds`, personally */
+  audience: 'ASSOCIATES' | 'ALL_CPS' | 'SELECTED';
+  brokerIds?: string[];
+  /** v77 — how far the partner may pass it on: NONE = for him alone; TEAM = he may show it to his own team; CLIENT = his team may also send it to clients / customers (a tracked page) */
+  passOn?: 'NONE' | 'TEAM' | 'CLIENT';
+  /** v77 — a line from the builder ("rates valid till 30 Nov — do not forward the PDF") */
+  note?: string;
   addedAt: string;
+}
+
+/** v77 — a broker's "show these project papers to my team" post (the builder's `passOn` is the ceiling; `allowClient` lets the team send them to clients) */
+export interface DocPost {
+  id: string; employerId: string; projectId: string;
+  docIds: string[]; memberIds: string[];            // memberIds empty = the whole team
+  allowClient: boolean; note: string;
+  createdBy: string; createdByName: string; createdAt: string; active: boolean;
 }
 
 /** Builder → partners notice board (offers, price changes, launches) */
@@ -331,7 +347,11 @@ export interface InventoryUnit {
   projectId: string;
   builderId: string;
   group: string; // tower / layout block
-  label: string; // A-101, P-12
+  label: string; // A-101, P-12 (the unit number — unique in the project; bookings refer to it)
+  /** v77 — what it is: flat, penthouse, duplex, villa / independent house, plot, shop, office, other (old units: a flat if it has a floor, else a plot) */
+  kind?: import('../src/shared/inventoryRules.js').UnitKind;
+  /** v77 — the builder's own inventory code (GR-0001, Khasra 123/4…); unique in the project; a booking may name the unit by it too */
+  code?: string;
   floor?: number;
   config: string;
   areaSqft?: number;
@@ -422,8 +442,10 @@ export interface HrAsset {
 export interface ShareLink {
   token: string;
   ownerId: string;
-  kind: 'PROJECT' | 'PROPERTY' | 'UNITS';
+  kind: 'PROJECT' | 'PROPERTY' | 'UNITS' | 'DOC';
   refId: string;
+  /** v77 — DOC links: the project paper (refId = project id) */
+  docId?: string;
   /** v16.8 — UNITS links: the chosen units and what the customer may see (refId = project id) */
   unitIds?: string[];
   showPrice?: boolean;
@@ -1604,6 +1626,8 @@ export interface DatabaseState {
   inventoryUnits: InventoryUnit[];
   /** v16.8 — an employer's "put these units in front of my team" posts */
   inventoryPosts: import('../src/shared/inventoryRules.js').TeamPost[];
+  /** v77 — a broker's "show these project papers to my team" posts */
+  docPosts: DocPost[];
   siteCheckins: SiteCheckin[];
   hrSettings: HrSettings[];
   hrAttendance: HrAttendance[];
@@ -1651,6 +1675,8 @@ export interface DatabaseState {
   ownerConsents: OwnerConsent[];
   pushSubs: PushSub[];
   pushPrefs: PushPref[];
+  /** v77 — the bell: a copy of every alert told to a person, so he can read it (and clear it) inside the app too */
+  inbox: InboxItem[];
   broadcasts: Broadcast[];
   peerConfirms: PeerConfirm[];
   /** v29 — buyer ↔ broker bonds per property (who brought this buyer first) */
@@ -2831,6 +2857,7 @@ function getInitialSeedData(): DatabaseState {
     targetBonusPayouts: [],
     inventoryUnits: [],
     inventoryPosts: [],
+    docPosts: [],
     siteCheckins: [],
     hrSettings: [], hrAttendance: [], hrLeaves: [], hrTargets: [], hrStatements: [], hrClaims: [], hrAssets: [],
     shareLinks: [],
@@ -2839,7 +2866,7 @@ function getInitialSeedData(): DatabaseState {
     resetRequests: [],
     privacyRequests: [],
     connectorReferrals: [],
-    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
   };
 }
 
@@ -2961,6 +2988,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.targetBonusPayouts ||= [];
   parsed.inventoryUnits ||= [];
   parsed.inventoryPosts ||= [];
+  parsed.docPosts ||= [];
   parsed.siteCheckins ||= [];
   parsed.hrSettings ||= []; parsed.hrAttendance ||= []; parsed.hrLeaves ||= []; parsed.hrTargets ||= []; parsed.hrStatements ||= []; parsed.hrClaims ||= []; parsed.hrAssets ||= [];
   parsed.shareLinks ||= [];
@@ -2969,7 +2997,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
+  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'inbox', 'broadcasts', 'peerConfirms', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
   (parsed as any).ownerListCfg = { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON', ...((parsed as any).ownerListCfg || {}) };
   (parsed as any).legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...((parsed as any).legalSettings || {}) };
   // v11: listings created before freshness tracking start their 30-day clock now (nothing expires on upgrade)

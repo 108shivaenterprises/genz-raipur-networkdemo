@@ -19,7 +19,8 @@ import type { UserProfile, ShareLink } from './db.js';
 import { ctx, needs, rateLimit, digits } from './auth.js';
 import { actorFor, seenBy } from './invaccess.js';
 import { policyOf } from '../src/shared/pcontrolRules.js';
-import { impliedFeatures, featureLabel, facingLabel, roadSidesLabel } from '../src/shared/inventoryRules.js';
+import { docAccessFor } from './projdocs.js';
+import { impliedFeatures, featureLabel, facingLabel, roadSidesLabel, kindWord } from '../src/shared/inventoryRules.js';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
@@ -90,6 +91,7 @@ export function createShareRouter() {
     const links = st.shareLinks.filter(l => l.ownerId === u.id).map(l => {
       const title = l.kind === 'PROJECT' ? db.byId('builderProjects', l.refId)?.projectName
         : l.kind === 'UNITS' ? `${db.byId('builderProjects', l.refId)?.projectName || l.refId} · ${(l.unitIds || []).length} unit(s)`
+        : l.kind === 'DOC' ? `${db.byId('builderProjects', l.refId)?.projectName || l.refId} · ${(db.byId('builderProjects', l.refId)?.collateral || []).find(c => c.id === l.docId)?.title || 'paper'}`
         : db.byId('properties', l.refId)?.title;
       return { token: l.token, kind: l.kind, refId: l.refId, title: title || l.refId, clientLabel: l.clientLabel, lang: l.lang, createdAt: l.createdAt, views: l.views, lastViewAt: l.lastViewAt, seconds: l.seconds, revoked: !!l.revoked };
     }).sort((a, b) => (b.lastViewAt || b.createdAt).localeCompare(a.lastViewAt || a.createdAt));
@@ -124,8 +126,8 @@ export function createShareRouter() {
 // ───────────────────────── public pages ─────────────────────────
 const seen = new Map<string, number>();
 const T = {
-  en: { price: 'Price', config: 'Configurations', amen: 'Amenities', loc: 'Location', plans: 'Plans & pricing', over: 'Overview', call: 'Call', wa: 'WhatsApp', rera: 'RERA', by: 'Shared by', unavailable: 'This link is no longer active.', note: 'Information is indicative. Please verify RERA registration and all approvals before booking.', from: 'Starting from', stage: 'Stage', possession: 'Completion target', area: 'Area', type: 'Type', units: 'Available now', onReq: 'Price on request', gone: 'were sold or are on hold since this link was made', none: 'These units are no longer available. Ask for the current list.', size: 'Size' },
-  hi: { price: 'कीमत', config: 'विकल्प', amen: 'सुविधाएँ', loc: 'लोकेशन', plans: 'प्लान और कीमत', over: 'विवरण', call: 'कॉल', wa: 'व्हाट्सऐप', rera: 'रेरा', by: 'भेजने वाले', unavailable: 'यह लिंक अब सक्रिय नहीं है।', note: 'जानकारी संकेतात्मक है। बुकिंग से पहले रेरा पंजीयन और सभी अनुमतियाँ जाँच लें।', from: 'शुरुआती कीमत', stage: 'चरण', possession: 'पूर्णता लक्ष्य', area: 'क्षेत्रफल', type: 'प्रकार', units: 'अभी उपलब्ध', onReq: 'कीमत पूछें', gone: 'इस लिंक के बाद बिक गईं या होल्ड पर हैं', none: 'ये यूनिट अब उपलब्ध नहीं हैं। ताज़ा सूची माँगें।', size: 'साइज़' },
+  en: { price: 'Price', config: 'Configurations', amen: 'Amenities', loc: 'Location', plans: 'Plans & pricing', over: 'Overview', call: 'Call', wa: 'WhatsApp', rera: 'RERA', by: 'Shared by', unavailable: 'This link is no longer active.', note: 'Information is indicative. Please verify RERA registration and all approvals before booking.', from: 'Starting from', stage: 'Stage', possession: 'Completion target', area: 'Area', type: 'Type', units: 'Available now', onReq: 'Price on request', gone: 'were sold or are on hold since this link was made', none: 'These units are no longer available. Ask for the current list.', size: 'Size', doc: 'Document', openDoc: 'Open the document' },
+  hi: { price: 'कीमत', config: 'विकल्प', amen: 'सुविधाएँ', loc: 'लोकेशन', plans: 'प्लान और कीमत', over: 'विवरण', call: 'कॉल', wa: 'व्हाट्सऐप', rera: 'रेरा', by: 'भेजने वाले', unavailable: 'यह लिंक अब सक्रिय नहीं है।', note: 'जानकारी संकेतात्मक है। बुकिंग से पहले रेरा पंजीयन और सभी अनुमतियाँ जाँच लें।', from: 'शुरुआती कीमत', stage: 'चरण', possession: 'पूर्णता लक्ष्य', area: 'क्षेत्रफल', type: 'प्रकार', units: 'अभी उपलब्ध', onReq: 'कीमत पूछें', gone: 'इस लिंक के बाद बिक गईं या होल्ड पर हैं', none: 'ये यूनिट अब उपलब्ध नहीं हैं। ताज़ा सूची माँगें।', size: 'साइज़', doc: 'दस्तावेज़', openDoc: 'दस्तावेज़ खोलें' },
 } as const;
 
 function pageShell(title: string, desc: string, image: string | undefined, body: string, token?: string) {
@@ -190,7 +192,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     }
 
     // content
-    let title = ''; let sub = ''; let image: string | undefined; let overview = ''; let plans = ''; let location = '';
+    let title = ''; let sub = ''; let image: string | undefined; let overview = ''; let plans = ''; let location = ''; let plansHead: string = t.plans;
     if (l.kind === 'UNITS') {
       const a = actorFor(owner, l.refId);
       if (!a || a.project.status === 'ARCHIVED') return gone();
@@ -209,13 +211,23 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
           const fc = facingLabel(x.facing, hi); if (fc) chips.push(`${fc} ${hi ? 'मुखी' : 'facing'}`);
           for (const f of impliedFeatures(x)) chips.push(featureLabel(f, hi));
         }
-        const facts = [x.config, x.areaSqft ? `${x.areaSqft} ${hi ? 'वर्ग फ़ुट' : 'sq ft'}` : '', x.dimensions].filter(Boolean).map(esc).join(' · ');
+        const facts = [kindWord(x.kind, x.config, hi), x.config, x.areaSqft ? `${x.areaSqft} ${hi ? 'वर्ग फ़ुट' : 'sq ft'}` : '', x.dimensions].filter(Boolean).map(esc).join(' · ');
         cards.push(`<div style="padding:10px 0;border-bottom:1px solid #eee"><div style="display:flex;justify-content:space-between;gap:12px"><b>${esc(x.label)}${x.group ? ` <span style="font-weight:400;color:#666;font-size:12px">${esc(x.group)}</span>` : ''}</b><b>${showP ? inr(x.price) : (l.showPrice ? t.onReq : '')}</b></div>${facts ? `<div style="font-size:13px;color:#444;margin-top:2px">${facts}</div>` : ''}${chips.length ? `<div class="tags">${chips.map(c => `<span>${esc(c)}</span>`).join('')}</div>` : ''}${showF && x.note ? `<div style="font-size:12px;color:#555;margin-top:4px">${esc(x.note)}</div>` : ''}</div>`);
       }
       overview = `<div class="row"><span>${t.type}</span><b>${esc(p.projectType)}</b></div><div class="row"><span>${t.stage}</span><b>${esc(p.projectStage)}</b></div><div class="row"><span>${t.possession}</span><b>${esc(p.completionTarget)}</b></div>${p.reraNumber ? `<div class="row"><span>${t.rera}</span><b>${esc(p.reraNumber)}</b></div>` : ''}`;
       plans = (cards.length ? `<div style="font-size:12px;color:#666;margin-bottom:2px">${t.units} (${cards.length})</div>${cards.join('')}` : `<p style="font-size:14px;margin:0">${t.none}</p>`)
         + (off && cards.length ? `<p class="small">${off} ${t.gone}.</p>` : '');
       location = `<div class="row"><span>${t.loc}</span><b>${esc(p.locality)}, ${esc(p.city)}</b></div><div class="tags">${(p.amenities || []).map(c => `<span>${esc(c)}</span>`).join('')}</div>`;
+    } else if (l.kind === 'DOC') {
+      // v77 — one project paper, sent by a partner or his team. It is valid only while the builder still lets it go to clients and the partnership runs.
+      const p = db.byId('builderProjects', l.refId);
+      const doc = p && (p.collateral || []).find(c => c.id === l.docId);
+      if (!p || !doc || !docAccessFor(owner, p, doc).client) return gone();
+      title = p.projectName; sub = doc.title; image = p.images?.find(i => /^https:\/\//.test(i));
+      overview = `<div class="row"><span>${t.type}</span><b>${esc(p.projectType)}</b></div><div class="row"><span>${t.stage}</span><b>${esc(p.projectStage)}</b></div>${p.reraNumber ? `<div class="row"><span>${t.rera}</span><b>${esc(p.reraNumber)}</b></div>` : ''}`;
+      plansHead = t.doc;
+      plans = `<p style="font-size:15px;margin:0 0 10px"><b>${esc(doc.title)}</b></p><div class="btns"><a class="call" href="${esc(doc.url)}" target="_blank" rel="noopener noreferrer">${t.openDoc}</a></div>`;
+      location = `<div class="row"><span>${t.loc}</span><b>${esc(p.locality)}, ${esc(p.city)}</b></div>`;
     } else if (l.kind === 'PROJECT') {
       const p = db.byId('builderProjects', l.refId);
       if (!p || p.status === 'ARCHIVED') return gone();
@@ -250,7 +262,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     const body = `<div class="hero" data-sec="overview"><h1>${esc(title)}</h1><p>${esc(sub)}</p></div>
 ${image ? `<div class="imgs"><img src="${esc(image)}" alt="" loading="lazy"></div>` : ''}
 <div class="card" data-sec="overview"><h2>${t.over}</h2>${overview}</div>
-<div class="card" data-sec="plans"><h2>${t.plans}</h2>${plans}</div>
+<div class="card" data-sec="plans"><h2>${plansHead}</h2>${plans}</div>
 <div class="card" data-sec="location"><h2>${t.loc} · ${t.amen}</h2>${location}</div>
 <div class="card"><div class="broker">${b.logo ? `<img src="${esc(b.logo)}" alt="">` : ''}<div><div class="small" style="margin:0">${t.by}</div><b>${esc(b.displayName)}</b>${b.company ? `<div style="font-size:13px">${esc(b.company)}</div>` : ''}${b.reraId ? `<div style="font-size:12px;color:#555">${t.rera}: ${esc(b.reraId)}</div>` : ''}${b.tagline ? `<div style="font-size:12px;color:#555">${esc(b.tagline)}</div>` : ''}</div></div>
 <div class="btns"><a class="call" href="tel:+91${esc(b.phone)}">${t.call}</a><a class="wa" href="${esc(wa)}">${t.wa}</a></div></div>

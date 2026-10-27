@@ -21,7 +21,8 @@ import { Router, type Request, type Response, type RequestHandler } from 'expres
 import { z } from 'zod';
 import { lockTargetTerms } from './targetbonus.js';
 import { db } from './db.js';
-import type { UserProfile, SalesAssociateMandate, BuilderProject, ProjectShortlist } from './db.js';
+import type { UserProfile, SalesAssociateMandate, BuilderProject, ProjectShortlist, ProjectCollateral } from './db.js';
+import { docInputProblem, docVisibleToBroker, passOf, MAX_DOC_PARTNERS } from '../src/shared/docRules.js';
 import { ctx, needs, rateLimit, isSafeUrl, digits } from './auth.js';
 import { isAdmin, isSuper } from './access.js';
 import { registerLead, leadCreateSchema } from './crm.js';
@@ -96,8 +97,20 @@ const collateralSchema = z.object({
   title: z.string().trim().min(2).max(100),
   kind: z.enum(['BROCHURE', 'PRICE_LIST', 'PAYMENT_PLAN', 'RERA', 'LAYOUT', 'OTHER']).default('OTHER'),
   url: z.string().max(2048).refine(isSafeUrl, 'Only http(s) links are allowed'),
-  audience: z.enum(['ASSOCIATES', 'ALL_CPS']).default('ASSOCIATES'),
+  audience: z.enum(['ASSOCIATES', 'ALL_CPS', 'SELECTED']).default('ASSOCIATES'),
+  /** v77 — SELECTED: the partners who get this paper personally */
+  brokerIds: z.array(z.string().min(1).max(60)).max(MAX_DOC_PARTNERS).optional(),
+  /** v77 — how far the partner may pass it: NONE (default) = him alone, TEAM = his team may read it, CLIENT = his team may send it to clients */
+  passOn: z.enum(['NONE', 'TEAM', 'CLIENT']).default('NONE'),
+  note: z.string().trim().max(200).optional(),
 });
+const collateralPatch = z.object({
+  title: z.string().trim().min(2).max(100).optional(),
+  audience: z.enum(['ASSOCIATES', 'ALL_CPS', 'SELECTED']).optional(),
+  brokerIds: z.array(z.string().min(1).max(60)).max(MAX_DOC_PARTNERS).optional(),
+  passOn: z.enum(['NONE', 'TEAM', 'CLIENT']).optional(),
+  note: z.string().trim().max(200).nullable().optional(),
+}).strict();
 const pctOk = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0.1 && v <= 10;
 
 export function createPcontrolRouter() {
@@ -108,6 +121,8 @@ export function createPcontrolRouter() {
   };
   const state = () => db.getState();
   const bad = (res: Response, msg: string, code = 400) => res.status(code).json({ error: msg });
+  /** the partners a builder may name for a paper: those with a running (or paused) partnership on that project */
+  const ownPartnerIds = (projectId: string) => new Set(state().associateMandates.filter(m => m.projectId === projectId && ['ACTIVE_ASSOCIATE', 'TOP_PERFORMER', 'PAUSED'].includes(m.status)).map(m => m.brokerId));
 
   /** the builder's project, or (read-only) any project for an admin */
   const projectFor = (id: string, write: boolean): BuilderProject | undefined => {
@@ -265,9 +280,37 @@ export function createPcontrolRouter() {
     if (!parsed.success) return bad(res, parsed.error.issues[0]?.message || 'Invalid link');
     p.collateral ||= [];
     if (p.collateral.length >= 30) return bad(res, 'Up to 30 files per project', 409);
-    const c = { id: uid('PC'), ...parsed.data, addedAt: nowIso() };
+    const prob = docInputProblem(parsed.data, ownPartnerIds(p.id));
+    if (prob) return bad(res, prob);
+    const { brokerIds, note, ...rest } = parsed.data;
+    const c: ProjectCollateral = { id: uid('PC'), ...rest, ...(rest.audience === 'SELECTED' ? { brokerIds: [...new Set(brokerIds!)] } : {}), ...(note ? { note } : {}), addedAt: nowIso() };
     p.collateral.unshift(c); db.save();
-    audit('SYSTEM', p.id, 'PROJECT_COLLATERAL_ADDED', `${me().name} added "${c.title}" (${c.kind}) to ${p.projectName}`);
+    // v77 — a paper shared with named partners reaches them on the phone (and in the bell); a paper for all partners stays on the board — no mass push
+    if (c.audience === 'SELECTED') alert(c.brokerIds!, 'deals', `${p.projectName}: ${c.title}`, `${me().name} shared a paper with you personally`, '/?tab=pcontrol', { not: me().id, tag: `doc-${c.id}`, hi: [`${p.projectName}: ${c.title}`, `${me().name} ने आपके साथ एक काग़ज़ निजी तौर पर साझा किया`] });
+    audit('SYSTEM', p.id, 'PROJECT_COLLATERAL_ADDED', `${me().name} added "${c.title}" (${c.kind}) to ${p.projectName} — ${c.audience === 'SELECTED' ? `${c.brokerIds!.length} chosen partner(s)` : c.audience === 'ALL_CPS' ? 'all brokers' : 'partners'}; may go to: ${passOf(c)}`);
+    res.json({ success: true, collateral: c });
+  });
+  /** v77 — change who gets a paper and how far it may go (lowering it stops the next open by the team / on a client link at once) */
+  r.patch('/builder/projects/:id/collateral/:cid', needs('pcontrol:manage'), (req, res) => {
+    const p = projectFor(req.params.id, true);
+    if (!p) return bad(res, 'Project not found', 404);
+    const c = (p.collateral || []).find(x => x.id === req.params.cid);
+    if (!c) return bad(res, 'File not found', 404);
+    const parsed = collateralPatch.safeParse(req.body || {});
+    if (!parsed.success) return bad(res, parsed.error.issues[0]?.message || 'Invalid change');
+    const d = parsed.data;
+    const next = { audience: d.audience ?? c.audience, brokerIds: d.brokerIds ?? c.brokerIds, passOn: d.passOn ?? passOf(c) };
+    const prob = docInputProblem(next, ownPartnerIds(p.id));
+    if (prob) return bad(res, prob);
+    const before = c.audience === 'SELECTED' ? new Set(c.brokerIds || []) : new Set<string>();
+    if (d.title) c.title = d.title;
+    c.audience = next.audience; c.passOn = next.passOn;
+    if (next.audience === 'SELECTED') c.brokerIds = [...new Set(next.brokerIds!)]; else delete c.brokerIds;
+    if (d.note !== undefined) { if (d.note) c.note = d.note; else delete c.note; }
+    db.save();
+    const fresh = (c.brokerIds || []).filter(id => !before.has(id));
+    if (c.audience === 'SELECTED' && fresh.length) alert(fresh, 'deals', `${p.projectName}: ${c.title}`, `${me().name} shared a paper with you personally`, '/?tab=pcontrol', { not: me().id, tag: `doc-${c.id}`, hi: [`${p.projectName}: ${c.title}`, `${me().name} ने आपके साथ एक काग़ज़ निजी तौर पर साझा किया`] });
+    audit('SYSTEM', p.id, 'PROJECT_COLLATERAL_CHANGED', `${me().name} changed "${c.title}" of ${p.projectName}: ${c.audience === 'SELECTED' ? `${c.brokerIds!.length} chosen partner(s)` : c.audience === 'ALL_CPS' ? 'all brokers' : 'partners'}; may go to: ${passOf(c)}`);
     res.json({ success: true, collateral: c });
   });
   r.delete('/builder/projects/:id/collateral/:cid', needs('pcontrol:manage'), (req, res) => {
@@ -481,10 +524,10 @@ export function createPcontrolRouter() {
       relation: rel, statusReason: m?.statusReason, mandateId: m?.id,
       terms: m && ['ACTIVE', 'PAUSED', 'COMPLETED'].includes(rel) ? { commissionPct: m.agreedCommissionPct, quota: m.targetUnitsQuota, sold: m.unitsSold, dailyLeadCap: m.dailyLeadCap, validUntil: m.validUntil, history: m.termsHistory || [] } : undefined,
       updates: st.projectUpdates.filter(x => x.projectId === p.id && audienceOk(x.audience, rel) && (!x.validUntil || Date.parse(x.validUntil) + 86400000 > now)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      collateral: (p.collateral || []).filter(c => audienceOk(c.audience, rel)),
+      collateral: (p.collateral || []).filter(c => docVisibleToBroker(c, u.id, rel)).map(c => ({ id: c.id, title: c.title, kind: c.kind, url: c.url, audience: c.audience, personal: c.audience === 'SELECTED', passOn: passOf(c), note: c.note, addedAt: c.addedAt })),
       units: unitCounts(p.id),
       // same rules as the unit grid: units the builder hid stay hidden, a hidden rate shows as "price on request"
-      availableUnits_list: showUnits ? availableUnitsForPartner(p, u, 300).map(x => ({ id: x.id, label: x.label, group: x.group, config: x.config, floor: x.floor, areaSqft: x.areaSqft, dimensions: x.dimensions, price: x.price, priceHidden: x.priceHidden, ratePerSqft: x.ratePerSqft, facing: x.facing, roadSides: x.roadSides, roadWidthFt: x.roadWidthFt, features: x.features, note: x.note })) : [],
+      availableUnits_list: showUnits ? availableUnitsForPartner(p, u, 300).map(x => ({ id: x.id, label: x.label, kind: x.kind, code: x.code, group: x.group, config: x.config, floor: x.floor, areaSqft: x.areaSqft, dimensions: x.dimensions, price: x.price, priceHidden: x.priceHidden, ratePerSqft: x.ratePerSqft, facing: x.facing, roadSides: x.roadSides, roadWidthFt: x.roadWidthFt, features: x.features, note: x.note })) : [],
       leads: mine.map(l => ({ id: l.id, name: l.name, stage: l.stage, verify: l.verify, nextFollowUpAt: l.nextFollowUpAt, assignedMemberName: l.assignedMemberName, unitInterest: l.unitInterest, updatedAt: l.updatedAt, protectedUntil: l.protectedUntil })),
       shortlist: st.projectShortlists.filter(s => s.ownerId === u.id && s.projectId === p.id && s.status !== 'DROPPED').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
       bookings: st.crmBookings.filter(b => b.projectId === p.id && b.associateId === u.id).map(b => ({ id: b.id, customerName: b.customerName, unitNo: b.unitNo, status: b.status, agreementValue: b.agreementValue, brokerageAmount: b.brokerageAmount })),

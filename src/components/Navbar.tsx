@@ -5,6 +5,7 @@ import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { BrandMark } from './BrandMark.js';
+import { NotificationBell } from './NotificationBell.js';
 
 interface NavbarProps {
   currentUser: UserProfile;
@@ -60,6 +61,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* v77 — the notification bell: every role, every alert in one list, with Clear all */}
+          <NotificationBell />
           {onOpenChats && (
             <button type="button" onClick={onOpenChats} data-testid="header-chat" aria-label={chatCount > 0 ? tx(`Chats — ${chatCount} new`, `चैट — ${chatCount} नए`) : tx('Chats', 'चैट')} title={tx('Chats', 'चैट')} className={`${iconBtn} border-slate-200 bg-white hover:border-slate-900`}>
               <MessageCircle className="h-5 w-5" />

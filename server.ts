@@ -135,6 +135,8 @@ import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } fro
 import { createBuyerBondRouter, buyerBondBlock, makeBuyerBond } from './server/buyerbond.js';
 import { createConsentRouter, createOwnerConsentPageRouter, sweepConsents, findBlockingBond, blockedAnswer, consentForPublish, markPublished, listingKey, signatureSummary, draftForProperty } from './server/consent.js';
 import { createPushRouter } from './server/webpush.js';
+import { createInboxRouter, sweepInbox } from './server/inbox.js';
+import { createProjDocsRouter } from './server/projdocs.js';
 import { createBroadcastRouter, alertNewListing, sweepDigestPush } from './server/broadcast.js';
 import { createReputationRouter, createHomeRouter } from './server/reputation.js';
 import { createReportRouter } from './server/report.js';
@@ -5582,6 +5584,8 @@ app.use('/api/deals', createDealCloseRouter());
 app.use('/api', createPaymentRequestRouter());
 app.use('/pay', createPaymentPageRouter());
 app.use('/api/push', createPushRouter());
+app.use('/api/inbox', createInboxRouter()); // v77 — the notification bell
+app.use('/api/projdocs', createProjDocsRouter()); // v77 — project papers: builder → partner → team → client
 app.use('/api/broadcast', createBroadcastRouter());
 app.use('/api/reputation', createReputationRouter());
 app.use('/api/home', createHomeRouter());
@@ -5735,7 +5739,7 @@ async function startServer() {
   sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepKycHolds(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); sweepHr(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

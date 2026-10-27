@@ -5,7 +5,7 @@ import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
-import { facingLabel, featureLabel, roadSidesLabel } from '../shared/inventoryRules.js';
+import { facingLabel, featureLabel, roadSidesLabel, kindWord, kindLabel } from '../shared/inventoryRules.js';
 import { SEGMENT_LABEL, type Segment } from '../shared/launchRules.js';
 import { useI18n } from '../lib/i18n.js';
 import type { UserProfile } from '../types/index.js';
@@ -239,7 +239,18 @@ const ProjectPage: React.FC<{ id: string; onBack: () => void; onNavigate: (t: an
       )}
       {d.collateral.length > 0 && (
         <section className="space-y-2"><h3 className="text-sm font-bold">{tx('Brochures & documents', 'ब्रोशर और दस्तावेज़')}</h3>
-          <div className="flex flex-wrap gap-2">{d.collateral.map((c: any) => <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-sky-800 underline"><FileText className="h-4 w-4" />{c.title}</a>)}</div></section>
+          <div className="space-y-2">{d.collateral.map((c: any) => (
+            <div key={c.id} className="space-y-1 rounded-xl border border-slate-200 bg-white p-2.5" data-testid="mp-doc">
+              <a href={c.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-sky-800 underline"><FileText className="h-4 w-4" />{c.title}</a>
+              <div className="flex flex-wrap gap-1.5 text-[10px]">
+                {c.personal && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-900">{tx('Shared with you personally', 'सिर्फ़ आपको निजी तौर पर दिया')}</span>}
+                {c.passOn === 'CLIENT' ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800">{tx('Your team may send it to clients', 'आपकी टीम इसे क्लाइंट को भेज सकती है')}</span>
+                  : c.passOn === 'TEAM' ? <span className="rounded bg-sky-100 px-1.5 py-0.5 font-semibold text-sky-800">{tx('Your team may read it', 'आपकी टीम इसे पढ़ सकती है')}</span>
+                  : <span className="rounded bg-slate-200 px-1.5 py-0.5 font-semibold text-slate-700">{tx('For you alone', 'सिर्फ़ आपके लिए')}</span>}
+              </div>
+              {c.note && <p className="text-[11px] text-slate-600">“{c.note}”</p>}
+            </div>))}</div>
+          <p className="text-[10px] text-slate-500">{tx('To show these to your team or send to a client: CRM → Inventory → Project papers.', 'टीम को दिखाने या क्लाइंट को भेजने के लिए: CRM → Inventory → Project papers।')}</p></section>
       )}
 
       {live && !(d.availableUnits_list?.length > 0) && (
@@ -249,10 +260,11 @@ const ProjectPage: React.FC<{ id: string; onBack: () => void; onNavigate: (t: an
       )}
       {live && d.availableUnits_list.length > 0 && (
         <section className="space-y-2"><h3 className="text-sm font-bold">{tx('Available units', 'उपलब्ध यूनिट')} ({d.units.AVAILABLE})</h3>
-          <div className="flex gap-2 overflow-x-auto pb-1">{d.availableUnits_list.map((u: any) => <button type="button" key={u.label} onClick={() => setOpenU(openU?.id === u.id ? null : u)} aria-pressed={openU?.id === u.id} className={`min-h-16 min-w-28 shrink-0 rounded-lg border bg-white p-2 text-center text-xs ${openU?.id === u.id ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-200'}`}><div className="font-bold">{u.label}</div><div className="text-slate-500">{u.config}</div><div className="font-semibold">{u.price != null ? formatINR(u.price) : tx('Price on request', 'कीमत पूछें')}</div>{(u.roadSides || u.facing) && <div className="text-[10px] text-slate-500">{u.roadSides ? roadSidesLabel(u.roadSides, hiL) : ''}</div>}</button>)}</div>
+          <div className="flex gap-2 overflow-x-auto pb-1">{d.availableUnits_list.map((u: any) => <button type="button" key={u.label} onClick={() => setOpenU(openU?.id === u.id ? null : u)} aria-pressed={openU?.id === u.id} className={`min-h-16 min-w-28 shrink-0 rounded-lg border bg-white p-2 text-center text-xs ${openU?.id === u.id ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-200'}`}><div className="font-bold">{u.label}</div><div className="text-slate-500">{[kindWord(u.kind, u.config, hiL), u.config].filter(Boolean).join(' · ')}</div><div className="font-semibold">{u.price != null ? formatINR(u.price) : tx('Price on request', 'कीमत पूछें')}</div>{(u.roadSides || u.facing) && <div className="text-[10px] text-slate-500">{u.roadSides ? roadSidesLabel(u.roadSides, hiL) : ''}</div>}</button>)}</div>
           {openU && (
             <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
               <div className="flex items-center justify-between"><b className="text-sm">{openU.label} · {openU.group}</b><button type="button" onClick={() => setOpenU(null)} className="text-slate-500 underline">{tx('Close', 'बंद')}</button></div>
+              <div className="flex flex-wrap items-center gap-1.5"><span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">{kindLabel(openU.kind, hiL)}</span>{openU.code ? <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold ring-1 ring-slate-300">{tx('Code', 'कोड')}: {openU.code}</span> : null}</div>
               <div className="text-slate-600">{openU.config}{openU.areaSqft ? ` · ${openU.areaSqft} ${tx('sq ft', 'वर्ग फ़ुट')}` : ''}{openU.dimensions ? ` · ${openU.dimensions}` : ''}</div>
               <div className="font-semibold">{openU.price != null ? `${formatINR(openU.price)}${openU.ratePerSqft ? ` (≈ ₹${openU.ratePerSqft.toLocaleString('en-IN')}/${tx('sq ft', 'वर्ग फ़ुट')})` : ''}` : tx('Price on request — the builder has not shared the rate', 'कीमत पूछें — बिल्डर ने रेट साझा नहीं किया')}</div>
               <div className="flex flex-wrap gap-1.5">

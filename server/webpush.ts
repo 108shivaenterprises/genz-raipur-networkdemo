@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { db } from './db.js';
 import type { PushSub, PushPref, UserProfile } from './db.js';
 import { ctx, requireAuth, rateLimit } from './auth.js';
+import { recordInbox } from './inbox.js';
 
 const b64u = (b: Buffer | Uint8Array) => Buffer.from(b).toString('base64url');
 const unb64u = (s: string) => Buffer.from(String(s).replace(/=+$/, ''), 'base64url');
@@ -208,13 +209,15 @@ export async function pushTo(userId: string, msg: PushMsg): Promise<number> {
     const who = s.users.find(x => x.id === userId);
     if (!who || who.verificationStatus === 'SUSPENDED' || who.verificationStatus === 'BLACKLISTED') return 0; // v59 — a closed account's phone hears nothing more
     if (who.verificationStatus !== 'VERIFIED' && msg.kind !== 'system') return 0; // pending / not approved: only GENZ's word about the account
+    // v77 — the bell keeps every alert that is for this person, whatever his phone settings say (those decide only what may interrupt him)
+    recordInbox(userId, msg);
     const subs = s.pushSubs.filter(x => x.userId === userId);
     const p = prefsOf(userId);
-    if (msg.kind !== 'system' && (p as any)[msg.kind] === false) return 0;
-    if (p.quiet && msg.kind !== 'consent' && msg.kind !== 'system') { const h = istHour(); if (h >= 22 || h < 7) return 0; }
+    if (msg.kind !== 'system' && (p as any)[msg.kind] === false) { db.save(); return 0; }
+    if (p.quiet && msg.kind !== 'consent' && msg.kind !== 'system') { const h = istHour(); if (h >= 22 || h < 7) { db.save(); return 0; } }
     const day = istDay();
     if (!p.sentToday || p.sentToday.day !== day) p.sentToday = { day, n: 0 };
-    if (p.sentToday.n >= DAILY_CAP) return 0;
+    if (p.sentToday.n >= DAILY_CAP) { db.save(); return 0; }
     p.sentToday.n++;
     pushLog.push({ userId, msg, endpoints: subs.length, at: nowIso() }); if (pushLog.length > 500) pushLog.shift();
     const words = p.lang === 'hi' && msg.hi ? msg.hi : msg;

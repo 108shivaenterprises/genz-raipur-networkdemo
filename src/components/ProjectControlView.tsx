@@ -8,6 +8,7 @@ import { useTx, useI18n } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import type { UserProfile } from '../types/index.js';
+import { PASS_ON, AUDIENCES, passOf } from '../shared/docRules.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-semibold disabled:opacity-50';
@@ -268,16 +269,60 @@ const VerifyTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
   );
 };
 
+/** v77 — pick the partners who get a paper personally */
+const PartnerPick: React.FC<{ partners: any[]; value: string[]; onChange: (v: string[]) => void }> = ({ partners, value, onChange }) => {
+  const tx = useTx();
+  if (partners.length === 0) return <p className="rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">{tx('You have no appointed partners on this project yet — appoint one first, then share a paper with him personally.', 'इस प्रोजेक्ट पर अभी कोई नियुक्त पार्टनर नहीं — पहले नियुक्त करें, फिर उसे निजी तौर पर काग़ज़ दें।')}</p>;
+  return (
+    <div className="space-y-1 rounded-lg bg-slate-50 p-2" data-testid="doc-partners">
+      <div className="text-[11px] font-semibold text-slate-700">{tx('Share personally with', 'निजी तौर पर किसे दें')}</div>
+      {partners.map((m: any) => (
+        <label key={m.brokerId} className="flex min-h-9 items-center gap-2 text-xs text-slate-800"><input type="checkbox" className="h-4 w-4" checked={value.includes(m.brokerId)} onChange={e => onChange(e.target.checked ? [...value, m.brokerId] : value.filter(x => x !== m.brokerId))} />{m.brokerName}{m.brokerCompany ? <span className="text-slate-500"> · {m.brokerCompany}</span> : null}</label>
+      ))}
+    </div>
+  );
+};
+/** v77 — how far the partner may pass a paper on */
+const PassPick: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+  const tx = useTx();
+  return (
+    <div className="space-y-1" role="radiogroup" aria-label={tx('How far may it go', 'कितना आगे जा सकता है')} data-testid="doc-passon">
+      <div className="text-[11px] font-semibold text-slate-700">{tx('How far may the partner pass it on?', 'पार्टनर इसे कितना आगे दे सकता है?')}</div>
+      {PASS_ON.map(x => (
+        <label key={x.id} className={`flex min-h-11 cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs ${value === x.id ? 'border-slate-900 bg-slate-50' : 'border-slate-200'}`}>
+          <input type="radio" name="passon" className="mt-0.5 h-4 w-4" checked={value === x.id} onChange={() => onChange(x.id)} value={x.id} />
+          <span><b className="block text-slate-900">{tx(x.en, x.hi)}</b><span className="text-slate-600">{tx(x.hintEn, x.hintHi)}</span></span>
+        </label>))}
+    </div>
+  );
+};
+const DocScopeEditor: React.FC<{ f: any; partners: any[]; onSave: (b: any) => void }> = ({ f, partners, onSave }) => {
+  const tx = useTx();
+  const [aud, setAud] = useState<string>(f.audience); const [ids, setIds] = useState<string[]>(f.brokerIds || []); const [pass, setPass] = useState<string>(passOf(f)); const [note, setNote] = useState<string>(f.note || '');
+  return (
+    <div className="space-y-2 rounded-lg bg-slate-50 p-2" data-testid="doc-editor">
+      <select value={aud} onChange={e => setAud(e.target.value)} className={inp} aria-label={tx('Who gets it', 'किसे मिले')}>{AUDIENCES.map(a => <option key={a.id} value={a.id}>{tx(a.en, a.hi)}</option>)}</select>
+      {aud === 'SELECTED' && <PartnerPick partners={partners} value={ids} onChange={setIds} />}
+      <PassPick value={pass} onChange={setPass} />
+      <input value={note} onChange={e => setNote(e.target.value)} placeholder={tx('A line for the partner (optional)', 'पार्टनर के लिए एक लाइन (वैकल्पिक)')} className={inp} maxLength={200} />
+      <button type="button" disabled={aud === 'SELECTED' && ids.length === 0} className={dark} data-testid="doc-save" onClick={() => onSave({ audience: aud, passOn: pass, note: note.trim() || null, ...(aud === 'SELECTED' ? { brokerIds: ids } : {}) })}>{tx('Save', 'सेव')}</button>
+    </div>
+  );
+};
+
 const NoticesTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
   const tx = useTx();
   const [n, setN] = useState({ kind: 'OFFER', title: '', body: '', audience: 'ASSOCIATES', validUntil: '' });
   const [photo, setPhoto] = useState<{ data: string; preview: string } | null>(null);
   const [photoErr, setPhotoErr] = useState('');
   const hi = useI18n().lang === 'hi';
-  const [c, setC] = useState({ title: '', kind: 'BROCHURE', url: '', audience: 'ASSOCIATES' });
+  const [c, setC] = useState<{ title: string; kind: string; url: string; audience: string; passOn: string; note: string; brokerIds: string[] }>({ title: '', kind: 'BROCHURE', url: '', audience: 'ASSOCIATES', passOn: 'NONE', note: '', brokerIds: [] });
+  const [editId, setEditId] = useState('');
   const KIND = ['OFFER', 'UPDATE', 'PRICE', 'LAUNCH', 'NOTICE'];
   const FK = ['BROCHURE', 'PRICE_LIST', 'PAYMENT_PLAN', 'RERA', 'LAYOUT', 'OTHER'];
-  const aud = (a: string) => a === 'ALL_CPS' ? tx('All brokers', 'सभी ब्रोकर') : tx('Partners only', 'सिर्फ़ पार्टनर');
+  const aud = (a: string) => a === 'ALL_CPS' ? tx('All brokers', 'सभी ब्रोकर') : a === 'SELECTED' ? tx('Chosen partners', 'चुने पार्टनर') : tx('Partners only', 'सिर्फ़ पार्टनर');
+  const partnersLive = (d.partners || []).filter((m: any) => ['ACTIVE_ASSOCIATE', 'TOP_PERFORMER', 'PAUSED'].includes(m.status));
+  const passTxt = (p: string) => { const x = PASS_ON.find(y => y.id === p) || PASS_ON[0]; return tx(x.en, x.hi); };
   return (
     <div className="space-y-6">
       <section className="space-y-2">
@@ -319,16 +364,25 @@ const NoticesTab: React.FC<TabProps> = ({ d, canWrite, act }) => {
             <input placeholder="https://drive.google.com/…" value={c.url} onChange={e => setC({ ...c, url: e.target.value })} className={inp} inputMode="url" />
             <div className="grid grid-cols-2 gap-2">
               <select value={c.kind} onChange={e => setC({ ...c, kind: e.target.value })} className={inp}>{FK.map(k => <option key={k}>{k}</option>)}</select>
-              <select value={c.audience} onChange={e => setC({ ...c, audience: e.target.value })} className={inp}><option value="ASSOCIATES">{tx('Partners only', 'सिर्फ़ पार्टनर')}</option><option value="ALL_CPS">{tx('All brokers', 'सभी ब्रोकर')}</option></select>
+              <select value={c.audience} onChange={e => setC({ ...c, audience: e.target.value })} className={inp} data-testid="doc-audience" aria-label={tx('Who gets it', 'किसे मिले')}>{AUDIENCES.map(a => <option key={a.id} value={a.id}>{tx(a.en, a.hi)}</option>)}</select>
             </div>
-            <p className="text-[10px] text-slate-500">{tx('Tip: for papers you do not want forwarded, use “Protected Docs” (view-only, watermarked) and share it with partners there.', 'जो कागज़ फ़ॉरवर्ड नहीं होने चाहिए उनके लिए “Protected Docs” (सिर्फ़ देखना, वॉटरमार्क) इस्तेमाल करें।')}</p>
-            <button disabled={c.title.trim().length < 2 || !c.url} className={dark} onClick={() => act(() => api.pcFile(d.project.id, c), tx('File added', 'फ़ाइल जोड़ी')).then(() => setC({ ...c, title: '', url: '' })).catch(() => undefined)}>{tx('Add file', 'फ़ाइल जोड़ें')}</button>
+            {c.audience === 'SELECTED' && <PartnerPick partners={partnersLive} value={c.brokerIds} onChange={v => setC({ ...c, brokerIds: v })} />}
+            <PassPick value={c.passOn} onChange={v => setC({ ...c, passOn: v })} />
+            <input placeholder={tx('A line for the partner (optional) — e.g. rates valid till 30 Nov', 'पार्टनर के लिए एक लाइन (वैकल्पिक) — जैसे: रेट 30 नवंबर तक मान्य')} value={c.note} onChange={e => setC({ ...c, note: e.target.value })} className={inp} maxLength={200} />
+            <p className="text-[10px] text-slate-500">{tx('Tip: for papers you do not want forwarded at all, use “Protected Docs” (view-only, watermarked) and share it with partners there.', 'जो कागज़ बिल्कुल फ़ॉरवर्ड नहीं होने चाहिए उनके लिए “Protected Docs” (सिर्फ़ देखना, वॉटरमार्क) इस्तेमाल करें।')}</p>
+            <button disabled={c.title.trim().length < 2 || !c.url || (c.audience === 'SELECTED' && c.brokerIds.length === 0)} className={dark} data-testid="doc-add" onClick={() => act(() => api.pcFile(d.project.id, { title: c.title, kind: c.kind, url: c.url, audience: c.audience, passOn: c.passOn, ...(c.note.trim() ? { note: c.note.trim() } : {}), ...(c.audience === 'SELECTED' ? { brokerIds: c.brokerIds } : {}) }), tx('File added', 'फ़ाइल जोड़ी')).then(() => setC({ ...c, title: '', url: '', note: '' })).catch(() => undefined)}>{tx('Add file', 'फ़ाइल जोड़ें')}</button>
           </div>
         )}
         {d.collateral.map((f: any) => (
-          <div key={f.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3">
-            <a href={f.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 text-sm font-medium text-sky-800 underline"><FileText className="h-4 w-4 shrink-0" /><span className="truncate">{f.title}</span></a>
-            <div className="flex items-center gap-2"><Chip tone="slate">{aud(f.audience)}</Chip>{canWrite && <button aria-label={tx('Delete', 'हटाएँ')} className="min-h-11 min-w-11 text-slate-400 hover:text-red-600" onClick={() => act(() => api.pcFileDelete(d.project.id, f.id), tx('Removed', 'हटाया')).catch(() => undefined)}><Trash2 className="mx-auto h-4 w-4" /></button>}</div>
+          <div key={f.id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid="doc-row">
+            <div className="flex items-center justify-between gap-2">
+              <a href={f.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 text-sm font-medium text-sky-800 underline"><FileText className="h-4 w-4 shrink-0" /><span className="truncate">{f.title}</span></a>
+              {canWrite && <div className="flex items-center"><button type="button" className="min-h-11 shrink-0 whitespace-nowrap px-2 text-xs font-semibold text-slate-600 underline" onClick={() => setEditId(editId === f.id ? '' : f.id)} data-testid="doc-edit">{tx('Who / how far', 'किसे / कितना आगे')}</button><button aria-label={tx('Delete', 'हटाएँ')} className="min-h-11 min-w-11 text-slate-400 hover:text-red-600" onClick={() => act(() => api.pcFileDelete(d.project.id, f.id), tx('Removed', 'हटाया')).catch(() => undefined)}><Trash2 className="mx-auto h-4 w-4" /></button></div>}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5"><Chip tone={f.audience === 'SELECTED' ? 'amber' : 'slate'}>{aud(f.audience)}{f.audience === 'SELECTED' ? ` (${(f.brokerIds || []).length})` : ''}</Chip><Chip tone={passOf(f) === 'CLIENT' ? 'green' : passOf(f) === 'TEAM' ? 'blue' : 'slate'}>{passTxt(passOf(f))}</Chip></div>
+            {f.audience === 'SELECTED' && <p className="text-[11px] text-slate-600">{(f.brokerIds || []).map((id: string) => partnersLive.find((m: any) => m.brokerId === id)?.brokerName || id).join(', ')}</p>}
+            {f.note && <p className="text-[11px] text-slate-600">“{f.note}”</p>}
+            {editId === f.id && <DocScopeEditor f={f} partners={partnersLive} onSave={b => act(() => api.pcFilePatch(d.project.id, f.id, b), tx('Saved', 'सेव हुआ')).then(() => setEditId('')).catch(() => undefined)} />}
           </div>
         ))}
       </section>

@@ -101,6 +101,93 @@ export function impliedFeatures(d: { roadSides?: number; features?: string[] }):
   return [...f];
 }
 
+// ───────────────────────── kinds of unit (v77) ─────────────────────────
+/**
+ * A project is rarely one thing: a builder sells several flat types in blocks and floors, penthouses on top, shops below, plots and
+ * independent houses in the same colony. Each unit now says WHAT it is (`kind`), has its own number (`label`, unique in the project)
+ * and its own inventory `code`, and keeps its own rate. `floorWise` kinds are numbered by floor (A-101); the others serially (P-12).
+ */
+export const UNIT_KINDS = [
+  { id: 'FLAT', en: 'Flat', hi: 'फ़्लैट', floorWise: true },
+  { id: 'PENTHOUSE', en: 'Penthouse', hi: 'पेंटहाउस', floorWise: true },
+  { id: 'DUPLEX', en: 'Duplex', hi: 'डुप्लेक्स', floorWise: true },
+  { id: 'VILLA', en: 'Villa / independent house', hi: 'विला / इंडिपेंडेंट हाउस', floorWise: false },
+  { id: 'PLOT', en: 'Plot', hi: 'प्लॉट', floorWise: false },
+  { id: 'SHOP', en: 'Shop', hi: 'दुकान', floorWise: true },
+  { id: 'OFFICE', en: 'Office', hi: 'ऑफ़िस', floorWise: true },
+  { id: 'OTHER', en: 'Other (parking, godown…)', hi: 'अन्य (पार्किंग, गोदाम…)', floorWise: false },
+] as const;
+export type UnitKind = typeof UNIT_KINDS[number]['id'];
+export const UNIT_KIND_IDS = UNIT_KINDS.map(k => k.id) as unknown as [UnitKind, ...UnitKind[]];
+export const isUnitKind = (v: unknown): v is UnitKind => UNIT_KINDS.some(k => k.id === v);
+export const isFloorWise = (k: UnitKind) => !!UNIT_KINDS.find(x => x.id === k)?.floorWise;
+export const kindLabel = (k: string | undefined, hi: boolean) => { const x = UNIT_KINDS.find(y => y.id === k); return x ? (hi ? x.hi : x.en) : ''; };
+
+/** What a sheet cell or a typed word means: "flat", "Apartment", "independent house", "पेंटहाउस"… */
+const KIND_WORDS: Record<UnitKind, string[]> = {
+  FLAT: ['flat', 'apartment', 'apt', 'फ़्लैट', 'फ्लैट'],
+  PENTHOUSE: ['penthouse', 'pent house', 'पेंटहाउस'],
+  DUPLEX: ['duplex', 'डुप्लेक्स'],
+  VILLA: ['villa', 'independent house', 'individual house', 'house', 'bungalow', 'bunglow', 'row house', 'rowhouse', 'विला', 'इंडिपेंडेंट हाउस', 'बंगला', 'मकान', 'घर'],
+  PLOT: ['plot', 'land', 'प्लॉट', 'ज़मीन', 'जमीन'],
+  SHOP: ['shop', 'showroom', 'दुकान', 'शॉप'],
+  OFFICE: ['office', 'ऑफ़िस', 'ऑफिस'],
+  OTHER: ['other', 'parking', 'godown', 'warehouse', 'अन्य'],
+};
+export function parseUnitKind(t: unknown): UnitKind | undefined {
+  const s = tok(String(t ?? ''));
+  if (!s) return undefined;
+  const direct = UNIT_KINDS.find(k => tok(k.id) === s || tok(k.en) === s || k.hi === String(t).trim());
+  if (direct) return direct.id;
+  return (Object.keys(KIND_WORDS) as UnitKind[]).find(k => KIND_WORDS[k].some(w => tok(w) === s));
+}
+/** the kind of any unit — old units (made before kinds existed) are a flat when they have a floor, otherwise a plot */
+export const unitKindOf = (u: { kind?: string; floor?: number }): UnitKind => (isUnitKind(u.kind) ? u.kind : u.floor !== undefined && u.floor !== null ? 'FLAT' : 'PLOT');
+
+export const CODE_MAX = 24;
+/** the builder's own inventory number / code of a unit (not the unit number buyers see): letters, digits, space . _ / # - */
+export function cleanCode(v: unknown): string | null | { error: string } {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().replace(/\s+/g, ' ');
+  if (!s) return null;
+  if (s.length > CODE_MAX) return { error: `A code can be at most ${CODE_MAX} characters` };
+  if (!/^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._/#-]*$/u.test(s)) return { error: 'A code can have letters, digits and . _ / # - only' };
+  return s;
+}
+/** does this code already belong to another unit of the project? (case does not matter) */
+export const codeClash = <T extends { id: string; code?: string }>(units: T[], code: string, exceptId?: string): T | undefined => units.find(x => x.id !== exceptId && !!x.code && x.code.trim().toLowerCase() === code.trim().toLowerCase());
+/** GR-0001, GR-0002… continuing after the highest number already used with this prefix */
+export function nextCodes(existing: (string | undefined)[], prefix: string, count: number): string[] {
+  const p = prefix.trim(); const re = new RegExp(`^${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`, 'i');
+  let top = 0; for (const c of existing) { const m = c && re.exec(c.trim()); if (m) top = Math.max(top, Number(m[1])); }
+  return Array.from({ length: count }, (_, i) => `${p}-${String(top + i + 1).padStart(4, '0')}`);
+}
+
+export interface RateRow {
+  kind: UnitKind; config: string; count: number; available: number;
+  /** only the rates this viewer may see (a hidden rate is left out, never guessed) */
+  minPrice?: number; maxPrice?: number; minRate?: number; maxRate?: number;
+  ids: string[];
+}
+/** "Rate card": units grouped by kind, then by type (3 BHK, 4 BHK, 30x50…) — how many, how many free, price and ₹/sq ft range. */
+export function rateCard(units: { id: string; kind?: string; floor?: number; config?: string; areaSqft?: number; price: number | null; status: string }[]): RateRow[] {
+  const map = new Map<string, RateRow>();
+  for (const u of units) {
+    const kind = unitKindOf(u); const config = (u.config || '').trim();
+    const key = `${kind}|${config.toLowerCase()}`;
+    const row = map.get(key) || { kind, config, count: 0, available: 0, ids: [] } as RateRow;
+    row.count++; if (u.status === 'AVAILABLE') row.available++; row.ids.push(u.id);
+    if (u.price != null) {
+      row.minPrice = row.minPrice === undefined ? u.price : Math.min(row.minPrice, u.price); row.maxPrice = row.maxPrice === undefined ? u.price : Math.max(row.maxPrice, u.price);
+      const r = ratePerSqft(u.price, u.areaSqft);
+      if (r) { row.minRate = row.minRate === undefined ? r : Math.min(row.minRate, r); row.maxRate = row.maxRate === undefined ? r : Math.max(row.maxRate, r); }
+    }
+    map.set(key, row);
+  }
+  const order = UNIT_KINDS.map(k => k.id) as string[];
+  return [...map.values()].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.config.localeCompare(b.config));
+}
+
 // ───────────────────────── rate changes ─────────────────────────
 export type RateMode = 'PCT' | 'FLAT' | 'PER_SQFT' | 'SET_PER_SQFT';
 export interface RateRule { mode: RateMode; value: number }
@@ -233,7 +320,15 @@ export function capShareFlags(want: ShareFlags, canPrice: boolean, canFeatures: 
   return { showPrice: want.showPrice && canPrice, showFeatures: want.showFeatures && canFeatures };
 }
 
+/** a short word for a customer line: "Penthouse", "Villa", "Plot" (a flat is told by its BHK, so it gets no word) */
+export function kindWord(k: string | undefined, config: string | undefined, hi: boolean): string {
+  if (!isUnitKind(k) || k === 'FLAT') return '';
+  const w = kindLabel(k, hi).replace(/\s*[(/].*$/, '').trim();
+  return w && !(config || '').toLowerCase().includes(w.toLowerCase()) ? w : '';
+}
+
 export interface ShareUnit {
+  kind?: string;
   label: string; group?: string; config?: string; areaSqft?: number; price?: number | null;
   facing?: string; roadSides?: number; roadWidthFt?: number; dimensions?: string; features?: string[]; note?: string;
 }
@@ -241,7 +336,7 @@ export interface ShareUnit {
 /** One unit as a short, WhatsApp-ready text. Price / features appear only when the flags allow. */
 export function unitShareLine(u: ShareUnit, flags: ShareFlags, hi: boolean): string {
   const bits: string[] = [];
-  const head = [u.label, u.config].filter(Boolean).join(' · ');
+  const head = [u.label, kindWord(u.kind, u.config, hi), u.config].filter(Boolean).join(' · ');
   if (u.areaSqft) bits.push(`${u.areaSqft} ${hi ? 'वर्ग फ़ुट' : 'sq ft'}`);
   if (u.dimensions) bits.push(u.dimensions);
   if (flags.showFeatures) {

@@ -15,7 +15,7 @@ import type { BuilderProject, InventoryUnit, UserProfile } from './db.js';
 import { isAdmin } from './access.js';
 import { mandateIsActive, policyOf } from '../src/shared/pcontrolRules.js';
 import {
-  effectiveVis, partnerMaySee, memberView, impliedFeatures, ratePerSqft, postIsLive, type TeamPost, type UnitVis,
+  effectiveVis, partnerMaySee, memberView, impliedFeatures, ratePerSqft, postIsLive, unitKindOf, type TeamPost, type UnitVis, type UnitKind,
 } from '../src/shared/inventoryRules.js';
 import { tierOf } from '../src/shared/networkRules.js';
 
@@ -74,7 +74,10 @@ export function seenBy(actor: Actor, project: BuilderProject, unit: InventoryUni
 }
 
 export interface ShapedUnit {
-  id: string; projectId: string; group: string; label: string; floor?: number; config: string; areaSqft?: number;
+  id: string; projectId: string; group: string; label: string;
+  /** v77 — always filled (an old unit gets flat / plot from its floor) */
+  kind: UnitKind; code?: string;
+  floor?: number; config: string; areaSqft?: number;
   /** null = hidden from this viewer ("price on request") */
   price: number | null; priceHidden: boolean; ratePerSqft?: number;
   status: InventoryUnit['status']; updatedAt: string;
@@ -89,7 +92,7 @@ export function shapeUnit(unit: InventoryUnit, project: BuilderProject, actor: A
   const mine = actor.kind === 'PARTNER' && unit.hold?.brokerId === actor.user.id;
   const { hold } = unit;
   const out: ShapedUnit = {
-    id: unit.id, projectId: unit.projectId, group: unit.group, label: unit.label, floor: unit.floor, config: unit.config, areaSqft: unit.areaSqft,
+    id: unit.id, projectId: unit.projectId, group: unit.group, label: unit.label, kind: unitKindOf(unit), code: unit.code, floor: unit.floor, config: unit.config, areaSqft: unit.areaSqft,
     price: seen.price ? unit.price : null, priceHidden: !seen.price,
     ratePerSqft: seen.price ? ratePerSqft(unit.price, unit.areaSqft) : undefined,
     status: unit.status, updatedAt: unit.updatedAt, dimensions: unit.dimensions,
