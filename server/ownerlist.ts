@@ -110,6 +110,26 @@ export function sweepOwnerListings(now = Date.now()): number {
 
 // ───────────────────────────── public: owner mobile sign-in ─────────────────────────────
 const OTPS = new Map<string, { hash: string; exp: number; tries: number }>();
+/** v80 — on Vercel the "send code" and the "sign in" can land on DIFFERENT copies of the server, and a code kept in one copy's memory is "expired" in the other.
+ *  So the code travels as a SIGNED TOKEN (phone + expiry + nonce, sealed with the server secret AND the code itself): any copy can check it, nobody can forge it,
+ *  and the code is never stored. Tries and "already used" are kept in the shared database so one code opens one door, five tries at most. */
+const OTP_MS = 10 * 60_000;
+type OtpRec = { exp: number; tries: number; used?: boolean };
+const otpBook = (): Record<string, OtpRec> => { const s = st() as any; const b: Record<string, OtpRec> = (s.ownerOtp ||= {}); const t = Date.now() - 60_000; for (const k of Object.keys(b)) if (b[k].exp < t) delete b[k]; return b; };
+const tokSig = (body: string, code: string) => hm('owner-otp-tok', `${body}|${code}`);
+export function makeOtpToken(phone: string, code: string, exp: number): string {
+  const body = Buffer.from(JSON.stringify({ p: phone, e: exp, n: crypto.randomBytes(6).toString('hex') })).toString('base64url');
+  return `${body}.${tokSig(body, code)}`;
+}
+export function readOtpToken(tok: unknown, phone: string): { body: string; sig: string; n: string; e: number } | null {
+  if (typeof tok !== 'string' || tok.length > 400) return null;
+  const [body, sig, ...rest] = tok.split('.'); if (!body || !sig || rest.length) return null;
+  try {
+    const j = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (j?.p !== phone || !Number.isFinite(j?.e) || typeof j?.n !== 'string' || !/^[0-9a-f]{12}$/.test(j.n)) return null;
+    return { body, sig, n: j.n, e: Number(j.e) };
+  } catch { return null; }
+}
 export function createOwnerAuthRouter() {
   const r = Router();
   r.post('/otp', rateLimit('owner-otp-ip', 20, 3600_000), async (req: Request, res: Response) => {
@@ -121,16 +141,29 @@ export function createOwnerAuthRouter() {
     const ex = st().users.find(u => phone10(u.phone) === phone && u.role === 'PROPERTY_OWNER');
     if (ex && !ex.selfSignup) return bad(res, 'This number already has a GENZ owner account with a password — sign in with it.', 409, 'USE_PASSWORD');
     const code = secureOtp();
-    OTPS.set(phone, { hash: hm('owner-otp', `${phone}|${code}`), exp: Date.now() + 10 * 60_000, tries: 0 });
+    const exp = Date.now() + OTP_MS;
+    OTPS.set(phone, { hash: hm('owner-otp', `${phone}|${code}`), exp, tries: 0 });
     await sendSms(phone, `GENZ: your code is ${code} (valid 10 minutes). Do not share it.`);
-    res.json({ success: true, exists: !!ex, ...(!smsOn && DEMO_MODE ? { devCode: code } : {}) });
+    res.json({ success: true, exists: !!ex, otpToken: makeOtpToken(phone, code, exp), ...(!smsOn && DEMO_MODE ? { devCode: code } : {}) });
   });
   r.post('/verify', rateLimit('owner-verify-ip', 40, 3600_000), (req: Request, res: Response) => {
     const phone = phone10(req.body?.phone); const code = String(req.body?.code || '').replace(/\D/g, '');
-    const o = OTPS.get(phone);
-    if (!o || o.exp < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED');
-    if (++o.tries > 5) { OTPS.delete(phone); return bad(res, 'Too many wrong tries — ask for a new code.', 429); }
-    if (!safeEqual(o.hash, hm('owner-otp', `${phone}|${code}`))) return bad(res, 'That code is not right.', 400, 'WRONG_CODE');
+    const tk = readOtpToken(req.body?.otpToken, phone);
+    let usedNonce = '';
+    if (tk) {
+      // the signed token: valid on any copy of the server
+      if (tk.e < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED');
+      const book = otpBook(); const rec = (book[tk.n] ||= { exp: tk.e, tries: 0 });
+      if (rec.used) return bad(res, 'That code was already used — ask for a new one.', 400, 'EXPIRED');
+      if (++rec.tries > 5) { rec.used = true; db.save(); return bad(res, 'Too many wrong tries — ask for a new code.', 429); }
+      if (!safeEqual(tk.sig, tokSig(tk.body, code))) { db.save(); return bad(res, 'That code is not right.', 400, 'WRONG_CODE'); }
+      usedNonce = tk.n;
+    } else {
+      const o = OTPS.get(phone);
+      if (!o || o.exp < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED');
+      if (++o.tries > 5) { OTPS.delete(phone); return bad(res, 'Too many wrong tries — ask for a new code.', 429); }
+      if (!safeEqual(o.hash, hm('owner-otp', `${phone}|${code}`))) return bad(res, 'That code is not right.', 400, 'WRONG_CODE');
+    }
     const s = st(); const now = nowIso();
     let u = s.users.find(x => phone10(x.phone) === phone && x.role === 'PROPERTY_OWNER');
     if (u && !u.selfSignup) return bad(res, 'This number already has a GENZ owner account with a password — sign in with it.', 409, 'USE_PASSWORD');
@@ -149,6 +182,7 @@ export function createOwnerAuthRouter() {
       db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'OWNER_SELF_SIGNUP', `Owner ${name} signed up with a mobile OTP (••${phone.slice(-4)})`);
     }
     OTPS.delete(phone); resetHits(`owner-otp:${phone}`);
+    if (usedNonce) { const b = otpBook(); (b[usedNonce] ||= { exp: Date.now() + OTP_MS, tries: 0 }).used = true; }
     u.lastLoginAt = now; db.save();
     setSessionCookie(req, res, signSession(u.id, u.sessionVersion || 1));
     res.json({ success: true, created: !s.users.some(x => x !== u && x.id === u!.id), user: { id: u.id, name: u.name, role: u.role, phone: u.phone, city: u.city, verificationStatus: u.verificationStatus }, permissions: effectivePermissions(u) });

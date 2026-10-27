@@ -1,4 +1,5 @@
 import BrokerageAtPrice from './BrokerageAtPrice.js';
+import FinalRateCard from './FinalRateCard.js';
 import { DealHisaab } from './DealHisaab.js';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PropertyThumb } from './PropertyThumb.js';
@@ -540,7 +541,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const chatKit = useDealChatKit({
     dealId: selectedDealId, active: chatOpen, meId: currentUser.id, role: currentUser.role,
     perms: permissions || ['property:read', 'sitevisit:create', 'deal:update_stage'],
-    send: sendChatBody, onOpen: (tab) => { if (tab.startsWith('visit:')) { const v = (dealDetail?.siteVisits || []).find((x: any) => x.id === tab.slice(6)); if (v) setSelectedVisitForQrPass(v as any); else setActiveSubTab('overview'); } else setActiveSubTab(tab as DealSubTab); }, onMessage: (m) => setMessages(prev => [...prev, m]),
+    send: sendChatBody, onOpen: (tab) => { if (tab === 'final-rate') { setActiveSubTab('overview'); setTimeout(() => document.getElementById('final-rate-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400); } else if (tab.startsWith('visit:')) { const v = (dealDetail?.siteVisits || []).find((x: any) => x.id === tab.slice(6)); if (v) setSelectedVisitForQrPass(v as any); else setActiveSubTab('overview'); } else setActiveSubTab(tab as DealSubTab); }, onMessage: (m) => setMessages(prev => [...prev, m]),
     onStageChanged: () => { if (selectedDealId) loadDetail(selectedDealId); onRefreshDeals(); },
   });
   useEffect(() => {
@@ -1060,6 +1061,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       )}
                     </div>
 
+                    {dealDetail?.finalRate && !activeDeal?.summaryOnly && <FinalRateCard f={dealDetail.finalRate} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />}
                     {dealDetail?.brokerage?.mandate && !hideCommercials && <BrokerageAtPrice b={dealDetail.brokerage} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />}
                     {(isOwnerViewer || !activeDeal?.commercialsHidden) && !activeDeal?.summaryOnly && <DealHisaab dealId={activeDeal.id} />}
 

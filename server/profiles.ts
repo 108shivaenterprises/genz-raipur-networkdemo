@@ -171,6 +171,28 @@ export function seedDemoReviews() {
   db.save();
 }
 
+/** v80 — an owner who sits on a listing / mandate of THIS broker but has no GENZ login (the broker typed his name and number, or he signed on the link) is not a "member", so the member search never found him
+ *  even though the mandate shows him. Only the broker who listed the property can look him up here, and only by the exact mobile he already holds. No profile, no review — just the record. */
+export interface OwnerRecord { name: string; last4: string; city: string; listings: { propertyId: string; title: string; mandateId?: string; mandateStatus?: string }[] }
+export function ownerRecordFor(brokerId: string, phone10: string, s: DatabaseState = st()): OwnerRecord | null {
+  if (!/^\d{10}$/.test(phone10)) return null;
+  const key = crypto.createHmac('sha256', secret()).update(`oc-phone|${phone10}`).digest('hex');
+  const rows = new Map<string, { name: string; city: string; title: string }>();
+  for (const p of s.properties) if (p.listingBrokerId === brokerId && digits(p.ownerPhone).slice(-10) === phone10) rows.set(p.id, { name: p.ownerName, city: p.city || '', title: p.title });
+  for (const c of s.ownerConsents) {
+    if (c.brokerId !== brokerId || c.ownerPhoneHash !== key || !c.propertyId || c.status === 'VOID') continue;
+    const p = s.properties.find(x => x.id === c.propertyId);
+    if (p && !rows.has(p.id)) rows.set(p.id, { name: c.ownerTypedName || c.ownerName, city: p.city || '', title: p.title });
+  }
+  if (!rows.size) return null;
+  const first = [...rows.values()][0];
+  const listings = [...rows.entries()].slice(0, 5).map(([propertyId, r]) => {
+    const m = s.ownerMandates.filter(x => x.propertyId === propertyId && x.brokerId === brokerId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return { propertyId, title: r.title, ...(m ? { mandateId: m.id, mandateStatus: m.status } : {}) };
+  });
+  return { name: shortName(first.name || 'Owner'), last4: phone10.slice(-4), city: first.city, listings };
+}
+
 const ALERT_URL = '/?tab=people';
 
 export function createProfilesRouter() {
@@ -204,7 +226,9 @@ export function createProfilesRouter() {
     hits = hits.filter(x => x.id !== u.id && (isStaffRole(seeker) || mayOpenProfile({ id: u.id, role: seeker }, { id: x.id, role: x.role, visible: x.profile?.visible }, kind !== 'TEXT' && !priv(x))));
     if (kind !== 'TEXT') db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'PROFILE_LOOKUP', `${kind === 'PHONE' ? `mobile ending ${q.slice(-4)}` : `code ${q}`} → ${hits.length} found`);
     const cards = hits.map(x => ({ ...cardOf(x), ...(priv(x) || x.profile?.visible === false ? { ticket: ticketFor(u.id, x.id) } : {}) })).sort((a, b) => b.rating.count - a.rating.count || b.rating.avg - a.rating.avg || a.name.localeCompare(b.name)).slice(0, SEARCH_LIMIT);
-    res.json({ success: true, kind, results: cards, total: hits.length });
+    // v80 — no member with that mobile, but he is the owner on this broker's own listing / mandate → show him as an owner of record (not a member)
+    const record = kind === 'PHONE' && !hits.length && canLookupPrivate(seeker) && !isStaffRole(seeker) ? ownerRecordFor(u.id, q) : null;
+    res.json({ success: true, kind, results: cards, total: hits.length, ...(record ? { ownerRecord: record } : {}) });
   });
 
   // ── my profile ──

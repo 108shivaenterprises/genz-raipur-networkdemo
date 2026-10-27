@@ -69,7 +69,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
           <Tile id="hisaab-balance" label={tx('Left', 'बाक़ी')} value={s.balance} tone={s.balance > 0 ? 'text-amber-700' : 'text-emerald-700'} />
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} /></div>
-        {s.priceSource === 'ASKING' && <p className="text-[11px] text-amber-700">{tx('The final price is not set yet — figures use the asking price.', 'अंतिम कीमत तय नहीं है — हिसाब माँगी गई कीमत से है।')}</p>}
+        {s.priceSource === 'ASKING' && <p className="text-[11px] text-amber-700">{tx('The final price is not set yet — figures use the asking price. Write it in the “Final rate” card above.', 'अंतिम कीमत तय नहीं है — हिसाब माँगी गई कीमत से है। ऊपर “फ़ाइनल रेट” कार्ड में लिखें।')}</p>}
         {s.over > 0 && <p className="text-[11px] font-semibold text-red-700">{tx('More than the price is recorded — check the entries.', 'कीमत से ज़्यादा दर्ज है — एंट्री जाँचें।')} (+{formatINR(s.over)})</p>}
         {s.directHidden && <p className="text-[11px] text-amber-700" data-testid="hisaab-direct-hidden">{tx('Part of the price went straight to a broker — its amount is not shown to you, so “Left” may look higher.', 'कीमत का एक हिस्सा सीधे एक ब्रोकर को गया — उसकी रकम आपको नहीं दिखती, इसलिए “बाक़ी” ज़्यादा दिख सकता है।')}</p>}
         {s.entries.length === 0 && <p className="text-xs text-slate-500">{tx('No payment written yet.', 'अभी कोई भुगतान दर्ज नहीं।')}</p>}

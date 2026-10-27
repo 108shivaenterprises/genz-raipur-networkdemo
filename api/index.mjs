@@ -63629,6 +63629,78 @@ function findState(name) {
   if (!n2) return void 0;
   return INDIA_STATES.find((s) => norm(s.name) === n2 || norm(s.hi) === n2);
 }
+var STATE_ALIAS = {
+  "orissa": "Odisha",
+  "uttaranchal": "Uttarakhand",
+  "pondicherry": "Puducherry",
+  "nct of delhi": "Delhi",
+  "national capital territory of delhi": "Delhi",
+  "new delhi": "Delhi",
+  "chattisgarh": "Chhattisgarh",
+  "chhatisgarh": "Chhattisgarh",
+  "chattishgarh": "Chhattisgarh",
+  "jammu & kashmir": "Jammu and Kashmir",
+  "andaman & nicobar islands": "Andaman and Nicobar Islands",
+  "andaman and nicobar": "Andaman and Nicobar Islands",
+  "dadra and nagar haveli": "Dadra and Nagar Haveli and Daman and Diu",
+  "daman and diu": "Dadra and Nagar Haveli and Daman and Diu",
+  "dadra & nagar haveli and daman & diu": "Dadra and Nagar Haveli and Daman and Diu",
+  "telengana": "Telangana"
+};
+function matchState(raw) {
+  let n2 = norm(raw).replace(/\b(state|union territory|ut) of\b/g, "").replace(/\s+(state|ut)$/, "").replace(/\s+/g, " ").trim();
+  if (!n2) return void 0;
+  const direct = findState(n2);
+  if (direct) return direct;
+  const al = STATE_ALIAS[n2] || STATE_ALIAS[n2.replace(/&/g, "and")];
+  if (al) return findState(al);
+  return INDIA_STATES.find((s) => norm(s.name).replace(/&/g, "and") === n2.replace(/&/g, "and"));
+}
+var ISO_STATE = {
+  AP: "Andhra Pradesh",
+  AR: "Arunachal Pradesh",
+  AS: "Assam",
+  BR: "Bihar",
+  CT: "Chhattisgarh",
+  CG: "Chhattisgarh",
+  GA: "Goa",
+  GJ: "Gujarat",
+  HR: "Haryana",
+  HP: "Himachal Pradesh",
+  JH: "Jharkhand",
+  KA: "Karnataka",
+  KL: "Kerala",
+  MP: "Madhya Pradesh",
+  MH: "Maharashtra",
+  MN: "Manipur",
+  ML: "Meghalaya",
+  MZ: "Mizoram",
+  NL: "Nagaland",
+  OR: "Odisha",
+  OD: "Odisha",
+  PB: "Punjab",
+  RJ: "Rajasthan",
+  SK: "Sikkim",
+  TN: "Tamil Nadu",
+  TG: "Telangana",
+  TS: "Telangana",
+  TR: "Tripura",
+  UP: "Uttar Pradesh",
+  UT: "Uttarakhand",
+  UK: "Uttarakhand",
+  WB: "West Bengal",
+  AN: "Andaman and Nicobar Islands",
+  CH: "Chandigarh",
+  DH: "Dadra and Nagar Haveli and Daman and Diu",
+  DN: "Dadra and Nagar Haveli and Daman and Diu",
+  DD: "Dadra and Nagar Haveli and Daman and Diu",
+  DL: "Delhi",
+  JK: "Jammu and Kashmir",
+  LA: "Ladakh",
+  LD: "Lakshadweep",
+  PY: "Puducherry"
+};
+var stateOfIso = (code) => findState(ISO_STATE[String(code || "").trim().toUpperCase()]);
 function stateOfCity(city) {
   const c = norm(city);
   if (!c) return void 0;
@@ -83781,6 +83853,24 @@ function seedDemoReviews() {
   mk("USR-BRK-002", "USR-BUILDER-001", 4, ["GOOD_SUPPORT"], "Sales team helps with site visits.", 5);
   db.save();
 }
+function ownerRecordFor(brokerId, phone1010, s = st15()) {
+  if (!/^\d{10}$/.test(phone1010)) return null;
+  const key = crypto31.createHmac("sha256", secret()).update(`oc-phone|${phone1010}`).digest("hex");
+  const rows = /* @__PURE__ */ new Map();
+  for (const p of s.properties) if (p.listingBrokerId === brokerId && digits(p.ownerPhone).slice(-10) === phone1010) rows.set(p.id, { name: p.ownerName, city: p.city || "", title: p.title });
+  for (const c of s.ownerConsents) {
+    if (c.brokerId !== brokerId || c.ownerPhoneHash !== key || !c.propertyId || c.status === "VOID") continue;
+    const p = s.properties.find((x) => x.id === c.propertyId);
+    if (p && !rows.has(p.id)) rows.set(p.id, { name: c.ownerTypedName || c.ownerName, city: p.city || "", title: p.title });
+  }
+  if (!rows.size) return null;
+  const first2 = [...rows.values()][0];
+  const listings = [...rows.entries()].slice(0, 5).map(([propertyId, r]) => {
+    const m = s.ownerMandates.filter((x) => x.propertyId === propertyId && x.brokerId === brokerId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return { propertyId, title: r.title, ...m ? { mandateId: m.id, mandateStatus: m.status } : {} };
+  });
+  return { name: shortName(first2.name || "Owner"), last4: phone1010.slice(-4), city: first2.city, listings };
+}
 var ALERT_URL = "/?tab=people";
 function createProfilesRouter() {
   const r = (0, import_express34.Router)();
@@ -83813,7 +83903,8 @@ function createProfilesRouter() {
     hits = hits.filter((x) => x.id !== u.id && (isStaffRole(seeker) || mayOpenProfile({ id: u.id, role: seeker }, { id: x.id, role: x.role, visible: x.profile?.visible }, kind !== "TEXT" && !priv(x))));
     if (kind !== "TEXT") db.appendAuditEvent(u.id, u.role, "SYSTEM", u.id, "PROFILE_LOOKUP", `${kind === "PHONE" ? `mobile ending ${q.slice(-4)}` : `code ${q}`} \u2192 ${hits.length} found`);
     const cards = hits.map((x) => ({ ...cardOf(x), ...priv(x) || x.profile?.visible === false ? { ticket: ticketFor(u.id, x.id) } : {} })).sort((a, b) => b.rating.count - a.rating.count || b.rating.avg - a.rating.avg || a.name.localeCompare(b.name)).slice(0, SEARCH_LIMIT);
-    res.json({ success: true, kind, results: cards, total: hits.length });
+    const record2 = kind === "PHONE" && !hits.length && canLookupPrivate(seeker) && !isStaffRole(seeker) ? ownerRecordFor(u.id, q) : null;
+    res.json({ success: true, kind, results: cards, total: hits.length, ...record2 ? { ownerRecord: record2 } : {} });
   });
   r.get("/mine", (_req, res) => {
     const u = me19();
@@ -93036,6 +93127,31 @@ function sweepOwnerListings(now = Date.now()) {
   return n2;
 }
 var OTPS = /* @__PURE__ */ new Map();
+var OTP_MS = 10 * 6e4;
+var otpBook = () => {
+  const s = st28();
+  const b = s.ownerOtp ||= {};
+  const t2 = Date.now() - 6e4;
+  for (const k of Object.keys(b)) if (b[k].exp < t2) delete b[k];
+  return b;
+};
+var tokSig = (body, code) => hm2("owner-otp-tok", `${body}|${code}`);
+function makeOtpToken(phone, code, exp) {
+  const body = Buffer.from(JSON.stringify({ p: phone, e: exp, n: crypto46.randomBytes(6).toString("hex") })).toString("base64url");
+  return `${body}.${tokSig(body, code)}`;
+}
+function readOtpToken(tok2, phone) {
+  if (typeof tok2 !== "string" || tok2.length > 400) return null;
+  const [body, sig2, ...rest] = tok2.split(".");
+  if (!body || !sig2 || rest.length) return null;
+  try {
+    const j = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (j?.p !== phone || !Number.isFinite(j?.e) || typeof j?.n !== "string" || !/^[0-9a-f]{12}$/.test(j.n)) return null;
+    return { body, sig: sig2, n: j.n, e: Number(j.e) };
+  } catch {
+    return null;
+  }
+}
 function createOwnerAuthRouter() {
   const r = (0, import_express66.Router)();
   r.post("/otp", rateLimit("owner-otp-ip", 20, 36e5), async (req, res) => {
@@ -93047,20 +93163,40 @@ function createOwnerAuthRouter() {
     const ex = st28().users.find((u) => phone108(u.phone) === phone && u.role === "PROPERTY_OWNER");
     if (ex && !ex.selfSignup) return bad31(res, "This number already has a GENZ owner account with a password \u2014 sign in with it.", 409, "USE_PASSWORD");
     const code = secureOtp();
-    OTPS.set(phone, { hash: hm2("owner-otp", `${phone}|${code}`), exp: Date.now() + 10 * 6e4, tries: 0 });
+    const exp = Date.now() + OTP_MS;
+    OTPS.set(phone, { hash: hm2("owner-otp", `${phone}|${code}`), exp, tries: 0 });
     await sendSms(phone, `GENZ: your code is ${code} (valid 10 minutes). Do not share it.`);
-    res.json({ success: true, exists: !!ex, ...!smsOn5 && DEMO_MODE ? { devCode: code } : {} });
+    res.json({ success: true, exists: !!ex, otpToken: makeOtpToken(phone, code, exp), ...!smsOn5 && DEMO_MODE ? { devCode: code } : {} });
   });
   r.post("/verify", rateLimit("owner-verify-ip", 40, 36e5), (req, res) => {
     const phone = phone108(req.body?.phone);
     const code = String(req.body?.code || "").replace(/\D/g, "");
-    const o = OTPS.get(phone);
-    if (!o || o.exp < Date.now()) return bad31(res, "The code has expired \u2014 ask for a new one.", 400, "EXPIRED");
-    if (++o.tries > 5) {
-      OTPS.delete(phone);
-      return bad31(res, "Too many wrong tries \u2014 ask for a new code.", 429);
+    const tk = readOtpToken(req.body?.otpToken, phone);
+    let usedNonce = "";
+    if (tk) {
+      if (tk.e < Date.now()) return bad31(res, "The code has expired \u2014 ask for a new one.", 400, "EXPIRED");
+      const book = otpBook();
+      const rec2 = book[tk.n] ||= { exp: tk.e, tries: 0 };
+      if (rec2.used) return bad31(res, "That code was already used \u2014 ask for a new one.", 400, "EXPIRED");
+      if (++rec2.tries > 5) {
+        rec2.used = true;
+        db.save();
+        return bad31(res, "Too many wrong tries \u2014 ask for a new code.", 429);
+      }
+      if (!safeEqual(tk.sig, tokSig(tk.body, code))) {
+        db.save();
+        return bad31(res, "That code is not right.", 400, "WRONG_CODE");
+      }
+      usedNonce = tk.n;
+    } else {
+      const o = OTPS.get(phone);
+      if (!o || o.exp < Date.now()) return bad31(res, "The code has expired \u2014 ask for a new one.", 400, "EXPIRED");
+      if (++o.tries > 5) {
+        OTPS.delete(phone);
+        return bad31(res, "Too many wrong tries \u2014 ask for a new code.", 429);
+      }
+      if (!safeEqual(o.hash, hm2("owner-otp", `${phone}|${code}`))) return bad31(res, "That code is not right.", 400, "WRONG_CODE");
     }
-    if (!safeEqual(o.hash, hm2("owner-otp", `${phone}|${code}`))) return bad31(res, "That code is not right.", 400, "WRONG_CODE");
     const s = st28();
     const now = nowIso44();
     let u = s.users.find((x) => phone108(x.phone) === phone && x.role === "PROPERTY_OWNER");
@@ -93091,6 +93227,10 @@ function createOwnerAuthRouter() {
     }
     OTPS.delete(phone);
     resetHits(`owner-otp:${phone}`);
+    if (usedNonce) {
+      const b = otpBook();
+      (b[usedNonce] ||= { exp: Date.now() + OTP_MS, tries: 0 }).used = true;
+    }
     u.lastLoginAt = now;
     db.save();
     setSessionCookie(req, res, signSession(u.id, u.sessionVersion || 1));
@@ -93548,6 +93688,31 @@ var openPhone = (r) => {
     return void 0;
   }
 };
+function healPhone(r) {
+  if (r.phoneSealed || r.status !== "ACTIVE" || !vaultReady() || !r.phoneKey) return false;
+  const s = st29();
+  const seen2 = /* @__PURE__ */ new Set();
+  const sources = [];
+  for (const c of s.clientCards || []) if (c.brokerId === r.brokerId) sources.push(c.phone);
+  for (const q of s.requirements || []) if (q.assignedBrokerId === r.brokerId || !!r.createdById && q.buyerId === r.createdById) sources.push(q.customerPhone);
+  for (const v of s.siteVisits || []) if (v.brokerId === r.brokerId) sources.push(v.customerPhone);
+  for (const q of s.requirements || []) sources.push(q.customerPhone);
+  for (const raw of sources) {
+    const ph = phone109(raw);
+    if (!PHONE_RE9.test(ph) || /[xX•*]/.test(String(raw ?? "")) || seen2.has(ph)) continue;
+    seen2.add(ph);
+    if (ph.slice(-4) === r.phoneLast4 && safeEqual(hmac4("cr-phone", ph), r.phoneKey)) {
+      sealPhone(r, ph);
+      return !!r.phoneSealed;
+    }
+  }
+  return false;
+}
+var healAll = (rooms) => {
+  let n2 = 0;
+  for (const x of rooms) if (healPhone(x)) n2++;
+  if (n2) db.save();
+};
 var phoneAccess = (u) => !isStaff4(u) ? "FULL" : policyOf(db.byId("users", u.id)).phoneMode;
 function summary3(r) {
   const last = r.messages[r.messages.length - 1];
@@ -93626,6 +93791,7 @@ function createClientRoomRouter() {
   r.get("/", (_req, res) => {
     const list = st29().clientRooms.filter((x) => x.brokerId === roomOwnerOf(me32())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const u = me32();
+    healAll(list);
     res.json({
       success: true,
       rooms: list.map(summary3),
@@ -93679,6 +93845,7 @@ function createClientRoomRouter() {
   r.get("/:id", (req, res) => {
     const room = mine2(req);
     if (!room) return bad32(res, "Room not found", 404);
+    healAll([room]);
     res.json({ success: true, room: detail(room) });
   });
   r.post("/:id/items", rateLimit("cr-items", 120, 36e5), (req, res) => {
@@ -97424,6 +97591,8 @@ app.get("/api/deals/:id", needs("deal:read"), (req, res) => {
     success: true,
     deal: shapeDealFor(deal, currentUser2, state),
     brokerage: summaryOnly ? void 0 : brokerageFor(deal, currentUser2, state),
+    // v80 — the Final rate card (everyone in the room reads it; only the deal brokers change it)
+    finalRate: summaryOnly || currentUser2.role === "LEGAL_COUNSEL" ? void 0 : finalRateFor(deal, currentUser2, state),
     // what this viewer may read inside the room, and whether GENZ may read it right now (shown as a notice to the brokers)
     access: { level: summaryOnly ? "SUMMARY" : "FULL", via, adminCanSee: !!liveDispute, openDisputeId: liveDispute?.id },
     property: property ? sanitizeProperty(property, currentUser2, state) : void 0,
@@ -100319,22 +100488,56 @@ app.post("/api/properties/:id/location", needs("property:update"), (req, res) =>
   );
   res.json({ success: true, property: sanitizeProperty(property, currentUser2) });
 });
+function finalRateFor(deal, user, state) {
+  const prop = state.properties.find((x) => x.id === deal.propertyId);
+  const asking = Number(prop?.askingPrice) || 0;
+  const set2 = !!deal.dealValue && deal.dealValue > 0;
+  const price = set2 ? deal.dealValue : asking;
+  const source = set2 ? deal.dealValueSource || "MANUAL" : "ASKING";
+  const by = deal.dealValueBy ? state.users.find((u) => u.id === deal.dealValueBy)?.name || "" : "";
+  const can2 = isDealBroker(user, deal) || !!prop && prop.listingBrokerId === user.id;
+  return {
+    price,
+    source,
+    asking,
+    diff: asking && set2 ? price - asking : 0,
+    by,
+    at: deal.dealValueAt || "",
+    note: deal.dealValueNote || "",
+    stage: deal.stage,
+    canSet: can2 && deal.stage !== "Settled",
+    locked: source === "AGREEMENT",
+    settled: deal.stage === "Settled"
+  };
+}
 app.post("/api/deals/:id/final-price", needs("deal:chat"), (req, res) => {
   const currentUser2 = getCurrentUser();
   const state = db.getState();
   const deal = db.byId("dealRooms", req.params.id);
   if (!deal) return res.status(404).json({ error: "Deal Room not found" });
-  if (!isDealBroker(currentUser2, deal)) return res.status(403).json({ error: "Only the deal brokers can set the final price" });
+  const prop = db.byId("properties", deal.propertyId);
+  if (!isDealBroker(currentUser2, deal) && !(prop && prop.listingBrokerId === currentUser2.id)) return res.status(403).json({ error: "Only the deal brokers can set the final price" });
   const price = Number(req.body?.price);
   if (!Number.isFinite(price) || price <= 0 || price > 1e11) return res.status(400).json({ error: "Enter the final price in rupees" });
+  if (deal.stage === "Settled") return res.status(409).json({ error: "This deal is settled \u2014 its price is kept as it was", code: "DEAL_SETTLED" });
   if (deal.dealValueSource === "AGREEMENT") return res.status(409).json({ error: "The price is fixed by the signed commission agreement \u2014 change it by a new agreement version", code: "PRICE_FROM_AGREEMENT" });
+  const note5 = String(req.body?.note || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 120);
   const before = deal.dealValue;
   deal.dealValue = Math.round(price);
   deal.dealValueSource = "MANUAL";
-  deal.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  deal.dealValueBy = currentUser2.id;
+  deal.dealValueAt = (/* @__PURE__ */ new Date()).toISOString();
+  deal.dealValueNote = note5 || void 0;
+  deal.updatedAt = deal.dealValueAt;
   db.save();
-  db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "FINAL_PRICE_SET", `Final price set to \u20B9${deal.dealValue.toLocaleString("en-IN")}${before ? ` (was \u20B9${before.toLocaleString("en-IN")})` : ""}`);
-  res.json({ success: true, dealValue: deal.dealValue, brokerage: brokerageFor(deal, currentUser2, state) });
+  db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "FINAL_PRICE_SET", `Final price set to \u20B9${deal.dealValue.toLocaleString("en-IN")}${before ? ` (was \u20B9${before.toLocaleString("en-IN")})` : ""}${note5 ? ` \u2014 ${note5}` : ""}`);
+  const rs = `\u20B9${deal.dealValue.toLocaleString("en-IN")}`;
+  alert([deal.introducingBrokerId, deal.closingBrokerId, prop?.listingBrokerId, deal.ownerId], "deals", `Final rate set \xB7 ${deal.id}`, `${currentUser2.name}: ${rs}${note5 ? ` \u2014 ${note5}` : ""}. Check it in the deal room; if it is not what was agreed, correct it there.`, `/?tab=deals&deal=${deal.id}`, {
+    not: currentUser2.id,
+    tag: `fr-${deal.id}`,
+    hi: [`\u092B\u093C\u093E\u0907\u0928\u0932 \u0930\u0947\u091F \u0924\u092F \xB7 ${deal.id}`, `${currentUser2.name}: ${rs}${note5 ? ` \u2014 ${note5}` : ""}\u0964 \u0921\u0940\u0932 \u0930\u0942\u092E \u092E\u0947\u0902 \u0926\u0947\u0916 \u0932\u0947\u0902; \u091C\u094B \u0924\u092F \u0939\u0941\u0906 \u0925\u093E \u0909\u0938\u0938\u0947 \u0905\u0932\u0917 \u0939\u094B \u0924\u094B \u0935\u0939\u0940\u0902 \u0938\u0941\u0927\u093E\u0930 \u0926\u0947\u0902\u0964`]
+  });
+  res.json({ success: true, dealValue: deal.dealValue, finalRate: finalRateFor(deal, currentUser2, state), brokerage: brokerageFor(deal, currentUser2, state) });
 });
 function ensureVisitCards(state, dealId) {
   let added = false;
@@ -100564,13 +100767,29 @@ app.get("/api/geo/reverse", rateLimit("georev", 30, 6e4), async (req, res) => {
     const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&localityLanguage=en`, { signal: ctl.signal });
     clearTimeout(timer);
     const j = await r.json();
-    const state = findState(String(j?.principalSubdivision || ""))?.name || "";
     const city = String(j?.city || j?.locality || "").slice(0, 60);
+    const state = matchState(String(j?.principalSubdivision || ""))?.name || stateOfCity(city) || "";
     if (!state && !city) return res.json({ success: true, found: false });
     return res.json({ success: true, found: true, country: String(j?.countryName || "India").slice(0, 60), state, city, pincode: /^\d{6}$/.test(String(j?.postcode || "")) ? String(j.postcode) : "" });
   } catch {
     return res.json({ success: true, found: false, unavailable: true });
   }
+});
+app.get("/api/geo/ip", rateLimit("geoip", 30, 6e4), (req, res) => {
+  const h = (k) => {
+    const v = req.headers[k];
+    const raw = Array.isArray(v) ? v[0] : v;
+    try {
+      return decodeURIComponent(String(raw || "")).trim().slice(0, 60);
+    } catch {
+      return String(raw || "").trim().slice(0, 60);
+    }
+  };
+  if (h("x-vercel-ip-country").toUpperCase() !== "IN") return res.json({ success: true, found: false });
+  const city = h("x-vercel-ip-city");
+  const state = stateOfIso(h("x-vercel-ip-country-region"))?.name || stateOfCity(city) || "";
+  if (!state && !city) return res.json({ success: true, found: false });
+  res.json({ success: true, found: true, country: "India", state, city });
 });
 app.get("/api/health", async (_req, res) => {
   try {

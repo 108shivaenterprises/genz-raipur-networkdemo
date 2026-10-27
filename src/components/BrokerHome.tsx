@@ -1,4 +1,6 @@
 /**
+ * v80 — the counters (offers waiting, bills, codes, rent …) are in the notification bell ONLY; the Home does not repeat them as tiles.
+ *
  * v43 — one home, no repeats: the trust badge sits next to the greeting, a co-broking offer waiting is the first tile, the
  * "setup %" bar shows only after the 3 first steps are done, and the phone-alert card opens only from its step.
  *
@@ -6,7 +8,7 @@
  * GENZ's own projects, this month's rank, his chapter's next meet, and the city report to share on WhatsApp.
  */
 import React, { useEffect, useState } from 'react';
-import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, ShieldCheck, Inbox, Clock, Handshake, Loader2, Lock, Plus, HardHat, Store, Globe, DoorOpen } from 'lucide-react';
+import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, Clock, Loader2, Plus, HardHat, Globe } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -14,7 +16,6 @@ import type { TabType } from './NavigationTabs.js';
 import { AlertsCard } from './AlertsCard.js';
 import { pushState } from '../lib/push.js';
 import { goto } from '../lib/goto.js';
-import { HOME_TODOS } from '../shared/homeTodoRules.js';
 import { GrowthNudge } from './GrowthNudge.js';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import type { UserProfile } from '../types/index.js';
@@ -31,7 +32,7 @@ interface Props {
   canGrow?: boolean;
 }
 
-export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequirement, user, offersWaiting = 0, onOpenAddProperty, onOpenAddLead, canGrow }) => {
+export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequirement, user, onOpenAddProperty, onOpenAddLead, canGrow }) => {
   const tx = useTx();
   const [showAlerts, setShowAlerts] = useState(false);
   const [h, setH] = useState<any>(null);
@@ -49,25 +50,13 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
     api.launchFeed().then(r => setProjects((r.items || []).filter((x: any) => x.view === 'OPEN').slice(0, 3))).catch(() => setProjects([]));
   }, []);
   if (!h) return null;
-  const c = h.counts;
   const steps = [
     { done: h.firstRun.listing, icon: MessageCircle, en: 'Put your first listing — paste it from WhatsApp', hi: 'पहली लिस्टिंग डालें — WhatsApp से पेस्ट करें', go: () => goto('properties', { drafts: '1' }, onNavigate), testId: 'step-listing' },
     { done: h.firstRun.client, icon: UserPlus, en: 'Add a client’s need — GENZ finds matches for you', hi: 'किसी क्लाइंट की ज़रूरत जोड़ें — GENZ मैच ढूँढेगा', go: onOpenAddRequirement, testId: 'step-client' },
     { done: !!alertsOn, icon: Bell, en: 'Turn on phone alerts', hi: 'फ़ोन अलर्ट चालू करें', go: () => { setShowAlerts(true); window.setTimeout(() => document.getElementById('home-alerts')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }, testId: 'step-alerts' },
   ];
   const left = steps.filter(s => !s.done).length;
-  // v79 — the tiles come from the shared list (src/shared/homeTodoRules.ts), the same one the notification bell is built from
-  const TILE_ICON: Record<string, React.ElementType> = {
-    offersWaiting: Handshake, billsToConfirm: CheckCircle2, billsOverdue: Clock, partnerCodes: Lock, partnerNew: Store, pageNew: Globe, rentEnding: DoorOpen, rentPolice: ShieldCheck,
-    rentToRecord: DoorOpen, partnerDue: Store, roomCodes: Lock, roomMsgs: MessageCircle, roomVisits: Clock, shareAsks: Handshake, shareToPay: Handshake, bondAlerts: ShieldCheck,
-    bondAsks: Handshake, readyToPublish: CheckCircle2, inbox: Inbox, answers: Handshake, followUps: Clock, waitingOwner: MessageCircle, protectedListings: ShieldCheck, buyerBonds: ShieldCheck,
-  };
-  const tiles = HOME_TODOS.map(d => ({
-    n: d.key === 'offersWaiting' ? offersWaiting : Number((c as any)[d.key]) || 0,
-    icon: TILE_ICON[d.key] || Inbox, en: d.en, hi: d.hi, tone: d.tone, testId: d.testId,
-    go: () => (d.params ? goto(d.tab as TabType, d.params, onNavigate) : onNavigate(d.tab as TabType)),
-  })).filter(t => t.n > 0);
-  const toneCls: Record<string, string> = { emerald: 'border-emerald-300 bg-emerald-50 text-emerald-900', indigo: 'border-indigo-200 bg-indigo-50 text-indigo-900', amber: 'border-amber-300 bg-amber-50 text-amber-900', slate: 'border-slate-200 bg-white text-slate-800' };
+  // v80 — the to-do counters live ONLY in the notification bell now (same list: src/shared/homeTodoRules.ts → server/homebell.ts). The Home no longer repeats them below.
   const reportUrl = `${window.location.origin}/report/${encodeURIComponent(String(h.city || 'Raipur'))}${h.refCode ? `?ref=${encodeURIComponent(h.refCode)}` : ''}`;
   // v79 — with his public page ON, the WhatsApp link is HIS page (his homes + an enquiry form; the city report is a link inside it); with it OFF the city report, which now tells who shared it
   const pageUrl = h.page?.on && h.refCode ? `${window.location.origin}/c/${encodeURIComponent(h.refCode)}` : '';
@@ -113,16 +102,6 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
         <div className="flex flex-wrap gap-2" data-testid="home-more-adds">
           {onOpenAddProperty && <button onClick={onOpenAddProperty} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-900"><Plus className="h-3.5 w-3.5" />{tx('Add property', 'प्रॉपर्टी जोड़ें')}</button>}
           {onOpenAddLead && <button onClick={onOpenAddLead} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-slate-900"><HardHat className="h-3.5 w-3.5 text-orange-500" />{tx('Construction lead', 'कंस्ट्रक्शन लीड')}</button>}
-        </div>
-      )}
-
-      {tiles.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2" data-testid="home-tiles">
-          {tiles.map((t, i) => (
-            <button key={i} onClick={t.go} data-testid={(t as any).testId} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3 py-2 text-left ${toneCls[t.tone]}`}>
-              <t.icon className="h-5 w-5 shrink-0" /><span className="flex-1 text-sm font-semibold">{tx(t.en, t.hi)}</span><span className="text-lg font-bold">{t.n}</span><ChevronRight className="h-4 w-4 opacity-50" />
-            </button>
-          ))}
         </div>
       )}
 

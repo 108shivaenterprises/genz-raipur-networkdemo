@@ -5,7 +5,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, ArrowLeft, Plus, Check, MapPin, Upload, Trash2, ExternalLink, ShieldCheck, Camera } from 'lucide-react';
-import { INDIA_STATES } from '../shared/india.js';
+import { INDIA_STATES, matchState, stateOfCity, citiesOf } from '../shared/india.js';
 import { prepareDoc, shrinkImage } from '../lib/imgShrink.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
@@ -18,23 +18,48 @@ const ghost = 'inline-flex min-h-11 items-center justify-center gap-1 rounded-lg
 
 export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () => void }> = ({ onLoggedIn, onBack }) => {
   const tx = useTx();
+  /** v80 — useTx() returns a NEW function on every render. `detect` used to depend on it, so every re-render made a "new" detect, the effect ran again, asked the phone for its location again and
+   *  set state again — an endless loop (the flicker, and the city never settling). Now the latest tx sits in a ref and detect is created once. */
+  const txRef = useRef(tx); txRef.current = tx;
   const [phone, setPhone] = useState(''); const [step, setStep] = useState<'phone' | 'code'>('phone'); const [code, setCode] = useState('');
   const [exists, setExists] = useState(false); const [name, setName] = useState(''); const [city, setCity] = useState(''); const [stateName, setStateName] = useState(''); const [country, setCountry] = useState('India'); const [ok, setOk] = useState(false);
-  const [locNote, setLocNote] = useState(''); const [locBusy, setLocBusy] = useState(false); const touched = useRef(false);
-  const [dev, setDev] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  /** ask the phone for its location, turn it into state / city; the owner can change every field afterwards */
+  const [locNote, setLocNote] = useState(''); const [locBusy, setLocBusy] = useState(false); const touched = useRef(false); const autoRan = useRef(false); const alive = useRef(true);
+  const [dev, setDev] = useState(''); const [tok, setTok] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  /** put a place into the form — only while the owner has not typed or chosen anything himself */
+  const apply = useCallback((r: { state?: string; city?: string; country?: string }) => {
+    if (touched.current) return;
+    const st = matchState(r.state)?.name || (r.city ? stateOfCity(r.city) : '') || '';
+    if (st) setStateName(st);
+    if (r.city) setCity(r.city);
+    if (r.country) setCountry(r.country);
+  }, []);
+  /** ask the phone for its location, turn it into state / city; if the phone will not say, the network address gives the rough city; the owner can change every field afterwards */
   const detect = useCallback(() => {
-    if (!navigator.geolocation) { setLocNote(tx('This phone cannot share its location — choose your state and city.', 'यह फ़ोन लोकेशन नहीं दे सकता — अपना राज्य और शहर चुनें।')); return; }
+    const t = (en: string, hi: string) => txRef.current(en, hi);
+    const viaNetwork = async (why: string) => {
+      try {
+        const r = await api.geoIp();
+        if (!alive.current) return;
+        if (r.found) { apply(r); setLocNote(t('Filled from your network area — change it if it is wrong.', 'आपके नेटवर्क इलाक़े से भरा गया — ग़लत हो तो बदल लें।')); return; }
+      } catch { /* fall through to the plain note */ }
+      if (alive.current) setLocNote(why);
+    };
     setLocBusy(true); setLocNote('');
+    const done = () => { if (alive.current) setLocBusy(false); };
+    if (!navigator.geolocation) { void viaNetwork(t('This phone cannot share its location — choose your state and city.', 'यह फ़ोन लोकेशन नहीं दे सकता — अपना राज्य और शहर चुनें।')).finally(done); return; }
     navigator.geolocation.getCurrentPosition(async pos => {
       try {
         const r = await api.geoReverse(pos.coords.latitude, pos.coords.longitude);
-        if (r.found) { if (!touched.current) { if (r.state) setStateName(r.state); if (r.city) setCity(r.city); if (r.country) setCountry(r.country); } setLocNote(tx('Filled from your location — change it if it is wrong.', 'आपकी लोकेशन से भरा गया — ग़लत हो तो बदल लें।')); }
-        else setLocNote(tx('Could not find the place — choose your state and city.', 'जगह नहीं मिली — राज्य और शहर चुनें।'));
-      } catch { setLocNote(tx('Could not find the place — choose your state and city.', 'जगह नहीं मिली — राज्य और शहर चुनें।')); } finally { setLocBusy(false); }
-    }, () => { setLocBusy(false); setLocNote(tx('Location was not allowed — choose your state and city.', 'लोकेशन की इजाज़त नहीं मिली — राज्य और शहर चुनें।')); }, { timeout: 8000, maximumAge: 600000 });
-  }, [tx]);
-  useEffect(() => { if (step === 'code' && !exists) detect(); }, [step, exists, detect]);
+        if (!alive.current) return;
+        if (r.found) { apply(r); setLocNote(t('Filled from your location — change it if it is wrong.', 'आपकी लोकेशन से भरा गया — ग़लत हो तो बदल लें।')); }
+        else await viaNetwork(t('Could not find the place — choose your state and city.', 'जगह नहीं मिली — राज्य और शहर चुनें।'));
+      } catch { await viaNetwork(t('Could not find the place — choose your state and city.', 'जगह नहीं मिली — राज्य और शहर चुनें।')); } finally { done(); }
+    }, () => { void viaNetwork(t('Location was not allowed — choose your state and city.', 'लोकेशन की इजाज़त नहीं मिली — राज्य और शहर चुनें।')).finally(done); }, { timeout: 8000, maximumAge: 600000 });
+  }, [apply]);
+  // ONCE, the first time a new owner reaches the code step (never again on a re-render)
+  useEffect(() => { if (step === 'code' && !exists && !autoRan.current) { autoRan.current = true; detect(); } }, [step, exists, detect]);
+  const sendCode = async () => { const r = await api.ownerOtp(phone.replace(/\D/g, '')); setExists(r.exists); setDev(r.devCode || ''); setTok(r.otpToken || ''); setCode(''); };
   const go = async (fn: () => Promise<void>) => { setBusy(true); setErr(''); try { await fn(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-10">
@@ -43,13 +68,13 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
         <h1 className="text-base font-bold text-slate-900">🏠 {tx('Property owner — sign in with your mobile', 'प्रॉपर्टी मालिक — मोबाइल से साइन-इन')}</h1>
         <p className="mt-1 text-xs text-slate-600">{tx('No password. We send a 6-digit code to your mobile. New here? Your account is made in one step.', 'पासवर्ड नहीं। आपके मोबाइल पर 6 अंकों का कोड आएगा। नए हैं? अकाउंट एक ही बार में बन जाएगा।')}</p>
         {step === 'phone' ? (
-          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { const r = await api.ownerOtp(phone.replace(/\D/g, '')); setExists(r.exists); setDev(r.devCode || ''); setStep('code'); }); }}>
+          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { await sendCode(); setStep('code'); }); }}>
             <input className={inp} inputMode="numeric" maxLength={10} placeholder={tx('10-digit mobile', '10 अंकों का मोबाइल')} value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} data-testid="owner-phone" />
             {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
             <button className={btn + ' w-full'} disabled={busy || phone.length !== 10} data-testid="owner-send">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Send code', 'कोड भेजें')}</button>
           </form>
         ) : (
-          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { const r = await api.ownerVerify({ phone, code: code.replace(/\D/g, ''), name: exists ? undefined : name, city: exists ? undefined : city, state: exists ? undefined : stateName || undefined, consent: exists ? undefined : ok }); void r; onLoggedIn(await api.getMe()); }); }}>
+          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { const r = await api.ownerVerify({ phone, code: code.replace(/\D/g, ''), otpToken: tok || undefined, name: exists ? undefined : name, city: exists ? undefined : city, state: exists ? undefined : stateName || undefined, consent: exists ? undefined : ok }); void r; onLoggedIn(await api.getMe()); }); }}>
             {dev && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800" data-testid="owner-devcode">{tx('Demo: your code is', 'डेमो: आपका कोड')} <b>{dev}</b></p>}
             <input className={inp + ' text-center font-mono text-xl tracking-widest'} inputMode="numeric" maxLength={6} autoFocus autoComplete="one-time-code" placeholder="••••••" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} data-testid="owner-code" />
             {!exists && <>
@@ -57,11 +82,13 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
               <div className="flex items-center justify-between"><span className="text-[11px] font-semibold text-slate-700">{tx('Where is your property?', 'आपकी प्रॉपर्टी कहाँ है?')}</span><button type="button" onClick={() => { touched.current = false; detect(); }} disabled={locBusy} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700" data-testid="owner-detect">{locBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />}{tx('Use my location', 'मेरी लोकेशन लें')}</button></div>
               <select className={inp} value={country} onChange={e => { touched.current = true; setCountry(e.target.value); }} data-testid="owner-country"><option value="India">{tx('India', 'भारत')}</option></select>
               <select className={inp} value={stateName} onChange={e => { touched.current = true; setStateName(e.target.value); }} data-testid="owner-state"><option value="">{tx('State / UT', 'राज्य / केंद्र शासित')}</option>{INDIA_STATES.map(x => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
-              <input className={inp} placeholder={tx('City / town', 'शहर / क़स्बा')} value={city} onChange={e => { touched.current = true; setCity(e.target.value); }} data-testid="owner-city" />
+              <input className={inp} list="owner-city-list" placeholder={tx('City / town', 'शहर / क़स्बा')} value={city} onChange={e => { touched.current = true; const v = e.target.value; setCity(v); if (!stateName) { const st = stateOfCity(v); if (st) setStateName(st); } }} data-testid="owner-city" />
+              <datalist id="owner-city-list">{citiesOf(stateName).map(c => <option key={c} value={c} />)}</datalist>
               {locNote && <p className="text-[11px] text-slate-500">{locNote}</p>}
               <label className="flex items-start gap-2 text-[11px] text-slate-600"><input type="checkbox" className="mt-0.5" checked={ok} onChange={e => setOk(e.target.checked)} data-testid="owner-consent" />{tx('I agree to GENZ keeping my name and mobile number to run my listing. If I give GENZ my face photo / ID, GENZ may keep them sealed for 3 years even after I delete my account (privacy policy).', 'मैं सहमत हूँ कि GENZ मेरी लिस्टिंग चलाने के लिए मेरा नाम और मोबाइल नंबर रखे। अगर मैं अपनी फ़ोटो / ID दूँ तो अकाउंट डिलीट करने के बाद भी GENZ उन्हें 3 साल सील करके रख सकता है (प्राइवेसी पॉलिसी)।')}</label>
             </>}
             {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
+            {err && /expired|already used|new code|नया कोड/i.test(err) && <button type="button" className="text-xs font-semibold text-emerald-700 underline" disabled={busy} onClick={() => void go(sendCode)} data-testid="owner-resend">{tx('Send a new code', 'नया कोड भेजें')}</button>}
             <button className={btn + ' w-full'} disabled={busy || code.length !== 6 || (!exists && (!ok || name.trim().length < 2))} data-testid="owner-go">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Sign in', 'साइन-इन')}</button>
           </form>
         )}

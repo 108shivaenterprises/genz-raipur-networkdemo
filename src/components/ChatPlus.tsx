@@ -12,7 +12,7 @@
  * needed); nothing here holds money, takes contact numbers or records voice.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, QrCode, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, ExternalLink, FileText, Flag, Loader2, Lock, MapPin } from 'lucide-react';
+import { Building2, QrCode, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, ExternalLink, FileText, Flag, IndianRupee, Loader2, Lock, MapPin } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -124,7 +124,10 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
           </button>
-          {v && <button type="button" onClick={open(`visit:${v.id}`)} className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white" data-testid="chat-card-visit-qr"><QrCode className="h-3.5 w-3.5" aria-hidden />{v.isVerified ? tx('Visit pass', 'विज़िट पास') : tx('Visit QR Pass', 'विज़िट QR पास')}</button>}
+          <div className="flex flex-wrap gap-1.5">
+            {v && <button type="button" onClick={open(`visit:${v.id}`)} className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white" data-testid="chat-card-visit-qr"><QrCode className="h-3.5 w-3.5" aria-hidden />{v.isVerified ? tx('Visit pass', 'विज़िट पास') : tx('Visit QR Pass', 'विज़िट QR पास')}</button>}
+            {v && (v.isVerified || Date.parse(v.scheduledTime) < Date.now()) && <button type="button" onClick={open('final-rate')} className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800" data-testid="chat-card-final-rate"><IndianRupee className="h-3.5 w-3.5" aria-hidden />{tx('Rate agreed? Write it', 'रेट तय हुआ? लिखें')}</button>}
+          </div>
         </div>
       );
     }

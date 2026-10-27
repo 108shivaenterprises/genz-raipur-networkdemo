@@ -129,6 +129,26 @@ const openVisits = (r: ClientRoom) => r.items.reduce((n, i) => n + i.visitReques
 const phoneAad = (r: ClientRoom) => `clientroom:${r.id}:phone`;
 const sealPhone = (r: ClientRoom, phone: string) => { try { if (vaultReady()) r.phoneSealed = seal(phone, phoneAad(r)); } catch { /* no vault key: the room works with the last 4 only */ } };
 const openPhone = (r: ClientRoom): string | undefined => { try { return r.phoneSealed ? unseal(r.phoneSealed, phoneAad(r)) : undefined; } catch { return undefined; } };
+/**
+ * v80 — a room that only knows the last 4 digits (opened before v63, or in the seeded demo) gets its full number back by itself when the broker
+ * already has it in his own records: a client card, a buyer need, a visit he booked. A match is proof that this very number was typed by him:
+ * the room's key is an HMAC of the number he gave when he opened the room. Nothing is shown to anyone new — it only fills the same "saved number".
+ */
+function healPhone(r: ClientRoom): boolean {
+  if (r.phoneSealed || r.status !== 'ACTIVE' || !vaultReady() || !r.phoneKey) return false;
+  const s = st(); const seen = new Set<string>();
+  const sources: unknown[] = [];
+  for (const c of s.clientCards || []) if (c.brokerId === r.brokerId) sources.push(c.phone);
+  for (const q of s.requirements || []) if (q.assignedBrokerId === r.brokerId || (!!r.createdById && q.buyerId === r.createdById)) sources.push(q.customerPhone);
+  for (const v of s.siteVisits || []) if (v.brokerId === r.brokerId) sources.push((v as any).customerPhone);
+  for (const q of s.requirements || []) sources.push(q.customerPhone);   // last: any need on the network — only a number he typed can match this room's key
+  for (const raw of sources) {
+    const ph = phone10(raw); if (!PHONE_RE.test(ph) || /[xX•*]/.test(String(raw ?? '')) || seen.has(ph)) continue; seen.add(ph);
+    if (ph.slice(-4) === r.phoneLast4 && safeEqual(hmac('cr-phone', ph), r.phoneKey)) { sealPhone(r, ph); return !!r.phoneSealed; }
+  }
+  return false;
+}
+const healAll = (rooms: ClientRoom[]) => { let n = 0; for (const x of rooms) if (healPhone(x)) n++; if (n) db.save(); };
 const phoneAccess = (u: UserProfile): 'FULL' | 'REVEAL' | 'HIDDEN' => !isStaff(u) ? 'FULL' : policyOf(db.byId('users', u.id) as UserProfile).phoneMode;
 
 function summary(r: ClientRoom) {
@@ -178,7 +198,7 @@ export function createClientRoomRouter() {
   });
   r.get('/', (_req, res) => {
     const list = st().clientRooms.filter(x => x.brokerId === roomOwnerOf(me())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const u = me();
+    const u = me(); healAll(list);
     res.json({ success: true, rooms: list.map(summary), counts: { active: list.filter(x => x.status === 'ACTIVE').length, unread: list.reduce((n, x) => n + unread(x), 0), visits: list.reduce((n, x) => n + openVisits(x), 0) },
       ...(isStaff(u) ? { staffOf: (db.byId('users', roomOwnerOf(u)) as UserProfile | undefined)?.name || '' } : {}) });
   });
@@ -214,6 +234,7 @@ export function createClientRoomRouter() {
 
   r.get('/:id', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
+    healAll([room]);   // v80 — an older room finds its saved number in the broker's own records
     res.json({ success: true, room: detail(room) });
   });
 

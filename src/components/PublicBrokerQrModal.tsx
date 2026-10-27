@@ -43,13 +43,12 @@ export const PublicBrokerQrModal: React.FC<PublicBrokerQrModalProps> = ({
   const { lang } = useI18n();
   if (!isOpen) return null;
 
-  // Filter to brokers only or include admin
-  const brokerList = brokers.filter(
-    (u) => u.role === 'BROKER' || u.role === 'SUPERADMIN' || u.role === 'ADMIN'
-  );
+  // v80 — a broker opens HIS OWN card and nothing else: no list of other brokers to switch to. Only GENZ staff may look at another broker's card.
+  const isStaff = currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN';
+  const brokerList = isStaff ? brokers.filter((u) => u.role === 'BROKER' || u.role === 'SUPERADMIN' || u.role === 'ADMIN') : [currentUser];
 
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>(
-    initialBrokerId || (currentUser.role === 'BROKER' ? currentUser.id : brokerList[0]?.id || currentUser.id)
+    isStaff ? (initialBrokerId || brokerList[0]?.id || currentUser.id) : currentUser.id
   );
 
   const selectedBroker =
@@ -149,21 +148,23 @@ export const PublicBrokerQrModal: React.FC<PublicBrokerQrModalProps> = ({
 
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
-          {/* Broker Selector (allows viewing any broker's badge or own) */}
-          <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 p-2.5">
-            <span className="text-xs font-semibold text-slate-600 pl-1">{tx('Select Broker Profile:', 'ब्रोकर प्रोफ़ाइल चुनें:')}</span>
-            <select
-              value={selectedBrokerId}
-              onChange={(e) => setSelectedBrokerId(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-slate-900 focus:outline-hidden"
-            >
-              {brokerList.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} ({b.id}) - {tx('Trust', 'ट्रस्ट')} {b.trustScore ?? 'N/A'}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Broker Selector — GENZ staff only (a broker sees only his own card) */}
+          {isStaff && (
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 p-2.5" data-testid="qr-broker-select">
+              <span className="text-xs font-semibold text-slate-600 pl-1">{tx('Select Broker Profile:', 'ब्रोकर प्रोफ़ाइल चुनें:')}</span>
+              <select
+                value={selectedBrokerId}
+                onChange={(e) => setSelectedBrokerId(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-slate-900 focus:outline-hidden"
+              >
+                {brokerList.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.id}) - {tx('Trust', 'ट्रस्ट')} {b.trustScore ?? 'N/A'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* DIGITAL CARD PREVIEW (PRINTABLE / SHAREABLE) */}
           <div className="print-target relative rounded-2xl border-2 border-amber-400/60 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 p-5 sm:p-6 text-white shadow-xl overflow-hidden">

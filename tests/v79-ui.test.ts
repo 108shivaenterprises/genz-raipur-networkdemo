@@ -73,11 +73,11 @@ describe('a builder\'s unit card opens its details', () => {
   });
 });
 
-describe('the Home counters and the bell are one list', () => {
+describe('the Home counters live in the bell (v80: not repeated as tiles on the Home)', () => {
   const rules = read('src/shared/homeTodoRules.ts');
-  it('Home tiles are built from HOME_TODOS, not from a second hand-written list', () => {
-    const h = read('src/components/BrokerHome.tsx'); expect(h).toContain('HOME_TODOS'); expect(h).toContain('TILE_ICON');
+  it('the bell is built from HOME_TODOS; the broker Home no longer draws a second copy of the list', () => {
     expect(read('server/homebell.ts')).toContain('reconcileTodos');
+    const h = read('src/components/BrokerHome.tsx'); expect(h).not.toContain('HOME_TODOS'); expect(h).not.toContain('TILE_ICON'); expect(h).not.toContain('home-tiles');
   });
   it('every to-do key is a counter some server file really computes for the Home (no dead keys)', () => {
     const all = readdirSync(path.join(ROOT, 'server')).filter(f => f.endsWith('.ts')).map(f => read('server/' + f)).join('\n');

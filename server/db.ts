@@ -859,6 +859,8 @@ export interface DealRoom {
   dealValue?: number;
   /** v66 — where dealValue came from: an accepted offer, the signed commission agreement, or typed by a deal broker (none = the asking price is used) */
   dealValueSource?: 'OFFER' | 'AGREEMENT' | 'MANUAL';
+  /** v80 — who typed the final rate, when, and the one-line how ("agreed at the visit") — MANUAL only */
+  dealValueBy?: string; dealValueAt?: string; dealValueNote?: string;
   /** v41 — OWN_SIDE: no shared brokerage; each broker keeps the fee of his own client. SPLIT / missing = the usual % split. */
   feeMode?: 'SPLIT' | 'OWN_SIDE';
   sellerBrokerId?: string;

@@ -522,8 +522,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>}
 
-      {/* Incoming Collaboration Proposals Notification Banner */}
-      {myIncomingOffers.length > 0 && (
+      {/* Incoming Collaboration Proposals Notification Banner — v80: a broker gets this in the notification bell ("offersWaiting"), not a second time on the page */}
+      {myIncomingOffers.length > 0 && !isBroker && (
         <div className="rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start sm:items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white font-bold shadow-xs">

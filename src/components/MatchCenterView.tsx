@@ -12,6 +12,7 @@ import { api } from '../lib/api.js';
 import { formatINR } from '../lib/utils.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel, useReason } from '../lib/labels.js';
+import { matchAction, mineFirst } from '../shared/matchOfferRules.js';
 import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart, MessagesSquare } from 'lucide-react';
 
 interface MatchCenterViewProps {
@@ -44,8 +45,13 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   const tx = useTx();
   const label = useLabel();
   const reasonOf = useReason();
-  const [activeReqId, setActiveReqId] = useState<string>(selectedRequirementId || (requirements[0] ? requirements[0].id : ''));
-  const [activePropId, setActivePropId] = useState<string>(selectedPropertyId || '');
+  // v80 — the screen starts on MY buyer / MY home (not on somebody else's), and lists mine first
+  const myReqs = mineFirst(requirements, (r) => !!meId && r.assignedBrokerId === meId);
+  const myProps = mineFirst(properties, (p) => !!meId && p.listingBrokerId === meId);
+  const [activeReqId, setActiveReqId] = useState<string>(selectedRequirementId || (myReqs[0] ? myReqs[0].id : ''));
+  const [activePropId, setActivePropId] = useState<string>(selectedPropertyId || (myProps[0] ? myProps[0].id : ''));
+  useEffect(() => { if (!activeReqId && myReqs[0]) setActiveReqId(myReqs[0].id); }, [requirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!activePropId && myProps[0]) setActivePropId(myProps[0].id); }, [properties.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [modeState, setMode] = useState<'by_requirement' | 'by_property'>('by_requirement');
   const mode = canMatchByProperty ? modeState : 'by_requirement';
 
@@ -100,19 +106,29 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
           <label className="block">
             <span className="mb-1 block text-xs font-semibold text-slate-600">{canMatchByProperty ? tx('Buyer need', 'खरीदार की ज़रूरत') : tx('My requirement', 'मेरी ज़रूरत')}</span>
             <select id="select-requirement" value={activeReqId} onChange={(e) => setActiveReqId(e.target.value)} className={sel}>
-              {requirements.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.customerName ? `${r.customerName} — ` : ''}{label('propertyType', r.propertyType)} {tx('in', 'में')} {(r.preferredLocalities || []).join(', ')} ({formatINR(r.budgetMin)}–{formatINR(r.budgetMax)})
-                </option>
-              ))}
+              {(() => {
+                const opt = (r: BuyerRequirement) => (
+                  <option key={r.id} value={r.id}>
+                    {r.customerName ? `${r.customerName} — ` : ''}{label('propertyType', r.propertyType)} {tx('in', 'में')} {(r.preferredLocalities || []).join(', ')} ({formatINR(r.budgetMin)}–{formatINR(r.budgetMax)})
+                  </option>
+                );
+                const mine = myReqs.filter((r) => r.assignedBrokerId === meId); const rest = myReqs.filter((r) => r.assignedBrokerId !== meId);
+                if (!mine.length || !rest.length) return myReqs.map(opt);
+                return [<optgroup key="m" label={tx('My buyers', 'मेरे खरीदार')}>{mine.map(opt)}</optgroup>, <optgroup key="o" label={tx('Other brokers’ buyers', 'दूसरे ब्रोकरों के खरीदार')}>{rest.map(opt)}</optgroup>];
+              })()}
             </select>
             {currentReq && <span className="mt-1 block text-xs text-slate-500">{tx('Budget', 'बजट')}: <strong className="text-slate-900">{formatINR(currentReq.budgetMin)} – {formatINR(currentReq.budgetMax)}</strong></span>}
           </label>
         ) : (
           <label className="block">
             <span className="mb-1 block text-xs font-semibold text-slate-600">{tx('Property', 'प्रॉपर्टी')}</span>
-            <select id="select-property" value={activePropId || (properties[0]?.id || '')} onChange={(e) => setActivePropId(e.target.value)} className={sel}>
-              {properties.map((p) => <option key={p.id} value={p.id}>{p.title} — {p.locality || ''} ({formatINR(p.askingPrice)})</option>)}
+            <select id="select-property" value={activePropId || (myProps[0]?.id || '')} onChange={(e) => setActivePropId(e.target.value)} className={sel}>
+              {(() => {
+                const opt = (p: Property) => <option key={p.id} value={p.id}>{p.title} — {p.locality || ''} ({formatINR(p.askingPrice)})</option>;
+                const mine = myProps.filter((p) => p.listingBrokerId === meId); const rest = myProps.filter((p) => p.listingBrokerId !== meId);
+                if (!mine.length || !rest.length) return myProps.map(opt);
+                return [<optgroup key="m" label={tx('My listings', 'मेरी लिस्टिंग')}>{mine.map(opt)}</optgroup>, <optgroup key="o" label={tx('Other brokers’ listings', 'दूसरे ब्रोकरों की लिस्टिंग')}>{rest.map(opt)}</optgroup>];
+              })()}
             </select>
             {currentProp && <span className="mt-1 block text-xs text-slate-500">{tx('Asking price', 'माँगी कीमत')}: <strong className="text-slate-900">{formatINR(currentProp.askingPrice)}</strong></span>}
           </label>
@@ -145,8 +161,9 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
             const b = item.breakdown || {};
             const key = `${isPropMatch ? p.id : r.id}-${index}`;
             const open = why === key;
-            // v68 — my own home and my own buyer: nobody to co-broke with; open a client room instead
-            const own = !!meId && (isPropMatch ? (p?.listingBrokerId === meId && currentReq?.assignedBrokerId === meId) : (r?.assignedBrokerId === meId && currentProp?.listingBrokerId === meId));
+            // v68/v80 — what this card may offer ME: my own home & my own buyer → a client room; one side mine → an offer to the OTHER broker; neither mine → nothing
+            const act = matchAction(meId, isPropMatch ? p?.listingBrokerId : currentProp?.listingBrokerId, isPropMatch ? currentReq?.assignedBrokerId : r?.assignedBrokerId);
+            const own = act.kind === 'OWN';
             const tone = score >= 80 ? 'bg-emerald-100 text-emerald-800' : score >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700';
             const checks: [boolean, string, string][] = [[!!b.locationMatch, 'Location', 'इलाका'], [!!b.budgetMatch, 'Budget', 'बजट'], [!!b.typeMatch, 'Type', 'प्रकार'], [!!b.areaMatch, 'Area', 'क्षेत्रफल']];
             return (
@@ -195,18 +212,21 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                       <MessagesSquare className="h-4 w-4" />{tx('Your own home & buyer — open client room', 'आपका अपना घर और खरीदार — क्लाइंट रूम खोलें')}
                     </button>
                   )}
-                  {canPropose && !own && (
+                  {canPropose && act.kind === 'OFFER' && (
                     <button
                       onClick={() => onOpenCollaborationModal({
                         propertyId: isPropMatch ? p.id : activePropId,
                         requirementId: isPropMatch ? activeReqId : r.id,
-                        receivingBrokerId: isPropMatch ? p.listingBrokerId : r.assignedBrokerId,
+                        receivingBrokerId: act.to,
                       })}
                       className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-sm font-semibold text-white hover:bg-slate-800"
                       data-testid="match-offer"
                     >
                       <Send className="h-4 w-4 text-amber-400" />{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}
                     </button>
+                  )}
+                  {canPropose && act.kind === 'NONE' && (
+                    <span className="ml-auto max-w-[11rem] text-right text-xs leading-snug text-slate-500" data-testid="match-not-mine">{tx('Neither this home nor this buyer is yours', 'न यह घर आपका है, न यह खरीदार')}</span>
                   )}
                 </div>
                 {open && (

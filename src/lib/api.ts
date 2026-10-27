@@ -257,7 +257,7 @@ export const api = {
       /** v66 — the owner's mandate at the deal's final price (owner and listing broker only) */
       brokerage?: any;
     }>(`/api/deals/${id}`),
-  setFinalPrice: (id: string, price: number) => request<any>(`/api/deals/${id}/final-price`, { method: 'POST', body: JSON.stringify({ price }) }),
+  setFinalPrice: (id: string, price: number, note?: string) => request<any>(`/api/deals/${id}/final-price`, { method: 'POST', body: JSON.stringify({ price, ...(note ? { note } : {}) }) }),
   updateDealStage: (id: string, stage: string, notes?: string) =>
     request<{ success: boolean; deal: DealRoom }>(`/api/deals/${id}/stage`, {
       method: 'POST',
@@ -950,9 +950,10 @@ export const api = {
   hisaabBookVoid: (dealId: string, eid: string, reason: string) => request<any>(`/api/deals/${dealId}/hisaab/book/${eid}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
   hisaabPlan: (dealId: string, body: { buyerSide?: { mode: string; value: number } | null; shareOut?: { mode: string; value: number } | null }) => request<any>(`/api/deals/${dealId}/hisaab/plan`, { method: 'PUT', body: JSON.stringify(body) }),
   hisaabDue: (dealId: string, amount: number | null) => request<any>(`/api/deals/${dealId}/hisaab/due`, { method: 'PUT', body: JSON.stringify({ amount }) }),
-  ownerOtp: (phone: string) => request<{ success: boolean; exists: boolean; devCode?: string }>('/api/owner/otp', { method: 'POST', body: JSON.stringify({ phone }) }),
+  ownerOtp: (phone: string) => request<{ success: boolean; exists: boolean; devCode?: string; otpToken?: string }>('/api/owner/otp', { method: 'POST', body: JSON.stringify({ phone }) }),
+  geoIp: () => request<{ success: boolean; found: boolean; country?: string; state?: string; city?: string }>('/api/geo/ip'),
   geoReverse: (lat: number, lng: number) => request<{ success: boolean; found: boolean; country?: string; state?: string; city?: string; pincode?: string }>(`/api/geo/reverse?lat=${lat}&lng=${lng}`),
-  ownerVerify: (b: { phone: string; code: string; name?: string; city?: string; state?: string; consent?: boolean }) => request<any>('/api/owner/verify', { method: 'POST', body: JSON.stringify(b) }),
+  ownerVerify: (b: { phone: string; code: string; otpToken?: string; name?: string; city?: string; state?: string; consent?: boolean }) => request<any>('/api/owner/verify', { method: 'POST', body: JSON.stringify(b) }),
   ownerSignCode: () => request<{ success: boolean; devCode?: string }>('/api/owner/sign-code', { method: 'POST' }),
   olConfig: () => request<any>('/api/owner-listing/config'),
   olQuote: (transactionType: string, propertyType: string) => request<any>(`/api/owner-listing/quote?transactionType=${encodeURIComponent(transactionType)}&propertyType=${encodeURIComponent(propertyType)}`),

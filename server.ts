@@ -167,7 +167,7 @@ import { createPaymentRequestRouter, createPaymentPageRouter } from './server/pa
 import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
 import { createLandRecordsRouter } from './server/landrecords.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
-import { findState, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
+import { findState, matchState, stateOfIso, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
 import { createPrivacyRouter, legalConfig, POLICY_VERSION } from './server/privacy.js';
 import { normPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
 import compression from 'compression';
@@ -2319,6 +2319,8 @@ app.get('/api/deals/:id', needs('deal:read'), (req: Request, res: Response) => {
     success: true,
     deal: shapeDealFor(deal, currentUser, state),
     brokerage: summaryOnly ? undefined : brokerageFor(deal, currentUser, state),
+    // v80 — the Final rate card (everyone in the room reads it; only the deal brokers change it)
+    finalRate: summaryOnly || currentUser.role === 'LEGAL_COUNSEL' ? undefined : finalRateFor(deal, currentUser, state),
     // what this viewer may read inside the room, and whether GENZ may read it right now (shown as a notice to the brokers)
     access: { level: summaryOnly ? 'SUMMARY' : 'FULL', via, adminCanSee: !!liveDispute, openDisputeId: liveDispute?.id },
     property: property ? sanitizeProperty(property, currentUser, state) : undefined,
@@ -5455,21 +5457,48 @@ app.post('/api/properties/:id/location', needs('property:update'), (req: Request
   res.json({ success: true, property: sanitizeProperty(property, currentUser) });
 });
 
+/**
+ * v80 — the "Final rate" card of the deal room: what the deal is worth now, where that came from, who typed it, and whether THIS viewer may change it.
+ * Everyone in the room reads the rate (it is not the commission); only the deal brokers (and the listing broker) change it.
+ */
+function finalRateFor(deal: DealRoom, user: any, state: any) {
+  const prop = state.properties.find((x: any) => x.id === deal.propertyId);
+  const asking = Number(prop?.askingPrice) || 0;
+  const set = !!deal.dealValue && deal.dealValue > 0;
+  const price = set ? deal.dealValue! : asking;
+  const source = set ? (deal.dealValueSource || 'MANUAL') : 'ASKING';
+  const by = deal.dealValueBy ? (state.users.find((u: any) => u.id === deal.dealValueBy)?.name || '') : '';
+  const can = isDealBroker(user, deal) || (!!prop && prop.listingBrokerId === user.id);
+  return {
+    price, source, asking, diff: asking && set ? price - asking : 0, by, at: deal.dealValueAt || '', note: deal.dealValueNote || '',
+    stage: deal.stage, canSet: can && deal.stage !== 'Settled', locked: source === 'AGREEMENT', settled: deal.stage === 'Settled',
+  };
+}
+
 // v66 — the final price of the deal, when it did not come from an accepted offer or the signed commission agreement
+// v80 — the listing broker may type it too; one line "how it was agreed"; the others in the room are told; a settled deal keeps its price
 app.post('/api/deals/:id/final-price', needs('deal:chat'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const state = db.getState();
   const deal = db.byId('dealRooms', req.params.id);
   if (!deal) return res.status(404).json({ error: 'Deal Room not found' });
-  if (!isDealBroker(currentUser, deal)) return res.status(403).json({ error: 'Only the deal brokers can set the final price' });
+  const prop: any = db.byId('properties', deal.propertyId);
+  if (!isDealBroker(currentUser, deal) && !(prop && prop.listingBrokerId === currentUser.id)) return res.status(403).json({ error: 'Only the deal brokers can set the final price' });
   const price = Number(req.body?.price);
   if (!Number.isFinite(price) || price <= 0 || price > 100_000_000_000) return res.status(400).json({ error: 'Enter the final price in rupees' });
+  if (deal.stage === 'Settled') return res.status(409).json({ error: 'This deal is settled — its price is kept as it was', code: 'DEAL_SETTLED' });
   if (deal.dealValueSource === 'AGREEMENT') return res.status(409).json({ error: 'The price is fixed by the signed commission agreement — change it by a new agreement version', code: 'PRICE_FROM_AGREEMENT' });
+  const note = String(req.body?.note || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 120);
   const before = deal.dealValue;
-  deal.dealValue = Math.round(price); deal.dealValueSource = 'MANUAL'; deal.updatedAt = new Date().toISOString();
+  deal.dealValue = Math.round(price); deal.dealValueSource = 'MANUAL'; deal.dealValueBy = currentUser.id; deal.dealValueAt = new Date().toISOString(); deal.dealValueNote = note || undefined; deal.updatedAt = deal.dealValueAt;
   db.save();
-  db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'FINAL_PRICE_SET', `Final price set to ₹${deal.dealValue.toLocaleString('en-IN')}${before ? ` (was ₹${before.toLocaleString('en-IN')})` : ''}`);
-  res.json({ success: true, dealValue: deal.dealValue, brokerage: brokerageFor(deal, currentUser, state) });
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'FINAL_PRICE_SET', `Final price set to ₹${deal.dealValue.toLocaleString('en-IN')}${before ? ` (was ₹${before.toLocaleString('en-IN')})` : ''}${note ? ` — ${note}` : ''}`);
+  const rs = `₹${deal.dealValue.toLocaleString('en-IN')}`;
+  alert([deal.introducingBrokerId, deal.closingBrokerId, prop?.listingBrokerId, deal.ownerId], 'deals', `Final rate set · ${deal.id}`, `${currentUser.name}: ${rs}${note ? ` — ${note}` : ''}. Check it in the deal room; if it is not what was agreed, correct it there.`, `/?tab=deals&deal=${deal.id}`, {
+    not: currentUser.id, tag: `fr-${deal.id}`,
+    hi: [`फ़ाइनल रेट तय · ${deal.id}`, `${currentUser.name}: ${rs}${note ? ` — ${note}` : ''}। डील रूम में देख लें; जो तय हुआ था उससे अलग हो तो वहीं सुधार दें।`],
+  });
+  res.json({ success: true, dealValue: deal.dealValue, finalRate: finalRateFor(deal, currentUser, state), brokerage: brokerageFor(deal, currentUser, state) });
 });
 
 // ==========================================
@@ -5715,11 +5744,22 @@ app.get('/api/geo/reverse', rateLimit('georev', 30, 60_000), async (req: Request
     const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&localityLanguage=en`, { signal: ctl.signal });
     clearTimeout(timer);
     const j: any = await r.json();
-    const state = findState(String(j?.principalSubdivision || ''))?.name || '';
+    // v80 — a geocoder spells states its own way ("NCT of Delhi", "Orissa") → matchState; a city we know also tells the state
     const city = String(j?.city || j?.locality || '').slice(0, 60);
+    const state = matchState(String(j?.principalSubdivision || ''))?.name || stateOfCity(city) || '';
     if (!state && !city) return res.json({ success: true, found: false });
     return res.json({ success: true, found: true, country: String(j?.countryName || 'India').slice(0, 60), state, city, pincode: /^\d{6}$/.test(String(j?.postcode || '')) ? String(j.postcode) : '' });
   } catch { return res.json({ success: true, found: false, unavailable: true }); }
+});
+
+/** v80 — the "no GPS" way: the hosting edge already knows the visitor's rough city / state from the network address (nothing is stored). Used when the phone will not share its location. */
+app.get('/api/geo/ip', rateLimit('geoip', 30, 60_000), (req: Request, res: Response) => {
+  const h = (k: string) => { const v = req.headers[k]; const raw = Array.isArray(v) ? v[0] : v; try { return decodeURIComponent(String(raw || '')).trim().slice(0, 60); } catch { return String(raw || '').trim().slice(0, 60); } };
+  if (h('x-vercel-ip-country').toUpperCase() !== 'IN') return res.json({ success: true, found: false });
+  const city = h('x-vercel-ip-city');
+  const state = stateOfIso(h('x-vercel-ip-country-region'))?.name || stateOfCity(city) || '';
+  if (!state && !city) return res.json({ success: true, found: false });
+  res.json({ success: true, found: true, country: 'India', state, city });
 });
 
 app.get('/api/health', async (_req: Request, res: Response) => {

@@ -59,11 +59,31 @@ const PersonRow: React.FC<{ card: any; onOpen: () => void }> = ({ card, onOpen }
   );
 };
 
+/** v80 — the owner on this broker's own listing / mandate who has no GENZ login: shown as a record, never as a member (no profile, no rating to open) */
+const OwnerRecordCard: React.FC<{ rec: { name: string; last4: string; city: string; listings: { propertyId: string; title: string; mandateId?: string; mandateStatus?: string }[] } }> = ({ rec }) => {
+  const tx = useTx();
+  const mstat = (x?: string) => x === 'ACTIVE' ? tx('mandate active', 'मैंडेट चालू') : x === 'PENDING_BROKER' ? tx('mandate waiting for you', 'मैंडेट आपके साइन का इंतज़ार') : x ? tx('mandate ' + x.toLowerCase().replace('_', ' '), 'मैंडेट: ' + x) : '';
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3" data-testid="people-owner-record">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-bold text-amber-300" aria-hidden>{initials(rec.name)}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-bold text-slate-900">{rec.name} <span className="font-mono text-xs font-normal text-slate-500">••{rec.last4}</span></span>
+          <span className="block truncate text-xs text-slate-500">{tx('Owner', 'ओनर')}{rec.city ? ` · ${rec.city}` : ''}</span>
+          <span className="mt-0.5"><Chip tone="amber">{tx('Owner on your listing · not on GENZ yet', 'आपकी लिस्टिंग का ओनर · अभी GENZ पर नहीं')}</Chip></span>
+        </span>
+      </div>
+      <ul className="mt-2 space-y-0.5 text-xs text-slate-700">{rec.listings.map(l => <li key={l.propertyId} className="truncate" data-testid="people-owner-record-listing">🏠 {l.title}{l.mandateId ? ` · ${l.mandateId} ${mstat(l.mandateStatus)}` : ''}</li>)}</ul>
+      <p className="mt-2 text-[11px] text-slate-500">{tx('He has no GENZ login, so there is no profile or rating to open. This is the owner you entered, or who signed your mandate.', 'इनका GENZ लॉगिन नहीं है, इसलिए खोलने के लिए प्रोफ़ाइल या रेटिंग नहीं है। यह वही ओनर है जिसे आपने जोड़ा, या जिसने आपका मैंडेट साइन किया।')}</p>
+    </div>
+  );
+};
+
 // ───────── find ─────────
 const FindTab: React.FC<{ role: string; onOpen: (id: string, ticket?: string) => void }> = ({ role, onOpen }) => {
   const tx = useTx();
   const [q, setQ] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  const [res, setRes] = useState<{ kind: string; results: any[]; hint?: string; hi?: string } | null>(null);
+  const [res, setRes] = useState<{ kind: string; results: any[]; hint?: string; hi?: string; ownerRecord?: { name: string; last4: string; city: string; listings: { propertyId: string; title: string; mandateId?: string; mandateStatus?: string }[] } } | null>(null);
   const { lang } = useI18n();
   const go = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
@@ -87,13 +107,14 @@ const FindTab: React.FC<{ role: string; onOpen: (id: string, ticket?: string) =>
       </form>
       {err && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{err}</p>}
       {res && res.hint && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{lang === 'hi' ? res.hi : res.hint}</p>}
-      {res && !res.hint && res.results.length === 0 && (
+      {res && !res.hint && res.results.length === 0 && !res.ownerRecord && (
         <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500" data-testid="people-empty">
           {res.kind === 'PHONE' || res.kind === 'CODE'
             ? tx('No GENZ member found for this. That is not proof of anything — only that this number / code is not on GENZ.', 'इसके लिए कोई GENZ सदस्य नहीं मिला। इसका मतलब सिर्फ़ इतना है कि यह नंबर / कोड GENZ पर नहीं है।')
             : tx('Nobody found. Try fewer words or another spelling.', 'कोई नहीं मिला। कम शब्द या दूसरी वर्तनी आज़माएँ।')}
         </p>
       )}
+      {res?.ownerRecord && <OwnerRecordCard rec={res.ownerRecord} />}
       <div className="space-y-2" data-testid="people-results">{res?.results.map(c => <PersonRow key={c.id} card={c} onOpen={() => onOpen(c.id, c.ticket)} />)}</div>
     </div>
   );

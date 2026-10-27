@@ -140,6 +140,27 @@ export function findState(name?: string): IndiaState | undefined {
   if (!n) return undefined;
   return INDIA_STATES.find(s => norm(s.name) === n || norm(s.hi) === n);
 }
+/** v80 — a geocoder / a phone / an IP table spell a state in many ways ("NCT of Delhi", "Orissa", "Jammu & Kashmir", "Chattisgarh"): find OUR state for it, or undefined */
+const STATE_ALIAS: Record<string, string> = {
+  'orissa': 'Odisha', 'uttaranchal': 'Uttarakhand', 'pondicherry': 'Puducherry', 'nct of delhi': 'Delhi', 'national capital territory of delhi': 'Delhi', 'new delhi': 'Delhi',
+  'chattisgarh': 'Chhattisgarh', 'chhatisgarh': 'Chhattisgarh', 'chattishgarh': 'Chhattisgarh', 'jammu & kashmir': 'Jammu and Kashmir', 'andaman & nicobar islands': 'Andaman and Nicobar Islands', 'andaman and nicobar': 'Andaman and Nicobar Islands',
+  'dadra and nagar haveli': 'Dadra and Nagar Haveli and Daman and Diu', 'daman and diu': 'Dadra and Nagar Haveli and Daman and Diu', 'dadra & nagar haveli and daman & diu': 'Dadra and Nagar Haveli and Daman and Diu', 'telengana': 'Telangana',
+};
+export function matchState(raw?: string): IndiaState | undefined {
+  let n = norm(raw).replace(/\b(state|union territory|ut) of\b/g, '').replace(/\s+(state|ut)$/, '').replace(/\s+/g, ' ').trim();
+  if (!n) return undefined;
+  const direct = findState(n); if (direct) return direct;
+  const al = STATE_ALIAS[n] || STATE_ALIAS[n.replace(/&/g, 'and')]; if (al) return findState(al);
+  return INDIA_STATES.find(s => norm(s.name).replace(/&/g, 'and') === n.replace(/&/g, 'and'));
+}
+/** ISO 3166-2:IN code (what an edge network sends for the region: "CT" = Chhattisgarh) → our state */
+const ISO_STATE: Record<string, string> = {
+  AP: 'Andhra Pradesh', AR: 'Arunachal Pradesh', AS: 'Assam', BR: 'Bihar', CT: 'Chhattisgarh', CG: 'Chhattisgarh', GA: 'Goa', GJ: 'Gujarat', HR: 'Haryana', HP: 'Himachal Pradesh', JH: 'Jharkhand', KA: 'Karnataka', KL: 'Kerala',
+  MP: 'Madhya Pradesh', MH: 'Maharashtra', MN: 'Manipur', ML: 'Meghalaya', MZ: 'Mizoram', NL: 'Nagaland', OR: 'Odisha', OD: 'Odisha', PB: 'Punjab', RJ: 'Rajasthan', SK: 'Sikkim', TN: 'Tamil Nadu', TG: 'Telangana', TS: 'Telangana',
+  TR: 'Tripura', UP: 'Uttar Pradesh', UT: 'Uttarakhand', UK: 'Uttarakhand', WB: 'West Bengal', AN: 'Andaman and Nicobar Islands', CH: 'Chandigarh', DH: 'Dadra and Nagar Haveli and Daman and Diu', DN: 'Dadra and Nagar Haveli and Daman and Diu',
+  DD: 'Dadra and Nagar Haveli and Daman and Diu', DL: 'Delhi', JK: 'Jammu and Kashmir', LA: 'Ladakh', LD: 'Lakshadweep', PY: 'Puducherry',
+};
+export const stateOfIso = (code?: string): IndiaState | undefined => findState(ISO_STATE[String(code || '').trim().toUpperCase()]);
 export const stateNames = () => INDIA_STATES.map(s => s.name);
 export function citiesOf(state?: string): string[] { return findState(state)?.cities ?? []; }
 export function localitiesOf(city?: string): string[] { return CITY_LOCALITIES[city ?? ''] ?? []; }
