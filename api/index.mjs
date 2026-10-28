@@ -315,9 +315,9 @@ var require_postgres_interval = __commonJS({
     var NUMBER = "([+-]?\\d+)";
     var YEAR = NUMBER + "\\s+years?";
     var MONTH = NUMBER + "\\s+mons?";
-    var DAY20 = NUMBER + "\\s+days?";
+    var DAY21 = NUMBER + "\\s+days?";
     var TIME = "([+-])?([\\d]*):(\\d\\d):(\\d\\d)\\.?(\\d{1,6})?";
-    var INTERVAL = new RegExp([YEAR, MONTH, DAY20, TIME].map(function(regexString) {
+    var INTERVAL = new RegExp([YEAR, MONTH, DAY21, TIME].map(function(regexString) {
       return "(" + regexString + ")?";
     }).join("\\s*"));
     var positions = {
@@ -67993,6 +67993,36 @@ function dropRoomPush(roomId) {
   s.pushSubs = s.pushSubs.filter((x) => x.userId !== key);
   return n2 - s.pushSubs.length;
 }
+var SHOP_DAILY = 30;
+var shopDay = /* @__PURE__ */ new Map();
+var shopPushKey = (partnerId) => `shop:${partnerId}`;
+async function pushToShop(partnerId, title, body, tag = "shop") {
+  try {
+    const s = db.getState();
+    const key = shopPushKey(partnerId);
+    const subs = s.pushSubs.filter((x) => x.userId === key);
+    if (!subs.length) return 0;
+    const day3 = istDay();
+    const c = shopDay.get(key);
+    if (!c || c.day !== day3) shopDay.set(key, { day: day3, n: 0 });
+    const cur = shopDay.get(key);
+    if (cur.n >= SHOP_DAILY) return 0;
+    cur.n++;
+    pushLog.push({ userId: key, msg: { kind: "deals", title, body }, endpoints: subs.length, at: nowIso2() });
+    if (pushLog.length > 500) pushLog.shift();
+    const ok = await deliver(subs, { title, body }, { kind: "deals", title, body, tag });
+    db.save();
+    return ok;
+  } catch (e) {
+    console.error("[PUSH] shop send failed:", e.message);
+    return 0;
+  }
+}
+function shopAlertInfo(partnerId) {
+  const subs = db.getState().pushSubs.filter((x) => x.userId === shopPushKey(partnerId));
+  const ok = subs.map((x) => x.lastOkAt || "").filter(Boolean).sort();
+  return { phones: subs.length, ...ok.length ? { lastOkAt: ok[ok.length - 1] } : {} };
+}
 async function pushTo(userId, msg) {
   try {
     const s = db.getState();
@@ -82087,6 +82117,47 @@ function partnerAmount(cut, brokerage) {
 }
 var cutText = (c, hi = false) => c.mode === "PCT" ? hi ? `\u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0915\u093E ${c.value}%` : `${c.value}% of the brokerage` : hi ? `\u20B9${c.value.toLocaleString("en-IN")} \u0939\u0930 \u0921\u0940\u0932` : `\u20B9${c.value.toLocaleString("en-IN")} per deal`;
 var termsText = (t2, hi = false) => hi ? `\u092C\u093F\u0915\u094D\u0930\u0940: ${cutText(t2.sale, true)} \xB7 \u0915\u093F\u0930\u093E\u092F\u093E: ${cutText(t2.rent, true)} \xB7 \u0932\u0940\u0921 ${t2.lockDays} \u0926\u093F\u0928 \u0924\u0915 \u0906\u092A\u0915\u0940` : `Sale: ${cutText(t2.sale)} \xB7 Rent: ${cutText(t2.rent)} \xB7 a lead stays yours for ${t2.lockDays} days`;
+var SHARE_CHANGE_LABEL = {
+  DEAL: { en: "The deal changed", hi: "\u0921\u0940\u0932 \u092E\u0947\u0902 \u092C\u0926\u0932\u093E\u0935 \u0939\u0941\u0906" },
+  BROKER_EDIT: { en: "The broker changed his brokerage", hi: "\u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u0905\u092A\u0928\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u092C\u0926\u0932\u0940" },
+  TYPED: { en: "The broker wrote his brokerage (this deal is not in the app)", hi: "\u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0916\u093C\u0941\u0926 \u0932\u093F\u0916\u0940 (\u092F\u0939 \u0921\u0940\u0932 \u0910\u092A \u092E\u0947\u0902 \u0928\u0939\u0940\u0902 \u091A\u0932\u0940)" },
+  REVISED: { en: "The broker corrected the share", hi: "\u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u0939\u093F\u0938\u094D\u0938\u093E \u0938\u0941\u0927\u093E\u0930\u093E" }
+};
+var SHARE_LIMITS = { keep: 20, mergeMinutes: 30, reasonMin: 3 };
+var PAY_MODES = [
+  { id: "UPI", en: "UPI", hi: "UPI" },
+  { id: "BANK", en: "Bank transfer", hi: "\u092C\u0948\u0902\u0915 \u091F\u094D\u0930\u093E\u0902\u0938\u092B\u093C\u0930" },
+  { id: "CASH", en: "Cash (the shop must confirm)", hi: "\u0928\u0915\u0926 (\u0926\u0941\u0915\u093E\u0928 \u0935\u093E\u0932\u0947 \u0915\u0940 \u092A\u0941\u0937\u094D\u091F\u093F \u091C\u093C\u0930\u0942\u0930\u0940)" }
+];
+var refOk = (mode, ref) => mode === "CASH" || /^[A-Za-z0-9][A-Za-z0-9 \-\/_.,#:]{5,59}$/.test(ref);
+var OVERDUE = { remindDays: [3, 7, 12], pauseDays: 15, deskDays: 30 };
+var DAY12 = 864e5;
+var daysSince = (iso, nowMs = Date.now()) => iso ? Math.max(0, Math.floor((nowMs - Date.parse(iso)) / DAY12)) : 0;
+function unpaidDays(l, nowMs = Date.now()) {
+  return l.won && l.payout && (l.payout.status === "DUE" || l.payout.status === "NOT_RECEIVED") ? daysSince(l.won.at, nowMs) : 0;
+}
+function payRecord(leads, nowMs = Date.now()) {
+  let onTime = 0, late = 0, overdue3 = 0, open2 = 0;
+  for (const l of leads) {
+    if (!l.won || !l.payout) continue;
+    const wonMs = Date.parse(l.won.at);
+    if (Number.isNaN(wonMs)) continue;
+    if (l.payout.status === "PAID" || l.payout.status === "RECEIVED") {
+      const paidMs = Date.parse(l.payout.paidAt || "") || wonMs;
+      if (paidMs - wonMs <= OVERDUE.pauseDays * DAY12) onTime++;
+      else late++;
+    } else if (nowMs - wonMs > OVERDUE.pauseDays * DAY12) overdue3++;
+    else open2++;
+  }
+  const counted2 = onTime + late + overdue3;
+  return { onTime, late, overdue: overdue3, open: open2, counted: counted2 };
+}
+var payRecordText = (r, hi = false) => r.counted > 0 ? hi ? `\u0926\u0941\u0915\u093E\u0928 \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u094B \u0938\u092E\u092F \u092A\u0930 \u0939\u093F\u0938\u094D\u0938\u093E: ${r.counted} \u092E\u0947\u0902 \u0938\u0947 ${r.onTime}` : `Shop partners paid on time: ${r.onTime} of ${r.counted}` : "";
+var ASK_LIMITS = { perLead: 2, gapHours: 24, validDays: 7 };
+var OUTCOME_CONSENT = {
+  hi: "\u0935\u0948\u0915\u0932\u094D\u092A\u093F\u0915: \u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F GENZ \u092E\u0941\u091D\u0947 \u090F\u0915 SMS \u092D\u0947\u091C\u0915\u0930 \u092A\u0942\u091B \u0938\u0915\u0924\u093E \u0939\u0948 \u0915\u093F \u092C\u093E\u0924 \u0906\u0917\u0947 \u092C\u0922\u093C\u0940 \u092F\u093E \u0928\u0939\u0940\u0902\u0964",
+  en: "Optional: I agree that GENZ may send me one SMS asking whether it went ahead."
+};
 
 // server/shopPartners.ts
 var st11 = () => db.getState();
@@ -82162,6 +82233,11 @@ function flagsFor(l, links = linksFor(l)) {
   const f = [];
   if (l.status === "LOST" && l.lostAt && links.some((x) => x.at > l.lostAt)) f.push({ code: "AFTER_LOST", en: "Worked on after it was marked \u201Cnot going ahead\u201D", hi: "\u201C\u0906\u0917\u0947 \u0928\u0939\u0940\u0902 \u092C\u0922\u093C\u0940\u201D \u092C\u0924\u093E\u0928\u0947 \u0915\u0947 \u092C\u093E\u0926 \u092D\u0940 \u0907\u0938 \u092A\u0930 \u0915\u093E\u092E \u0939\u0941\u0906" });
   if (l.status !== "WON" && links.some((x) => x.done && (x.kind === "DEAL" || x.kind === "CLIENT"))) f.push({ code: "DEAL_NOT_RECORDED", en: "Looks like a deal \u2014 the partner\u2019s share is not written yet", hi: "\u0921\u0940\u0932 \u0932\u0917\u0924\u0940 \u0939\u0948 \u2014 \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E \u0905\u092D\u0940 \u0926\u0930\u094D\u091C \u0928\u0939\u0940\u0902" });
+  const unpaid = unpaidDays(l);
+  if (unpaid >= OVERDUE.deskDays) f.push({ code: "PAYOUT_OVERDUE", en: `The partner\u2019s share has been unpaid for ${unpaid} days`, hi: `\u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E ${unpaid} \u0926\u093F\u0928 \u0938\u0947 \u092C\u093E\u0915\u0940 \u0939\u0948` });
+  if ((l.shareChanges || []).some((c) => c.status === "DISPUTED")) f.push({ code: "SHARE_DISPUTED", en: "The shop says the changed share is not right", hi: "\u0926\u0941\u0915\u093E\u0928 \u0915\u0939\u0924\u0940 \u0939\u0948 \u092C\u0926\u0932\u093E \u0939\u0941\u0906 \u0939\u093F\u0938\u094D\u0938\u093E \u0938\u0939\u0940 \u0928\u0939\u0940\u0902" });
+  if (l.status !== "WON" && l.ask?.answer === "YES") f.push({ code: "CUSTOMER_YES", en: "The customer says it went ahead through this broker, but no deal is written", hi: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u0939\u0924\u093E \u0939\u0948 \u0907\u0938 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u091C\u093C\u0930\u093F\u090F \u092C\u093E\u0924 \u0906\u0917\u0947 \u092C\u0922\u093C\u0940, \u092A\u0930 \u0921\u0940\u0932 \u0926\u0930\u094D\u091C \u0928\u0939\u0940\u0902" });
+  if (l.status === "WON" && l.ask?.answer === "NO") f.push({ code: "CUSTOMER_NO", en: "The customer says it did not go ahead through this broker", hi: "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u0939\u0924\u093E \u0939\u0948 \u0907\u0938 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u091C\u093C\u0930\u093F\u090F \u092C\u093E\u0924 \u0906\u0917\u0947 \u0928\u0939\u0940\u0902 \u092C\u0922\u093C\u0940" });
   return f;
 }
 var shareEstimator = () => 0;
@@ -82185,6 +82261,189 @@ function progressFor(l, links = linksFor(l)) {
   return { step, steps: DEAL_STEPS.map((x) => x[1]), stepsEn: DEAL_STEPS.map((x) => x[0]), share, final: !!l.won, lost: l.status === "LOST" };
 }
 var locked = (l) => Date.parse(l.lockUntil) > Date.now();
+var shareInfoFn = (l, id) => {
+  const a = shareEstimator(l, id);
+  return a > 0 ? { amount: a, brokerage: 0, basis: "ESTIMATE" } : null;
+};
+var setLeadShareInfo = (fn) => {
+  shareInfoFn = fn;
+};
+var lastDealOf = (links) => {
+  const dl = [...links].reverse().find((x) => x.kind === "DEAL");
+  return dl ? st11().dealRooms.find((x) => x.id === dl.id) : void 0;
+};
+function autoShare(l, links = linksFor(l)) {
+  const d = lastDealOf(links);
+  if (!d) return null;
+  const i = shareInfoFn(l, d.id);
+  if (!i || i.brokerage <= 0) return null;
+  return { ...i, dealId: d.id };
+}
+var sysAudit = (refId, action, text) => db.appendAuditEvent("SYSTEM", "SUPERADMIN", "LEAD", refId, action, text);
+var tellShop = (p, hi, en, body, tag = "shop") => void pushToShop(p.id, `${hi} / ${en}`, body, tag);
+var tellBroker = (p, brokerId, title, body) => void pushTo(brokerId, { kind: "deals", title, body, url: "/?tab=partners" });
+function addChange(l, from, to, by, reason) {
+  const list = l.shareChanges ||= [];
+  const last = list[list.length - 1];
+  const now = nowIso22();
+  if (last && last.status === "PENDING" && last.by === by && Date.now() - Date.parse(last.at) < SHARE_LIMITS.mergeMinutes * 6e4) {
+    last.to = to;
+    last.at = now;
+    if (reason) last.reason = reason;
+    if (last.from === last.to) {
+      list.pop();
+      return { change: null, fresh: false };
+    }
+    return { change: last, fresh: false };
+  }
+  const c = { id: rid4("SCH"), at: now, from, to, by, ...reason ? { reason } : {}, status: "PENDING" };
+  list.push(c);
+  if (list.length > SHARE_LIMITS.keep) list.splice(0, list.length - SHARE_LIMITS.keep);
+  return { change: c, fresh: true };
+}
+var changeWords = (c) => c.from > 0 ? `${inr8(c.from)} \u2192 ${inr8(c.to)}` : inr8(c.to);
+function tellChange(p, c) {
+  tellShop(p, "\u0939\u093F\u0938\u094D\u0938\u093E \u092C\u0926\u0932\u093E", "Share changed", `\u0906\u092A\u0915\u0940 \u090F\u0915 \u0932\u0940\u0921 \u092A\u0930 \u0939\u093F\u0938\u094D\u0938\u093E ${changeWords(c)} \u0939\u0941\u0906 \u2014 \u092A\u0947\u091C \u0916\u094B\u0932\u0915\u0930 \u201C\u0920\u0940\u0915 \u0939\u0948 / \u0938\u0939\u0940 \u0928\u0939\u0940\u0902\u201D \u092C\u0924\u093E\u090F\u0901\u0964 / Open your page to confirm.`, `share-${c.id}`);
+}
+function watchLead(l, reason) {
+  if (l.status === "WON" || l.status === "LOST") return false;
+  const p = partnerOf(l.partnerId);
+  if (!p) return false;
+  const links = linksFor(l);
+  const pg2 = progressFor(l, links);
+  let changed = false;
+  if (pg2.step > (l.stepSeen ?? 0)) {
+    l.stepSeen = pg2.step;
+    changed = true;
+    if (pg2.step >= 1 && pg2.step <= 3) tellShop(p, `\u0932\u0940\u0921 \u0906\u0917\u0947 \u092C\u0922\u093C\u0940: ${pg2.steps[pg2.step]}`, `Lead moved: ${pg2.stepsEn[pg2.step]}`, "\u0905\u092A\u0928\u093E \u092A\u0947\u091C \u0916\u094B\u0932\u0915\u0930 \u0926\u0947\u0916\u0947\u0902\u0964 / Open your page.", `lead-${l.id}`);
+  }
+  if (pg2.step < 3) return changed;
+  const a = autoShare(l, links);
+  if (!a) return changed;
+  if (!l.shareSeen) {
+    l.shareSeen = { amount: a.amount, at: nowIso22() };
+    hist(l, "SYSTEM", `Share worked out from the deal: ${inr8(a.amount)} (${cutText(sideOfKind(l.kind) === "SALE" ? l.terms.sale : l.terms.rent)})`);
+    tellShop(p, "\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E \u092C\u0928 \u0930\u0939\u093E \u0939\u0948", "Your share is being worked out", `\u0905\u0928\u0941\u092E\u093E\u0928: ${inr8(a.amount)} \u2014 \u0921\u0940\u0932 \u092A\u0942\u0930\u0940 \u0939\u094B\u0928\u0947 \u092A\u0930 \u0924\u092F\u0964 / Estimate: ${inr8(a.amount)}.`, `share-${l.id}`);
+    return true;
+  }
+  if (Math.round(a.amount) === Math.round(l.shareSeen.amount)) return changed;
+  const by = a.basis === "MANUAL" ? "BROKER_EDIT" : "DEAL";
+  const from = l.shareSeen.amount;
+  const r = addChange(l, from, a.amount, by, reason);
+  l.shareSeen = { amount: a.amount, at: nowIso22() };
+  l.updatedAt = nowIso22();
+  hist(l, "SYSTEM", `Share ${inr8(from)} \u2192 ${inr8(a.amount)} (${SHARE_CHANGE_LABEL[by].en}${reason ? `: ${reason}` : ""})`);
+  if (r.change) {
+    sysAudit(l.id, "SHOP_SHARE_CHANGED", `Shop share ${inr8(from)} \u2192 ${inr8(a.amount)} (${by})`);
+    if (r.fresh) tellChange(p, r.change);
+  }
+  return true;
+}
+function watchShares(f = {}) {
+  let n2 = 0;
+  for (const l of st11().partnerLeads) {
+    if (f.brokerId && l.brokerId !== f.brokerId) continue;
+    if (f.partnerId && l.partnerId !== f.partnerId) continue;
+    if (l.status === "WON" || l.status === "LOST") continue;
+    if (f.dealId && !linksFor(l).some((x) => x.kind === "DEAL" && x.id === f.dealId)) continue;
+    if (watchLead(l, f.reason)) n2++;
+  }
+  if (n2) db.save();
+  return n2;
+}
+var overdueOf = (p) => st11().partnerLeads.filter((l) => l.partnerId === p.id && unpaidDays(l) >= OVERDUE.pauseDays);
+function sweepShopPartners(nowMs = Date.now()) {
+  let n2 = 0;
+  for (const l of st11().partnerLeads) {
+    const p = partnerOf(l.partnerId);
+    if (!p || !l.won || !l.payout) continue;
+    const days3 = unpaidDays(l, nowMs);
+    if (days3 > 0) {
+      const tier = OVERDUE.remindDays.filter((d) => days3 >= d).pop() || 0;
+      if (tier > (l.payout.remind || 0)) {
+        l.payout.remind = tier;
+        n2++;
+        hist(l, "SYSTEM", `Reminder to the broker: the partner\u2019s share ${inr8(l.won.amount)} has been unpaid for ${days3} days`);
+        tellBroker(p, l.brokerId, `${p.shopName}: \u0939\u093F\u0938\u094D\u0938\u093E \u092C\u093E\u0915\u0940 / share pending`, `${inr8(l.won.amount)} \u2014 ${days3} \u0926\u093F\u0928 \u0938\u0947 \u092C\u093E\u0915\u0940\u0964 ${OVERDUE.pauseDays} \u0926\u093F\u0928 \u092A\u0930 QR \u0905\u092A\u0928\u0947 \u0906\u092A \u0930\u0941\u0915 \u091C\u093E\u090F\u0917\u093E\u0964 / ${days3} days unpaid; the QR pauses itself at ${OVERDUE.pauseDays} days.`);
+        if (tier >= OVERDUE.remindDays[1]) tellShop(p, "\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092F\u093E\u0926 \u0926\u093F\u0932\u093E\u092F\u093E \u0917\u092F\u093E", "We reminded the broker", `\u0906\u092A\u0915\u093E ${inr8(l.won.amount)} \u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E ${days3} \u0926\u093F\u0928 \u0938\u0947 \u092C\u093E\u0915\u0940 \u0939\u0948 \u2014 GENZ \u0928\u0947 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092F\u093E\u0926 \u0926\u093F\u0932\u093E\u092F\u093E\u0964 / Your share of ${inr8(l.won.amount)} is ${days3} days old; GENZ reminded the broker.`, `late-${l.id}`);
+      }
+      if (days3 >= OVERDUE.pauseDays && p.status === "ACTIVE") {
+        p.status = "PAUSED";
+        p.pausedBy = "SYSTEM";
+        p.pauseReason = `Share unpaid for ${days3} days`;
+        n2++;
+        hist(p, "SYSTEM", `QR paused by GENZ \u2014 the share on one lead has been unpaid for ${days3} days (it starts again once that is paid)`);
+        sysAudit(p.id, "SHOP_PARTNER_AUTOPAUSED", `Shop QR ${p.id} paused automatically: share unpaid for ${days3} days`);
+        tellBroker(p, l.brokerId, `${p.shopName}: QR \u0930\u0941\u0915 \u0917\u092F\u093E / QR paused`, `\u0939\u093F\u0938\u094D\u0938\u093E ${days3} \u0926\u093F\u0928 \u0938\u0947 \u092C\u093E\u0915\u0940 \u0939\u0948\u0964 \u091A\u0941\u0915\u093E\u0915\u0930 \u201C\u091A\u0941\u0915\u093E \u0926\u093F\u092F\u093E\u201D \u0926\u092C\u093E\u090F\u0901 \u2014 QR \u092B\u093F\u0930 \u091A\u093E\u0932\u0942 \u0939\u094B \u091C\u093E\u090F\u0917\u093E\u0964 / Pay the share and mark it paid \u2014 the QR starts again.`);
+        tellShop(p, "QR \u0930\u094B\u0915\u093E \u0917\u092F\u093E", "QR paused", "\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E \u0926\u0947\u0930 \u0938\u0947 \u092E\u093F\u0932 \u0930\u0939\u093E \u0939\u0948, \u0907\u0938\u0932\u093F\u090F GENZ \u0928\u0947 \u0928\u092F\u093E QR \u092B\u093C\u093F\u0932\u0939\u093E\u0932 \u0930\u094B\u0915\u093E \u0939\u0948\u0964 / Because your share is late, GENZ has paused new requests on your QR.", `pause-${p.id}`);
+      }
+      if (days3 >= OVERDUE.deskDays && !l.payout.deskAt) {
+        l.payout.deskAt = nowIso22();
+        n2++;
+        sysAudit(l.id, "SHOP_PAYOUT_OVERDUE", `Shop partner share ${inr8(l.won.amount)} unpaid for ${days3} days \u2014 for the GENZ desk to look at`);
+      }
+    }
+    if (l.payout.status === "PAID" && l.payout.paidAt && !l.payout.askedAt && daysSince(l.payout.paidAt, nowMs) >= 3) {
+      l.payout.askedAt = nowIso22();
+      n2++;
+      tellShop(p, "\u092A\u0948\u0938\u093E \u092E\u093F\u0932\u093E?", "Did you get it?", `\u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 ${inr8(l.won.amount)} \u092D\u0947\u091C\u0928\u0947 \u0915\u0940 \u092C\u093E\u0924 \u0932\u093F\u0916\u0940 \u0939\u0948 \u2014 \u092E\u093F\u0932 \u0917\u092F\u093E \u0939\u094B \u0924\u094B \u092A\u0947\u091C \u092A\u0930 \u201C\u092E\u093F\u0932 \u0917\u092F\u093E\u201D \u0926\u092C\u093E\u090F\u0901, \u0928 \u092E\u093F\u0932\u093E \u0939\u094B \u0924\u094B \u201C\u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u201D\u0964 / The broker says ${inr8(l.won.amount)} was sent \u2014 please confirm on your page.`, `got-${l.id}`);
+    }
+  }
+  if (n2) db.save();
+  return n2;
+}
+var lastLazy = 0;
+function lazySweep2(force = false) {
+  if (!force && Date.now() - lastLazy < 10 * 6e4) return 0;
+  lastLazy = Date.now();
+  return sweepShopPartners();
+}
+function closeLead(l, sent, reason) {
+  if (l.status === "WON") return { error: "Already written as a closed deal", status: 409 };
+  const p = partnerOf(l.partnerId);
+  if (!p) return { error: "Partner not found", status: 404 };
+  const side = sideOfKind(l.kind);
+  const cut = side === "SALE" ? l.terms.sale : l.terms.rent;
+  const a = autoShare(l);
+  if (sent !== void 0 && (!Number.isInteger(sent) || sent < 1 || sent > 5e8)) return { error: "Write your own brokerage on this deal in whole rupees", status: 400 };
+  let brokerage;
+  let source;
+  let byWhat = null;
+  let fromAmt = 0;
+  if (a) {
+    source = "DEAL";
+    brokerage = a.brokerage;
+    if (sent !== void 0 && sent !== a.brokerage) {
+      if (reason.length < SHARE_LIMITS.reasonMin) return { error: "The app has worked out your brokerage from the deal. To change it, write why \u2014 the shop is told.", status: 400, extra: { code: "REASON_NEEDED", auto: a.brokerage } };
+      brokerage = sent;
+      byWhat = "BROKER_EDIT";
+      fromAmt = partnerAmount(cut, a.brokerage);
+    }
+  } else {
+    if (sent === void 0) return { error: "This deal is not in GENZ, so write your own brokerage on it in whole rupees", status: 400 };
+    source = "TYPED";
+    brokerage = sent;
+    byWhat = "TYPED";
+  }
+  const amount2 = partnerAmount(cut, brokerage);
+  if (!byWhat && l.shareSeen && Math.round(l.shareSeen.amount) !== amount2) {
+    byWhat = "DEAL";
+    fromAmt = l.shareSeen.amount;
+  }
+  l.status = "WON";
+  l.lostAt = void 0;
+  l.lostReason = void 0;
+  l.won = { at: nowIso22(), brokerage, amount: amount2, side, source, ...a ? { dealId: a.dealId, auto: partnerAmount(cut, a.brokerage) } : {} };
+  l.payout = { status: "DUE" };
+  l.shareSeen = { amount: amount2, at: nowIso22() };
+  let change = null;
+  if (byWhat) change = addChange(l, fromAmt, amount2, byWhat, reason || void 0).change;
+  hist(l, "BROKER", `Deal done \u2014 partner\u2019s share ${inr8(amount2)} (${cutText(cut)}${source === "DEAL" ? ", worked out from the deal" : ", brokerage written by the broker"}${byWhat === "BROKER_EDIT" ? `, brokerage changed by the broker: ${reason}` : ""})`);
+  db.save();
+  if (change) tellChange(p, change);
+  else tellShop(p, "\u0921\u0940\u0932 \u0939\u0941\u0908 \u{1F389}", "Deal done", `\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E: ${inr8(amount2)}\u0964 / Your share: ${inr8(amount2)}.`, `won-${l.id}`);
+  return { amount: amount2, change, auditText: `Shop QR lead closed \u2014 partner share recorded (${cutText(cut)}; ${source === "DEAL" ? "from the deal" : "written by the broker"}${byWhat === "BROKER_EDIT" ? "; brokerage changed by the broker" : ""})` };
+}
 function partnerView(p) {
   const leads = st11().partnerLeads.filter((l) => l.partnerId === p.id);
   return {
@@ -82207,6 +82466,10 @@ function partnerView(p) {
     lastPartnerSeenAt: p.lastPartnerSeenAt,
     acceptedAt: p.acceptedAt,
     createdAt: p.createdAt,
+    pausedBy: p.pausedBy,
+    pauseReason: p.pauseReason,
+    alerts: shopAlertInfo(p.id),
+    overdue: overdueOf(p).length,
     devices: (p.devices || []).map((d) => ({ id: d.id, label: d.label, lastAt: d.lastAt })),
     codeForPartner: p.otpPlain && p.otpExpires && Date.parse(p.otpExpires) > Date.now() ? p.otpPlain : void 0,
     smsOn: smsOn(),
@@ -82223,7 +82486,22 @@ function partnerView(p) {
 function leadView(l) {
   const links = linksFor(l);
   const p = partnerOf(l.partnerId);
-  return { ...l, shopName: p?.shopName || "", city: p?.city || "", links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30) };
+  const { ask, ...rest } = l;
+  const a = autoShare(l, links);
+  return {
+    ...rest,
+    shopName: p?.shopName || "",
+    city: p?.city || "",
+    links,
+    flags: flagsFor(l, links),
+    locked: locked(l),
+    history: l.history.slice(-30),
+    // v82 — what the app itself works out from the deal (shown fixed to the broker), the changes the shop was told about, how long it has been unpaid, and the customer's answer
+    auto: a ? { amount: a.amount, brokerage: a.brokerage, basis: a.basis } : null,
+    shareChanges: (l.shareChanges || []).slice(-5),
+    unpaidDays: unpaidDays(l),
+    askState: ask ? { at: ask.at, n: ask.n, ...ask.answer ? { answer: ask.answer, answeredAt: ask.answeredAt } : {} } : null
+  };
 }
 function createShopPartnerRouter() {
   const r = (0, import_express30.Router)();
@@ -82254,16 +82532,26 @@ function createShopPartnerRouter() {
         payout: l.payout || null,
         flags,
         links: links.map((x) => ({ kind: x.kind, at: x.at, en: x.en })),
-        terms: l.terms
+        terms: l.terms,
+        unpaidDays: unpaidDays(l),
+        shareChanges: (l.shareChanges || []).filter((c) => c.status !== "OK").slice(-3),
+        customerSaid: l.ask?.answer || null
       };
     });
     res.json({ success: true, items: rows });
   });
   r.get("/", needs("partner:manage"), (_req, res) => {
     const u = me16();
+    try {
+      watchShares({ brokerId: u.id });
+      lazySweep2();
+    } catch (e) {
+      console.error("[SHOP] watch failed:", e?.message || e);
+    }
     const partners = st11().shopPartners.filter((p) => p.brokerId === u.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const leads = st11().partnerLeads.filter((l) => l.brokerId === u.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
-    res.json({ success: true, partners: partners.map(partnerView), leads, limits: PARTNER_LIMITS });
+    const mineLeads = st11().partnerLeads.filter((l) => l.brokerId === u.id);
+    const leads = mineLeads.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
+    res.json({ success: true, partners: partners.map(partnerView), leads, limits: PARTNER_LIMITS, record: payRecord(mineLeads) });
   });
   r.post("/", needs("partner:manage"), rateLimit("sp-create", 40, 36e5), (req, res) => {
     const u = me16();
@@ -82360,6 +82648,26 @@ function createShopPartnerRouter() {
     db.save();
     res.json({ success: true, partner: partnerView(p) });
   });
+  r.get("/:id/leaflet", needs("partner:manage"), (req, res) => {
+    const p = mine3(req.params.id);
+    if (!p) return bad15(res, "Partner not found", 404);
+    const b = me16();
+    const t2 = p.terms;
+    const ex = (c, brokerage) => `${inr8(brokerage)} \u0915\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u092A\u0930 \u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E ${inr8(partnerAmount(c, brokerage))}`;
+    res.set({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" });
+    res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>GENZ QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u2014 ${esc6(p.shopName)}</title>
+<style>@page{size:A4;margin:12mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee;color:#14213d}.pg{max-width:190mm;margin:10px auto;background:#fff;padding:12mm;border-radius:6px}h1{margin:0;font-size:28px}h2{font-size:17px;margin:16px 0 4px;color:#b45309}.en{color:#555;font-size:12px}p,li{font-size:14px;line-height:1.55}ul,ol{padding-left:20px;margin:4px 0}.box{background:#f3f4f6;border-radius:10px;padding:10px 12px;margin-top:8px}.p{text-align:center;margin:12px}@media print{body{background:#fff}.p{display:none}.pg{margin:0;padding:0}}</style></head>
+<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">\u{1F5A8} Print / PDF</button></div>
+<div class="pg" data-testid="leaflet"><h1>GENZ QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u092C\u0928\u093F\u090F</h1><div class="en">${esc6(p.shopName)} \xB7 ${esc6(b.name)}${b.reraNumber ? ` \xB7 RERA ${esc6(b.reraNumber)}` : ""}</div>
+<h2>\u092F\u0939 \u0915\u094D\u092F\u093E \u0939\u0948?</h2><p>\u0906\u092A\u0915\u0940 \u0926\u0941\u0915\u093E\u0928 / \u0917\u0947\u091F \u092A\u0930 ${esc6(b.name)} \u0915\u093E QR \u0930\u0939\u0947\u0917\u093E\u0964 \u0906\u092A\u0915\u0947 \u092F\u0939\u093E\u0901 \u0906\u0928\u0947 \u0935\u093E\u0932\u093E \u0915\u094B\u0908 \u092D\u0940 \u092E\u0915\u093E\u0928, \u0926\u0941\u0915\u093E\u0928 \u092F\u093E \u092A\u094D\u0932\u0949\u091F \u0915\u093F\u0930\u093E\u092F\u0947 \u092A\u0930 \u0932\u0947\u0928\u093E-\u0926\u0947\u0928\u093E \u092F\u093E \u0916\u093C\u0930\u0940\u0926\u0928\u093E-\u092C\u0947\u091A\u0928\u093E \u091A\u093E\u0939\u0947 \u0924\u094B QR \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0915\u0947 \u0905\u092A\u0928\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0932\u093F\u0916 \u0926\u0947\u0924\u093E \u0939\u0948\u0964 \u092C\u094D\u0930\u094B\u0915\u0930 \u0909\u0938\u0938\u0947 \u092C\u093E\u0924 \u0915\u0930\u0924\u093E \u0939\u0948\u0964 \u0921\u0940\u0932 \u0939\u094B \u091C\u093E\u090F \u0924\u094B <b>\u0906\u092A\u0915\u094B \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u092E\u0947\u0902 \u0938\u0947 \u0939\u093F\u0938\u094D\u0938\u093E</b> \u092E\u093F\u0932\u0924\u093E \u0939\u0948\u0964</p>
+<h2>\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E</h2><div class="box"><p><b>\u092C\u093F\u0915\u094D\u0930\u0940:</b> ${esc6(cutText(t2.sale, true))} \xB7 <b>\u0915\u093F\u0930\u093E\u092F\u093E:</b> ${esc6(cutText(t2.rent, true))}<br><small>\u0909\u0926\u093E\u0939\u0930\u0923 \u2014 \u092C\u093F\u0915\u094D\u0930\u0940: ${esc6(ex(t2.sale, 1e5))} \xB7 \u0915\u093F\u0930\u093E\u092F\u093E: ${esc6(ex(t2.rent, 1e4))}</small></p><p class="en">\u092F\u0939 \u0938\u093F\u0930\u094D\u092B\u093C \u0909\u0926\u093E\u0939\u0930\u0923 \u0939\u0948; \u0905\u0938\u0932\u0940 \u0939\u093F\u0938\u094D\u0938\u093E \u0939\u0930 \u0921\u0940\u0932 \u0915\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0938\u0947 \u092C\u0928\u0924\u093E \u0939\u0948\u0964</p></div>
+<h2>\u0939\u093F\u0938\u094D\u0938\u093E \u0915\u0948\u0938\u0947 \u0924\u092F \u0939\u094B\u0924\u093E \u0939\u0948 \u2014 \u092C\u093F\u0928\u093E \u092C\u0939\u0938</h2><ol><li>\u0921\u0940\u0932 \u0915\u093E <b>\u0905\u0902\u0924\u093F\u092E \u092D\u093E\u0935</b> \u0910\u092A \u092E\u0947\u0902 \u0926\u0930\u094D\u091C \u0939\u094B\u0924\u093E \u0939\u0948\u0964</li><li>\u0906\u092A\u0915\u0947 \u0932\u093E\u090F \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u0940 \u0924\u0930\u092B\u093C \u0915\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0926\u0947\u0916\u0940 \u091C\u093E\u0924\u0940 \u0939\u0948 \u2014 \u0916\u093C\u0930\u0940\u0926\u093E\u0930/\u0915\u093F\u0930\u093E\u092F\u0947\u0926\u093E\u0930 \u0906\u092A\u0915\u0947 QR \u0938\u0947 \u0906\u092F\u093E \u0924\u094B \u0909\u0938\u0938\u0947 \u0924\u092F \u092B\u093C\u0940\u0938; \u092E\u093E\u0932\u093F\u0915 \u0906\u092F\u093E \u0924\u094B \u0909\u0938\u0938\u0947 \u0910\u092A \u092E\u0947\u0902 \u0938\u093E\u0907\u0928 \u0939\u0941\u0908 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C\u0964 <b>\u0926\u0942\u0938\u0930\u0940 \u0924\u0930\u092B\u093C \u0915\u0940 \u0915\u092E\u093E\u0908 \u0917\u093F\u0928\u0940 \u0928\u0939\u0940\u0902 \u091C\u093E\u0924\u0940\u0964</b></li><li>\u0909\u0938\u092E\u0947\u0902 \u0938\u0947 \u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E <b>\u0910\u092A \u0916\u093C\u0941\u0926 \u0928\u093F\u0915\u093E\u0932\u0924\u093E \u0939\u0948</b> \u2014 \u0915\u094B\u0908 \u0939\u093E\u0925 \u0938\u0947 \u0928\u0939\u0940\u0902 \u0932\u093F\u0916\u0924\u093E\u0964</li><li>\u0905\u0917\u0930 \u092C\u093E\u0926 \u092E\u0947\u0902 \u092D\u093E\u0935 \u092F\u093E \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u092C\u0926\u0932\u0947, \u0924\u094B <b>\u0906\u092A\u0915\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F</b> \u0906\u0924\u093E \u0939\u0948 \u2014 \u092A\u0941\u0930\u093E\u0928\u093E \u0914\u0930 \u0928\u092F\u093E \u0939\u093F\u0938\u094D\u0938\u093E, \u0914\u0930 \u0935\u091C\u0939\u0964 \u0906\u092A \u201C\u0920\u0940\u0915 \u0939\u0948\u201D \u092F\u093E \u201C\u0938\u0939\u0940 \u0928\u0939\u0940\u0902\u201D \u0926\u092C\u093E \u0938\u0915\u0924\u0947 \u0939\u0948\u0902, \u092C\u094D\u0930\u094B\u0915\u0930 \u092F\u093E \u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u092A\u0942\u091B \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964</li></ol>
+<h2>\u092A\u0948\u0938\u093E \u0915\u0948\u0938\u0947 \u092E\u093F\u0932\u0924\u093E \u0939\u0948</h2><ul><li>\u092C\u094D\u0930\u094B\u0915\u0930 \u0906\u092A\u0915\u094B \u0938\u0940\u0927\u0947 UPI / \u092C\u0948\u0902\u0915 \u0938\u0947 \u092D\u0947\u091C\u0924\u093E \u0939\u0948 \u0914\u0930 \u0930\u0947\u092B\u093C\u0930\u0947\u0902\u0938 \u0928\u0902\u092C\u0930 \u0932\u093F\u0916\u0924\u093E \u0939\u0948\u0964 GENZ \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0930\u0916\u0924\u093E\u0964</li><li>\u0906\u092A \u0905\u092A\u0928\u0947 \u092A\u0947\u091C \u092A\u0930 \u201C\u092E\u093F\u0932 \u0917\u092F\u093E\u201D \u092F\u093E \u201C\u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E\u201D \u0926\u092C\u093E\u0924\u0947 \u0939\u0948\u0902\u0964</li><li>\u0926\u0947\u0930 \u0939\u094B\u0928\u0947 \u092A\u0930: \u0969, \u096D, \u0967\u0968 \u0926\u093F\u0928 \u092A\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092F\u093E\u0926 \u0926\u093F\u0932\u093E\u092F\u093E \u091C\u093E\u0924\u093E \u0939\u0948; <b>\u0967\u096B \u0926\u093F\u0928</b> \u092A\u0930 \u0928\u090F \u0905\u0928\u0941\u0930\u094B\u0927 \u0932\u0947\u0928\u0947 \u0935\u093E\u0932\u093E QR \u0905\u092A\u0928\u0947 \u0906\u092A \u0930\u0941\u0915 \u091C\u093E\u0924\u093E \u0939\u0948; <b>\u0969\u0966 \u0926\u093F\u0928</b> \u092A\u0930 \u092E\u093E\u092E\u0932\u093E GENZ \u0921\u0947\u0938\u094D\u0915 \u0915\u0947 \u092A\u093E\u0938 \u091C\u093E\u0924\u093E \u0939\u0948\u0964</li></ul>
+<h2>\u0906\u092A\u0915\u0940 \u0932\u0940\u0921 \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924</h2><ul><li>\u091C\u094B \u0917\u094D\u0930\u093E\u0939\u0915 \u0906\u092A\u0915\u0947 QR \u0938\u0947 \u0906\u092F\u093E, \u0935\u0939 ${t2.lockDays} \u0926\u093F\u0928 \u0924\u0915 \u0906\u092A\u0915\u0940 \u0932\u0940\u0921 \u0939\u0948\u0964 \u092C\u094D\u0930\u094B\u0915\u0930 \u0909\u0938\u0940 \u0928\u0902\u092C\u0930 \u092A\u0930 \u092C\u093E\u0926 \u092E\u0947\u0902 \u0915\u094B\u0908 \u092D\u0940 \u0915\u093E\u092E \u0915\u0930\u0947 (\u0935\u093F\u091C\u093C\u093F\u091F, \u0915\u094D\u0932\u093E\u0907\u0902\u091F \u0930\u0942\u092E, \u0921\u0940\u0932) \u0924\u094B \u0935\u0939 \u0906\u092A\u0915\u0947 \u092A\u0947\u091C \u092A\u0930 \u0905\u092A\u0928\u0947 \u0906\u092A \u0926\u093F\u0916\u0924\u093E \u0939\u0948\u0964</li><li>\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0914\u0930 \u0928\u093E\u092E \u0906\u092A\u0915\u094B \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0924\u093E \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915\u0964</li></ul>
+<h2>\u0906\u092A\u0915\u094B \u0915\u094D\u092F\u093E \u0928\u0939\u0940\u0902 \u0915\u0930\u0928\u093E</h2><ul><li>\u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928 \u0932\u0947\u0902, \u0915\u094B\u0908 \u0935\u093E\u0926\u093E \u0928 \u0915\u0930\u0947\u0902\u0964</li><li>\u0915\u093E\u0917\u093C\u091C\u093C \u092F\u093E \u092D\u093E\u0935 \u0915\u0940 \u092C\u093E\u0924 \u092C\u094D\u0930\u094B\u0915\u0930 \u092A\u0930 \u091B\u094B\u0921\u093C\u0947\u0902\u0964</li></ul>
+<p class="en" style="margin-top:14px">\u092F\u0939 \u090F\u0915 \u0930\u0947\u092B\u093C\u0930\u0932 \u0938\u093E\u091D\u0947\u0926\u093E\u0930\u0940 \u0915\u0940 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u0939\u0948; \u092F\u0939 \u0928\u094C\u0915\u0930\u0940 \u092F\u093E \u090F\u091C\u0947\u0902\u0938\u0940 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 / This explains a referral partnership; it is not employment or an agency.</p></div>
+<script src="/q/poster.js" defer></script></body></html>`);
+  });
   for (const [path19, to, text] of [["pause", "PAUSED", "Paused \u2014 the QR form says \u201Cnot taking requests right now\u201D"], ["resume", "ACTIVE", "Resumed"], ["end", "ENDED", "Partnership ended \u2014 the QR stops; leads already in keep their terms"]]) {
     r.post(`/:id/${path19}`, needs("partner:manage"), (req, res) => {
       const p = mine3(req.params.id);
@@ -82367,11 +82675,14 @@ function createShopPartnerRouter() {
       if (p.status === "ENDED") return bad15(res, "This partnership has ended", 409);
       if (to === "ACTIVE" && p.status !== "PAUSED") return bad15(res, "Only a paused partnership can be resumed", 409);
       if (to === "PAUSED" && p.status !== "ACTIVE") return bad15(res, "Only an active partnership can be paused", 409);
+      if (to === "ACTIVE" && p.pausedBy === "SYSTEM" && overdueOf(p).length) return bad15(res, `The QR was paused because the shop\u2019s share is unpaid for over ${OVERDUE.pauseDays} days. Pay it (mark it paid with the reference) and the QR starts again.`, 409, { code: "PAUSED_UNPAID" });
       p.status = to;
       if (to === "ENDED") {
         p.endedAt = nowIso22();
         p.pending = void 0;
       }
+      p.pausedBy = to === "PAUSED" ? "BROKER" : void 0;
+      p.pauseReason = void 0;
       hist(p, "BROKER", text);
       db.save();
       audit4(p.id, `SHOP_PARTNER_${path19.toUpperCase()}`, `Shop QR partner ${p.id}: ${text}`);
@@ -82411,31 +82722,69 @@ function createShopPartnerRouter() {
   r.post("/leads/:id/won", needs("partner:manage"), (req, res) => {
     const l = mineLead(req.params.id);
     if (!l) return bad15(res, "Lead not found", 404);
-    if (l.status === "WON") return bad15(res, "Already written as a closed deal", 409);
+    const sent = req.body?.brokerage === void 0 || req.body?.brokerage === null || req.body?.brokerage === "" ? void 0 : Number(req.body.brokerage);
+    const r22 = closeLead(l, sent, str(req.body?.reason, 160));
+    if ("error" in r22) return bad15(res, r22.error, r22.status, r22.extra);
+    audit4(l.id, "SHOP_PARTNER_LEAD_WON", r22.auditText);
+    res.json({ success: true, lead: leadView(l) });
+  });
+  r.post("/leads/:id/share", needs("partner:manage"), (req, res) => {
+    const l = mineLead(req.params.id);
+    if (!l || !l.won || !l.payout) return bad15(res, "Lead not found", 404);
+    if (!["DUE", "NOT_RECEIVED"].includes(l.payout.status)) return bad15(res, "The share is already paid \u2014 ask the GENZ desk to look at it", 409);
+    const p = partnerOf(l.partnerId);
+    if (!p) return bad15(res, "Partner not found", 404);
     const brokerage = Number(req.body?.brokerage);
+    const reason = str(req.body?.reason, 160);
     if (!Number.isInteger(brokerage) || brokerage < 1 || brokerage > 5e8) return bad15(res, "Write your own brokerage on this deal in whole rupees");
-    const side = sideOfKind(l.kind);
-    const cut = side === "SALE" ? l.terms.sale : l.terms.rent;
+    if (reason.length < SHARE_LIMITS.reasonMin) return bad15(res, "Write why the share is being changed \u2014 the shop is told");
+    const cut = l.won.side === "SALE" ? l.terms.sale : l.terms.rent;
     const amount2 = partnerAmount(cut, brokerage);
-    l.status = "WON";
-    l.lostAt = void 0;
-    l.lostReason = void 0;
-    l.won = { at: nowIso22(), brokerage, amount: amount2, side };
-    l.payout = { status: "DUE" };
-    hist(l, "BROKER", `Deal done \u2014 partner\u2019s share ${inr8(amount2)} (${cutText(cut)})`);
+    const from = l.won.amount;
+    if (amount2 === from) return bad15(res, "That gives the same share", 409);
+    l.won = { ...l.won, brokerage, amount: amount2 };
+    l.shareSeen = { amount: amount2, at: nowIso22() };
+    const { change } = addChange(l, from, amount2, "REVISED", reason);
+    hist(l, "BROKER", `Share corrected ${inr8(from)} \u2192 ${inr8(amount2)}: ${reason}`);
     db.save();
-    audit4(l.id, "SHOP_PARTNER_LEAD_WON", `Shop QR lead closed \u2014 partner share recorded (${cutText(cut)})`);
+    audit4(l.id, "SHOP_PARTNER_SHARE_REVISED", `Broker corrected the shop\u2019s share ${inr8(from)} \u2192 ${inr8(amount2)}`);
+    if (change) tellChange(p, change);
+    res.json({ success: true, lead: leadView(l) });
+  });
+  r.post("/leads/:id/changes/:cid/reply", needs("partner:manage"), (req, res) => {
+    const l = mineLead(req.params.id);
+    if (!l) return bad15(res, "Lead not found", 404);
+    const c = (l.shareChanges || []).find((x) => x.id === req.params.cid);
+    if (!c) return bad15(res, "Change not found", 404);
+    const note5 = str(req.body?.note, 300);
+    if (note5.length < 2) return bad15(res, "Write your reply");
+    c.brokerNote = note5;
+    c.brokerAt = nowIso22();
+    hist(l, "BROKER", `Reply on the share change: ${note5}`);
+    db.save();
+    const p = partnerOf(l.partnerId);
+    if (p) tellShop(p, "\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u091C\u0935\u093E\u092C", "Broker replied", `\u0939\u093F\u0938\u094D\u0938\u0947 \u0915\u0947 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902 \u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u091C\u0935\u093E\u092C \u0926\u093F\u092F\u093E \u2014 \u092A\u0947\u091C \u0916\u094B\u0932\u0947\u0902\u0964 / The broker replied about your share.`, `share-${c.id}`);
     res.json({ success: true, lead: leadView(l) });
   });
   r.post("/leads/:id/paid", needs("partner:manage"), (req, res) => {
     const l = mineLead(req.params.id);
     if (!l) return bad15(res, "Lead not found", 404);
     if (!l.payout || !["DUE", "NOT_RECEIVED"].includes(l.payout.status)) return bad15(res, "Nothing is due on this lead", 409);
+    const mode = PAY_MODES.find((m) => m.id === String(req.body?.mode || "UPI"))?.id || "UPI";
     const ref = str(req.body?.ref, 60);
-    l.payout = { ...l.payout, status: "PAID", paidAt: nowIso22(), ref: ref || void 0 };
-    hist(l, "BROKER", `Marked paid to the partner${ref ? ` (ref ${ref})` : ""} \u2014 waiting for the partner to confirm`);
+    if (!refOk(mode, ref)) return bad15(res, "Write the UPI / bank reference of the payment (at least 6 letters or digits). For cash, choose \u201CCash\u201D \u2014 the shop must then confirm.", 400, { code: "REF_NEEDED" });
+    l.payout = { ...l.payout, status: "PAID", paidAt: nowIso22(), mode, ref: ref || void 0, askedAt: void 0 };
+    hist(l, "BROKER", `Marked paid to the partner (${mode}${ref ? `, ref ${ref}` : ""}) \u2014 waiting for the partner to confirm`);
+    const p = partnerOf(l.partnerId);
+    if (p && p.status === "PAUSED" && p.pausedBy === "SYSTEM" && !overdueOf(p).length) {
+      p.status = "ACTIVE";
+      p.pausedBy = void 0;
+      p.pauseReason = void 0;
+      hist(p, "SYSTEM", "Resumed \u2014 the overdue share is paid");
+    }
     db.save();
-    audit4(l.id, "SHOP_PARTNER_PAID", "Broker marked the partner share as paid");
+    audit4(l.id, "SHOP_PARTNER_PAID", `Broker marked the partner share as paid (${mode})`);
+    if (p) tellShop(p, "\u0939\u093F\u0938\u094D\u0938\u093E \u092D\u0947\u091C\u093E \u0917\u092F\u093E", "Share sent", `${inr8(l.won?.amount || 0)} \u092D\u0947\u091C\u093E \u0917\u092F\u093E (${mode}) \u2014 \u092E\u093F\u0932 \u0917\u092F\u093E \u0939\u094B \u0924\u094B \u092A\u0947\u091C \u092A\u0930 \u201C\u092A\u0948\u0938\u093E \u092E\u093F\u0932 \u0917\u092F\u093E\u201D \u0926\u092C\u093E\u090F\u0901\u0964 / Confirm on your page once you have it.`, `paid-${l.id}`);
     res.json({ success: true, lead: leadView(l) });
   });
   return r;
@@ -82452,8 +82801,9 @@ button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;f
 .hms{display:grid;gap:10px;margin-top:8px}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
 .hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
 .net{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;margin-top:6px}.big2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.big2 .btn{text-align:center;padding:14px 8px}.pick{background:#e9f7ee;border:1px solid #86efac}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}`;
-var shell = (title, body) => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc6(title)}</title><style>${CSS2}</style></head><body><div class="w">${body}</div></body></html>`;
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}
+.app{background:#ecfdf5;border:1px solid #0f766e}.chg{border:2px solid #f59e0b;background:#fffbeb}.fig{font-size:22px;font-weight:800}.old{text-decoration:line-through;color:#888}.rank{background:linear-gradient(135deg,#14213d,#1e3a8a);color:#fff;box-shadow:none}.rank small{color:#cbd5e1}details.ask{margin-top:8px}details summary{cursor:pointer;font-size:13px;font-weight:600;min-height:32px}`;
+var shell = (title, body, head = "", js = "") => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png">${head}<title>${esc6(title)}</title><style>${CSS2}</style></head><body><div class="w">${body}</div>${js ? `<script src="${js}" defer></script>` : ""}</body></html>`;
 var noStore = (res) => {
   res.set("Cache-Control", "no-store");
   res.set("Referrer-Policy", "no-referrer");
@@ -82516,9 +82866,36 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
 <label class="ck"><input type="checkbox" name="direct" value="1" ${keep.direct === "1" ? "checked" : ""}><span>\u092E\u0948\u0902 \u092F\u0939 \u092E\u093E\u0928\u0924\u093E/\u092E\u093E\u0928\u0924\u0940 \u0939\u0942\u0901\u0964 <small>I agree to this.</small></span></label>
 <label>\u0905\u092A\u0928\u093E \u0928\u093E\u092E \u0932\u093F\u0916\u0915\u0930 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 \u0915\u0930\u0947\u0902 / Sign by typing your name</label><input type="text" name="sign" maxlength="80" value="${esc6(keep.sign || "")}" autocomplete="off"><p class="small">\u092F\u0939 \u0906\u092A\u0915\u0940 \u0938\u0939\u092E\u0924\u093F \u0915\u093E \u0930\u093F\u0915\u0949\u0930\u094D\u0921 \u0939\u0948 \u2014 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0932\u0947\u0924\u093E\u0964 / This is a record of your agreement \u2014 GENZ takes no money from you.</p></div>
 <label class="ck"><input type="checkbox" name="consent" value="1" required><span>\u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F ${esc6(who2)} \u0907\u0938 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902 \u092E\u0941\u091D\u0938\u0947 \u092B\u093C\u094B\u0928 / WhatsApp \u092A\u0930 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0964 \u092E\u0947\u0930\u093E \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0926\u0941\u0915\u093E\u0928 \u0935\u093E\u0932\u0947 \u0915\u094B \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 <small>I agree that this broker may contact me by phone / WhatsApp. The shop will not see my full number.</small></span></label>
+<label class="ck"><input type="checkbox" name="outcome" value="1" ${keep.outcome === "1" ? "checked" : ""} data-testid="qr-outcome"><span>${esc6(OUTCOME_CONSENT.hi)} <small>${esc6(OUTCOME_CONSENT.en)}</small></span></label>
 <div class="row"><button class="g" type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964 \u0915\u094B\u0908 \u092D\u0940 \u0930\u0915\u092E \u0926\u0947\u0928\u0947 \u0938\u0947 \u092A\u0939\u0932\u0947 \u0915\u093E\u0917\u091C\u093C \u0914\u0930 RERA \u091C\u093C\u0930\u0942\u0930 \u091C\u093E\u0901\u091A\u0947\u0902\u0964 / GENZ never asks you for money.</p>${homes.length ? '<script src="/c/page.js" defer></script>' : ""}`));
   };
+  const askBy = (token) => /^[A-Za-z0-9_-]{20,40}$/.test(token) ? st11().partnerLeads.find((l) => l.ask && safeEqual(l.ask.hash, sha2(token))) : void 0;
+  const askLive = (l) => !!l.ask && !l.ask.answer && Date.now() - Date.parse(l.ask.at) < ASK_LIMITS.validDays * 864e5;
+  const askPage = (res, l, tok2, done = false) => {
+    noStore(res);
+    if (!l || !l.ask) return res.status(404).send(shell("GENZ", `<div class="card"><p class="t">\u092F\u0939 \u0932\u093F\u0902\u0915 \u092E\u093E\u0928\u094D\u092F \u0928\u0939\u0940\u0902 \u0939\u0948\u0964<br><small>This link is not valid.</small></p></div>`));
+    const who2 = userOf(l.brokerId)?.name || "\u092C\u094D\u0930\u094B\u0915\u0930";
+    if (done || l.ask.answer) return res.send(shell("\u0927\u0928\u094D\u092F\u0935\u093E\u0926 \u2014 GENZ", `<div class="top"><h1>\u0927\u0928\u094D\u092F\u0935\u093E\u0926 \u{1F64F}</h1><p>Thank you</p></div><div class="card ok"><p class="t">\u0906\u092A\u0915\u093E \u091C\u0935\u093E\u092C \u0926\u0930\u094D\u091C \u0939\u094B \u0917\u092F\u093E\u0964<br><small>Your answer has been recorded.</small></p></div>`));
+    if (!askLive(l)) return res.status(410).send(shell("GENZ", `<div class="card"><p class="t">\u0907\u0938 \u0932\u093F\u0902\u0915 \u0915\u0940 \u092E\u093F\u092F\u093E\u0926 \u0916\u093C\u0924\u094D\u092E \u0939\u094B \u091A\u0941\u0915\u0940 \u0939\u0948\u0964<br><small>This link has expired.</small></p></div>`));
+    res.send(shell("GENZ", `<div class="top"><h1>\u090F\u0915 \u091B\u094B\u091F\u093E \u0938\u0935\u093E\u0932</h1><p>One quick question</p></div><div class="card"><p class="t">\u0915\u094D\u092F\u093E <b>${esc6(who2)}</b> \u0915\u0947 \u0938\u093E\u0925 \u0906\u092A\u0915\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0940 \u092C\u093E\u0924 \u0906\u0917\u0947 \u092C\u0922\u093C\u0940 \u2014 \u092F\u093E\u0928\u0940 \u0921\u0940\u0932 \u0939\u0941\u0908?<br><small>Did your property matter go ahead with ${esc6(who2)} \u2014 was a deal done?</small></p>
+<form method="post" action="/q/ok/${esc6(tok2)}"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="ok-yes">\u0939\u093E\u0901, \u0939\u0941\u0908<br><small style="color:#e9ffe9">Yes</small></button><button class="l" type="submit" name="a" value="NO" data-testid="ok-no">\u0928\u0939\u0940\u0902 \u0939\u0941\u0908<br><small>No</small></button></div></form>
+<p class="small">\u0906\u092A\u0915\u093E \u091C\u0935\u093E\u092C \u0938\u093F\u0930\u094D\u092B\u093C \u201C\u0939\u093E\u0901 / \u0928\u0939\u0940\u0902\u201D \u0915\u0947 \u0930\u0942\u092A \u092E\u0947\u0902 \u0926\u0941\u0915\u093E\u0928 \u0935\u093E\u0932\u0947 \u0914\u0930 GENZ \u0915\u094B \u0926\u093F\u0916\u0947\u0917\u093E \u2014 \u0906\u092A\u0915\u093E \u0928\u093E\u092E \u092F\u093E \u0928\u0902\u092C\u0930 \u0928\u0939\u0940\u0902\u0964 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964 / Only \u201Cyes / no\u201D is shown to the shop and GENZ \u2014 never your name or number. GENZ never asks you for money.</p></div>`));
+  };
+  r.get("/ok/:token", rateLimit("sp-ok", 60, 36e5), (req, res) => askPage(res, askBy(req.params.token), req.params.token));
+  r.post("/ok/:token", rateLimit("sp-ok", 40, 36e5), form, (req, res) => {
+    const l = askBy(req.params.token);
+    if (!l || !askLive(l)) return askPage(res, l, req.params.token);
+    const a = String(req.body?.a || "") === "YES" ? "YES" : String(req.body?.a || "") === "NO" ? "NO" : "";
+    if (!a) return askPage(res, l, req.params.token);
+    l.ask = { ...l.ask, answer: a, answeredAt: nowIso22() };
+    hist(l, "CUSTOMER", `Customer answered the SMS: ${a === "YES" ? "it went ahead (deal done)" : "it did not go ahead"}`);
+    db.save();
+    db.appendAuditEvent("public", "SUPERADMIN", "LEAD", l.id, "SHOP_CUSTOMER_ANSWER", `Customer answered \u201C${a}\u201D to the one-tap question (${l.status === "WON" ? "deal is written" : "no deal written"})`);
+    const p = partnerOf(l.partnerId);
+    if (p) tellShop(p, "\u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0947 \u091C\u0935\u093E\u092C \u0926\u093F\u092F\u093E", "The customer answered", "\u0905\u092A\u0928\u093E \u092A\u0947\u091C \u0916\u094B\u0932\u0915\u0930 \u0926\u0947\u0916\u0947\u0902\u0964 / Open your page to see it.", `ans-${l.id}`);
+    askPage(res, l, req.params.token, true);
+  });
   r.get("/poster.js", (_req, res) => {
     res.set({ "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" });
     res.send("(function(){var b=document.getElementById('pr');if(b)b.addEventListener('click',function(){window.print()})})();");
@@ -82527,17 +82904,26 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
     const p = byCode(req.params.code);
     if (!p || p.status === "ENDED") return notLive(res, p);
     const b = userOf(p.brokerId);
+    const a4 = String(req.query.size || "").toLowerCase() === "a4";
     const url3 = `${req.protocol}://${req.get("host")}/q/${p.qrCode}`;
-    const svg = await import_qrcode.default.toString(url3, { type: "svg", margin: 1, width: 300 });
+    const svg = await import_qrcode.default.toString(url3, { type: "svg", margin: 1, width: 400 });
     noStore(res);
     res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>QR poster \u2014 ${esc6(p.shopName)}</title>
-<style>@page{size:A5;margin:10mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee}.pg{max-width:148mm;margin:10px auto;background:#fff;padding:12mm 10mm;text-align:center;border-radius:6px}
-h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;color:#b45309}.en{color:#555;font-size:13px}.qr{width:62mm;margin:10px auto}.qr svg{width:100%;height:auto}.how{font-size:15px;font-weight:700;margin-top:6px}
-.f{margin-top:10px;font-size:12px;color:#333;border-top:1px dashed #bbb;padding-top:8px}.code{font-family:monospace;font-size:12px;color:#666}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.pg{margin:0;border-radius:0}}</style></head>
-<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">\u{1F5A8} Print / PDF</button></div>
-<div class="pg"><h1>\u092E\u0915\u093E\u0928 \xB7 \u0926\u0941\u0915\u093E\u0928 \xB7 \u092A\u094D\u0932\u0949\u091F</h1><h2>\u0915\u093F\u0930\u093E\u092F\u0947 \u092A\u0930 \u0932\u0947\u0928\u093E-\u0926\u0947\u0928\u093E \u092F\u093E \u0916\u093C\u0930\u0940\u0926\u0928\u093E-\u092C\u0947\u091A\u0928\u093E \u0939\u0948?</h2><div class="en">House \xB7 Shop \xB7 Plot \u2014 to rent or to buy / sell?</div>
-<div class="qr">${svg}</div><div class="how">\u{1F4F1} QR \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0947\u0902, \u0905\u092A\u0928\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0932\u093F\u0916\u0947\u0902 \u2014 \u0939\u092E \u0915\u0949\u0932 \u0915\u0930\u0947\u0902\u0917\u0947</div><div class="en">Scan, write what you need \u2014 we will call you</div>
-<div class="f">${esc6(p.shopName)}, ${esc6(p.area)}<br><b>${esc6(b?.name || "")}</b>${b?.reraNumber ? ` \xB7 RERA ${esc6(b.reraNumber)}` : ""} \xB7 GENZ verified broker<br><span class="code">${p.qrCode}</span></div></div>
+<style>@page{size:${a4 ? "A4" : "A5"};margin:0}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#e5e7eb;color:#14213d}
+.pg{width:${a4 ? "210mm" : "148mm"};min-height:${a4 ? "297mm" : "210mm"};margin:10px auto;background:#fff;text-align:center;display:flex;flex-direction:column;border-radius:6px;overflow:hidden}
+.hd{background:#14213d;color:#fff;padding:${a4 ? "14mm 12mm 10mm" : "9mm 8mm 7mm"}}.hd h1{font-size:${a4 ? "46px" : "32px"};margin:0;letter-spacing:.5px}.hd .en{color:#cbd5e1;font-size:${a4 ? "17px" : "13px"};margin-top:3px}
+.q{font-size:${a4 ? "28px" : "20px"};font-weight:800;margin:${a4 ? "12mm 10mm 2mm" : "7mm 8mm 1mm"};color:#b45309}.qe{font-size:${a4 ? "16px" : "12px"};color:#555}
+.qr{width:${a4 ? "100mm" : "66mm"};margin:${a4 ? "8mm" : "4mm"} auto 2mm;padding:3mm;border:3px solid #14213d;border-radius:10px}.qr svg{width:100%;height:auto;display:block}
+.steps{display:flex;justify-content:center;gap:${a4 ? "14px" : "8px"};margin:${a4 ? "8mm 8mm 0" : "3mm 5mm 0"}}.steps div{flex:1;background:#f3f4f6;border-radius:10px;padding:${a4 ? "10px" : "6px"};font-size:${a4 ? "16px" : "12px"};font-weight:700}.steps b{display:block;font-size:${a4 ? "26px" : "18px"};color:#1fa855}
+.tr{margin:${a4 ? "8mm 12mm 0" : "4mm 8mm 0"};font-size:${a4 ? "15px" : "11px"};color:#374151}
+.f{margin-top:auto;padding:${a4 ? "8mm 10mm" : "5mm 6mm"};border-top:2px dashed #cbd5e1;font-size:${a4 ? "15px" : "12px"};color:#333}.code{font-family:monospace;font-size:11px;color:#777}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.pg{margin:0;border-radius:0}}</style></head>
+<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">\u{1F5A8} Print / PDF</button> <a href="?size=${a4 ? "a5" : "a4"}" style="margin-left:10px;font-size:14px">${a4 ? "A5" : "A4"}</a></div>
+<div class="pg" data-testid="poster"><div class="hd"><h1>\u092E\u0915\u093E\u0928 \xB7 \u0926\u0941\u0915\u093E\u0928 \xB7 \u092A\u094D\u0932\u0949\u091F</h1><div class="en">House \xB7 Shop \xB7 Plot</div></div>
+<div class="q">\u0915\u093F\u0930\u093E\u092F\u0947 \u092A\u0930 \u0932\u0947\u0928\u093E-\u0926\u0947\u0928\u093E \u092F\u093E \u0916\u093C\u0930\u0940\u0926\u0928\u093E-\u092C\u0947\u091A\u0928\u093E \u0939\u0948?</div><div class="qe">To rent, buy or sell a property?</div>
+<div class="qr">${svg}</div><div class="qe">\u{1F4F1} \u092B\u093C\u094B\u0928 \u0915\u0947 \u0915\u0948\u092E\u0930\u0947 \u0938\u0947 QR \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0947\u0902 / Scan with your phone camera</div>
+<div class="steps"><div><b>1</b>QR \u0938\u094D\u0915\u0948\u0928<br><small>Scan</small></div><div><b>2</b>\u091C\u093C\u0930\u0942\u0930\u0924 \u0932\u093F\u0916\u0947\u0902<br><small>Write your need</small></div><div><b>3</b>\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0915\u0949\u0932<br><small>The broker calls</small></div></div>
+<div class="tr">GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0932\u0947\u0924\u093E\u0964 \u0915\u094B\u0908 \u092D\u0940 \u0930\u0915\u092E \u0926\u0947\u0928\u0947 \u0938\u0947 \u092A\u0939\u0932\u0947 \u0915\u093E\u0917\u093C\u091C\u093C \u0914\u0930 RERA \u091C\u093C\u0930\u0942\u0930 \u091C\u093E\u0901\u091A\u0947\u0902\u0964<br>GENZ takes no money from you. Check the papers and RERA before you pay anything.</div>
+<div class="f"><b>${esc6(b?.name || "")}</b>${b?.reraNumber ? ` \xB7 RERA ${esc6(b.reraNumber)}` : ""} \xB7 GENZ verified broker<br>${esc6(p.shopName)}, ${esc6(p.area)}<br><span class="code">${p.qrCode}</span></div></div>
 <script src="/q/poster.js" defer></script></body></html>`);
   });
   r.get("/:code", rateLimit("sp-view", 90, 6e4), (req, res) => {
@@ -82554,7 +82940,7 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     const p = byCode(req.params.code);
     if (!p || p.status !== "ACTIVE") return notLive(res, p);
     const body = req.body || {};
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === "1" ? "1" : "" };
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === "1" ? "1" : "", outcome: body.outcome === "1" ? "1" : "" };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`);
     if (!formTsOk(body.t)) return page2(res, p, "\u0915\u0943\u092A\u092F\u093E \u092B\u093C\u0949\u0930\u094D\u092E \u0926\u094B\u092C\u093E\u0930\u093E \u092D\u0930\u0947\u0902\u0964 / Please fill the form again.", keep);
     const kind = LEAD_KINDS.find((k) => k.id === keep.kind)?.id;
@@ -82601,13 +82987,14 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
       history: [],
       createdAt: now,
       updatedAt: now,
+      ...keep.outcome === "1" ? { outcomeOk: true } : {},
       ...home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {},
       ...buyerSide ? (() => {
         const a = ackText(broker?.name || "broker", home ? home.title : "the properties shown by the broker");
         return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } };
       })() : {}
     };
-    hist(lead, "CUSTOMER", `Came in by scanning the QR at ${p.shopName} (consent recorded)${home ? ` \xB7 interested in \u201C${home.title}\u201D${lead.homeOwn ? "" : " (another GENZ broker\u2019s listing)"}` : ""}`);
+    hist(lead, "CUSTOMER", `Came in by scanning the QR at ${p.shopName} (consent recorded${lead.outcomeOk ? "; agreed to one SMS asking whether it went ahead" : ""})${home ? ` \xB7 interested in \u201C${home.title}\u201D${lead.homeOwn ? "" : " (another GENZ broker\u2019s listing)"}` : ""}`);
     if (lead.promise) hist(lead, "CUSTOMER", `Agreed \u201Cno direct deal\u201D (wording ${ACK_VERSION}) and signed as \u201C${lead.promise.signName}\u201D`);
     if (kind === "BUY" || kind === "RENT_IN") {
       const has = s.clientCards.find((c) => c.brokerId === p.brokerId && phone102(c.phone) === phone && c.stage !== "LOST");
@@ -82680,8 +83067,48 @@ var devLabel = (ua) => {
   const u = String(ua || "");
   return `${/iPhone|iPad/i.test(u) ? "iPhone" : /Android/i.test(u) ? "Android" : "Phone"} \xB7 ${/CriOS|Chrome/i.test(u) ? "Chrome" : /Safari/i.test(u) ? "Safari" : "browser"}`;
 };
+var SP_JS = `(function(){var TOK=(location.pathname.split('/')[2]||'');function $(i){return document.getElementById(i)}
+var sw=null;if('serviceWorker' in navigator&&TOK&&$('app-card')){navigator.serviceWorker.register('/sw.js').then(function(r){sw=r;setup()}).catch(function(){setup()})}else{setup()}
+var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b&&standalone()===false)b.style.display='inline-block'});
+function standalone(){return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
+var IOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+function show(st){var c=$('app-card');if(!c)return;c.style.display='block';c.setAttribute('data-alerts',st);
+var t=$('app-title'),s2=$('app-sub'),bp=$('app-push'),bl=$('app-later'),ih=$('app-ios'),bi=$('app-install');
+var on=st==='on';c.style.background=on?'#f0fdf4':'#ecfdf5';c.style.borderColor=on?'#86efac':'#0f766e';
+if(bp)bp.style.display=st==='ask'?'inline-block':'none';if(bl)bl.style.display=st==='ask'?'inline-block':'none';
+if(ih)ih.style.display=st==='ios'?'block':'none';if(bi&&(on||st==='ios'||standalone())&&!dip)bi.style.display='none';
+if(st==='on'){t.textContent='\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0939\u0948\u0902 \u2714 / Alerts are on';s2.textContent='\u0932\u0940\u0921 \u0906\u0917\u0947 \u092C\u0922\u093C\u0928\u0947, \u0939\u093F\u0938\u094D\u0938\u093E \u092C\u0926\u0932\u0928\u0947 \u092F\u093E \u092A\u0948\u0938\u093E \u092D\u0947\u091C\u0947 \u091C\u093E\u0928\u0947 \u092A\u0930 \u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0906\u090F\u0917\u093E\u0964 / You will be alerted here when a lead moves, your share changes or money is sent.'}
+else if(st==='ios'){t.textContent='\u{1F514} iPhone \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0915\u0947 \u0932\u093F\u090F \u092A\u0939\u0932\u0947 \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 / On iPhone, add this to your home screen first';s2.textContent='iPhone \u092E\u0947\u0902 \u0905\u0932\u0930\u094D\u091F \u0938\u093F\u0930\u094D\u092B\u093C \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0935\u093E\u0932\u0947 \u0910\u092A \u092E\u0947\u0902 \u0906\u0924\u0947 \u0939\u0948\u0902 (iOS 16.4+)\u0964 / On iPhone, alerts work only in the home-screen app (iOS 16.4 or newer).'}
+else if(st==='denied'){t.textContent='\u{1F515} \u0905\u0932\u0930\u094D\u091F \u0930\u0941\u0915\u0947 \u0939\u0941\u090F \u0939\u0948\u0902 / Alerts are blocked';s2.textContent='\u092B\u093C\u094B\u0928 \u0915\u0940 \u0938\u0947\u091F\u093F\u0902\u0917 \u2192 \u092C\u094D\u0930\u093E\u0909\u091C\u093C\u0930/\u0910\u092A \u2192 Notifications \u092E\u0947\u0902 \u201CAllow\u201D \u0915\u0930\u0947\u0902, \u092B\u093F\u0930 \u092F\u0939 \u092A\u0947\u091C \u0926\u094B\u092C\u093E\u0930\u093E \u0916\u094B\u0932\u0947\u0902\u0964 / Allow notifications for this page in the phone settings, then open it again.'}
+else if(st==='none'){t.textContent='\u{1F515} \u0907\u0938 \u092C\u094D\u0930\u093E\u0909\u091C\u093C\u0930 \u092E\u0947\u0902 \u0905\u0932\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u091A\u0932\u0924\u0947 / Alerts do not work in this browser';s2.textContent='Chrome (Android) \u092F\u093E Safari-\u0939\u094B\u092E-\u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u0910\u092A (iPhone) \u092E\u0947\u0902 \u0916\u094B\u0932\u0947\u0902\u0964 / Open this page in Chrome (Android) or the Safari home-screen app (iPhone).'}
+else{t.textContent='\u{1F514} \u0932\u0940\u0921 \u0914\u0930 \u0939\u093F\u0938\u094D\u0938\u0947 \u0915\u0940 \u0916\u093C\u092C\u0930 \u0938\u0940\u0927\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u092A\u093E\u090F\u0901 / Get lead and share news on your phone';s2.textContent='\u090F\u0915 \u092C\u093E\u0930 \u0928\u0940\u091A\u0947 \u0915\u093E \u092C\u091F\u0928 \u0926\u092C\u093E\u090F\u0901 \u2014 \u092A\u0947\u091C \u092C\u093E\u0930-\u092C\u093E\u0930 \u0916\u094B\u0932\u0928\u093E \u0928\u0939\u0940\u0902 \u092A\u0921\u093C\u0947\u0917\u093E\u0964 / Tap once \u2014 no need to open this page again and again.'}
+}
+function setup(){var c=$('app-card');if(!c)return;
+var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
+var bp=$('app-push');if(bp)bp.addEventListener('click',function(){reg(false)});
+var bl=$('app-later');if(bl)bl.addEventListener('click',function(){try{localStorage.setItem('sp_later_'+TOK,String(Date.now()))}catch(e){}c.style.display='none'});
+var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator;
+if(IOS&&!standalone()){show('ios');return}
+if(!can){show('none');return}
+if(Notification.permission==='denied'){show('denied');return}
+if(Notification.permission==='granted'){reg(true);return}
+var later=0;try{later=Number(localStorage.getItem('sp_later_'+TOK))||0}catch(e){}
+if(later&&Date.now()-later<86400000){return}
+show('ask')}
+function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o}
+function say(m){var e=$('app-push-msg');if(e)e.textContent=m||''}
+function reg(quiet){say('');var fail=function(m){if(!quiet){say(m);show(Notification.permission==='denied'?'denied':'ask')}};
+var ready=Promise.race([navigator.serviceWorker.ready,new Promise(function(_,no){setTimeout(function(){no(new Error('sw'))},7000)})]);
+ready.then(function(r){return Notification.requestPermission().then(function(p){if(p==='denied'){show('denied');return}if(p!=='granted'){fail('\u0905\u0932\u0930\u094D\u091F \u0915\u0947 \u0932\u093F\u090F \u201CAllow\u201D \u0926\u092C\u093E\u090F\u0901\u0964 / Please tap \u201CAllow\u201D to get alerts.');return}
+return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){fail('\u0905\u0932\u0930\u094D\u091F \u0905\u092D\u0940 \u0907\u0938 \u0938\u0930\u094D\u0935\u0930 \u092A\u0930 \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u0948\u0902 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092C\u0924\u093E\u090F\u0901\u0964 / Alerts are not switched on for this server \u2014 tell your broker.');return}
+return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/sp/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){show('on')}else{fail('\u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on \u2014 try again.')}})})})})}).catch(function(){fail('\u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u091A\u0932 \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on here \u2014 try again.')})}
+})();`;
 function createPartnerPageRouter() {
   const r = (0, import_express30.Router)();
+  r.get("/app.js", (_req, res) => {
+    res.set({ "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" });
+    res.send(SP_JS);
+  });
   const form = import_express31.default.urlencoded({ extended: false, limit: "10kb" });
   const find = (token) => {
     if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return void 0;
@@ -82698,40 +83125,94 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
 <form method="post" action="/sp/${esc6(tok2)}/otp"><label>\u092E\u094B\u092C\u093E\u0907\u0932 / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required placeholder="98XXXXXXXX"><div class="row"><button class="g" type="submit">\u0915\u094B\u0921 \u092D\u0947\u091C\u0947\u0902 / Send code</button></div></form>` : `<p class="t">${smsOn() ? "SMS \u092E\u0947\u0902 \u0906\u092F\u093E 6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0915\u094B\u0921 \u0921\u093E\u0932\u0947\u0902\u0964" : "\u092C\u094D\u0930\u094B\u0915\u0930 \u0906\u092A\u0915\u094B 6 \u0905\u0902\u0915\u094B\u0902 \u0915\u093E \u0915\u094B\u0921 \u092C\u0924\u093E\u090F\u0901\u0917\u0947 \u2014 \u0935\u0939 \u092F\u0939\u093E\u0901 \u0921\u093E\u0932\u0947\u0902\u0964"} <small>${smsOn() ? "Enter the code sent by SMS." : "The broker will tell you a 6-digit code."}</small></p>
 <form method="post" action="/sp/${esc6(tok2)}/verify"><label>\u0915\u094B\u0921 / Code</label><input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"><div class="row"><button class="g" type="submit">\u0916\u094B\u0932\u0947\u0902 / Open</button></div></form>`}</div>`));
   };
+  const fresh = (p) => {
+    try {
+      lazySweep2();
+      watchShares({ partnerId: p.id });
+    } catch (e) {
+      console.error("[SHOP] page refresh failed:", e?.message || e);
+    }
+  };
+  const payModeHi = (m) => PAY_MODES.find((x) => x.id === m)?.hi || "UPI";
+  const askBox = (l, tok2) => {
+    const a = l.ask;
+    const can2 = !!l.outcomeOk && smsOn() && (locked(l) || !!l.won);
+    const wait = !!a && (a.n >= ASK_LIMITS.perLead || Date.now() - Date.parse(a.at) < ASK_LIMITS.gapHours * 36e5);
+    const cust = !can2 && !a?.answer ? "" : a?.answer ? `<p class="small" data-testid="customer-answer">\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u091C\u0935\u093E\u092C: <b>${a.answer === "YES" ? "\u0939\u093E\u0901, \u092C\u093E\u0924 \u0906\u0917\u0947 \u092C\u0922\u093C\u0940" : "\u0928\u0939\u0940\u0902, \u092C\u093E\u0924 \u0906\u0917\u0947 \u0928\u0939\u0940\u0902 \u092C\u0922\u093C\u0940"}</b> (${when(a.answeredAt)}) \xB7 Customer says: ${a.answer === "YES" ? "it went ahead" : "it did not go ahead"}</p>` : wait ? `<p class="small">\u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u092A\u0942\u091B\u093E \u091C\u093E \u091A\u0941\u0915\u093E \u0939\u0948 (${when(a.at)}) \u2014 \u091C\u0935\u093E\u092C \u0906\u0928\u0947 \u092A\u0930 \u092F\u0939\u093E\u0901 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 / The customer has been asked \u2014 the answer shows here.</p>` : `<form method="post" action="/sp/${tok2}/lead/${esc6(l.id)}/ask-customer"><button class="l" type="submit" data-testid="ask-customer">\u{1F4F2} \u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u092A\u0942\u091B\u0947\u0902 / Ask the customer</button><p class="small">\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u094B \u090F\u0915 SMS \u091C\u093E\u090F\u0917\u093E \u2014 \u0909\u0938\u0928\u0947 QR \u092A\u0930 \u0907\u0938\u0915\u0940 \u0905\u0928\u0941\u092E\u0924\u093F \u0926\u0940 \u0939\u0948\u0964 \u0906\u092A\u0915\u094B \u0909\u0938\u0915\u093E \u0928\u0902\u092C\u0930 \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 / One SMS goes to the customer (he agreed on the QR page). You do not see his number.</p></form>`;
+    return `<details class="ask"><summary>\u{1F4AC} \u092A\u0942\u091B\u0947\u0902 / Ask</summary><form method="post" action="/sp/${tok2}/lead/${esc6(l.id)}/ask-broker"><label>\u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u092A\u0942\u091B\u0947\u0902 / Ask the broker</label><input type="text" name="note" maxlength="300" required placeholder="\u091C\u0948\u0938\u0947: \u092F\u0939 \u0939\u093F\u0938\u094D\u0938\u093E \u0915\u0948\u0938\u0947 \u0928\u093F\u0915\u0932\u093E? / e.g. how was this worked out?"><div class="row"><button type="submit" data-testid="ask-broker">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form>${cust}</details>`;
+  };
+  const chgCard = (l, c, tok2) => {
+    const kind = LEAD_KINDS.find((k) => k.id === l.kind);
+    const by = SHARE_CHANGE_LABEL[c.by];
+    return `<div class="card chg" data-testid="share-change"><p class="t"><b>\u26A0 \u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E \u092C\u0926\u0932\u093E \u0939\u0948 / Your share changed</b><br><small>${kind.hi} \xB7 ${esc6(l.locality)} \xB7 \u2022\u2022${esc6(l.phoneLast4)}</small></p>
+<p class="t">${c.from > 0 ? `<span class="old">${inr8(c.from)}</span> \u2192 ` : ""}<b class="fig">${inr8(c.to)}</b></p>
+<p class="small">${esc6(by.hi)} / ${esc6(by.en)}${c.reason ? ` \u2014 \u201C${esc6(c.reason)}\u201D` : ""} \xB7 ${when(c.at)}</p>
+${c.brokerNote ? `<p class="small">\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u091C\u0935\u093E\u092C / Broker\u2019s reply: ${esc6(c.brokerNote)}</p>` : ""}
+${c.status === "PENDING" ? `<div class="row"><form method="post" action="/sp/${tok2}/lead/${esc6(l.id)}/change/${esc6(c.id)}/ok"><button class="g" type="submit" data-testid="change-ok">\u2714 \u0920\u0940\u0915 \u0939\u0948 / It is fine</button></form></div>
+<details><summary>\u2716 \u0938\u0939\u0940 \u0928\u0939\u0940\u0902 \u0939\u0948 / This is not right</summary><form method="post" action="/sp/${tok2}/lead/${esc6(l.id)}/change/${esc6(c.id)}/no"><input type="text" name="note" maxlength="300" required placeholder="\u0915\u094D\u092F\u093E \u0938\u0939\u0940 \u0928\u0939\u0940\u0902? / What is not right?"><div class="row"><button class="r" type="submit" data-testid="change-no">GENZ \u0915\u094B \u092C\u0924\u093E\u090F\u0901 / Tell GENZ</button></div></form></details>` : c.status === "OK" ? `<p class="small">\u2714 \u0906\u092A\u0928\u0947 \u092E\u093E\u0928 \u0932\u093F\u092F\u093E (${when(c.answeredAt)})</p>` : `<p class="small">\u2716 \u0906\u092A\u0928\u0947 \u0915\u0939\u093E \u0938\u0939\u0940 \u0928\u0939\u0940\u0902 \u2014 GENZ \u0921\u0947\u0938\u094D\u0915 \u0926\u0947\u0916 \u0930\u0939\u093E \u0939\u0948 (${when(c.answeredAt)})${c.note ? `: ${esc6(c.note)}` : ""}</p>`}
+${askBox(l, tok2)}</div>`;
+  };
   const render = (req, res, p, msg = "") => {
     const b = userOf(p.brokerId);
     const tok2 = esc6(req.params.token);
     const leads = st11().partnerLeads.filter((l) => l.partnerId === p.id).sort((a, z2) => z2.createdAt.localeCompare(a.createdAt));
     const due = leads.filter((l) => l.payout && ["DUE", "NOT_RECEIVED"].includes(l.payout.status)).reduce((n2, l) => n2 + (l.won?.amount || 0), 0);
     const got = leads.filter((l) => l.payout?.status === "RECEIVED").reduce((n2, l) => n2 + (l.won?.amount || 0), 0);
+    const onWay = leads.filter((l) => l.payout?.status === "PAID").reduce((n2, l) => n2 + (l.won?.amount || 0), 0);
+    const month = Date.now() - 30 * 864e5;
+    const inMonth = (x) => st11().partnerLeads.filter((l) => l.partnerId === x.id && Date.parse(l.createdAt) >= month).length;
+    const mates = st11().shopPartners.filter((x) => x.status === "ACTIVE" && x.city === p.city);
+    const mine30 = inMonth(p);
+    const rank = p.status === "ACTIVE" && mates.length >= 3 && mine30 > 0 ? 1 + mates.filter((x) => inMonth(x) > mine30).length : 0;
+    const rec2 = payRecord(st11().partnerLeads.filter((l) => l.brokerId === p.brokerId));
+    const recText = payRecordText(rec2, true);
     const agree = p.status === "PENDING" ? `<div class="card warn"><p class="t"><b>\u0936\u0930\u094D\u0924\u0947\u0902 / Terms</b></p><p class="t">${esc6(termsText(p.terms, true))}</p><p class="small">${esc6(termsText(p.terms))}. \u0939\u093F\u0938\u094D\u0938\u093E \u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0940\u0927\u0947 \u0906\u092A\u0915\u094B \u0926\u0947\u0902\u0917\u0947 \u2014 GENZ \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0930\u0916\u0924\u093E\u0964 / The broker pays you directly; GENZ holds no money.</p>
 <form method="post" action="/sp/${tok2}/accept"><label class="ck"><input type="checkbox" name="ok" value="1" required><span>\u092E\u0948\u0902 \u0907\u0928 \u0936\u0930\u094D\u0924\u094B\u0902 \u0938\u0947 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0914\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E QR \u0905\u092A\u0928\u0940 \u0926\u0941\u0915\u093E\u0928 \u092A\u0930 \u0930\u0916\u0942\u0901\u0917\u093E\u0964 / I agree to these terms and will keep the broker's QR at my shop.</span></label><div class="row"><button class="g" type="submit">\u092E\u0902\u091C\u093C\u0942\u0930 / Accept</button></div></form></div>` : p.pending ? `<div class="card warn"><p class="t"><b>\u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u0936\u0930\u094D\u0924 \u092C\u0926\u0932\u0928\u0947 \u0915\u094B \u0915\u0939\u093E \u0939\u0948 / The broker proposes a change</b></p><p class="t">\u0905\u092D\u0940: ${esc6(termsText(p.terms, true))}</p><p class="t">\u0928\u0908: <b>${esc6(termsText(p.pending.terms, true))}</b></p>${p.pending.note ? `<p class="small">${esc6(p.pending.note)}</p>` : ""}<p class="small">\u092E\u0902\u091C\u093C\u0942\u0930 \u0915\u0930\u0928\u0947 \u092A\u0930 \u0928\u0908 \u0936\u0930\u094D\u0924 \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u0917\u0947 \u0906\u0928\u0947 \u0935\u093E\u0932\u0940 \u0932\u0940\u0921 \u092A\u0930 \u0932\u0917\u0947\u0917\u0940\u0964 / Applies only to leads after you accept.</p>
-<div class="row"><form method="post" action="/sp/${tok2}/change/accept"><button class="g" type="submit">\u092E\u0902\u091C\u093C\u0942\u0930 / Accept</button></form><form method="post" action="/sp/${tok2}/change/decline"><button class="l" type="submit">\u0928\u0939\u0940\u0902 / Decline</button></form></div></div>` : `<div class="card"><p class="t"><b>\u0906\u092A\u0915\u0940 \u0936\u0930\u094D\u0924\u0947\u0902 / Your terms</b> (v${p.termsVersion})</p><p class="t">${esc6(termsText(p.terms, true))}</p><p class="small">${p.status === "PAUSED" ? "QR \u0905\u092D\u0940 \u0930\u0941\u0915\u093E \u0939\u0941\u0906 \u0939\u0948\u0964 / The QR is paused." : p.status === "ENDED" ? "\u0938\u093E\u091D\u0947\u0926\u093E\u0930\u0940 \u0916\u093C\u0924\u094D\u092E \u2014 \u092A\u0941\u0930\u093E\u0928\u0940 \u0932\u0940\u0921 \u092A\u0930 \u0939\u093F\u0938\u094D\u0938\u093E \u092A\u0939\u0932\u0947 \u0915\u0940 \u0924\u0930\u0939\u0964 / Partnership ended \u2014 earlier leads keep their terms." : "QR \u091A\u093E\u0932\u0942 \u0939\u0948\u0964 / The QR is active."}</p></div>`;
+<div class="row"><form method="post" action="/sp/${tok2}/change/accept"><button class="g" type="submit">\u092E\u0902\u091C\u093C\u0942\u0930 / Accept</button></form><form method="post" action="/sp/${tok2}/change/decline"><button class="l" type="submit">\u0928\u0939\u0940\u0902 / Decline</button></form></div></div>` : `<div class="card"><p class="t"><b>\u0906\u092A\u0915\u0940 \u0936\u0930\u094D\u0924\u0947\u0902 / Your terms</b> (v${p.termsVersion})</p><p class="t">${esc6(termsText(p.terms, true))}</p><p class="small">${p.status === "PAUSED" ? "QR \u0905\u092D\u0940 \u0930\u0941\u0915\u093E \u0939\u0941\u0906 \u0939\u0948\u0964 / The QR is paused." : p.status === "ENDED" ? "\u0938\u093E\u091D\u0947\u0926\u093E\u0930\u0940 \u0916\u093C\u0924\u094D\u092E \u2014 \u092A\u0941\u0930\u093E\u0928\u0940 \u0932\u0940\u0921 \u092A\u0930 \u0939\u093F\u0938\u094D\u0938\u093E \u092A\u0939\u0932\u0947 \u0915\u0940 \u0924\u0930\u0939\u0964 / Partnership ended \u2014 earlier leads keep their terms." : "QR \u091A\u093E\u0932\u0942 \u0939\u0948\u0964 / The QR is active."}</p><p class="small">\u0939\u093F\u0938\u094D\u0938\u093E \u0910\u092A \u0916\u093C\u0941\u0926 \u0928\u093F\u0915\u093E\u0932\u0924\u093E \u0939\u0948 \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u092A\u0915\u0947 \u0932\u093E\u090F \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u0940 \u0924\u0930\u092B\u093C \u0915\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0938\u0947 (\u0916\u093C\u0930\u0940\u0926\u093E\u0930/\u0915\u093F\u0930\u093E\u092F\u0947\u0926\u093E\u0930 \u0932\u093E\u090F \u0924\u094B \u0909\u0938\u0938\u0947 \u0924\u092F \u092B\u093C\u0940\u0938; \u092E\u093E\u0932\u093F\u0915 \u0932\u093E\u090F \u0924\u094B \u092E\u093E\u0932\u093F\u0915 \u0938\u0947 \u0938\u093E\u0907\u0928 \u0939\u0941\u0908 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C), \u0921\u0940\u0932 \u0915\u0947 \u0905\u0902\u0924\u093F\u092E \u092D\u093E\u0935 \u092A\u0930\u0964 \u0926\u0942\u0938\u0930\u0940 \u0924\u0930\u092B\u093C \u0915\u0940 \u0915\u092E\u093E\u0908 \u0938\u0947 \u0906\u092A\u0915\u093E \u0915\u094B\u0908 \u0932\u0947\u0928\u093E-\u0926\u0947\u0928\u093E \u0928\u0939\u0940\u0902\u0964 \u0915\u094B\u0908 \u092C\u0926\u0932\u093E\u0935 \u0939\u094B \u0924\u094B \u0906\u092A\u0915\u094B \u0905\u0932\u0930\u094D\u091F \u0914\u0930 \u092F\u0939\u093E\u0901 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 / The app works your share out from the brokerage on your customer\u2019s own side of the deal only; the other side\u2019s earnings are none of your business. If anything changes you are told here.</p></div>`;
+    const need = leads.flatMap((l) => (l.shareChanges || []).filter((c) => c.status === "PENDING" || c.status === "DISPUTED" && daysSince(c.answeredAt) <= 14).map((c) => ({ l, c }))).sort((a, z2) => z2.c.at.localeCompare(a.c.at)).slice(0, 6);
     const rows = leads.map((l) => {
       const kind = LEAD_KINDS.find((k) => k.id === l.kind);
       const stt = LEAD_STATUSES.find((x) => x.id === l.status);
       const links = linksFor(l);
-      const flags = flagsFor(l, links);
+      const flags = flagsFor(l, links).filter((f) => f.code !== "CUSTOMER_NO" && f.code !== "CUSTOMER_YES" && f.code !== "SHARE_DISPUTED");
       const pay = l.payout ? PAYOUT_LABEL[l.payout.status] : null;
       const pg2 = progressFor(l, links);
-      const prog = l.status === "LOST" ? "" : `<div class="prog" data-testid="lead-progress">${pg2.steps.map((t2, i) => `<span class="st ${i < pg2.step ? "on" : i === pg2.step ? "now" : ""}">${t2}</span>`).join("")}</div>${pg2.share > 0 && !l.won ? `<small>\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E (\u0905\u0928\u0941\u092E\u093E\u0928): <b>${inr8(pg2.share)}</b> \u2014 \u0921\u0940\u0932 \u092A\u0942\u0930\u0940 \u0939\u094B\u0928\u0947 \u092A\u0930 \u0924\u092F</small>` : ""}`;
-      const act = l.payout && ["DUE", "PAID"].includes(l.payout.status) ? `<div class="row">${l.payout.status === "PAID" ? `<form method="post" action="/sp/${tok2}/lead/${esc6(l.id)}/received"><button class="g" type="submit">\u2714 \u092A\u0948\u0938\u093E \u092E\u093F\u0932 \u0917\u092F\u093E / Received</button></form>` : ""}
+      const cut = sideOfKind(l.kind) === "SALE" ? l.terms.sale : l.terms.rent;
+      const prog = l.status === "LOST" ? "" : `<div class="prog" data-testid="lead-progress">${pg2.steps.map((t2, i) => `<span class="st ${i < pg2.step ? "on" : i === pg2.step ? "now" : ""}">${t2}</span>`).join("")}</div>${pg2.share > 0 && !l.won ? `<small>\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E (\u0905\u0928\u0941\u092E\u093E\u0928): <b>${inr8(pg2.share)}</b> \u2014 \u0921\u0940\u0932 \u092A\u0942\u0930\u0940 \u0939\u094B\u0928\u0947 \u092A\u0930 \u0924\u092F \xB7 ${esc6(cutText(cut, true))}</small>` : ""}`;
+      const act = l.payout && ["DUE", "PAID"].includes(l.payout.status) ? `<div class="row">${l.payout.status === "PAID" ? `<form method="post" action="/sp/${tok2}/lead/${esc6(l.id)}/received"><button class="g" type="submit" data-testid="got-it">\u2714 \u092A\u0948\u0938\u093E \u092E\u093F\u0932 \u0917\u092F\u093E / Received</button></form>` : ""}
 <form method="post" action="/sp/${tok2}/lead/${esc6(l.id)}/not-received" style="flex:1"><input type="text" name="note" maxlength="200" required placeholder="\u0915\u094D\u092F\u093E \u0939\u0941\u0906? / What happened?"><div class="row"><button class="r" type="submit">\u2716 \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E / Not received</button></div></form></div>` : "";
+      const late = unpaidDays(l);
+      const wonLine = l.won ? `<br><b data-testid="fixed-share">\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E: ${inr8(l.won.amount)}</b> ${pay ? `<span class="chip ${l.payout.status === "RECEIVED" ? "ok" : l.payout.status === "NOT_RECEIVED" ? "x" : "w"}">${pay.hi}</span>` : ""}<br><small>${esc6(cutText(cut, true))} \xB7 ${l.won.source === "TYPED" ? "\u0907\u0938 \u0921\u0940\u0932 \u0915\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u092C\u094D\u0930\u094B\u0915\u0930 \u0928\u0947 \u0916\u093C\u0941\u0926 \u0932\u093F\u0916\u0940" : "\u0921\u0940\u0932 \u0915\u0947 \u0905\u0902\u0924\u093F\u092E \u092D\u093E\u0935 \u092A\u0930, \u0906\u092A\u0915\u0947 \u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u0940 \u0924\u0930\u092B\u093C \u0915\u0940 \u092C\u094D\u0930\u094B\u0915\u0930\u0947\u091C \u0938\u0947 \u0910\u092A \u0928\u0947 \u0928\u093F\u0915\u093E\u0932\u093E"}</small>${l.payout && ["PAID", "RECEIVED"].includes(l.payout.status) ? `<br><small>\u092D\u0947\u091C\u093E \u0917\u092F\u093E: ${esc6(payModeHi(l.payout.mode))}${l.payout.ref ? ` \xB7 \u0930\u0947\u092B\u093C\u0930\u0947\u0902\u0938 ${esc6(l.payout.ref)}` : ""}${l.payout.paidAt ? ` \xB7 ${when(l.payout.paidAt)}` : ""}</small>` : ""}${late >= OVERDUE.remindDays[0] ? `<br><small style="color:#b91c1c">\u23F3 ${late} \u0926\u093F\u0928 \u0938\u0947 \u092C\u093E\u0915\u0940 / unpaid for ${late} days</small>` : ""}` : "";
+      const last = (l.shareChanges || []).slice(-1)[0];
+      const lastLine = last && last.status === "OK" ? `<br><small>\u0939\u093F\u0938\u094D\u0938\u093E ${last.from > 0 ? `${inr8(last.from)} \u2192 ` : ""}${inr8(last.to)} (${when(last.at)}) \xB7 \u0906\u092A\u0928\u0947 \u092E\u093E\u0928 \u0932\u093F\u092F\u093E \u2714</small>` : "";
       return `<div class="lead"><b>${kind.hi}</b> \xB7 ${esc6(l.locality)} \xB7 \u2022\u2022${esc6(l.phoneLast4)} <small>(${when(l.createdAt)})</small><br>
 <span class="chip ${l.status === "WON" ? "ok" : l.status === "LOST" ? "x" : ""}">${stt.hi}</span>${links.map((x) => `<span class="chip">${esc6(x.hi)}</span>`).join("")}${flags.map((f) => `<span class="chip x">\u26A0 ${esc6(f.hi)}</span>`).join("")}
 ${prog}
 ${l.status === "LOST" && l.lostReason ? `<br><small>\u0915\u093E\u0930\u0923: ${esc6(l.lostReason)}</small>` : ""}
-${l.won ? `<br><b>\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E: ${inr8(l.won.amount)}</b> ${pay ? `<span class="chip ${l.payout.status === "RECEIVED" ? "ok" : l.payout.status === "NOT_RECEIVED" ? "x" : "w"}">${pay.hi}</span>` : ""}` : ""}
-<br><small>${locked(l) ? `\u092F\u0939 \u0932\u0940\u0921 ${when(l.lockUntil)} \u0924\u0915 \u0906\u092A\u0915\u0940 \u0939\u0948` : "\u0938\u0941\u0930\u0915\u094D\u0937\u093E \u0915\u093E \u0938\u092E\u092F \u092A\u0942\u0930\u093E"}</small>${act}</div>`;
+${wonLine}${lastLine}
+<br><small>${locked(l) ? `\u092F\u0939 \u0932\u0940\u0921 ${when(l.lockUntil)} \u0924\u0915 \u0906\u092A\u0915\u0940 \u0939\u0948` : "\u0938\u0941\u0930\u0915\u094D\u0937\u093E \u0915\u093E \u0938\u092E\u092F \u092A\u0942\u0930\u093E"}</small>${act}${need.some((x) => x.l.id === l.id) ? "" : askBox(l, tok2)}</div>`;
     }).join("");
-    res.send(shell("QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930", `<div class="top"><h1>\u0928\u092E\u0938\u094D\u0924\u0947 ${esc6(p.personName.split(" ")[0])} \u{1F64F}</h1><p>${esc6(p.shopName)} \xB7 ${esc6(b?.name || "")} \u0915\u0947 \u0938\u093E\u0925 QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930</p></div>
-${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
+    const cert = p.acceptedAt && p.status !== "PENDING" && p.status !== "ENDED" ? `<a class="btn l" href="/sp/${tok2}/certificate" target="_blank" rel="noopener" data-testid="cert-link">\u{1F3C5} \u092A\u094D\u0930\u092E\u093E\u0923\u092A\u0924\u094D\u0930 / Certificate</a>` : "";
+    const html = shell(
+      "QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930",
+      `<div class="top"><h1>\u0928\u092E\u0938\u094D\u0924\u0947 ${esc6(p.personName.split(" ")[0])} \u{1F64F}</h1><p>${esc6(p.shopName)} \xB7 ${esc6(b?.name || "")} \u0915\u0947 \u0938\u093E\u0925 QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930</p></div>
+${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}
+<div class="card app" id="app-card" style="display:none"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902 / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">\u092C\u093E\u0926 \u092E\u0947\u0902 / Later</button><button class="l" id="app-install" type="button" style="display:none">\u{1F4F2} \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari \u092E\u0947\u0902 \u0928\u0940\u091A\u0947 \u201CShare\u201D \u2192 \u201CAdd to Home Screen\u201D, \u092B\u093F\u0930 \u0909\u0938 \u0910\u092A \u0915\u094B \u0916\u094B\u0932\u0947\u0902\u0964 / On iPhone: Safari \u2192 Share \u2192 Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>
+${p.status === "PAUSED" && p.pausedBy === "SYSTEM" ? `<div class="card red" data-testid="auto-paused"><p class="t"><b>\u23F8 \u0906\u092A\u0915\u093E QR GENZ \u0928\u0947 \u0930\u094B\u0915\u093E \u0939\u0948</b></p><p class="t">\u0906\u092A\u0915\u093E \u0939\u093F\u0938\u094D\u0938\u093E ${OVERDUE.pauseDays} \u0926\u093F\u0928 \u0938\u0947 \u091C\u093C\u094D\u092F\u093E\u0926\u093E \u092C\u093E\u0915\u0940 \u0939\u0948, \u0907\u0938\u0932\u093F\u090F \u0928\u090F \u0905\u0928\u0941\u0930\u094B\u0927 \u092B\u093C\u093F\u0932\u0939\u093E\u0932 \u0930\u0941\u0915\u0947 \u0939\u0948\u0902\u0964 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u0947 \u091A\u0941\u0915\u093E\u0924\u0947 \u0939\u0940 QR \u092B\u093F\u0930 \u091A\u093E\u0932\u0942 \u0939\u094B \u091C\u093E\u090F\u0917\u093E\u0964 <small>GENZ paused new requests because your share is over ${OVERDUE.pauseDays} days late; it starts again once it is paid.</small></p></div>` : ""}
+${need.length ? `<h2>\u0906\u092A\u0915\u0947 \u0927\u094D\u092F\u093E\u0928 \u0915\u0947 \u0932\u093F\u090F / Needs your eye (${need.length})</h2>${need.map((x) => chgCard(x.l, x.c, tok2)).join("")}` : ""}
+${agree}
 <div class="card"><div class="stats"><div><b>${p.scans}</b><small>\u0938\u094D\u0915\u0948\u0928</small></div><div><b>${leads.length}</b><small>\u0932\u0940\u0921</small></div><div><b>${leads.filter((l) => l.status === "WON").length}</b><small>\u0921\u0940\u0932</small></div></div>
-<div class="stats" style="margin-top:8px;grid-template-columns:1fr 1fr"><div><b>${inr8(due)}</b><small>\u092C\u093E\u0915\u0940 / due</small></div><div><b>${inr8(got)}</b><small>\u092E\u093F\u0932\u093E / received</small></div></div>
-<div class="row"><a class="btn l" href="/q/${esc6(p.qrCode)}/poster" target="_blank" rel="noopener">\u{1F5A8} QR \u092A\u094B\u0938\u094D\u091F\u0930 / Poster</a></div></div>
+<div class="stats" style="margin-top:8px"><div><b>${inr8(got)}</b><small>\u092E\u093F\u0932\u093E / received</small></div><div><b>${inr8(onWay)}</b><small>\u0930\u093E\u0938\u094D\u0924\u0947 \u092E\u0947\u0902 / sent</small></div><div><b>${inr8(due)}</b><small>\u092C\u093E\u0915\u0940 / due</small></div></div>
+${rank ? `<div class="rank card" style="margin-top:10px" data-testid="shop-rank"><b>\u{1F3C6} \u0907\u0938 \u092E\u0939\u0940\u0928\u0947 \u0906\u092A ${esc6(p.city)} \u0915\u0947 ${mates.length} QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930\u094D\u0938 \u092E\u0947\u0902 #${rank}</b><br><small>\u092A\u093F\u091B\u0932\u0947 30 \u0926\u093F\u0928 \u092E\u0947\u0902 ${mine30} \u0932\u0940\u0921 \xB7 This month you are #${rank} of ${mates.length} QR partners in ${esc6(p.city)}</small></div>` : ""}
+${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record">\u{1F91D} ${esc6(b?.name || "\u092C\u094D\u0930\u094B\u0915\u0930")}: ${esc6(recText)}</p>` : ""}
+<div class="row"><a class="btn l" href="/q/${esc6(p.qrCode)}/poster" target="_blank" rel="noopener">\u{1F5A8} QR \u092A\u094B\u0938\u094D\u091F\u0930 / Poster</a>${cert}</div></div>
 <h2>\u0906\u092A\u0915\u0947 QR \u0938\u0947 \u0906\u0908 \u0932\u0940\u0921 / Leads from your QR (${leads.length})</h2><div class="card">${rows || '<p class="t">\u0905\u092D\u0940 \u0915\u094B\u0908 \u0932\u0940\u0921 \u0928\u0939\u0940\u0902\u0964 / No leads yet.</p>'}<p class="small">\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u093E \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0906\u092A\u0915\u094B \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0924\u093E \u2014 \u0938\u093F\u0930\u094D\u092B\u093C \u0906\u0916\u093C\u093F\u0930\u0940 4 \u0905\u0902\u0915\u0964 \u0905\u0917\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0907\u0938\u0940 \u0928\u0902\u092C\u0930 \u092A\u0930 \u092C\u093E\u0926 \u092E\u0947\u0902 \u0915\u093E\u092E \u0915\u0930\u0924\u093E \u0939\u0948 \u0924\u094B \u0935\u0939 \u092F\u0939\u093E\u0901 \u0905\u092A\u0928\u0947 \u0906\u092A \u0926\u093F\u0916\u0924\u093E \u0939\u0948\u0964 / You see only the last 4 digits. If the broker works this number later, it shows here by itself.</p></div>
 <div class="card"><form method="post" action="/sp/${tok2}/ask"><label>\u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u0915\u0941\u091B \u0915\u0939\u0928\u093E \u0939\u0948? / Message the broker</label><textarea name="note" rows="2" maxlength="300" required></textarea><div class="row"><button type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
-<p class="small" style="margin:12px 4px">\u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 \u0915\u0930 \u0932\u0947\u0902 \u2014 \u0907\u0938\u0940 \u092B\u093C\u094B\u0928 \u092A\u0930 \u092C\u093F\u0928\u093E \u0915\u094B\u0921 \u0915\u0947 \u0916\u0941\u0932\u0947\u0917\u093E\u0964 / Bookmark this page \u2014 on this phone it opens without a code. GENZ never asks you for money.</p>`));
+<p class="small" style="margin:12px 4px">\u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 \u0915\u0930 \u0932\u0947\u0902 \u2014 \u0907\u0938\u0940 \u092B\u093C\u094B\u0928 \u092A\u0930 \u092C\u093F\u0928\u093E \u0915\u094B\u0921 \u0915\u0947 \u0916\u0941\u0932\u0947\u0917\u093E\u0964 / Bookmark this page \u2014 on this phone it opens without a code. GENZ never asks you for money.</p>`,
+      `<link rel="manifest" href="/sp/${tok2}/manifest.webmanifest"><meta name="theme-color" content="#14213d">`,
+      "/sp/app.js"
+    );
+    res.send(html);
   };
   const authed = (req, res) => {
     noStore(res);
@@ -82759,6 +83240,7 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
     if (!spSession(req, p)) return gate(res, p, req.params.token);
     const q = authed(req, res);
     if (!q) return;
+    fresh(q);
     db.save();
     render(req, res, q, req.query.done === "1" ? "\u0939\u094B \u0917\u092F\u093E \u2714 / Done" : "");
   });
@@ -82846,23 +83328,71 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
     db.save();
     back(res, req.params.token);
   });
-  r.post("/:token/lead/:id/:what", rateLimit("sp-act", 60, 36e5), form, (req, res) => {
+  r.post("/:token/lead/:id/change/:cid/:answer", rateLimit("sp-act", 60, 36e5), form, (req, res) => {
     const p = authed(req, res);
     if (!p) return;
     const l = st11().partnerLeads.find((x) => x.id === req.params.id && x.partnerId === p.id);
-    if (!l || !l.payout) return back(res, req.params.token);
-    if (req.params.what === "received" && l.payout.status === "PAID") {
+    const c = (l?.shareChanges || []).find((x) => x.id === req.params.cid);
+    if (!l || !c || c.status !== "PENDING") return back(res, req.params.token);
+    if (req.params.answer === "ok") {
+      c.status = "OK";
+      c.answeredAt = nowIso22();
+      hist(l, "PARTNER", `Partner accepted the share ${changeWords(c)}`);
+      ping2(p, `${p.shopName}: \u0939\u093F\u0938\u094D\u0938\u093E \u0920\u0940\u0915 \u0939\u0948 / share accepted`, `${changeWords(c)} \u2014 \u0926\u0941\u0915\u093E\u0928 \u0928\u0947 \u092E\u093E\u0928 \u0932\u093F\u092F\u093E\u0964 / The shop accepted it.`);
+    } else if (req.params.answer === "no") {
+      const note5 = str(req.body?.note, 300);
+      if (note5.length < 3) return render(req, res, p, "\u0932\u093F\u0916\u0947\u0902 \u0915\u093F \u0915\u094D\u092F\u093E \u0938\u0939\u0940 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 / Write what is not right.");
+      c.status = "DISPUTED";
+      c.answeredAt = nowIso22();
+      c.note = note5;
+      hist(l, "PARTNER", `Partner says the share ${changeWords(c)} is NOT right: ${note5}`);
+      db.appendAuditEvent("public", "SUPERADMIN", "LEAD", l.id, "SHOP_SHARE_DISPUTED", `Shop partner says the changed share ${changeWords(c)} is not right (GENZ desk sees it)`);
+      ping2(p, `${p.shopName}: \u0939\u093F\u0938\u094D\u0938\u093E \u0938\u0939\u0940 \u0928\u0939\u0940\u0902 / share not right`, `${changeWords(c)} \u2014 ${note5.slice(0, 100)}`);
+    } else return back(res, req.params.token);
+    db.save();
+    back(res, req.params.token);
+  });
+  r.post("/:token/lead/:id/:what", rateLimit("sp-act", 60, 36e5), form, async (req, res) => {
+    const p = authed(req, res);
+    if (!p) return;
+    const l = st11().partnerLeads.find((x) => x.id === req.params.id && x.partnerId === p.id);
+    if (!l) return back(res, req.params.token);
+    const what = req.params.what;
+    if (what === "received" && l.payout?.status === "PAID") {
       l.payout = { ...l.payout, status: "RECEIVED", partnerAt: nowIso22() };
       hist(l, "PARTNER", "Partner confirmed: share received");
       ping2(p, `${p.shopName} confirmed the payment`, `${inr8(l.won?.amount || 0)} received.`);
-    } else if (req.params.what === "not-received" && ["DUE", "PAID"].includes(l.payout.status)) {
+    } else if (what === "not-received" && l.payout && ["DUE", "PAID"].includes(l.payout.status)) {
       const note5 = str(req.body?.note, 200);
       if (note5.length < 3) return render(req, res, p, "\u092C\u0924\u093E\u090F\u0901 \u0915\u094D\u092F\u093E \u0939\u0941\u0906\u0964 / Write what happened.");
       l.payout = { ...l.payout, status: "NOT_RECEIVED", partnerAt: nowIso22(), partnerNote: note5 };
       hist(l, "PARTNER", `Partner says NOT received: ${note5}`);
       db.appendAuditEvent("public", "SUPERADMIN", "LEAD", l.id, "SHOP_PARTNER_NOT_RECEIVED", "Shop partner says the share was not received (GENZ desk sees it)");
       ping2(p, `${p.shopName}: share not received`, note5);
-    }
+    } else if (what === "ask-broker") {
+      const note5 = str(req.body?.note, 300);
+      if (note5.length < 2) return back(res, req.params.token);
+      hist(l, "PARTNER", `Partner asks the broker: ${note5}`);
+      ping2(p, `${p.shopName}: \u0938\u0935\u093E\u0932 / question`, `\u2022\u2022${l.phoneLast4}: ${note5.slice(0, 100)}`);
+    } else if (what === "ask-customer") {
+      if (!l.outcomeOk) return render(req, res, p, "\u0907\u0938 \u0917\u094D\u0930\u093E\u0939\u0915 \u0928\u0947 SMS \u0915\u0940 \u0905\u0928\u0941\u092E\u0924\u093F \u0928\u0939\u0940\u0902 \u0926\u0940 \u0939\u0948\u0964 / This customer did not agree to an SMS.");
+      if (!smsOn()) return render(req, res, p, "SMS \u0905\u092D\u0940 \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u0948 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0938\u0947 \u092A\u0942\u091B\u0947\u0902\u0964 / SMS is not switched on \u2014 ask the broker instead.");
+      if (!locked(l) && !l.won) return render(req, res, p, "\u0907\u0938 \u0932\u0940\u0921 \u0915\u0940 \u0938\u0941\u0930\u0915\u094D\u0937\u093E \u0905\u0935\u0927\u093F \u092A\u0942\u0930\u0940 \u0939\u094B \u091A\u0941\u0915\u0940 \u0939\u0948\u0964 / This lead\u2019s protection period is over.");
+      const a = l.ask;
+      if (a?.answer) return back(res, req.params.token);
+      if (a && a.n >= ASK_LIMITS.perLead) return render(req, res, p, "\u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u0926\u094B \u092C\u093E\u0930 \u092A\u0942\u091B\u093E \u091C\u093E \u091A\u0941\u0915\u093E \u0939\u0948\u0964 / The customer has already been asked twice.");
+      if (a && Date.now() - Date.parse(a.at) < ASK_LIMITS.gapHours * 36e5) return render(req, res, p, "\u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u0905\u092D\u0940 \u092A\u0942\u091B\u093E \u0917\u092F\u093E \u0939\u0948 \u2014 \u0915\u0932 \u092B\u093F\u0930 \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / He was asked just now \u2014 try again tomorrow.");
+      if (hit(`sp-ask:${p.id}`, 10, 864e5) > 0) return render(req, res, p, "\u0906\u091C \u092C\u0939\u0941\u0924 \u0938\u0935\u093E\u0932 \u092D\u0947\u091C\u0947 \u091C\u093E \u091A\u0941\u0915\u0947\u0964 / Too many questions today.");
+      const token = newToken();
+      l.ask = { hash: sha2(token), at: nowIso22(), n: (a?.n || 0) + 1 };
+      const who2 = userOf(l.brokerId)?.name || "\u092C\u094D\u0930\u094B\u0915\u0930";
+      hist(l, "PARTNER", "Partner asked the customer (one SMS) whether it went ahead");
+      db.save();
+      db.appendAuditEvent("public", "SUPERADMIN", "LEAD", l.id, "SHOP_CUSTOMER_ASKED", "Shop partner asked the customer by SMS (he had agreed on the QR page)");
+      await sendSms(`+91${l.phone}`, `GENZ: \u0915\u094D\u092F\u093E ${who2} \u0915\u0947 \u0938\u093E\u0925 \u0906\u092A\u0915\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0915\u0940 \u092C\u093E\u0924 \u0906\u0917\u0947 \u092C\u0922\u093C\u0940? \u0939\u093E\u0901/\u0928\u0939\u0940\u0902 \u092C\u0924\u093E\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u0916\u094B\u0932\u0947\u0902: ${req.protocol}://${req.get("host")}/q/ok/${token} (${ASK_LIMITS.validDays} \u0926\u093F\u0928 \u092E\u093E\u0928\u094D\u092F)`);
+      ping2(p, `${p.shopName}: \u0917\u094D\u0930\u093E\u0939\u0915 \u0938\u0947 \u092A\u0942\u091B\u093E \u0917\u092F\u093E`, `\u2022\u2022${l.phoneLast4} \u092A\u0930 GENZ \u0915\u093E SMS \u0917\u092F\u093E\u0964`);
+      return render(req, res, p, "\u0917\u094D\u0930\u093E\u0939\u0915 \u0915\u094B SMS \u092D\u0947\u091C \u0926\u093F\u092F\u093E \u0917\u092F\u093E\u0964 / The customer has been sent an SMS.");
+    } else return back(res, req.params.token);
     db.save();
     back(res, req.params.token);
   });
@@ -82875,6 +83405,72 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ""}${agree}
     db.save();
     ping2(p, `Message from ${p.shopName}`, note5.slice(0, 120));
     back(res, req.params.token);
+  });
+  r.get("/:token/manifest.webmanifest", (req, res) => {
+    const p = find(req.params.token);
+    if (!p || p.status === "ENDED") return res.status(404).end();
+    const base = `/sp/${req.params.token}`;
+    res.set({ "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+    res.send(JSON.stringify({
+      name: `GENZ \u2014 ${p.shopName}`.slice(0, 45),
+      short_name: "QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930",
+      description: "Your QR partner page with your broker",
+      id: base,
+      start_url: base,
+      scope: "/sp/",
+      display: "standalone",
+      orientation: "portrait",
+      background_color: "#ffffff",
+      theme_color: "#14213d",
+      icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }, { src: "/icon-512.png", sizes: "512x512", type: "image/png" }]
+    }));
+  });
+  const jsonBody = import_express31.default.json({ limit: "4kb" });
+  r.post("/:token/push", rateLimit("sp-push", 30, 36e5), jsonBody, (req, res) => {
+    noStore(res);
+    const p = find(req.params.token);
+    if (!p || p.status === "ENDED") return res.status(404).json({ success: false, error: "This link is closed." });
+    if (!spSession(req, p)) return res.status(401).json({ success: false, error: "Open the page again and enter the code." });
+    const endpoint = String(req.body?.endpoint || "");
+    const k = req.body?.keys || {};
+    const p256dh = String(k.p256dh || "");
+    const auth = String(k.auth || "");
+    if (!endpoint || endpoint.length > 1e3 || p256dh.length < 80 || p256dh.length > 120 || auth.length < 16 || auth.length > 40) return res.status(400).json({ success: false, error: "Unusable push address." });
+    if (!allowedEndpoint(endpoint)) return res.status(400).json({ success: false, error: "This browser\u2019s push service is not supported." });
+    const s = st11();
+    const key = shopPushKey(p.id);
+    const id = sha2(endpoint).slice(0, 32);
+    const before = s.pushSubs.find((x) => x.id === id && x.userId === key);
+    s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
+    const mineSubs = s.pushSubs.filter((x) => x.userId === key);
+    if (mineSubs.length >= 3) {
+      const oldest = mineSubs.sort((a, z2) => a.createdAt.localeCompare(z2.createdAt))[0];
+      s.pushSubs = s.pushSubs.filter((x) => x.id !== oldest.id);
+    }
+    s.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers["user-agent"] || "").slice(0, 120), createdAt: before?.createdAt || nowIso22(), lastOkAt: before?.lastOkAt, fails: 0, url: `/sp/${req.params.token}` });
+    if (!before) {
+      hist(p, "PARTNER", "Turned on alerts on a phone");
+      db.save();
+      tellShop(p, "\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0939\u0948\u0902", "Alerts are on", "\u0905\u092C \u0932\u0940\u0921 \u0914\u0930 \u0939\u093F\u0938\u094D\u0938\u0947 \u0915\u0940 \u0916\u093C\u092C\u0930 \u0938\u0940\u0927\u0947 \u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0906\u090F\u0917\u0940\u0964 / Lead and share news now come straight to this phone.", `on-${p.id}`);
+    } else db.save();
+    res.json({ success: true, fresh: !before });
+  });
+  r.get("/:token/certificate", rateLimit("sp-page", 60, 6e4), async (req, res) => {
+    const p = authed(req, res);
+    if (!p) return;
+    if (!p.acceptedAt || p.status === "PENDING" || p.status === "ENDED") return back(res, req.params.token);
+    const b = userOf(p.brokerId);
+    const svg = await import_qrcode.default.toString(`${req.protocol}://${req.get("host")}/q/${p.qrCode}`, { type: "svg", margin: 1, width: 200 });
+    res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>GENZ \u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u2014 ${esc6(p.shopName)}</title>
+<style>@page{size:A4 landscape;margin:12mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee}.c{max-width:277mm;margin:10px auto;background:#fff;border:6px double #14213d;padding:14mm 12mm;text-align:center}
+.k{letter-spacing:3px;color:#b45309;font-weight:700;font-size:13px}h1{font-size:34px;margin:6px 0 2px;color:#14213d}h2{font-size:26px;margin:14px 0 4px}.s{color:#444;font-size:15px}.qr{width:38mm;margin:12px auto 4px}.qr svg{width:100%;height:auto}.f{margin-top:12px;font-size:12px;color:#555}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.c{margin:0}}</style></head>
+<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">\u{1F5A8} Print / PDF</button></div>
+<div class="c" data-testid="certificate"><div class="k">GENZ BROKER NETWORK</div><h1>GENZ \u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u092A\u093E\u0930\u094D\u091F\u0928\u0930</h1><div class="s">GENZ network partner</div>
+<h2>${esc6(p.shopName)}</h2><div class="s">${esc6(p.personName)} \xB7 ${esc6(p.area)}, ${esc6(p.city)}</div>
+<p class="s" style="margin-top:14px">\u092F\u0939 \u0926\u0941\u0915\u093E\u0928 ${esc6(b?.name || "\u092C\u094D\u0930\u094B\u0915\u0930")}${b?.reraNumber ? ` (RERA ${esc6(b.reraNumber)})` : ""} \u0915\u0940 QR \u092A\u093E\u0930\u094D\u091F\u0928\u0930 \u0939\u0948 \u2014 ${esc6(when(p.acceptedAt))} \u0938\u0947\u0964<br>This shop is a QR partner of ${esc6(b?.name || "the broker")} since ${esc6(when(p.acceptedAt))}.</p>
+<div class="qr">${svg}</div><div class="s">\u092E\u0915\u093E\u0928 \xB7 \u0926\u0941\u0915\u093E\u0928 \xB7 \u092A\u094D\u0932\u0949\u091F \u2014 \u0915\u093F\u0930\u093E\u092F\u093E \u092F\u093E \u0916\u093C\u0930\u0940\u0926-\u092C\u093F\u0915\u094D\u0930\u0940 \u0915\u0947 \u0932\u093F\u090F \u0938\u094D\u0915\u0948\u0928 \u0915\u0930\u0947\u0902</div>
+<div class="f">\u092F\u0939 \u090F\u0915 \u0930\u0947\u092B\u093C\u0930\u0932 \u0938\u093E\u091D\u0947\u0926\u093E\u0930\u0940 \u0915\u093E \u092A\u094D\u0930\u092E\u093E\u0923 \u0939\u0948 \u2014 \u0915\u094B\u0908 \u0932\u093E\u0907\u0938\u0947\u0902\u0938 \u092F\u093E \u0938\u0930\u0915\u093E\u0930\u0940 \u092E\u093E\u0928\u094D\u092F\u0924\u093E \u0928\u0939\u0940\u0902\u0964 / This shows a referral partnership; it is not a licence or a government approval.</div></div>
+<script src="/q/poster.js" defer></script></body></html>`);
   });
   return r;
 }
@@ -83642,16 +84238,25 @@ function dueFor(d, uid5, price) {
 }
 function leadShareEstimate(l, dealId) {
   if (l.won) return l.won.amount;
-  const d = db.byId("dealRooms", dealId);
-  if (!d) return 0;
-  const cut = sideOfKind(l.kind) === "SALE" ? l.terms.sale : l.terms.rent;
-  return partnerAmount(cut, dueFor(d, l.brokerId, priceOf(d).price).amount);
+  return leadShareInfo(l, dealId)?.amount || 0;
 }
-function leadFeesFor(d, uid5, myBrokerage) {
+function leadShareInfo(l, dealId) {
+  const d = db.byId("dealRooms", dealId);
+  if (!d) return null;
+  const cut = sideOfKind(l.kind) === "SALE" ? l.terms.sale : l.terms.rent;
+  const due = dueFor(d, l.brokerId, priceOf(d).price);
+  if (due.parts.some((p) => p.key === "MANDATE" || p.key === "BUYER_FEE")) {
+    const ownerLead = l.kind === "SELL" || l.kind === "RENT_OUT";
+    const brokerage = due.parts.filter((p) => p.key === (ownerLead ? "MANDATE" : "BUYER_FEE")).reduce((n2, p) => n2 + p.amount, 0);
+    return { amount: partnerAmount(cut, brokerage), brokerage, basis: ownerLead ? "MANDATE" : "PLAN" };
+  }
+  return { amount: partnerAmount(cut, due.amount), brokerage: due.amount, basis: due.basis };
+}
+function leadFeesFor(d, uid5) {
   return st13().partnerLeads.filter((l) => l.brokerId === uid5 && l.status !== "LOST" && linksFor(l).some((x) => x.kind === "DEAL" && x.id === d.id)).map((l) => {
     const sh = st13().shopPartners.find((p) => p.id === l.partnerId);
     const cut = sideOfKind(l.kind) === "SALE" ? l.terms.sale : l.terms.rent;
-    const amount2 = l.won ? l.won.amount : partnerAmount(cut, myBrokerage);
+    const amount2 = l.won ? l.won.amount : leadShareInfo(l, d.id)?.amount || 0;
     return { leadId: l.id, shopName: sh?.shopName || "", amount: amount2, final: !!l.won, paid: !!l.payout && ["PAID", "RECEIVED"].includes(l.payout.status) };
   });
 }
@@ -83706,7 +84311,7 @@ function hisaabView(d, u) {
     const net = give - get;
     const left = net - (paidTo - gotFrom);
     const aapas = oid ? { otherName: other?.name || "", shareOut: myOut ? { ...myOut, amount: give } : null, shareIn: theirs ? { ...theirs, amount: get } : null, give, get, net, settled: paidTo - gotFrom, left, who: left > 0 ? "I_PAY" : left < 0 ? "HE_PAYS" : "SQUARE" } : null;
-    const leadFees = leadFeesFor(d, u.id, due.amount);
+    const leadFees = leadFeesFor(d, u.id);
     const leadTotal = leadFees.filter((x) => !x.paid).reduce((n2, x) => n2 + x.amount, 0);
     const leadPaid = leadFees.filter((x) => x.paid).reduce((n2, x) => n2 + x.amount, 0);
     out.brokers = [...new Set([d.introducingBrokerId, d.closingBrokerId, prop?.listingBrokerId].filter(Boolean))].map((id) => ({ id, name: st13().users.find((x) => x.id === id)?.name || id, me: id === u.id }));
@@ -83860,6 +84465,11 @@ function createHisaabRouter() {
     d.updatedAt = nowIso24();
     db.save();
     db.appendAuditEvent(u.id, u.role, "DEAL", d.id, "FEE_PLAN_SET", "A broker updated his own fee plan");
+    try {
+      watchShares({ dealId: d.id, brokerId: u.id, reason: str2(req.body?.note, 160) || "Fee plan changed" });
+    } catch (e) {
+      console.error("[SHOP] share watch failed:", e?.message || e);
+    }
     res.json({ success: true, hisaab: hisaabView(d, u) });
   });
   r.put("/:id/hisaab/due", needs("deal:read"), (req, res) => {
@@ -83876,6 +84486,11 @@ function createHisaabRouter() {
       mine3.due = n2;
     }
     db.save();
+    try {
+      watchShares({ dealId: d.id, brokerId: u.id, reason: str2(req.body?.note, 160) });
+    } catch (e) {
+      console.error("[SHOP] share watch failed:", e?.message || e);
+    }
     res.json({ success: true, hisaab: hisaabView(d, u) });
   });
   return r;
@@ -84582,7 +85197,7 @@ var st16 = () => db.getState();
 var nowIso27 = () => (/* @__PURE__ */ new Date()).toISOString();
 var me21 = () => ctx().user;
 var bad19 = (res, error62, status = 400, extra = {}) => res.status(status).json({ error: error62, ...extra });
-var DAY12 = 864e5;
+var DAY13 = 864e5;
 var uid2 = () => `RV-${Date.now().toString(36).toUpperCase()}${crypto33.randomInt(100, 999)}`;
 var userOf2 = (id) => st16().users.find((u) => u.id === id);
 var live = (u) => !!u && !u.erasedAt;
@@ -84674,7 +85289,7 @@ function reviewView(r, viewer) {
     reviewer: reviewerCard(r.reviewerId),
     disputed: r.reports.some((x) => x.by === r.targetId),
     ...mine3 || aboutMe || isStaffRole(viewer.role) ? { hiddenReason: r.status === "HIDDEN" ? r.hiddenReason : void 0 } : {},
-    ...mine3 ? { editableUntil: editableUntil(r.at), editable: Date.now() - Date.parse(r.at) <= REVIEW_EDIT_DAYS * DAY12, evidenceCount: r.evidenceIds.length } : {},
+    ...mine3 ? { editableUntil: editableUntil(r.at), editable: Date.now() - Date.parse(r.at) <= REVIEW_EDIT_DAYS * DAY13, evidenceCount: r.evidenceIds.length } : {},
     reported: r.reports.some((x) => x.by === viewer.id)
   };
 }
@@ -84690,7 +85305,7 @@ function reviewState(viewer, target) {
   if (existing?.status === "HIDDEN") return { ok: false, reason: "GENZ removed your earlier review of this person. Please contact support if you think this was a mistake.", hi: "\u0906\u092A\u0915\u0947 \u092A\u093F\u091B\u0932\u0947 \u0930\u093F\u0935\u094D\u092F\u0942 \u0915\u094B GENZ \u0928\u0947 \u0939\u091F\u093E\u092F\u093E \u0939\u0948\u0964 \u0917\u0932\u0924\u0940 \u0932\u0917\u0947 \u0924\u094B \u0938\u092A\u094B\u0930\u094D\u091F \u0938\u0947 \u092C\u093E\u0924 \u0915\u0930\u0947\u0902\u0964", ...base };
   if (!existing) return { ok: true, proof: proofs[0], ...base };
   const fresh = proofs.find((p) => !existing.evidenceIds.includes(p.id));
-  const inWindow = Date.now() - Date.parse(existing.editedAt || existing.at) <= REVIEW_EDIT_DAYS * DAY12;
+  const inWindow = Date.now() - Date.parse(existing.editedAt || existing.at) <= REVIEW_EDIT_DAYS * DAY13;
   if (inWindow) return { ok: true, proof: proofs[0], editing: true, ...base };
   if (fresh) return { ok: true, proof: fresh, editing: true, newWork: true, ...base };
   return { ok: false, locked: true, reason: `Your review is locked ${REVIEW_EDIT_DAYS} days after you wrote it. You can write a new one after your next deal with this person.`, hi: `\u0930\u093F\u0935\u094D\u092F\u0942 \u0932\u093F\u0916\u0928\u0947 \u0915\u0947 ${REVIEW_EDIT_DAYS} \u0926\u093F\u0928 \u092C\u093E\u0926 \u092C\u0926\u0932\u093E \u0928\u0939\u0940\u0902 \u091C\u093E \u0938\u0915\u0924\u093E\u0964 \u0907\u0928\u0915\u0947 \u0938\u093E\u0925 \u0905\u0917\u0932\u0940 \u0921\u0940\u0932 \u0915\u0947 \u092C\u093E\u0926 \u0928\u092F\u093E \u0932\u093F\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964`, ...base };
@@ -84714,7 +85329,7 @@ function seedDemoReviews() {
   if ((process.env.SEED_DEMO_DATA || "").toLowerCase() !== "true" || (process.env.SEED_DEMO_BULK || "").toLowerCase() !== "true") return;
   const s = st16();
   if (s.reviews.length) return;
-  const at = (d) => new Date(Date.now() - d * DAY12).toISOString();
+  const at = (d) => new Date(Date.now() - d * DAY13).toISOString();
   const mk = (reviewerId, targetId, rating, tags, remark, days3, reply) => {
     const a = userOf2(reviewerId);
     const t2 = userOf2(targetId);
@@ -84890,7 +85505,7 @@ function createProfilesRouter() {
     const rv = s.reviews.find((x) => x.reviewerId === u.id && x.targetId === String(req.params.id));
     if (!rv) return bad19(res, "No review of yours here", 404);
     if (rv.status === "HIDDEN") return bad19(res, "GENZ has removed this review already.", 409);
-    if (Date.now() - Date.parse(rv.at) > REVIEW_EDIT_DAYS * DAY12) return bad19(res, `A review can be taken back within ${REVIEW_EDIT_DAYS} days of writing it.`, 409, { hi: `\u0930\u093F\u0935\u094D\u092F\u0942 \u0932\u093F\u0916\u0928\u0947 \u0915\u0947 ${REVIEW_EDIT_DAYS} \u0926\u093F\u0928 \u0915\u0947 \u0905\u0902\u0926\u0930 \u0939\u0940 \u0935\u093E\u092A\u0938 \u0932\u093F\u092F\u093E \u091C\u093E \u0938\u0915\u0924\u093E \u0939\u0948\u0964` });
+    if (Date.now() - Date.parse(rv.at) > REVIEW_EDIT_DAYS * DAY13) return bad19(res, `A review can be taken back within ${REVIEW_EDIT_DAYS} days of writing it.`, 409, { hi: `\u0930\u093F\u0935\u094D\u092F\u0942 \u0932\u093F\u0916\u0928\u0947 \u0915\u0947 ${REVIEW_EDIT_DAYS} \u0926\u093F\u0928 \u0915\u0947 \u0905\u0902\u0926\u0930 \u0939\u0940 \u0935\u093E\u092A\u0938 \u0932\u093F\u092F\u093E \u091C\u093E \u0938\u0915\u0924\u093E \u0939\u0948\u0964` });
     s.reviews = s.reviews.filter((x) => x.id !== rv.id);
     db.save();
     db.appendAuditEvent(u.id, u.role, "SYSTEM", rv.id, "REVIEW_WITHDRAWN", `${u.name} took back a review of ${rv.targetId}`);
@@ -85981,8 +86596,8 @@ function approxPoint(city, locality, lat, lng) {
 }
 
 // src/shared/dailyRules.ts
-var DAY13 = 864e5;
-var days = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY13 : Infinity;
+var DAY14 = 864e5;
+var days = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY14 : Infinity;
 var STAGE_PTS = { NEW: 10, CONTACTED: 20, SITE_VISIT: 40, NEGOTIATION: 55, DEAL: 0, LOST: 0 };
 function leadScore(c, o) {
   const now = o.now ?? Date.now();
@@ -86028,7 +86643,7 @@ function rateCard(properties, now = Date.now()) {
     if (p.transactionType !== "Sale" || !["active", "under_negotiation", "sold"].includes(p.listingStatus)) continue;
     const area = p.builtUpAreaSqFt || p.plotAreaSqFt || 0;
     const t2 = new Date(p.createdAt).getTime();
-    if (!area || !p.askingPrice || now - t2 > 90 * DAY13) continue;
+    if (!area || !p.askingPrice || now - t2 > 90 * DAY14) continue;
     const k = `${normCity(p.city)}|${p.locality.trim().toLowerCase()}|${p.propertyType}`;
     const g = groups.get(k) || { city: normCity(p.city), locality: p.locality.trim(), type: p.propertyType, rates: [], oldest: t2, newest: t2 };
     g.rates.push(p.askingPrice / area);
@@ -86075,8 +86690,8 @@ function parseLeadText(text) {
 
 // server/daily.ts
 var nowIso31 = () => (/* @__PURE__ */ new Date()).toISOString();
-var DAY14 = 864e5;
-var days2 = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY14 : Infinity;
+var DAY15 = 864e5;
+var days2 = (iso, now = Date.now()) => iso ? (now - new Date(iso).getTime()) / DAY15 : Infinity;
 var me22 = () => ctx().user;
 var pad2 = (n2) => String(n2).padStart(4, "0");
 var FRESH_DAYS = 30;
@@ -86107,7 +86722,7 @@ function browsable(st30, u, now = Date.now()) {
 function shareViews7d(st30, u, c, now = Date.now()) {
   const label2 = c.name.trim().toLowerCase();
   if (!label2) return 0;
-  return st30.shareLinks.filter((l) => l.ownerId === u.id && !l.revoked && l.clientLabel.trim().toLowerCase() === label2).reduce((a, l) => a + (l.viewLog || []).filter((t2) => now - new Date(t2).getTime() < 7 * DAY14).length, 0);
+  return st30.shareLinks.filter((l) => l.ownerId === u.id && !l.revoked && l.clientLabel.trim().toLowerCase() === label2).reduce((a, l) => a + (l.viewLog || []).filter((t2) => now - new Date(t2).getTime() < 7 * DAY15).length, 0);
 }
 function matchCountFor(c, props) {
   const req = clientAsRequirement(c);
@@ -88756,7 +89371,7 @@ var audit7 = (id, action, details) => {
 };
 var inr10 = (n2) => "\u20B9" + Math.round(n2).toLocaleString("en-IN");
 var nextId3 = (prefix, ids2, pad3) => `${prefix}${String(ids2.reduce((m, id) => Math.max(m, Number(id.slice(prefix.length)) || 0), 0) + 1).padStart(pad3, "0")}`;
-var DAY15 = 864e5;
+var DAY16 = 864e5;
 var FEE_GRACE_DAYS = 30;
 var SHARE_DAYS = 60;
 var isStaff4 = (u) => u.role === "ADMIN" || u.role === "SUPERADMIN";
@@ -89088,7 +89703,7 @@ function createLegalRouter() {
     for (const id of row.sharedDocIds) {
       const d = db.byId("propertyDocs", id);
       if (!d || d.uploaderId !== u.id) continue;
-      d.shares.push({ userId: row.counsellorId, grantedBy: u.id, grantedAt: t2, expiresAt: new Date(Date.now() + SHARE_DAYS * DAY15).toISOString() });
+      d.shares.push({ userId: row.counsellorId, grantedBy: u.id, grantedAt: t2, expiresAt: new Date(Date.now() + SHARE_DAYS * DAY16).toISOString() });
     }
     const charge = chargeEvent({ event: "LEGAL_CASE", payerId: row.counsellorId, base: row.quote.amount, refId: row.id, refLabel: `Legal case ${row.id}`, state: row.state });
     const fee = charge.fee;
@@ -89514,10 +90129,10 @@ function valueCsv(r) {
 }
 
 // src/shared/pilotRules.ts
-var DAY16 = 864e5;
+var DAY17 = 864e5;
 var istDay2 = (ms) => new Date(ms + 330 * 6e4).toISOString().slice(0, 10);
 function pilotFunnel(i, windowDays2 = 60, city = "") {
-  const since = i.now - windowDays2 * DAY16;
+  const since = i.now - windowDays2 * DAY17;
   const seenBy2 = /* @__PURE__ */ new Map();
   for (const d of i.days) for (const id of d.seen) {
     let s = seenBy2.get(id);
@@ -89531,17 +90146,17 @@ function pilotFunnel(i, windowDays2 = 60, city = "") {
   let listing = 0, client = 0, consent = 0, any2 = 0, d7Base = 0, d7 = 0;
   for (const b of cohort) {
     const t0 = Date.parse(b.verifiedAt || b.createdAt);
-    const within = (m) => m[b.id] !== void 0 && m[b.id] - t0 <= 7 * DAY16;
+    const within = (m) => m[b.id] !== void 0 && m[b.id] - t0 <= 7 * DAY17;
     const L = within(i.firstListingAt), C = within(i.firstClientAt), O = within(i.firstConsentAt);
     if (L) listing++;
     if (C) client++;
     if (O) consent++;
     if (L || C || O) any2++;
-    if (i.now - t0 >= 14 * DAY16) {
+    if (i.now - t0 >= 14 * DAY17) {
       d7Base++;
       const s = seenBy2.get(b.id);
       if (s) {
-        for (let k = 7; k <= 13; k++) if (s.has(istDay2(t0 + k * DAY16))) {
+        for (let k = 7; k <= 13; k++) if (s.has(istDay2(t0 + k * DAY17))) {
           d7++;
           break;
         }
@@ -90236,13 +90851,13 @@ function verifySigningPassword(user, password) {
 // server/leadboard.ts
 var import_express53 = __toESM(require_express2(), 1);
 var BOARD_SIZE = 10;
-var DAY17 = 864e5;
+var DAY18 = 864e5;
 function boardFor(city, now = Date.now()) {
   const s = db.getState();
-  const since = now - 90 * DAY17;
+  const since = now - 90 * DAY18;
   const pts = /* @__PURE__ */ new Map();
   for (const e of s.pointEvents) if (e.points > 0 && Date.parse(e.at) >= since) pts.set(e.userId, (pts.get(e.userId) || 0) + e.points);
-  return s.users.filter((u) => u.role === "BROKER" && u.verificationStatus === "VERIFIED" && !u.erasedAt && !!u.avatarUrl && sameCity(u.city, city)).map((u) => ({ u, p: pts.get(u.id) || 0 })).sort((a, b) => b.p - a.p || a.u.createdAt.localeCompare(b.u.createdAt) || a.u.id.localeCompare(b.u.id)).slice(0, BOARD_SIZE).map(({ u }, i) => ({ rank: i + 1, brokerId: u.id, firstName: String(u.name || "").trim().split(/\s+/)[0] || "Broker", photoUrl: u.avatarUrl, isNew: Date.now() - Date.parse(u.createdAt) < 60 * DAY17 }));
+  return s.users.filter((u) => u.role === "BROKER" && u.verificationStatus === "VERIFIED" && !u.erasedAt && !!u.avatarUrl && sameCity(u.city, city)).map((u) => ({ u, p: pts.get(u.id) || 0 })).sort((a, b) => b.p - a.p || a.u.createdAt.localeCompare(b.u.createdAt) || a.u.id.localeCompare(b.u.id)).slice(0, BOARD_SIZE).map(({ u }, i) => ({ rank: i + 1, brokerId: u.id, firstName: String(u.name || "").trim().split(/\s+/)[0] || "Broker", photoUrl: u.avatarUrl, isNew: Date.now() - Date.parse(u.createdAt) < 60 * DAY18 }));
 }
 function createLeadBoardRouter() {
   const r = (0, import_express53.Router)();
@@ -90257,7 +90872,7 @@ function createLeadBoardRouter() {
 
 // server/dealhub.ts
 var import_express54 = __toESM(require_express2(), 1);
-var DAY18 = 864e5;
+var DAY19 = 864e5;
 var STAGES2 = ["Lead", "Introduction", "Site Visit Done", "Negotiation", "Agreement", "Handover", "Settled"];
 var LIVE_DISPUTE2 = /* @__PURE__ */ new Set(["OPEN", "UNDER_REVIEW", "MEDIATION"]);
 var STALLED_DAYS = 14;
@@ -90316,7 +90931,7 @@ function hubItem(d, u, s, open2, now = Date.now()) {
     closed: isClosed(d),
     closing: d.closure?.status === "ASKED" ? { byMe: d.closure.byId === u.id, autoAt: d.closure.autoAt } : void 0,
     offlineVisit: d.offlineVisit ? { confirmed: !!d.offlineVisit.confirmedAt, byMe: d.offlineVisit.byId === u.id } : void 0,
-    protectionDaysLeft: d.ownerProtectionExpiresAt ? Math.ceil((Date.parse(d.ownerProtectionExpiresAt) - now) / DAY18) : void 0
+    protectionDaysLeft: d.ownerProtectionExpiresAt ? Math.ceil((Date.parse(d.ownerProtectionExpiresAt) - now) / DAY19) : void 0
   };
   let lastActivityAt2 = d.updatedAt;
   const later = (iso) => {
@@ -90379,7 +90994,7 @@ function hubItem(d, u, s, open2, now = Date.now()) {
       later(lm.timestamp);
     }
   }
-  const idleDays = Math.floor((now - Date.parse(lastActivityAt2)) / DAY18);
+  const idleDays = Math.floor((now - Date.parse(lastActivityAt2)) / DAY19);
   const stalled = d.stage !== "Settled" && !isClosed(d) && idleDays >= STALLED_DAYS;
   if (stalled && inner) add("STALLED", 1);
   let fee, myShare, split, dealValue;
@@ -93695,7 +94310,7 @@ import crypto47 from "crypto";
 var st28 = () => db.getState();
 var me32 = () => ctx().user;
 var nowIso45 = () => (/* @__PURE__ */ new Date()).toISOString();
-var DAY19 = 864e5;
+var DAY20 = 864e5;
 var bad32 = (res, error62, status = 400, code) => res.status(status).json({ error: error62, ...code ? { code } : {} });
 var str5 = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var phone108 = (v) => String(v || "").replace(/\D/g, "").slice(-10);
@@ -93764,7 +94379,7 @@ function sweepOwnerListings(now = Date.now()) {
     const stage = step === "WARN1" ? 1 : 3;
     o.expWarn = stage;
     warned2++;
-    const d = Math.max(1, Math.ceil((Date.parse(o.liveUntil) - now) / DAY19));
+    const d = Math.max(1, Math.ceil((Date.parse(o.liveUntil) - now) / DAY20));
     alert(p.ownerId, "deals", "Your listing ends soon", `${p.title} leaves the broker pool in ${d} day${d > 1 ? "s" : ""} \u2014 renew for \u20B9${o.fee} to keep it live.`, "/", { tag: `olx-${stage}-${p.id}-${o.liveUntil}`, hi: ["\u0906\u092A\u0915\u0940 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 \u091C\u0932\u094D\u0926 \u0916\u093C\u0924\u094D\u092E \u0939\u094B\u0917\u0940", `${p.title} ${d} \u0926\u093F\u0928 \u092E\u0947\u0902 \u092C\u094D\u0930\u094B\u0915\u0930 \u092A\u0942\u0932 \u0938\u0947 \u0939\u091F \u091C\u093E\u090F\u0917\u0940 \u2014 \u0932\u093E\u0907\u0935 \u0930\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u20B9${o.fee} \u092E\u0947\u0902 \u0930\u0940\u0928\u094D\u092F\u0942 \u0915\u0930\u0947\u0902\u0964`] });
   }
   if (n2 || warned2) db.save();
@@ -93910,10 +94525,10 @@ var mineProp = (req, res) => {
   return p;
 };
 var staffAlert = (text, body) => alert(st28().users.filter((a) => (a.role === "ADMIN" || a.role === "SUPERADMIN") && a.verificationStatus === "VERIFIED").slice(0, 20).map((a) => a.id), "deals", text, body, "/");
-var lastLazy = 0;
-var lazySweep2 = () => {
-  if (Date.now() - lastLazy < 6e4) return;
-  lastLazy = Date.now();
+var lastLazy2 = 0;
+var lazySweep3 = () => {
+  if (Date.now() - lastLazy2 < 6e4) return;
+  lastLazy2 = Date.now();
   try {
     sweepOwnerListings();
   } catch (e) {
@@ -93924,7 +94539,7 @@ function createOwnerListingRouter() {
   const r = (0, import_express67.Router)();
   const manage = needs("ownerlist:manage");
   r.use((_req, _res, next2) => {
-    lazySweep2();
+    lazySweep3();
     next2();
   });
   r.get("/config", needs("property:read"), (_req, res) => {
@@ -93958,7 +94573,7 @@ function createOwnerListingRouter() {
     if (!ref) return bad32(res, "Write the UPI / bank reference (UTR) of your payment");
     if (req.body?.noDirectDeal !== true) return bad32(res, "\u092E\u093E\u0932\u093F\u0915 \u0915\u0940 \u0939\u093E\u092E\u0940 \u091C\u093C\u0930\u0942\u0930\u0940: GENZ \u0915\u0947 \u091C\u093C\u0930\u093F\u090F \u0906\u090F \u0916\u093C\u0930\u0940\u0926\u093E\u0930 / \u0915\u093F\u0930\u093E\u090F\u0926\u093E\u0930 \u0938\u0947 \u0906\u092A \u0938\u0940\u0927\u0940 \u0921\u0940\u0932 \u0928\u0939\u0940\u0902 \u0915\u0930\u0947\u0902\u0917\u0947\u0964 / Please confirm you will not deal directly with a buyer or renter that GENZ brokers bring.", 400, "NO_DIRECT_DEAL");
     const paidOn = str5(req.body?.paidOn, 10) || nowIso45().slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn) || Date.parse(paidOn) > Date.now() + DAY19) return bad32(res, "Choose the date you paid (not a future date)");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn) || Date.parse(paidOn) > Date.now() + DAY20) return bad32(res, "Choose the date you paid (not a future date)");
     if (st28().properties.some((x) => x.id !== p.id && x.ownerListing?.ref === ref && ["WAITING_CONFIRM", "PAID"].includes(x.ownerListing.feeStatus))) return bad32(res, "This reference is already used on another listing", 409);
     o.noDirectDealAt = nowIso45();
     o.ref = ref;
@@ -94190,7 +94805,7 @@ function createOwnerListingRouter() {
     o.confirmedById = u.id;
     o.confirmedAt = nowIso45();
     o.liveFrom = nowIso45();
-    o.liveUntil = new Date(Date.now() + o.durationDays * DAY19).toISOString();
+    o.liveUntil = new Date(Date.now() + o.durationDays * DAY20).toISOString();
     o.expWarn = void 0;
     p.listingStatus = "active";
     p.verificationStatus = "VERIFIED";
@@ -98600,6 +99215,16 @@ function finishVisitVerification(visit2, method, feedback, user, auditAction, au
   return deal;
 }
 setLeadShareEstimator((l, dealId) => leadShareEstimate(l, dealId));
+setLeadShareInfo((l, dealId) => leadShareInfo(l, dealId));
+var watchShop = (f = {}) => {
+  try {
+    if (f.propertyId) {
+      for (const d of db.getState().dealRooms.filter((x) => x.propertyId === f.propertyId)) watchShares({ dealId: d.id });
+    } else watchShares(f.dealId ? { dealId: f.dealId } : {});
+  } catch (e) {
+    console.error("[SHOP] share watch failed:", e?.message || e);
+  }
+};
 setVisitVerifier((visit2, method, note5) => {
   finishVisitVerification(visit2, method, note5, { id: "SYSTEM", role: "SUPERADMIN" }, method === "QR" ? "SITE_VISIT_QR_CHECKIN" : "SITE_VISIT_CONFIRMED", `Site visit ${visit2.id} confirmed by the property owner in his room (${method}). Anti-bypass evidence stamped for property ${visit2.propertyId}.`);
 });
@@ -98903,6 +99528,7 @@ app.post("/api/owner-mandates/:id/accept", needs("mandate:broker_respond"), (req
     d.ownerRemunerationConfirmed = true;
   });
   db.save();
+  watchShop({ propertyId: prop.id });
   db.appendAuditEvent(
     currentUser2.id,
     currentUser2.role,
@@ -100276,6 +100902,7 @@ app.post("/api/deals/:id/commission-agreements/propose", needs("agreement:propos
   if (allAlreadyAccepted) activateAgreement(state, deal, newAgreement, prevAgreement);
   state.commissionAgreements.push(newAgreement);
   db.save();
+  if (allAlreadyAccepted) watchShop({ dealId: deal.id });
   db.appendAuditEvent(
     currentUser2.id,
     currentUser2.role,
@@ -101175,6 +101802,7 @@ app.post("/api/deals/:id/final-price", needs("deal:chat"), (req, res) => {
   deal.dealValueNote = note5 || void 0;
   deal.updatedAt = deal.dealValueAt;
   db.save();
+  watchShop({ dealId: deal.id });
   db.appendAuditEvent(currentUser2.id, currentUser2.role, "DEAL", deal.id, "FINAL_PRICE_SET", `Final price set to \u20B9${deal.dealValue.toLocaleString("en-IN")}${before ? ` (was \u20B9${before.toLocaleString("en-IN")})` : ""}${note5 ? ` \u2014 ${note5}` : ""}`);
   const rs = `\u20B9${deal.dealValue.toLocaleString("en-IN")}`;
   alert([deal.introducingBrokerId, deal.closingBrokerId, prop?.listingBrokerId, deal.ownerId], "deals", `Final rate set \xB7 ${deal.id}`, `${currentUser2.name}: ${rs}${note5 ? ` \u2014 ${note5}` : ""}. Check it in the deal room; if it is not what was agreed, correct it there.`, `/?tab=deals&deal=${deal.id}`, {
@@ -101556,8 +102184,12 @@ async function startServer() {
   ensureOwnerPlans();
   sweepOwnerListings();
   ensureIdTasks();
+  sweepShopPartners();
   setInterval(() => {
-    for (const [name, fn] of [["listings", sweepListings], ["control", sweepControl], ["visitPasses", sweepVisitPasses], ["offers", sweepOffers], ["soldPurge", sweepSoldPurge], ["network", sweepNetwork], ["crm", sweepCrm], ["idDocs", sweepIdDocs], ["kycVault", sweepKycVault], ["kycHolds", sweepKycHolds], ["consents", sweepConsents], ["clientRooms", sweepClientRooms], ["pageEnquiries", sweepPageEnquiries], ["rent", sweepRent], ["visitAcks", sweepVisitAcks], ["partyWatch", sweepPartyWatch], ["targetBonus", sweepTargetBonus], ["dealClosures", sweepDealClosures], ["hr", sweepHr], ["calls", sweepCalls], ["inbox", sweepInbox], ["ownerListings", sweepOwnerListings], ["digestPush", sweepDigestPush], ["revenue", sweepRevenue], ["legal", sweepLegal], ["auditChain", () => db.verifyAuditIntegrity(true)]]) {
+    for (const [name, fn] of [["listings", sweepListings], ["control", sweepControl], ["visitPasses", sweepVisitPasses], ["offers", sweepOffers], ["soldPurge", sweepSoldPurge], ["network", sweepNetwork], ["crm", sweepCrm], ["idDocs", sweepIdDocs], ["kycVault", sweepKycVault], ["kycHolds", sweepKycHolds], ["consents", sweepConsents], ["clientRooms", sweepClientRooms], ["pageEnquiries", sweepPageEnquiries], ["rent", sweepRent], ["visitAcks", sweepVisitAcks], ["partyWatch", sweepPartyWatch], ["targetBonus", sweepTargetBonus], ["dealClosures", sweepDealClosures], ["hr", sweepHr], ["calls", sweepCalls], ["shopPartners", () => {
+      watchShares();
+      sweepShopPartners();
+    }], ["inbox", sweepInbox], ["ownerListings", sweepOwnerListings], ["digestPush", sweepDigestPush], ["revenue", sweepRevenue], ["legal", sweepLegal], ["auditChain", () => db.verifyAuditIntegrity(true)]]) {
       try {
         fn();
       } catch (e) {

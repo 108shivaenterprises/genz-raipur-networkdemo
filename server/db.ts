@@ -1457,6 +1457,16 @@ export interface ShopPartner {
   scans: number; lastScanAt?: string; lastPartnerSeenAt?: string;
   history: { at: string; by: 'BROKER' | 'PARTNER' | 'CUSTOMER' | 'SYSTEM'; text: string }[];
   createdAt: string; updatedAt: string; acceptedAt?: string; endedAt?: string;
+  /** v82 — who paused it: the broker, or GENZ because a share stayed unpaid for 15 days (only paying it lets the broker resume) */
+  pausedBy?: 'BROKER' | 'SYSTEM'; pauseReason?: string;
+}
+/** v82 — one time the shop's share on a lead changed (or was written by hand); the shop answers it on his page */
+export interface ShareChange {
+  id: string; at: string; from: number; to: number;
+  by: import('../src/shared/shopPartner.js').ShareChangeBy; reason?: string;
+  status: import('../src/shared/shopPartner.js').ShareChangeStatus; answeredAt?: string; note?: string;
+  /** the broker's reply to a "not right" */
+  brokerNote?: string; brokerAt?: string;
 }
 /** v46 — a customer who scanned a partner's QR. The full mobile is for the broker only; the partner sees the last 4. */
 export interface PartnerLead {
@@ -1471,8 +1481,15 @@ export interface PartnerLead {
   lockUntil: string;
   status: import('../src/shared/shopPartner.js').LeadStatus;
   lostAt?: string; lostReason?: string;
-  won?: { at: string; brokerage: number; amount: number; side: 'SALE' | 'RENT' };
-  payout?: { status: import('../src/shared/shopPartner.js').PayoutStatus; paidAt?: string; ref?: string; partnerAt?: string; partnerNote?: string };
+  /** v82 — `source` DEAL: worked out from the linked deal (final price + mandate); TYPED: the broker wrote his brokerage (no deal in the app). `auto` = what the app had worked out */
+  won?: { at: string; brokerage: number; amount: number; side: 'SALE' | 'RENT'; source?: 'DEAL' | 'TYPED'; dealId?: string; auto?: number };
+  payout?: { status: import('../src/shared/shopPartner.js').PayoutStatus; paidAt?: string; ref?: string; partnerAt?: string; partnerNote?: string;
+    mode?: import('../src/shared/shopPartner.js').PartnerPayMode; remind?: number; deskAt?: string; askedAt?: string };
+  /** v82 — the last share figure the shop was shown while the deal was on (a change from it is told to him) + every change, newest last */
+  shareSeen?: { amount: number; at: string }; shareChanges?: ShareChange[]; stepSeen?: number;
+  /** v82 — the customer agreed (QR page) to one SMS asking whether it went ahead; `ask` = the question sent by the shop's tap and his one-tap answer */
+  outcomeOk?: boolean;
+  ask?: { hash: string; at: string; n: number; answer?: 'YES' | 'NO'; answeredAt?: string };
   clientCardId?: string;
   /** v64 — the home he tapped "I'm interested" on (on the broker's own public page); `homeOwn` false = another GENZ broker's listing (that broker never sees this lead) */
   homeId?: string; homeTitle?: string; homeOwn?: boolean;

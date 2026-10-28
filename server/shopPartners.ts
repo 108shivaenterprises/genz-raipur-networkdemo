@@ -16,10 +16,10 @@ import express from 'express';
 import crypto from 'crypto';
 import QRCode from 'qrcode';
 import { db } from './db.js';
-import type { ShopPartner, PartnerLead, UserProfile, ClientCard } from './db.js';
+import type { ShopPartner, PartnerLead, UserProfile, ClientCard, ShareChange } from './db.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies } from './auth.js';
 import { sendSms } from './notify.js';
-import { pushTo } from './webpush.js';
+import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint } from './webpush.js';
 import { partyBlock } from './partywatch.js';
 import { shownHomes, pagePhotos, canShow } from './publicPage.js';
 import { brandOf } from './share.js';
@@ -27,7 +27,8 @@ import { priceShort } from '../src/shared/publicPageRules.js';
 import { ackText, ACK_VERSION } from '../src/shared/visitAckRules.js';
 import {
   PARTNER_LIMITS as L, LEAD_KINDS, LEAD_STATUSES, PAYOUT_LABEL, checkTerms, cleanTerms, sameTerms, partnerAmount, sideOfKind, termsText, cutText,
-  type PartnerTerms, type LeadKind, type LeadStatus,
+  SHARE_CHANGE_LABEL, SHARE_LIMITS, PAY_MODES, refOk, OVERDUE, unpaidDays, daysSince, payRecord, payRecordText, ASK_LIMITS, OUTCOME_CONSENT,
+  type PartnerTerms, type LeadKind, type LeadStatus, type ShareChangeBy, type PartnerPayMode,
 } from '../src/shared/shopPartner.js';
 
 const st = () => db.getState();
@@ -83,9 +84,15 @@ export function linksFor(l: PartnerLead): LeadLink[] {
 }
 /** what GENZ and the shop should look at: work after "lost", or a deal that looks done but no share was written */
 export function flagsFor(l: PartnerLead, links = linksFor(l)) {
-  const f: { code: 'AFTER_LOST' | 'DEAL_NOT_RECORDED'; en: string; hi: string }[] = [];
+  const f: { code: 'AFTER_LOST' | 'DEAL_NOT_RECORDED' | 'PAYOUT_OVERDUE' | 'SHARE_DISPUTED' | 'CUSTOMER_NO' | 'CUSTOMER_YES'; en: string; hi: string }[] = [];
   if (l.status === 'LOST' && l.lostAt && links.some(x => x.at > l.lostAt!)) f.push({ code: 'AFTER_LOST', en: 'Worked on after it was marked “not going ahead”', hi: '“आगे नहीं बढ़ी” बताने के बाद भी इस पर काम हुआ' });
   if (l.status !== 'WON' && links.some(x => x.done && (x.kind === 'DEAL' || x.kind === 'CLIENT'))) f.push({ code: 'DEAL_NOT_RECORDED', en: 'Looks like a deal — the partner’s share is not written yet', hi: 'डील लगती है — पार्टनर का हिस्सा अभी दर्ज नहीं' });
+  // v82
+  const unpaid = unpaidDays(l);
+  if (unpaid >= OVERDUE.deskDays) f.push({ code: 'PAYOUT_OVERDUE', en: `The partner’s share has been unpaid for ${unpaid} days`, hi: `पार्टनर का हिस्सा ${unpaid} दिन से बाकी है` });
+  if ((l.shareChanges || []).some(c => c.status === 'DISPUTED')) f.push({ code: 'SHARE_DISPUTED', en: 'The shop says the changed share is not right', hi: 'दुकान कहती है बदला हुआ हिस्सा सही नहीं' });
+  if (l.status !== 'WON' && l.ask?.answer === 'YES') f.push({ code: 'CUSTOMER_YES', en: 'The customer says it went ahead through this broker, but no deal is written', hi: 'ग्राहक कहता है इस ब्रोकर के ज़रिए बात आगे बढ़ी, पर डील दर्ज नहीं' });
+  if (l.status === 'WON' && l.ask?.answer === 'NO') f.push({ code: 'CUSTOMER_NO', en: 'The customer says it did not go ahead through this broker', hi: 'ग्राहक कहता है इस ब्रोकर के ज़रिए बात आगे नहीं बढ़ी' });
   return f;
 }
 /** v72 — hook (wired in server.ts) giving the partner's estimated share on a deal; the deal price never reaches the shop page */
@@ -108,6 +115,171 @@ export function progressFor(l: PartnerLead, links = linksFor(l)) {
 }
 const locked = (l: PartnerLead) => Date.parse(l.lockUntil) > Date.now();
 
+// ───────────────────────────── v82 — the share follows the deal ─────────────────────────────
+type ShareInfo = { amount: number; brokerage: number; basis: string };
+/** hook (wired in server.ts): the broker's own brokerage on a deal (owner's mandate at the final price + his fee plan) and the share that gives */
+let shareInfoFn: (l: PartnerLead, dealId: string) => ShareInfo | null = (l, id) => { const a = shareEstimator(l, id); return a > 0 ? { amount: a, brokerage: 0, basis: 'ESTIMATE' } : null; };
+export const setLeadShareInfo = (fn: (l: PartnerLead, dealId: string) => ShareInfo | null) => { shareInfoFn = fn; };
+const lastDealOf = (links: LeadLink[]) => { const dl = [...links].reverse().find(x => x.kind === 'DEAL'); return dl ? st().dealRooms.find(x => x.id === dl.id) : undefined; };
+/** what the app itself works out for this lead from the linked deal — null when there is no deal in the app (or no brokerage figure on it) */
+export function autoShare(l: PartnerLead, links = linksFor(l)) {
+  const d = lastDealOf(links); if (!d) return null;
+  const i = shareInfoFn(l, d.id); if (!i || i.brokerage <= 0) return null;
+  return { ...i, dealId: d.id };
+}
+const sysAudit = (refId: string, action: string, text: string) => db.appendAuditEvent('SYSTEM', 'SUPERADMIN', 'LEAD', refId, action, text);
+const tellShop = (p: ShopPartner, hi: string, en: string, body: string, tag = 'shop') => void pushToShop(p.id, `${hi} / ${en}`, body, tag);
+const tellBroker = (p: ShopPartner | undefined, brokerId: string, title: string, body: string) => void pushTo(brokerId, { kind: 'deals', title, body, url: '/?tab=partners' });
+
+/** record a change of the shop's share (merging quick edits into one open change so the shop is not flooded); returns the change and whether it is new */
+function addChange(l: PartnerLead, from: number, to: number, by: ShareChangeBy, reason?: string): { change: ShareChange | null; fresh: boolean } {
+  const list = (l.shareChanges ||= []); const last = list[list.length - 1]; const now = nowIso();
+  if (last && last.status === 'PENDING' && last.by === by && Date.now() - Date.parse(last.at) < SHARE_LIMITS.mergeMinutes * 60_000) {
+    last.to = to; last.at = now; if (reason) last.reason = reason;
+    if (last.from === last.to) { list.pop(); return { change: null, fresh: false }; } // back to what he was shown — nothing to tell
+    return { change: last, fresh: false };
+  }
+  const c: ShareChange = { id: rid('SCH'), at: now, from, to, by, ...(reason ? { reason } : {}), status: 'PENDING' };
+  list.push(c); if (list.length > SHARE_LIMITS.keep) list.splice(0, list.length - SHARE_LIMITS.keep);
+  return { change: c, fresh: true };
+}
+const changeWords = (c: { from: number; to: number }) => (c.from > 0 ? `${inr(c.from)} → ${inr(c.to)}` : inr(c.to));
+function tellChange(p: ShopPartner, c: ShareChange) {
+  tellShop(p, 'हिस्सा बदला', 'Share changed', `आपकी एक लीड पर हिस्सा ${changeWords(c)} हुआ — पेज खोलकर “ठीक है / सही नहीं” बताएँ। / Open your page to confirm.`, `share-${c.id}`);
+}
+
+/**
+ * Watch one open lead: tell the shop when it moves a step, when the app first has a share figure for it (Agreement), and whenever that figure changes
+ * (the price, the mandate, the fee plan, or the broker typing his own brokerage). Returns true when something was written.
+ */
+export function watchLead(l: PartnerLead, reason?: string): boolean {
+  if (l.status === 'WON' || l.status === 'LOST') return false;
+  const p = partnerOf(l.partnerId); if (!p) return false;
+  const links = linksFor(l); const pg = progressFor(l, links); let changed = false;
+  if (pg.step > (l.stepSeen ?? 0)) {
+    l.stepSeen = pg.step; changed = true;
+    if (pg.step >= 1 && pg.step <= 3) tellShop(p, `लीड आगे बढ़ी: ${pg.steps[pg.step]}`, `Lead moved: ${pg.stepsEn[pg.step]}`, 'अपना पेज खोलकर देखें। / Open your page.', `lead-${l.id}`);
+  }
+  if (pg.step < 3) return changed;
+  const a = autoShare(l, links); if (!a) return changed;
+  if (!l.shareSeen) {
+    l.shareSeen = { amount: a.amount, at: nowIso() }; hist(l, 'SYSTEM', `Share worked out from the deal: ${inr(a.amount)} (${cutText(sideOfKind(l.kind) === 'SALE' ? l.terms.sale : l.terms.rent)})`);
+    tellShop(p, 'आपका हिस्सा बन रहा है', 'Your share is being worked out', `अनुमान: ${inr(a.amount)} — डील पूरी होने पर तय। / Estimate: ${inr(a.amount)}.`, `share-${l.id}`);
+    return true;
+  }
+  if (Math.round(a.amount) === Math.round(l.shareSeen.amount)) return changed;
+  const by: ShareChangeBy = a.basis === 'MANUAL' ? 'BROKER_EDIT' : 'DEAL';
+  const from = l.shareSeen.amount; const r = addChange(l, from, a.amount, by, reason);
+  l.shareSeen = { amount: a.amount, at: nowIso() }; l.updatedAt = nowIso();
+  hist(l, 'SYSTEM', `Share ${inr(from)} → ${inr(a.amount)} (${SHARE_CHANGE_LABEL[by].en}${reason ? `: ${reason}` : ''})`);
+  if (r.change) { sysAudit(l.id, 'SHOP_SHARE_CHANGED', `Shop share ${inr(from)} → ${inr(a.amount)} (${by})`); if (r.fresh) tellChange(p, r.change); }
+  return true;
+}
+/** watch every open lead of a broker / on a deal (called when the deal's money moves, when the broker opens his list, and by the hourly sweep) */
+export function watchShares(f: { dealId?: string; brokerId?: string; partnerId?: string; reason?: string } = {}): number {
+  let n = 0;
+  for (const l of st().partnerLeads) {
+    if (f.brokerId && l.brokerId !== f.brokerId) continue;
+    if (f.partnerId && l.partnerId !== f.partnerId) continue;
+    if (l.status === 'WON' || l.status === 'LOST') continue;
+    if (f.dealId && !linksFor(l).some(x => x.kind === 'DEAL' && x.id === f.dealId)) continue;
+    if (watchLead(l, f.reason)) n++;
+  }
+  if (n) db.save();
+  return n;
+}
+
+// ───────────────────────────── v82 — late payment has a cost (reminders → auto-pause → GENZ desk) ─────────────────────────────
+/** the leads of this shop whose share has been unpaid for `OVERDUE.pauseDays` or more */
+export const overdueOf = (p: ShopPartner) => st().partnerLeads.filter(l => l.partnerId === p.id && unpaidDays(l) >= OVERDUE.pauseDays);
+
+/**
+ * Run the late-payment rules once:
+ *  · 3 / 7 / 12 days after "deal done" and still unpaid → the broker is reminded (once per step)
+ *  · 15 days → the QR is paused by GENZ (only paying it lets the broker resume), the shop is told
+ *  · 30 days → the case is put in front of the GENZ desk (no automatic strike — a person decides)
+ *  · paid but the shop has not said "received" for 3 days → the shop is nudged once
+ * Returns how many things were written. Safe to call often (it only writes when a step is newly reached).
+ */
+export function sweepShopPartners(nowMs = Date.now()): number {
+  let n = 0;
+  for (const l of st().partnerLeads) {
+    const p = partnerOf(l.partnerId); if (!p || !l.won || !l.payout) continue;
+    const days = unpaidDays(l, nowMs);
+    if (days > 0) {
+      const tier = OVERDUE.remindDays.filter(d => days >= d).pop() || 0;
+      if (tier > (l.payout.remind || 0)) {
+        l.payout.remind = tier; n++;
+        hist(l, 'SYSTEM', `Reminder to the broker: the partner’s share ${inr(l.won.amount)} has been unpaid for ${days} days`);
+        tellBroker(p, l.brokerId, `${p.shopName}: हिस्सा बाकी / share pending`, `${inr(l.won.amount)} — ${days} दिन से बाकी। ${OVERDUE.pauseDays} दिन पर QR अपने आप रुक जाएगा। / ${days} days unpaid; the QR pauses itself at ${OVERDUE.pauseDays} days.`);
+        if (tier >= OVERDUE.remindDays[1]) tellShop(p, 'ब्रोकर को याद दिलाया गया', 'We reminded the broker', `आपका ${inr(l.won.amount)} का हिस्सा ${days} दिन से बाकी है — GENZ ने ब्रोकर को याद दिलाया। / Your share of ${inr(l.won.amount)} is ${days} days old; GENZ reminded the broker.`, `late-${l.id}`);
+      }
+      if (days >= OVERDUE.pauseDays && p.status === 'ACTIVE') {
+        p.status = 'PAUSED'; p.pausedBy = 'SYSTEM'; p.pauseReason = `Share unpaid for ${days} days`; n++;
+        hist(p, 'SYSTEM', `QR paused by GENZ — the share on one lead has been unpaid for ${days} days (it starts again once that is paid)`);
+        sysAudit(p.id, 'SHOP_PARTNER_AUTOPAUSED', `Shop QR ${p.id} paused automatically: share unpaid for ${days} days`);
+        tellBroker(p, l.brokerId, `${p.shopName}: QR रुक गया / QR paused`, `हिस्सा ${days} दिन से बाकी है। चुकाकर “चुका दिया” दबाएँ — QR फिर चालू हो जाएगा। / Pay the share and mark it paid — the QR starts again.`);
+        tellShop(p, 'QR रोका गया', 'QR paused', 'आपका हिस्सा देर से मिल रहा है, इसलिए GENZ ने नया QR फ़िलहाल रोका है। / Because your share is late, GENZ has paused new requests on your QR.', `pause-${p.id}`);
+      }
+      if (days >= OVERDUE.deskDays && !l.payout.deskAt) {
+        l.payout.deskAt = nowIso(); n++;
+        sysAudit(l.id, 'SHOP_PAYOUT_OVERDUE', `Shop partner share ${inr(l.won.amount)} unpaid for ${days} days — for the GENZ desk to look at`);
+      }
+    }
+    if (l.payout.status === 'PAID' && l.payout.paidAt && !l.payout.askedAt && daysSince(l.payout.paidAt, nowMs) >= 3) {
+      l.payout.askedAt = nowIso(); n++;
+      tellShop(p, 'पैसा मिला?', 'Did you get it?', `ब्रोकर ने ${inr(l.won.amount)} भेजने की बात लिखी है — मिल गया हो तो पेज पर “मिल गया” दबाएँ, न मिला हो तो “नहीं मिला”। / The broker says ${inr(l.won.amount)} was sent — please confirm on your page.`, `got-${l.id}`);
+    }
+  }
+  if (n) db.save();
+  return n;
+}
+/** the serverless host may never run an hourly timer, so the broker's list and the shop's page also run the sweep (at most every 10 minutes) */
+let lastLazy = 0;
+export function lazySweep(force = false): number {
+  if (!force && Date.now() - lastLazy < 10 * 60_000) return 0;
+  lastLazy = Date.now(); return sweepShopPartners();
+}
+
+/**
+ * v82 — "Deal done", the rules in one place (the route only checks who is asking).
+ * With a deal in the app the brokerage and the shop's share are WORKED OUT (final price + the owner's mandate + the broker's fee plan);
+ * the broker may still correct the brokerage, but must say why, and the shop is told (old → new, with the reason) and can confirm or object.
+ * With no deal in the app the broker writes his brokerage and the shop is asked to confirm that figure too.
+ */
+export function closeLead(l: PartnerLead, sent: number | undefined, reason: string): { error: string; status: number; extra?: Record<string, unknown> } | { amount: number; change: ShareChange | null; auditText: string } {
+  if (l.status === 'WON') return { error: 'Already written as a closed deal', status: 409 };
+  const p = partnerOf(l.partnerId); if (!p) return { error: 'Partner not found', status: 404 };
+  const side = sideOfKind(l.kind); const cut = side === 'SALE' ? l.terms.sale : l.terms.rent;
+  const a = autoShare(l);
+  if (sent !== undefined && (!Number.isInteger(sent) || sent < 1 || sent > 50_00_00_000)) return { error: 'Write your own brokerage on this deal in whole rupees', status: 400 };
+  let brokerage: number; let source: 'DEAL' | 'TYPED'; let byWhat: ShareChangeBy | null = null; let fromAmt = 0;
+  if (a) {
+    source = 'DEAL'; brokerage = a.brokerage;
+    if (sent !== undefined && sent !== a.brokerage) {
+      if (reason.length < SHARE_LIMITS.reasonMin) return { error: 'The app has worked out your brokerage from the deal. To change it, write why — the shop is told.', status: 400, extra: { code: 'REASON_NEEDED', auto: a.brokerage } };
+      brokerage = sent; byWhat = 'BROKER_EDIT'; fromAmt = partnerAmount(cut, a.brokerage);
+    }
+  } else {
+    if (sent === undefined) return { error: 'This deal is not in GENZ, so write your own brokerage on it in whole rupees', status: 400 };
+    source = 'TYPED'; brokerage = sent; byWhat = 'TYPED';
+  }
+  const amount = partnerAmount(cut, brokerage);
+  // the shop had been shown a different figure during the deal → that is a change too
+  if (!byWhat && l.shareSeen && Math.round(l.shareSeen.amount) !== amount) { byWhat = 'DEAL'; fromAmt = l.shareSeen.amount; }
+  l.status = 'WON'; l.lostAt = undefined; l.lostReason = undefined;
+  l.won = { at: nowIso(), brokerage, amount, side, source, ...(a ? { dealId: a.dealId, auto: partnerAmount(cut, a.brokerage) } : {}) };
+  l.payout = { status: 'DUE' };
+  l.shareSeen = { amount, at: nowIso() };
+  let change: ShareChange | null = null;
+  if (byWhat) change = addChange(l, fromAmt, amount, byWhat, reason || undefined).change;
+  hist(l, 'BROKER', `Deal done — partner’s share ${inr(amount)} (${cutText(cut)}${source === 'DEAL' ? ', worked out from the deal' : ', brokerage written by the broker'}${byWhat === 'BROKER_EDIT' ? `, brokerage changed by the broker: ${reason}` : ''})`);
+  db.save();
+  if (change) tellChange(p, change);
+  else tellShop(p, 'डील हुई 🎉', 'Deal done', `आपका हिस्सा: ${inr(amount)}। / Your share: ${inr(amount)}.`, `won-${l.id}`);
+  return { amount, change, auditText: `Shop QR lead closed — partner share recorded (${cutText(cut)}; ${source === 'DEAL' ? 'from the deal' : 'written by the broker'}${byWhat === 'BROKER_EDIT' ? '; brokerage changed by the broker' : ''})` };
+}
+
 // ───────────────────────────── views ─────────────────────────────
 function partnerView(p: ShopPartner) {
   const leads = st().partnerLeads.filter(l => l.partnerId === p.id);
@@ -116,6 +288,7 @@ function partnerView(p: ShopPartner) {
     terms: p.terms, termsVersion: p.termsVersion, pending: p.pending || null, qrCode: p.qrCode,
     qrUrl: `/q/${p.qrCode}`, posterUrl: `/q/${p.qrCode}/poster`, pageUrl: p.token ? `/sp/${p.token}` : '',
     scans: p.scans, lastScanAt: p.lastScanAt, lastPartnerSeenAt: p.lastPartnerSeenAt, acceptedAt: p.acceptedAt, createdAt: p.createdAt,
+    pausedBy: p.pausedBy, pauseReason: p.pauseReason, alerts: shopAlertInfo(p.id), overdue: overdueOf(p).length,
     devices: (p.devices || []).map(d => ({ id: d.id, label: d.label, lastAt: d.lastAt })),
     codeForPartner: p.otpPlain && p.otpExpires && Date.parse(p.otpExpires) > Date.now() ? p.otpPlain : undefined, smsOn: smsOn(),
     counts: {
@@ -127,8 +300,13 @@ function partnerView(p: ShopPartner) {
   };
 }
 function leadView(l: PartnerLead) {
-  const links = linksFor(l); const p = partnerOf(l.partnerId);
-  return { ...l, shopName: p?.shopName || '', city: p?.city || '', links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30) };
+  const links = linksFor(l); const p = partnerOf(l.partnerId); const { ask, ...rest } = l; const a = autoShare(l, links);
+  return {
+    ...rest, shopName: p?.shopName || '', city: p?.city || '', links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),
+    // v82 — what the app itself works out from the deal (shown fixed to the broker), the changes the shop was told about, how long it has been unpaid, and the customer's answer
+    auto: a ? { amount: a.amount, brokerage: a.brokerage, basis: a.basis } : null, shareChanges: (l.shareChanges || []).slice(-5), unpaidDays: unpaidDays(l),
+    askState: ask ? { at: ask.at, n: ask.n, ...(ask.answer ? { answer: ask.answer, answeredAt: ask.answeredAt } : {}) } : null,
+  };
 }
 
 // ───────────────────────────── broker API ─────────────────────────────
@@ -144,15 +322,18 @@ export function createShopPartnerRouter() {
         id: l.id, kind: l.kind, status: l.status, createdAt: l.createdAt, phoneLast4: l.phoneLast4, locality: l.locality,
         brokerId: l.brokerId, brokerName: b?.name || l.brokerId, shopName: p?.shopName || '', partnerLast4: p?.phoneLast4 || '',
         won: l.won || null, payout: l.payout || null, flags, links: links.map(x => ({ kind: x.kind, at: x.at, en: x.en })), terms: l.terms,
+        unpaidDays: unpaidDays(l), shareChanges: (l.shareChanges || []).filter(c => c.status !== 'OK').slice(-3), customerSaid: l.ask?.answer || null,
       }; });
     res.json({ success: true, items: rows });
   });
 
   r.get('/', needs('partner:manage'), (_req, res) => {
     const u = me();
+    try { watchShares({ brokerId: u.id }); lazySweep(); } catch (e: any) { console.error('[SHOP] watch failed:', e?.message || e); }
     const partners = st().shopPartners.filter(p => p.brokerId === u.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const leads = st().partnerLeads.filter(l => l.brokerId === u.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
-    res.json({ success: true, partners: partners.map(partnerView), leads, limits: L });
+    const mineLeads = st().partnerLeads.filter(l => l.brokerId === u.id);
+    const leads = mineLeads.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
+    res.json({ success: true, partners: partners.map(partnerView), leads, limits: L, record: payRecord(mineLeads) });
   });
 
   r.post('/', needs('partner:manage'), rateLimit('sp-create', 40, 3600_000), (req: Request, res: Response) => {
@@ -212,13 +393,35 @@ export function createShopPartnerRouter() {
     p.pending = undefined; hist(p, 'BROKER', 'Proposed change withdrawn'); db.save();
     res.json({ success: true, partner: partnerView(p) });
   });
+  /** v82 — a one-page leaflet the broker prints / shares to explain the partnership to a shopkeeper (his terms, a worked example, how the share is fixed, what happens when payment is late) */
+  r.get('/:id/leaflet', needs('partner:manage'), (req: Request, res: Response) => {
+    const p = mine(req.params.id); if (!p) return bad(res, 'Partner not found', 404);
+    const b = me(); const t = p.terms;
+    const ex = (c: typeof t.sale, brokerage: number) => `${inr(brokerage)} की ब्रोकरेज पर आपका हिस्सा ${inr(partnerAmount(c, brokerage))}`;
+    res.set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+    res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>GENZ QR पार्टनर — ${esc(p.shopName)}</title>
+<style>@page{size:A4;margin:12mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee;color:#14213d}.pg{max-width:190mm;margin:10px auto;background:#fff;padding:12mm;border-radius:6px}h1{margin:0;font-size:28px}h2{font-size:17px;margin:16px 0 4px;color:#b45309}.en{color:#555;font-size:12px}p,li{font-size:14px;line-height:1.55}ul,ol{padding-left:20px;margin:4px 0}.box{background:#f3f4f6;border-radius:10px;padding:10px 12px;margin-top:8px}.p{text-align:center;margin:12px}@media print{body{background:#fff}.p{display:none}.pg{margin:0;padding:0}}</style></head>
+<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">🖨 Print / PDF</button></div>
+<div class="pg" data-testid="leaflet"><h1>GENZ QR पार्टनर बनिए</h1><div class="en">${esc(p.shopName)} · ${esc(b.name)}${b.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''}</div>
+<h2>यह क्या है?</h2><p>आपकी दुकान / गेट पर ${esc(b.name)} का QR रहेगा। आपके यहाँ आने वाला कोई भी मकान, दुकान या प्लॉट किराये पर लेना-देना या ख़रीदना-बेचना चाहे तो QR स्कैन करके अपनी ज़रूरत लिख देता है। ब्रोकर उससे बात करता है। डील हो जाए तो <b>आपको ब्रोकरेज में से हिस्सा</b> मिलता है।</p>
+<h2>आपका हिस्सा</h2><div class="box"><p><b>बिक्री:</b> ${esc(cutText(t.sale, true))} · <b>किराया:</b> ${esc(cutText(t.rent, true))}<br><small>उदाहरण — बिक्री: ${esc(ex(t.sale, 100000))} · किराया: ${esc(ex(t.rent, 10000))}</small></p><p class="en">यह सिर्फ़ उदाहरण है; असली हिस्सा हर डील की ब्रोकरेज से बनता है।</p></div>
+<h2>हिस्सा कैसे तय होता है — बिना बहस</h2><ol><li>डील का <b>अंतिम भाव</b> ऐप में दर्ज होता है।</li><li>आपके लाए ग्राहक की तरफ़ की ब्रोकरेज देखी जाती है — ख़रीदार/किरायेदार आपके QR से आया तो उससे तय फ़ीस; मालिक आया तो उससे ऐप में साइन हुई ब्रोकरेज। <b>दूसरी तरफ़ की कमाई गिनी नहीं जाती।</b></li><li>उसमें से आपका हिस्सा <b>ऐप ख़ुद निकालता है</b> — कोई हाथ से नहीं लिखता।</li><li>अगर बाद में भाव या ब्रोकरेज बदले, तो <b>आपके फ़ोन पर अलर्ट</b> आता है — पुराना और नया हिस्सा, और वजह। आप “ठीक है” या “सही नहीं” दबा सकते हैं, ब्रोकर या ग्राहक से पूछ सकते हैं।</li></ol>
+<h2>पैसा कैसे मिलता है</h2><ul><li>ब्रोकर आपको सीधे UPI / बैंक से भेजता है और रेफ़रेंस नंबर लिखता है। GENZ कोई पैसा नहीं रखता।</li><li>आप अपने पेज पर “मिल गया” या “नहीं मिला” दबाते हैं।</li><li>देर होने पर: ३, ७, १२ दिन पर ब्रोकर को याद दिलाया जाता है; <b>१५ दिन</b> पर नए अनुरोध लेने वाला QR अपने आप रुक जाता है; <b>३० दिन</b> पर मामला GENZ डेस्क के पास जाता है।</li></ul>
+<h2>आपकी लीड सुरक्षित</h2><ul><li>जो ग्राहक आपके QR से आया, वह ${t.lockDays} दिन तक आपकी लीड है। ब्रोकर उसी नंबर पर बाद में कोई भी काम करे (विज़िट, क्लाइंट रूम, डील) तो वह आपके पेज पर अपने आप दिखता है।</li><li>ग्राहक का पूरा नंबर और नाम आपको नहीं दिखता — सिर्फ़ आख़िरी 4 अंक।</li></ul>
+<h2>आपको क्या नहीं करना</h2><ul><li>ग्राहक से कोई पैसा न लें, कोई वादा न करें।</li><li>काग़ज़ या भाव की बात ब्रोकर पर छोड़ें।</li></ul>
+<p class="en" style="margin-top:14px">यह एक रेफ़रल साझेदारी की जानकारी है; यह नौकरी या एजेंसी नहीं है। / This explains a referral partnership; it is not employment or an agency.</p></div>
+<script src="/q/poster.js" defer></script></body></html>`);
+  });
   for (const [path, to, text] of [['pause', 'PAUSED', 'Paused — the QR form says “not taking requests right now”'], ['resume', 'ACTIVE', 'Resumed'], ['end', 'ENDED', 'Partnership ended — the QR stops; leads already in keep their terms']] as const) {
     r.post(`/:id/${path}`, needs('partner:manage'), (req: Request, res: Response) => {
       const p = mine(req.params.id); if (!p) return bad(res, 'Partner not found', 404);
       if (p.status === 'ENDED') return bad(res, 'This partnership has ended', 409);
       if (to === 'ACTIVE' && p.status !== 'PAUSED') return bad(res, 'Only a paused partnership can be resumed', 409);
       if (to === 'PAUSED' && p.status !== 'ACTIVE') return bad(res, 'Only an active partnership can be paused', 409);
+      // v82 — GENZ paused it because a share stayed unpaid: it resumes once what is overdue is paid
+      if (to === 'ACTIVE' && p.pausedBy === 'SYSTEM' && overdueOf(p).length) return bad(res, `The QR was paused because the shop’s share is unpaid for over ${OVERDUE.pauseDays} days. Pay it (mark it paid with the reference) and the QR starts again.`, 409, { code: 'PAUSED_UNPAID' });
       p.status = to; if (to === 'ENDED') { p.endedAt = nowIso(); p.pending = undefined; }
+      p.pausedBy = to === 'PAUSED' ? 'BROKER' : undefined; p.pauseReason = undefined;
       hist(p, 'BROKER', text); db.save();
       audit(p.id, `SHOP_PARTNER_${path.toUpperCase()}`, `Shop QR partner ${p.id}: ${text}`);
       res.json({ success: true, partner: partnerView(p) });
@@ -245,27 +448,62 @@ export function createShopPartnerRouter() {
     l.status = to; hist(l, 'BROKER', `Stage → ${LEAD_STATUSES.find(x => x.id === to)!.en}${to === 'LOST' ? ` (${l.lostReason})` : ''}`); db.save();
     res.json({ success: true, lead: leadView(l) });
   });
+  /**
+   * v82 — "Deal done". When the deal is in the app, the brokerage and the shop's share are WORKED OUT by the app (final price + the owner's mandate +
+   * the broker's own fee plan) — nothing is typed. The broker may still correct the brokerage, but then he must say why, and the shop is told
+   * (old → new, with the reason) and can confirm it or object. With no deal in the app he types his brokerage and the shop is asked to confirm that too.
+   */
   r.post('/leads/:id/won', needs('partner:manage'), (req: Request, res: Response) => {
     const l = mineLead(req.params.id); if (!l) return bad(res, 'Lead not found', 404);
-    if (l.status === 'WON') return bad(res, 'Already written as a closed deal', 409);
-    const brokerage = Number(req.body?.brokerage);
-    if (!Number.isInteger(brokerage) || brokerage < 1 || brokerage > 50_00_00_000) return bad(res, 'Write your own brokerage on this deal in whole rupees');
-    const side = sideOfKind(l.kind); const cut = side === 'SALE' ? l.terms.sale : l.terms.rent;
-    const amount = partnerAmount(cut, brokerage);
-    l.status = 'WON'; l.lostAt = undefined; l.lostReason = undefined;
-    l.won = { at: nowIso(), brokerage, amount, side };
-    l.payout = { status: 'DUE' };
-    hist(l, 'BROKER', `Deal done — partner’s share ${inr(amount)} (${cutText(cut)})`); db.save();
-    audit(l.id, 'SHOP_PARTNER_LEAD_WON', `Shop QR lead closed — partner share recorded (${cutText(cut)})`);
+    const sent = req.body?.brokerage === undefined || req.body?.brokerage === null || req.body?.brokerage === '' ? undefined : Number(req.body.brokerage);
+    const r2 = closeLead(l, sent, str(req.body?.reason, 160));
+    if ('error' in r2) return bad(res, r2.error, r2.status, r2.extra);
+    audit(l.id, 'SHOP_PARTNER_LEAD_WON', r2.auditText);
     res.json({ success: true, lead: leadView(l) });
   });
+
+  /** v82 — correct the share after "deal done" while it is still unpaid (a reason is needed; the shop is told and can confirm or object) */
+  r.post('/leads/:id/share', needs('partner:manage'), (req: Request, res: Response) => {
+    const l = mineLead(req.params.id); if (!l || !l.won || !l.payout) return bad(res, 'Lead not found', 404);
+    if (!['DUE', 'NOT_RECEIVED'].includes(l.payout.status)) return bad(res, 'The share is already paid — ask the GENZ desk to look at it', 409);
+    const p = partnerOf(l.partnerId); if (!p) return bad(res, 'Partner not found', 404);
+    const brokerage = Number(req.body?.brokerage); const reason = str(req.body?.reason, 160);
+    if (!Number.isInteger(brokerage) || brokerage < 1 || brokerage > 50_00_00_000) return bad(res, 'Write your own brokerage on this deal in whole rupees');
+    if (reason.length < SHARE_LIMITS.reasonMin) return bad(res, 'Write why the share is being changed — the shop is told');
+    const cut = l.won.side === 'SALE' ? l.terms.sale : l.terms.rent; const amount = partnerAmount(cut, brokerage); const from = l.won.amount;
+    if (amount === from) return bad(res, 'That gives the same share', 409);
+    l.won = { ...l.won, brokerage, amount }; l.shareSeen = { amount, at: nowIso() };
+    const { change } = addChange(l, from, amount, 'REVISED', reason);
+    hist(l, 'BROKER', `Share corrected ${inr(from)} → ${inr(amount)}: ${reason}`); db.save();
+    audit(l.id, 'SHOP_PARTNER_SHARE_REVISED', `Broker corrected the shop’s share ${inr(from)} → ${inr(amount)}`);
+    if (change) tellChange(p, change);
+    res.json({ success: true, lead: leadView(l) });
+  });
+
+  /** v82 — the broker answers a shop that said "not right" (the shop sees it; a dispute stays on the GENZ desk until it is settled) */
+  r.post('/leads/:id/changes/:cid/reply', needs('partner:manage'), (req: Request, res: Response) => {
+    const l = mineLead(req.params.id); if (!l) return bad(res, 'Lead not found', 404);
+    const c = (l.shareChanges || []).find(x => x.id === req.params.cid); if (!c) return bad(res, 'Change not found', 404);
+    const note = str(req.body?.note, 300); if (note.length < 2) return bad(res, 'Write your reply');
+    c.brokerNote = note; c.brokerAt = nowIso(); hist(l, 'BROKER', `Reply on the share change: ${note}`); db.save();
+    const p = partnerOf(l.partnerId); if (p) tellShop(p, 'ब्रोकर का जवाब', 'Broker replied', `हिस्से के बारे में ब्रोकर ने जवाब दिया — पेज खोलें। / The broker replied about your share.`, `share-${c.id}`);
+    res.json({ success: true, lead: leadView(l) });
+  });
+
+  /** v82 — "I have paid": how (UPI / bank / cash) and, for UPI and bank, the reference — the shop then confirms on his page */
   r.post('/leads/:id/paid', needs('partner:manage'), (req: Request, res: Response) => {
     const l = mineLead(req.params.id); if (!l) return bad(res, 'Lead not found', 404);
     if (!l.payout || !['DUE', 'NOT_RECEIVED'].includes(l.payout.status)) return bad(res, 'Nothing is due on this lead', 409);
+    const mode = (PAY_MODES.find(m => m.id === String(req.body?.mode || 'UPI'))?.id || 'UPI') as PartnerPayMode;
     const ref = str(req.body?.ref, 60);
-    l.payout = { ...l.payout, status: 'PAID', paidAt: nowIso(), ref: ref || undefined };
-    hist(l, 'BROKER', `Marked paid to the partner${ref ? ` (ref ${ref})` : ''} — waiting for the partner to confirm`); db.save();
-    audit(l.id, 'SHOP_PARTNER_PAID', 'Broker marked the partner share as paid');
+    if (!refOk(mode, ref)) return bad(res, 'Write the UPI / bank reference of the payment (at least 6 letters or digits). For cash, choose “Cash” — the shop must then confirm.', 400, { code: 'REF_NEEDED' });
+    l.payout = { ...l.payout, status: 'PAID', paidAt: nowIso(), mode, ref: ref || undefined, askedAt: undefined };
+    hist(l, 'BROKER', `Marked paid to the partner (${mode}${ref ? `, ref ${ref}` : ''}) — waiting for the partner to confirm`);
+    const p = partnerOf(l.partnerId);
+    if (p && p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' && !overdueOf(p).length) { p.status = 'ACTIVE'; p.pausedBy = undefined; p.pauseReason = undefined; hist(p, 'SYSTEM', 'Resumed — the overdue share is paid'); }
+    db.save();
+    audit(l.id, 'SHOP_PARTNER_PAID', `Broker marked the partner share as paid (${mode})`);
+    if (p) tellShop(p, 'हिस्सा भेजा गया', 'Share sent', `${inr(l.won?.amount || 0)} भेजा गया (${mode}) — मिल गया हो तो पेज पर “पैसा मिल गया” दबाएँ। / Confirm on your page once you have it.`, `paid-${l.id}`);
     res.json({ success: true, lead: leadView(l) });
   });
 
@@ -285,8 +523,9 @@ button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;f
 .hms{display:grid;gap:10px;margin-top:8px}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
 .hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
 .net{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;margin-top:6px}.big2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.big2 .btn{text-align:center;padding:14px 8px}.pick{background:#e9f7ee;border:1px solid #86efac}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}`;
-const shell = (title: string, body: string) => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div></body></html>`;
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}
+.app{background:#ecfdf5;border:1px solid #0f766e}.chg{border:2px solid #f59e0b;background:#fffbeb}.fig{font-size:22px;font-weight:800}.old{text-decoration:line-through;color:#888}.rank{background:linear-gradient(135deg,#14213d,#1e3a8a);color:#fff;box-shadow:none}.rank small{color:#cbd5e1}details.ask{margin-top:8px}details summary{cursor:pointer;font-size:13px;font-weight:600;min-height:32px}`;
+const shell = (title: string, body: string, head = '', js = '') => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png">${head}<title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div>${js ? `<script src="${js}" defer></script>` : ''}</body></html>`;
 const noStore = (res: Response) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); res.set('X-Robots-Tag', 'noindex, nofollow'); };
 const formTs = () => { const t = Date.now(); return `${t}.${hmac('sp-form', String(t)).slice(0, 16)}`; };
 const formTsOk = (v: unknown) => { const [t, sig] = String(v || '').split('.'); const n = Number(t); return Number.isFinite(n) && !!sig && safeEqual(sig, hmac('sp-form', String(n)).slice(0, 16)) && Date.now() - n > 2500 && Date.now() - n < 2 * 3600_000; };
@@ -340,26 +579,64 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
 <label class="ck"><input type="checkbox" name="direct" value="1" ${keep.direct === '1' ? 'checked' : ''}><span>मैं यह मानता/मानती हूँ। <small>I agree to this.</small></span></label>
 <label>अपना नाम लिखकर हस्ताक्षर करें / Sign by typing your name</label><input type="text" name="sign" maxlength="80" value="${esc(keep.sign || '')}" autocomplete="off"><p class="small">यह आपकी सहमति का रिकॉर्ड है — GENZ आपसे कोई पैसा नहीं लेता। / This is a record of your agreement — GENZ takes no money from you.</p></div>
 <label class="ck"><input type="checkbox" name="consent" value="1" required><span>मैं सहमत हूँ कि ${esc(who)} इस बारे में मुझसे फ़ोन / WhatsApp पर संपर्क करें। मेरा पूरा नंबर दुकान वाले को नहीं दिखेगा। <small>I agree that this broker may contact me by phone / WhatsApp. The shop will not see my full number.</small></span></label>
+<label class="ck"><input type="checkbox" name="outcome" value="1" ${keep.outcome === '1' ? 'checked' : ''} data-testid="qr-outcome"><span>${esc(OUTCOME_CONSENT.hi)} <small>${esc(OUTCOME_CONSENT.en)}</small></span></label>
 <div class="row"><button class="g" type="submit">भेजें / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">GENZ आपसे कोई पैसा नहीं माँगता। कोई भी रकम देने से पहले कागज़ और RERA ज़रूर जाँचें। / GENZ never asks you for money.</p>${homes.length ? '<script src="/c/page.js" defer></script>' : ''}`));
   };
 
+  // v82 — the customer's one-tap answer to "did it go ahead?" (the link came by SMS, which he agreed to on the QR page). GET only shows the question; POST records it.
+  const askBy = (token: string) => /^[A-Za-z0-9_-]{20,40}$/.test(token) ? st().partnerLeads.find(l => l.ask && safeEqual(l.ask.hash, sha(token))) : undefined;
+  const askLive = (l: PartnerLead) => !!l.ask && !l.ask.answer && Date.now() - Date.parse(l.ask.at) < ASK_LIMITS.validDays * 86400_000;
+  const askPage = (res: Response, l: PartnerLead | undefined, tok: string, done = false) => {
+    noStore(res);
+    if (!l || !l.ask) return res.status(404).send(shell('GENZ', `<div class="card"><p class="t">यह लिंक मान्य नहीं है।<br><small>This link is not valid.</small></p></div>`));
+    const who = userOf(l.brokerId)?.name || 'ब्रोकर';
+    if (done || l.ask.answer) return res.send(shell('धन्यवाद — GENZ', `<div class="top"><h1>धन्यवाद 🙏</h1><p>Thank you</p></div><div class="card ok"><p class="t">आपका जवाब दर्ज हो गया।<br><small>Your answer has been recorded.</small></p></div>`));
+    if (!askLive(l)) return res.status(410).send(shell('GENZ', `<div class="card"><p class="t">इस लिंक की मियाद ख़त्म हो चुकी है।<br><small>This link has expired.</small></p></div>`));
+    res.send(shell('GENZ', `<div class="top"><h1>एक छोटा सवाल</h1><p>One quick question</p></div><div class="card"><p class="t">क्या <b>${esc(who)}</b> के साथ आपकी प्रॉपर्टी की बात आगे बढ़ी — यानी डील हुई?<br><small>Did your property matter go ahead with ${esc(who)} — was a deal done?</small></p>
+<form method="post" action="/q/ok/${esc(tok)}"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="ok-yes">हाँ, हुई<br><small style="color:#e9ffe9">Yes</small></button><button class="l" type="submit" name="a" value="NO" data-testid="ok-no">नहीं हुई<br><small>No</small></button></div></form>
+<p class="small">आपका जवाब सिर्फ़ “हाँ / नहीं” के रूप में दुकान वाले और GENZ को दिखेगा — आपका नाम या नंबर नहीं। GENZ आपसे कोई पैसा नहीं माँगता। / Only “yes / no” is shown to the shop and GENZ — never your name or number. GENZ never asks you for money.</p></div>`));
+  };
+  r.get('/ok/:token', rateLimit('sp-ok', 60, 3600_000), (req: Request, res: Response) => askPage(res, askBy(req.params.token), req.params.token));
+  r.post('/ok/:token', rateLimit('sp-ok', 40, 3600_000), form, (req: Request, res: Response) => {
+    const l = askBy(req.params.token);
+    if (!l || !askLive(l)) return askPage(res, l, req.params.token);
+    const a = String(req.body?.a || '') === 'YES' ? 'YES' : String(req.body?.a || '') === 'NO' ? 'NO' : '';
+    if (!a) return askPage(res, l, req.params.token);
+    l.ask = { ...l.ask!, answer: a, answeredAt: nowIso() };
+    hist(l, 'CUSTOMER', `Customer answered the SMS: ${a === 'YES' ? 'it went ahead (deal done)' : 'it did not go ahead'}`);
+    db.save();
+    db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_CUSTOMER_ANSWER', `Customer answered “${a}” to the one-tap question (${l.status === 'WON' ? 'deal is written' : 'no deal written'})`);
+    const p = partnerOf(l.partnerId); if (p) tellShop(p, 'ग्राहक ने जवाब दिया', 'The customer answered', 'अपना पेज खोलकर देखें। / Open your page to see it.', `ans-${l.id}`);
+    askPage(res, l, req.params.token, true);
+  });
+
   r.get('/poster.js', (_req, res) => { res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); res.send("(function(){var b=document.getElementById('pr');if(b)b.addEventListener('click',function(){window.print()})})();"); });
 
+  /** v82 — the counter poster: A5 (default) or A4 (`?size=a4`), big QR, three steps, the broker's name and RERA. It never says "no fee": the broker's own brokerage still applies — only that GENZ takes no money from the customer. */
   r.get('/:code/poster', rateLimit('sp-poster', 60, 60_000), async (req: Request, res: Response) => {
     const p = byCode(req.params.code); if (!p || p.status === 'ENDED') return notLive(res, p);
     const b = userOf(p.brokerId);
+    const a4 = String(req.query.size || '').toLowerCase() === 'a4';
     const url = `${req.protocol}://${req.get('host')}/q/${p.qrCode}`;
-    const svg = await QRCode.toString(url, { type: 'svg', margin: 1, width: 300 });
+    const svg = await QRCode.toString(url, { type: 'svg', margin: 1, width: 400 });
     noStore(res);
     res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>QR poster — ${esc(p.shopName)}</title>
-<style>@page{size:A5;margin:10mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee}.pg{max-width:148mm;margin:10px auto;background:#fff;padding:12mm 10mm;text-align:center;border-radius:6px}
-h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;color:#b45309}.en{color:#555;font-size:13px}.qr{width:62mm;margin:10px auto}.qr svg{width:100%;height:auto}.how{font-size:15px;font-weight:700;margin-top:6px}
-.f{margin-top:10px;font-size:12px;color:#333;border-top:1px dashed #bbb;padding-top:8px}.code{font-family:monospace;font-size:12px;color:#666}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.pg{margin:0;border-radius:0}}</style></head>
-<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">🖨 Print / PDF</button></div>
-<div class="pg"><h1>मकान · दुकान · प्लॉट</h1><h2>किराये पर लेना-देना या ख़रीदना-बेचना है?</h2><div class="en">House · Shop · Plot — to rent or to buy / sell?</div>
-<div class="qr">${svg}</div><div class="how">📱 QR स्कैन करें, अपनी ज़रूरत लिखें — हम कॉल करेंगे</div><div class="en">Scan, write what you need — we will call you</div>
-<div class="f">${esc(p.shopName)}, ${esc(p.area)}<br><b>${esc(b?.name || '')}</b>${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} · GENZ verified broker<br><span class="code">${p.qrCode}</span></div></div>
+<style>@page{size:${a4 ? 'A4' : 'A5'};margin:0}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#e5e7eb;color:#14213d}
+.pg{width:${a4 ? '210mm' : '148mm'};min-height:${a4 ? '297mm' : '210mm'};margin:10px auto;background:#fff;text-align:center;display:flex;flex-direction:column;border-radius:6px;overflow:hidden}
+.hd{background:#14213d;color:#fff;padding:${a4 ? '14mm 12mm 10mm' : '9mm 8mm 7mm'}}.hd h1{font-size:${a4 ? '46px' : '32px'};margin:0;letter-spacing:.5px}.hd .en{color:#cbd5e1;font-size:${a4 ? '17px' : '13px'};margin-top:3px}
+.q{font-size:${a4 ? '28px' : '20px'};font-weight:800;margin:${a4 ? '12mm 10mm 2mm' : '7mm 8mm 1mm'};color:#b45309}.qe{font-size:${a4 ? '16px' : '12px'};color:#555}
+.qr{width:${a4 ? '100mm' : '66mm'};margin:${a4 ? '8mm' : '4mm'} auto 2mm;padding:3mm;border:3px solid #14213d;border-radius:10px}.qr svg{width:100%;height:auto;display:block}
+.steps{display:flex;justify-content:center;gap:${a4 ? '14px' : '8px'};margin:${a4 ? '8mm 8mm 0' : '3mm 5mm 0'}}.steps div{flex:1;background:#f3f4f6;border-radius:10px;padding:${a4 ? '10px' : '6px'};font-size:${a4 ? '16px' : '12px'};font-weight:700}.steps b{display:block;font-size:${a4 ? '26px' : '18px'};color:#1fa855}
+.tr{margin:${a4 ? '8mm 12mm 0' : '4mm 8mm 0'};font-size:${a4 ? '15px' : '11px'};color:#374151}
+.f{margin-top:auto;padding:${a4 ? '8mm 10mm' : '5mm 6mm'};border-top:2px dashed #cbd5e1;font-size:${a4 ? '15px' : '12px'};color:#333}.code{font-family:monospace;font-size:11px;color:#777}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.pg{margin:0;border-radius:0}}</style></head>
+<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">🖨 Print / PDF</button> <a href="?size=${a4 ? 'a5' : 'a4'}" style="margin-left:10px;font-size:14px">${a4 ? 'A5' : 'A4'}</a></div>
+<div class="pg" data-testid="poster"><div class="hd"><h1>मकान · दुकान · प्लॉट</h1><div class="en">House · Shop · Plot</div></div>
+<div class="q">किराये पर लेना-देना या ख़रीदना-बेचना है?</div><div class="qe">To rent, buy or sell a property?</div>
+<div class="qr">${svg}</div><div class="qe">📱 फ़ोन के कैमरे से QR स्कैन करें / Scan with your phone camera</div>
+<div class="steps"><div><b>1</b>QR स्कैन<br><small>Scan</small></div><div><b>2</b>ज़रूरत लिखें<br><small>Write your need</small></div><div><b>3</b>ब्रोकर का कॉल<br><small>The broker calls</small></div></div>
+<div class="tr">GENZ आपसे कोई पैसा नहीं लेता। कोई भी रकम देने से पहले काग़ज़ और RERA ज़रूर जाँचें।<br>GENZ takes no money from you. Check the papers and RERA before you pay anything.</div>
+<div class="f"><b>${esc(b?.name || '')}</b>${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} · GENZ verified broker<br>${esc(p.shopName)}, ${esc(p.area)}<br><span class="code">${p.qrCode}</span></div></div>
 <script src="/q/poster.js" defer></script></body></html>`);
   });
 
@@ -374,7 +651,7 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
     noStore(res);
     const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
     const body = req.body || {};
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '' };
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`); // a bot filled the hidden field
     if (!formTsOk(body.t)) return page(res, p, 'कृपया फ़ॉर्म दोबारा भरें। / Please fill the form again.', keep);
     const kind = LEAD_KINDS.find(k => k.id === keep.kind)?.id as LeadKind | undefined;
@@ -405,10 +682,11 @@ h1{font-size:30px;margin:0;color:#14213d}h2{font-size:18px;margin:6px 0 2px;colo
       id: rid('PLD'), partnerId: p.id, brokerId: p.brokerId, kind, name: keep.name, phone, phoneLast4: phone.slice(-4),
       locality: keep.locality, budget: keep.budget || undefined, propertyType: keep.ptype || undefined, note: keep.note || undefined, consentAt: now,
       termsVersion: p.termsVersion, terms: cleanTerms(p.terms), lockUntil, status: 'NEW', history: [], createdAt: now, updatedAt: now,
+      ...(keep.outcome === '1' ? { outcomeOk: true } : {}),
       ...(home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {}),
       ...(buyerSide ? (() => { const a = ackText(broker?.name || 'broker', home ? home.title : 'the properties shown by the broker'); return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } }; })() : {}),
     };
-    hist(lead, 'CUSTOMER', `Came in by scanning the QR at ${p.shopName} (consent recorded)${home ? ` · interested in “${home.title}”${lead.homeOwn ? '' : ' (another GENZ broker’s listing)'}` : ''}`);
+    hist(lead, 'CUSTOMER', `Came in by scanning the QR at ${p.shopName} (consent recorded${lead.outcomeOk ? '; agreed to one SMS asking whether it went ahead' : ''})${home ? ` · interested in “${home.title}”${lead.homeOwn ? '' : ' (another GENZ broker’s listing)'}` : ''}`);
     if (lead.promise) hist(lead, 'CUSTOMER', `Agreed “no direct deal” (wording ${ACK_VERSION}) and signed as “${lead.promise.signName}”`);
     // a buyer / renter also lands in the broker's own client list (Today & Clients) so the follow-up is not missed
     if (kind === 'BUY' || kind === 'RENT_IN') {
@@ -459,8 +737,47 @@ function spSet(req: Request, res: Response, p: ShopPartner, dev: string) {
 }
 const devLabel = (ua: unknown) => { const u = String(ua || ''); return `${/iPhone|iPad/i.test(u) ? 'iPhone' : /Android/i.test(u) ? 'Android' : 'Phone'} · ${/CriOS|Chrome/i.test(u) ? 'Chrome' : /Safari/i.test(u) ? 'Safari' : 'browser'}`; };
 
+/** the shop page as an app (served as /sp/app.js — public pages allow only same-origin scripts): service worker, "add to home", alerts */
+const SP_JS = `(function(){var TOK=(location.pathname.split('/')[2]||'');function $(i){return document.getElementById(i)}
+var sw=null;if('serviceWorker' in navigator&&TOK&&$('app-card')){navigator.serviceWorker.register('/sw.js').then(function(r){sw=r;setup()}).catch(function(){setup()})}else{setup()}
+var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b&&standalone()===false)b.style.display='inline-block'});
+function standalone(){return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
+var IOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+function show(st){var c=$('app-card');if(!c)return;c.style.display='block';c.setAttribute('data-alerts',st);
+var t=$('app-title'),s2=$('app-sub'),bp=$('app-push'),bl=$('app-later'),ih=$('app-ios'),bi=$('app-install');
+var on=st==='on';c.style.background=on?'#f0fdf4':'#ecfdf5';c.style.borderColor=on?'#86efac':'#0f766e';
+if(bp)bp.style.display=st==='ask'?'inline-block':'none';if(bl)bl.style.display=st==='ask'?'inline-block':'none';
+if(ih)ih.style.display=st==='ios'?'block':'none';if(bi&&(on||st==='ios'||standalone())&&!dip)bi.style.display='none';
+if(st==='on'){t.textContent='🔔 अलर्ट चालू हैं ✔ / Alerts are on';s2.textContent='लीड आगे बढ़ने, हिस्सा बदलने या पैसा भेजे जाने पर इस फ़ोन पर अलर्ट आएगा। / You will be alerted here when a lead moves, your share changes or money is sent.'}
+else if(st==='ios'){t.textContent='🔔 iPhone पर अलर्ट के लिए पहले होम स्क्रीन पर जोड़ें / On iPhone, add this to your home screen first';s2.textContent='iPhone में अलर्ट सिर्फ़ होम स्क्रीन वाले ऐप में आते हैं (iOS 16.4+)। / On iPhone, alerts work only in the home-screen app (iOS 16.4 or newer).'}
+else if(st==='denied'){t.textContent='🔕 अलर्ट रुके हुए हैं / Alerts are blocked';s2.textContent='फ़ोन की सेटिंग → ब्राउज़र/ऐप → Notifications में “Allow” करें, फिर यह पेज दोबारा खोलें। / Allow notifications for this page in the phone settings, then open it again.'}
+else if(st==='none'){t.textContent='🔕 इस ब्राउज़र में अलर्ट नहीं चलते / Alerts do not work in this browser';s2.textContent='Chrome (Android) या Safari-होम-स्क्रीन ऐप (iPhone) में खोलें। / Open this page in Chrome (Android) or the Safari home-screen app (iPhone).'}
+else{t.textContent='🔔 लीड और हिस्से की ख़बर सीधे फ़ोन पर पाएँ / Get lead and share news on your phone';s2.textContent='एक बार नीचे का बटन दबाएँ — पेज बार-बार खोलना नहीं पड़ेगा। / Tap once — no need to open this page again and again.'}
+}
+function setup(){var c=$('app-card');if(!c)return;
+var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
+var bp=$('app-push');if(bp)bp.addEventListener('click',function(){reg(false)});
+var bl=$('app-later');if(bl)bl.addEventListener('click',function(){try{localStorage.setItem('sp_later_'+TOK,String(Date.now()))}catch(e){}c.style.display='none'});
+var can='Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator;
+if(IOS&&!standalone()){show('ios');return}
+if(!can){show('none');return}
+if(Notification.permission==='denied'){show('denied');return}
+if(Notification.permission==='granted'){reg(true);return}
+var later=0;try{later=Number(localStorage.getItem('sp_later_'+TOK))||0}catch(e){}
+if(later&&Date.now()-later<86400000){return}
+show('ask')}
+function b64(s){var p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(b),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o}
+function say(m){var e=$('app-push-msg');if(e)e.textContent=m||''}
+function reg(quiet){say('');var fail=function(m){if(!quiet){say(m);show(Notification.permission==='denied'?'denied':'ask')}};
+var ready=Promise.race([navigator.serviceWorker.ready,new Promise(function(_,no){setTimeout(function(){no(new Error('sw'))},7000)})]);
+ready.then(function(r){return Notification.requestPermission().then(function(p){if(p==='denied'){show('denied');return}if(p!=='granted'){fail('अलर्ट के लिए “Allow” दबाएँ। / Please tap “Allow” to get alerts.');return}
+return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){fail('अलर्ट अभी इस सर्वर पर चालू नहीं हैं — ब्रोकर को बताएँ। / Alerts are not switched on for this server — tell your broker.');return}
+return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/sp/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){show('on')}else{fail('अलर्ट चालू नहीं हो पाए — दोबारा कोशिश करें। / Could not turn alerts on — try again.')}})})})})}).catch(function(){fail('इस फ़ोन पर अलर्ट नहीं चल पाए — दोबारा कोशिश करें। / Could not turn alerts on here — try again.')})}
+})();`;
+
 export function createPartnerPageRouter() {
   const r = Router();
+  r.get('/app.js', (_req, res) => { res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); res.send(SP_JS); });
   const form = express.urlencoded({ extended: false, limit: '10kb' });
   const find = (token: string) => { if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return undefined; const h = sha(token); return st().shopPartners.find(p => safeEqual(p.tokenHash, h)); };
   const gone = (res: Response) => res.status(404).send(shell('Link not valid', `<div class="card"><p class="t">यह लिंक मान्य नहीं है। अपने ब्रोकर से नया लिंक माँगें।<br><small>This link is not valid. Ask the broker for a new one.</small></p></div>`));
@@ -476,41 +793,93 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <form method="post" action="/sp/${esc(tok)}/verify"><label>कोड / Code</label><input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"><div class="row"><button class="g" type="submit">खोलें / Open</button></div></form>`}</div>`));
   };
 
+  /** run the late-payment rules and the share watch before the shop looks (serverless hosts may never run the hourly timer) */
+  const fresh = (p: ShopPartner) => { try { lazySweep(); watchShares({ partnerId: p.id }); } catch (e: any) { console.error('[SHOP] page refresh failed:', e?.message || e); } };
+  const payModeHi = (m?: string) => PAY_MODES.find(x => x.id === m)?.hi || 'UPI';
+
+  /** "ask": the broker (always) and the customer (only if he agreed on the QR page and SMS is on) */
+  const askBox = (l: PartnerLead, tok: string) => {
+    const a = l.ask; const can = !!l.outcomeOk && smsOn() && (locked(l) || !!l.won);
+    const wait = !!a && (a.n >= ASK_LIMITS.perLead || Date.now() - Date.parse(a.at) < ASK_LIMITS.gapHours * 3600_000);
+    const cust = !can && !a?.answer ? ''
+      : a?.answer ? `<p class="small" data-testid="customer-answer">ग्राहक का जवाब: <b>${a.answer === 'YES' ? 'हाँ, बात आगे बढ़ी' : 'नहीं, बात आगे नहीं बढ़ी'}</b> (${when(a.answeredAt)}) · Customer says: ${a.answer === 'YES' ? 'it went ahead' : 'it did not go ahead'}</p>`
+      : wait ? `<p class="small">ग्राहक से पूछा जा चुका है (${when(a!.at)}) — जवाब आने पर यहाँ दिखेगा। / The customer has been asked — the answer shows here.</p>`
+      : `<form method="post" action="/sp/${tok}/lead/${esc(l.id)}/ask-customer"><button class="l" type="submit" data-testid="ask-customer">📲 ग्राहक से पूछें / Ask the customer</button><p class="small">ग्राहक को एक SMS जाएगा — उसने QR पर इसकी अनुमति दी है। आपको उसका नंबर नहीं दिखेगा। / One SMS goes to the customer (he agreed on the QR page). You do not see his number.</p></form>`;
+    return `<details class="ask"><summary>💬 पूछें / Ask</summary><form method="post" action="/sp/${tok}/lead/${esc(l.id)}/ask-broker"><label>ब्रोकर से पूछें / Ask the broker</label><input type="text" name="note" maxlength="300" required placeholder="जैसे: यह हिस्सा कैसे निकला? / e.g. how was this worked out?"><div class="row"><button type="submit" data-testid="ask-broker">भेजें / Send</button></div></form>${cust}</details>`;
+  };
+  /** one change of the shop's share: old → new, why, and the shop's answer (OK / not right → GENZ desk) */
+  const chgCard = (l: PartnerLead, c: ShareChange, tok: string) => {
+    const kind = LEAD_KINDS.find(k => k.id === l.kind)!; const by = SHARE_CHANGE_LABEL[c.by];
+    return `<div class="card chg" data-testid="share-change"><p class="t"><b>⚠ आपका हिस्सा बदला है / Your share changed</b><br><small>${kind.hi} · ${esc(l.locality)} · ••${esc(l.phoneLast4)}</small></p>
+<p class="t">${c.from > 0 ? `<span class="old">${inr(c.from)}</span> → ` : ''}<b class="fig">${inr(c.to)}</b></p>
+<p class="small">${esc(by.hi)} / ${esc(by.en)}${c.reason ? ` — “${esc(c.reason)}”` : ''} · ${when(c.at)}</p>
+${c.brokerNote ? `<p class="small">ब्रोकर का जवाब / Broker’s reply: ${esc(c.brokerNote)}</p>` : ''}
+${c.status === 'PENDING' ? `<div class="row"><form method="post" action="/sp/${tok}/lead/${esc(l.id)}/change/${esc(c.id)}/ok"><button class="g" type="submit" data-testid="change-ok">✔ ठीक है / It is fine</button></form></div>
+<details><summary>✖ सही नहीं है / This is not right</summary><form method="post" action="/sp/${tok}/lead/${esc(l.id)}/change/${esc(c.id)}/no"><input type="text" name="note" maxlength="300" required placeholder="क्या सही नहीं? / What is not right?"><div class="row"><button class="r" type="submit" data-testid="change-no">GENZ को बताएँ / Tell GENZ</button></div></form></details>`
+  : c.status === 'OK' ? `<p class="small">✔ आपने मान लिया (${when(c.answeredAt)})</p>`
+  : `<p class="small">✖ आपने कहा सही नहीं — GENZ डेस्क देख रहा है (${when(c.answeredAt)})${c.note ? `: ${esc(c.note)}` : ''}</p>`}
+${askBox(l, tok)}</div>`;
+  };
+
   const render = (req: Request, res: Response, p: ShopPartner, msg = '') => {
     const b = userOf(p.brokerId); const tok = esc(req.params.token);
     const leads = st().partnerLeads.filter(l => l.partnerId === p.id).sort((a, z) => z.createdAt.localeCompare(a.createdAt));
     const due = leads.filter(l => l.payout && ['DUE', 'NOT_RECEIVED'].includes(l.payout.status)).reduce((n, l) => n + (l.won?.amount || 0), 0);
     const got = leads.filter(l => l.payout?.status === 'RECEIVED').reduce((n, l) => n + (l.won?.amount || 0), 0);
+    const onWay = leads.filter(l => l.payout?.status === 'PAID').reduce((n, l) => n + (l.won?.amount || 0), 0);
+    const month = Date.now() - 30 * 86400_000;
+    const inMonth = (x: ShopPartner) => st().partnerLeads.filter(l => l.partnerId === x.id && Date.parse(l.createdAt) >= month).length;
+    const mates = st().shopPartners.filter(x => x.status === 'ACTIVE' && x.city === p.city);
+    const mine30 = inMonth(p);
+    const rank = p.status === 'ACTIVE' && mates.length >= 3 && mine30 > 0 ? 1 + mates.filter(x => inMonth(x) > mine30).length : 0;
+    const rec = payRecord(st().partnerLeads.filter(l => l.brokerId === p.brokerId));
+    const recText = payRecordText(rec, true);
     const agree = p.status === 'PENDING'
       ? `<div class="card warn"><p class="t"><b>शर्तें / Terms</b></p><p class="t">${esc(termsText(p.terms, true))}</p><p class="small">${esc(termsText(p.terms))}. हिस्सा ब्रोकर सीधे आपको देंगे — GENZ पैसा नहीं रखता। / The broker pays you directly; GENZ holds no money.</p>
 <form method="post" action="/sp/${tok}/accept"><label class="ck"><input type="checkbox" name="ok" value="1" required><span>मैं इन शर्तों से सहमत हूँ और ब्रोकर का QR अपनी दुकान पर रखूँगा। / I agree to these terms and will keep the broker's QR at my shop.</span></label><div class="row"><button class="g" type="submit">मंज़ूर / Accept</button></div></form></div>`
       : p.pending ? `<div class="card warn"><p class="t"><b>ब्रोकर ने शर्त बदलने को कहा है / The broker proposes a change</b></p><p class="t">अभी: ${esc(termsText(p.terms, true))}</p><p class="t">नई: <b>${esc(termsText(p.pending.terms, true))}</b></p>${p.pending.note ? `<p class="small">${esc(p.pending.note)}</p>` : ''}<p class="small">मंज़ूर करने पर नई शर्त सिर्फ़ आगे आने वाली लीड पर लगेगी। / Applies only to leads after you accept.</p>
 <div class="row"><form method="post" action="/sp/${tok}/change/accept"><button class="g" type="submit">मंज़ूर / Accept</button></form><form method="post" action="/sp/${tok}/change/decline"><button class="l" type="submit">नहीं / Decline</button></form></div></div>`
-      : `<div class="card"><p class="t"><b>आपकी शर्तें / Your terms</b> (v${p.termsVersion})</p><p class="t">${esc(termsText(p.terms, true))}</p><p class="small">${p.status === 'PAUSED' ? 'QR अभी रुका हुआ है। / The QR is paused.' : p.status === 'ENDED' ? 'साझेदारी ख़त्म — पुरानी लीड पर हिस्सा पहले की तरह। / Partnership ended — earlier leads keep their terms.' : 'QR चालू है। / The QR is active.'}</p></div>`;
+      : `<div class="card"><p class="t"><b>आपकी शर्तें / Your terms</b> (v${p.termsVersion})</p><p class="t">${esc(termsText(p.terms, true))}</p><p class="small">${p.status === 'PAUSED' ? 'QR अभी रुका हुआ है। / The QR is paused.' : p.status === 'ENDED' ? 'साझेदारी ख़त्म — पुरानी लीड पर हिस्सा पहले की तरह। / Partnership ended — earlier leads keep their terms.' : 'QR चालू है। / The QR is active.'}</p><p class="small">हिस्सा ऐप ख़ुद निकालता है — सिर्फ़ आपके लाए ग्राहक की तरफ़ की ब्रोकरेज से (ख़रीदार/किरायेदार लाए तो उससे तय फ़ीस; मालिक लाए तो मालिक से साइन हुई ब्रोकरेज), डील के अंतिम भाव पर। दूसरी तरफ़ की कमाई से आपका कोई लेना-देना नहीं। कोई बदलाव हो तो आपको अलर्ट और यहाँ दिखेगा। / The app works your share out from the brokerage on your customer’s own side of the deal only; the other side’s earnings are none of your business. If anything changes you are told here.</p></div>`;
+    const need = leads.flatMap(l => (l.shareChanges || []).filter(c => c.status === 'PENDING' || (c.status === 'DISPUTED' && daysSince(c.answeredAt) <= 14)).map(c => ({ l, c }))).sort((a, z) => z.c.at.localeCompare(a.c.at)).slice(0, 6);
     const rows = leads.map(l => {
       const kind = LEAD_KINDS.find(k => k.id === l.kind)!; const stt = LEAD_STATUSES.find(x => x.id === l.status)!;
-      const links = linksFor(l); const flags = flagsFor(l, links);
+      const links = linksFor(l); const flags = flagsFor(l, links).filter(f => f.code !== 'CUSTOMER_NO' && f.code !== 'CUSTOMER_YES' && f.code !== 'SHARE_DISPUTED');
       const pay = l.payout ? PAYOUT_LABEL[l.payout.status] : null;
-      const pg = progressFor(l, links);
-      const prog = l.status === 'LOST' ? '' : `<div class="prog" data-testid="lead-progress">${pg.steps.map((t, i) => `<span class="st ${i < pg.step ? 'on' : i === pg.step ? 'now' : ''}">${t}</span>`).join('')}</div>${pg.share > 0 && !l.won ? `<small>आपका हिस्सा (अनुमान): <b>${inr(pg.share)}</b> — डील पूरी होने पर तय</small>` : ''}`;
+      const pg = progressFor(l, links); const cut = sideOfKind(l.kind) === 'SALE' ? l.terms.sale : l.terms.rent;
+      const prog = l.status === 'LOST' ? '' : `<div class="prog" data-testid="lead-progress">${pg.steps.map((t, i) => `<span class="st ${i < pg.step ? 'on' : i === pg.step ? 'now' : ''}">${t}</span>`).join('')}</div>${pg.share > 0 && !l.won ? `<small>आपका हिस्सा (अनुमान): <b>${inr(pg.share)}</b> — डील पूरी होने पर तय · ${esc(cutText(cut, true))}</small>` : ''}`;
       const act = l.payout && ['DUE', 'PAID'].includes(l.payout.status)
-        ? `<div class="row">${l.payout.status === 'PAID' ? `<form method="post" action="/sp/${tok}/lead/${esc(l.id)}/received"><button class="g" type="submit">✔ पैसा मिल गया / Received</button></form>` : ''}
+        ? `<div class="row">${l.payout.status === 'PAID' ? `<form method="post" action="/sp/${tok}/lead/${esc(l.id)}/received"><button class="g" type="submit" data-testid="got-it">✔ पैसा मिल गया / Received</button></form>` : ''}
 <form method="post" action="/sp/${tok}/lead/${esc(l.id)}/not-received" style="flex:1"><input type="text" name="note" maxlength="200" required placeholder="क्या हुआ? / What happened?"><div class="row"><button class="r" type="submit">✖ नहीं मिला / Not received</button></div></form></div>` : '';
+      const late = unpaidDays(l);
+      const wonLine = l.won
+        ? `<br><b data-testid="fixed-share">आपका हिस्सा: ${inr(l.won.amount)}</b> ${pay ? `<span class="chip ${l.payout!.status === 'RECEIVED' ? 'ok' : l.payout!.status === 'NOT_RECEIVED' ? 'x' : 'w'}">${pay.hi}</span>` : ''}<br><small>${esc(cutText(cut, true))} · ${l.won.source === 'TYPED' ? 'इस डील की ब्रोकरेज ब्रोकर ने ख़ुद लिखी' : 'डील के अंतिम भाव पर, आपके ग्राहक की तरफ़ की ब्रोकरेज से ऐप ने निकाला'}</small>${l.payout && ['PAID', 'RECEIVED'].includes(l.payout.status) ? `<br><small>भेजा गया: ${esc(payModeHi(l.payout.mode))}${l.payout.ref ? ` · रेफ़रेंस ${esc(l.payout.ref)}` : ''}${l.payout.paidAt ? ` · ${when(l.payout.paidAt)}` : ''}</small>` : ''}${late >= OVERDUE.remindDays[0] ? `<br><small style="color:#b91c1c">⏳ ${late} दिन से बाकी / unpaid for ${late} days</small>` : ''}`
+        : '';
+      const last = (l.shareChanges || []).slice(-1)[0];
+      const lastLine = last && last.status === 'OK' ? `<br><small>हिस्सा ${last.from > 0 ? `${inr(last.from)} → ` : ''}${inr(last.to)} (${when(last.at)}) · आपने मान लिया ✔</small>` : '';
       return `<div class="lead"><b>${kind.hi}</b> · ${esc(l.locality)} · ••${esc(l.phoneLast4)} <small>(${when(l.createdAt)})</small><br>
 <span class="chip ${l.status === 'WON' ? 'ok' : l.status === 'LOST' ? 'x' : ''}">${stt.hi}</span>${links.map(x => `<span class="chip">${esc(x.hi)}</span>`).join('')}${flags.map(f => `<span class="chip x">⚠ ${esc(f.hi)}</span>`).join('')}
 ${prog}
 ${l.status === 'LOST' && l.lostReason ? `<br><small>कारण: ${esc(l.lostReason)}</small>` : ''}
-${l.won ? `<br><b>आपका हिस्सा: ${inr(l.won.amount)}</b> ${pay ? `<span class="chip ${l.payout!.status === 'RECEIVED' ? 'ok' : l.payout!.status === 'NOT_RECEIVED' ? 'x' : 'w'}">${pay.hi}</span>` : ''}` : ''}
-<br><small>${locked(l) ? `यह लीड ${when(l.lockUntil)} तक आपकी है` : 'सुरक्षा का समय पूरा'}</small>${act}</div>`;
+${wonLine}${lastLine}
+<br><small>${locked(l) ? `यह लीड ${when(l.lockUntil)} तक आपकी है` : 'सुरक्षा का समय पूरा'}</small>${act}${need.some(x => x.l.id === l.id) ? '' : askBox(l, tok)}</div>`;
     }).join('');
-    res.send(shell('QR पार्टनर', `<div class="top"><h1>नमस्ते ${esc(p.personName.split(' ')[0])} 🙏</h1><p>${esc(p.shopName)} · ${esc(b?.name || '')} के साथ QR पार्टनर</p></div>
-${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}${agree}
+    const cert = p.acceptedAt && p.status !== 'PENDING' && p.status !== 'ENDED' ? `<a class="btn l" href="/sp/${tok}/certificate" target="_blank" rel="noopener" data-testid="cert-link">🏅 प्रमाणपत्र / Certificate</a>` : '';
+    const html = shell('QR पार्टनर', `<div class="top"><h1>नमस्ते ${esc(p.personName.split(' ')[0])} 🙏</h1><p>${esc(p.shopName)} · ${esc(b?.name || '')} के साथ QR पार्टनर</p></div>
+${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}
+<div class="card app" id="app-card" style="display:none"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>
+${p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' ? `<div class="card red" data-testid="auto-paused"><p class="t"><b>⏸ आपका QR GENZ ने रोका है</b></p><p class="t">आपका हिस्सा ${OVERDUE.pauseDays} दिन से ज़्यादा बाकी है, इसलिए नए अनुरोध फ़िलहाल रुके हैं। ब्रोकर के चुकाते ही QR फिर चालू हो जाएगा। <small>GENZ paused new requests because your share is over ${OVERDUE.pauseDays} days late; it starts again once it is paid.</small></p></div>` : ''}
+${need.length ? `<h2>आपके ध्यान के लिए / Needs your eye (${need.length})</h2>${need.map(x => chgCard(x.l, x.c, tok)).join('')}` : ''}
+${agree}
 <div class="card"><div class="stats"><div><b>${p.scans}</b><small>स्कैन</small></div><div><b>${leads.length}</b><small>लीड</small></div><div><b>${leads.filter(l => l.status === 'WON').length}</b><small>डील</small></div></div>
-<div class="stats" style="margin-top:8px;grid-template-columns:1fr 1fr"><div><b>${inr(due)}</b><small>बाकी / due</small></div><div><b>${inr(got)}</b><small>मिला / received</small></div></div>
-<div class="row"><a class="btn l" href="/q/${esc(p.qrCode)}/poster" target="_blank" rel="noopener">🖨 QR पोस्टर / Poster</a></div></div>
+<div class="stats" style="margin-top:8px"><div><b>${inr(got)}</b><small>मिला / received</small></div><div><b>${inr(onWay)}</b><small>रास्ते में / sent</small></div><div><b>${inr(due)}</b><small>बाकी / due</small></div></div>
+${rank ? `<div class="rank card" style="margin-top:10px" data-testid="shop-rank"><b>🏆 इस महीने आप ${esc(p.city)} के ${mates.length} QR पार्टनर्स में #${rank}</b><br><small>पिछले 30 दिन में ${mine30} लीड · This month you are #${rank} of ${mates.length} QR partners in ${esc(p.city)}</small></div>` : ''}
+${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record">🤝 ${esc(b?.name || 'ब्रोकर')}: ${esc(recText)}</p>` : ''}
+<div class="row"><a class="btn l" href="/q/${esc(p.qrCode)}/poster" target="_blank" rel="noopener">🖨 QR पोस्टर / Poster</a>${cert}</div></div>
 <h2>आपके QR से आई लीड / Leads from your QR (${leads.length})</h2><div class="card">${rows || '<p class="t">अभी कोई लीड नहीं। / No leads yet.</p>'}<p class="small">ग्राहक का पूरा नंबर आपको नहीं दिखता — सिर्फ़ आख़िरी 4 अंक। अगर ब्रोकर इसी नंबर पर बाद में काम करता है तो वह यहाँ अपने आप दिखता है। / You see only the last 4 digits. If the broker works this number later, it shows here by itself.</p></div>
 <div class="card"><form method="post" action="/sp/${tok}/ask"><label>ब्रोकर से कुछ कहना है? / Message the broker</label><textarea name="note" rows="2" maxlength="300" required></textarea><div class="row"><button type="submit">भेजें / Send</button></div></form></div>
-<p class="small" style="margin:12px 4px">इस पेज को बुकमार्क कर लें — इसी फ़ोन पर बिना कोड के खुलेगा। / Bookmark this page — on this phone it opens without a code. GENZ never asks you for money.</p>`));
+<p class="small" style="margin:12px 4px">इस पेज को बुकमार्क कर लें — इसी फ़ोन पर बिना कोड के खुलेगा। / Bookmark this page — on this phone it opens without a code. GENZ never asks you for money.</p>`,
+    `<link rel="manifest" href="/sp/${tok}/manifest.webmanifest"><meta name="theme-color" content="#14213d">`, '/sp/app.js');
+    res.send(html);
   };
 
   const authed = (req: Request, res: Response) => {
@@ -528,7 +897,7 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}${agree}
     const p = find(req.params.token); if (!p) return gone(res);
     if (!spSession(req, p)) return gate(res, p, req.params.token);
     const q = authed(req, res); if (!q) return;
-    db.save(); render(req, res, q, req.query.done === '1' ? 'हो गया ✔ / Done' : '');
+    fresh(q); db.save(); render(req, res, q, req.query.done === '1' ? 'हो गया ✔ / Done' : '');
   });
   r.post('/:token/otp', rateLimit('sp-otp', 30, 3600_000), form, async (req: Request, res: Response) => {
     noStore(res);
@@ -586,19 +955,57 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}${agree}
     }
     db.save(); back(res, req.params.token);
   });
-  r.post('/:token/lead/:id/:what', rateLimit('sp-act', 60, 3600_000), form, (req: Request, res: Response) => {
+  r.post('/:token/lead/:id/change/:cid/:answer', rateLimit('sp-act', 60, 3600_000), form, (req: Request, res: Response) => {
     const p = authed(req, res); if (!p) return;
     const l = st().partnerLeads.find(x => x.id === req.params.id && x.partnerId === p.id);
-    if (!l || !l.payout) return back(res, req.params.token);
-    if (req.params.what === 'received' && l.payout.status === 'PAID') {
+    const c = (l?.shareChanges || []).find(x => x.id === req.params.cid);
+    if (!l || !c || c.status !== 'PENDING') return back(res, req.params.token);
+    if (req.params.answer === 'ok') {
+      c.status = 'OK'; c.answeredAt = nowIso(); hist(l, 'PARTNER', `Partner accepted the share ${changeWords(c)}`);
+      ping(p, `${p.shopName}: हिस्सा ठीक है / share accepted`, `${changeWords(c)} — दुकान ने मान लिया। / The shop accepted it.`);
+    } else if (req.params.answer === 'no') {
+      const note = str(req.body?.note, 300); if (note.length < 3) return render(req, res, p, 'लिखें कि क्या सही नहीं है। / Write what is not right.');
+      c.status = 'DISPUTED'; c.answeredAt = nowIso(); c.note = note; hist(l, 'PARTNER', `Partner says the share ${changeWords(c)} is NOT right: ${note}`);
+      db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_SHARE_DISPUTED', `Shop partner says the changed share ${changeWords(c)} is not right (GENZ desk sees it)`);
+      ping(p, `${p.shopName}: हिस्सा सही नहीं / share not right`, `${changeWords(c)} — ${note.slice(0, 100)}`);
+    } else return back(res, req.params.token);
+    db.save(); back(res, req.params.token);
+  });
+  r.post('/:token/lead/:id/:what', rateLimit('sp-act', 60, 3600_000), form, async (req: Request, res: Response) => {
+    const p = authed(req, res); if (!p) return;
+    const l = st().partnerLeads.find(x => x.id === req.params.id && x.partnerId === p.id);
+    if (!l) return back(res, req.params.token);
+    const what = req.params.what;
+    if (what === 'received' && l.payout?.status === 'PAID') {
       l.payout = { ...l.payout, status: 'RECEIVED', partnerAt: nowIso() }; hist(l, 'PARTNER', 'Partner confirmed: share received');
       ping(p, `${p.shopName} confirmed the payment`, `${inr(l.won?.amount || 0)} received.`);
-    } else if (req.params.what === 'not-received' && ['DUE', 'PAID'].includes(l.payout.status)) {
+    } else if (what === 'not-received' && l.payout && ['DUE', 'PAID'].includes(l.payout.status)) {
       const note = str(req.body?.note, 200); if (note.length < 3) return render(req, res, p, 'बताएँ क्या हुआ। / Write what happened.');
       l.payout = { ...l.payout, status: 'NOT_RECEIVED', partnerAt: nowIso(), partnerNote: note }; hist(l, 'PARTNER', `Partner says NOT received: ${note}`);
       db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_PARTNER_NOT_RECEIVED', 'Shop partner says the share was not received (GENZ desk sees it)');
       ping(p, `${p.shopName}: share not received`, note);
-    }
+    } else if (what === 'ask-broker') {
+      const note = str(req.body?.note, 300); if (note.length < 2) return back(res, req.params.token);
+      hist(l, 'PARTNER', `Partner asks the broker: ${note}`);
+      ping(p, `${p.shopName}: सवाल / question`, `••${l.phoneLast4}: ${note.slice(0, 100)}`);
+    } else if (what === 'ask-customer') {
+      // the customer is asked ONLY if he ticked the separate, optional SMS box on the QR page — never otherwise
+      if (!l.outcomeOk) return render(req, res, p, 'इस ग्राहक ने SMS की अनुमति नहीं दी है। / This customer did not agree to an SMS.');
+      if (!smsOn()) return render(req, res, p, 'SMS अभी चालू नहीं है — ब्रोकर से पूछें। / SMS is not switched on — ask the broker instead.');
+      if (!locked(l) && !l.won) return render(req, res, p, 'इस लीड की सुरक्षा अवधि पूरी हो चुकी है। / This lead’s protection period is over.');
+      const a = l.ask;
+      if (a?.answer) return back(res, req.params.token);
+      if (a && a.n >= ASK_LIMITS.perLead) return render(req, res, p, 'ग्राहक से दो बार पूछा जा चुका है। / The customer has already been asked twice.');
+      if (a && Date.now() - Date.parse(a.at) < ASK_LIMITS.gapHours * 3600_000) return render(req, res, p, 'ग्राहक से अभी पूछा गया है — कल फिर कोशिश करें। / He was asked just now — try again tomorrow.');
+      if (hit(`sp-ask:${p.id}`, 10, 86400_000) > 0) return render(req, res, p, 'आज बहुत सवाल भेजे जा चुके। / Too many questions today.');
+      const token = newToken(); l.ask = { hash: sha(token), at: nowIso(), n: (a?.n || 0) + 1 };
+      const who = userOf(l.brokerId)?.name || 'ब्रोकर';
+      hist(l, 'PARTNER', 'Partner asked the customer (one SMS) whether it went ahead'); db.save();
+      db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_CUSTOMER_ASKED', 'Shop partner asked the customer by SMS (he had agreed on the QR page)');
+      await sendSms(`+91${l.phone}`, `GENZ: क्या ${who} के साथ आपकी प्रॉपर्टी की बात आगे बढ़ी? हाँ/नहीं बताने के लिए खोलें: ${req.protocol}://${req.get('host')}/q/ok/${token} (${ASK_LIMITS.validDays} दिन मान्य)`);
+      ping(p, `${p.shopName}: ग्राहक से पूछा गया`, `••${l.phoneLast4} पर GENZ का SMS गया।`);
+      return render(req, res, p, 'ग्राहक को SMS भेज दिया गया। / The customer has been sent an SMS.');
+    } else return back(res, req.params.token);
     db.save(); back(res, req.params.token);
   });
   r.post('/:token/ask', rateLimit('sp-act', 60, 3600_000), form, (req: Request, res: Response) => {
@@ -607,6 +1014,53 @@ ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}${agree}
     hist(p, 'PARTNER', `Message: ${note}`); db.save();
     ping(p, `Message from ${p.shopName}`, note.slice(0, 120));
     back(res, req.params.token);
+  });
+
+  // ───────── v82 — the page as an app: its own manifest, alerts on the shop's phone, a "GENZ network partner" certificate ─────────
+  r.get('/:token/manifest.webmanifest', (req: Request, res: Response) => {
+    const p = find(req.params.token); if (!p || p.status === 'ENDED') return res.status(404).end();
+    const base = `/sp/${req.params.token}`;
+    res.set({ 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+    res.send(JSON.stringify({
+      name: `GENZ — ${p.shopName}`.slice(0, 45), short_name: 'QR पार्टनर', description: 'Your QR partner page with your broker',
+      id: base, start_url: base, scope: '/sp/', display: 'standalone', orientation: 'portrait', background_color: '#ffffff', theme_color: '#14213d',
+      icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
+    }));
+  });
+  const jsonBody = express.json({ limit: '4kb' });
+  r.post('/:token/push', rateLimit('sp-push', 30, 3600_000), jsonBody, (req: Request, res: Response) => {
+    noStore(res);
+    const p = find(req.params.token); if (!p || p.status === 'ENDED') return res.status(404).json({ success: false, error: 'This link is closed.' });
+    if (!spSession(req, p)) return res.status(401).json({ success: false, error: 'Open the page again and enter the code.' });
+    const endpoint = String(req.body?.endpoint || ''); const k = req.body?.keys || {};
+    const p256dh = String(k.p256dh || ''); const auth = String(k.auth || '');
+    if (!endpoint || endpoint.length > 1000 || p256dh.length < 80 || p256dh.length > 120 || auth.length < 16 || auth.length > 40) return res.status(400).json({ success: false, error: 'Unusable push address.' });
+    if (!allowedEndpoint(endpoint)) return res.status(400).json({ success: false, error: 'This browser’s push service is not supported.' });
+    const s = st(); const key = shopPushKey(p.id); const id = sha(endpoint).slice(0, 32);
+    const before = s.pushSubs.find(x => x.id === id && x.userId === key);
+    s.pushSubs = s.pushSubs.filter(x => x.id !== id);
+    const mineSubs = s.pushSubs.filter(x => x.userId === key);
+    if (mineSubs.length >= 3) { const oldest = mineSubs.sort((a, z) => a.createdAt.localeCompare(z.createdAt))[0]; s.pushSubs = s.pushSubs.filter(x => x.id !== oldest.id); }
+    s.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers['user-agent'] || '').slice(0, 120), createdAt: before?.createdAt || nowIso(), lastOkAt: before?.lastOkAt, fails: 0, url: `/sp/${req.params.token}` });
+    if (!before) { hist(p, 'PARTNER', 'Turned on alerts on a phone'); db.save(); tellShop(p, '🔔 अलर्ट चालू हैं', 'Alerts are on', 'अब लीड और हिस्से की ख़बर सीधे इस फ़ोन पर आएगी। / Lead and share news now come straight to this phone.', `on-${p.id}`); }
+    else db.save();
+    res.json({ success: true, fresh: !before });
+  });
+  r.get('/:token/certificate', rateLimit('sp-page', 60, 60_000), async (req: Request, res: Response) => {
+    const p = authed(req, res); if (!p) return;
+    if (!p.acceptedAt || p.status === 'PENDING' || p.status === 'ENDED') return back(res, req.params.token);
+    const b = userOf(p.brokerId);
+    const svg = await QRCode.toString(`${req.protocol}://${req.get('host')}/q/${p.qrCode}`, { type: 'svg', margin: 1, width: 200 });
+    res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>GENZ नेटवर्क पार्टनर — ${esc(p.shopName)}</title>
+<style>@page{size:A4 landscape;margin:12mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee}.c{max-width:277mm;margin:10px auto;background:#fff;border:6px double #14213d;padding:14mm 12mm;text-align:center}
+.k{letter-spacing:3px;color:#b45309;font-weight:700;font-size:13px}h1{font-size:34px;margin:6px 0 2px;color:#14213d}h2{font-size:26px;margin:14px 0 4px}.s{color:#444;font-size:15px}.qr{width:38mm;margin:12px auto 4px}.qr svg{width:100%;height:auto}.f{margin-top:12px;font-size:12px;color:#555}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.c{margin:0}}</style></head>
+<body><div class="p"><button id="pr" style="padding:10px 18px;font-size:15px;font-weight:700;border-radius:10px;border:0;background:#14213d;color:#fff">🖨 Print / PDF</button></div>
+<div class="c" data-testid="certificate"><div class="k">GENZ BROKER NETWORK</div><h1>GENZ नेटवर्क पार्टनर</h1><div class="s">GENZ network partner</div>
+<h2>${esc(p.shopName)}</h2><div class="s">${esc(p.personName)} · ${esc(p.area)}, ${esc(p.city)}</div>
+<p class="s" style="margin-top:14px">यह दुकान ${esc(b?.name || 'ब्रोकर')}${b?.reraNumber ? ` (RERA ${esc(b.reraNumber)})` : ''} की QR पार्टनर है — ${esc(when(p.acceptedAt))} से।<br>This shop is a QR partner of ${esc(b?.name || 'the broker')} since ${esc(when(p.acceptedAt))}.</p>
+<div class="qr">${svg}</div><div class="s">मकान · दुकान · प्लॉट — किराया या ख़रीद-बिक्री के लिए स्कैन करें</div>
+<div class="f">यह एक रेफ़रल साझेदारी का प्रमाण है — कोई लाइसेंस या सरकारी मान्यता नहीं। / This shows a referral partnership; it is not a licence or a government approval.</div></div>
+<script src="/q/poster.js" defer></script></body></html>`);
   });
   return r;
 }

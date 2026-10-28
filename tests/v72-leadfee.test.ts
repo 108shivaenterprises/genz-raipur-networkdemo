@@ -27,7 +27,10 @@ describe('lead-source fee', () => {
   it('the lead-owning broker sees the shop fee; the other broker sees nothing about it', () => {
     const mine = hv.hisaabView(D, B1).brokerage; const theirs = hv.hisaabView(D, B2);
     expect(mine.leadFees.length).toBe(1); expect(mine.leadFees[0].shopName).toBe('Gupta Kirana Store');
-    expect(mine.leadFees[0].amount).toBe(Math.round(mine.due * 20 / 100));
+    // v82: the shop's cut is taken only from the brokerage on its lead's own side (a BUY lead → the buyer-side fee), not from what the broker earns from the owner
+    const side = hv.leadShareInfo(lead, D.id); expect(side.basis).toBe('PLAN');
+    expect(mine.leadFees[0].amount).toBe(Math.round(side.brokerage * 20 / 100));
+    expect(mine.leadFees[0].amount).toBeLessThanOrEqual(Math.round(mine.due * 20 / 100));
     expect(mine.netEstimate).toBe(mine.due - mine.leadFees[0].amount);
     const t = JSON.stringify(theirs); expect(t).not.toContain('Gupta'); expect(t).not.toContain('leadFees"'.replace('"', '') + ':[{'); expect(theirs.brokerage.leadFees).toEqual([]);
     expect(JSON.stringify(hv.hisaabView(D, { ...B2, id: 'USR-OWNER-001' }))).not.toContain('Gupta');

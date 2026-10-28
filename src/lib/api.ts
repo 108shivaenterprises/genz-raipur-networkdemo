@@ -621,8 +621,11 @@ export const api = {
   spTerms: (id: string, terms: any, note?: string) => request<any>(`/api/shop-partners/${id}/terms`, { method: 'POST', body: JSON.stringify({ terms, note }) }),
   spDelDevice: (id: string, dev: string) => request<any>(`/api/shop-partners/${id}/devices/${dev}`, { method: 'DELETE' }),
   spLeadStatus: (id: string, status: string, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) }),
-  spLeadWon: (id: string, brokerage: number) => request<any>(`/api/shop-partners/leads/${id}/won`, { method: 'POST', body: JSON.stringify({ brokerage }) }),
-  spLeadPaid: (id: string, ref?: string) => request<any>(`/api/shop-partners/leads/${id}/paid`, { method: 'POST', body: JSON.stringify({ ref }) }),
+  // v82 — "Deal done" takes the share from the deal itself; a typed brokerage is only a correction (with a reason) or for a deal that is not in the app
+  spLeadWon: (id: string, brokerage?: number, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/won`, { method: 'POST', body: JSON.stringify({ brokerage, reason }) }),
+  spLeadShare: (id: string, brokerage: number, reason: string) => request<any>(`/api/shop-partners/leads/${id}/share`, { method: 'POST', body: JSON.stringify({ brokerage, reason }) }),
+  spChangeReply: (id: string, cid: string, note: string) => request<any>(`/api/shop-partners/leads/${id}/changes/${cid}/reply`, { method: 'POST', body: JSON.stringify({ note }) }),
+  spLeadPaid: (id: string, mode: 'UPI' | 'BANK' | 'CASH', ref?: string) => request<any>(`/api/shop-partners/leads/${id}/paid`, { method: 'POST', body: JSON.stringify({ mode, ref }) }),
   crDelDevice: (id: string, dev: string) => request<any>(`/api/client-rooms/${id}/devices/${dev}`, { method: 'DELETE' }),
   crPhoneReveal: (id: string) => request<any>(`/api/client-rooms/${id}/phone/reveal`, { method: 'POST' }),
   crPhoneSave: (id: string, phone: string) => request<any>(`/api/client-rooms/${id}/phone`, { method: 'PUT', body: JSON.stringify({ phone }) }),

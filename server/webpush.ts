@@ -202,6 +202,34 @@ export function brokerWrote(roomId: string, brokerName: string, what: 'MSG' | 'P
 }
 export function dropRoomPush(roomId: string) { const s = db.getState(); const key = roomPushKey(roomId); const n = s.pushSubs.length; s.pushSubs = s.pushSubs.filter(x => x.userId !== key); return n - s.pushSubs.length; }
 
+/**
+ * v82 — a shop partner's phones (no account): the key is `shop:<partnerId>`; each phone keeps the page link it was opened from (`url`).
+ * Like a client room: at most SHOP_DAILY alerts a day, and the words never carry a customer's name or number (a lock screen is not private).
+ */
+const SHOP_DAILY = 30;
+const shopDay = new Map<string, { day: string; n: number }>();
+export const shopPushKey = (partnerId: string) => `shop:${partnerId}`;
+export async function pushToShop(partnerId: string, title: string, body: string, tag = 'shop'): Promise<number> {
+  try {
+    const s = db.getState(); const key = shopPushKey(partnerId);
+    const subs = s.pushSubs.filter(x => x.userId === key);
+    if (!subs.length) return 0;
+    const day = istDay(); const c = shopDay.get(key); if (!c || c.day !== day) shopDay.set(key, { day, n: 0 });
+    const cur = shopDay.get(key)!; if (cur.n >= SHOP_DAILY) return 0; cur.n++;
+    pushLog.push({ userId: key, msg: { kind: 'deals', title, body }, endpoints: subs.length, at: nowIso() }); if (pushLog.length > 500) pushLog.shift();
+    const ok = await deliver(subs, { title, body }, { kind: 'deals', title, body, tag });
+    db.save();
+    return ok;
+  } catch (e) { console.error('[PUSH] shop send failed:', (e as Error).message); return 0; }
+}
+/** does this shop's phone hear us? (the broker sees ON / OFF and how many phones) */
+export function shopAlertInfo(partnerId: string): { phones: number; lastOkAt?: string } {
+  const subs = db.getState().pushSubs.filter(x => x.userId === shopPushKey(partnerId));
+  const ok = subs.map(x => x.lastOkAt || '').filter(Boolean).sort();
+  return { phones: subs.length, ...(ok.length ? { lastOkAt: ok[ok.length - 1] } : {}) };
+}
+export function dropShopPush(partnerId: string) { const s = db.getState(); const key = shopPushKey(partnerId); const n = s.pushSubs.length; s.pushSubs = s.pushSubs.filter(x => x.userId !== key); return n - s.pushSubs.length; }
+
 /** never throws, never blocks the request that caused it */
 export async function pushTo(userId: string, msg: PushMsg): Promise<number> {
   try {

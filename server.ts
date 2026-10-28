@@ -160,9 +160,9 @@ import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
 import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
-import { createHisaabRouter, createHisaabListRouter, leadShareEstimate } from './server/hisaab.js';
+import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
-import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator } from './server/shopPartners.js';
+import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, watchShares, sweepShopPartners } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
 import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
@@ -2763,6 +2763,14 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
 
 // v70 — the property owner confirms a visit in his client-room page (scan the buyer's QR / type the code): the very same step as the on-site check-in
 setLeadShareEstimator((l, dealId) => leadShareEstimate(l, dealId));
+// v82 — the shop partner's share follows the deal (final price + the owner's mandate + the broker's fee plan); whenever one of those moves the shop is told
+setLeadShareInfo((l, dealId) => leadShareInfo(l, dealId));
+const watchShop = (f: { dealId?: string; propertyId?: string } = {}) => {
+  try {
+    if (f.propertyId) { for (const d of db.getState().dealRooms.filter(x => x.propertyId === f.propertyId)) watchShares({ dealId: d.id }); }
+    else watchShares(f.dealId ? { dealId: f.dealId } : {});
+  } catch (e: any) { console.error('[SHOP] share watch failed:', e?.message || e); }
+};
 setVisitVerifier((visit, method, note) => { finishVisitVerification(visit, method, note, { id: 'SYSTEM', role: 'SUPERADMIN' } as any, method === 'QR' ? 'SITE_VISIT_QR_CHECKIN' : 'SITE_VISIT_CONFIRMED', `Site visit ${visit.id} confirmed by the property owner in his room (${method}). Anti-bypass evidence stamped for property ${visit.propertyId}.`); });
 app.post('/api/site-visits/:id/verify-otp', needs('sitevisit:verify'), rateLimit('otp', 30, 10 * 60_000), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
@@ -3069,6 +3077,7 @@ app.post('/api/owner-mandates/:id/accept', needs('mandate:broker_respond'), (req
   prop.updatedAt = now;
   state.dealRooms.filter(d => d.propertyId === prop.id).forEach(d => { d.ownerRemunerationConfirmed = true; });
   db.save();
+  watchShop({ propertyId: prop.id });
 
   db.appendAuditEvent(
     currentUser.id, currentUser.role, 'PROPERTY', mandate.id, 'OWNER_MANDATE_ACTIVATED',
@@ -4596,6 +4605,7 @@ app.post('/api/deals/:id/commission-agreements/propose', needs('agreement:propos
   if (allAlreadyAccepted) activateAgreement(state, deal, newAgreement, prevAgreement);
   state.commissionAgreements.push(newAgreement);
   db.save();
+  if (allAlreadyAccepted) watchShop({ dealId: deal.id });
 
   db.appendAuditEvent(currentUser.id, currentUser.role, 'COMMISSION', newAgreement.id,
     nextVersion === 1 ? 'COMMISSION_AGREEMENT_INITIALIZED' : 'COMMISSION_AGREEMENT_AMENDED',
@@ -5495,6 +5505,7 @@ app.post('/api/deals/:id/final-price', needs('deal:chat'), (req: Request, res: R
   const before = deal.dealValue;
   deal.dealValue = Math.round(price); deal.dealValueSource = 'MANUAL'; deal.dealValueBy = currentUser.id; deal.dealValueAt = new Date().toISOString(); deal.dealValueNote = note || undefined; deal.updatedAt = deal.dealValueAt;
   db.save();
+  watchShop({ dealId: deal.id });
   db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'FINAL_PRICE_SET', `Final price set to ₹${deal.dealValue.toLocaleString('en-IN')}${before ? ` (was ₹${before.toLocaleString('en-IN')})` : ''}${note ? ` — ${note}` : ''}`);
   const rs = `₹${deal.dealValue.toLocaleString('en-IN')}`;
   alert([deal.introducingBrokerId, deal.closingBrokerId, prop?.listingBrokerId, deal.ownerId], 'deals', `Final rate set · ${deal.id}`, `${currentUser.name}: ${rs}${note ? ` — ${note}` : ''}. Check it in the deal room; if it is not what was agreed, correct it there.`, `/?tab=deals&deal=${deal.id}`, {
@@ -5852,10 +5863,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepKycHolds(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); sweepHr(); sweepCalls(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepKycHolds(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); sweepHr(); sweepCalls(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks(); sweepShopPartners();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

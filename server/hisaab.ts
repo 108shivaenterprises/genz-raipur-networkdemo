@@ -22,7 +22,7 @@ import { ctx, needs, rateLimit } from './auth.js';
 import { isDealBroker } from './access.js';
 import { mandateShareAt } from '../src/shared/mandateShare.js';
 import { feeOf, isOwnSide } from '../src/shared/sideFees.js';
-import { linksFor } from './shopPartners.js';
+import { linksFor, watchShares } from './shopPartners.js';
 import { partnerAmount, sideOfKind } from '../src/shared/shopPartner.js';
 
 const st = () => db.getState();
@@ -78,16 +78,33 @@ function dueFor(d: DealRoom, uid: string, price: number): { amount: number; basi
 /** v72 — estimate of a shop partner's share on a deal (for his own page: from the Agreement stage). The deal price itself is never passed out. */
 export function leadShareEstimate(l: { brokerId: string; kind: any; terms: any; won?: { amount: number } }, dealId: string): number {
   if (l.won) return l.won.amount;
-  const d = db.byId('dealRooms', dealId) as DealRoom | undefined; if (!d) return 0;
+  return leadShareInfo(l, dealId)?.amount || 0;
+}
+/**
+ * v82 — the share AND where it came from. The shop's cut is taken ONLY from the brokerage on the side its lead belongs to:
+ *  · a buyer / tenant lead (BUY, RENT_IN) → the broker's fee from that buyer / tenant (his buyer-side fee plan);
+ *  · an owner lead (SELL, RENT_OUT) → the owner's mandate he signed with that owner.
+ * What the broker earns from the OTHER side of the same deal is none of the shop's business. `basis` MANUAL = he typed his figure in the हिसाब.
+ * When the deal has no per-side figure (own-side / split / typed), the broker's whole figure is used as before. A side with no figure gives brokerage 0
+ * (the app cannot work it out → the broker writes it and the shop is asked to confirm).
+ */
+export function leadShareInfo(l: { brokerId: string; kind: any; terms: any }, dealId: string): { amount: number; brokerage: number; basis: string } | null {
+  const d = db.byId('dealRooms', dealId) as DealRoom | undefined; if (!d) return null;
   const cut = sideOfKind(l.kind) === 'SALE' ? l.terms.sale : l.terms.rent;
-  return partnerAmount(cut, dueFor(d, l.brokerId, priceOf(d).price).amount);
+  const due = dueFor(d, l.brokerId, priceOf(d).price);
+  if (due.parts.some(p => p.key === 'MANDATE' || p.key === 'BUYER_FEE')) {
+    const ownerLead = l.kind === 'SELL' || l.kind === 'RENT_OUT';
+    const brokerage = due.parts.filter(p => p.key === (ownerLead ? 'MANDATE' : 'BUYER_FEE')).reduce((n, p) => n + p.amount, 0);
+    return { amount: partnerAmount(cut, brokerage), brokerage, basis: ownerLead ? 'MANDATE' : 'PLAN' };
+  }
+  return { amount: partnerAmount(cut, due.amount), brokerage: due.amount, basis: due.basis };
 }
 /** v72 — the shop-QR partner share on THIS deal. Only the broker who owns that lead ever gets it (the co-broker never learns where a lead came from). */
-function leadFeesFor(d: DealRoom, uid: string, myBrokerage: number) {
+function leadFeesFor(d: DealRoom, uid: string) {
   return st().partnerLeads.filter(l => l.brokerId === uid && l.status !== 'LOST' && linksFor(l).some(x => x.kind === 'DEAL' && x.id === d.id)).map(l => {
     const sh = st().shopPartners.find(p => p.id === l.partnerId);
     const cut = sideOfKind(l.kind) === 'SALE' ? l.terms.sale : l.terms.rent;
-    const amount = l.won ? l.won.amount : partnerAmount(cut, myBrokerage);
+    const amount = l.won ? l.won.amount : (leadShareInfo(l, d.id)?.amount || 0); // only the brokerage on this lead's own side
     return { leadId: l.id, shopName: sh?.shopName || '', amount, final: !!l.won, paid: !!l.payout && ['PAID', 'RECEIVED'].includes(l.payout.status) };
   });
 }
@@ -139,7 +156,7 @@ export function hisaabView(d: DealRoom, u: UserProfile) {
     const net = give - get; // + = I pay him, − = he pays me
     const left = net - (paidTo - gotFrom);
     const aapas = oid ? { otherName: other?.name || '', shareOut: myOut ? { ...myOut, amount: give } : null, shareIn: theirs ? { ...theirs, amount: get } : null, give, get, net, settled: paidTo - gotFrom, left, who: left > 0 ? 'I_PAY' : left < 0 ? 'HE_PAYS' : 'SQUARE' } : null;
-    const leadFees = leadFeesFor(d, u.id, due.amount);
+    const leadFees = leadFeesFor(d, u.id);
     const leadTotal = leadFees.filter(x => !x.paid).reduce((n, x) => n + x.amount, 0);
     const leadPaid = leadFees.filter(x => x.paid).reduce((n, x) => n + x.amount, 0);
     out.brokers = [...new Set([d.introducingBrokerId, d.closingBrokerId, prop?.listingBrokerId].filter(Boolean) as string[])].map(id => ({ id, name: st().users.find(x => x.id === id)?.name || id, me: id === u.id }));
@@ -236,6 +253,7 @@ export function createHisaabRouter() {
     if (mine.shareOut && !otherBrokerId(d, u.id)) return bad(res, 'There is no second broker on this deal to share with');
     d.updatedAt = nowIso(); db.save();
     db.appendAuditEvent(u.id, u.role, 'DEAL', d.id, 'FEE_PLAN_SET', 'A broker updated his own fee plan');
+    try { watchShares({ dealId: d.id, brokerId: u.id, reason: str(req.body?.note, 160) || 'Fee plan changed' }); } catch (e: any) { console.error('[SHOP] share watch failed:', e?.message || e); }
     res.json({ success: true, hisaab: hisaabView(d, u) });
   });
   r.put('/:id/hisaab/due', needs('deal:read'), (req, res) => {
@@ -244,7 +262,10 @@ export function createHisaabRouter() {
     const book = (d.brokerBook ||= {}); const mine = (book[u.id] ||= { entries: [] });
     if (raw === null || raw === '') mine.due = undefined;
     else { const n = Math.round(Number(raw)); if (!Number.isFinite(n) || n < 0 || n > MAX) return bad(res, 'Enter your brokerage amount in rupees'); mine.due = n; }
-    db.save(); res.json({ success: true, hisaab: hisaabView(d, u) });
+    db.save();
+    // v82 — a shop partner's lead on this deal: the share moved with it, so the shop is told (with the reason, if he gave one)
+    try { watchShares({ dealId: d.id, brokerId: u.id, reason: str(req.body?.note, 160) }); } catch (e: any) { console.error('[SHOP] share watch failed:', e?.message || e); }
+    res.json({ success: true, hisaab: hisaabView(d, u) });
   });
   return r;
 }
