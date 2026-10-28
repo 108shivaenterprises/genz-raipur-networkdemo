@@ -43,7 +43,7 @@ export function sideOf(u: UserProfile): Side | null {
   return null;
 }
 /** the projects that link a builder and a broker, and whether they may still talk */
-function linkOf(builderId: string, brokerId: string) {
+export function linkOf(builderId: string, brokerId: string) {
   const s = st();
   const projects = new Map(s.builderProjects.filter(p => p.builderId === builderId).map(p => [p.id, p]));
   const ms = s.associateMandates.filter(m => m.brokerId === brokerId && projects.has(m.projectId));

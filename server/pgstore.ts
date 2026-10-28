@@ -22,6 +22,7 @@ const NS = (() => { const n = (process.env.DATABASE_SCHEMA || '').trim(); if (n 
 const T_DOCS = NS ? `${NS}.genz_docs` : 'genz_docs';
 const T_META = NS ? `${NS}.genz_meta` : 'genz_meta';
 const T_FILES = NS ? `${NS}.genz_files` : 'genz_files';
+const T_SIG = NS ? `${NS}.genz_call_signals` : 'genz_call_signals';
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS ${T_DOCS} (
   collection  text        NOT NULL,
@@ -44,6 +45,15 @@ CREATE TABLE IF NOT EXISTS ${T_FILES} (
   deleted     boolean NOT NULL DEFAULT false,
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS ${T_SIG} (
+  id          bigserial PRIMARY KEY,
+  call_id     text    NOT NULL,
+  to_user     text    NOT NULL,
+  kind        text    NOT NULL,
+  data        text    NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS genz_call_signals_idx ON ${T_SIG} (call_id, to_user, id);
 `;
 const LOCK_KEY = 7_420_261_001; // arbitrary app-wide advisory lock id
 const META_PREFIX = '__meta__';
@@ -294,6 +304,21 @@ export class PgStore {
   async fileDel(path: string) {
     await this.pool.query(`UPDATE ${T_FILES} SET deleted=true, data=NULL, sha='-', updated_at=now() WHERE path=$1`, [path]);
   }
+
+  /**
+   * v81 — in-app call signals (the small "offer / answer / network path" notes two phones pass to find each other). They are in their own
+   * table, outside the document store, so a call's few hundred notes never move the database revision or make other copies reload.
+   */
+  async sigAdd(callId: string, to: string, kind: string, data: string): Promise<number> {
+    const { rows } = await this.pool.query(`INSERT INTO ${T_SIG}(call_id, to_user, kind, data) VALUES ($1,$2,$3,$4) RETURNING id`, [callId, to, kind, data]);
+    return Number(rows[0].id);
+  }
+  async sigList(callId: string, to: string, after: number): Promise<{ seq: number; kind: string; data: string }[]> {
+    const { rows } = await this.pool.query(`SELECT id, kind, data FROM ${T_SIG} WHERE call_id=$1 AND to_user=$2 AND id>$3 ORDER BY id LIMIT 200`, [callId, to, after]);
+    return rows.map(r => ({ seq: Number(r.id), kind: r.kind, data: r.data }));
+  }
+  async sigDrop(callId: string) { await this.pool.query(`DELETE FROM ${T_SIG} WHERE call_id=$1`, [callId]); }
+  async sigPrune(olderThanMin: number) { await this.pool.query(`DELETE FROM ${T_SIG} WHERE created_at < now() - ($1::int * interval '1 minute')`, [olderThanMin]); }
 
   async close() {
     await this.flush().catch(() => {});

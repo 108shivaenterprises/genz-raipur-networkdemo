@@ -674,6 +674,33 @@ export const api = {
   hrSaveSettings: (p: any) => request<any>('/api/hr/settings', { method: 'PUT', body: JSON.stringify(p) }),
   hrAttendance: (month?: string) => request<any>(`/api/hr/attendance${month ? `?month=${month}` : ''}`),
   hrDay: (date?: string) => request<any>(`/api/hr/attendance/day${date ? `?date=${date}` : ''}`),
+  // v81 — in-app voice calls
+  callConfig: () => request<{ success: boolean; iceServers: any[]; relay: boolean; canManage: boolean; settings: { enabled: boolean; record: 'OFF' | 'ASK' | 'ALWAYS' }; keepDays: number }>('/api/calls/config'),
+  callSettingsSet: (b: { enabled: boolean; record: 'OFF' | 'ASK' | 'ALWAYS' }) => request<any>('/api/calls/settings', { method: 'PUT', body: JSON.stringify(b) }),
+  callPeople: (context: string, id?: string) => request<{ success: boolean; people: Array<{ id: string; name: string; title: string }> }>(`/api/calls/people?context=${encodeURIComponent(context)}${id ? `&id=${encodeURIComponent(id)}` : ''}`),
+  callStart: (b: { toUserId: string; context: string; contextId?: string }) => request<{ success: boolean; call: any }>('/api/calls/start', { method: 'POST', body: JSON.stringify(b) }),
+  callRing: () => request<{ success: boolean; ring: any | null; active: any | null }>('/api/calls/ring'),
+  callLog: () => request<{ success: boolean; calls: any[]; keepDays: number }>('/api/calls/log'),
+  callAnswer: (id: string) => request<{ success: boolean; call: any }>(`/api/calls/${id}/answer`, { method: 'POST', body: '{}' }),
+  callDecline: (id: string) => request<any>(`/api/calls/${id}/decline`, { method: 'POST', body: '{}' }),
+  callCancel: (id: string) => request<any>(`/api/calls/${id}/cancel`, { method: 'POST', body: '{}' }),
+  callEnd: (id: string) => request<any>(`/api/calls/${id}/end`, { method: 'POST', body: '{}' }),
+  callSignal: (id: string, kind: string, data: string) => request<any>(`/api/calls/${id}/signal`, { method: 'POST', body: JSON.stringify({ kind, data }) }),
+  callSignals: (id: string, after: number) => request<{ success: boolean; call: any; signals: Array<{ seq: number; kind: string; data: string }> }>(`/api/calls/${id}/signals?after=${after}`),
+  callRecord: (id: string, action: 'ask' | 'allow' | 'deny' | 'stop') => request<{ success: boolean; call: any }>(`/api/calls/${id}/record`, { method: 'POST', body: JSON.stringify({ action }) }),
+  callRecordFinish: (id: string) => request<{ success: boolean; saved: boolean }>(`/api/calls/${id}/record/finish`, { method: 'POST', body: '{}' }),
+  /** one piece of the recording (raw audio bytes) */
+  callChunk: async (id: string, seq: number, blob: Blob) => {
+    const type = /^audio\/(webm|mp4|ogg)/i.test(blob.type) ? blob.type.split(';')[0] : 'audio/webm';
+    const res = await fetch(`/api/calls/${id}/chunk?seq=${seq}`, { method: 'POST', headers: { 'Content-Type': type }, body: blob, credentials: 'same-origin' });
+    if (!res.ok) { let m = ''; try { m = (await res.json()).error; } catch { /* no body */ } throw new ApiError(m || 'Could not save the recording piece', res.status); }
+  },
+  callAudio: async (id: string) => {
+    const res = await fetch(`/api/calls/${id}/audio`, { credentials: 'same-origin' });
+    if (!res.ok) { let m = ''; try { m = (await res.json()).error; } catch { /* no body */ } throw new ApiError(m || 'Recording not available', res.status); }
+    return URL.createObjectURL(await res.blob());
+  },
+  callAudioDelete: (id: string) => request<any>(`/api/calls/${id}/audio`, { method: 'DELETE' }),
   hrSelfie: (id: string) => request<{ success: boolean; selfie: string }>(`/api/hr/attendance/${id}/selfie`),
   hrMark: (p: { userId: string; date?: string; status: string; note?: string }) => request<any>('/api/hr/attendance/mark', { method: 'POST', body: JSON.stringify(p) }),
   hrLeaves: () => request<any>('/api/hr/leaves'),

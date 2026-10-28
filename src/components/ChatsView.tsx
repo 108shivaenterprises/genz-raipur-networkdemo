@@ -6,7 +6,7 @@
  */
 import { PropertyThumb } from './PropertyThumb.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Loader2, MessageSquare, Search } from 'lucide-react';
+import { ExternalLink, Loader2, MessageSquare, Phone, Search } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { ROOM_KINDS } from '../shared/clientRoomRules.js';
@@ -15,6 +15,9 @@ import { useDealChatKit } from './ChatPlus.js';
 import { RoomDetail } from './ClientRooms.js';
 import { goto } from '../lib/goto.js';
 import { PartnerChatPane } from './PartnerChat.js';
+import { CallMenu } from './calls/CallButton.js';
+import { CallsModal } from './calls/CallsPanel.js';
+import { useCalls } from './calls/CallHost.js';
 
 const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600' };
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
@@ -74,7 +77,7 @@ const DealChatPane: React.FC<{ row: Row; meId: string; perms: string[]; onBack: 
       onBack={onBack} testId="deal-chat"
       avatar={<PropertyThumb src={row.deal?.cover} type={row.deal?.propertyType} seed={row.title} className="h-10 w-10 rounded-xl" />}
       title={row.title} subtitle={row.sub}
-      actions={<button type="button" onClick={() => onOpenDeal()} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50" data-testid="chat-open-deal"><ExternalLink className="h-4 w-4" aria-hidden />{tx('Deal', 'डील')}</button>}
+      actions={<><CallMenu context="DEAL" contextId={row.id} compact /><button type="button" onClick={() => onOpenDeal()} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-50" data-testid="chat-open-deal"><ExternalLink className="h-4 w-4" aria-hidden />{tx('Deal', 'डील')}</button></>}
     >
       {msgs === null && !err ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div> : (
         <ChatThread
@@ -91,6 +94,7 @@ const DealChatPane: React.FC<{ row: Row; meId: string; perms: string[]; onBack: 
 
 export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ meId, permissions }) => {
   const tx = useTx();
+  const calls = useCalls(); const [showCalls, setShowCalls] = useState(false);
   const hi = useI18n().lang === 'hi';
   const canClients = permissions.includes('clientroom:use');
   const canDeals = permissions.includes('deal:chat');
@@ -212,9 +216,11 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     <div className="space-y-3" data-testid="chats-view">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xl font-bold text-slate-900">{tx('Chats', 'चैट')}</h2>
+        {calls && <button type="button" onClick={() => setShowCalls(true)} className="inline-flex min-h-10 items-center gap-1 rounded-full border border-slate-300 bg-white px-3 text-sm font-semibold" data-testid="chats-calls"><Phone className="h-4 w-4" />{tx('Calls', 'कॉल')}</button>}
         {canClients && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }))} className="inline-flex min-h-10 items-center rounded-full border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700" data-testid="chats-new-room">{tx('+ New client room', '+ नया क्लाइंट रूम')}</button>}
       </div>
 
+      {showCalls && <CallsModal onClose={() => setShowCalls(false)} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[24rem_1fr]">
         <div className={`${cur ? 'hidden lg:block' : ''}`}>
           {(rows.length > 6 || s) && (

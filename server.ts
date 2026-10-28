@@ -99,6 +99,7 @@ import { createMoneyTrailRouter } from './server/crm4.js';
 import { createPulseRouter, activityMiddleware, recordActivity } from './server/pulse.js';
 import { createTeamRouter, createTeamLimitsRouter } from './server/team.js';
 import { createHrRouter, sweepHr } from './server/hr.js';
+import { createCallsRouter, sweepCalls } from './server/calls.js';
 import { createInventoryRouter } from './server/inventory.js';
 import { createInventoryDeskRouter } from './server/inventory2.js';
 import { createLaunchRouter } from './server/launch.js';
@@ -200,7 +201,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(self), geolocation=(self), microphone=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), geolocation=(self), microphone=(self)');
   if (IS_PROD) {
     res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
     res.setHeader(
@@ -243,7 +244,9 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
       }
     }
     const hasBody = Number(req.headers['content-length'] || 0) > 0;
-    if (hasBody && !req.is('application/json')) {
+    // v81 — the one non-JSON body: a piece of a call recording (audio/webm, audio/mp4, audio/ogg), still behind the same Origin check and cookie
+    const audioPiece = req.method === 'POST' && /^\/calls\/[A-Za-z0-9_-]+\/chunk$/.test(req.path) && /^audio\/(webm|mp4|ogg)\b/i.test(String(req.headers['content-type'] || ''));
+    if (hasBody && !audioPiece && !req.is('application/json')) {
       return res.status(415).json({ error: 'Content-Type must be application/json' });
     }
   }
@@ -5621,6 +5624,8 @@ app.use('/api/connector', createConnectorRouter());
 app.use('/api/team', createTeamRouter());
 app.use('/api/admin/team-limits', createTeamLimitsRouter());
 app.use('/api/hr', createHrRouter());
+// v81 — in-app voice calls (signals, call log, consent-based recording)
+app.use('/api/calls', createCallsRouter());
 app.use('/api/inventory', createInventoryRouter());
 app.use('/api/invdesk', createInventoryDeskRouter());
 app.use('/api/launch', createLaunchRouter());
@@ -5847,10 +5852,10 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepKycHolds(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); sweepHr(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks();
+  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepKycHolds(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); sweepHr(); sweepCalls(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks();
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

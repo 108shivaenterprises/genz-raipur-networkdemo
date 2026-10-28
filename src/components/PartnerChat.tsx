@@ -9,6 +9,7 @@ import { Camera, ChevronRight, Contact, Home as HomeIcon, Loader2, ReceiptText, 
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
+import { CallButton } from './calls/CallButton.js';
 import { preparePhoto } from '../lib/photoFile.js';
 import { formatINR } from '../lib/utils.js';
 import { featureLabel, kindLabel } from '../shared/inventoryRules.js';
@@ -167,7 +168,8 @@ export const PartnerChatPane: React.FC<{ id: string; fallbackTitle: string; onBa
   return (
     <ChatShell onBack={onBack} testId="partner-chat"
       avatar={<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white" aria-hidden>{initials(title)}</span>}
-      title={title} subtitle={t?.projects?.length ? t.projects.join(' · ') : tx('Partner chat', 'पार्टनर चैट')}>
+      title={title} subtitle={t?.projects?.length ? t.projects.join(' · ') : tx('Partner chat', 'पार्टनर चैट')}
+      actions={t?.open && t?.withId ? <CallButton toUserId={t.withId} name={title} context="PARTNER" compact /> : undefined}>
       {!t && !err ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div> : (
         <ChatThread msgs={msgs} onSend={text => send({ text })} error={err} showWho={side === 'PARTNER'} quick={quick}
           menu={t?.open ? (close => <CardMenu id={id} side={side} onCard={c => { close(); void send({ card: c }); }} onPhoto={data => { close(); void send({ photo: data }); }} />) : undefined}

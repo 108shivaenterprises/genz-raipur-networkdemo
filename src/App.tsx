@@ -14,6 +14,7 @@ import {
 } from './types/index.js';
 import { api, setUnauthorizedHandler, type PropertyFacets } from './lib/api.js';
 import { hasPerm } from './lib/permissions.js';
+import { CallHost } from './components/calls/CallHost.js';
 import { useTx, useI18n } from './lib/i18n.js';
 import { LoginView, ChangePasswordView, PendingApprovalView } from './components/LoginView.js';
 import { PrivacyCenter, PrivacyQueue } from './components/PrivacyCenter.js';
@@ -381,6 +382,7 @@ export default function App() {
   }
 
   return (
+    <CallHost enabled={hasPerm(permissions, 'call:use') && !impersonatedBy}>
     <div className="min-h-screen flex flex-col bg-slate-50/70 text-slate-900">
       {/* Top Header Navbar */}
       {impersonatedBy && (
@@ -837,5 +839,6 @@ export default function App() {
       </Suspense>
       </TabErrorBoundary>
     </div>
+    </CallHost>
   );
 }

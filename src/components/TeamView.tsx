@@ -1,3 +1,5 @@
+import { CallButton } from './calls/CallButton.js';
+import { CallsPanel } from './calls/CallsPanel.js';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { TEAM_ROLES, teamRolesFor, teamMaxFor } from '../shared/crmSales.js';
@@ -141,7 +143,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
         {(['members', 'people', 'control', 'activity'] as const).filter(t => (t !== 'control' || canControl) && (t !== 'people' || hr)).map(t => <button key={t} onClick={() => setTab(t)} data-testid={`team-tab-${t}`} className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-semibold capitalize ${tab === t ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500'}`}>{t === 'members' ? tx('Members', 'सदस्य') : t === 'people' ? tx('Attendance & HR', 'हाज़िरी और HR') : t === 'control' ? (isBuilder ? tx('Lead control', 'लीड कंट्रोल') : tx('Access & leads', 'पहुँच और लीड')) : tx('Activity & incentives', 'गतिविधि और इंसेंटिव')}{t === 'people' && hrPending > 0 && <span className="rounded-full bg-red-600 px-1.5 text-[10px] text-white">{hrPending}</span>}</button>)}
       </div>
-      {tab === 'activity' && <ActivityTab />}
+      {tab === 'activity' && <><ActivityTab /><div className="mt-4"><CallsPanel /></div></>}
       {tab === 'people' && hr && <HrEmployer onChanged={onHr} />}
       {tab === 'control' && <TeamControl isBuilder={isBuilder} />}
       {tab === 'members' && (<>
@@ -191,6 +193,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
                 <td>{m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleDateString('en-IN') : '—'}</td>
                 <td><span className={m.status === 'VERIFIED' ? 'text-emerald-700' : 'text-red-600'}>{m.status === 'VERIFIED' ? tx('Active', 'चालू') : m.status}</span></td>
                 <td className="space-x-2 whitespace-nowrap pr-2.5 text-right">
+                  {m.status === 'VERIFIED' && <span className="inline-block align-middle"><CallButton toUserId={m.id} name={m.name} context="TEAM" compact className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-600 px-2 text-emerald-700" /></span>}
                   <button onClick={() => reset(m)} title={tx('New temporary password', 'नया अस्थायी पासवर्ड')} className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"><KeyRound className="h-3.5 w-3.5" /> {tx('Reset', 'रीसेट')}</button>
                   {m.status !== 'BLACKLISTED' && (
                     <button onClick={() => toggle(m)} className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900">

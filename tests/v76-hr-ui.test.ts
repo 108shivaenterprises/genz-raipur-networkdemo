@@ -24,7 +24,7 @@ describe('wiring', () => {
   it('the server mounts the router and runs the sweep at start and every hour', () => {
     const s = read('server.ts');
     expect(s).toContain("app.use('/api/hr', createHrRouter())");
-    expect(s).toMatch(/sweepHr\(\); ensureOwnerPlans/);
+    expect(s).toMatch(/sweepHr\(\); sweepCalls\(\); ensureOwnerPlans/);
     expect(s).toContain("['hr', sweepHr]");
   });
 });

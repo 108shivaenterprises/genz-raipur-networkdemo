@@ -439,6 +439,23 @@ export interface HrAsset {
   ackAt?: string; returnedOn?: string;
 }
 
+/** v81 — one in-app voice call. No phone numbers anywhere in it. */
+export interface CallRecord {
+  id: string;
+  context: 'TEAM' | 'DEAL' | 'PARTNER'; contextId?: string;
+  callerId: string; callerName: string; calleeId: string; calleeName: string;
+  /** the employer of each side when that person is a staff member (the employer may listen to the recording) */
+  callerEmployerId?: string; calleeEmployerId?: string;
+  status: 'RINGING' | 'ACTIVE' | 'ENDED' | 'MISSED' | 'DECLINED' | 'CANCELLED';
+  createdAt: string; answeredAt?: string; endedAt?: string; endedBy?: string;
+  /** recording: OFF / ASKED / ON / DENIED, who asked (and so records on his phone), how many times asked */
+  record: 'OFF' | 'ASKED' | 'ON' | 'DENIED'; recordMode: 'FORBIDDEN' | 'ASK' | 'ALWAYS'; recordBy?: string; recordAsks?: number; recordStartedAt?: string;
+  /** pieces received so far / the finished file */
+  recParts?: number[]; recBytes?: number; recMime?: string; recExt?: string; recFileAt?: string; recDeletedAt?: string;
+}
+/** v81 — an employer's call settings for his own staff */
+export interface CallSettings { id: string; employerId: string; enabled: boolean; record: 'OFF' | 'ASK' | 'ALWAYS'; updatedAt: string }
+
 export interface ShareLink {
   token: string;
   ownerId: string;
@@ -1665,6 +1682,8 @@ export interface DatabaseState {
   hrStatements: HrStatement[];
   hrClaims: HrClaim[];
   hrAssets: HrAsset[];
+  calls: CallRecord[];
+  callSettings: CallSettings[];
   shareLinks: ShareLink[];
   landRecords: LandRecord[];
   growthLeads: GrowthLead[];
@@ -2890,7 +2909,7 @@ function getInitialSeedData(): DatabaseState {
     inventoryPosts: [],
     docPosts: [],
     siteCheckins: [],
-    hrSettings: [], hrAttendance: [], hrLeaves: [], hrTargets: [], hrStatements: [], hrClaims: [], hrAssets: [],
+    hrSettings: [], hrAttendance: [], hrLeaves: [], hrTargets: [], hrStatements: [], hrClaims: [], hrAssets: [], calls: [], callSettings: [],
     shareLinks: [],
     landRecords: [],
     growthLeads: [],
@@ -3021,7 +3040,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.inventoryPosts ||= [];
   parsed.docPosts ||= [];
   parsed.siteCheckins ||= [];
-  parsed.hrSettings ||= []; parsed.hrAttendance ||= []; parsed.hrLeaves ||= []; parsed.hrTargets ||= []; parsed.hrStatements ||= []; parsed.hrClaims ||= []; parsed.hrAssets ||= [];
+  parsed.hrSettings ||= []; parsed.hrAttendance ||= []; parsed.hrLeaves ||= []; parsed.hrTargets ||= []; parsed.hrStatements ||= []; parsed.hrClaims ||= []; parsed.hrAssets ||= []; parsed.calls ||= []; parsed.callSettings ||= [];
   parsed.shareLinks ||= [];
   parsed.landRecords ||= [];
   parsed.growthLeads ||= [];

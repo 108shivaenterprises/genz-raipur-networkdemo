@@ -224,7 +224,7 @@ describe('a team member cannot delete his data and downloads a limited file', ()
   });
   it('his download holds his work profile and his own HR record — no customers, deals or audit trail', async () => {
     const x = await j(await call(jar.M_BRK, 'GET', '/api/privacy/export'));
-    expect(x.scope).toBe('LIMITED'); expect(Object.keys(x).sort()).toEqual(['exportedAt', 'hr', 'note', 'policyVersion', 'privacyRequests', 'profile', 'scope']);
+    expect(x.scope).toBe('LIMITED'); expect(Object.keys(x).sort()).toEqual(['calls', 'exportedAt', 'hr', 'note', 'policyVersion', 'privacyRequests', 'profile', 'scope']);
     expect(x.profile).toMatchObject({ id: 'USR-TEAM-003', name: expect.any(String), teamTitle: expect.any(String) });
     expect(JSON.stringify(x)).not.toMatch(/passwordHash|crmLeads|dealRooms|auditEventsByYou|sessionVersion|@phone\.genz\.local/);
   });

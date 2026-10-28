@@ -1,3 +1,6 @@
+import { CallMenu } from './calls/CallButton.js';
+import { CallsModal } from './calls/CallsPanel.js';
+import { useCalls } from './calls/CallHost.js';
 import React, { useEffect, useState } from 'react';
 import { useTx } from '../lib/i18n.js';
 import { Contact, Briefcase, Loader2, Phone, MessageCircle, PhoneCall, Building, MessagesSquare, Users } from 'lucide-react';
@@ -12,6 +15,7 @@ export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; o
   const tx = useTx();
   const [leads, setLeads] = useState<any[] | null>(null);
   const [checkin, setCheckin] = useState(false);
+  const calls = useCalls(); const [showCalls, setShowCalls] = useState(false);
   const er = currentUser.employerRole;
   const crmSide = !er || er === 'BROKER' || er === 'DEVELOPER_BUILDER';
   useEffect(() => { if (!crmSide) { setLeads([]); return; } api.crmLeads().then(r => setLeads(r.leads)).catch(() => setLeads([])); }, []);
@@ -35,6 +39,11 @@ export const TeamHome: React.FC<{ currentUser: UserProfile; deals: DealRoom[]; o
       {['BROKER', 'DEVELOPER_BUILDER', 'CONTRACTOR'].includes(er || '') && <MyDay />}
       <button onClick={() => setCheckin(true)} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white">{tx('📍 Site check-in (GPS + selfie)', '📍 साइट चेक-इन (GPS + सेल्फ़ी)')}</button>
       {checkin && <CheckinModal onClose={() => setCheckin(false)} />}
+      <div className="flex flex-wrap items-center gap-2" data-testid="team-call-row">
+        <CallMenu context="TEAM" />
+        {calls && <button type="button" onClick={() => setShowCalls(true)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold">{tx('My calls', 'मेरी कॉल')}</button>}
+      </div>
+      {showCalls && <CallsModal onClose={() => setShowCalls(false)} />}
       {!crmSide && (
         <button onClick={() => onNavigate(er === 'CONTRACTOR' ? 'construction' : 'connector')} className="block w-full rounded-xl border border-slate-200 bg-white p-4 text-left text-sm font-semibold hover:border-slate-400">
           {er === 'CONTRACTOR' ? tx('Open my assigned construction jobs →', 'मेरे सौंपे गए निर्माण कार्य खोलें →') : tx('Open the Connector Desk →', 'कनेक्टर डेस्क खोलें →')}
