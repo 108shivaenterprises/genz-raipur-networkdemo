@@ -34,7 +34,7 @@ const STATUS_COUNSELLOR: Record<string, [string, string, string]> = {
 };
 const Chip: React.FC<{ status: string; who?: 'broker' | 'counsellor' | 'admin' }> = ({ status, who }) => {
   const tx = useTx(); const s = (who === 'counsellor' && STATUS_COUNSELLOR[status]) || STATUS[status] || [status, status, 'bg-slate-100 text-slate-600'];
-  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${s[2]}`}>{tx(s[0], s[1])}</span>;
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s[2]}`}>{tx(s[0], s[1])}</span>;
 };
 
 function useToast() {
@@ -192,7 +192,7 @@ export const LegalHelpPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
               {!state && <option value="">{tx('Select the state', 'राज्य चुनिए')}</option>}
               {stateNames().map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <span className="mt-1 block text-[11px] font-normal text-slate-500">{ctx.stateFromProperty ? tx('Filled from this deal’s property. Change it only if the work happens in another state (e.g. registration).', 'इस डील की प्रॉपर्टी से भरा गया। सिर्फ़ तब बदलें जब काम दूसरे राज्य में होना हो (जैसे रजिस्ट्री)।') : tx('We could not read the state from the property — please select it.', 'प्रॉपर्टी से राज्य नहीं मिला — कृपया चुनिए।')}</span>
+            <span className="mt-1 block text-xs font-normal text-slate-500">{ctx.stateFromProperty ? tx('Filled from this deal’s property. Change it only if the work happens in another state (e.g. registration).', 'इस डील की प्रॉपर्टी से भरा गया। सिर्फ़ तब बदलें जब काम दूसरे राज्य में होना हो (जैसे रजिस्ट्री)।') : tx('We could not read the state from the property — please select it.', 'प्रॉपर्टी से राज्य नहीं मिला — कृपया चुनिए।')}</span>
           </label>
           {ctx.propertyType && <div className="text-xs text-slate-600"><div className="font-semibold text-slate-700">{tx('Property', 'प्रॉपर्टी')}</div><div className="mt-2">{ctx.propertyType}{ctx.city ? ` · ${ctx.city}` : ''}</div></div>}
         </div>
@@ -240,7 +240,7 @@ export const LegalHelpPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
 
         <label className="block text-xs font-semibold text-slate-700">{tx('Describe what you need', 'बताइए आपको क्या चाहिए')}
           <textarea className={`${inp} mt-1`} rows={4} maxLength={1200} value={desc} onChange={e => setDesc(e.target.value)} data-testid="legal-desc" />
-          <span className="text-[11px] font-normal text-slate-500">{desc.trim().length}/1200 · {tx('at least 15 characters. GENZ admins and the panel of this state can read this text.', 'कम से कम 15 अक्षर। GENZ एडमिन और इस राज्य का पैनल यह लिखा हुआ पढ़ सकते हैं।')}</span>
+          <span className="text-xs font-normal text-slate-500">{desc.trim().length}/1200 · {tx('at least 15 characters. GENZ admins and the panel of this state can read this text.', 'कम से कम 15 अक्षर। GENZ एडमिन और इस राज्य का पैनल यह लिखा हुआ पढ़ सकते हैं।')}</span>
         </label>
         <button type="button" className={dark} disabled={busy || !!gated || !type || !stateOk || desc.trim().length < 15} onClick={submit} data-testid="legal-submit">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{tx('Send to the legal panel', 'लीगल पैनल को भेजें')}
@@ -371,7 +371,7 @@ const LegalAdmin: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => 
           {a.counsellors.map((c: any) => (
             <div key={c.id} className={card} data-testid={`legal-counsellor-${c.id}`}>
               <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-sm font-bold">{c.name} <span className="font-normal text-slate-500">{c.company}</span></div>
-                <div className="flex gap-1.5 text-[11px]">{c.member && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">{tx('Member', 'सदस्य')}</span>}{c.removed && <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800">{tx('Removed', 'हटाया')}</span>}{c.feeOverdue && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">{tx('Fee overdue', 'फ़ीस बकाया')}</span>}</div></div>
+                <div className="flex gap-1.5 text-xs">{c.member && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">{tx('Member', 'सदस्य')}</span>}{c.removed && <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-800">{tx('Removed', 'हटाया')}</span>}{c.feeOverdue && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">{tx('Fee overdue', 'फ़ीस बकाया')}</span>}</div></div>
               <div className="mt-1 text-xs text-slate-600">{c.states.join(', ') || tx('No state set', 'कोई राज्य नहीं')} · {tx('strikes', 'स्ट्राइक')} {c.strikes} · {c.openCases} {tx('live', 'चालू')} · {c.doneCases} {tx('done', 'पूरे')}</div>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <input className={`${inp} max-w-xs`} placeholder={tx('Reason (5+ characters)', 'कारण (5+ अक्षर)')} value={reason} onChange={e => setReason(e.target.value)} />

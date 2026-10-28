@@ -37,7 +37,7 @@ export const DealStatusPanel: React.FC<{ deal: DealRoom; me: UserProfile; verifi
         <div className="rounded-xl border border-slate-300 bg-slate-100 p-3 text-xs text-slate-800" data-testid="deal-closed">
           <p className="flex items-center gap-1.5 text-sm font-bold"><XCircle className="h-4 w-4 text-slate-600" />{tx('Deal room closed — the deal did not happen', 'डील रूम बंद — डील नहीं हुई')}</p>
           <p className="mt-0.5">{reasonText(c.reason, hi)}{c.note ? ` — “${c.note}”` : ''} · {tx('asked by', 'कहा')} {c.byName} · {day(c.closedAt)} · {c.how === 'NO_REPLY' ? tx(`no reply in ${CLOSE_AUTO_DAYS} days`, `${CLOSE_AUTO_DAYS} दिन में जवाब नहीं`) : c.how === 'ONE_BROKER' ? tx('one-broker deal', 'एक ब्रोकर की डील') : tx('both agreed', 'दोनों सहमत')}</p>
-          <p className="mt-0.5 text-[11px] text-slate-600">{tx('Buyer protection, the owner’s mandate and the anti-bypass rules still run on their own dates.', 'खरीदार सुरक्षा, मालिक का मैंडेट और एंटी-बायपास नियम अपनी तारीख़ों तक चालू रहते हैं।')}</p>
+          <p className="mt-0.5 text-xs text-slate-600">{tx('Buyer protection, the owner’s mandate and the anti-bypass rules still run on their own dates.', 'खरीदार सुरक्षा, मालिक का मैंडेट और एंटी-बायपास नियम अपनी तारीख़ों तक चालू रहते हैं।')}</p>
           {isBroker && mode !== 'reopen' && <button className={`${btn} mt-2 border border-slate-400 bg-white text-slate-800`} onClick={() => setMode('reopen')} data-testid="deal-reopen"><RotateCcw className="h-3.5 w-3.5" />{tx('Reopen', 'दोबारा खोलें')}</button>}
           {mode === 'reopen' && (
             <div className="mt-2 space-y-1.5">
@@ -79,10 +79,10 @@ export const DealStatusPanel: React.FC<{ deal: DealRoom; me: UserProfile; verifi
       {ov && (
         <div className={`rounded-xl border p-3 text-xs ${ov.confirmedAt ? 'border-slate-300 bg-white text-slate-700' : 'border-sky-300 bg-sky-50 text-sky-950'}`} data-testid="offline-visit">
           <p className="flex items-center gap-1.5 font-bold"><CalendarCheck className="h-4 w-4" />{tx('Visit outside the app', 'ऐप के बाहर हुई विज़िट')}: {day(ov.visitedOn)} · {ov.byName}
-            {ov.confirmedAt && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">{tx('Confirmed by both — NOT verified', 'दोनों ने माना — वेरिफ़ाइड नहीं')}</span>}</p>
+            {ov.confirmedAt && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">{tx('Confirmed by both — NOT verified', 'दोनों ने माना — वेरिफ़ाइड नहीं')}</span>}</p>
           <p className="mt-0.5">“{ov.note}”</p>
           {ov.confirmedAt
-            ? <p className="mt-0.5 text-[11px] text-slate-500">{tx(`Confirmed by ${ov.confirmedByName}. No OTP / QR, so it gives no buyer protection.`, `${ov.confirmedByName} ने पुष्टि की। OTP / QR नहीं हुआ, इसलिए इससे खरीदार सुरक्षा नहीं मिलती।`)}</p>
+            ? <p className="mt-0.5 text-xs text-slate-500">{tx(`Confirmed by ${ov.confirmedByName}. No OTP / QR, so it gives no buyer protection.`, `${ov.confirmedByName} ने पुष्टि की। OTP / QR नहीं हुआ, इसलिए इससे खरीदार सुरक्षा नहीं मिलती।`)}</p>
             : ov.byId === me.id
               ? <div className="mt-1 flex items-center gap-2"><span>{tx('Waiting for the other side to confirm.', 'दूसरी तरफ़ की पुष्टि बाकी।')}</span><button className={`${btn} border border-sky-400 bg-white`} disabled={busy} onClick={() => run(() => api.offlineVisitAct(deal.id, 'withdraw'))}>{tx('Take back', 'वापस लें')}</button></div>
               : iConfirmVisit && (mode !== 'decline'

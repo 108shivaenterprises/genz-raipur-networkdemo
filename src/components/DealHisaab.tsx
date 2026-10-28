@@ -3,7 +3,7 @@
  * his PRIVATE brokerage book (due / received / paid out / in hand). GENZ holds none of this money — it is only a record.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Check } from 'lucide-react';
+import { Loader2, Plus, Check, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -16,7 +16,7 @@ const MODE: Record<string, [string, string]> = { UPI: ['UPI', 'UPI'], BANK: ['Ba
 const PARTY: Record<string, [string, string]> = { OWNER: ['Owner', 'मालिक'], BUYER: ['Buyer', 'ख़रीदार'], BROKER: ['Other broker', 'दूसरा ब्रोकर'], OTHER: ['Other', 'अन्य'] };
 
 const Tile: React.FC<{ label: string; value: number; tone?: string; id?: string }> = ({ label, value, tone = 'text-slate-900', id }) => (
-  <div className="rounded-lg bg-slate-50 p-2.5 text-center" data-testid={id}><div className={`text-base font-extrabold ${tone}`}>{formatINR(value)}</div><div className="text-[10px] font-medium text-slate-500">{label}</div></div>
+  <div className="rounded-lg bg-slate-50 p-2.5 text-center" data-testid={id}><div className={`text-base font-extrabold ${tone}`}>{formatINR(value)}</div><div className="text-xs font-medium text-slate-500">{label}</div></div>
 );
 
 
@@ -34,30 +34,58 @@ const CutEditor: React.FC<{ title: string; hint: string; value: any; price: numb
         <input className={inp} inputMode="decimal" placeholder={mode === 'PCT' ? '1' : '40000'} value={v} onChange={e => setV(e.target.value.replace(/[^\d.]/g, ''))} data-testid={`${id}-value`} />
         <button type="button" disabled={busy || !v} className="min-h-11 shrink-0 rounded-lg bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-50" data-testid={`${id}-save`} onClick={() => onSave({ mode, value: n })}>{tx('Save', 'सेव')}</button>
       </div>
-      <div className="text-[11px] text-slate-600">{amt > 0 ? <b data-testid={`${id}-amt`}>{mode === 'PCT' ? `${n}% × ${formatINR(price)} = ${formatINR(amt)}` : formatINR(amt)}</b> : hint}{value && <button type="button" disabled={busy} className="ml-2 font-semibold underline" onClick={() => onSave(null)}>{tx('Remove', 'हटाएँ')}</button>}</div>
+      <div className="text-xs text-slate-600">{amt > 0 ? <b data-testid={`${id}-amt`}>{mode === 'PCT' ? `${n}% × ${formatINR(price)} = ${formatINR(amt)}` : formatINR(amt)}</b> : hint}{value && <button type="button" disabled={busy} className="ml-2 font-semibold underline" onClick={() => onSave(null)}>{tx('Remove', 'हटाएँ')}</button>}</div>
     </div>
   );
 };
 
-export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ dealId }) => {
+export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: boolean; extra?: React.ReactNode; refreshKey?: string | number }> = ({ dealId, fold, extra, refreshKey }) => {
   const tx = useTx(); const hi = tx('en', 'hi') === 'hi';
   const [h, setH] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<'' | 'pay' | 'book'>('');
   const [pf, setPf] = useState({ kind: 'PART', amount: '', mode: 'UPI', ref: '', paidOn: today(), note: '', toBrokerId: '' });
   const [bf, setBf] = useState({ dir: 'IN', party: 'OWNER', amount: '', mode: 'UPI', ref: '', paidOn: today(), note: '' });
   const [dueEdit, setDueEdit] = useState<string | null>(null);
-  const load = useCallback(() => api.hisaab(dealId).then(x => { setH(x.hisaab); setErr(''); }).catch(e => setErr(e.message)), [dealId]);
+  const load = useCallback(() => api.hisaab(dealId).then(x => { setH(x.hisaab); setErr(''); }).catch(e => setErr(e.message)), [dealId, refreshKey]);   // v83 — refreshKey: the numbers in the folded header follow the final rate / deal changes made elsewhere on the screen
   useEffect(() => { void load(); }, [load]);
   const run = async (fn: () => Promise<any>, after?: () => void) => { setBusy(true); setErr(''); try { const x = await fn(); if (x?.hisaab) setH(x.hisaab); after?.(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
-  if (!h) return err ? <p className="text-xs text-red-700" role="alert">{err}</p> : <Loader2 className="h-4 w-4 animate-spin" />;
+  const [folded, setFolded] = useState(true);
+  // v83 — in the deal room the हिसाब is ONE folded block. Its header always shows the key numbers (and anything that waits for me); the body stays MOUNTED (only hidden),
+  // so it keeps loading and refreshing by itself exactly as before. On a big screen it is simply open.
+  const sum = (() => {
+    if (!h) return null;
+    const a = h.sauda, bk = h.brokerage, ob = h.ownerBrokerage;
+    const toAck = (a.entries || []).filter((e: any) => !e.void && !e.auto && !e.ack && h.canAck && e.byId !== h.me).length;
+    return { a, bk, ob, toAck };
+  })();
+  const shell = (inner: React.ReactNode) => (
+    <section className="rounded-xl border border-slate-200 bg-white" data-testid="hisaab-fold">
+      <button type="button" onClick={() => setFolded(f => !f)} aria-expanded={!folded} data-testid="hisaab-fold-toggle" className="flex w-full items-center gap-3 p-4 text-left lg:pointer-events-none">
+        <span className="min-w-0 flex-1 space-y-1">
+          <span className="block text-sm font-bold text-slate-900">💰 {tx('Money (हिसाब)', 'पैसा (हिसाब)')}</span>
+          {sum && (
+            <span className="block space-y-0.5 text-xs text-slate-600" data-testid="hisaab-fold-summary">
+              <span className="block">{tx('Deal', 'सौदा')} <b className="text-slate-900">{formatINR(sum.a.price)}</b> · {tx('received', 'मिला')} <b className="text-emerald-700">{formatINR(sum.a.received)}</b> · {tx('left', 'बाक़ी')} <b className={sum.a.balance > 0 ? 'text-amber-700' : 'text-emerald-700'}>{formatINR(sum.a.balance)}</b></span>
+              {sum.bk && <span className="block">{tx('My brokerage', 'मेरा ब्रोकरेज')} <b className="text-slate-900">{formatINR(sum.bk.due)}</b> · {tx('got', 'मिला')} <b className="text-emerald-700">{formatINR(sum.bk.received)}</b> · {tx('left', 'बाक़ी')} <b className={sum.bk.left > 0 ? 'text-amber-700' : 'text-emerald-700'}>{formatINR(sum.bk.left)}</b></span>}
+              {sum.ob && <span className="block">{tx('Brokerage to pay', 'ब्रोकरेज देना है')} <b className="text-slate-900">{formatINR(sum.ob.due)}</b> · {tx('paid', 'दिया')} <b className="text-emerald-700">{formatINR(sum.ob.paid)}</b></span>}
+              {sum.toAck > 0 && <span className="block font-semibold text-amber-700" data-testid="hisaab-fold-ack">⏳ {tx(`${sum.toAck} payment${sum.toAck > 1 ? 's' : ''} wait for your “confirm”`, `${sum.toAck} भुगतान आपकी पुष्टि का इंतज़ार कर रहे हैं`)}</span>}
+            </span>
+          )}
+        </span>
+        <ChevronDown className={`h-5 w-5 shrink-0 text-slate-500 transition-transform lg:hidden ${folded ? '' : 'rotate-180'}`} aria-hidden />
+      </button>
+      <div className={`space-y-4 px-4 pb-4 ${folded ? 'hidden lg:block' : ''}`}>{extra}{inner}</div>
+    </section>
+  );
+  if (!h) { const wait = err ? <p className="text-xs text-red-700" role="alert">{err}</p> : <Loader2 className="h-4 w-4 animate-spin" />; return fold ? shell(wait) : wait; }
   const s = h.sauda; const b = h.brokerage;
   const pct = s.price > 0 ? Math.min(100, Math.round((s.received / s.price) * 100)) : 0;
   const label = (m: Record<string, [string, string]>, k: string) => (m[k] ? tx(m[k][0], m[k][1]) : k);
-  return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="hisaab">
+  const sec = (
+    <section className={fold ? 'space-y-3' : 'space-y-3 rounded-xl border border-slate-200 bg-white p-4'} data-testid="hisaab">
       <div>
-        <h3 className="text-sm font-bold text-slate-900">💰 {tx('Accounts (हिसाब)', 'हिसाब')}</h3>
-        <p className="text-[11px] text-slate-500">{tx('Only a record — GENZ never holds or moves this money. Pay directly (UPI / bank / cash / cheque).', 'सिर्फ़ रिकॉर्ड — यह पैसा GENZ के पास कभी नहीं आता। सीधे दें (UPI / बैंक / नक़द / चेक)।')}</p>
+        {!fold && <h3 className="text-sm font-bold text-slate-900">💰 {tx('Accounts (हिसाब)', 'हिसाब')}</h3>}
+        <p className="text-xs text-slate-500">{tx('Only a record — GENZ never holds or moves this money. Pay directly (UPI / bank / cash / cheque).', 'सिर्फ़ रिकॉर्ड — यह पैसा GENZ के पास कभी नहीं आता। सीधे दें (UPI / बैंक / नक़द / चेक)।')}</p>
       </div>
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
 
@@ -69,17 +97,17 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
           <Tile id="hisaab-balance" label={tx('Left', 'बाक़ी')} value={s.balance} tone={s.balance > 0 ? 'text-amber-700' : 'text-emerald-700'} />
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} /></div>
-        {s.priceSource === 'ASKING' && <p className="text-[11px] text-amber-700">{tx('The final price is not set yet — figures use the asking price. Write it in the “Final rate” card above.', 'अंतिम कीमत तय नहीं है — हिसाब माँगी गई कीमत से है। ऊपर “फ़ाइनल रेट” कार्ड में लिखें।')}</p>}
-        {s.over > 0 && <p className="text-[11px] font-semibold text-red-700">{tx('More than the price is recorded — check the entries.', 'कीमत से ज़्यादा दर्ज है — एंट्री जाँचें।')} (+{formatINR(s.over)})</p>}
-        {s.directHidden && <p className="text-[11px] text-amber-700" data-testid="hisaab-direct-hidden">{tx('Part of the price went straight to a broker — its amount is not shown to you, so “Left” may look higher.', 'कीमत का एक हिस्सा सीधे एक ब्रोकर को गया — उसकी रकम आपको नहीं दिखती, इसलिए “बाक़ी” ज़्यादा दिख सकता है।')}</p>}
+        {s.priceSource === 'ASKING' && <p className="text-xs text-amber-700">{tx('The final price is not set yet — figures use the asking price. Write it in the “Final rate” card above.', 'अंतिम कीमत तय नहीं है — हिसाब माँगी गई कीमत से है। ऊपर “फ़ाइनल रेट” कार्ड में लिखें।')}</p>}
+        {s.over > 0 && <p className="text-xs font-semibold text-red-700">{tx('More than the price is recorded — check the entries.', 'कीमत से ज़्यादा दर्ज है — एंट्री जाँचें।')} (+{formatINR(s.over)})</p>}
+        {s.directHidden && <p className="text-xs text-amber-700" data-testid="hisaab-direct-hidden">{tx('Part of the price went straight to a broker — its amount is not shown to you, so “Left” may look higher.', 'कीमत का एक हिस्सा सीधे एक ब्रोकर को गया — उसकी रकम आपको नहीं दिखती, इसलिए “बाक़ी” ज़्यादा दिख सकता है।')}</p>}
         {s.entries.length === 0 && <p className="text-xs text-slate-500">{tx('No payment written yet.', 'अभी कोई भुगतान दर्ज नहीं।')}</p>}
         {s.entries.map((e: any) => (
           <div key={e.id} className={`rounded-lg border p-2 text-xs ${e.void ? 'border-slate-200 bg-slate-50 text-slate-400 line-through' : 'border-slate-200'}`} data-testid={`hisaab-entry-${e.id}`}>
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold">{label(KIND, e.kind)}{e.auto ? ` · ${tx('from the offer', 'ऑफ़र से')}` : ''}</span>
-              {e.masked ? <span className="text-[11px] text-slate-500">{tx('amount not shown', 'रकम नहीं दिखती')}</span> : <span className={`font-extrabold ${e.kind === 'REFUND' ? 'text-red-700' : 'text-emerald-700'}`}>{e.kind === 'REFUND' ? '−' : ''}{formatINR(e.amount)}</span>}
+              {e.masked ? <span className="text-xs text-slate-500">{tx('amount not shown', 'रकम नहीं दिखती')}</span> : <span className={`font-extrabold ${e.kind === 'REFUND' ? 'text-red-700' : 'text-emerald-700'}`}>{e.kind === 'REFUND' ? '−' : ''}{formatINR(e.amount)}</span>}
             </div>
-            <div className="text-[11px] text-slate-500">{e.paidOn}{e.mode ? ` · ${label(MODE, e.mode)}` : ''}{e.ref ? ` · ${e.ref}` : ''}{e.note && !e.auto ? ` · ${e.note}` : ''}{!e.auto && e.byName ? ` · ${e.byName}` : ''}</div>
+            <div className="text-xs text-slate-500">{e.paidOn}{e.mode ? ` · ${label(MODE, e.mode)}` : ''}{e.ref ? ` · ${e.ref}` : ''}{e.note && !e.auto ? ` · ${e.note}` : ''}{!e.auto && e.byName ? ` · ${e.byName}` : ''}</div>
             {!e.void && !e.auto && (
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 {e.ack ? <span className="font-semibold text-emerald-700">✔ {tx('Confirmed by', 'माना')} {e.ack.byName}</span> : <span className="text-amber-700">⏳ {tx('Not confirmed yet', 'पुष्टि बाक़ी')}</span>}
@@ -87,7 +115,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
                 {!e.ack && h.canRecord && e.byId === h.me && <button type="button" disabled={busy} className="min-h-9 rounded-lg border border-slate-300 px-3" onClick={() => { const r = window.prompt(tx('Why cancel this entry?', 'यह एंट्री क्यों रद्द कर रहे हैं?')); if (r) void run(() => api.hisaabVoid(dealId, e.id, r)); }}>{tx('Cancel', 'रद्द')}</button>}
               </div>
             )}
-            {e.void && <div className="text-[11px]">{tx('Cancelled', 'रद्द')}: {e.void.reason}</div>}
+            {e.void && <div className="text-xs">{tx('Cancelled', 'रद्द')}: {e.void.reason}</div>}
           </div>
         ))}
         {h.canRecord && (open === 'pay' ? (
@@ -123,11 +151,11 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
             <Tile id="hisaab-left" label={tx('Left', 'बाक़ी')} value={b.left} tone={b.left > 0 ? 'text-amber-700' : 'text-emerald-700'} />
           </div>
           <div className="grid grid-cols-2 gap-2"><Tile label={tx('Paid out (co-broker etc.)', 'आगे दिया (दूसरा ब्रोकर आदि)')} value={b.paidOut} tone="text-red-700" /><Tile id="hisaab-hand" label={tx('In my hand', 'मेरे हाथ में बचा')} value={b.inHand} tone="text-indigo-700" /></div>
-          <p className="text-[11px] text-slate-500">{b.dueBasis === 'PLAN' || b.dueBasis === 'MANDATE_PLAN' ? tx('Due follows the % you wrote on the final price.', 'यह रकम आपके लिखे % से अंतिम कीमत पर बनी है।') : b.dueBasis === 'MANDATE' ? tx('Due is from the owner’s mandate at this price.', 'यह रकम इस कीमत पर मालिक के मंडेट से है।') : b.dueBasis === 'OWN_SIDE' ? tx('Due is your own-side fee.', 'यह आपकी अपनी-साइड फ़ीस है।') : b.dueBasis === 'SPLIT' ? tx('Due is your share of the expected brokerage.', 'यह अपेक्षित ब्रोकरेज में आपका हिस्सा है।') : b.dueBasis === 'MANUAL' ? tx('Due is the amount you typed.', 'यह आपकी लिखी रकम है।') : tx('Brokerage amount not known — type it.', 'ब्रोकरेज की रकम पता नहीं — लिखें।')}{' '}
+          <p className="text-xs text-slate-500">{b.dueBasis === 'PLAN' || b.dueBasis === 'MANDATE_PLAN' ? tx('Due follows the % you wrote on the final price.', 'यह रकम आपके लिखे % से अंतिम कीमत पर बनी है।') : b.dueBasis === 'MANDATE' ? tx('Due is from the owner’s mandate at this price.', 'यह रकम इस कीमत पर मालिक के मंडेट से है।') : b.dueBasis === 'OWN_SIDE' ? tx('Due is your own-side fee.', 'यह आपकी अपनी-साइड फ़ीस है।') : b.dueBasis === 'SPLIT' ? tx('Due is your share of the expected brokerage.', 'यह अपेक्षित ब्रोकरेज में आपका हिस्सा है।') : b.dueBasis === 'MANUAL' ? tx('Due is the amount you typed.', 'यह आपकी लिखी रकम है।') : tx('Brokerage amount not known — type it.', 'ब्रोकरेज की रकम पता नहीं — लिखें।')}{' '}
             {dueEdit === null ? <button type="button" className="font-semibold underline" onClick={() => setDueEdit(String(b.due || ''))}>{tx('Change', 'बदलें')}</button> : null}</p>
           {dueEdit !== null && <div className="flex gap-2"><input className={inp} inputMode="numeric" value={dueEdit} onChange={e => setDueEdit(e.target.value.replace(/\D/g, ''))} data-testid="hisaab-due-input" /><button type="button" className={btn} onClick={() => run(() => api.hisaabDue(dealId, dueEdit === '' ? null : Number(dueEdit)), () => setDueEdit(null))}>{tx('Save', 'सेव')}</button></div>}
           <CutEditor id="hisaab-plan-buyer" title={tx('My fee from the buyer (% of the FINAL price)', 'ख़रीदार से मेरी फ़ीस (अंतिम कीमत का %)')} hint={tx('e.g. 1 → follows the final price by itself', 'जैसे 1 → अंतिम कीमत के साथ अपने आप बदलेगी')} value={h.plan?.buyerSide} price={s.price} busy={busy} onSave={c => run(() => api.hisaabPlan(dealId, { buyerSide: c }))} />
-          {b.dueParts?.length > 1 && <p className="text-[11px] text-slate-500">{b.dueParts.map((x: any) => `${x.key === 'MANDATE' ? tx('owner side', 'मालिक की तरफ़') : tx('buyer side', 'ख़रीदार की तरफ़')} ${formatINR(x.amount)}`).join(' + ')}</p>}
+          {b.dueParts?.length > 1 && <p className="text-xs text-slate-500">{b.dueParts.map((x: any) => `${x.key === 'MANDATE' ? tx('owner side', 'मालिक की तरफ़') : tx('buyer side', 'ख़रीदार की तरफ़')} ${formatINR(x.amount)}`).join(' + ')}</p>}
           {h.brokers?.length > 1 && (
             <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50/50 p-2.5" data-testid="hisaab-aapas">
               <div className="text-xs font-bold text-indigo-900">🤝 {tx('Between the two brokers (आपस का हिसाब)', 'आपस का हिसाब (दोनों ब्रोकर)')}</div>
@@ -137,7 +165,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
                 <div className="rounded-lg bg-white p-2 text-xs" data-testid="hisaab-net">
                   <div>{tx('I give', 'मैं देता हूँ')} {formatINR(b.aapas.give)} · {tx('I get', 'मुझे मिलेगा')} {formatINR(b.aapas.get)}</div>
                   <div className="mt-0.5 font-bold" data-testid="hisaab-net-line">{b.aapas.who === 'SQUARE' ? tx('✔ Squared — nothing to pay either way', '✔ बराबर — किसी को कुछ देना नहीं') : b.aapas.who === 'I_PAY' ? `${tx('I pay him only the difference', 'मैं उसे सिर्फ़ फ़र्क़ दूँगा')}: ${formatINR(b.aapas.left)}` : `${tx('He pays me only the difference', 'वह मुझे सिर्फ़ फ़र्क़ देगा')}: ${formatINR(-b.aapas.left)}`}</div>
-                  <p className="text-[11px] text-slate-500">{tx('When money moves between you, write it below as “Other broker”.', 'आपस में पैसा चले तो नीचे “दूसरा ब्रोकर” चुनकर लिखें।')}</p>
+                  <p className="text-xs text-slate-500">{tx('When money moves between you, write it below as “Other broker”.', 'आपस में पैसा चले तो नीचे “दूसरा ब्रोकर” चुनकर लिखें।')}</p>
                 </div>
               )}
             </div>
@@ -146,16 +174,16 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs" data-testid="hisaab-leadfee">
               <div className="font-bold text-amber-900">📍 {tx('Lead source fee (only you see this)', 'लीड-सोर्स फ़ीस (सिर्फ़ आपको दिखती है)')}</div>
               {b.leadFees.map((x: any) => <div key={x.leadId} className="mt-1 flex justify-between gap-2"><span>{x.shopName || tx('QR partner', 'QR पार्टनर')} · {x.final ? tx('final', 'तय') : tx('estimate', 'अनुमान')}{x.paid ? ` · ${tx('paid', 'दिया')}` : ''}</span><b>−{formatINR(x.amount)}</b></div>)}
-              <p className="mt-1 text-[11px] text-slate-600">{tx('You pay this from your own share.', 'यह आप अपने हिस्से से देंगे।')}</p>
+              <p className="mt-1 text-xs text-slate-600">{tx('You pay this from your own share.', 'यह आप अपने हिस्से से देंगे।')}</p>
             </div>
           )}
           <Tile id="hisaab-net-estimate" label={tx('Expected in my hand after all (estimate)', 'सब निपटने पर मेरे हाथ में (अनुमान)')} value={b.netEstimate} tone="text-indigo-700" />
           {b.entries.map((e: any) => (
             <div key={e.id} className={`rounded-lg border p-2 text-xs ${e.void ? 'border-slate-200 text-slate-400 line-through' : 'border-slate-200'}`} data-testid={`hisaab-book-${e.id}`}>
               <div className="flex justify-between gap-2"><span className="font-semibold">{e.dir === 'IN' ? tx('Received from', 'मिला —') : tx('Paid to', 'दिया —')} {label(PARTY, e.party)}{e.auto ? ` · ${String(e.id).startsWith('direct:') ? tx('directly', 'सीधे') : tx('bill', 'बिल')}` : ''}</span><span className={`font-extrabold ${e.dir === 'IN' ? 'text-emerald-700' : 'text-red-700'}`}>{e.dir === 'IN' ? '+' : '−'}{formatINR(e.amount)}</span></div>
-              <div className="text-[11px] text-slate-500">{e.paidOn}{e.mode ? ` · ${label(MODE, e.mode)}` : ''}{e.ref ? ` · ${e.ref}` : ''}{e.note ? ` · ${e.note}` : ''}</div>
+              <div className="text-xs text-slate-500">{e.paidOn}{e.mode ? ` · ${label(MODE, e.mode)}` : ''}{e.ref ? ` · ${e.ref}` : ''}{e.note ? ` · ${e.note}` : ''}</div>
               {!e.void && !e.auto && <button type="button" disabled={busy} className="mt-1 min-h-9 rounded-lg border border-slate-300 px-3" onClick={() => { const r = window.prompt(tx('Why cancel this entry?', 'यह एंट्री क्यों रद्द कर रहे हैं?')); if (r) void run(() => api.hisaabBookVoid(dealId, e.id, r)); }}>{tx('Cancel', 'रद्द')}</button>}
-              {e.void && <div className="text-[11px]">{tx('Cancelled', 'रद्द')}: {e.void.reason}</div>}
+              {e.void && <div className="text-xs">{tx('Cancelled', 'रद्द')}: {e.void.reason}</div>}
             </div>
           ))}
           {open === 'book' ? (
@@ -168,7 +196,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
                 <input className={inp} type="date" max={today()} value={bf.paidOn} onChange={e => setBf({ ...bf, paidOn: e.target.value })} />
                 <input className={inp} placeholder={tx('UTR / ref', 'UTR / रेफ़')} value={bf.ref} onChange={e => setBf({ ...bf, ref: e.target.value })} />
               </div>
-              <p className="text-[11px] text-slate-500">{tx('A brokerage bill marked paid is counted by itself — do not write it again.', 'ब्रोकरेज बिल “मिल गया” होने पर अपने आप गिना जाता है — दोबारा न लिखें।')}</p>
+              <p className="text-xs text-slate-500">{tx('A brokerage bill marked paid is counted by itself — do not write it again.', 'ब्रोकरेज बिल “मिल गया” होने पर अपने आप गिना जाता है — दोबारा न लिखें।')}</p>
               <div className="flex gap-2"><button type="button" className={btn} disabled={busy || !bf.amount} data-testid="hisaab-book-save" onClick={() => run(() => api.hisaabBook(dealId, { ...bf, amount: Number(bf.amount) }), () => { setOpen(''); setBf({ ...bf, amount: '', ref: '', note: '' }); })}>{tx('Save', 'सेव करें')}</button><button type="button" className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm" onClick={() => setOpen('')}>{tx('Close', 'बंद')}</button></div>
             </div>
           ) : <button type="button" className={btn} onClick={() => setOpen('book')} data-testid="hisaab-book-open"><Plus className="h-4 w-4" />{tx('Write brokerage received / paid', 'ब्रोकरेज मिला / दिया लिखें')}</button>}
@@ -176,6 +204,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean }> = ({ de
       )}
     </section>
   );
+  return fold ? shell(sec) : sec;
 };
 
 /** Deal Desk → हिसाब: all my deals at a glance; tap one to open its accounts */
@@ -198,8 +227,8 @@ export const HisaabTab: React.FC = () => {
       {d.deals.map((x: any) => (
         <div key={x.dealId} className="rounded-xl border border-slate-200 bg-white" data-testid={`hisaab-row-${x.dealId}`}>
           <button type="button" className="flex w-full items-start justify-between gap-2 p-3 text-left" onClick={() => setOpen(open === x.dealId ? '' : x.dealId)}>
-            <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900">{x.title}</span><span className="text-[11px] text-slate-500">{x.dealId} · {x.stage}</span></span>
-            <span className="shrink-0 text-right text-[11px]"><span className="block font-bold text-emerald-700">{tx('Got', 'मिला')} {formatINR(x.received)}</span><span className="block font-bold text-amber-700">{tx('Left', 'बाक़ी')} {formatINR(x.balance)}</span></span>
+            <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900">{x.title}</span><span className="text-xs text-slate-500">{x.dealId} · {x.stage}</span></span>
+            <span className="shrink-0 text-right text-xs"><span className="block font-bold text-emerald-700">{tx('Got', 'मिला')} {formatINR(x.received)}</span><span className="block font-bold text-amber-700">{tx('Left', 'बाक़ी')} {formatINR(x.balance)}</span></span>
           </button>
           {open === x.dealId && <div className="border-t border-slate-100 p-2"><DealHisaab dealId={x.dealId} /></div>}
         </div>

@@ -94,7 +94,7 @@ export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string)
   const [top, ...rest] = list;
   return (
     <div className="space-y-1.5" data-testid="next-steps">
-      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{tx('Your next step', 'आपका अगला कदम')}</div>
+      <div className="hidden text-xs font-bold uppercase tracking-wider text-slate-500 sm:block">{tx('Your next step', 'आपका अगला कदम')}</div>
       {row(top, true)}
       {rest.length > 0 && (
         <>
@@ -126,8 +126,8 @@ export const SubTabBar: React.FC<{
   const inRest = rest.find((t) => t.id === active);
   const restDot = rest.some((t) => t.dot && t.id !== active);
   return (
-    <div data-testid="deal-subtabs">
-      <div className="flex items-stretch gap-1 border-b border-slate-200 pb-1 text-xs">
+    <div className="rounded-xl border border-slate-200 bg-white p-1 shadow-sm" data-testid="deal-subtabs">
+      <div className="flex items-stretch gap-1 text-[13px] sm:text-sm">
         {main.map((tab) => {
           const Icon = tab.icon; const on = active === tab.id;
           return (
@@ -173,7 +173,7 @@ export const DealIds: React.FC<{ dealId: string; propertyId?: string; requiremen
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-500" data-testid="deal-ids">
       <span>{dealId}</span>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid="deal-ids-toggle" className="-my-2 inline-flex min-h-11 items-center rounded-md px-1.5 font-sans text-[11px] font-semibold text-slate-500 hover:bg-slate-100">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid="deal-ids-toggle" className="-my-2 inline-flex min-h-11 items-center rounded-md px-1.5 font-sans text-xs font-semibold text-slate-500 hover:bg-slate-100">
         {open ? tx('Hide IDs', 'ID छुपाएँ') : tx('All IDs', 'सभी ID')}
       </button>
       {open && (
@@ -190,16 +190,31 @@ export const DealIds: React.FC<{ dealId: string; propertyId?: string; requiremen
 export const StageStepper: React.FC<{ stage: string; canEdit: boolean; onChange: (s: string) => void }> = ({ stage, canEdit, onChange }) => {
   const tx = useTx(); const label = useLabel();
   const cur = STAGES.indexOf(stage);
+  const [open, setOpen] = useState(false);
   return (
     <div className="space-y-1" data-testid="stage-stepper">
       {stage === 'Disputed' && <p className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800">{tx('This deal is marked Disputed.', 'यह डील विवाद में है।')}</p>}
-      <ol className="flex items-center gap-1 overflow-x-auto pb-1">
+      {/* v83 — on a phone the seven steps are one line ("Site Visit Done · step 3 of 7") with a slim bar; tap it to see / move the steps. A big screen always shows the steps. */}
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid="stage-summary"
+        className="flex min-h-12 w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left lg:hidden"
+        aria-label={canEdit ? tx('Deal stage — tap to see or change', 'डील का स्टेज — देखने / बदलने के लिए दबाएँ') : tx('Deal stage — tap to see the steps', 'डील का स्टेज — चरण देखने के लिए दबाएँ')}>
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-400 text-xs font-bold text-slate-900">{cur >= 0 ? cur + 1 : '!'}</span>
+        <span className="min-w-0 flex-1 space-y-1.5">
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-sm font-bold text-slate-900">{label('dealStage', stage)}</span>
+            {cur >= 0 && <span className="shrink-0 text-xs font-semibold text-slate-500">{cur + 1} / {STAGES.length}</span>}
+          </span>
+          <Progress i={cur} />
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      <ol className={`${open ? 'flex' : 'hidden'} items-center gap-1 overflow-x-auto pb-1 lg:flex`}>
         {STAGES.map((s, i) => {
           const done = cur >= 0 && i < cur; const now = i === cur;
           const cls = now ? 'border-slate-900 bg-slate-900 text-white' : done ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500';
           const body = (
             <>
-              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${now ? 'bg-amber-400 text-slate-900' : done ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{done ? '✓' : i + 1}</span>
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${now ? 'bg-amber-400 text-slate-900' : done ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{done ? '✓' : i + 1}</span>
               <span className="whitespace-nowrap">{label('dealStage', s)}</span>
             </>
           );
@@ -207,8 +222,8 @@ export const StageStepper: React.FC<{ stage: string; canEdit: boolean; onChange:
             <li key={s} className="flex shrink-0 items-center gap-1">
               {canEdit && !now
                 ? <button type="button" title={tx(`Move the deal to “${s}”`, `डील को “${label('dealStage', s)}” पर ले जाएँ`)} onClick={() => { if (window.confirm(tx(`Move this deal to “${s}”?`, `इस डील को “${label('dealStage', s)}” पर ले जाएँ?`))) onChange(s); }}
-                    className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold hover:border-slate-500 ${cls}`} data-testid={`stage-step-${i}`}>{body}</button>
-                : <span className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold ${cls}`} aria-current={now ? 'step' : undefined} data-testid={`stage-step-${i}`}>{body}</span>}
+                    className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold hover:border-slate-500 ${cls}`} data-testid={`stage-step-${i}`}>{body}</button>
+                : <span className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold ${cls}`} aria-current={now ? 'step' : undefined} data-testid={`stage-step-${i}`}>{body}</span>}
               {i < STAGES.length - 1 && <span className={`h-0.5 w-3 shrink-0 ${i < cur ? 'bg-emerald-400' : 'bg-slate-200'}`} />}
             </li>
           );
@@ -237,30 +252,30 @@ export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kin
     <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' ? first.tab : undefined, first?.kind)}
       className={`w-full rounded-xl border p-3 text-left transition-all ${selected ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:shadow-sm'}`} data-testid={`deal-card-${d.id}`}>
       <div className="flex items-start justify-between gap-2">
-        <span className={`font-mono text-[10px] font-bold ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{d.id}</span>
-        {rl && <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${selected ? 'bg-white/15 text-white' : rc}`}>{rl}</span>}
+        <span className={`font-mono text-xs font-bold ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{d.id}</span>
+        {rl && <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-white/15 text-white' : rc}`}>{rl}</span>}
       </div>
       <div className="mt-1.5 flex items-start gap-2.5">
         <PropertyThumb src={d.cover} type={d.propertyType} seed={d.propertyTitle} className={compact ? 'h-10 w-10 rounded-lg' : 'h-12 w-12 rounded-lg'} />
         <div className="min-w-0 flex-1">
           <div className="line-clamp-2 text-xs font-bold leading-snug">{d.propertyTitle}</div>
-          <div className={`mt-0.5 truncate text-[11px] ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{[d.locality, d.city].filter(Boolean).join(', ')}{compact ? ` · ${label('dealStage', d.stage)}` : ''}</div>
+          <div className={`mt-0.5 truncate text-xs ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{[d.locality, d.city].filter(Boolean).join(', ')}{compact ? ` · ${label('dealStage', d.stage)}` : ''}</div>
         </div>
       </div>
       <div className="mt-2"><Progress i={d.stageIndex} dark={selected} /></div>
       {(d.money || d.counterpartName) && (
-        <div className={`mt-2 flex items-center justify-between gap-2 text-[11px] ${selected ? 'text-slate-200' : 'text-slate-600'}`}>
+        <div className={`mt-2 flex items-center justify-between gap-2 text-xs ${selected ? 'text-slate-200' : 'text-slate-600'}`}>
           <span className="flex min-w-0 items-center gap-1 truncate">{d.counterpartName && <><UserRound className="h-3 w-3 shrink-0" />{d.counterpartName}</>}</span>
           {d.money?.myShare ? <span className={`shrink-0 font-bold ${selected ? 'text-amber-300' : 'text-emerald-700'}`}>{short(d.money.myShare)}</span> : null}
         </div>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-1">
-        {d.closed && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{tx('Closed — did not happen', 'बंद — डील नहीं हुई')}</span>}
-        {!d.closed && d.closing && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">{tx('Close asked', 'बंद करने को कहा')}</span>}
-        {d.openDispute && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-800">{tx('Dispute', 'विवाद')}</span>}
-        {first && first.kind !== 'STALLED' && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${selected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-900'}`}>{nextText(first, d.idleDays, tx).slice(0, 48)}</span>}
-        {d.stalled && <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${selected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'}`}><Hourglass className="h-3 w-3" />{tx(`${d.idleDays}d idle`, `${d.idleDays} दिन रुका`)}</span>}
-        {d.visits?.upcoming > 0 && <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${selected ? 'bg-white/15 text-white' : 'bg-sky-100 text-sky-800'}`}><CalendarCheck className="h-3 w-3" />{d.visits.upcoming}</span>}
+        {d.closed && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs font-bold text-slate-700">{tx('Closed — did not happen', 'बंद — डील नहीं हुई')}</span>}
+        {!d.closed && d.closing && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-900">{tx('Close asked', 'बंद करने को कहा')}</span>}
+        {d.openDispute && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-800">{tx('Dispute', 'विवाद')}</span>}
+        {first && first.kind !== 'STALLED' && <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-900'}`}>{nextText(first, d.idleDays, tx).slice(0, 48)}</span>}
+        {d.stalled && <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'}`}><Hourglass className="h-3 w-3" />{tx(`${d.idleDays}d idle`, `${d.idleDays} दिन रुका`)}</span>}
+        {d.visits?.upcoming > 0 && <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-white/15 text-white' : 'bg-sky-100 text-sky-800'}`}><CalendarCheck className="h-3 w-3" />{d.visits.upcoming}</span>}
       </div>
     </button>
   );
@@ -359,11 +374,11 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
             return (
               <section key={s} className="flex w-64 shrink-0 snap-start flex-col rounded-xl bg-slate-100/80 p-2" data-testid={`hub-col-${s.replace(/\s+/g, '-')}`}>
                 <header className="mb-2 flex items-center justify-between px-1">
-                  <span className="text-xs font-bold text-slate-800">{label('dealStage', s) || s} <span className="ml-1 rounded-full bg-white px-1.5 text-[10px] text-slate-600">{col.length}</span></span>
-                  {sum > 0 && <span className="text-[10px] font-semibold text-emerald-700">{short(sum)}</span>}
+                  <span className="text-xs font-bold text-slate-800">{label('dealStage', s) || s} <span className="ml-1 rounded-full bg-white px-1.5 text-xs text-slate-600">{col.length}</span></span>
+                  {sum > 0 && <span className="text-xs font-semibold text-emerald-700">{short(sum)}</span>}
                 </header>
                 <div className="space-y-2">
-                  {col.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-[11px] text-slate-400">{tx('Empty', 'खाली')}</p> : col.map(d => <DealCard key={d.id} d={d} onOpen={onOpen} />)}
+                  {col.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-400">{tx('Empty', 'खाली')}</p> : col.map(d => <DealCard key={d.id} d={d} onOpen={onOpen} />)}
                 </div>
               </section>
             );
@@ -381,17 +396,17 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
                       <PropertyThumb src={d.cover} type={d.propertyType} seed={d.propertyTitle} className="h-11 w-11 rounded-lg" />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold text-slate-900">{d.propertyTitle}</div>
-                        <div className="truncate text-[11px] text-slate-500"><span className="font-mono">{d.id}</span> · {[d.locality, d.city].filter(Boolean).join(', ')}{d.counterpartName ? ` · ${d.counterpartName}` : ''}</div>
+                        <div className="truncate text-xs text-slate-500"><span className="font-mono">{d.id}</span> · {[d.locality, d.city].filter(Boolean).join(', ')}{d.counterpartName ? ` · ${d.counterpartName}` : ''}</div>
                       </div>
                     </div>
                     <div className="sm:col-span-3">
-                      <div className="mb-1 text-[11px] font-semibold text-slate-700">{label('dealStage', d.stage) || d.stage}{d.closed ? <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-700">{tx('Closed', 'बंद')}</span> : null}</div>
+                      <div className="mb-1 text-xs font-semibold text-slate-700">{label('dealStage', d.stage) || d.stage}{d.closed ? <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-700">{tx('Closed', 'बंद')}</span> : null}</div>
                       <Progress i={d.stageIndex} />
                     </div>
-                    <div className="text-[11px] sm:col-span-3">
+                    <div className="text-xs sm:col-span-3">
                       {first ? <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${NEXT_TONE[first.kind] || ''}`}>{nextText(first, d.idleDays, tx)}</span> : <span className="text-emerald-700">{tx('Nothing pending', 'कुछ बाकी नहीं')}</span>}
                     </div>
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 sm:col-span-2 sm:flex-col sm:items-end">
+                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 sm:col-span-2 sm:flex-col sm:items-end">
                       {d.money?.myShare ? <span className="font-bold text-emerald-700">{short(d.money.myShare)}</span> : <span />}
                       <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{ago(d.lastActivityAt, tx)}</span>
                     </div>
@@ -455,13 +470,13 @@ export const MandatesBoard: React.FC<{ currentUser: UserProfile; deals?: any[]; 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
         {tiles.map(t => (
           <button key={t.id} type="button" onClick={() => setF(t.id)} className={`rounded-xl border p-3 text-left ${f === t.id ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={`mandate-kpi-${t.id}`}>
-            <div className="text-[11px] font-semibold text-slate-500">{tx(t.en, t.hi)}</div>
+            <div className="text-xs font-semibold text-slate-500">{tx(t.en, t.hi)}</div>
             <div className={`mt-1 text-xl font-bold ${t.tone}`}>{t.v}</div>
           </button>
         ))}
         {expected > 0 && (
           <button type="button" onClick={() => setF('active')} className="col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left lg:col-span-1">
-            <div className="text-[11px] font-semibold text-emerald-800">{tx('My brokerage at asking price', 'माँगी कीमत पर मेरी ब्रोकरेज')}</div>
+            <div className="text-xs font-semibold text-emerald-800">{tx('My brokerage at asking price', 'माँगी कीमत पर मेरी ब्रोकरेज')}</div>
             <div className="mt-1 text-xl font-bold text-emerald-800">{short(expected)}</div>
           </button>
         )}
@@ -485,27 +500,27 @@ export const MandatesBoard: React.FC<{ currentUser: UserProfile; deals?: any[]; 
             return (
               <article key={m.id} className="flex flex-col rounded-xl border border-slate-200 bg-white p-4" data-testid={`mandate-${m.id}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-mono text-[10px] font-bold text-slate-500">{m.id} · {m.propertyId}</span>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${chip[st][0]}`}>{tx(chip[st][1], chip[st][2])}</span>
+                  <span className="font-mono text-xs font-bold text-slate-500">{m.id} · {m.propertyId}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${chip[st][0]}`}>{tx(chip[st][1], chip[st][2])}</span>
                 </div>
                 <h4 className="mt-1 line-clamp-2 text-sm font-bold text-slate-900">{m.propertyTitle || m.propertyId}</h4>
-                <p className="mt-0.5 text-[11px] text-slate-500">{tx('Owner', 'मालिक')}: <b className="text-slate-700">{m.ownerName || m.offPlatformOwner?.name || '—'}</b>{m.ownerPhone ? <> · <a href={`tel:${String(m.ownerPhone).replace(/\s/g, '')}`} className="font-semibold text-blue-700" data-testid={`mandate-phone-${m.id}`}>{m.ownerPhone}</a></> : m.ownerPhoneLast4 ? ` · ${tx(`mobile ending ${m.ownerPhoneLast4}`, `मोबाइल …${m.ownerPhoneLast4}`)}` : ''}{!iAmBroker(m) && m.brokerName ? ` · ${tx('Broker', 'ब्रोकर')}: ${m.brokerName}` : ''}</p>
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                <p className="mt-0.5 text-xs text-slate-500">{tx('Owner', 'मालिक')}: <b className="text-slate-700">{m.ownerName || m.offPlatformOwner?.name || '—'}</b>{m.ownerPhone ? <> · <a href={`tel:${String(m.ownerPhone).replace(/\s/g, '')}`} className="font-semibold text-blue-700" data-testid={`mandate-phone-${m.id}`}>{m.ownerPhone}</a></> : m.ownerPhoneLast4 ? ` · ${tx(`mobile ending ${m.ownerPhoneLast4}`, `मोबाइल …${m.ownerPhoneLast4}`)}` : ''}{!iAmBroker(m) && m.brokerName ? ` · ${tx('Broker', 'ब्रोकर')}: ${m.brokerName}` : ''}</p>
+                <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-lg bg-slate-50 p-2"><dt className="text-slate-500">{tx('Asking price', 'माँगी कीमत')}</dt><dd className="font-bold text-slate-900">{short(m.advertisedPrice)}</dd></div>
                   <div className="rounded-lg bg-emerald-50 p-2"><dt className="text-emerald-800">{tx('Brokerage at asking', 'माँगी कीमत पर ब्रोकरेज')}</dt><dd className="font-bold text-emerald-800">{short(m.brokerRemunerationAtAsking)}</dd></div>
                 </dl>
-                <p className="mt-2 text-[11px] text-slate-600">{basis(m)}</p>
+                <p className="mt-2 text-xs text-slate-600">{basis(m)}</p>
                 {(st === 'active' || st === 'ending') && (
                   <div className="mt-3">
-                    <div className="flex justify-between text-[10px] font-semibold text-slate-500"><span>{tx('Protection', 'सुरक्षा')} {m.protectionPeriodDays} {tx('days', 'दिन')}</span><span className={st === 'ending' ? 'text-red-700' : ''}>{tx(`${left} days left`, `${left} दिन बाकी`)}</span></div>
+                    <div className="flex justify-between text-xs font-semibold text-slate-500"><span>{tx('Protection', 'सुरक्षा')} {m.protectionPeriodDays} {tx('days', 'दिन')}</span><span className={st === 'ending' ? 'text-red-700' : ''}>{tx(`${left} days left`, `${left} दिन बाकी`)}</span></div>
                     <div className="mt-1 h-1.5 rounded-full bg-slate-200"><div className={`h-1.5 rounded-full ${st === 'ending' ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} /></div>
                   </div>
                 )}
-                {st === 'waiting' && iAmBroker(m) && <p className="mt-3 rounded-lg bg-amber-50 p-2 text-[11px] font-semibold text-amber-900">{tx('The owner has signed — open it and co-sign to make it active.', 'मालिक ने साइन कर दिया — खोलकर आप भी साइन करें, तब यह चालू होगा।')}</p>}
+                {st === 'waiting' && iAmBroker(m) && <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-900">{tx('The owner has signed — open it and co-sign to make it active.', 'मालिक ने साइन कर दिया — खोलकर आप भी साइन करें, तब यह चालू होगा।')}</p>}
                 <div className="mt-auto space-y-2 pt-3">
                   {onOpenDeal && deals.filter((d: any) => d.propertyId === m.propertyId).slice(0, 2).map((d: any) => (
                     <button key={d.id} type="button" onClick={() => onOpenDeal(d.id)} className="inline-flex min-h-10 w-full items-center justify-between gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800" data-testid={`mandate-deal-${d.id}`}>
-                      <span className="inline-flex items-center gap-1.5"><Briefcase className="h-4 w-4" />{tx('Deal room', 'डील रूम')} {d.id}</span><span className="text-[10px] text-slate-500">{label('dealStage', d.stage)}</span>
+                      <span className="inline-flex items-center gap-1.5"><Briefcase className="h-4 w-4" />{tx('Deal room', 'डील रूम')} {d.id}</span><span className="text-xs text-slate-500">{label('dealStage', d.stage)}</span>
                     </button>
                   ))}
                   <button type="button" disabled={opening === m.id} onClick={() => open(m)} className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50" data-testid={`mandate-open-${m.id}`}>
@@ -526,5 +541,5 @@ export const MandatesBoard: React.FC<{ currentUser: UserProfile; deals?: any[]; 
 export const MessageHint: React.FC<{ at?: string }> = ({ at }) => {
   const tx = useTx();
   if (!at) return null;
-  return <span className="inline-flex items-center gap-1 text-[10px] text-slate-500"><MessageSquare className="h-3 w-3" />{ago(at, tx)}</span>;
+  return <span className="inline-flex items-center gap-1 text-xs text-slate-500"><MessageSquare className="h-3 w-3" />{ago(at, tx)}</span>;
 };

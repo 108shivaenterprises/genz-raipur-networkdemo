@@ -48,7 +48,7 @@ export const SideFeePanel: React.FC<{ dealId: string; onChanged?: () => void }> 
 
       {/* 1 — my fee */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-        <div className="flex items-center justify-between"><h4 className="text-sm font-bold text-slate-900">1 · {tx('My brokerage (private)', 'मेरी ब्रोकरेज (प्राइवेट)')}</h4><span className="flex items-center gap-1 text-[10px] text-slate-500"><Lock className="h-3 w-3" />{tx('only you see this', 'सिर्फ़ आपको दिखती है')}</span></div>
+        <div className="flex items-center justify-between"><h4 className="text-sm font-bold text-slate-900">1 · {tx('My brokerage (private)', 'मेरी ब्रोकरेज (प्राइवेट)')}</h4><span className="flex items-center gap-1 text-xs text-slate-500"><Lock className="h-3 w-3" />{tx('only you see this', 'सिर्फ़ आपको दिखती है')}</span></div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
           <label className="text-xs font-semibold text-slate-700">{tx('Amount (₹)', 'रकम (₹)')}
             <input data-testid="side-fee-input" type="number" min={1} step={1} value={fee} onChange={e => setFee(e.target.value)} className={inp} disabled={side.myReceived > 0} />
@@ -59,7 +59,7 @@ export const SideFeePanel: React.FC<{ dealId: string; onChanged?: () => void }> 
           <button data-testid="side-fee-save" disabled={!!busy || side.myReceived > 0 || !(Number(fee) > 0)} onClick={() => run('fee', () => api.sidesSetFee(dealId, Math.round(Number(fee)), feeNote.trim() || undefined))}
             className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{busy === 'fee' ? '…' : tx('Save my fee', 'मेरी फ़ीस सेव करें')}</button>
         </div>
-        <p className="text-[11px] text-slate-500">
+        <p className="text-xs text-slate-500">
           {side.myFee ? <>{tx('Saved', 'सेव')}: <b data-testid="side-my-fee">{rupee(side.myFee)}</b> · </> : null}
           {side.otherHasFee ? tx('The other broker has written his fee too (amount hidden).', 'दूसरे ब्रोकर ने भी अपनी फ़ीस लिख दी है (रकम छिपी है)।') : tx('The other broker has not written his fee yet.', 'दूसरे ब्रोकर ने अभी फ़ीस नहीं लिखी।')}
         </p>
@@ -81,14 +81,14 @@ export const SideFeePanel: React.FC<{ dealId: string; onChanged?: () => void }> 
 
       {/* 3 — received */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-        <div className="flex items-center justify-between"><h4 className="text-sm font-bold text-slate-900">3 · {tx('Received from my client', 'मेरे क्लाइंट से मिला')}</h4><span className="flex items-center gap-1 text-[10px] text-slate-500"><Lock className="h-3 w-3" />{tx('nobody confirms it for you', 'कोई और कन्फ़र्म नहीं करता')}</span></div>
+        <div className="flex items-center justify-between"><h4 className="text-sm font-bold text-slate-900">3 · {tx('Received from my client', 'मेरे क्लाइंट से मिला')}</h4><span className="flex items-center gap-1 text-xs text-slate-500"><Lock className="h-3 w-3" />{tx('nobody confirms it for you', 'कोई और कन्फ़र्म नहीं करता')}</span></div>
         {!side.myFee || !side.ready ? (
           <p className="text-xs text-slate-500">{tx('Write your fee and let both brokers sign first.', 'पहले अपनी फ़ीस लिखें और दोनों ब्रोकर साइन करें।')}</p>
         ) : (
           <>
             <p className="text-xs text-slate-700">{tx('Received', 'मिला')}: <b data-testid="side-received">{rupee(side.myReceived)}</b> / {rupee(side.myFee)} · {tx('Left', 'बाकी')}: {rupee(outstanding)}</p>
             {side.myReceipts.length > 0 && (
-              <ul className="text-[11px] text-slate-600 space-y-0.5">
+              <ul className="text-xs text-slate-600 space-y-0.5">
                 {side.myReceipts.map(r => <li key={r.id}>{r.paidOn} · {rupee(r.amount)} · {r.ref}</li>)}
               </ul>
             )}
@@ -105,7 +105,7 @@ export const SideFeePanel: React.FC<{ dealId: string; onChanged?: () => void }> 
             {side.myDone && <p className="text-xs font-semibold text-emerald-700" data-testid="side-my-done">✓ {tx('Your side is complete.', 'आपकी तरफ़ पूरा हो गया।')}</p>}
           </>
         )}
-        <p className="text-[11px] text-slate-500">{side.otherDone ? tx('The other broker has received his fee too.', 'दूसरे ब्रोकर को भी उसकी फ़ीस मिल गई।') : tx('Both sides must be complete before the deal can be marked Settled.', 'डील "Settled" होने से पहले दोनों तरफ़ पूरा होना ज़रूरी है।')}</p>
+        <p className="text-xs text-slate-500">{side.otherDone ? tx('The other broker has received his fee too.', 'दूसरे ब्रोकर को भी उसकी फ़ीस मिल गई।') : tx('Both sides must be complete before the deal can be marked Settled.', 'डील "Settled" होने से पहले दोनों तरफ़ पूरा होना ज़रूरी है।')}</p>
       </section>
     </div>
   );

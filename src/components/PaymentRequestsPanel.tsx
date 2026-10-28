@@ -58,7 +58,7 @@ export const PaymentRequestsPanel: React.FC<{ dealId: string; me: UserProfile; s
           </div>
         )}
       </div>
-      <p className="text-[11px] text-slate-500">{tx('A bill with a link (PDF + UPI QR) that you send on WhatsApp. He pays you directly — GENZ does not hold this money. He can write the UTR on the link; you confirm.', 'एक बिल जिसका लिंक (PDF + UPI QR) आप WhatsApp पर भेजते हैं। पैसा सीधे आपको मिलता है — GENZ यह पैसा नहीं रखता। वह लिंक पर UTR लिख सकता है; आप पुष्टि करें।')}</p>
+      <p className="text-xs text-slate-500">{tx('A bill with a link (PDF + UPI QR) that you send on WhatsApp. He pays you directly — GENZ does not hold this money. He can write the UTR on the link; you confirm.', 'एक बिल जिसका लिंक (PDF + UPI QR) आप WhatsApp पर भेजते हैं। पैसा सीधे आपको मिलता है — GENZ यह पैसा नहीं रखता। वह लिंक पर UTR लिख सकता है; आप पुष्टि करें।')}</p>
 
       {making && f && (
         <div className="space-y-2 rounded-lg bg-slate-50 p-3 text-xs" data-testid="pay-form">
@@ -73,7 +73,7 @@ export const PaymentRequestsPanel: React.FC<{ dealId: string; me: UserProfile; s
               <input className={inp + ' !w-36'} type="number" inputMode="numeric" placeholder="₹" value={it.amount} onChange={(e) => { const items = [...f.items]; items[i] = { ...it, amount: e.target.value }; setF({ ...f, items }); }} data-testid={`pay-amount-${i}`} />
             </div>
           ))}
-          {f.items.length < 3 && <button className="text-[11px] font-semibold text-slate-600 underline" onClick={() => setF({ ...f, items: [...f.items, { text: '', amount: '' }] })}>{tx('+ another line', '+ एक और लाइन')}</button>}
+          {f.items.length < 3 && <button className="text-xs font-semibold text-slate-600 underline" onClick={() => setF({ ...f, items: [...f.items, { text: '', amount: '' }] })}>{tx('+ another line', '+ एक और लाइन')}</button>}
           <div className="grid gap-2 sm:grid-cols-3">
             <label className="font-semibold text-slate-700">GST<select className={inp + ' mt-1'} value={f.gstPct} onChange={(e) => setF({ ...f, gstPct: Number(e.target.value) })} data-testid="pay-gst">{[0, 5, 12, 18].map((g) => <option key={g} value={g}>{g === 0 ? tx('No GST', 'GST नहीं') : `${g}%`}</option>)}</select></label>
             <label className="font-semibold text-slate-700">GSTIN<input className={inp + ' mt-1 uppercase'} maxLength={15} placeholder={tx('if you have one', 'अगर है तो')} value={f.gstin} onChange={(e) => setF({ ...f, gstin: e.target.value.toUpperCase() })} /></label>
@@ -98,10 +98,10 @@ export const PaymentRequestsPanel: React.FC<{ dealId: string; me: UserProfile; s
           <div key={r.id} className="space-y-1.5 rounded-lg border border-slate-200 p-2.5 text-xs" data-testid={`pay-bill-${r.id}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-bold text-slate-900">{r.party === 'OWNER' ? tx('Owner', 'मालिक') : tx('Buyer', 'खरीदार')}: {r.partyName} · {rs(r.total)}</span>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${cls}`}>{label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${cls}`}>{label}</span>
             </div>
-            <p className="text-[11px] text-slate-500"><span className="font-mono">{r.number}</span> · <Eye className="inline h-3 w-3" /> {tx(`opened ${r.views}×`, `${r.views} बार खोला`)} · <BellRing className="inline h-3 w-3" /> {tx(`${r.reminders.length} reminder(s)`, `${r.reminders.length} रिमाइंडर`)}{r.reminders.length ? ` · ${tx('last', 'आख़िरी')} ${day(r.reminders[r.reminders.length - 1].at)}` : ''}</p>
-            {r.status === 'PAID' && <p className="text-[11px] text-emerald-800">{tx('Received', 'मिला')} {day(r.paid?.at)} · {r.paid?.ref}</p>}
+            <p className="text-xs text-slate-500"><span className="font-mono">{r.number}</span> · <Eye className="inline h-3 w-3" /> {tx(`opened ${r.views}×`, `${r.views} बार खोला`)} · <BellRing className="inline h-3 w-3" /> {tx(`${r.reminders.length} reminder(s)`, `${r.reminders.length} रिमाइंडर`)}{r.reminders.length ? ` · ${tx('last', 'आख़िरी')} ${day(r.reminders[r.reminders.length - 1].at)}` : ''}</p>
+            {r.status === 'PAID' && <p className="text-xs text-emerald-800">{tx('Received', 'मिला')} {day(r.paid?.at)} · {r.paid?.ref}</p>}
             {open && (
               <div className="flex flex-wrap gap-1.5">
                 <a className={`${btn} bg-emerald-600 text-white`} href={`https://wa.me/91${phone}?text=${encodeURIComponent(waMsg(r, me.name, r.reminders.length > 0 || r.overdue))}`} target="_blank" rel="noopener noreferrer"

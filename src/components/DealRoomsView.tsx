@@ -50,6 +50,7 @@ import {
   Lock,
   Printer,
   ChevronRight,
+  ChevronDown,
   Shield,
   Eye,
   Info,
@@ -215,7 +216,9 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   useEffect(() => { try { document.querySelector(`[data-testid="deal-mode-${mainMode}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch { /* old browser */ } }, [mainMode]);
   const [hub, setHub] = useState<any>(null);
   const [listQ, setListQ] = useState('');
-  const [taskFilter, setTaskFilter] = useState<'ALL' | 'MINE' | 'OPEN' | 'OVERDUE' | 'REVIEW'>('ALL');
+  const [taskFilter, setTaskFilter] = useState<'AUTO' | 'ALL' | 'MINE' | 'OPEN' | 'OVERDUE' | 'REVIEW'>('AUTO');
+  const [protOpen, setProtOpen] = useState(false);   // v83 — the anti-bypass / privacy notes of the Overview: one line, "Details" opens them
+  const [openTask, setOpenTask] = useState<string>('');   // v83 — the one task row that is opened out (the rest are one line each)
   const [proposalSubTab, setProposalSubTab] = useState<'INCOMING' | 'SENT'>('INCOMING');
   const [respondingOfferId, setRespondingOfferId] = useState<string | null>(null);
   const [counterModal, setCounterModal] = useState<{
@@ -259,6 +262,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
   // Tasks state (Module A1)
   const [tasks, setTasks] = useState<DealTask[]>([]);
+  // v83 — "AUTO" = the Tasks tab opens on what is mine and not done (else everything not done, else all)
+  const taskIsOpen = (t: DealTask) => t.isApplicable && t.taskStatus !== 'COMPLETED' && t.taskStatus !== 'WAIVED';
+  const effFilter: 'ALL' | 'MINE' | 'OPEN' | 'OVERDUE' | 'REVIEW' = taskFilter !== 'AUTO' ? taskFilter
+    : tasks.some((t) => t.assignedParticipantId === currentUser.id && taskIsOpen(t)) ? 'MINE' : tasks.some(taskIsOpen) ? 'OPEN' : 'ALL';
   const [loadingTasks, setLoadingTasks] = useState(false);
 
   // Complete task modal
@@ -579,7 +586,21 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     || (t === 'commission_agreement' && !isOwnerViewer && perm('agreement:read'))
     || ((t === 'due_diligence' || t === 'readiness_report') && perm('dd:read')) || (t === 'media_vault' && perm('property:read'))
     || (t === 'disputes_holds' && perm('dispute:read', 'dispute:create')));
-  const filterFor = (kind?: string) => (kind === 'TASKS_TO_VERIFY' ? 'REVIEW' : kind === 'TASKS_OVERDUE' ? 'OVERDUE' : kind === 'TASKS_TO_ACCEPT' || kind === 'TASKS_TO_DO' ? 'MINE' : 'ALL') as typeof taskFilter;
+  // v83 — no particular ask → 'AUTO': the Tasks tab opens on "mine, not done" (else "not done", else all) instead of every task
+  const filterFor = (kind?: string) => (kind === 'TASKS_TO_VERIFY' ? 'REVIEW' : kind === 'TASKS_OVERDUE' ? 'OVERDUE' : kind === 'TASKS_TO_ACCEPT' || kind === 'TASKS_TO_DO' ? 'MINE' : 'AUTO') as typeof taskFilter;
+  // v83 — switching a deal-room section scrolls to the top of that section (under the sticky tab bar); a phone's chat is a full screen, so it needs no scroll
+  const goTab = (id: DealSubTab) => {
+    setActiveSubTab(id);
+    if (id === 'chat_call' && typeof window !== 'undefined' && window.innerWidth < 1024) return;
+    window.setTimeout(() => {
+      try {
+        const card = document.querySelector('[data-testid="deal-header-card"]') as HTMLElement | null;
+        if (!card) return;
+        const natural = card.getBoundingClientRect().bottom + window.scrollY + 4;   // where the tab bar sits before it sticks
+        window.scrollTo({ top: Math.max(0, natural - 61), behavior: 'auto' });
+      } catch { /* old browser */ }
+    }, 0);
+  };
   const openDeal = (id: string, tab?: string, kind?: string) => {
     setSelectedDealId(id);
     setActiveSubTab(tabAllowed(tab) ? tab : 'overview');
@@ -800,7 +821,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const verifiedTasksCount = applicableTasks.filter((t) => t.verificationStatus === 'VERIFIED').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* v37 — Deal Hub header: title + one segmented switch for Pipeline / Deal room / Proposals / Mandates */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -818,7 +839,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       <div className="-mt-2 flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" data-testid="deal-modes">
         {([
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
-          ['DEAL_ROOMS', Briefcase, selectedDealId && mainMode === 'DEAL_ROOMS' ? `${tx('Deal room', 'डील रूम')} · ${selectedDealId}` : tx('Deal room', 'डील रूम'), undefined, false],
+          ['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false],   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Offers" half off the screen
           ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Offers', 'ऑफ़र'), (offers || []).length, pendingIncomingCount > 0]] : []),
           ...(canRooms ? [['ROOMS', MessagesSquare, tx('Client rooms', 'क्लाइंट रूम'), myRooms.length, roomsAlert]] : []),
           ...(perm('mandate:read') ? [['MANDATES', FileSignature, tx('Owners', 'मालिक'), undefined, false]] : []),
@@ -827,7 +848,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
             onClick={() => (id === 'DEAL_ROOMS' && !selectedDealId && deals[0] ? openDeal(deals[0].id) : id === 'ROOMS' ? openClientRoom() : setMainMode(id))}
             className={`relative inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all ${mainMode === id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`} data-testid={`deal-mode-${id}`}>
             <Icon className="h-3.5 w-3.5" /><span className="whitespace-nowrap">{text}</span>
-            {n !== undefined && <span className={`rounded-full px-1.5 text-[10px] font-bold ${mainMode === id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{n}</span>}
+            {n !== undefined && <span className={`rounded-full px-1.5 text-xs font-bold ${mainMode === id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{n}</span>}
             {dot && <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />}
           </button>
         ))}
@@ -859,7 +880,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
         </div>
 
         {/* Right Column: Active Deal Room Hub */}
-        <div className="space-y-5 lg:col-span-3">
+        <div className="space-y-3 sm:space-y-5 lg:col-span-3">
           {/* v37 — on a phone the deal list is a switcher: back to the pipeline, pick a deal, previous / next */}
           {deals.length > 0 && (() => {
             const ids = (hub?.deals || deals).map((d: any) => d.id);
@@ -887,22 +908,25 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               {tx('Loading deal room details...', 'डील रूम की जानकारी लोड हो रही है...')}
             </div>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-3 sm:space-y-5">
               {/* Deal Header Overview Card */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden" data-testid="deal-header-card">
+                {/* v83 — the big cover is for a wide screen; on a phone the photo is a small thumbnail beside the title (it used to push everything down by ~150px on every tab) */}
                 {activeProperty?.images?.[0] && (
-                  <div className="relative h-36 w-full bg-slate-100 sm:h-44" data-testid="deal-cover">
+                  <div className="relative hidden h-44 w-full bg-slate-100 sm:block" data-testid="deal-cover">
                     <img src={activeProperty.images[0]} alt="" className="h-full w-full object-cover" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/70 to-transparent px-4 pb-2 pt-8 text-sm font-semibold text-white">{[activeProperty.locality, activeProperty.city].filter(Boolean).join(', ')}</div>
                   </div>
                 )}
                 <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
+                <div className="flex items-start gap-3 sm:items-center sm:justify-between">
+                  <PropertyThumb src={activeProperty?.images?.[0]} type={activeProperty?.propertyType} seed={activeProperty?.title || activeDeal.id} className="h-16 w-16 shrink-0 rounded-lg sm:hidden" />
+                  <div className="min-w-0 flex-1">
                     <DealIds dealId={activeDeal.id} propertyId={activeDeal.propertyId} requirementId={activeDeal.requirementId} />
-                    <h3 className="text-base font-bold text-slate-900 mt-1">
+                    <h3 className="text-base font-bold leading-snug text-slate-900 mt-1">
                       {activeProperty?.title || tx('Property transaction', 'प्रॉपर्टी लेन-देन')}
                     </h3>
+                    {[activeProperty?.locality, activeProperty?.city].filter(Boolean).length > 0 && <p className="text-xs text-slate-500 sm:hidden" data-testid="deal-place">{[activeProperty?.locality, activeProperty?.city].filter(Boolean).join(', ')}</p>}
                     {currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) && (
                       <DealTeamAccess dealId={activeDeal.id} allotted={activeDeal.teamMemberIds || []} onChanged={onRefreshDeals} />
                     )}
@@ -915,16 +939,16 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     const go = (k: number) => { const id = ids[(at + k + ids.length) % ids.length]; if (id) openDeal(id); };
                     return (
                       <div className="hidden items-center gap-1 lg:flex">
-                        <button type="button" onClick={() => go(-1)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700" data-testid="deal-prev"><ChevronLeft className="h-3.5 w-3.5" />{tx('Previous', 'पिछली')}</button>
-                        <span className="px-1 text-[11px] text-slate-500">{at + 1}/{ids.length}</span>
-                        <button type="button" onClick={() => go(1)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-700" data-testid="deal-next">{tx('Next', 'अगली')}<ChevronRight className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => go(-1)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700" data-testid="deal-prev"><ChevronLeft className="h-3.5 w-3.5" />{tx('Previous', 'पिछली')}</button>
+                        <span className="px-1 text-xs text-slate-500">{at + 1}/{ids.length}</span>
+                        <button type="button" onClick={() => go(1)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700" data-testid="deal-next">{tx('Next', 'अगली')}<ChevronRight className="h-3.5 w-3.5" /></button>
                       </div>
                     );
                   })()}
                 </div>
 
                 <StageStepper stage={activeDeal.stage} canEdit={currentUser.role !== 'TEAM_MEMBER' && perm('deal:update_stage') && !summaryOnly && !isClosed(dealDetail?.deal || activeDeal)} onChange={handleStageChange} />
-                {!summaryOnly && <NextSteps item={hubItemOf(activeDeal.id)} onGo={(t, k) => { setActiveSubTab(tabAllowed(t) ? t : 'overview'); setTaskFilter(filterFor(k)); }} />}
+                {!summaryOnly && <NextSteps item={hubItemOf(activeDeal.id)} onGo={(t, k) => { goTab(tabAllowed(t) ? t : 'overview'); setTaskFilter(filterFor(k)); }} />}
                 {/* v47 — close a deal that did not happen / reopen; a visit that happened outside the app */}
                 {!summaryOnly && <DealStatusPanel deal={dealDetail?.deal || activeDeal} me={currentUser} verifiedVisits={hubItemOf(activeDeal.id)?.visits?.verified ?? 0}
                   onChanged={() => { onRefreshDeals(); loadHub(); loadDetail(activeDeal.id); }} />}
@@ -933,10 +957,15 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                   <PaymentRequestsPanel dealId={activeDeal.id} me={currentUser} stage={activeDeal.stage} />
                 )}
 
-                {/* Sub-Navigation Tabs (v52: four on the bar, the rest behind "More") */}
+                </div>
+              </div>
+
+              {/* Sub-Navigation Tabs (v52: four on the bar, the rest behind "More").
+                  v83: the bar sticks under the top bar while you scroll, and picking a tab scrolls to its content (before, a tab changed below the fold and looked like nothing happened). */}
+              <div className="sticky top-[61px] z-30 -mx-4 bg-slate-50/95 px-4 py-1 backdrop-blur sm:mx-0 sm:px-0" data-testid="deal-subtabs-sticky">
                 <SubTabBar
                   active={activeSubTab}
-                  onPick={(id) => setActiveSubTab(id as DealSubTab)}
+                  onPick={(id) => goTab(id as DealSubTab)}
                   tabs={([
                     { id: 'overview', label: tx('Overview', 'ओवरव्यू'), icon: Briefcase, primary: true },
                     ...(perm('deal:chat') ? [{ id: 'chat_call', label: tx('Chat', 'चैट'), count: messages.length, icon: MessageSquare, primary: true }] : []),
@@ -952,7 +981,6 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     .filter((tab) => !summaryOnly || ['overview', 'antibypass_protocol', 'disputes_holds'].includes(tab.id))
                     .map((tab) => ({ ...tab, dot: (hubItemOf(activeDeal.id)?.next || []).some((n: any) => n.tab === tab.id && n.kind !== 'STALLED') }))}
                 />
-                </div>
               </div>
 
               {/* TAB 1: OVERVIEW & MILESTONES */}
@@ -976,8 +1004,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       </p>
                     </div>
                   )}
-                  {!summaryOnly && isDealBrokerViewer && (
-                    dealDetail?.access?.adminCanSee ? (
+                  {!summaryOnly && isDealBrokerViewer && dealDetail?.access?.adminCanSee && (
                       <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3" data-testid="deal-admin-open-banner">
                         <Eye className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
                         <div className="space-y-0.5 text-xs text-rose-950">
@@ -985,88 +1012,75 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           <p className="text-rose-800">{tx('The access ends when the dispute is resolved. Every time the admin opens this room, a line is written to the audit trail (Audit Trail tab), which you can read.', 'विवाद सुलझते ही यह एक्सेस खत्म हो जाता है। एडमिन जितनी बार यह रूम खोलता है, ऑडिट ट्रेल (Audit Trail टैब) में एक लाइन दर्ज होती है, जिसे आप पढ़ सकते हैं।')}</p>
                         </div>
                       </div>
-                    ) : (
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start gap-3" data-testid="deal-admin-closed-banner">
-                        <Lock className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
-                        <p className="text-xs text-slate-600">{tx('Your chat, notes, commission terms and documents are private to you and the other broker. GENZ sees only the deal value and the totals on its dashboard. The GENZ admin can read this deal room only if you or the other broker raise a dispute.', 'आपकी चैट, नोट्स, कमीशन शर्तें और दस्तावेज़ सिर्फ़ आपके और दूसरे ब्रोकर के हैं। GENZ को अपने डैशबोर्ड पर सिर्फ़ डील वैल्यू और कुल आँकड़े दिखते हैं। GENZ एडमिन यह डील रूम तभी पढ़ सकता है जब आप या दूसरा ब्रोकर विवाद दर्ज करें।')}</p>
-                      </div>
-                    )
                   )}
 
-                  {/* Protection tail clause banner */}
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
-                    <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <div className="space-y-0.5 text-xs text-emerald-950">
-                      <div className="font-bold">
-                        {tx(`${(activeDeal as any).antiBypassTailDays || 30}-day anti-bypass protection active until `, `${(activeDeal as any).antiBypassTailDays || 30} दिन की एंटी-बायपास सुरक्षा चालू, अंतिम तारीख़: `)}{formatDate(activeDeal.ownerProtectionExpiresAt)}
-                      </div>
-                      <p className="text-emerald-800">
-                        {tx(
-                          "The listing mandate and the introducing broker's name are kept in this deal's activity log. If someone bypasses the introducing broker, a dispute can be filed — it marks the commission record 'on hold' until an admin reviews it. GENZ does not hold or move any money.",
-                          "लिस्टिंग मैंडेट और इंट्रोड्यूस करने वाले ब्रोकर का नाम इस डील के एक्टिविटी लॉग में दर्ज रहता है। अगर कोई इंट्रोड्यूस करने वाले ब्रोकर को बायपास करे तो विवाद दर्ज हो सकता है — एडमिन की समीक्षा तक कमीशन रिकॉर्ड 'होल्ड' पर रहता है। GENZ कोई पैसा नहीं रखता या भेजता।",
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
                   {/* Participants Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
+                  {/* v83 — the money comes first (the final rate, then ONE folded money block whose header already shows the numbers); the people and the rules follow.
+                      Nothing is removed and nothing is unmounted: the folded block only hides, so the हिसाब keeps loading and refreshing by itself. */}
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    <div className="space-y-4 lg:col-span-2" data-testid="deal-money">
+                      {dealDetail?.finalRate && !activeDeal?.summaryOnly && <FinalRateCard f={dealDetail.finalRate} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />}
+                      {(isOwnerViewer || !activeDeal?.commercialsHidden) && !activeDeal?.summaryOnly ? (
+                        <DealHisaab dealId={activeDeal.id} fold refreshKey={`${dealDetail?.finalRate?.price ?? ''}|${dealDetail?.finalRate?.source ?? ''}|${dealDetail?.brokerage?.price ?? ''}|${(dealDetail?.deal || activeDeal)?.dealValue ?? ''}`} extra={dealDetail?.brokerage?.mandate && !hideCommercials ? <BrokerageAtPrice b={dealDetail.brokerage} dealId={activeDeal.id} hideSetter={!!dealDetail?.finalRate && !activeDeal?.summaryOnly} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} /> : undefined} />
+                      ) : (dealDetail?.brokerage?.mandate && !hideCommercials && <BrokerageAtPrice b={dealDetail.brokerage} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />)}
+                    </div>
+                    <div className="divide-y divide-slate-100 self-start rounded-xl border border-slate-200 bg-white" data-testid="deal-parties">
+                    <div className="space-y-2 p-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                        <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                           {tx('Introducing Broker', 'इंट्रोड्यूस करने वाला ब्रोकर')}
                         </span>
                         {participants?.introducingBroker && (
                           <TrustScoreBadge user={participants.introducingBroker} variant="pill" />
                         )}
                       </div>
-                      <div>
-                        <div className="text-sm font-bold text-slate-900">
+                      <div className="flex items-end justify-between gap-3">
+                       <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-slate-900">
                           {participants?.introducingBroker?.name || tx('Assigned broker', 'तय ब्रोकर')}
                         </div>
                         <div className="text-xs text-slate-500 font-mono">
                           {participants?.introducingBroker?.brokerId || '—'}
                         </div>
-                      </div>
+                       </div>
                       {!hideCommercials && activeDeal.feeMode !== 'OWN_SIDE' && (
-                        <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-slate-100 flex items-center justify-between">
+                        <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
                           <span>{tx('Entitlement:', 'हिस्सा:')}</span>
                           <span>{activeDeal.introducingBrokerSharePct}%</span>
                         </div>
                       )}
+                      </div>
                     </div>
 
-                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
+                    <div className="space-y-2 p-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                        <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                           {tx('Closing / Listing Broker', 'क्लोज़िंग / लिस्टिंग ब्रोकर')}
                         </span>
                         {participants?.closingBroker && (
                           <TrustScoreBadge user={participants.closingBroker} variant="pill" />
                         )}
                       </div>
-                      <div>
-                        <div className="text-sm font-bold text-slate-900">
+                      <div className="flex items-end justify-between gap-3">
+                       <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-slate-900">
                           {participants?.closingBroker?.name || tx('Listing broker', 'लिस्टिंग ब्रोकर')}
                         </div>
                         <div className="text-xs text-slate-500 font-mono">
                           {participants?.closingBroker?.brokerId || '—'}
                         </div>
-                      </div>
+                       </div>
                       {!hideCommercials && activeDeal.feeMode !== 'OWN_SIDE' && (
-                        <div className="text-[11px] text-emerald-700 font-semibold pt-1 border-t border-slate-100 flex items-center justify-between">
+                        <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
                           <span>{tx('Entitlement:', 'हिस्सा:')}</span>
                           <span>{activeDeal.closingBrokerSharePct}%</span>
                         </div>
                       )}
+                      </div>
                     </div>
 
-                    {dealDetail?.finalRate && !activeDeal?.summaryOnly && <FinalRateCard f={dealDetail.finalRate} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />}
-                    {dealDetail?.brokerage?.mandate && !hideCommercials && <BrokerageAtPrice b={dealDetail.brokerage} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />}
-                    {(isOwnerViewer || !activeDeal?.commercialsHidden) && !activeDeal?.summaryOnly && <DealHisaab dealId={activeDeal.id} />}
-
-                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-1">
-                      <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                    <div className="space-y-1 p-4">
+                      <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                         {tx('Property Owner & Customer', 'प्रॉपर्टी मालिक और ग्राहक')}
                       </span>
                       <div className="text-sm font-bold text-slate-900">
@@ -1075,31 +1089,60 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       <div className="text-xs text-slate-500">
                         {tx('Protected customer', 'सुरक्षित ग्राहक')}: {activeDeal.customerId}
                       </div>
-                      <div className="text-[11px] text-slate-600 font-medium pt-1">
+                      <div className="text-xs text-slate-600 font-medium pt-1">
                         {tx('Mandate confirmed by owner', 'मालिक की मैंडेट पुष्टि')}: {activeDeal.ownerRemunerationConfirmed ? tx('Yes', 'हाँ') : tx('Pending', 'बाकी')}
                       </div>
                       {/* v45 — the owner's terms and my client rooms for this property, one tap away */}
                       <div className="flex flex-wrap gap-1.5 pt-2" data-testid="deal-links">
                         {perm('mandate:read') && (
-                          <button type="button" onClick={() => setMainMode('MANDATES')} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-semibold text-slate-700 hover:border-slate-900" data-testid="deal-owner-terms">
+                          <button type="button" onClick={() => setMainMode('MANDATES')} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 hover:border-slate-900" data-testid="deal-owner-terms">
                             <FileSignature className="h-3.5 w-3.5" />{tx('Owner’s terms', 'मालिक की शर्तें')}
                           </button>
                         )}
                         {canRooms && roomsFor(activeDeal.propertyId).map((r: any) => (
-                          <button key={r.id} type="button" onClick={() => openClientRoom(r.id)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-[11px] font-semibold text-indigo-800 hover:border-indigo-500" data-testid="deal-client-room">
+                          <button key={r.id} type="button" onClick={() => openClientRoom(r.id)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-800 hover:border-indigo-500" data-testid="deal-client-room">
                             <MessagesSquare className="h-3.5 w-3.5" />{tx('Client room', 'क्लाइंट रूम')}: {r.clientName}{r.unread > 0 ? ` (${r.unread})` : ''}
                           </button>
                         ))}
                       </div>
                       {canRooms && roomsFor(activeDeal.propertyId).length === 0 && (
-                        <p className="pt-1 text-[11px] text-slate-500">{tx('None of your client rooms has this property yet — use “Send to client room” below.', 'आपके किसी क्लाइंट रूम में यह प्रॉपर्टी नहीं है — नीचे “क्लाइंट रूम में भेजें” दबाएँ।')}</p>
+                        <p className="pt-1 text-xs text-slate-500">{tx('None of your client rooms has this property yet — use “Send to client room” below.', 'आपके किसी क्लाइंट रूम में यह प्रॉपर्टी नहीं है — नीचे “क्लाइंट रूम में भेजें” दबाएँ।')}</p>
                       )}
                     </div>
                   </div>
+                    </div>
+
+                  {/* v83 — the two long notes (anti-bypass protection, who may read this room) are ONE line with the date; "Details" opens the full text. The dispute-open alert above stays visible. */}
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50" data-testid="deal-protection">
+                    <button type="button" onClick={() => setProtOpen((o) => !o)} aria-expanded={protOpen} className="flex min-h-12 w-full items-center gap-3 p-3 text-left" data-testid="deal-protection-toggle">
+                      <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+                      <span className="min-w-0 flex-1 text-sm font-bold text-emerald-950">
+                        {tx(`${(activeDeal as any).antiBypassTailDays || 30}-day anti-bypass protection active until `, `${(activeDeal as any).antiBypassTailDays || 30} दिन की एंटी-बायपास सुरक्षा चालू, अंतिम तारीख़: `)}{formatDate(activeDeal.ownerProtectionExpiresAt)}
+                      </span>
+                      <span className="shrink-0 text-xs font-semibold text-emerald-800">{protOpen ? tx('Hide', 'छुपाएँ') : tx('Details', 'ब्यौरा')}</span>
+                    </button>
+                    {protOpen && (
+                      <div className="space-y-3 border-t border-emerald-200 p-3">
+                        <p className="text-xs text-emerald-800">
+                        {tx(
+                          "The listing mandate and the introducing broker's name are kept in this deal's activity log. If someone bypasses the introducing broker, a dispute can be filed — it marks the commission record 'on hold' until an admin reviews it. GENZ does not hold or move any money.",
+                          "लिस्टिंग मैंडेट और इंट्रोड्यूस करने वाले ब्रोकर का नाम इस डील के एक्टिविटी लॉग में दर्ज रहता है। अगर कोई इंट्रोड्यूस करने वाले ब्रोकर को बायपास करे तो विवाद दर्ज हो सकता है — एडमिन की समीक्षा तक कमीशन रिकॉर्ड 'होल्ड' पर रहता है। GENZ कोई पैसा नहीं रखता या भेजता।",
+                        )}
+                      </p>
+                        {!summaryOnly && isDealBrokerViewer && !dealDetail?.access?.adminCanSee && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start gap-3" data-testid="deal-admin-closed-banner">
+                        <Lock className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-slate-600">{tx('Your chat, notes, commission terms and documents are private to you and the other broker. GENZ sees only the deal value and the totals on its dashboard. The GENZ admin can read this deal room only if you or the other broker raise a dispute.', 'आपकी चैट, नोट्स, कमीशन शर्तें और दस्तावेज़ सिर्फ़ आपके और दूसरे ब्रोकर के हैं। GENZ को अपने डैशबोर्ड पर सिर्फ़ डील वैल्यू और कुल आँकड़े दिखते हैं। GENZ एडमिन यह डील रूम तभी पढ़ सकता है जब आप या दूसरा ब्रोकर विवाद दर्ज करें।')}</p>
+                      </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Site Visits Section */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between">
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm space-y-4" data-testid="deal-visits">
+                    {/* v83 — the title and its buttons stack on a phone (the buttons used to squeeze the title into a narrow column) */}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h4 className="text-sm font-bold text-slate-900">{tx('Verified site visits', 'वेरिफ़ाइड साइट विज़िट')}</h4>
                         <p className="text-xs text-slate-500">
@@ -1137,22 +1180,22 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <span className="font-mono font-bold text-slate-900">{visit.id}</span>
                                 <span className="text-slate-400">·</span>
                                 <span className="font-medium text-slate-800">{visit.customerName}</span>
-                                {!visit.isVerified && visit.ackStatus === 'PENDING' && <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full">{tx('Buyer not confirmed yet', 'खरीदार की पुष्टि बाकी')}</span>}
+                                {!visit.isVerified && visit.ackStatus === 'PENDING' && <span className="bg-amber-100 text-amber-900 text-xs font-bold px-2 py-0.5 rounded-full">{tx('Buyer not confirmed yet', 'खरीदार की पुष्टि बाकी')}</span>}
                                 {visit.isVerified ? (
-                                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-semibold px-2 py-0.5 rounded">
+                                  <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded">
                                     {tx('Verified via', 'वेरिफ़ाइड:')} {visit.verificationMethod}
                                   </span>
                                 ) : (
-                                  <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded">
+                                  <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5 rounded">
                                     {tx('OTP Pending', 'OTP बाकी')}
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-slate-500 mt-0.5">
+                              <div className="text-xs text-slate-500 mt-0.5">
                                 {tx('Scheduled', 'तय समय')}: {formatDateTime(visit.scheduledTime)}
                               </div>
                               {visit.feedbackNotes && (
-                                <p className="text-slate-600 italic text-[11px] mt-1">"{visit.feedbackNotes}"</p>
+                                <p className="text-slate-600 italic text-xs mt-1">"{visit.feedbackNotes}"</p>
                               )}
                             </div>
 
@@ -1196,7 +1239,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono text-emerald-300">{tx('GENZ platform rule', 'GENZ प्लेटफ़ॉर्म नियम')}</span>
-                            <span className="rounded bg-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
+                            <span className="rounded bg-emerald-500/30 px-2 py-0.5 text-xs font-bold text-emerald-200">
                               {tx('Protection active', 'सुरक्षा चालू')}
                             </span>
                           </div>
@@ -1248,7 +1291,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3.5 space-y-1.5">
                         <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] text-white">1</span>
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs text-white">1</span>
                           <span>{tx('Client Masking & Non-Circumvention', 'ग्राहक की पहचान गोपनीय और सीधा संपर्क नहीं')}</span>
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
@@ -1261,7 +1304,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                       <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3.5 space-y-1.5">
                         <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] text-white">2</span>
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs text-white">2</span>
                           <span>{tx('OTP-verified site visits', 'OTP से पुष्ट साइट विज़िट')}</span>
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
@@ -1274,7 +1317,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                       <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3.5 space-y-1.5">
                         <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] text-white">3</span>
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs text-white">3</span>
                           <span>{tx('30-day introduction protection', '30 दिन की इंट्रोडक्शन सुरक्षा')}</span>
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
@@ -1287,7 +1330,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                       <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3.5 space-y-1.5">
                         <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] text-white">4</span>
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs text-white">4</span>
                           <span>{tx('Tamper-evident activity log & hold', 'छेड़छाड़ पकड़ने वाला एक्टिविटी लॉग और होल्ड')}</span>
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
@@ -1335,17 +1378,17 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <span className="text-slate-400">·</span>
                                 <span className="font-medium text-slate-800">{visit.customerName}</span>
                                 {visit.isVerified ? (
-                                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-semibold px-2 py-0.5 rounded flex items-center gap-1">
+                                  <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded flex items-center gap-1">
                                     <ShieldCheck className="h-3 w-3 text-emerald-600" />
                                     {tx('Verified via', 'वेरिफ़ाइड:')} {visit.verificationMethod}
                                   </span>
                                 ) : (
-                                  <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded">
+                                  <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-0.5 rounded">
                                     {tx('OTP Challenge Pending', 'OTP बाकी')}
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-slate-500 mt-1">
+                              <div className="text-xs text-slate-500 mt-1">
                                 {tx('Scheduled', 'तय समय')}: {formatDateTime(visit.scheduledTime)}
                               </div>
                             </div>
@@ -1409,7 +1452,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       <div className="flex items-center gap-2">
                         <FolderLock className="h-5 w-5 text-amber-600" />
                         <h4 className="text-base font-bold text-slate-900">{tx('Private Property Vault & Selective Sharing', 'प्रॉपर्टी वॉल्ट और चुनिंदा शेयरिंग')}</h4>
-                        <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                        <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded">
                           {tx('Confidential Storage', 'गोपनीय')}
                         </span>
                       </div>
@@ -1457,32 +1500,32 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         <MapPin className="h-4 w-4 text-emerald-600" />
                         <h5 className="text-sm font-bold text-slate-900">{tx('Site location & Google Maps', 'साइट लोकेशन और Google Maps')}</h5>
                       </div>
-                      <span className="text-[11px] font-mono text-slate-500">
+                      <span className="text-xs font-mono text-slate-500">
                         {tx('Precision', 'सटीकता')}: <strong className="text-slate-800">{enumLabel(PRECISION_HI, activeProperty?.locationPrecision || 'APPROXIMATE_LOCALITY')}</strong>
                       </span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs bg-slate-50 p-4 rounded-lg">
                       <div>
-                        <span className="text-slate-500 block text-[10px] uppercase font-semibold">{tx('State & City', 'राज्य और शहर')}</span>
+                        <span className="text-slate-500 block text-xs uppercase font-semibold">{tx('State & City', 'राज्य और शहर')}</span>
                         <div className="font-bold text-slate-900 mt-0.5">
                           {[activeProperty?.city, activeProperty?.state].filter(Boolean).join(', ') || tx('Location not set', 'लोकेशन तय नहीं')}
                         </div>
                       </div>
                       <div>
-                        <span className="text-slate-500 block text-[10px] uppercase font-semibold">{tx('Locality / Village', 'इलाका / गाँव')}</span>
+                        <span className="text-slate-500 block text-xs uppercase font-semibold">{tx('Locality / Village', 'इलाका / गाँव')}</span>
                         <div className="font-bold text-slate-900 mt-0.5">
                           {activeProperty?.locality} {activeProperty?.village ? `(${activeProperty.village})` : ''}
                         </div>
                       </div>
                       <div>
-                        <span className="text-slate-500 block text-[10px] uppercase font-semibold">{tx('Street & Landmark', 'सड़क और लैंडमार्क')}</span>
+                        <span className="text-slate-500 block text-xs uppercase font-semibold">{tx('Street & Landmark', 'सड़क और लैंडमार्क')}</span>
                         <div className="font-bold text-slate-900 mt-0.5">
                           {[activeProperty?.street, activeProperty?.landmark].filter(Boolean).join(', ') || '—'}
                         </div>
                       </div>
                       <div>
-                        <span className="text-slate-500 block text-[10px] uppercase font-semibold">{tx('PIN Code', 'पिन कोड')}</span>
+                        <span className="text-slate-500 block text-xs uppercase font-semibold">{tx('PIN Code', 'पिन कोड')}</span>
                         <div className="font-bold text-slate-900 mt-0.5 font-mono">
                           {activeProperty?.pincode || '—'}
                         </div>
@@ -1544,7 +1587,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           >
                             <div className="space-y-2">
                               <div className="flex items-start justify-between gap-2">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                                   asset.category === 'PHOTOGRAPH' ? 'bg-sky-100 text-sky-800' :
                                   asset.category === 'WALKTHROUGH_VIDEO' ? 'bg-purple-100 text-purple-800' :
                                   asset.category === 'OWNERSHIP_TITLE_DEED' ? 'bg-rose-100 text-rose-800' :
@@ -1552,7 +1595,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 }`}>
                                   {enumLabel(ASSET_CAT_HI, asset.category)}
                                 </span>
-                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
                                   asset.sensitivity === 'PUBLIC' ? 'bg-slate-100 text-slate-700' :
                                   asset.sensitivity === 'CONFIDENTIAL' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                                   'bg-rose-50 text-rose-700 border border-rose-200'
@@ -1574,12 +1617,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <h6 className="text-xs font-bold text-slate-900 truncate" title={asset.originalFileName}>
                                   {asset.originalFileName}
                                 </h6>
-                                <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
+                                <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">
                                   {asset.description || tx('No description.', 'कोई विवरण नहीं।')}
                                 </p>
                               </div>
 
-                              <div className="text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-100">
+                              <div className="text-xs text-slate-400 font-mono pt-1 border-t border-slate-100">
                                 v{asset.version}
                               </div>
                             </div>
@@ -1594,7 +1637,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <Eye className="h-3.5 w-3.5" />
                                 <span>{tx('View Asset', 'फ़ाइल खोलें')}</span>
                               </a>
-                              <span className="text-[10px] text-slate-400">
+                              <span className="text-xs text-slate-400">
                                 {tx('Added by', 'जोड़ने वाला')} {asset.uploaderName.split(' ')[0]}
                               </span>
                             </div>
@@ -1626,20 +1669,20 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-slate-900">{grant.recipientName}</span>
-                                  <span className="bg-blue-100 text-blue-800 text-[10px] font-semibold px-2 py-0.5 rounded">
+                                  <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">
                                     {enumLabel(GRANT_TYPE_HI, grant.recipientType)}
                                   </span>
                                   {grant.isRevoked ? (
-                                    <span className="bg-red-100 text-red-800 text-[10px] font-semibold px-2 py-0.5 rounded">
+                                    <span className="bg-red-100 text-red-800 text-xs font-semibold px-2 py-0.5 rounded">
                                       {tx('Revoked', 'रद्द')}
                                     </span>
                                   ) : (
-                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-semibold px-2 py-0.5 rounded">
+                                    <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded">
                                       {tx('Active Access', 'एक्सेस चालू')}
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-slate-500">
+                                <div className="text-xs text-slate-500">
                                   {tx('Files', 'फ़ाइलें')}: {grant.assetIds.length} · {tx('Permission', 'अनुमति')}: {enumLabel(GRANT_PERM_HI, grant.permissionLevel)} · {tx('Location', 'लोकेशन')}: {enumLabel(PRECISION_HI, grant.locationPrecisionPermitted)}
                                 </div>
                               </div>
@@ -1656,7 +1699,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                       }
                                     }
                                   }}
-                                  className="px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 border border-red-200 rounded self-start sm:self-auto"
+                                  className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 border border-red-200 rounded self-start sm:self-auto"
                                 >
                                   {tx('Revoke Grant', 'एक्सेस रद्द करें')}
                                 </button>
@@ -1673,29 +1716,29 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               {/* TAB 2: RESPONSIBILITY MATRIX (MODULE A1) */}
               {activeSubTab === 'responsibilities' && (
                 <div className="space-y-4">
-                  {/* Matrix Progress Scorecard */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  {/* Matrix Progress Scorecard — v83: one slim row of four numbers (it was a 2×2 block of big tiles) */}
+                  <div className="grid grid-cols-4 gap-2 rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm" data-testid="task-scorecard">
                     <div>
-                      <div className="text-xs text-slate-500 font-medium">{tx('Total Applicable Tasks', 'लागू काम')}</div>
-                      <div className="text-lg font-bold text-slate-900 mt-1">{applicableTasks.length} / {tasks.length}</div>
+                      <div className="text-base font-bold text-slate-900">{applicableTasks.length}<span className="text-xs font-medium text-slate-400"> / {tasks.length}</span></div>
+                      <div className="text-xs leading-tight text-slate-500">{tx('Applicable', 'लागू काम')}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500 font-medium">{tx('Accepted Responsibilities', 'स्वीकार की गई ज़िम्मेदारियाँ')}</div>
-                      <div className="text-lg font-bold text-blue-600 mt-1">{acceptedTasksCount}</div>
+                      <div className="text-base font-bold text-blue-600">{acceptedTasksCount}</div>
+                      <div className="text-xs leading-tight text-slate-500">{tx('Accepted', 'स्वीकार किए')}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500 font-medium">{tx('Completed Duties', 'पूरे हुए काम')}</div>
-                      <div className="text-lg font-bold text-purple-600 mt-1">{completedTasksCount}</div>
+                      <div className="text-base font-bold text-purple-600">{completedTasksCount}</div>
+                      <div className="text-xs leading-tight text-slate-500">{tx('Completed', 'पूरे हुए')}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500 font-medium">{tx('Independently Verified', 'स्वतंत्र रूप से जाँचे गए')}</div>
-                      <div className="text-lg font-bold text-emerald-600 mt-1">{verifiedTasksCount}</div>
+                      <div className="text-base font-bold text-emerald-600">{verifiedTasksCount}</div>
+                      <div className="text-xs leading-tight text-slate-500">{tx('Verified', 'जाँचे गए')}</div>
                     </div>
                   </div>
 
                   {/* Task Matrix List */}
-                  <div className="space-y-3">
-                    {/* v37 — filter the duties: mine / open / overdue / to check */}
+                  <div className="space-y-2.5">
+                    {/* v37 — filter the duties: mine / open / overdue / to check (v83: one scrolling row, opens on "Mine" when I have work) */}
                     {!loadingTasks && tasks.length > 0 && (() => {
                       const now = Date.now();
                       const open = (t: DealTask) => t.isApplicable && t.taskStatus !== 'COMPLETED' && t.taskStatus !== 'WAIVED';
@@ -1707,10 +1750,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         ['REVIEW', 'For me to check', 'मुझे जाँचनी', (t) => t.reviewingParticipantId === currentUser.id && t.taskStatus === 'COMPLETED' && t.verificationStatus !== 'VERIFIED' && t.verificationStatus !== 'REJECTED'],
                       ];
                       return (
-                        <div className="flex flex-wrap gap-1.5" data-testid="task-filters">
+                        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" data-testid="task-filters">
                           {f.map(([id, en, hiT, fn]) => {
                             const n = tasks.filter(fn).length;
-                            return <button key={id} type="button" onClick={() => setTaskFilter(id)} className={`min-h-9 rounded-full border px-3 text-[11px] font-semibold ${taskFilter === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`task-filter-${id}`}>{tx(en, hiT)} <span className="opacity-70">{n}</span></button>;
+                            return <button key={id} type="button" onClick={() => setTaskFilter(id)} className={`min-h-10 shrink-0 rounded-full border px-3.5 text-xs font-semibold ${effFilter === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`task-filter-${id}`}>{tx(en, hiT)} <span className="opacity-70">{n}</span></button>;
                           })}
                         </div>
                       );
@@ -1721,10 +1764,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       tasks.filter((t) => {
                         const now = Date.now();
                         const open = t.isApplicable && t.taskStatus !== 'COMPLETED' && t.taskStatus !== 'WAIVED';
-                        if (taskFilter === 'MINE') return t.assignedParticipantId === currentUser.id && open;
-                        if (taskFilter === 'OPEN') return open;
-                        if (taskFilter === 'OVERDUE') return open && !!t.dueDate && Date.parse(t.dueDate) < now;
-                        if (taskFilter === 'REVIEW') return t.reviewingParticipantId === currentUser.id && t.taskStatus === 'COMPLETED' && t.verificationStatus !== 'VERIFIED' && t.verificationStatus !== 'REJECTED';
+                        if (effFilter === 'MINE') return t.assignedParticipantId === currentUser.id && open;
+                        if (effFilter === 'OPEN') return open;
+                        if (effFilter === 'OVERDUE') return open && !!t.dueDate && Date.parse(t.dueDate) < now;
+                        if (effFilter === 'REVIEW') return t.reviewingParticipantId === currentUser.id && t.taskStatus === 'COMPLETED' && t.verificationStatus !== 'VERIFIED' && t.verificationStatus !== 'REJECTED';
                         return true;
                       }).map((task) => {
                         const isAssignedToCurrent = task.assignedParticipantId === currentUser.id;
@@ -1732,33 +1775,82 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         const isCompleted = task.taskStatus === 'COMPLETED';
                         const isVerified = task.verificationStatus === 'VERIFIED';
                         const isWaived = !task.isApplicable;
+                        // v83 — one row per task: a dot, the title, ONE status word, who, when. The three pills, the text, notes, files and every button open with a tap.
+                        const overdue = !isCompleted && !isWaived && !!task.dueDate && Date.parse(task.dueDate) < Date.now();
+                        const isReviewer = task.reviewingParticipantId === currentUser.id;
+                        const expanded = openTask === task.id;
+                        const [stEn, stHi, stTone] = isWaived ? ['Not needed', 'ज़रूरी नहीं', 'text-slate-500']
+                          : isVerified ? ['Verified', 'जाँचा गया', 'text-emerald-700']
+                          : isCompleted ? ['Done — check pending', 'पूरा — जाँच बाकी', 'text-blue-700']
+                          : task.assignmentAcceptance === 'REJECTED' ? ['Declined', 'मना किया', 'text-rose-700']
+                          : isPendingAcceptance ? ['Waiting to accept', 'स्वीकृति बाकी', 'text-amber-700']
+                          : task.taskStatus === 'IN_PROGRESS' ? ['In progress', 'चालू', 'text-slate-700']
+                          : ['To do', 'करना है', 'text-slate-700'];
+                        const rowBtn = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold text-white';
 
                         return (
                           <div
                             key={task.id}
-                            className={`bg-white border rounded-xl p-4 transition-all space-y-3 ${
-                              isWaived
-                                ? 'border-slate-200 bg-slate-50 opacity-60'
-                                : isVerified
-                                ? 'border-emerald-200 bg-emerald-50/10'
-                                : isCompleted
-                                ? 'border-blue-200 bg-blue-50/10'
-                                : 'border-slate-200'
+                            className={`rounded-xl border bg-white transition-all ${
+                              isWaived ? 'border-slate-200 bg-slate-50 opacity-60'
+                                : isVerified ? 'border-emerald-200'
+                                : isCompleted ? 'border-blue-200'
+                                : overdue ? 'border-red-200' : 'border-slate-200'
                             }`}
+                            data-testid={`task-row-${task.id}`}
                           >
+                            <button type="button" onClick={() => setOpenTask(expanded ? '' : task.id)} aria-expanded={expanded} className="flex w-full items-start gap-3 p-3 text-left" data-testid={`task-toggle-${task.id}`}>
+                              <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${isWaived ? 'bg-slate-300' : isVerified ? 'bg-emerald-500' : isCompleted ? 'bg-blue-500' : overdue ? 'bg-red-500' : isPendingAcceptance ? 'bg-amber-500' : 'bg-slate-400'}`} aria-hidden="true" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-bold leading-snug text-slate-900">{th(task.title)}</span>
+                                <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-600">
+                                  <span className={`font-semibold ${stTone}`}>{tx(stEn, stHi)}</span>
+                                  <span aria-hidden="true">·</span>
+                                  <span>{isAssignedToCurrent ? tx('You', 'आप') : task.assignedParticipantName}</span>
+                                  <span aria-hidden="true">·</span>
+                                  <span className={overdue ? 'font-semibold text-red-700' : ''}>{overdue ? `${tx('Overdue', 'तारीख़ निकली')} · ` : ''}{formatDate(task.dueDate)}</span>
+                                </span>
+                              </span>
+                              <ChevronDown className={`mt-1 h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+                            </button>
+
+                            {/* the one button that matters most for ME sits on the row (everything else is inside) */}
+                            {!expanded && !isWaived && (
+                              (isAssignedToCurrent && isPendingAcceptance) ? (
+                                <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+                                  <button onClick={() => handleAcceptTask(task.id, 'ACCEPTED')} className={`${rowBtn} bg-emerald-600 hover:bg-emerald-700`}>{tx('Accept Duty', 'काम स्वीकारें')}</button>
+                                  <button onClick={() => handleAcceptTask(task.id, 'REJECTED')} className={`${rowBtn} bg-rose-600 hover:bg-rose-700`}>{tx('Decline', 'मना करें')}</button>
+                                </div>
+                              ) : (isAssignedToCurrent && !isCompleted) ? (
+                                <div className="px-3 pb-3">
+                                  <button onClick={() => { setCompleteTaskItem(task); setCompleteEvidenceName(''); setCompleteEvidenceUrl(''); setCompleteNote(''); }} className={`${rowBtn} bg-slate-900 hover:bg-slate-800`}>
+                                    <CheckCircle2 className="h-4 w-4" /><span>{tx('Complete Duty', 'काम पूरा करें')}</span>
+                                  </button>
+                                </div>
+                              ) : (isReviewer && isCompleted && !isVerified) ? (
+                                <div className="px-3 pb-3">
+                                  <button onClick={() => { setVerifyTaskItem(task); setVerifyStatus('VERIFIED'); }} className={`${rowBtn} bg-purple-600 hover:bg-purple-700`}>
+                                    <ShieldCheck className="h-4 w-4" /><span>{tx('Independent Audit', 'स्वतंत्र जाँच')}</span>
+                                  </button>
+                                </div>
+                              ) : null
+                            )}
+
+                            {expanded && (
+                              <div className="border-t border-slate-100 p-3">
                             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                               <div className="space-y-1 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 text-xs">
                                   <span className="font-mono text-slate-400 font-bold">{task.id}</span>
                                   <span className="text-slate-300">·</span>
-                                  <span className="text-[10px] uppercase font-semibold text-slate-500">
+                                  <span className="text-xs uppercase font-semibold text-slate-500">
                                     {enumLabel(TASK_CAT_HI, task.category)}
                                   </span>
                                   <span className="text-slate-300">·</span>
 
                                   {/* Acceptance Status */}
                                   <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                    className={`text-xs font-bold px-2 py-0.5 rounded ${
                                       task.assignmentAcceptance === 'ACCEPTED'
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : task.assignmentAcceptance === 'REJECTED'
@@ -1771,7 +1863,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                                   {/* Task Status */}
                                   <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                    className={`text-xs font-bold px-2 py-0.5 rounded ${
                                       isCompleted
                                         ? 'bg-blue-100 text-blue-800'
                                         : task.taskStatus === 'IN_PROGRESS'
@@ -1786,7 +1878,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                                   {/* Independent Verification Status */}
                                   <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                    className={`text-xs font-bold px-2 py-0.5 rounded ${
                                       isVerified
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : task.verificationStatus === 'UNDER_REVIEW'
@@ -1798,22 +1890,22 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                   </span>
                                 </div>
 
-                                <h4 className="text-sm font-bold text-slate-900">{th(task.title)}</h4>
-                                <p className="text-xs text-slate-600">{th(task.description)}</p>
+                                {/* v83 — the title is already the row header above */}
+                                <p className="text-sm text-slate-700">{th(task.description)}</p>
 
                                 {/* RACI & Assignee Details */}
                                 <div className="pt-1 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                                   <div>
                                     <span className="text-slate-400">{tx('Responsible Assignee:', 'ज़िम्मेदार:')}</span>{' '}
                                     <strong className="text-slate-900">{task.assignedParticipantName}</strong>{' '}
-                                    <span className="text-[10px] text-slate-500">({label('role', task.assignedParticipantRole)})</span>
+                                    <span className="text-xs text-slate-500">({label('role', task.assignedParticipantRole)})</span>
                                   </div>
                                   <div>
                                     <span className="text-slate-400">{tx('Due Date:', 'अंतिम तारीख़:')}</span>{' '}
                                     {formatDate(task.dueDate)}
                                   </div>
                                   {task.acceptedAt && (
-                                    <div className="text-[11px] text-emerald-700">
+                                    <div className="text-xs text-emerald-700">
                                       {tx('Accepted on', 'स्वीकार किया')} {formatDateTime(task.acceptedAt)}
                                     </div>
                                   )}
@@ -1824,7 +1916,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                   <div className="bg-slate-50 border border-slate-200 rounded p-2 text-xs text-slate-700 mt-2">
                                     <strong>{tx('Completion note', 'पूरा होने का नोट')}:</strong> {task.completionNote}
                                     {task.completionTimestamp && (
-                                      <span className="text-[10px] text-slate-400 ml-2">
+                                      <span className="text-xs text-slate-400 ml-2">
                                         ({formatDateTime(task.completionTimestamp)})
                                       </span>
                                     )}
@@ -1836,7 +1928,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                     {task.evidenceAttachments.map((ev) => (
                                       <div
                                         key={ev.id}
-                                        className="flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-md text-[11px]"
+                                        className="flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-md text-xs"
                                       >
                                         <FileText className="h-3 w-3" />
                                         {ev.url && /^https?:\/\//i.test(ev.url) ? (
@@ -1850,7 +1942,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 )}
 
                                 {task.verificationNotes && (
-                                  <div className="text-[11px] text-emerald-700 pt-1 flex items-center gap-1">
+                                  <div className="text-xs text-emerald-700 pt-1 flex items-center gap-1">
                                     <ShieldCheck className="h-3.5 w-3.5" />
                                     <span>
                                       {tx('Verified by', 'जाँचा:')} <strong>{task.verifiedBy}</strong> · {formatDateTime(task.verifiedAt || '')}
@@ -1859,7 +1951,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 )}
 
                                 {task.reassignmentHistory.length > 0 && (
-                                  <div className="text-[10px] text-slate-400 pt-1">
+                                  <div className="text-xs text-slate-400 pt-1">
                                     {tx('Reassigned', 'दोबारा सौंपा गया')} {task.reassignmentHistory.length} {tx('time(s). Last reason', 'बार। आख़िरी कारण')}: {task.reassignmentHistory[task.reassignmentHistory.length - 1].reason}
                                   </div>
                                 )}
@@ -1918,12 +2010,14 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 {/* Reassign Task Button */}
                                 <button
                                   onClick={() => setReassignTaskItem(task)}
-                                  className="px-2.5 py-1 text-slate-500 hover:text-slate-800 text-[11px] font-medium transition-colors"
+                                  className="px-2.5 py-1 text-slate-500 hover:text-slate-800 text-xs font-medium transition-colors"
                                 >
                                   {tx('Reassign', 'दोबारा सौंपें')}
                                 </button>
                               </div>
                             </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })
@@ -2016,13 +2110,13 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           </div>
 
                           <div className="text-right">
-                            <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                            <div className="text-xs text-slate-400 uppercase tracking-wider">
                               {tx('Total Agreed Brokerage Fee', 'तय कुल ब्रोकरेज')}
                             </div>
                             <div className="text-xl font-bold text-emerald-400">
                               {formatINR(currentAgreement.totalAgreedBrokerage)}
                             </div>
-                            <div className="text-[11px] text-slate-400">{tx('Payer', 'भुगतान करने वाला')}: {enumLabel(PAYER_HI, currentAgreement.payer)}</div>
+                            <div className="text-xs text-slate-400">{tx('Payer', 'भुगतान करने वाला')}: {enumLabel(PAYER_HI, currentAgreement.payer)}</div>
                           </div>
                         </div>
 
@@ -2047,7 +2141,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               <div className="flex items-center justify-between">
                                 <div>
                                   <div className="text-sm font-bold text-slate-900">{alloc.participantName}</div>
-                                  <div className="text-[10px] text-slate-500 font-mono">{alloc.participantId} ({label('role', alloc.role)})</div>
+                                  <div className="text-xs text-slate-500 font-mono">{alloc.participantId} ({label('role', alloc.role)})</div>
                                 </div>
                                 <span
                                   className={`text-xs font-bold px-2 py-0.5 rounded ${
@@ -2066,20 +2160,20 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 text-xs">
                                 <div>
-                                  <span className="text-[10px] text-slate-400 block">{tx('Agreed Entitlement', 'तय हिस्सा')}</span>
+                                  <span className="text-xs text-slate-400 block">{tx('Agreed Entitlement', 'तय हिस्सा')}</span>
                                   <strong className="text-slate-900">{formatINR(alloc.allocationAmount)}</strong> ({alloc.allocationPct}%)
                                 </div>
                                 <div>
-                                  <span className="text-[10px] text-slate-400 block">{tx('Paid Amount', 'चुकाई गई रकम')}</span>
+                                  <span className="text-xs text-slate-400 block">{tx('Paid Amount', 'चुकाई गई रकम')}</span>
                                   <strong className="text-emerald-700">{formatINR(alloc.paidAmount || 0)}</strong>
                                 </div>
                                 <div>
-                                  <span className="text-[10px] text-slate-400 block">{tx('Disputed / Held', 'विवाद / होल्ड')}</span>
+                                  <span className="text-xs text-slate-400 block">{tx('Disputed / Held', 'विवाद / होल्ड')}</span>
                                   <strong className="text-rose-700">{formatINR(alloc.disputedAmount || 0)}</strong>
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                              <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
                                 <span>{tx('TDS rate on this share', 'इस हिस्से पर TDS दर')}: {alloc.taxDeductionTdsPct}% {tx('(as set for the project — confirm with your CA)', '(प्रोजेक्ट में तय — अपने CA से पुष्टि करें)')}</span>
                                 <span>{tx('GST invoice', 'GST इनवॉइस')}: {alloc.invoiceRequired ? tx('Required', 'ज़रूरी') : tx('Optional', 'वैकल्पिक')}</span>
                               </div>
@@ -2112,11 +2206,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             >
                               <div className="space-y-0.5">
                                 <div className="font-bold text-slate-900">{th(trig.milestoneName)}</div>
-                                <div className="text-[11px] text-slate-500">{tx('Stage', 'स्टेज')}: {label('dealStage', trig.stage)} · {trig.percentage}% {tx('of fee', 'फ़ीस का')}</div>
+                                <div className="text-xs text-slate-500">{tx('Stage', 'स्टेज')}: {label('dealStage', trig.stage)} · {trig.percentage}% {tx('of fee', 'फ़ीस का')}</div>
                               </div>
                               <div className="text-right">
                                 <div className="font-bold text-slate-900">{formatINR(trig.amount)}</div>
-                                <div className={`text-[10px] font-semibold ${trig.isMet ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                <div className={`text-xs font-semibold ${trig.isMet ? 'text-emerald-600' : 'text-slate-400'}`}>
                                   {trig.isMet ? tx('Milestone reached', 'माइलस्टोन पूरा') : tx('Milestone pending', 'माइलस्टोन बाकी')}
                                 </div>
                               </div>
@@ -2157,9 +2251,9 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               <div>
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-slate-900">{ap.userName}</span>
-                                  <span className="text-[10px] text-slate-500">({label('role', ap.role)})</span>
+                                  <span className="text-xs text-slate-500">({label('role', ap.role)})</span>
                                   <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                    className={`text-xs font-bold px-2 py-0.5 rounded ${
                                       ap.hasAccepted
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : 'bg-amber-100 text-amber-800'
@@ -2169,14 +2263,14 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                   </span>
                                 </div>
                                 {ap.signatureAuditTrail && (
-                                  <div className="text-[10px] text-slate-500 font-mono mt-1">
+                                  <div className="text-xs text-slate-500 font-mono mt-1">
                                     {tx('Method', 'तरीका')}: {enumLabel(AUTH_METHOD_HI, ap.signatureAuditTrail.authMethod)} · {tx('Time', 'समय')}: {formatDateTime(ap.signatureAuditTrail.timestamp)}
                                   </div>
                                 )}
                               </div>
 
                               {ap.hasAccepted && ap.signatureAuditTrail && (
-                                <div className="text-[10px] text-slate-400 font-mono truncate max-w-xs">
+                                <div className="text-xs text-slate-400 font-mono truncate max-w-xs">
                                   {tx('Hash', 'हैश')}: {ap.signatureAuditTrail.cryptoHash.slice(0, 24)}...
                                 </div>
                               )}
@@ -2188,13 +2282,13 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       {/* Clauses: Cancellation & Dispute */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1">
-                          <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                          <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                             {tx('Transaction Cancellation Terms', 'लेन-देन रद्द होने की शर्तें')}
                           </span>
                           <p className="text-slate-700">{th(currentAgreement.cancellationClause)}</p>
                         </div>
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1">
-                          <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                          <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                             {tx('Dispute process', 'विवाद की प्रक्रिया')}
                           </span>
                           <p className="text-slate-700">{th(currentAgreement.disputeProcess)}</p>
@@ -2306,7 +2400,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             <strong className="text-xs text-slate-900 block mt-1">
                               {(hi ? LEGAL_OPINION_HI : LEGAL_OPINION_EN)[readinessReport.legalReviewerDetails.legalOpinionStatus] ?? readinessReport.legalReviewerDetails.legalOpinionStatus}
                             </strong>
-                            <span className="text-[10px] text-slate-500">{readinessReport.legalReviewerDetails.name}</span>
+                            <span className="text-xs text-slate-500">{readinessReport.legalReviewerDetails.name}</span>
                           </div>
 
                           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
@@ -2314,7 +2408,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             <strong className="text-xs text-slate-900 block mt-1">
                               {readinessReport.registryCoordinationOwner.name}
                             </strong>
-                            <span className="text-[10px] text-slate-500">{label('role', readinessReport.registryCoordinationOwner.role)}</span>
+                            <span className="text-xs text-slate-500">{label('role', readinessReport.registryCoordinationOwner.role)}</span>
                           </div>
                         </div>
 
@@ -2376,7 +2470,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           </span>
                         </div>
                         <p className="text-slate-700">{dealDetail.dispute.description}</p>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-xs text-slate-500">
                           {tx('Filed by', 'दर्ज करने वाला')}: <strong>{dealDetail.dispute.complainantName}</strong> ({label('role', dealDetail.dispute.complainantRole)}) {tx('vs', 'बनाम')}{' '}
                           <strong>{dealDetail.dispute.counterpartyName}</strong>
                         </div>
@@ -2414,7 +2508,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               >
                 <span>{tx('Incoming Proposals', 'आए हुए प्रस्ताव')} ({incomingOffers.length})</span>
                 {pendingIncomingCount > 0 && (
-                  <span className="rounded-full bg-red-500 text-white px-1.5 py-0.2 text-[10px]">
+                  <span className="rounded-full bg-red-500 text-white px-1.5 py-0.2 text-xs">
                     {pendingIncomingCount} {tx('New', 'नए')}
                   </span>
                 )}
@@ -2475,7 +2569,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           </div>
 
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            className={`text-xs font-bold px-2 py-0.5 rounded ${
                               isPending
                                 ? 'bg-amber-100 text-amber-900'
                                 : isAccepted
@@ -2491,7 +2585,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                         {/* Property Info */}
                         <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
-                          <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                          <div className="text-xs uppercase font-bold text-slate-500 tracking-wider">
                             {tx('Target Listing Mandate', 'लिस्टिंग')}
                           </div>
                           <div className="text-sm font-bold text-slate-900 mt-0.5 line-clamp-1">
@@ -2516,7 +2610,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               {offer.proposingBroker?.name || offer.proposingBrokerId}
                             </span>
                             {offer.proposingBroker?.companyName && (
-                              <span className="text-slate-500 text-[11px] block">
+                              <span className="text-slate-500 text-xs block">
                                 {offer.proposingBroker.companyName}
                               </span>
                             )}
@@ -2561,7 +2655,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               title={`${tx('Closer', 'क्लोज़र')}: ${offer.proposedClosingShare}%`}
                             />
                           </div>
-                          <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <div className="flex items-center justify-between text-xs text-slate-500">
                             <span>{tx('Introducer', 'इंट्रोड्यूसर')} ({offer.proposedIntroducingShare}%)</span>
                             <span>{tx('Closing Broker', 'क्लोज़िंग ब्रोकर')} ({offer.proposedClosingShare}%)</span>
                           </div>
@@ -2576,7 +2670,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           </div>
                         )}
 
-                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium">
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
                           <ShieldCheck className="h-3.5 w-3.5" />
                           <span>{tx('The anti-bypass rule applies once accepted', 'मंज़ूर होने पर एंटी-बायपास सुरक्षा लागू होगी')}</span>
                         </div>
@@ -2680,7 +2774,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-mono font-bold text-slate-900">{offer.id}</span>
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            className={`text-xs font-bold px-2 py-0.5 rounded ${
                               offer.status === 'PENDING'
                                 ? 'bg-amber-100 text-amber-900'
                                 : offer.status === 'ACCEPTED'
@@ -2693,7 +2787,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         </div>
 
                         <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
-                          <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                          <div className="text-xs uppercase font-bold text-slate-500 tracking-wider">
                             {tx('Listing Mandate', 'लिस्टिंग')}
                           </div>
                           <div className="text-sm font-bold text-slate-900 mt-0.5">
@@ -2790,7 +2884,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                   className="mt-1 w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none"
                   placeholder="https://..."
                 />
-                <p className="mt-1 text-[11px] text-slate-400">{tx('GENZ keeps only the link, not the file.', 'GENZ सिर्फ़ लिंक रखता है, फ़ाइल नहीं।')}</p>
+                <p className="mt-1 text-xs text-slate-400">{tx('GENZ keeps only the link, not the file.', 'GENZ सिर्फ़ लिंक रखता है, फ़ाइल नहीं।')}</p>
               </div>
 
               <div className="pt-2 flex justify-end gap-2 border-t">
@@ -2914,7 +3008,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     );
                   })}
                 </select>
-                <p className="mt-1 text-[10px] text-slate-500">
+                <p className="mt-1 text-xs text-slate-500">
                   {!reassignLoading && reassignCandidates.length === 0
                     ? tx('No one else is in this deal room yet. Allot your employee to this deal first (Team → deal access).', 'इस डील रूम में अभी कोई और नहीं है। पहले अपने कर्मचारी को इस डील में जोड़ें (टीम → डील एक्सेस)।')
                     : tx('Only people who are part of this deal are listed — not other users of the network.', 'सिर्फ़ इसी डील से जुड़े लोग दिखते हैं — नेटवर्क के बाकी यूज़र नहीं।')}
@@ -3001,7 +3095,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     placeholder={tx('e.g. 11500000', 'जैसे 11500000')}
                     className="mt-1 w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">{tx('GENZ sees only the total of all deal values on its dashboard — never your brokerage terms or chat.', 'GENZ को अपने डैशबोर्ड पर सिर्फ़ सभी डील वैल्यू का कुल दिखता है — आपकी ब्रोकरेज शर्तें या चैट कभी नहीं।')}</p>
+                  <p className="text-xs text-slate-500 mt-1">{tx('GENZ sees only the total of all deal values on its dashboard — never your brokerage terms or chat.', 'GENZ को अपने डैशबोर्ड पर सिर्फ़ सभी डील वैल्यू का कुल दिखता है — आपकी ब्रोकरेज शर्तें या चैट कभी नहीं।')}</p>
                 </div>
 
                 <div>
@@ -3104,10 +3198,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
             <div className="space-y-3 text-xs text-slate-700">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
-                <div className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">{tx('Signer Profile & Audit Metadata', 'मंज़ूर करने वाले की जानकारी')}</div>
+                <div className="text-xs uppercase font-semibold text-slate-500 tracking-wider">{tx('Signer Profile & Audit Metadata', 'मंज़ूर करने वाले की जानकारी')}</div>
                 <div className="font-bold text-slate-900">{currentUser.name}</div>
-                <div className="text-[11px] text-slate-500">{currentUser.email} · {tx('Role', 'भूमिका')}: {label('role', currentUser.role)}</div>
-                <div className="text-[10px] text-emerald-700 font-mono">{tx('Method: digital approval (SHA-256 hash-chained)', 'तरीका: डिजिटल मंज़ूरी (SHA-256 हैश-चेन)')}</div>
+                <div className="text-xs text-slate-500">{currentUser.email} · {tx('Role', 'भूमिका')}: {label('role', currentUser.role)}</div>
+                <div className="text-xs text-emerald-700 font-mono">{tx('Method: digital approval (SHA-256 hash-chained)', 'तरीका: डिजिटल मंज़ूरी (SHA-256 हैश-चेन)')}</div>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 text-xs">
@@ -3234,7 +3328,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 />
               </div>
 
-              <p className="text-[11px] text-slate-400">{tx('GENZ keeps only the link, not the file itself. Use a link you control (Drive, Dropbox…) and set its sharing yourself.', 'GENZ सिर्फ़ लिंक रखता है, फ़ाइल नहीं। अपने कंट्रोल वाला लिंक (Drive, Dropbox…) दें और उसकी शेयरिंग खुद तय करें।')}</p>
+              <p className="text-xs text-slate-400">{tx('GENZ keeps only the link, not the file itself. Use a link you control (Drive, Dropbox…) and set its sharing yourself.', 'GENZ सिर्फ़ लिंक रखता है, फ़ाइल नहीं। अपने कंट्रोल वाला लिंक (Drive, Dropbox…) दें और उसकी शेयरिंग खुद तय करें।')}</p>
 
               <div>
                 <label className="block text-xs font-medium text-slate-700">{tx('Description', 'विवरण')}</label>
@@ -3360,7 +3454,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         className="rounded text-blue-600"
                       />
                       <span className="font-medium text-slate-800 truncate flex-1">{asset.originalFileName}</span>
-                      <span className="text-[10px] text-slate-500 uppercase">{asset.category.split('_')[0]}</span>
+                      <span className="text-xs text-slate-500 uppercase">{asset.category.split('_')[0]}</span>
                     </label>
                   ))}
                 </div>

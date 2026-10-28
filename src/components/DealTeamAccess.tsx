@@ -28,7 +28,7 @@ export const DealTeamAccess: React.FC<Props> = ({ dealId, allotted, onChanged })
             {m.name} <span className="text-slate-400">· {m.teamTitle}</span>
           </label>
         ))}
-        <p className="text-[11px] text-slate-500">{hi ? 'वे डील और चैट पढ़ सकते हैं। कमीशन, बँटवारा या सिर्फ़-ब्रोकर चैनल उन्हें कभी नहीं दिखता।' : 'They can read the deal and chat. They never see commission, split or the brokers-only channel.'}</p>
+        <p className="text-xs text-slate-500">{hi ? 'वे डील और चैट पढ़ सकते हैं। कमीशन, बँटवारा या सिर्फ़-ब्रोकर चैनल उन्हें कभी नहीं दिखता।' : 'They can read the deal and chat. They never see commission, split or the brokers-only channel.'}</p>
         <button onClick={save} className="rounded bg-slate-900 px-3 py-1 font-semibold text-white">{hi ? 'सेव करें' : 'Save'}</button>
         {msg && <span className="ml-2 text-slate-600">{msg}</span>}
       </div>

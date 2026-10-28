@@ -320,14 +320,14 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
         <details className="rounded-xl border border-amber-300 bg-amber-50/60 p-3" open data-testid="dd-mine">
           <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-sm font-bold text-slate-900">
             {tx('My open items', 'मेरे खुले काम')} ({mine.items.length})
-            {mine.counts.overdue > 0 && <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">{tx(`${mine.counts.overdue} overdue`, `${mine.counts.overdue} देर से`)}</span>}
+            {mine.counts.overdue > 0 && <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">{tx(`${mine.counts.overdue} overdue`, `${mine.counts.overdue} देर से`)}</span>}
             <span className="text-xs font-medium text-slate-600">{tx(`${mine.counts.issues} issues · ${mine.counts.review} to review · ${mine.counts.papers} papers missing${mine.counts.start ? ` · ${mine.counts.start} to start` : ''}`, `${mine.counts.issues} समस्या · ${mine.counts.review} जाँचना · ${mine.counts.papers} काग़ज़ बाक़ी${mine.counts.start ? ` · ${mine.counts.start} शुरू करना` : ''}`)}</span>
           </summary>
           <ul className="mt-2 max-h-72 space-y-1.5 overflow-y-auto">
             {mine.items.map((row: any) => (
               <li key={row.kind + row.id}>
                 <button type="button" onClick={() => openMine(row)} className="flex w-full items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-left hover:border-slate-400" data-testid={`dd-mine-${row.id}`}>
-                  <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${row.kind === 'ISSUE' ? (row.overdue || row.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' : 'bg-rose-50 text-rose-800') : row.kind === 'REVIEW' ? 'bg-indigo-50 text-indigo-800' : 'bg-amber-100 text-amber-900'}`}>
+                  <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${row.kind === 'ISSUE' ? (row.overdue || row.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' : 'bg-rose-50 text-rose-800') : row.kind === 'REVIEW' ? 'bg-indigo-50 text-indigo-800' : 'bg-amber-100 text-amber-900'}`}>
                     {row.kind === 'ISSUE' ? tx('Issue', 'समस्या') : row.kind === 'REVIEW' ? tx('Review', 'जाँचें') : row.kind === 'START' ? tx('Start', 'शुरू करें') : tx('Paper', 'काग़ज़')}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -358,20 +358,20 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             </div>
             <div className="flex items-center gap-6 border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-6">
               <div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{tx('Asking Price', 'माँगी गई क़ीमत')}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider">{tx('Asking Price', 'माँगी गई क़ीमत')}</div>
                 <div className="text-sm font-bold text-emerald-400">{formatINR(currentProperty.askingPrice)}</div>
               </div>
               <div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{tx('Owner / Listing', 'मालिक / लिस्टिंग')}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider">{tx('Owner / Listing', 'मालिक / लिस्टिंग')}</div>
                 <div className="text-xs font-medium text-slate-200">{currentProperty.ownerName}</div>
               </div>
               <div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{tx('Due Diligence Score', 'ड्यू डिलिजेंस स्कोर')}</div>
+                <div className="text-xs text-slate-400 uppercase tracking-wider">{tx('Due Diligence Score', 'ड्यू डिलिजेंस स्कोर')}</div>
                 <div className="flex items-center gap-1.5">
                   <span className={`text-sm font-bold ${completionPct >= 70 ? 'text-emerald-400' : 'text-amber-400'}`}>
                     {completionPct}%
                   </span>
-                  <span className="text-[10px] text-slate-400">({verifiedCount}/{totalApplicable})</span>
+                  <span className="text-xs text-slate-400">({verifiedCount}/{totalApplicable})</span>
                 </div>
               </div>
             </div>
@@ -383,43 +383,43 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3" data-testid="dd-scorecard">
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500 font-medium">{tx('Verified Checks', 'सत्यापित जाँचें')}</span>
+            <span className="text-xs text-slate-500 font-medium">{tx('Verified Checks', 'सत्यापित जाँचें')}</span>
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </div>
           <div className="text-lg font-bold text-slate-900 mt-1">{verifiedCount}</div>
-          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Gate cleared with evidence', 'सबूत के साथ गेट पार')}</div>
+          <div className="hidden text-xs text-slate-400 mt-0.5 sm:block">{tx('Gate cleared with evidence', 'सबूत के साथ गेट पार')}</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500 font-medium">{tx('Under Review', 'समीक्षा में')}</span>
+            <span className="text-xs text-slate-500 font-medium">{tx('Under Review', 'समीक्षा में')}</span>
             <Clock className="h-4 w-4 text-blue-600" />
           </div>
           <div className="text-lg font-bold text-slate-900 mt-1">{underReviewCount}</div>
-          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Documents uploaded / checking', 'दस्तावेज़ दर्ज / जाँच जारी')}</div>
+          <div className="hidden text-xs text-slate-400 mt-0.5 sm:block">{tx('Documents uploaded / checking', 'दस्तावेज़ दर्ज / जाँच जारी')}</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500 font-medium">{tx('Pending Documents', 'बाकी दस्तावेज़')}</span>
+            <span className="text-xs text-slate-500 font-medium">{tx('Pending Documents', 'बाकी दस्तावेज़')}</span>
             <FileText className="h-4 w-4 text-amber-600" />
           </div>
           <div className="text-lg font-bold text-slate-900 mt-1">{pendingDocCount}</div>
-          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Awaiting seller submission', 'विक्रेता से दस्तावेज़ का इंतज़ार')}</div>
+          <div className="hidden text-xs text-slate-400 mt-0.5 sm:block">{tx('Awaiting seller submission', 'विक्रेता से दस्तावेज़ का इंतज़ार')}</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500 font-medium">{tx('Open Issues', 'खुली समस्याएँ')}</span>
+            <span className="text-xs text-slate-500 font-medium">{tx('Open Issues', 'खुली समस्याएँ')}</span>
             <AlertTriangle className="h-4 w-4 text-rose-600" />
           </div>
           <div className="text-lg font-bold text-slate-900 mt-1">{issues.filter((i) => i.status !== 'RESOLVED').length}</div>
-          <div className="text-[10px] text-rose-600 font-semibold mt-0.5">{criticalIssues.length} {tx('Critical (blocks readiness)', 'गंभीर (तैयारी रोकती हैं)')}</div>
+          <div className="text-xs text-rose-600 font-semibold mt-0.5">{criticalIssues.length} {tx('Critical (blocks readiness)', 'गंभीर (तैयारी रोकती हैं)')}</div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3 col-span-2 sm:col-span-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-slate-500 font-medium">{tx('Legal Review Signoff', 'कानूनी समीक्षा सहमति')}</span>
+            <span className="text-xs text-slate-500 font-medium">{tx('Legal Review Signoff', 'कानूनी समीक्षा सहमति')}</span>
             <Scale className="h-4 w-4 text-purple-600" />
           </div>
           <div className="text-sm font-bold text-slate-900 mt-1">
@@ -429,7 +429,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
               ? tx('Defect Identified', 'दोष मिला')
               : tx('Advocate Vetting Pending', 'अधिवक्ता की जाँच बाकी')}
           </div>
-          <div className="hidden text-[10px] text-slate-400 mt-0.5 sm:block">{tx('Reviewed by an empanelled advocate', 'पैनल के अधिवक्ता द्वारा समीक्षित')}</div>
+          <div className="hidden text-xs text-slate-400 mt-0.5 sm:block">{tx('Reviewed by an empanelled advocate', 'पैनल के अधिवक्ता द्वारा समीक्षित')}</div>
         </div>
       </div>
 
@@ -489,7 +489,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             <button
               key={st}
               onClick={() => setActiveStatusFilter(st)}
-              className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                 activeStatusFilter === st
                   ? 'bg-slate-200 text-slate-900 font-semibold'
                   : 'text-slate-500 hover:bg-slate-100'
@@ -522,9 +522,9 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
               return (
                 <button key={item.id} id={`dd-item-${item.id}`} type="button" onClick={() => setOpenIds(prev => new Set(prev).add(item.id))} data-testid={`dd-row-${item.id}`}
                   className={`flex min-h-14 w-full items-center gap-3 rounded-xl border px-4 py-2 text-left ${isIssue ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200 bg-white hover:border-slate-400'} ${isWaived ? 'opacity-70' : ''}`}>
-                  <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold ${statusCls}`}>{stt(DD_STATUS, item.status)}</span>
+                  <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${statusCls}`}>{stt(DD_STATUS, item.status)}</span>
                   <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-900">{th(item.title)}</span>
-                  {item.evidenceReferences.length > 0 && <span className="shrink-0 text-[11px] text-slate-500">📎 {item.evidenceReferences.length}</span>}
+                  {item.evidenceReferences.length > 0 && <span className="shrink-0 text-xs text-slate-500">📎 {item.evidenceReferences.length}</span>}
                   <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
                 </button>
               );
@@ -548,16 +548,16 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                   {/* Left Info */}
                   <div className="space-y-1.5 flex-1">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-mono text-slate-400 text-[11px]">{item.id}</span>
+                      <span className="font-mono text-slate-400 text-xs">{item.id}</span>
                       <span className="text-slate-300">·</span>
-                      <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                      <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                         {categories.find((c) => c.id === item.category)?.label || item.category.replace(/_/g, ' ')}
                       </span>
                       <span className="text-slate-300">·</span>
 
                       {/* Status indicator */}
                       <span
-                        className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                        className={`text-xs font-semibold px-2 py-0.5 rounded ${
                           isVerified
                             ? 'bg-emerald-100 text-emerald-800'
                             : isIssue
@@ -573,10 +573,10 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                       </span>
 
                       {/* Approval Gate Stage */}
-                      <span className="text-[10px] text-slate-500 font-medium">
+                      <span className="text-xs text-slate-500 font-medium">
                         {tx('Gate', 'गेट')}: <strong className="text-slate-800">{stt(DD_GATE, item.approvalStage)}</strong>
                       </span>
-                      <button type="button" onClick={() => { setOpenIds(prev => { const n = new Set(prev); n.delete(item.id); return n; }); if (focusId === item.id) setFocusId(''); }} data-testid={`dd-hide-${item.id}`} className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"><ChevronUp className="h-3.5 w-3.5" />{tx('Hide', 'छुपाएँ')}</button>
+                      <button type="button" onClick={() => { setOpenIds(prev => { const n = new Set(prev); n.delete(item.id); return n; }); if (focusId === item.id) setFocusId(''); }} data-testid={`dd-hide-${item.id}`} className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-slate-500 hover:bg-slate-100"><ChevronUp className="h-3.5 w-3.5" />{tx('Hide', 'छुपाएँ')}</button>
                     </div>
 
                     <h4 className="text-sm font-bold text-slate-900">{th(item.title)}</h4>
@@ -585,7 +585,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                     {/* Required Document & Evidence Description */}
                     <div className="pt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                       <div className="bg-slate-50 border border-slate-100 rounded-lg p-2.5">
-                        <div className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                        <div className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                           {tx('Mandatory Evidence Document', 'अनिवार्य सबूत दस्तावेज़')}
                         </div>
                         <div className="text-xs font-medium text-slate-800 mt-0.5">
@@ -594,7 +594,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                       </div>
 
                       <div className="bg-slate-50 border border-slate-100 rounded-lg p-2.5">
-                        <div className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                        <div className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                           {tx('Acceptable Verification Benchmark', 'मान्य सत्यापन का मानक')}
                         </div>
                         <div className="text-xs text-slate-700 mt-0.5">
@@ -606,9 +606,9 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                     {/* Attached Evidence List */}
                     {hasEvidence && (
                       <div className="pt-2">
-                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                           <span>{tx('Paperwork Records', 'दस्तावेज़ रिकॉर्ड')} ({item.evidenceReferences.length})</span>
-                          <span className="text-[10px] text-slate-500 font-medium">{tx('details + file fingerprint; files are not stored by GENZ', 'ब्योरा + फ़ाइल फ़िंगरप्रिंट; फ़ाइलें GENZ पर सेव नहीं होतीं')}</span>
+                          <span className="text-xs text-slate-500 font-medium">{tx('details + file fingerprint; files are not stored by GENZ', 'ब्योरा + फ़ाइल फ़िंगरप्रिंट; फ़ाइलें GENZ पर सेव नहीं होतीं')}</span>
                         </div>
                         <div className="flex flex-wrap gap-2.5">
                           {item.evidenceReferences.map((ev) => (
@@ -621,12 +621,12 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                                   <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
                                   <span className="truncate">{ev.fileName}</span>
                                 </div>
-                                <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                <span className="shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
                                   {ev.documentType?.replace(/_/g, ' ') || tx('DOCUMENT', 'दस्तावेज़')}
                                 </span>
                               </div>
 
-                              <div className="text-[11px] text-slate-600 space-y-0.5">
+                              <div className="text-xs text-slate-600 space-y-0.5">
                                 {ev.documentNumber && (
                                   <div>
                                     <span className="text-slate-400">{tx('Reg No', 'पंजीयन नं.')}: </span>
@@ -638,7 +638,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                                   <span className="text-slate-700">{ev.issuer || tx('Issuer not recorded', 'जारीकर्ता दर्ज नहीं')}</span>
                                 </div>
                                 {ev.checksumSha256 && (
-                                  <div className="font-mono text-[10px] text-slate-500 truncate">
+                                  <div className="font-mono text-xs text-slate-500 truncate">
                                     <span className="text-slate-400 font-sans">SHA-256: </span>
                                     {ev.checksumSha256.slice(0, 18)}...
                                   </div>
@@ -646,7 +646,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                               </div>
 
                               {/* Sharing & Access Permissions Badge */}
-                              <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
+                              <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-xs">
                                 <span className="inline-flex items-center gap-1 text-indigo-700 font-medium">
                                   <Share2 className="h-3 w-3 text-indigo-600" />
                                   {ev.accessScope === 'CUSTOM_BROKERS'
@@ -685,7 +685,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
 
                     {/* Reviewer Signoff / Audit details */}
                     {item.reviewerName && (
-                      <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-1.5">
+                      <div className="text-xs text-slate-500 pt-1 flex items-center gap-1.5">
                         <UserCheck className="h-3.5 w-3.5 text-slate-400" />
                         <span>
                           {tx('Reviewed by', 'समीक्षक')} <strong className="text-slate-800">{item.reviewerName}</strong> ({label('role', item.reviewerRole || '')}) · {formatDateTime(item.reviewTimestamp || '')}
@@ -740,7 +740,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                     {allow('dd:issue_manage') && (
                       <button
                         onClick={() => handleToggleApplicability(item)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-slate-500 hover:text-slate-800 text-[11px] font-medium transition-colors"
+                        className="flex items-center gap-1 px-2.5 py-1 text-slate-500 hover:text-slate-800 text-xs font-medium transition-colors"
                       >
                         <span>{item.isApplicable ? tx('Waive Item', 'यह जाँच छोड़ें') : tx('Restore Item', 'जाँच बहाल करें')}</span>
                       </button>
@@ -793,7 +793,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                      className={`text-xs font-bold px-2 py-0.5 rounded ${
                         iss.severity === 'CRITICAL'
                           ? 'bg-rose-600 text-white'
                           : iss.severity === 'HIGH'
@@ -804,7 +804,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                       {stt(DD_SEV, iss.severity)}
                     </span>
                     <span className="text-xs font-bold text-slate-900">{iss.title}</span>
-                    <span className="text-[11px] font-mono text-slate-400">({iss.id})</span>
+                    <span className="text-xs font-mono text-slate-400">({iss.id})</span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -924,7 +924,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                 <FileText className="h-5 w-5 text-emerald-600" />
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">{previewEvidence.fileName}</h3>
-                  <span className="text-[10px] text-emerald-700 font-semibold uppercase">
+                  <span className="text-xs text-emerald-700 font-semibold uppercase">
                     {previewEvidence.documentType?.replace(/_/g, ' ') || tx('PAPERWORK', 'दस्तावेज़')}
                   </span>
                 </div>
@@ -964,7 +964,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                     <ShieldCheck className="h-4 w-4 text-emerald-600" />
                     <span>{tx('SHA-256 fingerprint of the file', 'फ़ाइल का SHA-256 फ़िंगरप्रिंट')}</span>
                   </div>
-                  <div className="font-mono text-[11px] text-emerald-800 break-all select-all">
+                  <div className="font-mono text-xs text-emerald-800 break-all select-all">
                     {previewEvidence.checksumSha256}
                   </div>
                 </div>
@@ -972,7 +972,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
 
               {previewEvidence.notes && (
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500">{tx('Broker Attestation Notes:', 'ब्रोकर के सत्यापन नोट्स:')}</label>
+                  <label className="text-xs font-semibold text-slate-500">{tx('Broker Attestation Notes:', 'ब्रोकर के सत्यापन नोट्स:')}</label>
                   <p className="mt-0.5 text-xs text-slate-700 bg-slate-50 p-2 rounded border border-slate-200">
                     {previewEvidence.notes}
                   </p>
@@ -1041,7 +1041,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                   ))}
                 </select>
                 {gateTargetStage === 'LEGAL_REVIEW_COMPLETED' && (
-                  <p className="text-[11px] text-purple-700 mt-1 flex items-center gap-1 font-medium">
+                  <p className="text-xs text-purple-700 mt-1 flex items-center gap-1 font-medium">
                     <Lock className="h-3 w-3" />
                     {tx('Only verified Legal Counsel or a Superadmin can sign off Gate 4.', 'गेट 4 की सहमति केवल सत्यापित लीगल काउंसल या सुपरएडमिन दे सकते हैं।')}
                   </p>
