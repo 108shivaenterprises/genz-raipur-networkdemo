@@ -82551,7 +82551,10 @@ function createShopPartnerRouter() {
     const partners = st11().shopPartners.filter((p) => p.brokerId === u.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const mineLeads = st11().partnerLeads.filter((l) => l.brokerId === u.id);
     const leads = mineLeads.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
-    res.json({ success: true, partners: partners.map(partnerView), leads, limits: PARTNER_LIMITS, record: payRecord(mineLeads) });
+    const verified3 = u.verificationStatus === "VERIFIED";
+    const pageOn = !!u.publicCard?.enabled;
+    const homes = { shown: verified3 && pageOn ? shownHomes(u).length : 0, verified: verified3, pageOn };
+    res.json({ success: true, partners: partners.map(partnerView), leads, limits: PARTNER_LIMITS, record: payRecord(mineLeads), homes });
   });
   r.post("/", needs("partner:manage"), rateLimit("sp-create", 40, 36e5), (req, res) => {
     const u = me16();
@@ -82830,13 +82833,21 @@ function createPartnerQrRouter() {
       const ph = pagePhotos(h)[0];
       const rent = h.transactionType !== "Sale";
       const net = canShow(b, h) === "NETWORK";
-      return `<article class="hm" id="h-${esc6(h.id)}"><div class="ph${ph ? "" : " nophoto"}"><canvas width="640" height="400"${ph ? ` data-src="${esc6(ph)}"` : ""} data-wm="${esc6(wm)}" aria-label="${esc6(h.title)}"></canvas><span class="np">\u{1F4F7}</span></div>
+      return `<article class="hm" id="h-${esc6(h.id)}"><div class="ph${ph ? "" : " nophoto"}"><canvas width="640" height="400"${ph ? ` data-src="${esc6(ph)}"` : ""} data-wm="${esc6(wm)}" aria-label="${esc6(h.title)}"></canvas><span class="np">\u{1F4F7} \u092B\u093C\u094B\u091F\u094B \u091C\u0932\u094D\u0926 / Photo coming soon</span></div>
 <div class="bd"><div class="pr">${esc6(priceShort(h.askingPrice))}${rent ? " <small>/ \u092E\u093E\u0939</small>" : ""}</div><div class="tt">${esc6(h.title)}</div><div class="sb">${esc6(h.propertyType)} \xB7 ${esc6(h.locality)}, ${esc6(h.city)}</div>${net ? '<span class="net">GENZ \u0928\u0947\u091F\u0935\u0930\u094D\u0915 \u0932\u093F\u0938\u094D\u091F\u093F\u0902\u0917 / GENZ network listing</span>' : ""}
 <div class="row"><a class="btn g" href="/q/${esc6(p.qrCode)}?home=${encodeURIComponent(h.id)}#form" data-testid="qr-interested">\u{1F44D} \u092E\u0941\u091D\u0947 \u092A\u0938\u0902\u0926 \u0939\u0948 / I'm interested</a></div></div></article>`;
     };
     const first2 = homes.slice(0, 6);
     const rest = homes.slice(6);
-    return `<h2>\u092E\u0947\u0930\u0947 \u092A\u093E\u0938 \u092F\u0947 \u0918\u0930 \u0939\u0948\u0902 / Homes I can show you <small>(${homes.length})</small></h2><div class="hms">${first2.map(one).join("")}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">\u0914\u0930 ${rest.length} \u0918\u0930 / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join("")}</div></details>` : ""}<p class="small" style="margin:8px 4px">\u{1F512} \u092A\u0942\u0930\u093E \u092A\u0924\u093E \u0914\u0930 \u092E\u093E\u0932\u093F\u0915 \u0915\u0940 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0930\u0964 / Exact address and owner details only on a verified visit.</p>`;
+    return `<h2 id="homes">\u092E\u0947\u0930\u0947 \u092A\u093E\u0938 \u092F\u0947 \u0918\u0930 \u0939\u0948\u0902 / Homes I can show you <small>(${homes.length})</small></h2><div class="hms">${first2.map(one).join("")}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">\u0914\u0930 ${rest.length} \u0918\u0930 / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join("")}</div></details>` : ""}<p class="small" style="margin:8px 4px">\u{1F512} \u092A\u0942\u0930\u093E \u092A\u0924\u093E \u0914\u0930 \u092E\u093E\u0932\u093F\u0915 \u0915\u0940 \u091C\u093E\u0928\u0915\u093E\u0930\u0940 \u0935\u0947\u0930\u093F\u092B\u093C\u093E\u0907\u0921 \u0935\u093F\u091C\u093C\u093F\u091F \u092A\u0930\u0964 / Exact address and owner details only on a verified visit.</p>`;
+  };
+  const pickedCard = (b, p, h) => {
+    const ph = pagePhotos(h)[0];
+    const rent = h.transactionType !== "Sale";
+    const wm = `${brandOf(b).displayName} \xB7 GENZ`;
+    return `<article class="hm" data-testid="qr-picked-home" style="box-shadow:none;border:1px solid #86efac"><div class="ph${ph ? "" : " nophoto"}"><canvas width="640" height="400"${ph ? ` data-src="${esc6(ph)}"` : ""} data-wm="${esc6(wm)}" aria-label="${esc6(h.title)}"></canvas><span class="np">\u{1F4F7} \u092B\u093C\u094B\u091F\u094B \u091C\u0932\u094D\u0926 / Photo coming soon</span></div>
+<div class="bd"><div class="small" style="font-weight:700;color:#166534">\u{1F44D} \u0906\u092A\u0928\u0947 \u092F\u0939 \u0918\u0930 \u091A\u0941\u0928\u093E \u0939\u0948 / You chose this home</div><div class="pr">${esc6(priceShort(h.askingPrice))}${rent ? " <small>/ \u092E\u093E\u0939</small>" : ""}</div><div class="tt">${esc6(h.title)}</div><div class="sb">${esc6(h.propertyType)} \xB7 ${esc6(h.locality)}, ${esc6(h.city)}</div>
+<div class="row"><a class="btn l" href="/q/${esc6(p.qrCode)}#homes" data-testid="qr-change-home">\u21A9 \u0926\u0942\u0938\u0930\u093E \u0918\u0930 \u0926\u0947\u0916\u0947\u0902 / See other homes</a></div></div></article>`;
   };
   const page2 = (res, p, msg = "", keep = {}, wantQuery = {}) => {
     const b = userOf(p.brokerId);
@@ -82853,7 +82864,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
 <div class="card"><p class="t">${esc6(who2)}${b?.reraNumber ? ` \xB7 RERA ${esc6(b.reraNumber)}` : ""} \u0906\u092A\u0938\u0947 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0917\u0947\u0964 <small>A GENZ-verified broker will call you.</small></p>
 <div class="big2"><a class="btn g" href="/q/${esc6(p.qrCode)}?want=buy#form" data-testid="qr-want-home">\u{1F3E0} \u092E\u0941\u091D\u0947 \u0918\u0930 \u091A\u093E\u0939\u093F\u090F<br><small style="color:#e9ffe9">I need a home</small></a><a class="btn l" href="/q/${esc6(p.qrCode)}?want=sell#form" data-testid="qr-want-list">\u{1F4CB} \u092E\u0941\u091D\u0947 \u0905\u092A\u0928\u0940 \u092A\u094D\u0930\u0949\u092A\u0930\u094D\u091F\u0940 \u0926\u0947\u0928\u0940 \u0939\u0948<br><small>I want to list my property</small></a></div></div>
 ${homes.length && b ? homeCards(b, p, homes) : ""}
-<div class="card${picked ? " pick" : ""}" id="form">${picked ? `<p class="t"><b>\u{1F44D} ${esc6(picked.title)}</b> \xB7 ${esc6(priceShort(picked.askingPrice))}<br><small>${esc6(picked.locality)}, ${esc6(picked.city)} \u2014 \u0906\u092A\u0928\u0947 \u092F\u0939 \u0918\u0930 \u091A\u0941\u0928\u093E \u0939\u0948 / you chose this home</small></p>` : ""}
+<div class="card${picked ? " pick" : ""}" id="form">${picked && b ? pickedCard(b, p, picked) : ""}
 <form method="post" action="/q/${esc6(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc6(picked.id)}">` : ""}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
 <label>\u0906\u092A\u0915\u094B \u0915\u094D\u092F\u093E \u091A\u093E\u0939\u093F\u090F? / What do you need?</label><div class="kinds">${kinds}</div>
 <label>\u0928\u093E\u092E / Name</label><input type="text" name="name" maxlength="80" required value="${esc6(keep.name || "")}" autocomplete="name">

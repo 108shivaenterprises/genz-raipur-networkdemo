@@ -333,7 +333,10 @@ export function createShopPartnerRouter() {
     const partners = st().shopPartners.filter(p => p.brokerId === u.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const mineLeads = st().partnerLeads.filter(l => l.brokerId === u.id);
     const leads = mineLeads.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
-    res.json({ success: true, partners: partners.map(partnerView), leads, limits: L, record: payRecord(mineLeads) });
+    // v84 — how many homes the customer will SEE on this broker's QR pages (they show only while the broker is verified and his public page is ON) — so a broker is told when the QR shows none
+    const verified = u.verificationStatus === 'VERIFIED'; const pageOn = !!u.publicCard?.enabled;
+    const homes = { shown: verified && pageOn ? shownHomes(u).length : 0, verified, pageOn };
+    res.json({ success: true, partners: partners.map(partnerView), leads, limits: L, record: payRecord(mineLeads), homes });
   });
 
   r.post('/', needs('partner:manage'), rateLimit('sp-create', 40, 3600_000), (req: Request, res: Response) => {
@@ -543,12 +546,20 @@ export function createPartnerQrRouter() {
     const wm = `${brandOf(b).displayName} · GENZ`;
     const one = (h: ReturnType<typeof shownHomes>[number]) => {
       const ph = pagePhotos(h)[0]; const rent = h.transactionType !== 'Sale'; const net = canShow(b, h) === 'NETWORK';
-      return `<article class="hm" id="h-${esc(h.id)}"><div class="ph${ph ? '' : ' nophoto'}"><canvas width="640" height="400"${ph ? ` data-src="${esc(ph)}"` : ''} data-wm="${esc(wm)}" aria-label="${esc(h.title)}"></canvas><span class="np">📷</span></div>
+      return `<article class="hm" id="h-${esc(h.id)}"><div class="ph${ph ? '' : ' nophoto'}"><canvas width="640" height="400"${ph ? ` data-src="${esc(ph)}"` : ''} data-wm="${esc(wm)}" aria-label="${esc(h.title)}"></canvas><span class="np">📷 फ़ोटो जल्द / Photo coming soon</span></div>
 <div class="bd"><div class="pr">${esc(priceShort(h.askingPrice))}${rent ? ' <small>/ माह</small>' : ''}</div><div class="tt">${esc(h.title)}</div><div class="sb">${esc(h.propertyType)} · ${esc(h.locality)}, ${esc(h.city)}</div>${net ? '<span class="net">GENZ नेटवर्क लिस्टिंग / GENZ network listing</span>' : ''}
 <div class="row"><a class="btn g" href="/q/${esc(p.qrCode)}?home=${encodeURIComponent(h.id)}#form" data-testid="qr-interested">👍 मुझे पसंद है / I'm interested</a></div></div></article>`;
     };
     const first = homes.slice(0, 6); const rest = homes.slice(6);
-    return `<h2>मेरे पास ये घर हैं / Homes I can show you <small>(${homes.length})</small></h2><div class="hms">${first.map(one).join('')}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">और ${rest.length} घर / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join('')}</div></details>` : ''}<p class="small" style="margin:8px 4px">🔒 पूरा पता और मालिक की जानकारी वेरिफ़ाइड विज़िट पर। / Exact address and owner details only on a verified visit.</p>`;
+    return `<h2 id="homes">मेरे पास ये घर हैं / Homes I can show you <small>(${homes.length})</small></h2><div class="hms">${first.map(one).join('')}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">और ${rest.length} घर / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join('')}</div></details>` : ''}<p class="small" style="margin:8px 4px">🔒 पूरा पता और मालिक की जानकारी वेरिफ़ाइड विज़िट पर। / Exact address and owner details only on a verified visit.</p>`;
+  };
+
+  /** v84 — the home the customer chose stays in front of him ON the form: photo, price, title, place, and a way to change it (before, only a text line was left and he had to scroll back up to see the home again) */
+  const pickedCard = (b: UserProfile, p: ShopPartner, h: ReturnType<typeof shownHomes>[number]) => {
+    const ph = pagePhotos(h)[0]; const rent = h.transactionType !== 'Sale'; const wm = `${brandOf(b).displayName} · GENZ`;
+    return `<article class="hm" data-testid="qr-picked-home" style="box-shadow:none;border:1px solid #86efac"><div class="ph${ph ? '' : ' nophoto'}"><canvas width="640" height="400"${ph ? ` data-src="${esc(ph)}"` : ''} data-wm="${esc(wm)}" aria-label="${esc(h.title)}"></canvas><span class="np">📷 फ़ोटो जल्द / Photo coming soon</span></div>
+<div class="bd"><div class="small" style="font-weight:700;color:#166534">👍 आपने यह घर चुना है / You chose this home</div><div class="pr">${esc(priceShort(h.askingPrice))}${rent ? ' <small>/ माह</small>' : ''}</div><div class="tt">${esc(h.title)}</div><div class="sb">${esc(h.propertyType)} · ${esc(h.locality)}, ${esc(h.city)}</div>
+<div class="row"><a class="btn l" href="/q/${esc(p.qrCode)}#homes" data-testid="qr-change-home">↩ दूसरा घर देखें / See other homes</a></div></div></article>`;
   };
 
   const page = (res: Response, p: ShopPartner, msg = '', keep: Record<string, string> = {}, wantQuery: Record<string, unknown> = {}) => {
@@ -566,7 +577,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <div class="card"><p class="t">${esc(who)}${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} आपसे संपर्क करेंगे। <small>A GENZ-verified broker will call you.</small></p>
 <div class="big2"><a class="btn g" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home">🏠 मुझे घर चाहिए<br><small style="color:#e9ffe9">I need a home</small></a><a class="btn l" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list">📋 मुझे अपनी प्रॉपर्टी देनी है<br><small>I want to list my property</small></a></div></div>
 ${homes.length && b ? homeCards(b, p, homes) : ''}
-<div class="card${picked ? ' pick' : ''}" id="form">${picked ? `<p class="t"><b>👍 ${esc(picked.title)}</b> · ${esc(priceShort(picked.askingPrice))}<br><small>${esc(picked.locality)}, ${esc(picked.city)} — आपने यह घर चुना है / you chose this home</small></p>` : ''}
+<div class="card${picked ? ' pick' : ''}" id="form">${picked && b ? pickedCard(b, p, picked) : ''}
 <form method="post" action="/q/${esc(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc(picked.id)}">` : ''}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
 <label>आपको क्या चाहिए? / What do you need?</label><div class="kinds">${kinds}</div>
 <label>नाम / Name</label><input type="text" name="name" maxlength="80" required value="${esc(keep.name || '')}" autocomplete="name">
