@@ -11,7 +11,9 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import { brandedQrSvg } from './brandlogo.js';
 import { localityFit, areasOf, canonPlace } from '../src/shared/places.js';
+import { PROPERTY_TYPES, RELATED_TYPE_GROUPS } from '../src/shared/india.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'crypto';
@@ -73,7 +75,7 @@ export function parseMoney(t?: string): number | null {
 }
 const norm = (t: unknown) => String(t || '').toLowerCase().replace(/[^a-z0-9ऀ-ॿ ]+/g, ' ').replace(/\s+/g, ' ').trim();
 /** does this home fit what the customer asked for? buy/rent side, the area (or the very home he tapped), and the budget when it can be read. Owner-side leads have no "match" */
-export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | 'homeId'>, h: Property): boolean {
+export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | 'homeId'> & { propertyType?: string }, h: Property): boolean {
   if (l.kind !== 'BUY' && l.kind !== 'RENT_IN') return false;
   if ((l.kind === 'BUY') !== (h.transactionType === 'Sale')) return false;
   const chosen = !!l.homeId && l.homeId === h.id;
@@ -81,10 +83,13 @@ export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | '
   const fit = localityFit(h.city || '', l.locality, h.locality).level; // v90: spelling slips and a bare city name count; a merely "nearby" area does not (this gate decides when the number opens)
   const area = chosen || fit === 'exact' || fit === 'city' || (!!a && (b.includes(a) || a.split(' ').some(w => w.length >= 4 && b.includes(w))));
   if (!area) return false;
+  // v91: a plot customer is not offered a flat — the picked type (or its close family) must fit; blank / "Other" means any
+  if (!chosen && (l as any).propertyType && (l as any).propertyType !== 'Other' && !typeFits(inferPtype((l as any).propertyType), h.propertyType)) return false;
   const cap = parseMoney(l.budget); const price = Number(h.askingPrice) || 0;
   if (cap && price && price > cap * 1.25) return false;
   return true;
 }
+function typeFits(want: string, have: string): boolean { return want === have || RELATED_TYPE_GROUPS.some(g => g.includes(want) && g.includes(have)); }
 /** the homes this broker may show (own live listings + other brokers' listings opened to pages) that fit the lead */
 function matchesFor(l: PartnerLead): Property[] {
   const b = userOf(l.brokerId); if (!b) return [];
@@ -104,6 +109,16 @@ export function budgetRupees(text: string | undefined, rent: boolean): number | 
   const v = !hasUnit && n < 1000 ? n * (rent ? 1e3 : 1e5) : n;
   return v > 0 && v <= 1e11 ? Math.round(v) : null;
 }
+/** the type the customer picked (any of the 14 app types, or an older short name); blank / "Other" → guessed from his note, else a flat */
+const KNOWN_TYPES = new Set(PROPERTY_TYPES as readonly string[]);
+export function inferPtype(picked: string | undefined, note = ''): string {
+  if (picked && KNOWN_TYPES.has(picked)) return picked;
+  if (picked && REQ_TYPES[picked]) return REQ_TYPES[picked];
+  const t = `${picked || ''} ${note}`.toLowerCase();
+  const rules: [RegExp, string][] = [[/farm\s*house|फ़ार्म|फार्म/, 'Farm House'], [/agri|khet|खेत|कृषि/, 'Agricultural Land'], [/godown|warehouse|गोदाम/, 'Warehouse / Godown'], [/factory|industr|फैक्ट्री|उद्योग/, 'Industrial Plot'], [/showroom|शोरूम/, 'Showroom'], [/shop|dukaan|dukan|दुकान/, 'Commercial Shop'], [/office|ऑफ़िस|ऑफिस/, 'Commercial Office'], [/villa|विला/, 'Residential Villa'], [/penthouse/, 'Penthouse'], [/plot|zameen|जमीन|ज़मीन|प्लॉट/, 'Residential Plot'], [/house|makaan|makan|मकान|कोठी/, 'Independent House']];
+  for (const [re, ty] of rules) if (re.test(t)) return ty;
+  return 'Residential Flat';
+}
 const REQ_TYPES: Record<string, string> = { Flat: 'Residential Flat', House: 'Independent House', Plot: 'Residential Plot', Shop: 'Commercial Shop', Office: 'Commercial Office', Warehouse: 'Warehouse / Godown' };
 /** v87 — the client card and the buyer need are two lists the broker looks at (Today & Clients / Buyers + Magic Match). A shop lead must land in BOTH, or he sees a client with no need, or a need with no client */
 function ensureNeed(l: PartnerLead, rent: boolean, city: string): string | undefined {
@@ -112,7 +127,7 @@ function ensureNeed(l: PartnerLead, rent: boolean, city: string): string | undef
   if (has) return has.id;
   const seq = s.requirements.reduce((m, q) => Math.max(m, Number(/REQ-(?:RAI-)?(\d+)/.exec(q.id)?.[1] ?? 0)), 200) + 1; const now = nowIso();
   const prior = s.requirements.find(q => phone10(q.customerPhone) === l.phone);
-  s.requirements.unshift({ id: `REQ-${seq}`, customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: l.name, customerPhone: l.phone, assignedBrokerId: l.brokerId, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city, preferredLocalities: [l.locality || city], preferredTags: [], propertyType: (REQ_TYPES[l.propertyType || ''] || 'Residential Flat') as any, transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)', status: 'matching', createdAt: now, updatedAt: now } as any);
+  s.requirements.unshift({ id: `REQ-${seq}`, customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: l.name, customerPhone: l.phone, assignedBrokerId: l.brokerId, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city, preferredLocalities: [l.locality || city], preferredTags: [], propertyType: inferPtype(l.propertyType, l.note) as any, transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)', status: 'matching', createdAt: now, updatedAt: now } as any);
   { const made = s.requirements.find(q => q.id === `REQ-${seq}`); if (made) void alertNeedNetwork(made as any); } // v90: tell the broker what the network already holds for this need
   return `REQ-${seq}`;
 }
@@ -684,7 +699,7 @@ export function createPartnerQrRouter() {
 <div class="row"><a class="btn g" href="/q/${esc(p.qrCode)}?home=${encodeURIComponent(h.id)}#form" data-testid="qr-interested">👍 मुझे पसंद है / I'm interested</a></div></div></article>`;
     };
     const first = homes.slice(0, 6); const rest = homes.slice(6);
-    return `<h2 id="homes">मेरे पास ये घर हैं / Homes I can show you <small>(${homes.length})</small></h2><div class="hms">${first.map(one).join('')}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">और ${rest.length} घर / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join('')}</div></details>` : ''}<p class="small" style="margin:8px 4px">🔒 पूरा पता और मालिक की जानकारी वेरिफ़ाइड विज़िट पर। / Exact address and owner details only on a verified visit.</p>`;
+    return `<h2 id="homes">मेरे पास ये प्रॉपर्टी हैं / Properties I can show you <small>(${homes.length})</small></h2><div class="hms">${first.map(one).join('')}</div>${rest.length ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:700;min-height:36px">और ${rest.length} घर / ${rest.length} more homes</summary><div class="hms">${rest.map(one).join('')}</div></details>` : ''}<p class="small" style="margin:8px 4px">🔒 पूरा पता और मालिक की जानकारी वेरिफ़ाइड विज़िट पर। / Exact address and owner details only on a verified visit.</p>`;
   };
 
   /** v84 — the home the customer chose stays in front of him ON the form: photo, price, title, place, and a way to change it (before, only a text line was left and he had to scroll back up to see the home again) */
@@ -703,13 +718,13 @@ export function createPartnerQrRouter() {
     const preKind = keep.kind || (picked ? (picked.transactionType === 'Sale' ? 'BUY' : 'RENT_IN') : want === 'buy' ? 'BUY' : want === 'sell' ? 'SELL' : '');
     const sellerSide = preKind === 'SELL' || preKind === 'RENT_OUT';   // v89 — the big buttons above the form follow what was chosen (they used to stay "I need a home" green even for a seller)
     const kinds = LEAD_KINDS.map(k => `<label><input type="radio" name="kind" value="${k.id}" ${preKind === k.id ? 'checked' : ''} required> ${k.hi}<br><small>${k.en}</small></label>`).join('');
-    const types = ['', 'Flat', 'House', 'Plot', 'Shop', 'Office', 'Warehouse', 'Other'];
+    const typeGroups: [string, string[]][] = [['🏠 घर / Homes', ['Residential Flat', 'Independent House', 'Residential Villa', 'Builder Floor', 'Penthouse', 'Farm House']], ['🌱 प्लॉट · ज़मीन / Plots & land', ['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land']], ['🏪 दुकान · ऑफ़िस / Commercial', ['Commercial Shop', 'Showroom', 'Commercial Office']], ['🏭 गोदाम · उद्योग / Industry', ['Warehouse / Godown']]];
     const who = b?.name || 'ब्रोकर';
     const ack = ackText(who, picked ? picked.title : 'ब्रोकर द्वारा दिखाई जाने वाली प्रॉपर्टी / the properties shown by the broker');
-    res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>
+    res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट · फ़ार्म · गोदाम</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <div class="card"><p class="t">${esc(who)}${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} आपसे संपर्क करेंगे। <small>A GENZ-verified broker will call you.</small></p>
-<div class="big2"><a class="btn ${sellerSide ? 'l' : 'g'}" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home" ${sellerSide ? '' : 'aria-current="true"'}>🏠 मुझे घर चाहिए<br><small${sellerSide ? '' : ' style="color:#e9ffe9"'}>I need a home</small></a><a class="btn ${sellerSide ? 'g' : 'l'}" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list" ${sellerSide ? 'aria-current="true"' : ''}>📋 मुझे अपनी प्रॉपर्टी देनी है<br><small${sellerSide ? ' style="color:#e9ffe9"' : ''}>I want to list my property</small></a></div></div>
+<div class="big2"><a class="btn ${sellerSide ? 'l' : 'g'}" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home" ${sellerSide ? '' : 'aria-current="true"'}>🏠 मुझे प्रॉपर्टी चाहिए<br><small${sellerSide ? '' : ' style="color:#e9ffe9"'}>I need a property (home · plot · shop · godown)</small></a><a class="btn ${sellerSide ? 'g' : 'l'}" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list" ${sellerSide ? 'aria-current="true"' : ''}>📋 मुझे अपनी प्रॉपर्टी देनी है<br><small${sellerSide ? ' style="color:#e9ffe9"' : ''}>I want to list my property</small></a></div></div>
 ${homes.length && b ? homeCards(b, p, homes) : ''}
 <style>#form form:has(input[name=kind][value=SELL]:checked) #promise,#form form:has(input[name=kind][value=RENT_OUT]:checked) #promise{display:none}#sellnote{display:none}#form form:has(input[name=kind][value=SELL]:checked) #sellnote,#form form:has(input[name=kind][value=RENT_OUT]:checked) #sellnote{display:block}.kinds label{min-width:0}.w{padding-bottom:96px}</style>
 <div class="card${picked ? ' pick' : ''}" id="form">${picked && b ? pickedCard(b, p, picked) : ''}
@@ -720,7 +735,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
 <label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required value="${esc(keep.phone || '')}" autocomplete="tel-national" placeholder="98XXXXXXXX">
 <label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required list="areas" autocomplete="off" value="${esc(keep.locality || (picked ? picked.locality : p.area))}"><datalist id="areas">${areasOf(p.city || 'Raipur').slice(0, 80).map(a => `<option value="${esc(a.replace(/\s*\(.*\)\s*/g, ''))}">`).join('')}</datalist><p class="small" style="margin:2px 0 0">पूरा शहर चाहिए तो शहर का नाम लिख दें / For the whole city just write the city name.</p>
 <label>बजट / किराया (अंदाज़न) / Budget or rent</label><input type="text" name="budget" maxlength="60" value="${esc(keep.budget || '')}" placeholder="जैसे 40 लाख / 12,000 महीना">
-<label>प्रॉपर्टी / Property type</label><select name="ptype">${types.map(x => `<option value="${x}" ${keep.ptype === x ? 'selected' : ''}>${x || '— कोई भी / Any —'}</option>`).join('')}</select>
+<label>प्रॉपर्टी / Property type</label><select name="ptype"><option value="">— कोई भी / Any —</option>${typeGroups.map(([g, list]) => `<optgroup label="${g}">${list.map(x => `<option value="${x}" ${keep.ptype === x ? 'selected' : ''}>${x}</option>`).join('')}</optgroup>`).join('')}<option value="Other" ${keep.ptype === 'Other' ? 'selected' : ''}>कुछ और / Other</option></select>
 <label>कुछ और / Anything else</label><textarea name="note" rows="2" maxlength="300">${esc(keep.note || '')}</textarea>
 <div class="card warn" style="margin-top:12px" id="promise"><p class="t"><b>ख़रीदने या किराये पर लेने वालों के लिए · For buyers and renters</b></p><p class="t">${esc(ack.hi)}</p><p class="t"><small>${esc(ack.en)}</small></p>
 <label class="ck"><input type="checkbox" name="direct" value="1" ${keep.direct === '1' ? 'checked' : ''}><span>मैं यह मानता/मानती हूँ। <small>I agree to this.</small></span></label>
@@ -766,7 +781,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
     const b = userOf(p.brokerId);
     const a4 = String(req.query.size || '').toLowerCase() === 'a4';
     const url = `${req.protocol}://${req.get('host')}/q/${p.qrCode}`;
-    const svg = await QRCode.toString(url, { type: 'svg', margin: 1, width: 400 });
+    const svg = await brandedQrSvg(url, 400);
     noStore(res);
     res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>QR poster — ${esc(p.shopName)}</title>
 <style>@page{size:${a4 ? 'A4' : 'A5'};margin:0}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#e5e7eb;color:#14213d}
@@ -890,7 +905,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     noStore(res);
     const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
     const body = req.body || {};
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: canonPlace(p.city || 'Raipur', str(body.locality, 80)), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: canonPlace(p.city || 'Raipur', str(body.locality, 80)), budget: str(body.budget, 60), ptype: str(body.ptype, 30), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`); // a bot filled the hidden field
     if (!formTsOk(body.t)) return page(res, p, 'कृपया फ़ॉर्म दोबारा भरें। / Please fill the form again.', keep);
     const kind = LEAD_KINDS.find(k => k.id === keep.kind)?.id as LeadKind | undefined;
@@ -1294,7 +1309,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     const p = authed(req, res); if (!p) return;
     if (!p.acceptedAt || p.status === 'PENDING' || p.status === 'ENDED') return back(res, req.params.token);
     const b = userOf(p.brokerId);
-    const svg = await QRCode.toString(`${req.protocol}://${req.get('host')}/q/${p.qrCode}`, { type: 'svg', margin: 1, width: 200 });
+    const svg = await brandedQrSvg(`${req.protocol}://${req.get('host')}/q/${p.qrCode}`, 200);
     res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>GENZ नेटवर्क पार्टनर — ${esc(p.shopName)}</title>
 <style>@page{size:A4 landscape;margin:12mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee}.c{max-width:277mm;margin:10px auto;background:#fff;border:6px double #14213d;padding:14mm 12mm;text-align:center}
 .k{letter-spacing:3px;color:#b45309;font-weight:700;font-size:13px}h1{font-size:34px;margin:6px 0 2px;color:#14213d}h2{font-size:26px;margin:14px 0 4px}.s{color:#444;font-size:15px}.qr{width:38mm;margin:12px auto 4px}.qr svg{width:100%;height:auto}.f{margin-top:12px;font-size:12px;color:#555}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.c{margin:0}}</style></head>
@@ -1323,6 +1338,33 @@ export function partnerCounts(uid: string) {
     partnerDue: leads.filter(l => l.payout && ['DUE', 'NOT_RECEIVED'].includes(l.payout.status)).length,
     partnerCodes: st().shopPartners.filter(p => p.brokerId === uid && p.otpPlain && p.otpExpires && Date.parse(p.otpExpires) > Date.now()).length,
   };
+}
+
+/**
+ * v91 — a site visit was booked / verified ANYWHERE in the app (a client room, the visit screen, the owner's room page): the shop lead
+ * moves by itself (Contacted → Visit done), the client card follows, and the shop is told on his phone. Nobody has to press a stage button.
+ * Runs once per visit and phase; only the broker's own, still-locked, open lead with the same mobile is touched.
+ */
+export function leadVisitEvent(v: { id: string; brokerId: string; customerPhone?: string; propertyId?: string }, phase: 'BOOKED' | 'DONE'): number {
+  try {
+    const ph = phone10(v.customerPhone); if (!ph) return 0;
+    const s = st(); let n = 0;
+    for (const l of s.partnerLeads) {
+      if (l.brokerId !== v.brokerId || l.phone !== ph || ['WON', 'LOST'].includes(l.status) || !locked(l)) continue;
+      const tag = `[${v.id}:${phase}]`; if (l.history.some(h => h.text.includes(tag))) continue;
+      const p = s.shopPartners.find(x => x.id === l.partnerId); if (!p) continue;
+      if (phase === 'DONE' && ['NEW', 'CONTACTED'].includes(l.status)) l.status = 'VISIT';
+      if (phase === 'BOOKED' && l.status === 'NEW') l.status = 'CONTACTED';
+      const card = l.clientCardId ? s.clientCards.find(c => c.id === l.clientCardId) : undefined;
+      if (card && phase === 'DONE' && ['NEW', 'CONTACTED'].includes(card.stage)) { card.stage = 'SITE_VISIT'; card.updatedAt = nowIso(); card.timeline.push({ at: nowIso(), kind: 'STAGE', text: 'Site visit verified — stage moved automatically' }); }
+      hist(l, 'SYSTEM', phase === 'DONE' ? `Site visit verified ${tag} — lead moved to “Visit done” automatically` : `Site visit booked ${tag}`);
+      n++;
+      if (phase === 'DONE') tellShop(p, 'विज़िट हो गई ✔', 'Visit done', `${l.locality} वाली आपकी लीड का ग्राहक घर देख आया — लीड आगे बढ़ी।`, `visit-${l.id}`);
+      else tellShop(p, 'विज़िट तय हुई 📍', 'Visit booked', `${l.locality} वाली आपकी लीड की घर-विज़िट तय हो गई है।`, `visit-${l.id}`);
+    }
+    if (n) db.save();
+    return n;
+  } catch (e: any) { console.error('[SHOP] visit mark failed:', e?.message || e); return 0; }
 }
 
 /** demo only (SEED_DEMO_DATA + SEED_DEMO_BULK): three shop partners and a few leads for the first demo broker, so the screen is not empty */

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
+import { qrDataUrl, drawBrandLogo } from '../lib/brandQr.js';
 import { Download, Printer, Loader2, X } from 'lucide-react';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -13,6 +14,7 @@ async function draw(canvas: HTMLCanvasElement, w: number, h: number, d: PosterDa
   const pad = w * 0.06;
   g.fillStyle = d.tx === 'Sale' ? '#c1121f' : '#0b6e4f'; g.fillRect(0, 0, w, h * 0.17);
   g.fillStyle = '#fff'; g.font = `800 ${w * 0.115}px system-ui, sans-serif`; g.textAlign = 'center'; g.fillText(d.headline, w / 2, h * 0.115);
+  { const ls = w * 0.12; await drawBrandLogo(g, pad * 0.7, (h * 0.17 - ls) / 2, ls, 'poster'); g.textAlign = 'center'; }
   g.textAlign = 'left';
   const wrap = (text: string, x: number, y: number, maxW: number, lh: number, maxLines = 2) => {
     const words = text.split(' '); let line = ''; let n = 0;
@@ -29,7 +31,7 @@ async function draw(canvas: HTMLCanvasElement, w: number, h: number, d: PosterDa
     const now = Date.now(); g.fillStyle = '#6b7280'; g.font = `600 ${w * 0.03}px system-ui, sans-serif`;
     g.fillText(validDays ? `Price as on ${fmt(now)} · valid till ${fmt(now + validDays * 86_400_000)} — confirm on the QR page` : `Price as on ${fmt(now)} — confirm the latest on the QR page`, pad, y + w * 0.1 + w * 0.05); }
   // QR
-  const qr = await QRCode.toDataURL(url, { width: 600, margin: 1, errorCorrectionLevel: 'M' });
+  const qr = await qrDataUrl(url, { width: 600, margin: 1 });
   const qs = w * 0.4; const qy = h * 0.45;
   await new Promise<void>(res => { const im = new Image(); im.onload = () => { g.drawImage(im, (w - qs) / 2, qy, qs, qs); res(); }; im.src = qr; });
   g.strokeStyle = '#14213d'; g.lineWidth = 6; g.strokeRect((w - qs) / 2 - 12, qy - 12, qs + 24, qs + 24);

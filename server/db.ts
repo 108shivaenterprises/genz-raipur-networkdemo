@@ -1042,7 +1042,18 @@ export interface AuditEvent {
   hash: string;
 }
 
+export interface BrandLogoSettings {
+  enabled: boolean;
+  /** uploaded PNG/JPEG/WebP as a data URL (≤300 KB); absent = the built-in GENZ mark */
+  dataUrl?: string;
+  surfaces: { qr: boolean; poster: boolean; share: boolean; page: boolean };
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
 export interface SystemSettings {
+  /** v91 — the GENZ Broker Network logo on QRs, posters, banners, stories and public pages (superadmin only) */
+  brandLogo?: BrandLogoSettings;
   /** v20 — when the one-time legacy re-seal of the audit chain happened (never again after this) */
   auditChainSealedAt?: string;
   platformName: string;

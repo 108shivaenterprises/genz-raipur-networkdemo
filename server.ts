@@ -147,6 +147,7 @@ import { createReputationRouter, createHomeRouter } from './server/reputation.js
 import { createReportRouter } from './server/report.js';
 import { createTwoFactorRouter, twoFactorOn, makeTicket, readTicket, verifySecondFactor, twoFactorRecommended } from './server/twofactor.js';
 import { createKycVaultRouter, storeKyc, readKycBody, sweepKycVault } from './server/kycvault.js';
+import { createBrandRouter, brandInject } from './server/brandlogo.js';
 import { createIdReviewRouter, openIdTask, autoVerifyDecision, closeIdTaskOnAdverse, sweepIdDocs, ensureIdTasks, docsOfApplication } from './server/idreview.js';
 import { normAadhaar, isValidAadhaar, aadhaarLast4 as aadhaarTail, isSponsorEligible } from './src/shared/idRules.js';
 import { PROBATION_LIVE_LISTINGS, inProbation as inProbationT, tierOf as tierOfT } from './src/shared/networkRules.js';
@@ -163,7 +164,7 @@ import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onM
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
-import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, watchShares, sweepShopPartners } from './server/shopPartners.js';
+import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, watchShares, sweepShopPartners, leadVisitEvent } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
 import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
@@ -216,7 +217,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Protected-document and property-paper uploads need a larger body; those routes parse their own JSON with their own limit.
 const jsonParser = express.json({ limit: '256kb' });
-app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/api\/owner-media\/(photo|video|doc)$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
+app.use((req, res, next) => ((req.method === 'PUT' && req.path === '/api/brand') || req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/api\/owner-media\/(photo|video|doc)$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
 
 // Structured one-line access log for /api (no bodies, no cookies, no query strings -> no PII in logs).
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -2702,6 +2703,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
 
   if (deal) ensureVisitCards(state, deal.id);
   db.save();
+  leadVisitEvent(newVisit, 'BOOKED'); // v91: the shop lead and the shop are told by themselves
 
   db.appendAuditEvent(
     currentUser.id,
@@ -2770,6 +2772,7 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
   // v29 — the buyer saw the property with this broker (OTP / QR on site): the buyer bond starts
   if (visit.customerPhone) makeBuyerBond({ brokerId: visit.brokerId, propertyId: visit.propertyId, buyerPhone: visit.customerPhone, buyerName: visit.customerName, source: 'VISIT', sourceId: visit.id, dealRoomId: visit.dealRoomId });
   db.save();
+  leadVisitEvent(visit, 'DONE'); // v91: lead → “Visit done”, client card follows, the shop is told
   db.appendAuditEvent(user.id, user.role, 'VISIT', visit.id, auditAction, auditText);
   return deal;
 }
@@ -5655,6 +5658,8 @@ app.use('/api/invdesk', createInventoryDeskRouter());
 app.use('/api/launch', createLaunchRouter());
 app.use('/api/share', createShareRouter());
 app.use('/api/land-records', createLandRecordsRouter());
+app.use('/api/brand', createBrandRouter());
+app.use(['/s', '/r', '/q', '/sp', '/a', '/c', '/oc', '/report', '/pay', '/p', '/v'], brandInject);
 app.use('/s', createPublicShareRouter());
 app.use('/api/client-rooms', createClientRoomRouter());
 // v60 — Rent desk: the broker's tenancies after the deal (terms, police verification, renewal, vacating)

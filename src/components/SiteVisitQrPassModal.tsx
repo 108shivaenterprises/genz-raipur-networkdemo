@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
+import { qrDataUrl as brandedQr } from '../lib/brandQr.js';
 import { SiteVisit, Property, UserProfile } from '../types/index.js';
 import { formatDateTime, printTarget } from '../lib/utils.js';
 import { api } from '../lib/api.js';
@@ -154,14 +155,7 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
 
   // Generate QR Code on load
   useEffect(() => {
-    QRCode.toDataURL(verificationPayload, {
-      width: 240,
-      margin: 1.5,
-      color: {
-        dark: '#0f172a',
-        light: '#ffffff',
-      },
-    })
+    brandedQr(verificationPayload, { width: 240, margin: 1.5, dark: '#0f172a', light: '#ffffff' })
       .then((url) => setQrDataUrl(url))
       .catch((err) => console.error('Failed to generate Visit QR', err));
   }, [verificationPayload]);

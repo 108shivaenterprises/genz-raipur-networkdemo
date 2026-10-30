@@ -9,6 +9,7 @@
  * Only visits created from v33 on carry an acknowledgement; older ones keep working as they were.
  * The buyer's mobile is kept as an HMAC + last 4 digits. The wording is versioned so a dispute can show what he agreed to.
  */
+import { brandedQrSvg } from './brandlogo.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'crypto';
@@ -126,7 +127,7 @@ async function ackedView(a: VisitAck): Promise<string> {
     const v = db.byId('siteVisits', a.refId) as any;
     if (!v) return shell(`${done}`);
     const payload = JSON.stringify({ visitId: v.id, dealRoomId: v.dealRoomId, propertyId: v.propertyId, token: `VISIT-PASS-${v.id}`, secret: v.qrToken || undefined });
-    const svg = await QRCode.toString(payload, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', width: 240 });
+    const svg = await brandedQrSvg(payload, 240);
     const when = new Date(v.scheduledTime).toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Kolkata' });
     return shell(`<div class="top"><h1>${esc(a.subject)}</h1><p>आपका विज़िट पास · Your visit pass</p></div>${done}
 <div class="card"><div class="q">${svg}</div><div class="code">${esc(v.otpCode || '')}</div><p class="t" style="text-align:center">${esc(when)}</p>

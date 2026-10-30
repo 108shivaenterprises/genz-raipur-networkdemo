@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTx } from '../lib/i18n.js';
 import { Loader2, Copy, MessageCircle, Download, Link2, Flame, Printer } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { drawBrandLogo } from '../lib/brandQr.js';
 import { LANG_LABELS, TEMPLATE_LABELS, TEMPLATE_LABELS_HI, renderTemplate, waLink, type TemplateKind, type TemplateLang } from '../shared/templates.js';
 
 interface Brand { displayName: string; company: string; tagline: string; reraId: string; logo: string; phone: string; city: string }
@@ -29,6 +30,7 @@ async function drawFlyer(canvas: HTMLCanvasElement, w: number, h: number, src: S
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
   g.fillStyle = 'rgba(252,163,17,0.12)'; g.beginPath(); g.arc(w * 0.9, h * 0.12, w * 0.4, 0, Math.PI * 2); g.fill();
   const pad = w * 0.07; const tall = h > w * 1.3;
+  { const ls = w * 0.13; await drawBrandLogo(g, w - pad - ls, pad * 0.5, ls, 'share'); }
   const FONT = 'system-ui, sans-serif';
   /** split into lines that fit maxW (current font); the last line gets "…" if the text is cut */
   const lines = (text: string, maxW: number, maxLines: number): string[] => {

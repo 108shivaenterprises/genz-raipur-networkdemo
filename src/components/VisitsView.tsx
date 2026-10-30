@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, QrCode, ScanLine, ShieldCheck, Share2, XCircle, CheckCircle2, ChevronDown, Keyboard } from 'lucide-react';
 import QRCode from 'qrcode';
+import { qrDataUrl, drawBrandLogo } from '../lib/brandQr.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { QrScanner } from './QrScanner.js';
@@ -24,7 +25,7 @@ const PassCard: React.FC<{ p: any; onChanged: () => void }> = ({ p, onChanged })
   const [img, setImg] = useState('');
   const [busy, setBusy] = useState(false);
   const link = `${window.location.origin}/v/${p.code}`;
-  useEffect(() => { if (p.status === 'ACTIVE') QRCode.toDataURL(p.payload, { width: 220, margin: 1 }).then(setImg).catch(() => undefined); }, [p.payload, p.status]);
+  useEffect(() => { if (p.status === 'ACTIVE') qrDataUrl(p.payload, { width: 220, margin: 1 }).then(setImg).catch(() => undefined); }, [p.payload, p.status]);
   const msg = `Namaste ${p.customerName.split(' ')[0]} ji, aapka ${p.projectName} site visit pass (${when(p.scheduledAt)}). QR/code gate par photo ID ke saath dikhayein: ${link}`;
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">

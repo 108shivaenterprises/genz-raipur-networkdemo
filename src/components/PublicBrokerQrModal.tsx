@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
+import { qrDataUrl as brandedQr } from '../lib/brandQr.js';
 import { printTarget } from '../lib/utils.js';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
@@ -76,14 +77,7 @@ export const PublicBrokerQrModal: React.FC<PublicBrokerQrModalProps> = ({
 
   // Generate QR Code data URL whenever selected broker changes
   useEffect(() => {
-    QRCode.toDataURL(profileUrl, {
-      width: 280,
-      margin: 1.5,
-      color: {
-        dark: '#0f172a', // slate-900
-        light: '#ffffff',
-      },
-    })
+    brandedQr(profileUrl, { width: 280, margin: 1.5, dark: '#0f172a', light: '#ffffff' })
       .then((url) => setQrDataUrl(url))
       .catch((err) => console.error('Failed to generate QR code', err));
   }, [profileUrl]);

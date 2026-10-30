@@ -10,6 +10,7 @@ import { NetworkPulse } from './NetworkPulse.js';
 import { ProtectionAdmin } from './ProtectionDays.js';
 import { TeamLimitsAdmin } from './TeamLimitsAdmin.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
+import { BrandLogoCard } from './BrandLogoCard.js';
 
 interface Props { onNavigate: (t: TabType) => void }
 
@@ -102,6 +103,8 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
       </div>
 
       <NetworkPulse onNavigate={onNavigate} />
+
+      <BrandLogoCard />
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card title={tx('Users', 'यूज़र')} value={d.users.total} hint={`${d.users.byStatus.VERIFIED || 0} ${tx('verified', 'वेरिफ़ाइड')}`} onClick={() => onNavigate('onboarding')} />

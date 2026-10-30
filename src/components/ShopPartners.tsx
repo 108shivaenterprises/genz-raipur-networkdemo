@@ -200,6 +200,38 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
   );
 };
 
+/** v91 — book a site visit straight from the lead: name, mobile and the homes that fit are already known, so it is a home + a time. The lead and the shop follow by themselves. */
+const LeadVisit: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
+  const tx = useTx();
+  const homes: any[] = l.matches || [];
+  const tomorrow = () => { const d = new Date(Date.now() + 86400_000); d.setHours(11, 0, 0, 0); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const [open, setOpen] = useState(false); const [home, setHome] = useState(l.homeId && homes.some((h) => h.id === l.homeId) ? l.homeId : homes[0]?.id || ''); const [at, setAt] = useState(tomorrow());
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  if (l.masked || !['BUY', 'RENT_IN'].includes(l.kind) || ['WON', 'LOST'].includes(l.status)) return null;
+  const book = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      await api.scheduleSiteVisit({ propertyId: home, customerName: l.name, customerPhone: l.phone, scheduledTime: new Date(at).toISOString(), notes: `Shop QR lead ${l.id} · ${l.shopName}`, scanAt: 'PROPERTY' });
+      setMsg({ ok: true, text: tx('Visit booked. The customer gets his code; the shop was told by itself.', 'विज़िट तय हो गई। ग्राहक को कोड मिलेगा; दुकान को अपने-आप बता दिया गया।') }); setOpen(false); onChange();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }
+  };
+  return (
+    <div data-testid="lead-visit">
+      {!open && <button type="button" className={light + ' !min-h-10 !text-xs'} onClick={() => setOpen(true)} data-testid="lead-visit-open">📍 {tx('Book a visit', 'विज़िट तय करें')}</button>}
+      {open && (
+        <div className="space-y-2 rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-xs">
+          {homes.length === 0 ? <p className="text-amber-800">{tx('No matching home yet — share one from the chat first.', 'अभी कोई मेल खाता घर नहीं — पहले चैट से घर शेयर करें।')}</p> : (<>
+            <select className={inp} value={home} onChange={(e) => setHome(e.target.value)} data-testid="lead-visit-home">{homes.map((h) => <option key={h.id} value={h.id}>{h.title} · {h.place}</option>)}</select>
+            <input type="datetime-local" className={inp} value={at} onChange={(e) => setAt(e.target.value)} data-testid="lead-visit-at" />
+            <div className="flex gap-2"><button type="button" className={dark + ' !min-h-9 !text-xs'} disabled={busy || !home || !at} onClick={book} data-testid="lead-visit-go">{busy ? '…' : tx('Book', 'तय करें')}</button><button type="button" className={light + ' !min-h-9 !text-xs'} onClick={() => setOpen(false)}>{tx('Cancel', 'रद्द')}</button></div>
+          </>)}
+        </div>
+      )}
+      {msg && <p className={`mt-1 text-[11px] ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>{msg.text}</p>}
+    </div>
+  );
+};
+
 const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid' | 'need' | 'share'>(''); const [val, setVal] = useState(''); const [reason, setReason] = useState(''); const [pm, setPm] = useState<PartnerPayMode>('UPI'); const [reply, setReply] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
@@ -225,6 +257,7 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
           window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
         }}><MessagesSquare className="h-4 w-4" />{tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
         {(l.kind === 'BUY' || l.kind === 'RENT_IN') && !l.links.some((x: any) => x.kind === 'NEED') && <button type="button" className={light + ' !min-h-10 !text-xs'} data-testid="sp-lead-need" onClick={() => setMode(mode === 'need' ? '' : 'need')}><Sparkles className="h-3.5 w-3.5" />{tx('No home yet? Find in network', 'घर नहीं है? नेटवर्क में ढूँढें')}</button>}
+        <LeadVisit l={l} onChange={onChange} />
         <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
         <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
       </div>

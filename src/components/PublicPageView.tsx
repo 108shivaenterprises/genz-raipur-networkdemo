@@ -9,6 +9,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
+import { qrDataUrl, drawBrandLogo } from '../lib/brandQr.js';
 import { Globe, Copy, ExternalLink, MessageCircle, Phone, QrCode, Loader2, MessagesSquare, Trash2, AlertTriangle, Eye, Home as HomeIcon, Inbox, ShieldCheck, Search, CheckCircle2, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
@@ -57,7 +58,7 @@ export const PublicPageView: React.FC = () => {
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const link = d?.card.path ? `${origin}${d.card.path}` : '';
-  useEffect(() => { if (!link) { setQr(''); return; } QRCode.toDataURL(link, { width: 320, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } }).then(setQr).catch(() => setQr('')); }, [link]);
+  useEffect(() => { if (!link) { setQr(''); return; } qrDataUrl(link, { width: 320, margin: 1, dark: '#0f172a', light: '#ffffff' }).then(setQr).catch(() => setQr('')); }, [link]);
 
   const run = async (key: string, fn: () => Promise<any>, ok?: string) => {
     setBusy(key); setMsg(null);

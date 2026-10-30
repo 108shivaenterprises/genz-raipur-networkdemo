@@ -7,6 +7,7 @@
  * (or the partner's allotted staff); only the builder (or staff the builder authorised) can scan.
  * Pass is single-use, time-boxed, tied to one lead; the scanner sees who is expected and confirms an ID check.
  */
+import { brandedQrSvg } from './brandlogo.js';
 import { alert } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
@@ -269,7 +270,7 @@ export function createPublicVisitRouter() {
     // v33 — the buyer must confirm “no direct deal” (tick + mobile code) before he sees the QR
     if (p.status === 'ACTIVE' && ackBlock('PASS', p.id)) { const a = ackFor('PASS', p.id)!; return res.send(renderAckGate(a, ackBase(a))); }
     const proj = db.byId('builderProjects', p.projectId);
-    const svg = await QRCode.toString(qrPayload(p.code), { type: 'svg', margin: 1, errorCorrectionLevel: 'M', width: 240 });
+    const svg = await brandedQrSvg(qrPayload(p.code), 240);
     const when = new Date(p.scheduledAt).toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Kolkata' });
     const live = p.status === 'ACTIVE' && passTiming(p) !== 'EXPIRED';
     const label = p.status === 'USED' ? 'Visit verified ✔' : p.status === 'ACTIVE' ? (live ? 'Valid pass' : 'Expired') : p.status === 'CANCELLED' || p.status === 'SUPERSEDED' ? 'Pass cancelled / replaced' : 'Expired';

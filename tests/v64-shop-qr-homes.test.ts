@@ -83,7 +83,7 @@ describe('shop QR page with homes', { timeout: 40000 }, () => {
     expect(own).toBeTruthy(); expect(net).toBeTruthy();
     netTitle = all.find(p => p.id === net).title;
     expect(html).toContain('मुझे पसंद है'); expect(html).toContain('GENZ नेटवर्क लिस्टिंग');
-    expect(html).toContain('मुझे घर चाहिए'); expect(html).toContain('मुझे अपनी प्रॉपर्टी देनी है');
+    expect(html).toContain('मुझे प्रॉपर्टी चाहिए'); expect(html).toContain('मुझे अपनी प्रॉपर्टी देनी है');
   });
 
   it('never shows an owner, an address or a number; a home its listing broker closed to pages drops out at once', async () => {
