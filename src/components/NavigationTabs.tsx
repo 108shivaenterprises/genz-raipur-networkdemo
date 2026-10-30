@@ -36,6 +36,7 @@ import {
   Store,
   Globe,
   DoorOpen,
+  Rss,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -68,6 +69,7 @@ export type TabType =
   | 'grow'
   | 'citylaunch'
   | 'daily'
+  | 'feed'
   | 'pdocs'
   | 'propdocs'
   | 'community'
@@ -182,6 +184,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('legal:desk') && !has('legal:manage') ? [{ id: 'legal', label: isCounsel ? t('nav.legalCases', 'Legal Cases') : t('nav.legal', 'Legal Desk'), icon: ScaleIcon, badge: legalBadge }] : []),
     // v54.1 — GENZ admins are never part of a deal chat (they read a deal room only through a dispute), so their Chats list is always empty
     ...(has('deal:chat', 'clientroom:use', 'pchat:use') && currentUser?.role !== 'ADMIN' && currentUser?.role !== 'SUPERADMIN' ? [{ id: 'chats', label: t('nav.chats', 'Chats'), icon: MessageCircle, badge: chatBadge }] : []),
+    ...(has('requirement:create') ? [{ id: 'feed', label: t('nav.feed', 'Network Feed'), icon: Rss }] : []),
     ...(has('daily:use') ? [{ id: 'daily', label: t('nav.daily', 'Today & Clients'), icon: CalendarCheck }] : []),
     ...(has('pcontrol:manage', 'pcontrol:oversee') ? [{ id: 'pcontrol', label: isBuilderRole ? t('nav.pcontrolBuilder', 'Partners & Rules') : t('nav.pcontrol', 'Project Control'), icon: SlidersHorizontal }] : has('pcontrol:partner') ? [{ id: 'pcontrol', label: t('nav.myprojects', 'My Projects'), icon: Layers }] : []),
     ...(has('offer:make', 'offer:decide', 'listing:lifecycle') ? [{ id: 'desk', label: t('nav.desk', 'Deal Desk'), icon: Handshake }] : []),
@@ -263,7 +266,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
   // v31 — a broker's ~23 tabs in 6 groups, each in priority order (the order of `ids` is the order shown; a group opens on its first tab). Every tab is still reachable: a group lists the tabs below, and anything not named lands in “Other”.
   const BROKER_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [
-    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'chats', 'daily', 'visits'] },
+    { id: 'today', key: 'nav.g.today', en: 'Today', ids: ['dashboard', 'chats', 'feed', 'daily', 'visits'] },
     { id: 'property', key: 'nav.g.property', en: 'Property & Buyers', ids: ['properties', 'ownerlist', 'requirements', 'matches', 'mypage', 'share', 'propdocs', 'pdocs', 'landrecords'] },
     // v45: client rooms sit with the deals (a buyer's room → visit → offer → deal room)
     { id: 'deals', key: 'nav.g.deals', en: 'Deals', ids: ['deals', 'clientroom', 'desk', 'rentdesk', 'legal', 'due_diligence', 'disputes', 'audit'] },

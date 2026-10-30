@@ -1119,6 +1119,7 @@ export const api = {
   inboxClear: () => request<{ success: boolean; cleared: number }>('/api/inbox', { method: 'DELETE' }),
   broadcastSend: (requirementId: string) => request<any>('/api/broadcast', { method: 'POST', body: JSON.stringify({ requirementId }) }),
   networkHas: (reqId: string) => request<{ success: boolean; count: number; top: any[] }>(`/api/broadcast/network/${encodeURIComponent(reqId)}`),
+  feed: (kind = 'all') => request<any>(`/api/feed?kind=${encodeURIComponent(kind)}`),
   broadcastInbox: () => request<any>('/api/broadcast/inbox'),
   broadcastRespond: (id: string, b: { propertyId?: string; note?: string }) => request<any>(`/api/broadcast/${encodeURIComponent(id)}/respond`, { method: 'POST', body: JSON.stringify(b) }),
   broadcastMine: () => request<any>('/api/broadcast/mine'),

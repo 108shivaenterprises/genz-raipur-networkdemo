@@ -25,7 +25,7 @@ function toDataUrl(file: File): Promise<string> {
 
 export const ListingDrafts: React.FC<{ onClose: () => void; onPublished: () => void; openId?: string }> = ({ onClose, onPublished, openId }) => {
   const tx = useTx(); const { lang } = useI18n(); const hi = lang === 'hi';
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => { try { const q = new URLSearchParams(window.location.search); return [q.get('stitle'), q.get('stext'), q.get('surl')].filter(Boolean).join('\n').slice(0, 20000); } catch { return ''; } });
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [open, setOpen] = useState<string>(openId || '');
   const [busy, setBusy] = useState(false);

@@ -61,6 +61,7 @@ const LandRecordsView = lazyView(() => import('./components/LandRecordsView.js')
 const GrowthView = lazyView(() => import('./components/GrowthView.js'), 'GrowthView');
 const PublicPageView = lazyView(() => import('./components/PublicPageView.js'), 'PublicPageView');
 const RentDeskView = lazyView(() => import('./components/RentDeskView.js'), 'RentDeskView');
+const FeedView = lazyView(() => import('./components/FeedView.js'), 'FeedView');
 const DailyView = lazyView(() => import('./components/DailyView.js'), 'DailyView');
 const PropertyPapersView = lazyView(() => import('./components/PropertyPapersView.js'), 'PropertyPapersView');
 const ProtectedDocsView = lazyView(() => import('./components/ProtectedDocsView.js'), 'ProtectedDocsView');
@@ -91,7 +92,7 @@ const FileDisputeModal = lazyView(() => import('./components/Modals.js'), 'FileD
 const AddConstructionLeadModal = lazyView(() => import('./components/Modals.js'), 'AddConstructionLeadModal');
 
 const TAB_KEY = 'genz.tab';
-const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats', 'ownerlist', 'people'];
+const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'feed', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats', 'ownerlist', 'people'];
 
 export default function App() {
   const tx = useTx();
@@ -118,6 +119,7 @@ export default function App() {
       if (tabParam && ALL_TABS.includes(tabParam)) {
         return tabParam;
       }
+      if (params.get('stext') || params.get('stitle')) return 'properties';   // v92: shared from WhatsApp → the paste-to-draft screen
       if (params.get('propertyId')) return 'properties';
       if (params.get('reqId')) return 'requirements';
       // A page reload (dev-server refresh, app update, F5) keeps the user on the tab they were on. Login / view-as / logout reset it.
@@ -618,6 +620,7 @@ export default function App() {
           <ConnectorDesk currentUser={currentUser} permissions={permissions} users={users} onNavigate={setActiveTab} />
         )}
 
+        {activeTab === 'feed' && hasPerm(permissions, 'requirement:create') && <FeedView onNavigate={setActiveTab} />}
         {activeTab === 'daily' && hasPerm(permissions, 'daily:use') && <DailyView currentUser={currentUser} onNavigate={setActiveTab} />}
 
         {activeTab === 'propdocs' && hasPerm(permissions, 'propdoc:use') && <PropertyPapersView withProtected={hasPerm(permissions, 'pdoc:use')} />}

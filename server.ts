@@ -142,6 +142,8 @@ import { createInboxRouter, sweepInbox, setTodoSync } from './server/inbox.js';
 import { syncHomeBell } from './server/homebell.js';
 import { createProjDocsRouter } from './server/projdocs.js';
 import { createProfilesRouter, seedDemoReviews } from './server/profiles.js';
+import { brokerLevel } from './src/shared/brokerLevel.js';
+import { createFeedRouter } from './server/feed.js';
 import { createBroadcastRouter, alertNewListing, sweepDigestPush, networkMatchesFor, alertNeedNetwork } from './server/broadcast.js';
 import { createReputationRouter, createHomeRouter } from './server/reputation.js';
 import { createReportRouter } from './server/report.js';
@@ -575,6 +577,7 @@ const DIR_FIELDS = ['id', 'name', 'role', 'city', 'state', 'brokerId', 'companyN
 function slimCard(u: UserProfile, state: DatabaseState) {
   const e = enrichRaw(u, state) as any; const out: any = {};
   for (const k of DIR_FIELDS) if (e[k] !== undefined && e[k] !== '') out[k] = e[k];
+  if (u.role === 'BROKER') out.level = brokerLevel(e).code;
   return out;
 }
 let dirCache: { v: number; kind: string; body: any[] } | null = null;
@@ -1606,6 +1609,7 @@ app.post('/api/properties/:id/moderate', needs('property:moderate'), (req: Reque
   prop.updatedAt = new Date().toISOString();
   db.save();
   db.appendAuditEvent(currentUser.id, currentUser.role, 'PROPERTY', prop.id, `LISTING_${action}`, `Listing ${prop.id} ${action} by ${currentUser.name}. ${reason || ''}`.trim());
+  if (action === 'APPROVE' || action === 'RESTORE') setImmediate(() => alertNewListing(prop));
   res.json({ success: true, property: sanitizeProperty(prop, currentUser) });
 });
 
@@ -5720,6 +5724,7 @@ app.use('/api/inbox', createInboxRouter()); // v77 — the notification bell
 app.use('/api/profiles', createProfilesRouter()); // v78 — profiles, ratings and reviews
 app.use('/api/projdocs', createProjDocsRouter()); // v77 — project papers: builder → partner → team → client
 app.use('/api/broadcast', createBroadcastRouter());
+app.use('/api/feed', createFeedRouter());
 app.use('/api/reputation', createReputationRouter());
 app.use('/api/home', createHomeRouter());
 app.use('/api', createHealthRouter());

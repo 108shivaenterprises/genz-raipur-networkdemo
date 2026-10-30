@@ -91,7 +91,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
     catch (e: any) { alert(e?.message || 'Error'); } finally { setApprovalBusy(''); }
   };
   const [draftOpenId, setDraftOpenId] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('draft') || ''; } catch { return ''; } });
-  const [showDrafts, setShowDrafts] = useState<boolean>(() => { try { return new URLSearchParams(window.location.search).get('drafts') === '1'; } catch { return false; } });
+  const [showDrafts, setShowDrafts] = useState<boolean>(() => { try { const q = new URLSearchParams(window.location.search); return q.get('drafts') === '1' || !!q.get('stext') || !!q.get('stitle'); } catch { return false; } });
   const isAdmin = currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN';
 
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'my'>(() => (isOwner ? 'my' : 'all'));
@@ -189,7 +189,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {showDrafts && <ListingDrafts openId={draftOpenId} onClose={() => { setShowDrafts(false); setDraftOpenId(''); try { const u = new URL(window.location.href); u.searchParams.delete('drafts'); u.searchParams.delete('draft'); window.history.replaceState(null, '', u.toString()); } catch { /* */ } }} onPublished={() => onPropertyUpdated?.()} />}
+      {showDrafts && <ListingDrafts openId={draftOpenId} onClose={() => { setShowDrafts(false); setDraftOpenId(''); try { const u = new URL(window.location.href); u.searchParams.delete('drafts'); u.searchParams.delete('draft'); u.searchParams.delete('stext'); u.searchParams.delete('stitle'); u.searchParams.delete('surl'); window.history.replaceState(null, '', u.toString()); } catch { /* */ } }} onPublished={() => onPropertyUpdated?.()} />}
       {may('property:moderate') && <ConsentQueue />}
       {isOwner && <OwnerPanel onNew={onOpenAddProperty} refreshKey={properties.length} />}
       {isBroker && <OwnerRequests />}

@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 command -v node >/dev/null || { echo "Node.js not found. Install it from https://nodejs.org (LTS) and run this again."; exit 1; }
 [ -d node_modules ] || npm install --no-audit --no-fund
 # ---- DEMO MODE ON (private demo machine only). For a real/public server remove these 3 lines, see DEPLOY_INDIA.md ----
-export DEMO_MODE=true SEED_DEMO_DATA=true DEMO_PASSWORD="${DEMO_PASSWORD:-Genz@2026}"
+export DEMO_MODE=true SEED_DEMO_DATA=true SEED_DEMO_BULK=true DEMO_PASSWORD="${DEMO_PASSWORD:-Genz@2026}"
 # Local first-run admin (you are forced to change the password on first login). Override by exporting these before running.
 export SEED_ADMIN_EMAIL="${SEED_ADMIN_EMAIL:-admin@genzbuildcon.com}"
 export SEED_ADMIN_PASSWORD="${SEED_ADMIN_PASSWORD:-Genz@Admin2026}"

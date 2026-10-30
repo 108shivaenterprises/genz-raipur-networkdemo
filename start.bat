@@ -6,6 +6,7 @@ if not exist node_modules call npm install --no-audit --no-fund
 REM ---- DEMO MODE ON (private demo machine only). For a real/public server delete these 3 lines and see DEPLOY_INDIA.md ----
 set DEMO_MODE=true
 set SEED_DEMO_DATA=true
+set SEED_DEMO_BULK=true
 set DEMO_PASSWORD=Genz@2026
 if "%SEED_ADMIN_EMAIL%"=="" set SEED_ADMIN_EMAIL=admin@genzbuildcon.com
 if "%SEED_ADMIN_PASSWORD%"=="" set SEED_ADMIN_PASSWORD=Genz@Admin2026

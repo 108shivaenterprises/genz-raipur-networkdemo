@@ -201,6 +201,8 @@ export function alertNewListing(p: Property) {
       told.add(rq.assignedBrokerId);
       void pushTo(rq.assignedBrokerId, { kind: 'matches', title: 'New match for one of your clients', body: `${p.title} · ${inr(p.askingPrice)}`, url: '/?tab=matches', tag: `m-${p.id}` });
     }
+    // v92 — and the other way round: the listing's own broker learns right away that buyers are waiting (never who the clients are)
+    if (told.size && p.listingBrokerId) void pushTo(p.listingBrokerId, { kind: 'matches', title: `${told.size} broker${told.size > 1 ? 's have' : ' has'} a buyer for your new listing`, body: `${p.title} · ${inr(p.askingPrice)} — open the feed to see who is looking`, url: '/?tab=feed', tag: `bw-${p.id}` });
     return told.size;
   } catch { return 0; }
 }
