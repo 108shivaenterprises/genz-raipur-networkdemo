@@ -5,6 +5,7 @@
  * (link + mobile code). Later work on a lead's mobile number by the same broker is linked automatically.
  */
 import { PageTitle } from './PageTitle.js';
+import { ShopProofCamera, type ShopProof } from './ShopProofCamera.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck, MessagesSquare, Sparkles } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -53,11 +54,12 @@ const AddPartner: React.FC<{ city: string; onDone: (x: { partner: any; link: str
   const tx = useTx();
   const [f, setF] = useState({ shopName: '', personName: '', phone: '', area: '', city, consent: false });
   const [terms, setTerms] = useState<PartnerTerms>(DEFAULT_TERMS);
+  const [proof, setProof] = useState<ShopProof | null>(null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const tErr = checkTerms(terms);
   const go = async () => {
     setBusy(true); setErr('');
-    try { const r = await api.spCreate({ ...f, terms }); onDone(r); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    try { const r = await api.spCreate({ ...f, terms, ...(proof ? { photo: proof.photo, geo: proof.geo } : {}) }); onDone(r); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="sp-add">
@@ -68,6 +70,7 @@ const AddPartner: React.FC<{ city: string; onDone: (x: { partner: any; link: str
         <input className={inp} inputMode="numeric" maxLength={14} placeholder={tx('Shopkeeper’s mobile', 'दुकानदार का मोबाइल')} value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} data-testid="sp-phone" />
         <input className={inp} placeholder={tx('Area / locality of the shop', 'दुकान का इलाका')} value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })} data-testid="sp-area" />
       </div>
+      <ShopProofCamera value={proof} onChange={setProof} />
       <TermsEditor value={terms} onChange={setTerms} />
       <p className="text-[11px] text-slate-500">{termsText(terms)} · {tx('You pay the shop yourself; GENZ only records it. Call it a “referral fee” — check with your CA / lawyer once.', 'हिस्सा आप ख़ुद दुकान को देंगे; GENZ सिर्फ़ रिकॉर्ड रखता है। इसे “रेफ़रल फ़ीस” कहें — एक बार CA / वकील से पूछ लें।')}</p>
       <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={f.consent} onChange={(e) => setF({ ...f, consent: e.target.checked })} data-testid="sp-consent" />
@@ -96,7 +99,8 @@ const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }
     <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid={`sp-partner-${p.id}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div><p className="flex items-center gap-1.5 text-sm font-bold text-slate-900"><Store className="h-4 w-4 text-slate-500" />{p.shopName}</p>
-          <p className="text-xs text-slate-500">{p.personName} · ••{p.phoneLast4} · {p.area}</p></div>
+          <p className="text-xs text-slate-500">{p.personName} · ••{p.phoneLast4} · {p.area}</p>
+          {p.proof?.photo && <p className="text-[11px] text-emerald-700" data-testid="sp-proof-ok">📍 {tx('Location + photo recorded at the shop', 'दुकान पर लोकेशन + फ़ोटो दर्ज')}</p>}</div>
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${tone}`}>{statusText}</span>
       </div>
       {p.codeForPartner && (

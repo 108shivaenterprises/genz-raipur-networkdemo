@@ -11,6 +11,8 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { brandedQrSvg } from './brandlogo.js';
 import { localityFit, areasOf, canonPlace } from '../src/shared/places.js';
 import { PROPERTY_TYPES, RELATED_TYPE_GROUPS } from '../src/shared/india.js';
@@ -38,6 +40,32 @@ import {
 
 const st = () => db.getState();
 const nowIso = () => new Date().toISOString();
+// ───────────── v93 — one shop, one QR: proof of place + "this shop already has a GENZ QR" ─────────────
+const PHOTO_MAX = 400 * 1024; const NEAR_M = 25; const MAX_ACC_M = 150; const PENDING_HOLD_DAYS = 14;
+const photoDir = () => path.resolve(process.cwd(), 'data', 'shopphotos');
+const photoFile = (id: string) => path.join(photoDir(), `${id}.jpg`);
+/** required on a real server (production) or when SHOP_PROOF_REQUIRED=true; optional on a local demo unless set */
+export const proofRequired = () => process.env.SHOP_PROOF_REQUIRED === 'true' || (process.env.NODE_ENV === 'production' && process.env.SHOP_PROOF_REQUIRED !== 'false');
+const metersBetween = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const R = 6371000; const rad = (x: number) => (x * Math.PI) / 180; const dLat = rad(b.lat - a.lat); const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+const nameKey = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/g, '');
+/** another broker's partnership that still holds this shop: active / paused, or pending for less than 14 days */
+const holdsShop = (p: ShopPartner) => p.status === 'ACTIVE' || p.status === 'PAUSED' || (p.status === 'PENDING' && Date.now() - Date.parse(p.createdAt) < PENDING_HOLD_DAYS * 86400_000);
+function readProof(b: any): { ok: true; proof?: { lat: number; lng: number; acc: number; at: string }; jpg?: Buffer } | { ok: false; error: string; code: string } {
+  const g = b?.geo; const raw = typeof b?.photo === 'string' ? b.photo : '';
+  if (!raw && !g) return proofRequired() ? { ok: false, error: 'Take the shop’s photo with the in-app camera while standing at the shop — it records the place.', code: 'PROOF_REQUIRED' } : { ok: true };
+  const lat = Number(g?.lat), lng = Number(g?.lng), acc = Number(g?.acc);
+  if (![lat, lng, acc].every(Number.isFinite) || lat < 6 || lat > 38 || lng < 68 || lng > 98) return { ok: false, error: 'The shop’s location could not be read. Allow location and try again at the shop.', code: 'PROOF_GEO' };
+  if (acc > MAX_ACC_M) return { ok: false, error: `GPS is weak (±${Math.round(acc)} m). Step outside the shop for a moment and take the photo again.`, code: 'PROOF_ACC' };
+  const buf = Buffer.from(raw.replace(/^data:[^;]+;base64,/, ''), 'base64');
+  if (!buf.length || buf.length > PHOTO_MAX) return { ok: false, error: 'The photo is missing or too big. Take it again.', code: 'PROOF_PHOTO' };
+  if (!(buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff)) return { ok: false, error: 'The photo must be taken with the in-app camera.', code: 'PROOF_PHOTO' };
+  return { ok: true, proof: { lat, lng, acc, at: nowIso() }, jpg: buf };
+}
+
 const me = () => ctx().user as UserProfile;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
@@ -387,6 +415,7 @@ function partnerView(p: ShopPartner) {
   const leads = st().partnerLeads.filter(l => l.partnerId === p.id);
   return {
     id: p.id, shopName: p.shopName, personName: p.personName, area: p.area, city: p.city, phoneLast4: p.phoneLast4, status: p.status,
+    proof: p.proof ? { at: p.proof.at, acc: Math.round(p.proof.acc), photo: p.proof.photo } : null,
     terms: p.terms, termsVersion: p.termsVersion, pending: p.pending || null, qrCode: p.qrCode,
     qrUrl: `/q/${p.qrCode}`, posterUrl: `/q/${p.qrCode}/poster`, pageUrl: p.token ? `/sp/${p.token}` : '',
     scans: p.scans, lastScanAt: p.lastScanAt, lastPartnerSeenAt: p.lastPartnerSeenAt, acceptedAt: p.acceptedAt, createdAt: p.createdAt,
@@ -446,7 +475,7 @@ export function createShopPartnerRouter() {
     res.json({ success: true, partners: partners.map(partnerView), leads, limits: L, record: payRecord(mineLeads), homes });
   });
 
-  r.post('/', needs('partner:manage'), rateLimit('sp-create', 40, 3600_000), (req: Request, res: Response) => {
+  r.post('/', needs('partner:manage'), rateLimit('sp-create', 40, 3600_000), express.json({ limit: '1mb' }), (req: Request, res: Response) => {
     const u = me(); const b = req.body || {};
     const shopName = str(b.shopName, 80), personName = str(b.personName, 80), area = str(b.area, 80), city = str(b.city, 60) || u.city || '';
     const phone = phone10(b.phone);
@@ -460,6 +489,17 @@ export function createShopPartnerRouter() {
     if (mineAll.length >= L.partners) return bad(res, `You can keep ${L.partners} partners — end old ones first`);
     const phoneKey = hmac('sp-phone', phone);
     if (mineAll.some(p => p.phoneKey === phoneKey)) return bad(res, 'You already have a partner with this mobile number', 409);
+    const pr = readProof(b); if (!pr.ok) return bad(res, pr.error, 400, { code: pr.code });
+    // v93 — the same shop cannot carry two brokers' QRs: same shopkeeper mobile, or the same place + name, held by ANOTHER broker. Never says who.
+    for (const o of st().shopPartners) {
+      if (o.brokerId === u.id || !holdsShop(o)) continue;
+      const samePhone = o.phoneKey === phoneKey;
+      const near = !!(pr.proof && o.proof && metersBetween(pr.proof, o.proof) <= NEAR_M);
+      if (samePhone || (near && nameKey(o.shopName) === nameKey(shopName))) {
+        db.appendAuditEvent(u.id, u.role, 'LEAD', o.id, 'SHOP_ALREADY_HAS_QR', `${u.name} tried to add a QR at a shop that already has a GENZ QR (${samePhone ? 'same mobile' : 'same place + name'})`);
+        return bad(res, 'This shop already has a GENZ QR from another broker. A shop keeps one QR — ask the shopkeeper to end the old partnership on his page first.', 409, { code: 'SHOP_TAKEN' });
+      }
+    }
     const token = newToken(); let qrCode = newQrCode(); while (st().shopPartners.some(p => p.qrCode === qrCode)) qrCode = newQrCode();
     const now = nowIso();
     const p: ShopPartner = {
@@ -467,11 +507,24 @@ export function createShopPartnerRouter() {
       tokenHash: sha(token), sessVersion: 1, linkAt: now, status: 'PENDING', terms: cleanTerms(b.terms), termsVersion: 1,
       scans: 0, history: [], createdAt: now, updatedAt: now,
     };
+    if (pr.proof && pr.jpg) {
+      try { fs.mkdirSync(photoDir(), { recursive: true }); fs.writeFileSync(photoFile(p.id), pr.jpg); p.proof = { ...pr.proof, photo: true }; } catch (e: any) { console.error('[SHOP] photo save failed:', e?.message || e); }
+      // a different shop within 25 m is fine (a market), but GENZ keeps a note
+      const nearby = st().shopPartners.filter(o => o.brokerId !== u.id && holdsShop(o) && o.proof && metersBetween(pr.proof!, o.proof) <= NEAR_M);
+      if (nearby.length) db.appendAuditEvent(u.id, u.role, 'LEAD', p.id, 'SHOP_QR_NEAR_ANOTHER', `A new shop QR was placed within ${NEAR_M} m of ${nearby.length} other GENZ shop QR(s) — different shop name / mobile`);
+    }
     p.token = token; // the broker can send the same page link again; the page still needs the partner's mobile + a code
     hist(p, 'BROKER', `Partner added — terms proposed: ${termsText(p.terms)}`);
     st().shopPartners.unshift(p); db.save();
     audit(p.id, 'SHOP_PARTNER_ADDED', `Shop QR partner added (${shopName}, ••${p.phoneLast4}) — waiting for the partner to accept the terms`);
     res.json({ success: true, partner: partnerView(p), link: `/sp/${token}`, phone });
+  });
+
+  /** the proof photo: the broker who owns the partnership, or GENZ staff */
+  r.get('/:id/photo', needs('partner:manage', 'partner:oversee'), (req: Request, res: Response) => {
+    const u = me(); const p = partnerOf(req.params.id);
+    if (!p || (p.brokerId !== u.id && !['ADMIN', 'SUPERADMIN'].includes(u.role))) return bad(res, 'Not found', 404);
+    try { const b = fs.readFileSync(photoFile(p.id)); res.setHeader('Cache-Control', 'private, max-age=300'); res.type('image/jpeg').send(b); } catch { bad(res, 'No photo', 404); }
   });
 
   r.post('/:id/link', needs('partner:manage'), (req: Request, res: Response) => {

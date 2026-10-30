@@ -1472,6 +1472,8 @@ export interface ShopPartner {
   createdAt: string; updatedAt: string; acceptedAt?: string; endedAt?: string;
   /** v82 — who paused it: the broker, or GENZ because a share stayed unpaid for 15 days (only paying it lets the broker resume) */
   pausedBy?: 'BROKER' | 'SYSTEM'; pauseReason?: string;
+  /** v93 — proof the QR is really at this shop: a live-camera photo (file data/shopphotos/<id>.jpg) + the phone's GPS at that moment */
+  proof?: { lat: number; lng: number; acc: number; at: string; photo: boolean };
 }
 /** v82 — one time the shop's share on a lead changed (or was written by hand); the shop answers it on his page */
 export interface ShareChange {

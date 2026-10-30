@@ -219,7 +219,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Protected-document and property-paper uploads need a larger body; those routes parse their own JSON with their own limit.
 const jsonParser = express.json({ limit: '256kb' });
-app.use((req, res, next) => ((req.method === 'PUT' && req.path === '/api/brand') || req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/api\/owner-media\/(photo|video|doc)$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
+app.use((req, res, next) => ((req.method === 'PUT' && req.path === '/api/brand') || (req.method === 'POST' && req.path === '/api/shop-partners') || req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/api\/owner-media\/(photo|video|doc)$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
 
 // Structured one-line access log for /api (no bodies, no cookies, no query strings -> no PII in logs).
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
