@@ -169,6 +169,7 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
       {l.masked ? (
         <p className="mt-1 text-xs text-amber-900" data-testid="sp-masked">🔒 {tx(`Number hidden — ••${l.phoneLast4}. ${owner ? 'It shows once the owner confirms the property details here.' : 'It shows once he confirms his need here and you share a home that matches it.'}`, `नंबर छुपा है — ••${l.phoneLast4}। ${owner ? 'मालिक के यहाँ प्रॉपर्टी की जानकारी पक्की करते ही दिखेगा।' : 'जब वह यहाँ अपनी ज़रूरत पक्की करे और आप उससे मेल खाता घर शेयर करें, तब दिखेगा।'}`)}</p>
       ) : <p className="mt-1 text-xs text-emerald-900" data-testid="sp-unmasked">✔ {tx('Number is now visible (need confirmed + home shared).', 'नंबर अब दिख रहा है (ज़रूरत पक्की + घर शेयर)।')}</p>}
+      <p className="text-xs text-slate-600" data-testid="sp-chat-alerts">{(l.alerts || 0) > 0 ? `🔔 ${tx('His phone gets alerts when you write', 'उनके फ़ोन पर आपके संदेश का अलर्ट जाएगा')}` : `🔕 ${tx('No alerts on his phone yet — he sees your reply when he opens his chat link', 'उनके फ़ोन पर अलर्ट अभी चालू नहीं — वे चैट लिंक खोलने पर ही जवाब देखेंगे')}`}</p>
       {open && (
         <div className="mt-1.5 space-y-1.5">
           <div className="max-h-56 space-y-1 overflow-y-auto rounded-md bg-[#efeae2] p-2" data-testid="sp-chat-msgs">

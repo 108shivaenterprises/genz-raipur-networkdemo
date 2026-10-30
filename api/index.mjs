@@ -75001,7 +75001,8 @@ var ROOM_KINDS = [
 ];
 var ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1e3, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 60, purgeClosedDays: 90, devices: 2, maxLifeDays: 365 };
 function containsPhone(text) {
-  const flat = String(text || "").replace(/[\s\-().]/g, "");
+  const digits2 = String(text || "").replace(/[०-९]/g, (d) => String(d.charCodeAt(0) - 2406)).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+  const flat = digits2.replace(/[\s\-().,_/|]/g, "");
   return /(?:\+?91|0)?[6-9]\d{9}(?!\d)/.test(flat);
 }
 var PHONE_IN_CHAT_MSG = {
@@ -82578,6 +82579,7 @@ function leadView(l) {
     masked: !rev,
     // v85 — the in-app chat (never the customer's link token); `matches` = the homes he may share now (only offered once the need is confirmed)
     chat: chat ? { msgs: chat.msgs.slice(-80), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter((m) => m.by === "CUSTOMER" && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
+    alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0,
     matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [],
     needLine: needLine(l),
     shopName: p?.shopName || "",
@@ -82809,6 +82811,7 @@ function createShopPartnerRouter() {
     addMsg(l, { by: "BROKER", kind: "MSG", text });
     l.chat.brokerSeenAt = nowIso22();
     db.save();
+    void brokerWrote(`lc-${l.id}`, me16().name, "MSG");
     res.json({ success: true, lead: leadView(l) });
   });
   r.post("/leads/:id/chat/seen", needs("partner:manage"), (req, res) => {
@@ -82827,6 +82830,7 @@ function createShopPartnerRouter() {
     addMsg(l, { by: "BROKER", kind: "ASK", text: needLine(l) });
     l.chat.brokerSeenAt = nowIso22();
     db.save();
+    void brokerWrote(`lc-${l.id}`, me16().name, "MSG");
     res.json({ success: true, lead: leadView(l) });
   });
   r.post("/leads/:id/offer", needs("partner:manage"), (req, res) => {
@@ -82844,6 +82848,7 @@ function createShopPartnerRouter() {
     hist(l, "BROKER", `Shared \u201C${h.title}\u201D in the chat`);
     audit4(l.id, first2 ? "SHOP_LEAD_NUMBER_SHOWN" : "SHOP_LEAD_HOME_SHARED", first2 ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}) was shared` : `Another home (${h.id}) shared in the chat`);
     db.save();
+    void brokerWrote(`lc-${l.id}`, me16().name, "HOME");
     res.json({ success: true, lead: leadView(l) });
   });
   r.post("/leads/:id/status", needs("partner:manage"), (req, res) => {
@@ -83102,13 +83107,66 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
 <form method="post" action="/q/chat/${esc6(tok2)}/ans"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="chat-yes">\u2705 \u0939\u093E\u0901, \u0938\u0939\u0940 \u0939\u0948<br><small style="color:#e9ffe9">Yes, correct</small></button><button class="l" type="submit" name="a" value="EDIT" data-testid="chat-edit">\u270F\uFE0F \u092C\u0926\u0932\u093E\u0935 \u092D\u0947\u091C\u0947\u0902<br><small>Send a change</small></button></div>
 <label>\u092C\u0926\u0932\u093E\u0935 (\u0938\u093F\u0930\u094D\u092B\u093C \u270F\uFE0F \u0915\u0947 \u0932\u093F\u090F) / Change (only for \u270F\uFE0F)</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" placeholder="\u091C\u0948\u0938\u0947: \u092C\u091C\u091F 50 \u0932\u093E\u0916, 3BHK"></textarea></form></div>` : "";
     const done = l.chat.reqConfirmedAt && !l.chat.revealedAt ? `<div class="card ok"><p class="t">\u2714 \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092A\u0915\u094D\u0915\u0940 \u0939\u094B \u0917\u0908\u0964 ${esc6(who2)} \u0905\u092C \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092E\u0947\u0932 \u0916\u093E\u0924\u093E \u0918\u0930 \u0922\u0942\u0901\u0922 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964<br><small>Your need is confirmed. ${esc6(who2)} is now looking for a home that matches.</small></p></div>` : "";
+    const showApp = l.chat.msgs.some((m) => m.by === "CUSTOMER" && m.kind !== "INFO");
+    const appCard = showApp ? `<div class="card app" id="app-card" style="display:none" data-testid="chat-app-card"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">\u{1F514} \u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0915\u0930\u0947\u0902 / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">\u092C\u093E\u0926 \u092E\u0947\u0902 / Later</button><button class="l" id="app-install" type="button" style="display:none">\u{1F4F2} \u0939\u094B\u092E \u0938\u094D\u0915\u094D\u0930\u0940\u0928 \u092A\u0930 \u091C\u094B\u0921\u093C\u0947\u0902 / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari \u092E\u0947\u0902 \u0928\u0940\u091A\u0947 \u201CShare\u201D \u2192 \u201CAdd to Home Screen\u201D, \u092B\u093F\u0930 \u0909\u0938 \u0910\u092A \u0915\u094B \u0916\u094B\u0932\u0947\u0902\u0964 / On iPhone: Safari \u2192 Share \u2192 Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>` : "";
     res.send(shell("GENZ \u091A\u0948\u091F", `<style>.bub{max-width:85%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px}</style>
 <div class="top"><h1>${esc6(who2)}</h1><p>GENZ verified broker${b?.reraNumber ? ` \xB7 RERA ${esc6(b.reraNumber)}` : ""} \xB7 ${esc6(partnerOf(l.partnerId)?.shopName || "")}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
-<div class="cb" data-testid="chat-box">${bubbles}</div>${ask}${done}
+<div class="cb" data-testid="chat-box">${bubbles}</div>${appCard}${ask}${done}
 <div class="card"><form method="post" action="/q/chat/${esc6(tok2)}/msg"><label>\u0938\u0902\u0926\u0947\u0936 / Message</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" required placeholder="\u0905\u092A\u0928\u093E \u0938\u0935\u093E\u0932 \u092F\u093E \u091C\u093C\u0930\u0942\u0930\u0924 \u0932\u093F\u0916\u0947\u0902\u2026"></textarea><div class="row"><button class="g" type="submit" data-testid="chat-send">\u092D\u0947\u091C\u0947\u0902 / Send</button><a class="btn l" href="/q/chat/${esc6(tok2)}">\u{1F504} \u0928\u092F\u093E \u0926\u0947\u0916\u0947\u0902 / Refresh</a></div></form>
-<p class="small" style="margin-top:8px">\u{1F512} \u0907\u0938 \u091A\u0948\u091F \u092E\u0947\u0902 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 \u0906\u092A\u0915\u093E \u0928\u0902\u092C\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0924\u092D\u0940 \u0926\u093F\u0916\u0947\u0917\u093E \u091C\u092C \u0906\u092A \u0905\u092A\u0928\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092A\u0915\u094D\u0915\u0940 \u0915\u0930 \u0926\u0947\u0902 \u0914\u0930 \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0938\u0947 \u092E\u0947\u0932 \u0916\u093E\u0924\u093E \u0918\u0930 \u0936\u0947\u092F\u0930 \u0939\u094B\u0964 \u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 \u0915\u0930 \u0932\u0947\u0902 \u2014 \u091C\u0935\u093E\u092C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u092F\u0939\u0940 \u0932\u093F\u0902\u0915 \u0916\u094B\u0932\u0947\u0902\u0964 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page \u2014 open this link to see replies. GENZ never asks you for money.</p></div>`));
+<p class="small" style="margin-top:8px">\u{1F512} \u0907\u0938 \u091A\u0948\u091F \u092E\u0947\u0902 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 \u0906\u092A\u0915\u093E \u0928\u0902\u092C\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0924\u092D\u0940 \u0926\u093F\u0916\u0947\u0917\u093E \u091C\u092C \u0906\u092A \u0905\u092A\u0928\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092A\u0915\u094D\u0915\u0940 \u0915\u0930 \u0926\u0947\u0902 \u0914\u0930 \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0938\u0947 \u092E\u0947\u0932 \u0916\u093E\u0924\u093E \u0918\u0930 \u0936\u0947\u092F\u0930 \u0939\u094B\u0964 \u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 \u0915\u0930 \u0932\u0947\u0902 \u2014 \u091C\u0935\u093E\u092C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u092F\u0939\u0940 \u0932\u093F\u0902\u0915 \u0916\u094B\u0932\u0947\u0902\u0964 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page \u2014 open this link to see replies. GENZ never asks you for money.</p></div>`, showApp ? `<link rel="manifest" href="/q/chat/${tok2}/manifest.webmanifest"><meta name="theme-color" content="#14213d">` : "", showApp ? "/q/chat-app.js" : ""));
   };
+  r.get("/chat-app.js", (_req, res) => {
+    res.set({ "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" });
+    res.send(CHAT_JS);
+  });
+  r.get("/chat/:token/manifest.webmanifest", (req, res) => {
+    const l = chatBy(req.params.token);
+    if (!l) return res.status(404).end();
+    const base = `/q/chat/${req.params.token}`;
+    const who2 = userOf(l.brokerId)?.name || "Broker";
+    res.set({ "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+    res.send(JSON.stringify({
+      name: `GENZ \u2014 ${who2}`.slice(0, 45),
+      short_name: "GENZ \u091A\u0948\u091F",
+      description: "Your private chat with your broker",
+      id: base,
+      start_url: base,
+      scope: "/q/chat/",
+      display: "standalone",
+      orientation: "portrait",
+      background_color: "#ffffff",
+      theme_color: "#14213d",
+      icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }, { src: "/icon-512.png", sizes: "512x512", type: "image/png" }]
+    }));
+  });
+  r.post("/chat/:token/push", rateLimit("sp-chatpushsub", 30, 36e5), import_express31.default.json({ limit: "4kb" }), (req, res) => {
+    noStore(res);
+    const l = chatBy(req.params.token);
+    if (!l) return res.status(404).json({ success: false, error: "This link is not valid." });
+    const endpoint = String(req.body?.endpoint || "");
+    const k = req.body?.keys || {};
+    const p256dh = String(k.p256dh || "");
+    const auth = String(k.auth || "");
+    if (!endpoint || endpoint.length > 1e3 || p256dh.length < 80 || p256dh.length > 120 || auth.length < 16 || auth.length > 40) return res.status(400).json({ success: false, error: "Unusable push address." });
+    if (!allowedEndpoint(endpoint)) return res.status(400).json({ success: false, error: "This browser\u2019s push service is not supported." });
+    const s = st11();
+    const key = roomPushKey(`lc-${l.id}`);
+    const id = sha2(endpoint).slice(0, 32);
+    const before = s.pushSubs.find((x) => x.id === id && x.userId === key);
+    s.pushSubs = s.pushSubs.filter((x) => x.id !== id);
+    const mine3 = s.pushSubs.filter((x) => x.userId === key);
+    if (mine3.length >= 3) {
+      const oldest = mine3.sort((a, z2) => a.createdAt.localeCompare(z2.createdAt))[0];
+      s.pushSubs = s.pushSubs.filter((x) => x.id !== oldest.id);
+    }
+    s.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers["user-agent"] || "").slice(0, 120), createdAt: before?.createdAt || nowIso22(), lastOkAt: before?.lastOkAt, fails: 0, url: `/q/chat/${req.params.token}` });
+    if (!before) {
+      hist(l, "CUSTOMER", "Turned on chat alerts on his phone");
+    }
+    db.save();
+    res.json({ success: true, fresh: !before });
+  });
   r.get("/chat/:token", rateLimit("sp-chat", 120, 36e5), (req, res) => chatPage(res, chatBy(req.params.token), req.params.token));
   r.post("/chat/:token/msg", rateLimit("sp-chat", 120, 36e5), form, (req, res) => {
     const l = chatBy(req.params.token);
@@ -83299,6 +83357,7 @@ ready.then(function(r){return Notification.requestPermission().then(function(p){
 return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){fail('\u0905\u0932\u0930\u094D\u091F \u0905\u092D\u0940 \u0907\u0938 \u0938\u0930\u094D\u0935\u0930 \u092A\u0930 \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u0948\u0902 \u2014 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u092C\u0924\u093E\u090F\u0901\u0964 / Alerts are not switched on for this server \u2014 tell your broker.');return}
 return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/sp/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){show('on')}else{fail('\u0905\u0932\u0930\u094D\u091F \u091A\u093E\u0932\u0942 \u0928\u0939\u0940\u0902 \u0939\u094B \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on \u2014 try again.')}})})})})}).catch(function(){fail('\u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0928\u0939\u0940\u0902 \u091A\u0932 \u092A\u093E\u090F \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u0915\u094B\u0936\u093F\u0936 \u0915\u0930\u0947\u0902\u0964 / Could not turn alerts on here \u2014 try again.')})}
 })();`;
+var CHAT_JS = SP_JS.replace("(location.pathname.split('/')[2]||'')", "(location.pathname.split('/')[3]||'')").replace("fetch('/sp/'+TOK+'/push'", "fetch('/q/chat/'+TOK+'/push'").replace("\u{1F514} \u0932\u0940\u0921 \u0914\u0930 \u0939\u093F\u0938\u094D\u0938\u0947 \u0915\u0940 \u0916\u093C\u092C\u0930 \u0938\u0940\u0927\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u092A\u093E\u090F\u0901 / Get lead and share news on your phone", "\u{1F514} \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u091C\u0935\u093E\u092C \u0938\u0940\u0927\u0947 \u092B\u093C\u094B\u0928 \u092A\u0930 \u092A\u093E\u090F\u0901 / Get your broker\u2019s reply on your phone").replace("\u0932\u0940\u0921 \u0906\u0917\u0947 \u092C\u0922\u093C\u0928\u0947, \u0939\u093F\u0938\u094D\u0938\u093E \u092C\u0926\u0932\u0928\u0947 \u092F\u093E \u092A\u0948\u0938\u093E \u092D\u0947\u091C\u0947 \u091C\u093E\u0928\u0947 \u092A\u0930 \u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0906\u090F\u0917\u093E\u0964 / You will be alerted here when a lead moves, your share changes or money is sent.", "\u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u093E \u0938\u0902\u0926\u0947\u0936 \u092F\u093E \u0918\u0930 \u0906\u0924\u0947 \u0939\u0940 \u0907\u0938 \u092B\u093C\u094B\u0928 \u092A\u0930 \u0905\u0932\u0930\u094D\u091F \u0906\u090F\u0917\u093E \u2014 \u0932\u093F\u0902\u0915 \u092C\u093E\u0930-\u092C\u093E\u0930 \u0928\u0939\u0940\u0902 \u0916\u094B\u0932\u0928\u093E \u092A\u0921\u093C\u0947\u0917\u093E\u0964 / You will be alerted here when your broker writes or shares a home \u2014 no need to keep opening the link.").replace("\u090F\u0915 \u092C\u093E\u0930 \u0928\u0940\u091A\u0947 \u0915\u093E \u092C\u091F\u0928 \u0926\u092C\u093E\u090F\u0901 \u2014 \u092A\u0947\u091C \u092C\u093E\u0930-\u092C\u093E\u0930 \u0916\u094B\u0932\u0928\u093E \u0928\u0939\u0940\u0902 \u092A\u0921\u093C\u0947\u0917\u093E\u0964 / Tap once \u2014 no need to open this page again and again.", "\u090F\u0915 \u092C\u093E\u0930 \u0928\u0940\u091A\u0947 \u0915\u093E \u092C\u091F\u0928 \u0926\u092C\u093E\u090F\u0901 \u2014 \u091A\u0948\u091F \u092C\u093E\u0930-\u092C\u093E\u0930 \u0916\u094B\u0932\u0928\u0940 \u0928\u0939\u0940\u0902 \u092A\u0921\u093C\u0947\u0917\u0940\u0964 / Tap once \u2014 no need to keep opening the chat.");
 function createPartnerPageRouter() {
   const r = (0, import_express30.Router)();
   r.get("/app.js", (_req, res) => {

@@ -19,7 +19,7 @@ import { db } from './db.js';
 import type { ShopPartner, PartnerLead, UserProfile, ClientCard, ShareChange, LeadMsg, Property } from './db.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies } from './auth.js';
 import { sendSms } from './notify.js';
-import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint } from './webpush.js';
+import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
 import { partyBlock } from './partywatch.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
 import { containsPhone, PHONE_IN_CHAT_MSG } from '../src/shared/clientRoomRules.js';
@@ -367,6 +367,7 @@ function leadView(l: PartnerLead) {
     ...rest, ...(rev ? { phone } : {}), masked: !rev,
     // v85 — the in-app chat (never the customer's link token); `matches` = the homes he may share now (only offered once the need is confirmed)
     chat: chat ? { msgs: chat.msgs.slice(-80), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
+    alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0,
     matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [], needLine: needLine(l),
     shopName: p?.shopName || '', city: p?.city || '', links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),
     // v82 — what the app itself works out from the deal (shown fixed to the broker), the changes the shop was told about, how long it has been unpaid, and the customer's answer
@@ -512,6 +513,7 @@ export function createShopPartnerRouter() {
     if (text.length < 1) return bad(res, 'Write a message');
     if (containsPhone(text)) return bad(res, PHONE_IN_CHAT_MSG.en, 400, { code: 'PHONE_IN_CHAT', hi: PHONE_IN_CHAT_MSG.hi });
     addMsg(l, { by: 'BROKER', kind: 'MSG', text }); l.chat.brokerSeenAt = nowIso(); db.save();
+    void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
     res.json({ success: true, lead: leadView(l) });
   });
   r.post('/leads/:id/chat/seen', needs('partner:manage'), (req: Request, res: Response) => {
@@ -523,6 +525,7 @@ export function createShopPartnerRouter() {
     if (l.chat.reqConfirmedAt) return bad(res, 'He has already confirmed his need', 409);
     if (l.chat.reqAskedAt) return bad(res, 'Already asked — waiting for his answer', 409);
     l.chat.reqAskedAt = nowIso(); addMsg(l, { by: 'BROKER', kind: 'ASK', text: needLine(l) }); l.chat.brokerSeenAt = nowIso(); db.save();
+    void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
     res.json({ success: true, lead: leadView(l) });
   });
   /** share a home that fits the confirmed need → the customer sees it in his chat and the broker's screen shows the number (once) */
@@ -540,6 +543,7 @@ export function createShopPartnerRouter() {
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
     audit(l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED', first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}) was shared` : `Another home (${h.id}) shared in the chat`);
     db.save();
+    void brokerWrote(`lc-${l.id}`, me().name, 'HOME');
     res.json({ success: true, lead: leadView(l) });
   });
   r.post('/leads/:id/status', needs('partner:manage'), (req: Request, res: Response) => {
@@ -776,13 +780,44 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
 <form method="post" action="/q/chat/${esc(tok)}/ans"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="chat-yes">✅ हाँ, सही है<br><small style="color:#e9ffe9">Yes, correct</small></button><button class="l" type="submit" name="a" value="EDIT" data-testid="chat-edit">✏️ बदलाव भेजें<br><small>Send a change</small></button></div>
 <label>बदलाव (सिर्फ़ ✏️ के लिए) / Change (only for ✏️)</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" placeholder="जैसे: बजट 50 लाख, 3BHK"></textarea></form></div>` : '';
     const done = l.chat.reqConfirmedAt && !l.chat.revealedAt ? `<div class="card ok"><p class="t">✔ आपकी ज़रूरत पक्की हो गई। ${esc(who)} अब आपके लिए मेल खाता घर ढूँढ रहे हैं।<br><small>Your need is confirmed. ${esc(who)} is now looking for a home that matches.</small></p></div>` : '';
+    const showApp = l.chat.msgs.some(m => m.by === 'CUSTOMER' && m.kind !== 'INFO');   // offered once he has written / confirmed — not on the very first look
+    const appCard = showApp ? `<div class="card app" id="app-card" style="display:none" data-testid="chat-app-card"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>` : '';
     res.send(shell('GENZ चैट', `<style>.bub{max-width:85%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px}</style>
 <div class="top"><h1>${esc(who)}</h1><p>GENZ verified broker${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} · ${esc(partnerOf(l.partnerId)?.shopName || '')}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
-<div class="cb" data-testid="chat-box">${bubbles}</div>${ask}${done}
+<div class="cb" data-testid="chat-box">${bubbles}</div>${appCard}${ask}${done}
 <div class="card"><form method="post" action="/q/chat/${esc(tok)}/msg"><label>संदेश / Message</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" required placeholder="अपना सवाल या ज़रूरत लिखें…"></textarea><div class="row"><button class="g" type="submit" data-testid="chat-send">भेजें / Send</button><a class="btn l" href="/q/chat/${esc(tok)}">🔄 नया देखें / Refresh</a></div></form>
-<p class="small" style="margin-top:8px">🔒 इस चैट में फ़ोन नंबर न लिखें। आपका नंबर ब्रोकर को तभी दिखेगा जब आप अपनी ज़रूरत पक्की कर दें और आपकी ज़रूरत से मेल खाता घर शेयर हो। इस पेज को बुकमार्क कर लें — जवाब देखने के लिए यही लिंक खोलें। GENZ आपसे कोई पैसा नहीं माँगता।<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page — open this link to see replies. GENZ never asks you for money.</p></div>`));
+<p class="small" style="margin-top:8px">🔒 इस चैट में फ़ोन नंबर न लिखें। आपका नंबर ब्रोकर को तभी दिखेगा जब आप अपनी ज़रूरत पक्की कर दें और आपकी ज़रूरत से मेल खाता घर शेयर हो। इस पेज को बुकमार्क कर लें — जवाब देखने के लिए यही लिंक खोलें। GENZ आपसे कोई पैसा नहीं माँगता।<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page — open this link to see replies. GENZ never asks you for money.</p></div>`, showApp ? `<link rel="manifest" href="/q/chat/${tok}/manifest.webmanifest"><meta name="theme-color" content="#14213d">` : '', showApp ? '/q/chat-app.js' : ''));
   };
+  r.get('/chat-app.js', (_req, res) => { res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); res.send(CHAT_JS); });
+  r.get('/chat/:token/manifest.webmanifest', (req: Request, res: Response) => {
+    const l = chatBy(req.params.token); if (!l) return res.status(404).end();
+    const base = `/q/chat/${req.params.token}`; const who = userOf(l.brokerId)?.name || 'Broker';
+    res.set({ 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+    res.send(JSON.stringify({
+      name: `GENZ — ${who}`.slice(0, 45), short_name: 'GENZ चैट', description: 'Your private chat with your broker',
+      id: base, start_url: base, scope: '/q/chat/', display: 'standalone', orientation: 'portrait', background_color: '#ffffff', theme_color: '#14213d',
+      icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }],
+    }));
+  });
+  /** the customer's phone asks for alerts (no account: the private link is the key). Lock-screen words carry the broker's name only — never a message, a home or a number. */
+  r.post('/chat/:token/push', rateLimit('sp-chatpushsub', 30, 3600_000), express.json({ limit: '4kb' }), (req: Request, res: Response) => {
+    noStore(res);
+    const l = chatBy(req.params.token); if (!l) return res.status(404).json({ success: false, error: 'This link is not valid.' });
+    const endpoint = String(req.body?.endpoint || ''); const k = req.body?.keys || {};
+    const p256dh = String(k.p256dh || ''); const auth = String(k.auth || '');
+    if (!endpoint || endpoint.length > 1000 || p256dh.length < 80 || p256dh.length > 120 || auth.length < 16 || auth.length > 40) return res.status(400).json({ success: false, error: 'Unusable push address.' });
+    if (!allowedEndpoint(endpoint)) return res.status(400).json({ success: false, error: 'This browser’s push service is not supported.' });
+    const s = st(); const key = roomPushKey(`lc-${l.id}`); const id = sha(endpoint).slice(0, 32);
+    const before = s.pushSubs.find(x => x.id === id && x.userId === key);
+    s.pushSubs = s.pushSubs.filter(x => x.id !== id);
+    const mine = s.pushSubs.filter(x => x.userId === key);
+    if (mine.length >= 3) { const oldest = mine.sort((a, z) => a.createdAt.localeCompare(z.createdAt))[0]; s.pushSubs = s.pushSubs.filter(x => x.id !== oldest.id); }
+    s.pushSubs.push({ id, userId: key, endpoint, p256dh, auth, ua: String(req.headers['user-agent'] || '').slice(0, 120), createdAt: before?.createdAt || nowIso(), lastOkAt: before?.lastOkAt, fails: 0, url: `/q/chat/${req.params.token}` });
+    if (!before) { hist(l, 'CUSTOMER', 'Turned on chat alerts on his phone'); }
+    db.save();
+    res.json({ success: true, fresh: !before });
+  });
   r.get('/chat/:token', rateLimit('sp-chat', 120, 3600_000), (req: Request, res: Response) => chatPage(res, chatBy(req.params.token), req.params.token));
   r.post('/chat/:token/msg', rateLimit('sp-chat', 120, 3600_000), form, (req: Request, res: Response) => {
     const l = chatBy(req.params.token); if (!l?.chat) return chatPage(res, undefined, req.params.token);
@@ -940,6 +975,14 @@ ready.then(function(r){return Notification.requestPermission().then(function(p){
 return fetch('/api/push/key').then(function(x){return x.json()}).then(function(k){if(!k.publicKey){fail('अलर्ट अभी इस सर्वर पर चालू नहीं हैं — ब्रोकर को बताएँ। / Alerts are not switched on for this server — tell your broker.');return}
 return r.pushManager.getSubscription().then(function(sub){return sub||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(k.publicKey)})}).then(function(sub){var j=sub.toJSON();return fetch('/sp/'+TOK+'/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})}).then(function(x){if(x.ok){show('on')}else{fail('अलर्ट चालू नहीं हो पाए — दोबारा कोशिश करें। / Could not turn alerts on — try again.')}})})})})}).catch(function(){fail('इस फ़ोन पर अलर्ट नहीं चल पाए — दोबारा कोशिश करें। / Could not turn alerts on here — try again.')})}
 })();`;
+
+/** v85 — the customer's chat page as an app (served as /q/chat-app.js): the same "add to home" + alerts card as the shop page, pointed at his chat link */
+const CHAT_JS = SP_JS
+  .replace("(location.pathname.split('/')[2]||'')", "(location.pathname.split('/')[3]||'')")
+  .replace("fetch('/sp/'+TOK+'/push'", "fetch('/q/chat/'+TOK+'/push'")
+  .replace('🔔 लीड और हिस्से की ख़बर सीधे फ़ोन पर पाएँ / Get lead and share news on your phone', '🔔 ब्रोकर का जवाब सीधे फ़ोन पर पाएँ / Get your broker’s reply on your phone')
+  .replace('लीड आगे बढ़ने, हिस्सा बदलने या पैसा भेजे जाने पर इस फ़ोन पर अलर्ट आएगा। / You will be alerted here when a lead moves, your share changes or money is sent.', 'ब्रोकर का संदेश या घर आते ही इस फ़ोन पर अलर्ट आएगा — लिंक बार-बार नहीं खोलना पड़ेगा। / You will be alerted here when your broker writes or shares a home — no need to keep opening the link.')
+  .replace('एक बार नीचे का बटन दबाएँ — पेज बार-बार खोलना नहीं पड़ेगा। / Tap once — no need to open this page again and again.', 'एक बार नीचे का बटन दबाएँ — चैट बार-बार खोलनी नहीं पड़ेगी। / Tap once — no need to keep opening the chat.');
 
 export function createPartnerPageRouter() {
   const r = Router();

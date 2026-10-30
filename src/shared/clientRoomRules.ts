@@ -14,7 +14,9 @@ export const ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textCha
 
 /** a 10-digit Indian mobile (with or without +91 / 0 / spaces / dashes) typed anywhere in a message */
 export function containsPhone(text: string): boolean {
-  const flat = String(text || '').replace(/[\s\-().]/g, '');
+  // v85b — Devanagari (०-९) and Arabic-Indic digits count as digits too: “९१२३४५५५०१” is a number, not a way round the rule
+  const digits = String(text || '').replace(/[०-९]/g, d => String(d.charCodeAt(0) - 0x0966)).replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660));
+  const flat = digits.replace(/[\s\-().,_/|]/g, '');
   return /(?:\+?91|0)?[6-9]\d{9}(?!\d)/.test(flat);
 }
 export const PHONE_IN_CHAT_MSG = {
