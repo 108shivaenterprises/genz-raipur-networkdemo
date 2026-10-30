@@ -1,5 +1,6 @@
 import { Property, BuyerRequirement, MatchScore } from './db.js';
 import { RELATED_TYPE_GROUPS, sameCity } from '../src/shared/india.js';
+import { localityFit, inferCity } from '../src/shared/places.js';
 
 export function calculatePropertyMatch(property: Property, requirement: BuyerRequirement): MatchScore {
   let score = 0;
@@ -43,20 +44,26 @@ export function calculatePropertyMatch(property: Property, requirement: BuyerReq
     }
   }
 
-  // 3. Location Match — India-wide: the city must agree first, then locality overlap inside it.
-  const sameCityOrUnknown = !requirement.city || sameCity(requirement.city, property.city);
-  const propLocality = property.locality.toLowerCase().trim();
-  const locationMatch = sameCityOrUnknown && (requirement.preferredLocalities || []).some(loc => {
-    const l = loc.toLowerCase().trim();
-    return l.length > 0 && (propLocality.includes(l) || l.includes(propLocality));
-  });
+  // 3. Location Match — India-wide: the city must agree first, then the area inside it.
+  // v90: a client who wrote only "Raipur" (or nothing) is happy with any area of Raipur; "Shanker Nagar" = "Shankar Nagar, Raipur";
+  // an area in the same zone of the city is a near match. A city typed in the locality box counts as the city.
+  const reqCity = requirement.city || inferCity(requirement.preferredLocalities);
+  const sameCityOrUnknown = !reqCity || sameCity(reqCity, property.city);
+  const fit = sameCityOrUnknown ? localityFit(property.city || reqCity, requirement.preferredLocalities, property.locality) : { level: 'none' as const };
+  const locationMatch = sameCityOrUnknown && fit.level !== 'none';
 
-  if (locationMatch) {
+  if (sameCityOrUnknown && fit.level === 'exact') {
     score += 25;
     reasons.push(`Prime location alignment in ${property.locality}, ${property.city}`);
+  } else if (sameCityOrUnknown && fit.level === 'city') {
+    score += 20;
+    reasons.push(`Client is open to any area of ${property.city} — ${property.locality} fits`);
+  } else if (sameCityOrUnknown && fit.level === 'near') {
+    score += 16;
+    reasons.push(`Nearby area: ${property.locality} is close to ${fit.hit}`);
   } else if (!sameCityOrUnknown) {
-    reasons.push(`Different city (${property.city} vs requested ${requirement.city})`);
-  } else if (requirement.city && sameCity(requirement.city, property.city)) {
+    reasons.push(`Different city (${property.city} vs requested ${reqCity})`);
+  } else if (reqCity && sameCity(reqCity, property.city)) {
     score += 5;
     reasons.push(`City match: ${property.city} (outside the preferred localities)`);
   }

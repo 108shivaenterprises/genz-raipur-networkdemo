@@ -104,6 +104,7 @@ import { createInventoryRouter } from './server/inventory.js';
 import { createInventoryDeskRouter } from './server/inventory2.js';
 import { createLaunchRouter } from './server/launch.js';
 import { normCity } from './src/shared/cities.js';
+import { canonPlace, isCityLevel, splitPlaces, samePlace, inferCity } from './src/shared/places.js';
 import { createGrowthRouter, createPublicCardRouter } from './server/growth.js';
 import { createDailyRouter, sweepListings } from './server/daily.js';
 import { createCommunityRouter } from './server/community.js';
@@ -141,7 +142,7 @@ import { createInboxRouter, sweepInbox, setTodoSync } from './server/inbox.js';
 import { syncHomeBell } from './server/homebell.js';
 import { createProjDocsRouter } from './server/projdocs.js';
 import { createProfilesRouter, seedDemoReviews } from './server/profiles.js';
-import { createBroadcastRouter, alertNewListing, sweepDigestPush } from './server/broadcast.js';
+import { createBroadcastRouter, alertNewListing, sweepDigestPush, networkMatchesFor, alertNeedNetwork } from './server/broadcast.js';
 import { createReputationRouter, createHomeRouter } from './server/reputation.js';
 import { createReportRouter } from './server/report.js';
 import { createTwoFactorRouter, twoFactorOn, makeTicket, readTicket, verifySecondFactor, twoFactorRecommended } from './server/twofactor.js';
@@ -863,6 +864,8 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     role: invite.targetRole,
     city: normCity(req.body?.city || t2app?.city),
     state: findState(req.body?.state)?.name,
+    ...(parsed.data.locality ? { homeLocality: canonPlace(req.body?.city || t2app?.city, parsed.data.locality) } : {}),
+    ...((parsed.data.areas || []).length ? { profile: { areas: [...new Set((parsed.data.areas || []).flatMap(a => splitPlaces(a)).map(a => canonPlace(req.body?.city || t2app?.city, a)).filter(Boolean))].slice(0, 10) } } : {}),
     companyName: companyName || connectorProfile?.shopName || '',
     connector: connectorProfile,
     reraNumber: reraNumber || '',
@@ -1183,6 +1186,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
   }
 
   const data = parseResult.data;
+  data.locality = canonPlace(data.city, data.locality) || data.locality; // v90: one spelling per place, so duplicates and matches line up
   const state = db.getState();
 
   // Resolve the two principals explicitly — never default to a hard-coded broker/owner account.
@@ -1657,6 +1661,10 @@ app.post('/api/requirements', needs('requirement:create'), newAccountCap('requir
   }
 
   const data = parseResult.data;
+  // v90: tidy what was typed — "shanker nagar, raipur" → "Shankar Nagar"; a bare city stays a whole-city wish
+  { const parts = splitPlaces(data.preferredLocalities); const specific = parts.filter(x => !isCityLevel(data.city, x));
+    // "Shankar Nagar, Raipur" names ONE area; a city written next to areas is only the address, not a wish for the whole city
+    data.preferredLocalities = [...new Set((specific.length ? specific.map(x => canonPlace(data.city, x)) : [normCity(data.city)]).filter(Boolean))].slice(0, 10); }
   const state = db.getState();
   const reqSeq = nextSeq(state.requirements.map(r => r.id), /REQ-(?:RAI-)?(\d+)/, 200);
   const requirementId = `REQ-${reqSeq}`;
@@ -1715,7 +1723,10 @@ app.post('/api/requirements', needs('requirement:create'), newAccountCap('requir
     `Buyer requirement ${requirementId} logged for ${data.propertyType} in ${data.preferredLocalities.join(', ')}`
   );
 
-  res.json({ success: true, requirement: sanitizeRequirement(newReq, currentUser) });
+  // v90: the moment a need arrives, the broker sees what the network already holds for it
+  const network = currentUser.role === 'BROKER' && newReq.assignedBrokerId === currentUser.id ? networkMatchesFor(newReq as any, currentUser.id) : undefined;
+  if (network) void alertNeedNetwork(newReq as any);
+  res.json({ success: true, requirement: sanitizeRequirement(newReq, currentUser), ...(network ? { network } : {}) });
 });
 
 // A verified broker claims an unassigned buyer enquiry.
@@ -1833,8 +1844,10 @@ app.get('/api/matching/matrix', needs('matching:run'), (_req: Request, res: Resp
     const out = new Set<typeof activeProps[number]>();
     const brokerCity = ck(db.byId('users', r.assignedBrokerId)?.city);
     for (const p of byTypeCity.get(`${r.transactionType}|${brokerCity}`) || []) out.add(p);
-    const wanted = (r.preferredLocalities || []).map(l => l.toLowerCase().trim()).filter(Boolean);
-    if (wanted.length) for (const [loc, list] of byTypeLoc.get(r.transactionType) || []) if (wanted.some(w => loc.includes(w) || w.includes(loc))) for (const p of list) out.add(p);
+    const wanted = (r.preferredLocalities || []).map(l => l.trim()).filter(Boolean);
+    const ic = inferCity(wanted); // a city typed in the area box
+    if (ic) for (const p of byTypeCity.get(`${r.transactionType}|${ck(ic)}`) || []) out.add(p);
+    if (wanted.length) for (const [loc, list] of byTypeLoc.get(r.transactionType) || []) if (wanted.some(w => samePlace(w, loc))) for (const p of list) out.add(p);
     return [...out];
   };
   const newest = (x: any, y: any) => String(y.updatedAt || y.createdAt || '').localeCompare(String(x.updatedAt || x.createdAt || ''));
@@ -1873,7 +1886,7 @@ app.get('/api/matching/matrix', needs('matching:run'), (_req: Request, res: Resp
       for (const p of myProps) {
         const loc = p.locality.toLowerCase().trim(); const pc = ck(p.city);
         const cands = [...(reqByTypeCity.get(`${p.transactionType}|${pc}`) || []), ...cityless.filter(r => r.transactionType === p.transactionType &&
-          (ck(db.byId('users', r.assignedBrokerId)?.city) === pc || (r.preferredLocalities || []).some(l => { const w = l.toLowerCase().trim(); return !!w && (loc.includes(w) || w.includes(loc)); })))];
+          (ck(db.byId('users', r.assignedBrokerId)?.city) === pc || (r.preferredLocalities || []).some(l => { const w = l.trim(); return !!w && (samePlace(w, loc) || inferCity([w]) === normCity(p.city)); })))];
         for (const { x, m } of top(cands, r => calculatePropertyMatch(p, r), 5)) add(p, x, m);
       }
     }

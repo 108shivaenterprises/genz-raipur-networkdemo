@@ -12,6 +12,7 @@
  * Privacy: a broadcast carries only the need (type, sale/rent, city, localities, budget, BHK) — never the client's name or
  * phone. An answer shows the answering broker and his listing; the two brokers then talk through the normal offer flow.
  */
+import { inferCity } from '../src/shared/places.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
@@ -46,15 +47,48 @@ function fits(r: BuyerRequirement, excludeBrokerId: string) {
   const out: { p: Property; score: number }[] = [];
   for (const p of st().properties) {
     if (!p.listingBrokerId || p.listingBrokerId === excludeBrokerId || !live(p) || p.transactionType !== r.transactionType) continue;
-    if (r.city && ck(p.city) !== ck(r.city)) continue;
+    const rc = r.city || inferCity(r.preferredLocalities);
+    if (rc && ck(p.city) !== ck(rc)) continue;
     const m = calculatePropertyMatch(p, r);
     if (m.score >= MATCH_MIN) out.push({ p, score: m.score });
   }
   return out.sort((a, b) => b.score - a.score);
 }
 
+/** v90 — what the NETWORK (other brokers' live, verified listings) holds for this need, right now. Shown to the broker the moment a need arrives. */
+export function networkMatchesFor(r: BuyerRequirement, brokerId: string) {
+  const all = fits(r, brokerId);
+  return {
+    count: all.length,
+    top: all.slice(0, 5).map(({ p, score }) => {
+      const lb = db.byId('users', p.listingBrokerId) as UserProfile | undefined;
+      return { id: p.id, title: p.title, locality: p.locality, city: p.city, type: p.propertyType, deal: p.transactionType, price: p.askingPrice, score, broker: lb ? { name: lb.name, company: lb.companyName || '' } : null, image: (p.images || [])[0] || '' };
+    }),
+  };
+}
+/** one push telling the broker what the network holds for a client need that just arrived (never names the client) */
+export function alertNeedNetwork(r: BuyerRequirement) {
+  try {
+    if (!r.assignedBrokerId) return { count: 0 };
+    const n = networkMatchesFor(r, r.assignedBrokerId);
+    void pushTo(r.assignedBrokerId, {
+      kind: 'matches',
+      title: n.count ? `Network has ${n.count} home${n.count > 1 ? 's' : ''} for your new client need` : 'No network match yet for your new client need',
+      body: n.count ? `${n.top[0].title} · ${inr(n.top[0].price)}${n.count > 1 ? ` and ${n.count - 1} more` : ''}` : `${r.propertyType} · ${(r.preferredLocalities || []).slice(0, 2).join(', ')} — we will tell you when a listing fits.`,
+      url: '/?tab=requirements', tag: `need-${r.id}`,
+    });
+    return { count: n.count };
+  } catch { return { count: 0 }; }
+}
+
 export function createBroadcastRouter() {
   const r = Router();
+
+  r.get('/network/:reqId', needs('requirement:create'), (req: Request, res: Response) => {
+    const u = me(); const rq = st().requirements.find(x => x.id === req.params.reqId);
+    if (!rq || rq.assignedBrokerId !== u.id) return bad(res, 'Requirement not found', 404);
+    res.json({ success: true, ...networkMatchesFor(rq, u.id) });
+  });
 
   r.post('/', needs('requirement:create'), rateLimit('broadcast', 20, 3600_000), (req: Request, res: Response) => {
     const u = me(); const s = st();
@@ -161,7 +195,8 @@ export function alertNewListing(p: Property) {
     for (const rq of s.requirements) {
       if (told.size >= 30) break;
       if (!['active', 'matching'].includes(rq.status) || !rq.assignedBrokerId || rq.assignedBrokerId === p.listingBrokerId || told.has(rq.assignedBrokerId)) continue;
-      if (rq.transactionType !== p.transactionType || (rq.city && ck(rq.city) !== ck(p.city))) continue;
+      const rcity = rq.city || inferCity(rq.preferredLocalities);
+      if (rq.transactionType !== p.transactionType || (rcity && ck(rcity) !== ck(p.city))) continue;
       if (calculatePropertyMatch(p, rq).score < 70) continue;
       told.add(rq.assignedBrokerId);
       void pushTo(rq.assignedBrokerId, { kind: 'matches', title: 'New match for one of your clients', body: `${p.title} · ${inr(p.askingPrice)}`, url: '/?tab=matches', tag: `m-${p.id}` });

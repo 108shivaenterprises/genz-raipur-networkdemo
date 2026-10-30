@@ -29,6 +29,7 @@ export const HOME_TODOS: readonly TodoDef[] = [
   { key: 'billsOverdue', en: 'Brokerage bills past due — send a reminder', hi: 'ब्रोकरेज बिल की तारीख़ निकल गई — रिमाइंडर भेजें', tab: 'deals', params: undefined, tone: 'amber', testId: 'tile-bills-overdue' },
   { key: 'partnerCodes', en: 'A shop partner is waiting for his code — read it out', hi: 'दुकान पार्टनर कोड माँग रहे हैं — उन्हें बताएँ', tab: 'partners', params: undefined, tone: 'amber', testId: 'tile-sp-codes' },
   { key: 'partnerNew', en: 'New leads from your shop QR — call them', hi: 'दुकान QR से नई लीड — कॉल करें', tab: 'partners', params: undefined, tone: 'emerald', testId: 'tile-sp-new' },
+  { key: 'partnerReply', en: 'A shop-QR customer has waited 2+ hours for your reply — answer now', hi: 'दुकान QR के ग्राहक को 2+ घंटे से आपके जवाब का इंतज़ार — अभी जवाब दें', tab: 'partners', params: undefined, tone: 'amber', testId: 'tile-sp-reply' },
   { key: 'pageNew', en: 'New enquiries from your public page — reply to them', hi: 'आपके पब्लिक पेज से नई पूछताछ — जवाब दें', tab: 'mypage', params: undefined, tone: 'emerald', testId: 'tile-page-enq' },
   { key: 'rentEnding', en: 'Rent agreements ending soon — ask owner & tenant: renew or re-let?', hi: 'किराया अनुबंध जल्द ख़त्म — मालिक और किरायेदार से पूछें: रिन्यू या नया किरायेदार?', tab: 'rentdesk', params: undefined, tone: 'amber', testId: 'tile-rent-ending' },
   { key: 'rentPolice', en: 'Tenant police verification pending', hi: 'किरायेदार का पुलिस वेरिफ़िकेशन बाक़ी', tab: 'rentdesk', params: undefined, tone: 'amber', testId: 'tile-rent-police' },

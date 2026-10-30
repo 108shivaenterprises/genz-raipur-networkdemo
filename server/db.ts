@@ -653,6 +653,8 @@ export interface UserProfile {
   connector?: ConnectorProfile;
   avatarUrl?: string;
   /** v78 — what this person shows on his profile (found only by search). Everything is optional; `visible` false hides a professional from name search. */
+  /** v90 — the area of the city where the office / home is (tidied spelling), set at sign-up */
+  homeLocality?: string;
   profile?: { visible?: boolean; showPhoto?: boolean; about?: string; areas?: string[]; languages?: string[]; years?: number; updatedAt?: string };
   createdAt: string;
 

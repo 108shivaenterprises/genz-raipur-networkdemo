@@ -118,6 +118,7 @@ export const api = {
     shopType?: string;
     shopName?: string;
     locality?: string;
+    areas?: string[];
     payoutUpi?: string;
     reraNumber?: string;
     state?: string;
@@ -196,7 +197,7 @@ export const api = {
     return request<{ success: boolean; requirements: BuyerRequirement[]; total?: number; scoped?: boolean; hasMore?: boolean }>(`/api/requirements?${p}`);
   },
   createRequirement: (payload: any) =>
-    request<{ success: boolean; requirement: BuyerRequirement }>('/api/requirements', {
+    request<{ success: boolean; requirement: BuyerRequirement; network?: { count: number; top: any[] } }>('/api/requirements', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -1117,6 +1118,7 @@ export const api = {
   inboxRemove: (id: string) => request<{ success: boolean; unread: number }>(`/api/inbox/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   inboxClear: () => request<{ success: boolean; cleared: number }>('/api/inbox', { method: 'DELETE' }),
   broadcastSend: (requirementId: string) => request<any>('/api/broadcast', { method: 'POST', body: JSON.stringify({ requirementId }) }),
+  networkHas: (reqId: string) => request<{ success: boolean; count: number; top: any[] }>(`/api/broadcast/network/${encodeURIComponent(reqId)}`),
   broadcastInbox: () => request<any>('/api/broadcast/inbox'),
   broadcastRespond: (id: string, b: { propertyId?: string; note?: string }) => request<any>(`/api/broadcast/${encodeURIComponent(id)}/respond`, { method: 'POST', body: JSON.stringify(b) }),
   broadcastMine: () => request<any>('/api/broadcast/mine'),

@@ -3,6 +3,7 @@ import { Loader2, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../lib/i18n.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
+import { AreaChips } from './AreaChips.js';
 import { SHOP_TYPES } from '../shared/connector.js';
 import { isValidPan, normPan, normAadhaar, isValidAadhaar, panProblem, aadhaarProblem, AADHAAR_NOTE, ID_DOC_NOTE } from '../shared/idRules.js';
 import { KYC_CONSENT, addressProblem, pinProblem, normAddress, normPin } from '../shared/kycRules.js';
@@ -31,6 +32,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loc, setLoc] = useState<LocationValue>({ state: '', city: '', locality: '', pincode: '' });
+  const [areas, setAreas] = useState<string[]>([]);
   const [company, setCompany] = useState('');
   const [rera, setRera] = useState('');
   const [pan, setPan] = useState('');
@@ -93,7 +95,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     try {
       const reg = await api.registerInvite({
         code: code.trim(), name, phone, email: phoneOnly ? undefined : email, password, consent: true,
-        state: loc.state || undefined, city: loc.city || undefined,
+        state: loc.state || undefined, city: loc.city || undefined, locality: role !== 'GENZ_CONNECTOR' ? (loc.locality || undefined) : undefined, areas: areas.length ? areas : undefined,
         ...(brokerId ? { aadhaarNumber: aadhaarDigits, idConsent: true, kycConsent: true, address: address ? normAddress(address) : undefined, pincode: pincode ? normPin(pincode) : undefined, kycSource: fromPhoto ? 'PHOTO' : 'TYPED' } : {}),
         ...(needsRera ? { companyName: company, reraNumber: rera, panNumber: normPan(pan) || undefined, gstin: gstin || undefined } : {}),
         ...(role === 'GENZ_CONNECTOR' ? { shopType, shopName, locality: loc.locality || undefined, payoutUpi: upi || undefined } : {}),
@@ -142,7 +144,12 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <div><label className="text-xs font-semibold text-slate-700">{hi ? 'मोबाइल नंबर' : 'Mobile number'} *</label><input required value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="9XXXXXXXXX" className={input} /></div>
               {!phoneOnly && <div><label className="text-xs font-semibold text-slate-700">Email *</label><input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></div>}
             </div>
-            <LocationFields value={loc} onChange={setLoc} showLocality={role === 'GENZ_CONNECTOR'} showPincode={false} required={false} />
+            <LocationFields value={loc} onChange={setLoc} showLocality showPincode={false} required={false} />
+            {role !== 'GENZ_CONNECTOR' && (
+              <AreaChips city={loc.city} value={areas} onChange={setAreas} testId="join-areas"
+                label={hi ? 'आप किन इलाकों में काम करते हैं?' : 'Which areas do you work in?'}
+                hint={hi ? 'शहर में बहुत इलाके होते हैं — इससे नेटवर्क को पता चलता है कि कौन कहाँ का है और सही क्लाइंट/घर आपको मिलते हैं।' : 'A city has many areas — this tells the network who covers where, so the right clients and homes reach you.'} />
+            )}
 
             {role === 'GENZ_CONNECTOR' && (
               <>

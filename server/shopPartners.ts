@@ -11,6 +11,7 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import { localityFit, areasOf, canonPlace } from '../src/shared/places.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'crypto';
@@ -21,6 +22,7 @@ import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies 
 import { sendSms } from './notify.js';
 import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
 import { partyBlock } from './partywatch.js';
+import { alertNeedNetwork } from './broadcast.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
 import { containsPhone, PHONE_IN_CHAT_MSG } from '../src/shared/clientRoomRules.js';
 import { brandOf } from './share.js';
@@ -76,7 +78,8 @@ export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | '
   if ((l.kind === 'BUY') !== (h.transactionType === 'Sale')) return false;
   const chosen = !!l.homeId && l.homeId === h.id;
   const a = norm(l.locality); const b = norm(`${h.locality} ${h.city || ''}`);
-  const area = chosen || (!!a && (b.includes(a) || a.split(' ').some(w => w.length >= 4 && b.includes(w))));
+  const fit = localityFit(h.city || '', l.locality, h.locality).level; // v90: spelling slips and a bare city name count; a merely "nearby" area does not (this gate decides when the number opens)
+  const area = chosen || fit === 'exact' || fit === 'city' || (!!a && (b.includes(a) || a.split(' ').some(w => w.length >= 4 && b.includes(w))));
   if (!area) return false;
   const cap = parseMoney(l.budget); const price = Number(h.askingPrice) || 0;
   if (cap && price && price > cap * 1.25) return false;
@@ -110,6 +113,7 @@ function ensureNeed(l: PartnerLead, rent: boolean, city: string): string | undef
   const seq = s.requirements.reduce((m, q) => Math.max(m, Number(/REQ-(?:RAI-)?(\d+)/.exec(q.id)?.[1] ?? 0)), 200) + 1; const now = nowIso();
   const prior = s.requirements.find(q => phone10(q.customerPhone) === l.phone);
   s.requirements.unshift({ id: `REQ-${seq}`, customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: l.name, customerPhone: l.phone, assignedBrokerId: l.brokerId, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city, preferredLocalities: [l.locality || city], preferredTags: [], propertyType: (REQ_TYPES[l.propertyType || ''] || 'Residential Flat') as any, transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)', status: 'matching', createdAt: now, updatedAt: now } as any);
+  { const made = s.requirements.find(q => q.id === `REQ-${seq}`); if (made) void alertNeedNetwork(made as any); } // v90: tell the broker what the network already holds for this need
   return `REQ-${seq}`;
 }
 
@@ -714,7 +718,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
 <p class="small" id="sellnote" data-testid="qr-seller-note">🏠 मालिक के लिए: प्रॉपर्टी कहाँ है, किस तरह की है, और आप कितना चाहते हैं (कीमत / किराया) — नीचे लिखें। <small>For owners: write where the property is, its type, and the price or rent you expect.</small></p>
 <label>नाम / Name</label><input type="text" name="name" maxlength="80" required value="${esc(keep.name || '')}" autocomplete="name">
 <label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required value="${esc(keep.phone || '')}" autocomplete="tel-national" placeholder="98XXXXXXXX">
-<label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required value="${esc(keep.locality || (picked ? picked.locality : p.area))}">
+<label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required list="areas" autocomplete="off" value="${esc(keep.locality || (picked ? picked.locality : p.area))}"><datalist id="areas">${areasOf(p.city || 'Raipur').slice(0, 80).map(a => `<option value="${esc(a.replace(/\s*\(.*\)\s*/g, ''))}">`).join('')}</datalist><p class="small" style="margin:2px 0 0">पूरा शहर चाहिए तो शहर का नाम लिख दें / For the whole city just write the city name.</p>
 <label>बजट / किराया (अंदाज़न) / Budget or rent</label><input type="text" name="budget" maxlength="60" value="${esc(keep.budget || '')}" placeholder="जैसे 40 लाख / 12,000 महीना">
 <label>प्रॉपर्टी / Property type</label><select name="ptype">${types.map(x => `<option value="${x}" ${keep.ptype === x ? 'selected' : ''}>${x || '— कोई भी / Any —'}</option>`).join('')}</select>
 <label>कुछ और / Anything else</label><textarea name="note" rows="2" maxlength="300">${esc(keep.note || '')}</textarea>
@@ -886,7 +890,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     noStore(res);
     const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
     const body = req.body || {};
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: str(body.locality, 80), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: canonPlace(p.city || 'Raipur', str(body.locality, 80)), budget: str(body.budget, 60), ptype: str(body.ptype, 20), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`); // a bot filled the hidden field
     if (!formTsOk(body.t)) return page(res, p, 'कृपया फ़ॉर्म दोबारा भरें। / Please fill the form again.', keep);
     const kind = LEAD_KINDS.find(k => k.id === keep.kind)?.id as LeadKind | undefined;
@@ -1105,7 +1109,6 @@ ${wonLine}${lastLine}
     const cert = p.acceptedAt && p.status !== 'PENDING' && p.status !== 'ENDED' ? `<a class="btn l" href="/sp/${tok}/certificate" target="_blank" rel="noopener" data-testid="cert-link">🏅 प्रमाणपत्र / Certificate</a>` : '';
     const html = shell('QR पार्टनर', `<div class="top"><h1>नमस्ते ${esc(p.personName.split(' ')[0])} 🙏</h1><p>${esc(p.shopName)} · ${esc(b?.name || '')} के साथ QR पार्टनर</p></div>
 ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}
-<div class="card app" id="app-card" style="display:none"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>
 ${p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' ? `<div class="card red" data-testid="auto-paused"><p class="t"><b>⏸ आपका QR GENZ ने रोका है</b></p><p class="t">आपका हिस्सा ${OVERDUE.pauseDays} दिन से ज़्यादा बाकी है, इसलिए नए अनुरोध फ़िलहाल रुके हैं। ब्रोकर के चुकाते ही QR फिर चालू हो जाएगा। <small>GENZ paused new requests because your share is over ${OVERDUE.pauseDays} days late; it starts again once it is paid.</small></p></div>` : ''}
 ${need.length ? `<h2>आपके ध्यान के लिए / Needs your eye (${need.length})</h2>${need.map(x => chgCard(x.l, x.c, tok)).join('')}` : ''}
 ${agree}
@@ -1114,6 +1117,8 @@ ${agree}
 ${rank ? `<div class="rank card" style="margin-top:10px" data-testid="shop-rank"><b>🏆 इस महीने आप ${esc(p.city)} के ${mates.length} QR पार्टनर्स में #${rank}</b><br><small>पिछले 30 दिन में ${mine30} लीड · This month you are #${rank} of ${mates.length} QR partners in ${esc(p.city)}</small></div>` : ''}
 ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record">🤝 ${esc(b?.name || 'ब्रोकर')}: ${esc(recText)}</p>` : ''}
 <div class="row"><a class="btn l" href="/q/${esc(p.qrCode)}/poster" target="_blank" rel="noopener">🖨 QR पोस्टर / Poster</a>${cert}</div></div>
+<div class="card" data-testid="shop-tips"><p class="t"><b>💡 ज़्यादा लीड कैसे लाएँ / How to get more leads</b></p><p class="small">1) पोस्टर काउंटर के सामने, आँख की ऊँचाई पर लगाएँ। 2) ग्राहक से कहें: “घर, दुकान या प्लॉट चाहिए तो यह QR स्कैन करें”। 3) अपने WhatsApp स्टेटस पर पोस्टर डालें।<br>Put the poster at eye level near the counter · tell customers “scan if you need or want to sell a home” · post it on your WhatsApp status.</p></div>
+<div class="card app" id="app-card" style="display:none"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>
 <h2>आपके QR से आई लीड / Leads from your QR (${leads.length})</h2><div class="card">${rows || '<p class="t">अभी कोई लीड नहीं। / No leads yet.</p>'}<p class="small">ग्राहक का पूरा नंबर आपको नहीं दिखता — सिर्फ़ आख़िरी 4 अंक। अगर ब्रोकर इसी नंबर पर बाद में काम करता है तो वह यहाँ अपने आप दिखता है। / You see only the last 4 digits. If the broker works this number later, it shows here by itself.</p></div>
 <div class="card"><form method="post" action="/sp/${tok}/ask"><label>ब्रोकर से कुछ कहना है? / Message the broker</label><textarea name="note" rows="2" maxlength="300" required></textarea><div class="row"><button type="submit">भेजें / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">इस पेज को बुकमार्क कर लें — इसी फ़ोन पर बिना कोड के खुलेगा। / Bookmark this page — on this phone it opens without a code. GENZ never asks you for money.</p>`,
@@ -1309,6 +1314,12 @@ export function partnerCounts(uid: string) {
   const leads = st().partnerLeads.filter(l => l.brokerId === uid);
   return {
     partnerNew: leads.filter(l => l.status === 'NEW').length,
+    // v90: the first reply wins the lead — a customer who wrote and has waited more than 2 hours (for up to 3 days) with no answer from the broker
+    partnerReply: leads.filter(l => {
+      if (['WON', 'LOST'].includes(l.status) || !l.chat) return false;
+      const last = [...l.chat.msgs].reverse().find(m => m.by !== 'SYSTEM'); if (!last || last.by !== 'CUSTOMER' || last.kind !== 'MSG') return false;
+      const age = Date.now() - Date.parse(last.at); return age > 2 * 3600_000 && age < 3 * 86400_000;
+    }).length,
     partnerDue: leads.filter(l => l.payout && ['DUE', 'NOT_RECEIVED'].includes(l.payout.status)).length,
     partnerCodes: st().shopPartners.filter(p => p.brokerId === uid && p.otpPlain && p.otpExpires && Date.parse(p.otpExpires) > Date.now()).length,
   };

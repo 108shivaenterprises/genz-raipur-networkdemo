@@ -28,6 +28,34 @@ export const BroadcastButton: React.FC<{ requirementId: string }> = ({ requireme
   );
 };
 
+/** v90 — right on a client need: what the NETWORK already holds for it (other brokers' live, verified listings). Loads by itself. */
+export const NetworkHas: React.FC<{ requirementId: string }> = ({ requirementId }) => {
+  const tx = useTx();
+  const [d, setD] = useState<{ count: number; top: any[] } | null>(null); const [open, setOpen] = useState(false); const [bad, setBad] = useState(false);
+  useEffect(() => { let on = true; const t = setTimeout(() => api.networkHas(requirementId).then(r => { if (on) setD(r); }).catch(() => { if (on) setBad(true); }), 150 + Math.random() * 600); return () => { on = false; clearTimeout(t); }; }, [requirementId]);
+  if (bad) return null;
+  if (!d) return <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500"><Loader2 className="h-3 w-3 animate-spin" />{tx('Checking the network…', 'नेटवर्क में देख रहे हैं…')}</p>;
+  return (
+    <div className="mt-2" data-testid="network-has">
+      <button type="button" onClick={() => d.count > 0 && setOpen(!open)} aria-expanded={open}
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-semibold ${d.count ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+        <span>🌐 {d.count ? tx(`Network has ${d.count} matching home${d.count > 1 ? 's' : ''}`, `नेटवर्क में ${d.count} मैच होते घर हैं`) : tx('Nothing in the network yet — we will alert you when a listing fits', 'नेटवर्क में अभी कुछ नहीं — मैच होते ही बताएँगे')}</span>
+        {d.count > 0 && <span>{open ? '▲' : '▼'}</span>}
+      </button>
+      {open && d.top.length > 0 && (
+        <ul className="mt-1.5 space-y-1.5">
+          {d.top.map((h: any) => (
+            <li key={h.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs">
+              <span className="min-w-0 flex-1"><b className="block truncate text-slate-900">{h.title}</b><span className="text-slate-500">{h.locality}, {h.city}{h.broker ? ` · ${h.broker.name}` : ''}</span></span>
+              <span className="shrink-0 text-right"><b className="block text-slate-900">{formatINR(h.price)}</b><span className="text-[10px] font-semibold text-emerald-700">{h.score}% {tx('match', 'मैच')}</span></span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 export const BroadcastInbox: React.FC = () => {
   const tx = useTx();
   const [items, setItems] = useState<any[] | null>(null);

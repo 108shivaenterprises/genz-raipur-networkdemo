@@ -56,7 +56,7 @@ export const INDIA_STATES: IndiaState[] = [
 
 /** Popular localities per city — suggestions only (any locality can be typed). */
 export const CITY_LOCALITIES: Record<string, string[]> = {
-  Raipur: ['Shankar Nagar', 'VIP Road', 'Telibandha', 'Devendra Nagar', 'Civil Lines', 'Pandri', 'Sadar Bazar', 'Pachpedi Naka', 'Tatibandh', 'Sarona', 'Kota', 'Samta Colony', 'Khamardih', 'Bhatagaon', 'Fafadih', 'Avanti Vihar', 'Ring Road No. 1'],
+  Raipur: ['Shankar Nagar', 'VIP Road', 'Telibandha', 'Devendra Nagar', 'Civil Lines', 'Pandri', 'Sadar Bazar', 'Pachpedi Naka', 'Tatibandh', 'Sarona', 'Kota', 'Samta Colony', 'Khamardih', 'Bhatagaon', 'Fafadih', 'Avanti Vihar', 'Ring Road No. 1', 'Marine Drive', 'Rajendra Nagar', 'Moudhapara', 'Kalibadi', 'Brahmapara', 'Purani Basti', 'Byron Bazar', 'Ravi Nagar', 'Tikrapara', 'Gudhiyari', 'Amanaka', 'Mowa', 'Dumartarai', 'Lalpur', 'Shanti Nagar', 'Kabir Nagar', 'Gaurav Path', 'Naya Raipur', 'Kachna', 'Labhandi', 'Boria Khurd', 'Ring Road No. 2', 'Ring Road No. 3'],
   'Naya Raipur (Atal Nagar)': ['Sector 15', 'Sector 21', 'Sector 24', 'Sector 27', 'Sector 29', 'Rakhi', 'Kharora'],
   Bhilai: ['Supela', 'Smriti Nagar', 'Nehru Nagar', 'Civic Centre', 'Sector 6', 'Risali', 'Kohka'],
   Bilaspur: ['Vyapar Vihar', 'Sarkanda', 'Tifra', 'Rajkishore Nagar', 'Link Road'],

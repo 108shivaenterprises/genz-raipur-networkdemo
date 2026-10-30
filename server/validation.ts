@@ -183,6 +183,8 @@ export const registerSchema = z.object({
   shopType: z.string().max(40).optional(),
   shopName: z.string().trim().max(100).optional(),
   locality: z.string().trim().max(80).optional(),
+  /** v90 — the areas of the city this person works in (brokers, builders…), so the network knows who is where */
+  areas: z.array(z.string().trim().max(80)).max(10).optional(),
   payoutUpi: z.string().trim().max(80).optional(),
   phone: phoneSchema,
   companyName: z.string().trim().max(160).optional(),

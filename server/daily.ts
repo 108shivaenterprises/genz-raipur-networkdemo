@@ -19,6 +19,7 @@ import { ctx, needs, rateLimit, digits } from './auth.js';
 import { phoneSchema } from './validation.js';
 import { canBrowseProperty, isPropertyPrincipal } from './access.js';
 import { calculatePropertyMatch } from './matching.js';
+import { localityFit, inferCity } from '../src/shared/places.js';
 import { awardPoints } from './community.js';
 import { approxPoint } from '../src/shared/geo.js';
 import { normCity } from '../src/shared/cities.js';
@@ -91,12 +92,13 @@ export function buildDigest(u: UserProfile, now = Date.now()) {
   const cityless = (r: BuyerRequirement) => {
     if (!u.city) return byType.get(r.transactionType) || [];
     const out = new Set(byTypeCity.get(`${r.transactionType}|${ck(u.city)}`) || []);
-    const wanted = (r.preferredLocalities || []).map(l => l.toLowerCase().trim()).filter(Boolean);
-    if (wanted.length) for (const [loc, list] of byTypeLoc.get(r.transactionType) || []) if (wanted.some(w => loc.includes(w) || w.includes(loc))) for (const p of list) out.add(p);
+    const wanted = (r.preferredLocalities || []).map(l => l.trim()).filter(Boolean);
+    if (wanted.length) for (const [loc, list] of byTypeLoc.get(r.transactionType) || []) if (localityFit(u.city, wanted, loc).level === 'exact') for (const p of list) out.add(p);
     return [...out];
   };
   for (const s of sources) {
-    const all = s.req.city ? (byTypeCity.get(`${s.req.transactionType}|${ck(s.req.city)}`) || []) : cityless(s.req);
+    const rc = s.req.city || inferCity(s.req.preferredLocalities);
+    const all = rc ? (byTypeCity.get(`${s.req.transactionType}|${ck(rc)}`) || []) : cityless(s.req);
     const cands = all.length > 4000 ? all.slice(-4000) : all; // worst case bounded: the newest 4,000 compatible listings
     // score cheaply first, keep this client's best 300 by match, then do the (heavier) ranking only for those
     const best: { p: typeof props[number]; m: ReturnType<typeof calculatePropertyMatch>; key: string }[] = [];

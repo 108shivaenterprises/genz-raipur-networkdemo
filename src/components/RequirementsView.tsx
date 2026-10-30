@@ -6,7 +6,7 @@ import { formatINR, formatArea, getRequirementWhatsAppShareUrl } from '../lib/ut
 import { UserCheck, Sparkles, Phone, ShieldCheck, Share2, Search, MessageCircle } from 'lucide-react';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
-import { BroadcastButton, BroadcastInbox, MyBroadcasts } from './BroadcastPanels.js';
+import { BroadcastButton, BroadcastInbox, MyBroadcasts, NetworkHas } from './BroadcastPanels.js';
 
 interface RequirementsViewProps {
   requirements: BuyerRequirement[];
@@ -16,6 +16,37 @@ interface RequirementsViewProps {
   /** v20: big network → the app holds my clients + the newest needs; the rest is searched on the server */
   scope?: { total: number; scoped: boolean };
 }
+
+/** v90 — put this client need into Today & Clients (with the client's agreement) so follow-ups, matches and reminders start. */
+const AddToClients: React.FC<{ req: BuyerRequirement }> = ({ req }) => {
+  const tx = useTx();
+  const [open, setOpen] = useState(false); const [ok, setOk] = useState(false); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ good: boolean; text: string } | null>(null);
+  if (!(req as any).customerName || !(req as any).customerPhone) return null;
+  const add = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      await api.clientAdd({
+        name: (req as any).customerName, phone: String((req as any).customerPhone).replace(/\D/g, '').slice(-10), budgetMin: req.budgetMin, budgetMax: req.budgetMax,
+        city: req.city || '', areas: (req.preferredLocalities || []).slice(0, 8), propertyType: req.propertyType, transactionType: req.transactionType,
+        tags: (req.preferredTags || []).slice(0, 8), notes: `From need ${req.id}`, consent: true, clientRef: `req-${req.id}`,
+      });
+      setMsg({ good: true, text: tx('Added to Today & Clients.', 'Today & Clients में जुड़ गया।') }); setOpen(false);
+    } catch (e: any) { setMsg({ good: /already/i.test(e.message), text: /already/i.test(e.message) ? tx('Already in your Clients.', 'यह पहले से आपके क्लाइंट में है।') : e.message }); setOpen(false); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-2" data-testid="req-add-client">
+      {!open && !msg?.good && <button type="button" onClick={() => setOpen(true)} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50" data-testid="req-add-client-btn">👤 {tx('Add to Today & Clients', 'Today & Clients में जोड़ें')}</button>}
+      {open && (
+        <div className="space-y-2 rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-xs">
+          <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={ok} onChange={(e) => setOk(e.target.checked)} data-testid="req-add-client-ok" />{tx('The client agreed that I may contact him about homes.', 'क्लाइंट ने मकानों के बारे में मुझसे संपर्क की सहमति दी है।')}</label>
+          <div className="flex gap-2"><button type="button" disabled={!ok || busy} onClick={add} className="rounded-lg bg-slate-900 px-3 py-1.5 font-semibold text-white disabled:opacity-40" data-testid="req-add-client-go">{busy ? '…' : tx('Add', 'जोड़ें')}</button><button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700">{tx('Cancel', 'रद्द')}</button></div>
+        </div>
+      )}
+      {msg && <p className={`mt-1 text-[11px] ${msg.good ? 'text-emerald-700' : 'text-red-700'}`}>{msg.text}</p>}
+    </div>
+  );
+};
 
 export const RequirementsView: React.FC<RequirementsViewProps> = ({
   requirements,
@@ -227,6 +258,8 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
               </a>
               )}
             </div>
+            {currentUser.role === 'BROKER' && req.assignedBrokerId === currentUser.id && ['active', 'matching'].includes(req.status) && <AddToClients req={req} />}
+            {currentUser.role === 'BROKER' && req.assignedBrokerId === currentUser.id && ['active', 'matching'].includes(req.status) && <NetworkHas requirementId={req.id} />}
             {currentUser.role === 'BROKER' && req.assignedBrokerId === currentUser.id && ['active', 'matching'].includes(req.status) && <BroadcastButton requirementId={req.id} />}
           </div>
         ))}

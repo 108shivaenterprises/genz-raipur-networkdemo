@@ -32,6 +32,39 @@ interface Props {
   canGrow?: boolean;
 }
 
+/** v90 — the shop-QR engine on the Home: this week's scans / leads / owners, or one big "add your first shop" when there is none yet. */
+const ShopQrTile: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
+  const tx = useTx();
+  const [d, setD] = useState<any>(null);
+  useEffect(() => { api.spList().then(setD).catch(() => setD(false)); }, []);
+  if (d === false) return null;
+  if (!d) return null;
+  const partners: any[] = d.partners || []; const leads: any[] = d.leads || [];
+  const week = Date.now() - 7 * 86400_000;
+  const recent = leads.filter(l => Date.parse(l.createdAt || '') >= week);
+  const owners = recent.filter(l => l.kind === 'SELL' || l.kind === 'RENT_OUT').length;
+  const fresh = leads.filter(l => l.status === 'NEW').length;
+  if (partners.length === 0) {
+    return (
+      <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-emerald-400 bg-emerald-50 p-4 text-left" data-testid="home-shopqr-first">
+        <span className="text-2xl">📍</span>
+        <span className="min-w-0 flex-1"><b className="block text-sm text-emerald-900">{tx('Add your first shop (2 minutes)', 'पहली दुकान जोड़ें (2 मिनट)')}</b><span className="text-xs text-emerald-800">{tx('A QR at a shop brings buyers and owners to you — no ads.', 'दुकान पर QR लगाइए — बिना विज्ञापन के ग्राहक और मालिक आपके पास आएँगे।')}</span></span>
+        <ChevronRight className="h-5 w-5 text-emerald-700" />
+      </button>
+    );
+  }
+  return (
+    <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-2xl border border-emerald-200 bg-white p-3 text-left" data-testid="home-shopqr">
+      <span className="text-2xl">📍</span>
+      <span className="min-w-0 flex-1">
+        <b className="block text-sm text-slate-900">{tx('Shop QR', 'दुकान QR')}{fresh > 0 && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">{fresh} {tx('new', 'नई')}</span>}</b>
+        <span className="text-xs text-slate-600">{tx(`This week: ${recent.length} lead${recent.length === 1 ? '' : 's'} · ${owners} owner${owners === 1 ? '' : 's'} · ${partners.length} shop${partners.length === 1 ? '' : 's'}`, `इस हफ़्ते: ${recent.length} लीड · ${owners} मालिक · ${partners.length} दुकान`)}</span>
+      </span>
+      <span className="shrink-0 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white">{tx('+ Shop', '+ दुकान')}</span>
+    </button>
+  );
+};
+
 export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequirement, user, onOpenAddProperty, onOpenAddLead, canGrow }) => {
   const tx = useTx();
   const [showAlerts, setShowAlerts] = useState(false);
@@ -92,6 +125,7 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
 
       {showAlerts && <div id="home-alerts"><AlertsCard onState={s => setAlertsOn(s === 'on')} /></div>}
 
+      <ShopQrTile onOpen={() => onNavigate('partners' as TabType)} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button onClick={() => goto('properties', { drafts: '1' }, onNavigate)} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-emerald-600 p-3 text-left text-white" data-testid="home-wa"><MessageCircle className="h-5 w-5" /><span className="text-sm font-bold">{tx('From WhatsApp — listing or buyer need', 'WhatsApp से — लिस्टिंग या खरीदार की ज़रूरत')}</span></button>
         <button onClick={onOpenAddRequirement} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-slate-900 p-3 text-left text-white"><UserPlus className="h-5 w-5 text-amber-400" /><span className="text-sm font-bold">{tx('Client’s need', 'क्लाइंट की ज़रूरत')}</span></button>

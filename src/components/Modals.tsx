@@ -5,6 +5,7 @@ import { VisitAckPanel } from './VisitAckPanel.js';
 import { ScanPointSelect, ScanLineNote } from './ScanPoint.js';
 import { SiteVisit, UserProfile } from '../types/index.js';
 import { PROPERTY_TYPES, INDIA_STATES, citiesOf, localitiesOf, findState, stateOfCity } from '../shared/india.js';
+import { areasOf, canonPlace } from '../shared/places.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
 import { shrinkImage, readAsDataUrl } from '../lib/imgShrink.js';
 import { formatINR } from '../lib/utils.js';
@@ -785,7 +786,7 @@ export const AddRequirementModal: React.FC<{
     setError('');
     try {
       if (!loc.city) { setError(hi ? 'शहर चुनें' : 'Please choose the city'); setLoading(false); return; }
-      await api.createRequirement({
+      const made: any = await api.createRequirement({
         customerName,
         customerPhone,
         budgetMin: Number(budgetMin),
@@ -799,7 +800,10 @@ export const AddRequirementModal: React.FC<{
         purpose,
         urgency,
       });
-      alert(hi ? 'ज़रूरत दर्ज हो गई! मैचिंग शुरू है।' : 'Buyer requirement registered! Magic Match is looking for homes.');
+      const nn = made?.network?.count;
+      alert(nn !== undefined
+        ? (nn > 0 ? (hi ? `ज़रूरत दर्ज हो गई! नेटवर्क में ${nn} मैच होते घर मिले — ज़रूरत के कार्ड पर देखें।` : `Requirement saved! The network already has ${nn} matching home${nn > 1 ? 's' : ''} — see them on the need's card.`) : (hi ? 'ज़रूरत दर्ज हो गई! नेटवर्क में अभी कुछ मैच नहीं — मैच होते ही बताएँगे।' : 'Requirement saved! Nothing in the network matches yet — we will tell you the moment a listing fits.'))
+        : (hi ? 'ज़रूरत दर्ज हो गई! मैचिंग शुरू है।' : 'Buyer requirement registered! Magic Match is looking for homes.'));
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -922,7 +926,13 @@ export const AddRequirementModal: React.FC<{
           <div>
             <label className="text-xs font-semibold text-slate-700">{hi ? 'पसंदीदा इलाके' : 'Preferred localities'}{loc.city ? ` — ${loc.city}` : ''}:</label>
             <div className="mt-1.5 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-lg">
-              {[...new Set([...localitiesOf(loc.city), ...selectedLocalities])].map((l) => {
+              {loc.city && (
+                <button type="button" data-testid="req-whole-city" onClick={() => toggleLocality(loc.city)}
+                  className={`rounded px-2 py-1 text-[11px] font-semibold transition-colors ${selectedLocalities.includes(loc.city) ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'}`}>
+                  🏙️ {hi ? `पूरा ${loc.city} (कोई भी इलाका)` : `Whole ${loc.city} (any area)`}
+                </button>
+              )}
+              {[...new Set([...areasOf(loc.city), ...selectedLocalities.filter(x => x !== loc.city)])].map((l) => {
                 const isSelected = selectedLocalities.includes(l);
                 return (
                   <button
@@ -943,7 +953,7 @@ export const AddRequirementModal: React.FC<{
               <input
                 value={customLocality}
                 onChange={(e) => setCustomLocality(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const v = customLocality.trim(); if (v && !selectedLocalities.includes(v)) setSelectedLocalities([...selectedLocalities, v]); setCustomLocality(''); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const v = canonPlace(loc.city, customLocality.trim()); if (v && !selectedLocalities.includes(v)) setSelectedLocalities([...selectedLocalities, v]); setCustomLocality(''); } }}
                 placeholder={hi ? 'कोई और इलाका लिखकर Enter दबाएँ' : 'Type another locality and press Enter'}
                 className="flex-1 rounded-lg border border-slate-300 p-1.5 text-xs"
               />

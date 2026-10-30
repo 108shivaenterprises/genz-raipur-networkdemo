@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MapPin, Loader2 } from 'lucide-react';
-import { INDIA_STATES, citiesOf, localitiesOf, isPincode, findState } from '../shared/india.js';
+import { INDIA_STATES, citiesOf, isPincode, findState } from '../shared/india.js';
+import { areasOf, canonPlace, suggestAreas } from '../shared/places.js';
 import { api } from '../lib/api.js';
 import { useI18n } from '../lib/i18n.js';
 
@@ -38,7 +39,8 @@ export const LocationFields: React.FC<Props> = ({ value, onChange, showLocality 
 
   const set = (patch: Partial<LocationValue>) => onChange({ ...value, ...patch });
   const cities = citiesOf(value.state);
-  const suggestions = [...new Set([...localitiesOf(value.city), ...pinLocalities])];
+  const suggestions = [...new Set([...suggestAreas(value.city, value.locality, 12), ...pinLocalities, ...(value.locality ? [] : areasOf(value.city).slice(0, 30))])];
+  const tidied = value.locality && value.locality !== canonPlace(value.city, value.locality) ? canonPlace(value.city, value.locality) : '';
 
   const lookup = async (pin: string) => {
     if (!isPincode(pin)) { setPinNote(''); return; }
@@ -118,9 +120,13 @@ export const LocationFields: React.FC<Props> = ({ value, onChange, showLocality 
             list={`${dlId}-loc`}
             value={value.locality}
             onChange={(e) => set({ locality: e.target.value })}
+            onBlur={() => { if (value.locality) { const c = canonPlace(value.city, value.locality); if (c && c !== value.locality) set({ locality: c }); } }}
             placeholder={hi ? 'जैसे शंकर नगर, अंधेरी वेस्ट' : 'e.g. Shankar Nagar, Andheri West'}
             className={input}
+            data-testid="loc-locality"
           />
+          {!value.city && <p className="mt-0.5 text-[10px] text-amber-700">{hi ? 'पहले शहर चुनें — तब उसी शहर के इलाके दिखेंगे' : 'Choose the city first — its own areas will show up here'}</p>}
+          {tidied && <p className="mt-0.5 text-[10px] text-slate-500">{hi ? `सेव होगा: ${tidied}` : `Will be saved as: ${tidied}`}</p>}
           <datalist id={`${dlId}-loc`}>{suggestions.map((l) => <option key={l} value={l} />)}</datalist>
         </div>
       )}

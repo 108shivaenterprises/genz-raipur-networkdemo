@@ -228,7 +228,6 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
         <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
       </div>
-      <p className="text-[11px] text-slate-500">{tx('A call or WhatsApp is not recorded in GENZ. A client room keeps the chat, the homes you show and the visits on record — useful if this lead or the shop’s share is ever questioned.', 'कॉल या WhatsApp GENZ में दर्ज नहीं होता। क्लाइंट रूम में चैट, दिखाए घर और विज़िट दर्ज रहते हैं — लीड या दुकान के हिस्से पर कभी सवाल उठे तो काम आता है।')}</p>
       </>)}
       {l.links.length > 0 && <div className="flex flex-wrap gap-1">{l.links.map((x: any, i: number) => <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{hi ? x.hi : x.en} · {when(x.at)}</span>)}</div>}
       {l.flags.map((f: any) => <p key={f.code} className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800" data-testid="sp-flag"><AlertTriangle className="h-3.5 w-3.5" />{hi ? f.hi : f.en}</p>)}
@@ -355,6 +354,67 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
 };
 
 /** v82 — how to win a shopkeeper: a message to send, the four things he asks, and the one-page leaflet */
+/** v90 — the broker chooses which of his homes (and which opened network homes) appear under every shop-QR form. Tick = shown, untick = hidden. */
+const QrHomesPicker: React.FC<{ startOpen?: boolean; onChanged?: () => void }> = ({ startOpen, onChanged }) => {
+  const tx = useTx();
+  const [d, setD] = useState<any>(null); const [open, setOpen] = useState(!!startOpen); const [busy, setBusy] = useState(''); const [msg, setMsg] = useState('');
+  const [ask, setAsk] = useState<string[] | null>(null); const [tick, setTick] = useState(false); const [q, setQ] = useState('');
+  const load = () => api.ppGet().then(setD).catch((e: any) => setMsg(e.message));
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen: string[] = d?.homes?.chosen || [];
+  const save = async (ids: string[], ownerOk = false) => {
+    setBusy('save'); setMsg('');
+    try { const r = await api.ppHomes(ids, ownerOk); setD(r); setAsk(null); onChanged?.(); }
+    catch (e: any) { if (e?.code === 'OWNER_OK_NEEDED') { setAsk(ids); setTick(false); } else setMsg(e.message); }
+    finally { setBusy(''); }
+  };
+  const turnOn = async () => { setBusy('on'); try { const r = await api.ppSettings({ enabled: true }); setD(r); onChanged?.(); } catch (e: any) { setMsg(e.message); } finally { setBusy(''); } };
+  if (!d) return null;
+  if (!d.card?.verified) return null;
+  const toggle = (id: string) => save(chosen.includes(id) ? chosen.filter(x => x !== id) : [...chosen, id]);
+  const all = [...(d.own || []), ...(d.network || [])];
+  const shown = all.filter((h: any) => !q.trim() || `${h.title} ${h.locality} ${h.city}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const Row = (h: any, mine: boolean) => (
+    <label key={h.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border p-2 text-xs ${chosen.includes(h.id) ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+      <input type="checkbox" className="h-4 w-4" checked={chosen.includes(h.id)} disabled={busy === 'save'} onChange={() => toggle(h.id)} data-testid={`qr-home-${h.id}`} />
+      {h.photo ? <img src={h.photo} alt="" className="h-9 w-9 rounded object-cover" loading="lazy" /> : <span className="flex h-9 w-9 items-center justify-center rounded bg-slate-100">🏠</span>}
+      <span className="min-w-0 flex-1"><b className="block truncate text-slate-900">{h.title}</b><span className="text-slate-500">{h.locality}, {h.city} · {h.type} · {h.deal}</span></span>
+      {!mine && <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">{tx('network', 'नेटवर्क')}</span>}
+    </label>
+  );
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white" data-testid="qr-homes-picker">
+      <button type="button" className="flex w-full items-center justify-between gap-2 p-3 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="text-sm font-bold text-slate-900">🏠 {tx('Which homes show on my QR pages', 'मेरे QR पेज पर कौन से घर दिखें')} <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{tx(`${chosen.length} shown`, `${chosen.length} दिख रहे`)}</span></span>
+        <span className="text-xs text-slate-500">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-slate-100 p-3">
+          <p className="text-[11px] text-slate-600">{tx('Tick the homes you want customers to see under the QR form. Untick to hide. Nothing appears on its own — you decide. The same list is on your public page.', 'जो घर QR फ़ॉर्म के नीचे ग्राहक को दिखाने हैं उन पर टिक करें; हटाने के लिए टिक हटाएँ। अपने आप कुछ नहीं दिखता — आप तय करते हैं। यही सूची आपके पब्लिक पेज पर भी है।')}</p>
+          {!d.card.enabled && <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">{tx('Your public page is OFF, so no homes show under the QR. ', 'आपका पब्लिक पेज बंद है, इसलिए QR के नीचे कोई घर नहीं दिखेगा। ')}<button type="button" className="font-bold underline" disabled={busy === 'on'} onClick={turnOn} data-testid="qr-homes-on">{tx('Turn on', 'चालू करें')}</button></div>}
+          <div className="flex flex-wrap items-center gap-2">
+            <input className={inp + ' max-w-xs'} value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx('Search a home or area', 'घर या इलाका खोजें')} />
+            <button type="button" className={light} disabled={busy === 'save' || chosen.length === 0} onClick={() => save([])} data-testid="qr-homes-none">{tx('Hide all', 'सब हटाएँ')}</button>
+            <button type="button" className={light} disabled={busy === 'save' || (d.own || []).length === 0} onClick={() => save([...new Set([...chosen, ...(d.own || []).map((h: any) => h.id)])].slice(0, d.homes.max))} data-testid="qr-homes-allmine">{tx('Show all my homes', 'मेरे सब घर दिखाएँ')}</button>
+          </div>
+          {all.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No verified live homes yet. Homes appear here once they are verified.', 'अभी कोई वेरिफ़ाइड लाइव घर नहीं। वेरिफ़ाई होते ही यहाँ दिखेंगे।')}</p>}
+          <div className="grid max-h-72 gap-1.5 overflow-y-auto md:grid-cols-2">
+            {shown.map((h: any) => Row(h, (d.own || []).some((o: any) => o.id === h.id)))}
+          </div>
+          {ask && (
+            <div className="space-y-2 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-xs text-amber-900" data-testid="qr-homes-ok">
+              <p className="font-semibold">{tx(d.ownerOkText?.en || 'Confirm the owners agreed.', d.ownerOkText?.hi || d.ownerOkText?.en || 'मालिकों की सहमति की पुष्टि करें।')}</p>
+              <label className="flex items-start gap-2"><input type="checkbox" checked={tick} onChange={(e) => setTick(e.target.checked)} className="mt-0.5 h-4 w-4" /> {tx('Yes, the owners of my listings agreed.', 'हाँ, मेरी लिस्टिंग के मालिकों ने सहमति दी है।')}</label>
+              <button type="button" className={dark} disabled={!tick || busy === 'save'} onClick={() => save(ask, true)}>{tx('Confirm & show', 'पुष्टि करें और दिखाएँ')}</button>
+            </div>
+          )}
+          {msg && <p className="text-xs font-medium text-red-700">{msg}</p>}
+        </div>
+      )}
+    </section>
+  );
+};
+
 const PitchKit: React.FC<{ name: string }> = ({ name }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [copied, setCopied] = useState(false);
@@ -460,6 +520,7 @@ export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: b
       {err && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>}
       {tab === 'desk' && canOversee && <Desk />}
       {canManage && !d && !err && tab !== 'desk' && <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />}
+      {canManage && d && tab === 'partners' && <QrHomesPicker onChanged={load} />}
       {canManage && d && tab === 'partners' && <PitchKit name={currentUser.name} />}
       {canManage && d && tab === 'partners' && (
         <div className="grid gap-3 md:grid-cols-2">
@@ -469,6 +530,8 @@ export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: b
       )}
       {canManage && d && tab === 'leads' && (
         <div className="space-y-3">
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600" data-testid="sp-room-note">ℹ️ {tx('A call or WhatsApp is not recorded in GENZ. A client room keeps the chat, the homes you show and the visits on record — useful if a lead or the shop’s share is ever questioned.', 'कॉल या WhatsApp GENZ में दर्ज नहीं होता। क्लाइंट रूम में चैट, दिखाए घर और विज़िट दर्ज रहते हैं — लीड या दुकान के हिस्से पर सवाल उठे तो काम आता है।')}</p>
+          <QrHomesPicker startOpen={!!d.homes && d.homes.shown === 0 && (d.partners || []).some((x: any) => x.status === 'ACTIVE')} onChanged={load} />
           {d.homes && d.homes.shown === 0 && (d.partners || []).some((x: any) => x.status === 'ACTIVE') && <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="sp-no-homes">🏠 {!d.homes.verified ? tx('Your QR pages show no homes yet: homes appear only after your GENZ verification.', 'आपके QR पेज पर अभी कोई घर नहीं दिख रहा: घर GENZ वेरिफ़िकेशन के बाद ही दिखते हैं।') : !d.homes.pageOn ? tx('Your QR pages show no homes because your public page is OFF. Turn it on (My public page) and your listings appear under the QR form.', 'आपके QR पेज पर घर इसलिए नहीं दिख रहे क्योंकि आपका पब्लिक पेज बंद है। उसे चालू करें (मेरा पब्लिक पेज) — लिस्टिंग QR फ़ॉर्म के ऊपर दिखने लगेंगी।') : tx('Your QR pages show no homes: none of your listings is switched on for the public page. Switch some on and they appear under the QR form.', 'आपके QR पेज पर कोई घर नहीं दिख रहा: पब्लिक पेज के लिए कोई लिस्टिंग चालू नहीं है। कुछ चालू करें — वे QR फ़ॉर्म के ऊपर दिखेंगी।')}</p>}
           {d.record?.counted > 0 && <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700" data-testid="sp-record">🤝 {tx(`Your record with shop partners: ${d.record.onTime} of ${d.record.counted} shares paid within ${OVERDUE.pauseDays} days.`, `दुकान पार्टनर्स के साथ आपका रिकॉर्ड: ${d.record.counted} में से ${d.record.onTime} हिस्से ${OVERDUE.pauseDays} दिन में चुकाए।`)}{d.record.overdue > 0 ? ` ⏳ ${tx(`${d.record.overdue} overdue`, `${d.record.overdue} देर से`)}` : ''}</p>}
           <div className="flex flex-wrap gap-1.5">
