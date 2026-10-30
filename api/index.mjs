@@ -82234,6 +82234,26 @@ function matchesFor(l) {
 }
 var homeBrief = (h) => ({ id: h.id, title: h.title, price: priceShort(h.askingPrice), place: `${h.locality}, ${h.city}`, rent: h.transactionType !== "Sale" });
 var needLine = (l) => `${LEAD_KINDS.find((k) => k.id === l.kind)?.hi || ""} \xB7 ${l.locality}${l.budget ? ` \xB7 ${l.budget}` : ""}${l.propertyType ? ` \xB7 ${l.propertyType}` : ""}${l.note ? ` \xB7 \u201C${l.note}\u201D` : ""}`;
+function budgetRupees(text, rent) {
+  const n2 = parseMoney(text);
+  if (n2 == null) return null;
+  const hasUnit = /(cr|crore|करोड़|करोड|lakh|lac|लाख|\bk\b|\dk\b|thousand|हज़ार|हजार)/i.test(String(text || ""));
+  const v = !hasUnit && n2 < 1e3 ? n2 * (rent ? 1e3 : 1e5) : n2;
+  return v > 0 && v <= 1e11 ? Math.round(v) : null;
+}
+var REQ_TYPES = { Flat: "Residential Flat", House: "Independent House", Plot: "Residential Plot", Shop: "Commercial Shop", Office: "Commercial Office", Warehouse: "Warehouse / Godown" };
+function ensureNeed(l, rent, city) {
+  const s = st11();
+  const max = budgetRupees(l.budget, rent);
+  if (!max) return void 0;
+  const has = s.requirements.find((q) => q.assignedBrokerId === l.brokerId && phone102(q.customerPhone) === l.phone && q.status !== "closed" && q.status !== "fulfilled");
+  if (has) return has.id;
+  const seq2 = s.requirements.reduce((m, q) => Math.max(m, Number(/REQ-(?:RAI-)?(\d+)/.exec(q.id)?.[1] ?? 0)), 200) + 1;
+  const now = nowIso22();
+  const prior = s.requirements.find((q) => phone102(q.customerPhone) === l.phone);
+  s.requirements.unshift({ id: `REQ-${seq2}`, customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: l.name, customerPhone: l.phone, assignedBrokerId: l.brokerId, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city, preferredLocalities: [l.locality || city], preferredTags: [], propertyType: REQ_TYPES[l.propertyType || ""] || "Residential Flat", transactionType: rent ? "Rent" : "Sale", purpose: "Self-use", urgency: "Moderate (1-3 months)", status: "matching", createdAt: now, updatedAt: now });
+  return `REQ-${seq2}`;
+}
 function revealNumber(l, how) {
   if (!l.chat || l.chat.revealedAt) return;
   const s = st11();
@@ -82243,6 +82263,8 @@ function revealNumber(l, how) {
   l.chat.revealedBy = how;
   if (l.kind === "BUY" || l.kind === "RENT_IN") {
     const has = s.clientCards.find((c) => c.brokerId === l.brokerId && phone102(c.phone) === l.phone && c.stage !== "LOST");
+    const bud = budgetRupees(l.budget, l.kind === "RENT_IN");
+    ensureNeed(l, l.kind === "RENT_IN", p?.city || "Raipur");
     if (has) l.clientCardId = has.id;
     else {
       const n2 = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split("-").pop()) || 0), 0) + 1;
@@ -82251,8 +82273,8 @@ function revealNumber(l, how) {
         brokerId: l.brokerId,
         name: l.name,
         phone: l.phone,
-        budgetMin: 0,
-        budgetMax: 0,
+        budgetMin: bud ? Math.round(bud * 0.7) : 0,
+        budgetMax: bud || 0,
         city: p?.city || "Raipur",
         areas: [l.locality],
         propertyType: l.propertyType || "Any",

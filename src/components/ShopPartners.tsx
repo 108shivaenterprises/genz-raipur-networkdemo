@@ -224,7 +224,7 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
           try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}${l.homeTitle ? ` · ${l.homeTitle}` : ''}`.slice(0, 190), homeId: l.homeId || '', homeTitle: l.homeTitle || '' })); } catch { /* storage blocked: the form opens empty */ }
           window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
         }}><MessagesSquare className="h-4 w-4" />{tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
-        {(l.kind === 'BUY' || l.kind === 'RENT_IN') && <button type="button" className={light + ' !min-h-10 !text-xs'} data-testid="sp-lead-need" onClick={() => setMode(mode === 'need' ? '' : 'need')}><Sparkles className="h-3.5 w-3.5" />{tx('No home yet? Find in network', 'घर नहीं है? नेटवर्क में ढूँढें')}</button>}
+        {(l.kind === 'BUY' || l.kind === 'RENT_IN') && !l.links.some((x: any) => x.kind === 'NEED') && <button type="button" className={light + ' !min-h-10 !text-xs'} data-testid="sp-lead-need" onClick={() => setMode(mode === 'need' ? '' : 'need')}><Sparkles className="h-3.5 w-3.5" />{tx('No home yet? Find in network', 'घर नहीं है? नेटवर्क में ढूँढें')}</button>}
         <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
         <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
       </div>

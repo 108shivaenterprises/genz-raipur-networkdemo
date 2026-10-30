@@ -69,12 +69,13 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
   if (d.role === 'BUYER_TENANT') {
     return (
       <div className="mt-6 space-y-6" data-testid="insight-buyer">
-        <section className={card}>
-          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarCheck className="h-4 w-4 text-slate-500" />{tx('My site visits', 'मेरी साइट विज़िट')}</h3>
-          {d.visits.length === 0 ? <p className="mt-2 text-xs text-slate-500">{tx('No visits yet. When a broker books a visit for you it shows here.', 'अभी कोई विज़िट नहीं। ब्रोकर आपके लिए विज़िट बुक करेगा तो यहाँ दिखेगी।')}</p> : (
-            <ul className="mt-2 divide-y divide-slate-100 text-sm">{d.visits.map((v: any) => <li key={v.id} className="flex items-center justify-between gap-2 py-2"><span>{v.title}<span className="block text-xs text-slate-500">{formatDateTime(v.at)}</span></span><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${v.verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{v.verified ? tx('Visited ✔', 'देख ली ✔') : tx('Upcoming', 'आने वाली')}</span></li>)}</ul>
-          )}
-        </section>
+        {/* v87 — upcoming visits (with their codes) are already on the buyer's Home card above; this one keeps only the visits already done, so the same visit is never listed twice */}
+        {d.visits.some((v: any) => v.verified) && (
+          <section className={card} data-testid="buyer-past-visits">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarCheck className="h-4 w-4 text-slate-500" />{tx('Visits done', 'हो चुकी साइट विज़िट')}</h3>
+            <ul className="mt-2 divide-y divide-slate-100 text-sm">{d.visits.filter((v: any) => v.verified).map((v: any) => <li key={v.id} className="flex items-center justify-between gap-2 py-2"><span>{v.title}<span className="block text-xs text-slate-500">{formatDateTime(v.at)}</span></span><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">{tx('Visited ✔', 'देख ली ✔')}</span></li>)}</ul>
+          </section>
+        )}
         {/* v56 — homes I saved (Properties / Magic Match → ♡ Save) */}
         <section className={card} data-testid="buyer-saved">
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Heart className="h-4 w-4 text-rose-500" />{tx('Saved homes', 'सेव किए घर')}{(d.saved || []).length > 0 && <span className="rounded-full bg-slate-100 px-2 text-xs text-slate-600">{d.saved.length}</span>}</h3>

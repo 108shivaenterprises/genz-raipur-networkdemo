@@ -51,6 +51,7 @@ export const AlertsCard: React.FC<{ compact?: boolean; role?: string; onState?: 
       const s = state === 'on' ? await disablePush() : await enablePush();
       setState(s); onState?.(s);
       if (s === 'on') { await api.pushTest().catch(() => {}); setMsg(tx('Alerts are on — a test alert was sent.', 'अलर्ट चालू — एक टेस्ट अलर्ट भेजा गया।')); }
+      if (s === 'off' && state !== 'on') setMsg(tx('Alerts were not turned on. Tap “Turn on” again and choose “Allow”.', 'अलर्ट चालू नहीं हुए। “चालू करें” फिर दबाएँ और “Allow” चुनें।'));
       if (s === 'blocked') setMsg(tx('The browser blocked alerts. Allow notifications for this site in the browser settings.', 'ब्राउज़र ने अलर्ट रोक दिए। ब्राउज़र सेटिंग में इस साइट के नोटिफ़िकेशन चालू करें।'));
     } catch (e: any) { setMsg(e.message || 'Error'); } finally { setBusy(false); }
   };

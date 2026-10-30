@@ -94,17 +94,38 @@ const homeBrief = (h: Property) => ({ id: h.id, title: h.title, price: priceShor
 /** the customer's need, as one readable line (what the broker asks him to confirm) */
 const needLine = (l: PartnerLead) => `${LEAD_KINDS.find(k => k.id === l.kind)?.hi || ''} · ${l.locality}${l.budget ? ` · ${l.budget}` : ''}${l.propertyType ? ` · ${l.propertyType}` : ''}${l.note ? ` · “${l.note}”` : ''}`;
 /** the moment the number becomes visible: the buyer / renter also lands in the broker's own client list now (not before) */
+/** v87 — a number in the shop's budget box → rupees. "50 lakh", "1.2 cr", "15k" read as written; a bare small number is read the way a customer means it (sale: lakh, rent: thousand). null when it cannot be read */
+export function budgetRupees(text: string | undefined, rent: boolean): number | null {
+  const n = parseMoney(text); if (n == null) return null;
+  const hasUnit = /(cr|crore|करोड़|करोड|lakh|lac|लाख|\bk\b|\dk\b|thousand|हज़ार|हजार)/i.test(String(text || ''));
+  const v = !hasUnit && n < 1000 ? n * (rent ? 1e3 : 1e5) : n;
+  return v > 0 && v <= 1e11 ? Math.round(v) : null;
+}
+const REQ_TYPES: Record<string, string> = { Flat: 'Residential Flat', House: 'Independent House', Plot: 'Residential Plot', Shop: 'Commercial Shop', Office: 'Commercial Office', Warehouse: 'Warehouse / Godown' };
+/** v87 — the client card and the buyer need are two lists the broker looks at (Today & Clients / Buyers + Magic Match). A shop lead must land in BOTH, or he sees a client with no need, or a need with no client */
+function ensureNeed(l: PartnerLead, rent: boolean, city: string): string | undefined {
+  const s = st(); const max = budgetRupees(l.budget, rent); if (!max) return undefined;
+  const has = s.requirements.find(q => q.assignedBrokerId === l.brokerId && phone10(q.customerPhone) === l.phone && q.status !== 'closed' && q.status !== 'fulfilled');
+  if (has) return has.id;
+  const seq = s.requirements.reduce((m, q) => Math.max(m, Number(/REQ-(?:RAI-)?(\d+)/.exec(q.id)?.[1] ?? 0)), 200) + 1; const now = nowIso();
+  const prior = s.requirements.find(q => phone10(q.customerPhone) === l.phone);
+  s.requirements.unshift({ id: `REQ-${seq}`, customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: l.name, customerPhone: l.phone, assignedBrokerId: l.brokerId, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city, preferredLocalities: [l.locality || city], preferredTags: [], propertyType: (REQ_TYPES[l.propertyType || ''] || 'Residential Flat') as any, transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)', status: 'matching', createdAt: now, updatedAt: now } as any);
+  return `REQ-${seq}`;
+}
+
 function revealNumber(l: PartnerLead, how: { homeId?: string; title?: string }) {
   if (!l.chat || l.chat.revealedAt) return;
   const s = st(); const now = nowIso(); const p = partnerOf(l.partnerId);
   l.chat.revealedAt = now; l.chat.revealedBy = how;
   if (l.kind === 'BUY' || l.kind === 'RENT_IN') {
     const has = s.clientCards.find(c => c.brokerId === l.brokerId && phone10(c.phone) === l.phone && c.stage !== 'LOST');
+    const bud = budgetRupees(l.budget, l.kind === 'RENT_IN');
+    ensureNeed(l, l.kind === 'RENT_IN', p?.city || 'Raipur');
     if (has) l.clientCardId = has.id;
     else {
       const n = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split('-').pop()) || 0), 0) + 1;
       const card: ClientCard = {
-        id: `CLI-${String(n).padStart(4, '0')}`, brokerId: l.brokerId, name: l.name, phone: l.phone, budgetMin: 0, budgetMax: 0, city: p?.city || 'Raipur', areas: [l.locality],
+        id: `CLI-${String(n).padStart(4, '0')}`, brokerId: l.brokerId, name: l.name, phone: l.phone, budgetMin: bud ? Math.round(bud * 0.7) : 0, budgetMax: bud || 0, city: p?.city || 'Raipur', areas: [l.locality],
         propertyType: l.propertyType || 'Any', transactionType: l.kind === 'BUY' ? 'Sale' : 'Rent', tags: ['Shop QR'], notes: `Via ${p?.shopName || 'shop'} QR · need confirmed in chat${how.title ? ` · home: ${how.title}` : ''}${l.budget ? ` · budget ${l.budget}` : ''}`,
         stage: 'NEW', consent: true, timeline: [{ at: now, kind: 'CREATED', text: `From the QR at ${p?.shopName || 'a shop'} (number shown after the need was confirmed${how.title ? ' and a matching home shared' : ''})` }], createdAt: now, updatedAt: now,
       };
