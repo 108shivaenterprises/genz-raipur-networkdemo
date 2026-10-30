@@ -697,6 +697,7 @@ export function createPartnerQrRouter() {
     const picked = homes.find(h => h.id === (keep.home || str(wantQuery.home, 40)));
     const want = str(wantQuery.want, 6);
     const preKind = keep.kind || (picked ? (picked.transactionType === 'Sale' ? 'BUY' : 'RENT_IN') : want === 'buy' ? 'BUY' : want === 'sell' ? 'SELL' : '');
+    const sellerSide = preKind === 'SELL' || preKind === 'RENT_OUT';   // v89 — the big buttons above the form follow what was chosen (they used to stay "I need a home" green even for a seller)
     const kinds = LEAD_KINDS.map(k => `<label><input type="radio" name="kind" value="${k.id}" ${preKind === k.id ? 'checked' : ''} required> ${k.hi}<br><small>${k.en}</small></label>`).join('');
     const types = ['', 'Flat', 'House', 'Plot', 'Shop', 'Office', 'Warehouse', 'Other'];
     const who = b?.name || 'ब्रोकर';
@@ -704,11 +705,13 @@ export function createPartnerQrRouter() {
     res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <div class="card"><p class="t">${esc(who)}${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} आपसे संपर्क करेंगे। <small>A GENZ-verified broker will call you.</small></p>
-<div class="big2"><a class="btn g" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home">🏠 मुझे घर चाहिए<br><small style="color:#e9ffe9">I need a home</small></a><a class="btn l" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list">📋 मुझे अपनी प्रॉपर्टी देनी है<br><small>I want to list my property</small></a></div></div>
+<div class="big2"><a class="btn ${sellerSide ? 'l' : 'g'}" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home" ${sellerSide ? '' : 'aria-current="true"'}>🏠 मुझे घर चाहिए<br><small${sellerSide ? '' : ' style="color:#e9ffe9"'}>I need a home</small></a><a class="btn ${sellerSide ? 'g' : 'l'}" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list" ${sellerSide ? 'aria-current="true"' : ''}>📋 मुझे अपनी प्रॉपर्टी देनी है<br><small${sellerSide ? ' style="color:#e9ffe9"' : ''}>I want to list my property</small></a></div></div>
 ${homes.length && b ? homeCards(b, p, homes) : ''}
+<style>#form form:has(input[name=kind][value=SELL]:checked) #promise,#form form:has(input[name=kind][value=RENT_OUT]:checked) #promise{display:none}#sellnote{display:none}#form form:has(input[name=kind][value=SELL]:checked) #sellnote,#form form:has(input[name=kind][value=RENT_OUT]:checked) #sellnote{display:block}.kinds label{min-width:0}.w{padding-bottom:96px}</style>
 <div class="card${picked ? ' pick' : ''}" id="form">${picked && b ? pickedCard(b, p, picked) : ''}
 <form method="post" action="/q/${esc(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc(picked.id)}">` : ''}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
 <label>आपको क्या चाहिए? / What do you need?</label><div class="kinds">${kinds}</div>
+<p class="small" id="sellnote" data-testid="qr-seller-note">🏠 मालिक के लिए: प्रॉपर्टी कहाँ है, किस तरह की है, और आप कितना चाहते हैं (कीमत / किराया) — नीचे लिखें। <small>For owners: write where the property is, its type, and the price or rent you expect.</small></p>
 <label>नाम / Name</label><input type="text" name="name" maxlength="80" required value="${esc(keep.name || '')}" autocomplete="name">
 <label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required value="${esc(keep.phone || '')}" autocomplete="tel-national" placeholder="98XXXXXXXX">
 <label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required value="${esc(keep.locality || (picked ? picked.locality : p.area))}">
@@ -904,10 +907,15 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     if (blocked) return page(res, p, 'इस नंबर से अभी अनुरोध नहीं लिया जा सकता। / A request from this number cannot be taken right now.', keep);
     const s = st(); const now = nowIso();
     // the same mobile already with this broker (any of his shops) while that lead is protected → the first shop keeps it
-    const prior = s.partnerLeads.find(l => l.brokerId === p.brokerId && l.phone === phone && locked(l) && l.status !== 'WON');
+    // v89 — a buyer / renter and an owner are two different leads: a mobile that came as a buyer and now comes to sell is NOT swallowed by the first one
+    const side = (k: string) => (k === 'BUY' || k === 'RENT_IN') ? 'B' : 'O';
+    const prior = s.partnerLeads.find(l => l.brokerId === p.brokerId && l.phone === phone && locked(l) && l.status !== 'WON' && side(l.kind) === side(kind));
     if (prior) {
-      hist(prior, 'CUSTOMER', `Scanned again${prior.partnerId === p.id ? '' : ' at another shop'} (${LEAD_KINDS.find(k => k.id === kind)!.en}${keep.note ? `: ${keep.note.slice(0, 80)}` : ''})`);
-      db.save(); return res.redirect(303, `/q/${p.qrCode}/thanks`);
+      const same = norm(prior.name) === norm(keep.name);
+      hist(prior, 'CUSTOMER', `Scanned again${prior.partnerId === p.id ? '' : ' at another shop'} — new details (not checked, the first ones stay): ${same ? '' : `name “${keep.name}”, `}${LEAD_KINDS.find(k => k.id === kind)!.en}, ${keep.locality}${keep.budget ? `, budget ${keep.budget}` : ''}${keep.note ? `, “${keep.note.slice(0, 80)}”` : ''}`);
+      db.save();
+      if (hit(`sp-rescan:${prior.id}`, 1, 3600_000) === 0) void pushTo(p.brokerId, { kind: 'matches', title: `${prior.name} scanned again`, body: `New details came in${same ? '' : ` under the name “${keep.name}”`} — see the lead history.`, url: '/?tab=partners' });
+      return res.redirect(303, `/q/${p.qrCode}/thanks?again=1`);
     }
     const lockUntil = new Date(Date.now() + p.terms.lockDays * 86400_000).toISOString();
     const chatToken = newToken();
@@ -936,7 +944,8 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     noStore(res);
     const p = byCode(req.params.code); if (!p) return notLive(res);
     const b = userOf(p.brokerId);
-    res.send(shell('धन्यवाद — GENZ', `<div class="top"><h1>धन्यवाद 🙏</h1><p>Thank you</p></div><div class="card ok"><p class="t"><b>${esc(b?.name || 'ब्रोकर')}</b> आपसे जल्द संपर्क करेंगे।</p><p class="t">${esc(b?.name || 'The broker')} will contact you soon.</p></div>`));
+    const again = req.query.again === '1';
+    res.send(shell('धन्यवाद — GENZ', `<div class="top"><h1>धन्यवाद 🙏</h1><p>Thank you</p></div><div class="card ok"><p class="t"><b>${esc(b?.name || 'ब्रोकर')}</b> आपसे जल्द संपर्क करेंगे।</p><p class="t">${esc(b?.name || 'The broker')} will contact you soon.</p></div>${again ? `<div class="card" data-testid="qr-again"><p class="t">ℹ️ यह मोबाइल नंबर पहले से इस ब्रोकर के पास दर्ज है। आपकी नई जानकारी उन्हें भेज दी गई है — पहले वाला नाम और ज़रूरत वैसी ही रहेगी।</p><p class="t"><small>This mobile number is already with this broker. Your new details were passed on — the first name and need stay as they were. To talk to him, open the chat link you got the first time (bookmark / home-screen icon). A new request for something different (for example, selling after buying) is taken as a separate one.</small></p></div>` : ''}`));
   });
   return r;
 }
