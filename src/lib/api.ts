@@ -620,6 +620,11 @@ export const api = {
   spAction: (id: string, action: string) => request<any>(`/api/shop-partners/${id}/${action}`, { method: 'POST', body: '{}' }),
   spTerms: (id: string, terms: any, note?: string) => request<any>(`/api/shop-partners/${id}/terms`, { method: 'POST', body: JSON.stringify({ terms, note }) }),
   spDelDevice: (id: string, dev: string) => request<any>(`/api/shop-partners/${id}/devices/${dev}`, { method: 'DELETE' }),
+  // v85 — the lead chat: the number stays hidden until the customer confirms his need and a matching home is shared
+  spLeadChat: (id: string, text: string) => request<any>(`/api/shop-partners/leads/${id}/chat`, { method: 'POST', body: JSON.stringify({ text }) }),
+  spLeadSeen: (id: string) => request<any>(`/api/shop-partners/leads/${id}/chat/seen`, { method: 'POST', body: '{}' }),
+  spAskNeed: (id: string) => request<any>(`/api/shop-partners/leads/${id}/ask-need`, { method: 'POST', body: '{}' }),
+  spOffer: (id: string, homeId: string) => request<any>(`/api/shop-partners/leads/${id}/offer`, { method: 'POST', body: JSON.stringify({ homeId }) }),
   spLeadStatus: (id: string, status: string, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) }),
   // v82 — "Deal done" takes the share from the deal itself; a typed brokerage is only a correction (with a reason) or for a deal that is not in the app
   spLeadWon: (id: string, brokerage?: number, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/won`, { method: 'POST', body: JSON.stringify({ brokerage, reason }) }),

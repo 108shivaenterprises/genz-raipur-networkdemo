@@ -152,6 +152,53 @@ const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }
   );
 };
 
+/** v85 — the in-app chat with the customer. His number stays hidden (only ••last4) until he confirms his need here AND a home that fits it is shared. */
+const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
+  const tx = useTx(); const c = l.chat; const [text, setText] = useState(''); const [open, setOpen] = useState(!!l.masked || (c?.unread || 0) > 0); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  if (!c) return null;
+  const owner = l.kind === 'SELL' || l.kind === 'RENT_OUT';
+  const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const toggle = () => { const n = !open; setOpen(n); if (n && c.unread > 0) void api.spLeadSeen(l.id).then(onChange).catch(() => undefined); };
+  const hm = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-2" data-testid="sp-lead-chat">
+      <button type="button" className="flex w-full items-center justify-between text-left text-xs font-bold text-emerald-900" onClick={toggle} data-testid="sp-chat-toggle">
+        <span><MessagesSquare className="mr-1 inline h-3.5 w-3.5" />{tx('Chat with the customer', 'ग्राहक से चैट')}{c.unread > 0 && <span className="ml-1.5 rounded-full bg-emerald-600 px-1.5 text-xs text-white">{c.unread}</span>}</span>
+        <span className="text-xs font-normal text-slate-600">{open ? tx('hide', 'छुपाएँ') : tx('open', 'खोलें')}</span>
+      </button>
+      {l.masked ? (
+        <p className="mt-1 text-xs text-amber-900" data-testid="sp-masked">🔒 {tx(`Number hidden — ••${l.phoneLast4}. ${owner ? 'It shows once the owner confirms the property details here.' : 'It shows once he confirms his need here and you share a home that matches it.'}`, `नंबर छुपा है — ••${l.phoneLast4}। ${owner ? 'मालिक के यहाँ प्रॉपर्टी की जानकारी पक्की करते ही दिखेगा।' : 'जब वह यहाँ अपनी ज़रूरत पक्की करे और आप उससे मेल खाता घर शेयर करें, तब दिखेगा।'}`)}</p>
+      ) : <p className="mt-1 text-xs text-emerald-900" data-testid="sp-unmasked">✔ {tx('Number is now visible (need confirmed + home shared).', 'नंबर अब दिख रहा है (ज़रूरत पक्की + घर शेयर)।')}</p>}
+      {open && (
+        <div className="mt-1.5 space-y-1.5">
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-md bg-[#efeae2] p-2" data-testid="sp-chat-msgs">
+            {c.msgs.map((m: any, i: number) => (
+              <div key={i} className={`max-w-[88%] rounded-lg px-2 py-1 text-xs shadow-sm ${m.by === 'SYSTEM' ? 'mx-auto bg-yellow-100 text-center' : m.by === 'BROKER' ? 'ml-auto bg-[#d9fdd3]' : 'bg-white'}`}>
+                {m.kind === 'ASK' ? <>✔ <b>{tx('Asked him to confirm', 'पुष्टि माँगी')}</b>: {m.text}</> : m.kind === 'HOME' ? <>🏠 <b>{m.title}</b> · {m.price} · {m.place}</> : m.text}
+                <span className="ml-1 text-slate-500">{hm(m.at)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            <input className={inp + ' !min-h-9 !text-xs'} value={text} maxLength={600} placeholder={tx('Write to him (no phone numbers)', 'उन्हें लिखें (फ़ोन नंबर नहीं)')} onChange={(e) => setText(e.target.value)} data-testid="sp-chat-input" />
+            <button className={dark + ' !min-h-9 !text-xs'} disabled={busy || !text.trim()} onClick={() => run(async () => { await api.spLeadChat(l.id, text.trim()); setText(''); })} data-testid="sp-chat-send"><Send className="h-3.5 w-3.5" /></button>
+          </div>
+          {l.masked && !c.reqConfirmedAt && !c.reqAskedAt && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spAskNeed(l.id))} data-testid="sp-ask-need">✔ {tx('Ask him to confirm his need', 'उनसे ज़रूरत पक्की करवाएँ')}</button>}
+          {l.masked && c.reqAskedAt && !c.reqConfirmedAt && <p className="text-xs text-slate-700" data-testid="sp-need-waiting">⏳ {tx('Waiting for him to confirm: ', 'उनकी पुष्टि का इंतज़ार: ')}{l.needLine}</p>}
+          {l.masked && c.reqConfirmedAt && !owner && (l.matches || []).length > 0 && (
+            <div className="space-y-1" data-testid="sp-matches">
+              <p className="text-xs font-semibold text-emerald-900">{tx('He confirmed his need. Share a home that matches — his number shows after you share:', 'उन्होंने ज़रूरत पक्की की। मेल खाता घर शेयर करें — शेयर करते ही नंबर दिखेगा:')}</p>
+              {l.matches.map((h: any) => <button key={h.id} className={light + ' !min-h-9 w-full !justify-between !text-xs'} disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-offer-${h.id}`}><span className="truncate">🏠 {h.title}</span><span>{h.price}</span></button>)}
+            </div>
+          )}
+          {l.masked && c.reqConfirmedAt && !owner && (l.matches || []).length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it (area, rent/sale, budget). Add or switch on a matching listing — until you share one, his number stays hidden.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर उससे मेल नहीं खाता (इलाका, किराया/बिक्री, बजट)। मेल खाती लिस्टिंग जोड़ें या चालू करें — जब तक शेयर नहीं, नंबर छुपा रहेगा।')}</p>}
+          {err && <p className="text-xs font-semibold text-red-700" role="alert">{err}</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid' | 'need' | 'share'>(''); const [val, setVal] = useState(''); const [reason, setReason] = useState(''); const [pm, setPm] = useState<PartnerPayMode>('UPI'); const [reply, setReply] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
@@ -167,6 +214,8 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
       <p className="text-xs text-slate-600">{l.locality}{l.budget ? ` · ${l.budget}` : ''}{l.propertyType ? ` · ${l.propertyType}` : ''}{l.note ? ` · “${l.note}”` : ''}</p>
       {l.homeTitle && <p className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900" data-testid="sp-lead-home">👍 {tx('Interested in', 'पसंद आया')}: {l.homeTitle} <span className="font-normal text-emerald-800">· {l.homeOwn ? tx('your listing', 'आपकी लिस्टिंग') : tx('another GENZ broker’s listing — he never sees this lead; use a co-broking offer', 'दूसरे GENZ ब्रोकर की लिस्टिंग — उसे यह लीड नहीं दिखती; को-ब्रोकिंग ऑफ़र से काम करें')}</span></p>}
       {l.promise && <p className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-700" data-testid="sp-lead-promise"><ShieldCheck className="mr-0.5 inline h-3 w-3 text-emerald-700" />{tx('“No direct deal” promise ticked and signed by', '“सीधा सौदा नहीं” की सहमति — हस्ताक्षर')} <b>{l.promise.signName}</b> · {when(l.promise.at)} · {tx('wording', 'शब्द')} {l.promise.version}</p>}
+      <LeadChat l={l} onChange={onChange} />
+      {!l.masked && (<>
       {/* v56 — a client room first: the chat, the homes shown and the visits stay on record (a call or WhatsApp does not) */}
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={dark + ' !min-h-10'} data-testid="sp-lead-room" onClick={() => {
@@ -179,6 +228,7 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
       </div>
       <p className="text-[11px] text-slate-500">{tx('A call or WhatsApp is not recorded in GENZ. A client room keeps the chat, the homes you show and the visits on record — useful if this lead or the shop’s share is ever questioned.', 'कॉल या WhatsApp GENZ में दर्ज नहीं होता। क्लाइंट रूम में चैट, दिखाए घर और विज़िट दर्ज रहते हैं — लीड या दुकान के हिस्से पर कभी सवाल उठे तो काम आता है।')}</p>
+      </>)}
       {l.links.length > 0 && <div className="flex flex-wrap gap-1">{l.links.map((x: any, i: number) => <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{hi ? x.hi : x.en} · {when(x.at)}</span>)}</div>}
       {l.flags.map((f: any) => <p key={f.code} className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800" data-testid="sp-flag"><AlertTriangle className="h-3.5 w-3.5" />{hi ? f.hi : f.en}</p>)}
       <p className="text-[11px] text-slate-500"><ShieldCheck className="mr-0.5 inline h-3 w-3" />{l.locked ? tx(`The shop’s lead till ${when(l.lockUntil)} · their share: ${cutText(cut)}`, `${when(l.lockUntil)} तक दुकान की लीड · हिस्सा: ${cutText(cut, true)}`) : tx('Protection over', 'सुरक्षा का समय पूरा')}</p>

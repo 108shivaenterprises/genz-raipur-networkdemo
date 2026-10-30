@@ -114,20 +114,20 @@ describe('shop QR page with homes', { timeout: 40000 }, () => {
   it('a buyer must tick and sign the "no direct deal" promise', async () => {
     const r = await scan('9123477701', 'BUY', { home: own });
     expect(r.status).toBe(200); expect(await r.text()).toContain('सीधा सौदा नहीं');
-    expect((await leads()).some(l => l.phone === '9123477701')).toBe(false);
+    expect((await leads()).some(l => l.phoneLast4 === '7701')).toBe(false);
     const r2 = await scan('9123477702', 'BUY', { home: own, direct: '1' }); // ticked, not signed
     expect(r2.status).toBe(200);
-    expect((await leads()).some(l => l.phone === '9123477702')).toBe(false);
+    expect((await leads()).some(l => l.phoneLast4 === '7702')).toBe(false);
   });
 
   it('with the promise the lead goes only to this broker, with the shop, the home and the signed promise', async () => {
     const r = await scan('9123477703', 'BUY', { home: net, direct: '1', sign: 'Mohit Garg' });
     expect(r.status).toBe(303);
-    const l = (await leads()).find(x => x.phone === '9123477703');
+    const l = (await leads()).find(x => x.phoneLast4 === '7703');
     expect(l).toBeTruthy();
     expect(l.shopName).toBe('Verma Medical'); expect(l.homeId).toBe(net); expect(l.homeTitle).toBe(netTitle); expect(l.homeOwn).toBe(false);
     expect(l.promise.signName).toBe('Mohit Garg'); expect(l.promise.version).toBe('v1'); expect(l.promise.text).toMatch(/directly/);
-    expect(l.clientCardId).toBeTruthy();
+    expect(l.clientCardId).toBeUndefined(); expect(l.phone).toBeUndefined();   // v85: no client card (no number) until the need is confirmed and a home is shared
     // the listing broker (another broker) sees nothing of this lead — not in his shop-QR list, not in his client list, not in the audit text
     const other = await (await call(jar.BRK2, 'GET', '/api/shop-partners')).json();
     expect(JSON.stringify(other)).not.toContain('9123477703'); expect(JSON.stringify(other)).not.toContain('Mohit Garg');
@@ -138,17 +138,17 @@ describe('shop QR page with homes', { timeout: 40000 }, () => {
   it('a home not on the broker\'s page is ignored (no home on the lead); an own home is marked as his', async () => {
     const r = await scan('9123477704', 'BUY', { home: 'PROP-DOES-NOT-EXIST', direct: '1', sign: 'Mohit Garg' });
     expect(r.status).toBe(303);
-    const l = (await leads()).find(x => x.phone === '9123477704'); expect(l.homeId).toBeUndefined();
+    const l = (await leads()).find(x => x.phoneLast4 === '7704'); expect(l.homeId).toBeUndefined();
     const r2 = await scan('9123477705', 'RENT_IN', { home: own, direct: '1', sign: 'Mohit Garg' });
     expect(r2.status).toBe(303);
-    expect((await leads()).find(x => x.phone === '9123477705').homeOwn).toBe(true);
+    expect((await leads()).find(x => x.phoneLast4 === '7705').homeOwn).toBe(true);
   });
 
   it('a seller needs no promise and the lead is still just a lead (no listing is made)', async () => {
     const before = ((await (await call(jar.ADMIN, 'GET', '/api/properties')).json()).properties as any[]).length;
     const r = await scan('9123477706', 'SELL');
     expect(r.status).toBe(303);
-    const l = (await leads()).find(x => x.phone === '9123477706'); expect(l.kind).toBe('SELL'); expect(l.promise).toBeUndefined();
+    const l = (await leads()).find(x => x.phoneLast4 === '7706'); expect(l.kind).toBe('SELL'); expect(l.promise).toBeUndefined();
     expect(((await (await call(jar.ADMIN, 'GET', '/api/properties')).json()).properties as any[]).length).toBe(before);
   });
 

@@ -58678,13 +58678,13 @@ function _promise(Class2, innerType) {
 }
 // @__NO_SIDE_EFFECTS__
 function _custom(Class2, fn, _params) {
-  const norm5 = normalizeParams(_params);
-  norm5.abort ?? (norm5.abort = true);
+  const norm6 = normalizeParams(_params);
+  norm6.abort ?? (norm6.abort = true);
   const schema = new Class2({
     type: "custom",
     check: "custom",
     fn,
-    ...norm5
+    ...norm6
   });
   return schema;
 }
@@ -69805,8 +69805,8 @@ function createBillingRouter() {
     if (!p.success) return bad(res, p.error.issues[0]?.message || "Invalid payment");
     const today = todayIst();
     if (p.data.paidOn && p.data.paidOn > today) return bad(res, "The payment date cannot be in the future.");
-    const norm5 = (x) => x.replace(/\s+/g, "").toLowerCase();
-    if (st().billingLedger.some((x) => x.id !== e.id && x.ref && norm5(x.ref) === norm5(p.data.ref) && x.status !== "REJECTED" && x.status !== "CANCELLED")) return bad(res, "This reference is already used on another entry.", 409);
+    const norm6 = (x) => x.replace(/\s+/g, "").toLowerCase();
+    if (st().billingLedger.some((x) => x.id !== e.id && x.ref && norm6(x.ref) === norm6(p.data.ref) && x.status !== "REJECTED" && x.status !== "CANCELLED")) return bad(res, "This reference is already used on another entry.", 409);
     e.status = "MARKED_PAID";
     e.ref = p.data.ref;
     e.paidOn = p.data.paidOn || today;
@@ -82188,6 +82188,89 @@ var audit4 = (refId, action, text) => {
   const u = me16();
   db.appendAuditEvent(u.id, u.role, "LEAD", refId, action, text);
 };
+var revealed = (l) => !l.chat || !!l.chat.revealedAt;
+var MSG_MAX = 600;
+var MSGS_KEEP = 300;
+var ownerSide = (l) => l.kind === "SELL" || l.kind === "RENT_OUT";
+var addMsg = (l, m) => {
+  if (!l.chat) return;
+  l.chat.msgs.push({ at: nowIso22(), ...m });
+  if (l.chat.msgs.length > MSGS_KEEP) l.chat.msgs.splice(0, l.chat.msgs.length - MSGS_KEEP);
+  l.updatedAt = nowIso22();
+};
+function parseMoney(t2) {
+  const x = String(t2 || "").toLowerCase().replace(/,/g, "").trim();
+  const m = /(\d+(?:\.\d+)?)/.exec(x);
+  if (!m) return null;
+  const n2 = Number(m[1]);
+  if (!(n2 > 0)) return null;
+  if (/(cr|crore|करोड़|करोड)/.test(x)) return n2 * 1e7;
+  if (/(lakh|lac|lakhs|लाख)/.test(x)) return n2 * 1e5;
+  if (/(\bk\b|\d\s*k\b|thousand|हज़ार|हजार)/.test(x)) return n2 * 1e3;
+  return n2;
+}
+var norm3 = (t2) => String(t2 || "").toLowerCase().replace(/[^a-z0-9ऀ-ॿ ]+/g, " ").replace(/\s+/g, " ").trim();
+function homeFits(l, h) {
+  if (l.kind !== "BUY" && l.kind !== "RENT_IN") return false;
+  if (l.kind === "BUY" !== (h.transactionType === "Sale")) return false;
+  const chosen = !!l.homeId && l.homeId === h.id;
+  const a = norm3(l.locality);
+  const b = norm3(`${h.locality} ${h.city || ""}`);
+  const area = chosen || !!a && (b.includes(a) || a.split(" ").some((w) => w.length >= 4 && b.includes(w)));
+  if (!area) return false;
+  const cap = parseMoney(l.budget);
+  const price = Number(h.askingPrice) || 0;
+  if (cap && price && price > cap * 1.25) return false;
+  return true;
+}
+function matchesFor(l) {
+  const b = userOf(l.brokerId);
+  if (!b) return [];
+  const pool = /* @__PURE__ */ new Map();
+  for (const p of st11().properties) if (p.listingBrokerId === b.id && pageLive(p)) pool.set(p.id, p);
+  for (const h of shownHomes(b)) pool.set(h.id, h);
+  return [...pool.values()].filter((h) => homeFits(l, h)).slice(0, 12);
+}
+var homeBrief = (h) => ({ id: h.id, title: h.title, price: priceShort(h.askingPrice), place: `${h.locality}, ${h.city}`, rent: h.transactionType !== "Sale" });
+var needLine = (l) => `${LEAD_KINDS.find((k) => k.id === l.kind)?.hi || ""} \xB7 ${l.locality}${l.budget ? ` \xB7 ${l.budget}` : ""}${l.propertyType ? ` \xB7 ${l.propertyType}` : ""}${l.note ? ` \xB7 \u201C${l.note}\u201D` : ""}`;
+function revealNumber(l, how) {
+  if (!l.chat || l.chat.revealedAt) return;
+  const s = st11();
+  const now = nowIso22();
+  const p = partnerOf(l.partnerId);
+  l.chat.revealedAt = now;
+  l.chat.revealedBy = how;
+  if (l.kind === "BUY" || l.kind === "RENT_IN") {
+    const has = s.clientCards.find((c) => c.brokerId === l.brokerId && phone102(c.phone) === l.phone && c.stage !== "LOST");
+    if (has) l.clientCardId = has.id;
+    else {
+      const n2 = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split("-").pop()) || 0), 0) + 1;
+      const card2 = {
+        id: `CLI-${String(n2).padStart(4, "0")}`,
+        brokerId: l.brokerId,
+        name: l.name,
+        phone: l.phone,
+        budgetMin: 0,
+        budgetMax: 0,
+        city: p?.city || "Raipur",
+        areas: [l.locality],
+        propertyType: l.propertyType || "Any",
+        transactionType: l.kind === "BUY" ? "Sale" : "Rent",
+        tags: ["Shop QR"],
+        notes: `Via ${p?.shopName || "shop"} QR \xB7 need confirmed in chat${how.title ? ` \xB7 home: ${how.title}` : ""}${l.budget ? ` \xB7 budget ${l.budget}` : ""}`,
+        stage: "NEW",
+        consent: true,
+        timeline: [{ at: now, kind: "CREATED", text: `From the QR at ${p?.shopName || "a shop"} (number shown after the need was confirmed${how.title ? " and a matching home shared" : ""})` }],
+        createdAt: now,
+        updatedAt: now
+      };
+      s.clientCards.unshift(card2);
+      l.clientCardId = card2.id;
+    }
+  }
+  hist(l, "SYSTEM", `Number shown to the broker${how.title ? ` after he shared \u201C${how.title}\u201D` : " after the owner confirmed the property details"}`);
+  addMsg(l, { by: "SYSTEM", kind: "INFO", text: how.title ? "\u0906\u092A\u0915\u093E \u0928\u0902\u092C\u0930 \u0905\u092C \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0926\u093F\u0916 \u0917\u092F\u093E \u0939\u0948 \u2014 \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0938\u0947 \u092E\u0947\u0932 \u0916\u093E\u0924\u093E \u0918\u0930 \u0936\u0947\u092F\u0930 \u0939\u0941\u0906\u0964 / The broker can now see your number \u2014 a home matching your need was shared." : "\u0906\u092A\u0915\u093E \u0928\u0902\u092C\u0930 \u0905\u092C \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0926\u093F\u0916 \u0917\u092F\u093E \u0939\u0948\u0964 / The broker can now see your number." });
+}
 function linksFor(l) {
   const s = st11();
   const ph = l.phone;
@@ -82486,10 +82569,17 @@ function partnerView(p) {
 function leadView(l) {
   const links = linksFor(l);
   const p = partnerOf(l.partnerId);
-  const { ask, ...rest } = l;
+  const { ask, chat, phone, ...rest } = l;
   const a = autoShare(l, links);
+  const rev = revealed(l);
   return {
     ...rest,
+    ...rev ? { phone } : {},
+    masked: !rev,
+    // v85 — the in-app chat (never the customer's link token); `matches` = the homes he may share now (only offered once the need is confirmed)
+    chat: chat ? { msgs: chat.msgs.slice(-80), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter((m) => m.by === "CUSTOMER" && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
+    matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [],
+    needLine: needLine(l),
     shopName: p?.shopName || "",
     city: p?.city || "",
     links,
@@ -82702,6 +82792,60 @@ function createShopPartnerRouter() {
     db.save();
     res.json({ success: true, partner: partnerView(p) });
   });
+  const chatLead = (req, res) => {
+    const l = mineLead(req.params.id);
+    if (!l || !l.chat) {
+      bad15(res, "Lead not found", 404);
+      return void 0;
+    }
+    return l;
+  };
+  r.post("/leads/:id/chat", needs("partner:manage"), (req, res) => {
+    const l = chatLead(req, res);
+    if (!l?.chat) return;
+    const text = str(req.body?.text, MSG_MAX);
+    if (text.length < 1) return bad15(res, "Write a message");
+    if (containsPhone(text)) return bad15(res, PHONE_IN_CHAT_MSG.en, 400, { code: "PHONE_IN_CHAT", hi: PHONE_IN_CHAT_MSG.hi });
+    addMsg(l, { by: "BROKER", kind: "MSG", text });
+    l.chat.brokerSeenAt = nowIso22();
+    db.save();
+    res.json({ success: true, lead: leadView(l) });
+  });
+  r.post("/leads/:id/chat/seen", needs("partner:manage"), (req, res) => {
+    const l = chatLead(req, res);
+    if (!l?.chat) return;
+    l.chat.brokerSeenAt = nowIso22();
+    db.save();
+    res.json({ success: true });
+  });
+  r.post("/leads/:id/ask-need", needs("partner:manage"), (req, res) => {
+    const l = chatLead(req, res);
+    if (!l?.chat) return;
+    if (l.chat.reqConfirmedAt) return bad15(res, "He has already confirmed his need", 409);
+    if (l.chat.reqAskedAt) return bad15(res, "Already asked \u2014 waiting for his answer", 409);
+    l.chat.reqAskedAt = nowIso22();
+    addMsg(l, { by: "BROKER", kind: "ASK", text: needLine(l) });
+    l.chat.brokerSeenAt = nowIso22();
+    db.save();
+    res.json({ success: true, lead: leadView(l) });
+  });
+  r.post("/leads/:id/offer", needs("partner:manage"), (req, res) => {
+    const l = chatLead(req, res);
+    if (!l?.chat) return;
+    if (ownerSide(l)) return bad15(res, "An owner lead needs no matching home \u2014 his number shows once he confirms the property details");
+    if (!l.chat.reqConfirmedAt) return bad15(res, "Ask him to confirm his need first \u2014 the number stays hidden until he does", 409);
+    const h = matchesFor(l).find((x) => x.id === str(req.body?.homeId, 40));
+    if (!h) return bad15(res, "That home does not match what he asked for (or is not on your page). Pick one from the list.", 400);
+    const b = homeBrief(h);
+    addMsg(l, { by: "BROKER", kind: "HOME", text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
+    l.chat.brokerSeenAt = nowIso22();
+    const first2 = !l.chat.revealedAt;
+    revealNumber(l, { homeId: h.id, title: h.title });
+    hist(l, "BROKER", `Shared \u201C${h.title}\u201D in the chat`);
+    audit4(l.id, first2 ? "SHOP_LEAD_NUMBER_SHOWN" : "SHOP_LEAD_HOME_SHARED", first2 ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}) was shared` : `Another home (${h.id}) shared in the chat`);
+    db.save();
+    res.json({ success: true, lead: leadView(l) });
+  });
   r.post("/leads/:id/status", needs("partner:manage"), (req, res) => {
     const l = mineLead(req.params.id);
     if (!l) return bad15(res, "Lead not found", 404);
@@ -82876,7 +83020,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
 <div class="card warn" style="margin-top:12px" id="promise"><p class="t"><b>\u0916\u093C\u0930\u0940\u0926\u0928\u0947 \u092F\u093E \u0915\u093F\u0930\u093E\u092F\u0947 \u092A\u0930 \u0932\u0947\u0928\u0947 \u0935\u093E\u0932\u094B\u0902 \u0915\u0947 \u0932\u093F\u090F \xB7 For buyers and renters</b></p><p class="t">${esc6(ack.hi)}</p><p class="t"><small>${esc6(ack.en)}</small></p>
 <label class="ck"><input type="checkbox" name="direct" value="1" ${keep.direct === "1" ? "checked" : ""}><span>\u092E\u0948\u0902 \u092F\u0939 \u092E\u093E\u0928\u0924\u093E/\u092E\u093E\u0928\u0924\u0940 \u0939\u0942\u0901\u0964 <small>I agree to this.</small></span></label>
 <label>\u0905\u092A\u0928\u093E \u0928\u093E\u092E \u0932\u093F\u0916\u0915\u0930 \u0939\u0938\u094D\u0924\u093E\u0915\u094D\u0937\u0930 \u0915\u0930\u0947\u0902 / Sign by typing your name</label><input type="text" name="sign" maxlength="80" value="${esc6(keep.sign || "")}" autocomplete="off"><p class="small">\u092F\u0939 \u0906\u092A\u0915\u0940 \u0938\u0939\u092E\u0924\u093F \u0915\u093E \u0930\u093F\u0915\u0949\u0930\u094D\u0921 \u0939\u0948 \u2014 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u0932\u0947\u0924\u093E\u0964 / This is a record of your agreement \u2014 GENZ takes no money from you.</p></div>
-<label class="ck"><input type="checkbox" name="consent" value="1" required><span>\u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F ${esc6(who2)} \u0907\u0938 \u092C\u093E\u0930\u0947 \u092E\u0947\u0902 \u092E\u0941\u091D\u0938\u0947 \u092B\u093C\u094B\u0928 / WhatsApp \u092A\u0930 \u0938\u0902\u092A\u0930\u094D\u0915 \u0915\u0930\u0947\u0902\u0964 \u092E\u0947\u0930\u093E \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0926\u0941\u0915\u093E\u0928 \u0935\u093E\u0932\u0947 \u0915\u094B \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 <small>I agree that this broker may contact me by phone / WhatsApp. The shop will not see my full number.</small></span></label>
+<label class="ck"><input type="checkbox" name="consent" value="1" required><span>\u092E\u0948\u0902 \u0938\u0939\u092E\u0924 \u0939\u0942\u0901 \u0915\u093F ${esc6(who2)} \u092E\u0941\u091D\u0938\u0947 \u0907\u0938 \u0910\u092A \u0915\u0940 \u091A\u0948\u091F \u092E\u0947\u0902 \u092C\u093E\u0924 \u0915\u0930\u0947\u0902\u0964 \u092E\u0947\u0930\u093E \u0928\u0902\u092C\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0924\u092D\u0940 \u0926\u093F\u0916\u0947\u0917\u093E \u091C\u092C \u092E\u0948\u0902 \u0905\u092A\u0928\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092A\u0915\u094D\u0915\u0940 \u0915\u0930 \u0926\u0942\u0901 \u0914\u0930 \u092E\u0947\u0930\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0938\u0947 \u092E\u0947\u0932 \u0916\u093E\u0924\u093E \u0918\u0930 \u0936\u0947\u092F\u0930 \u0939\u094B; \u0926\u0941\u0915\u093E\u0928 \u0935\u093E\u0932\u0947 \u0915\u094B \u092A\u0942\u0930\u093E \u0928\u0902\u092C\u0930 \u0915\u092D\u0940 \u0928\u0939\u0940\u0902 \u0926\u093F\u0916\u0947\u0917\u093E\u0964 <small>I agree that this broker may talk to me in this app\u2019s chat. My number is shown to him only after I confirm my need and a home matching it is shared; the shop never sees my full number.</small></span></label>
 <label class="ck"><input type="checkbox" name="outcome" value="1" ${keep.outcome === "1" ? "checked" : ""} data-testid="qr-outcome"><span>${esc6(OUTCOME_CONSENT.hi)} <small>${esc6(OUTCOME_CONSENT.en)}</small></span></label>
 <div class="row"><button class="g" type="submit">\u092D\u0947\u091C\u0947\u0902 / Send</button></div></form></div>
 <p class="small" style="margin:12px 4px">GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964 \u0915\u094B\u0908 \u092D\u0940 \u0930\u0915\u092E \u0926\u0947\u0928\u0947 \u0938\u0947 \u092A\u0939\u0932\u0947 \u0915\u093E\u0917\u091C\u093C \u0914\u0930 RERA \u091C\u093C\u0930\u0942\u0930 \u091C\u093E\u0901\u091A\u0947\u0902\u0964 / GENZ never asks you for money.</p>${homes.length ? '<script src="/c/page.js" defer></script>' : ""}`));
@@ -82937,6 +83081,72 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
 <div class="f"><b>${esc6(b?.name || "")}</b>${b?.reraNumber ? ` \xB7 RERA ${esc6(b.reraNumber)}` : ""} \xB7 GENZ verified broker<br>${esc6(p.shopName)}, ${esc6(p.area)}<br><span class="code">${p.qrCode}</span></div></div>
 <script src="/q/poster.js" defer></script></body></html>`);
   });
+  const chatBy = (token) => /^[A-Za-z0-9_-]{20,40}$/.test(token) ? st11().partnerLeads.find((l) => l.chat && safeEqual(l.chat.keyHash, sha2(token))) : void 0;
+  const hm3 = (iso) => new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
+  const askPending = (l) => !!l.chat?.reqAskedAt && !l.chat.reqConfirmedAt;
+  const chatPage = (res, l, tok2, msg = "", status = 200) => {
+    noStore(res);
+    if (!l || !l.chat) return res.status(404).send(shell("GENZ", `<div class="card"><p class="t">\u092F\u0939 \u0932\u093F\u0902\u0915 \u092E\u093E\u0928\u094D\u092F \u0928\u0939\u0940\u0902 \u0939\u0948\u0964<br><small>This link is not valid.</small></p></div>`));
+    const b = userOf(l.brokerId);
+    const who2 = b?.name || "\u092C\u094D\u0930\u094B\u0915\u0930";
+    l.chat.customerSeenAt = nowIso22();
+    db.save();
+    const bubbles = l.chat.msgs.map((m) => {
+      const t2 = `<small style="color:#64748b">${hm3(m.at)}</small>`;
+      if (m.by === "SYSTEM") return `<div class="bub sys">${esc6(m.text)}</div>`;
+      if (m.kind === "HOME") return `<div class="bub br"><b>\u{1F3E0} ${esc6(m.title || "")}</b><br>${esc6(m.price || "")} \xB7 ${esc6(m.place || "")}${b?.publicCard?.enabled && b.referralCode && m.homeId ? `<br><a href="/c/${esc6(b.referralCode)}#h-${esc6(m.homeId)}" rel="noopener">\u0926\u0947\u0916\u0947\u0902 / View</a>` : ""}<br>${t2}</div>`;
+      if (m.kind === "ASK") return `<div class="bub br ask"><b>\u2714 \u0915\u094D\u092F\u093E \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092F\u0939\u0940 \u0939\u0948?</b><br>${esc6(m.text)}<br>${t2}</div>`;
+      return `<div class="bub ${m.by === "CUSTOMER" ? "me" : "br"}">${esc6(m.text)}<br>${t2}</div>`;
+    }).join("");
+    const ask = askPending(l) ? `<div class="card pick" data-testid="chat-confirm"><p class="t"><b>${esc6(who2)} \u092A\u0942\u091B \u0930\u0939\u0947 \u0939\u0948\u0902: \u0915\u094D\u092F\u093E \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092F\u0939\u0940 \u0939\u0948?</b><br><small>${esc6(who2)} asks: is this what you need?</small></p><p class="t">${esc6(needLine(l))}</p>
+<form method="post" action="/q/chat/${esc6(tok2)}/ans"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="chat-yes">\u2705 \u0939\u093E\u0901, \u0938\u0939\u0940 \u0939\u0948<br><small style="color:#e9ffe9">Yes, correct</small></button><button class="l" type="submit" name="a" value="EDIT" data-testid="chat-edit">\u270F\uFE0F \u092C\u0926\u0932\u093E\u0935 \u092D\u0947\u091C\u0947\u0902<br><small>Send a change</small></button></div>
+<label>\u092C\u0926\u0932\u093E\u0935 (\u0938\u093F\u0930\u094D\u092B\u093C \u270F\uFE0F \u0915\u0947 \u0932\u093F\u090F) / Change (only for \u270F\uFE0F)</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" placeholder="\u091C\u0948\u0938\u0947: \u092C\u091C\u091F 50 \u0932\u093E\u0916, 3BHK"></textarea></form></div>` : "";
+    const done = l.chat.reqConfirmedAt && !l.chat.revealedAt ? `<div class="card ok"><p class="t">\u2714 \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092A\u0915\u094D\u0915\u0940 \u0939\u094B \u0917\u0908\u0964 ${esc6(who2)} \u0905\u092C \u0906\u092A\u0915\u0947 \u0932\u093F\u090F \u092E\u0947\u0932 \u0916\u093E\u0924\u093E \u0918\u0930 \u0922\u0942\u0901\u0922 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964<br><small>Your need is confirmed. ${esc6(who2)} is now looking for a home that matches.</small></p></div>` : "";
+    res.send(shell("GENZ \u091A\u0948\u091F", `<style>.bub{max-width:85%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px}</style>
+<div class="top"><h1>${esc6(who2)}</h1><p>GENZ verified broker${b?.reraNumber ? ` \xB7 RERA ${esc6(b.reraNumber)}` : ""} \xB7 ${esc6(partnerOf(l.partnerId)?.shopName || "")}</p></div>
+${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ""}
+<div class="cb" data-testid="chat-box">${bubbles}</div>${ask}${done}
+<div class="card"><form method="post" action="/q/chat/${esc6(tok2)}/msg"><label>\u0938\u0902\u0926\u0947\u0936 / Message</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" required placeholder="\u0905\u092A\u0928\u093E \u0938\u0935\u093E\u0932 \u092F\u093E \u091C\u093C\u0930\u0942\u0930\u0924 \u0932\u093F\u0916\u0947\u0902\u2026"></textarea><div class="row"><button class="g" type="submit" data-testid="chat-send">\u092D\u0947\u091C\u0947\u0902 / Send</button><a class="btn l" href="/q/chat/${esc6(tok2)}">\u{1F504} \u0928\u092F\u093E \u0926\u0947\u0916\u0947\u0902 / Refresh</a></div></form>
+<p class="small" style="margin-top:8px">\u{1F512} \u0907\u0938 \u091A\u0948\u091F \u092E\u0947\u0902 \u092B\u093C\u094B\u0928 \u0928\u0902\u092C\u0930 \u0928 \u0932\u093F\u0916\u0947\u0902\u0964 \u0906\u092A\u0915\u093E \u0928\u0902\u092C\u0930 \u092C\u094D\u0930\u094B\u0915\u0930 \u0915\u094B \u0924\u092D\u0940 \u0926\u093F\u0916\u0947\u0917\u093E \u091C\u092C \u0906\u092A \u0905\u092A\u0928\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u092A\u0915\u094D\u0915\u0940 \u0915\u0930 \u0926\u0947\u0902 \u0914\u0930 \u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0938\u0947 \u092E\u0947\u0932 \u0916\u093E\u0924\u093E \u0918\u0930 \u0936\u0947\u092F\u0930 \u0939\u094B\u0964 \u0907\u0938 \u092A\u0947\u091C \u0915\u094B \u092C\u0941\u0915\u092E\u093E\u0930\u094D\u0915 \u0915\u0930 \u0932\u0947\u0902 \u2014 \u091C\u0935\u093E\u092C \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F \u092F\u0939\u0940 \u0932\u093F\u0902\u0915 \u0916\u094B\u0932\u0947\u0902\u0964 GENZ \u0906\u092A\u0938\u0947 \u0915\u094B\u0908 \u092A\u0948\u0938\u093E \u0928\u0939\u0940\u0902 \u092E\u093E\u0901\u0917\u0924\u093E\u0964<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page \u2014 open this link to see replies. GENZ never asks you for money.</p></div>`));
+  };
+  r.get("/chat/:token", rateLimit("sp-chat", 120, 36e5), (req, res) => chatPage(res, chatBy(req.params.token), req.params.token));
+  r.post("/chat/:token/msg", rateLimit("sp-chat", 120, 36e5), form, (req, res) => {
+    const l = chatBy(req.params.token);
+    if (!l?.chat) return chatPage(res, void 0, req.params.token);
+    const text = str(req.body?.text, MSG_MAX);
+    if (text.length < 1) return chatPage(res, l, req.params.token, "\u0915\u0941\u091B \u0932\u093F\u0916\u0947\u0902\u0964 / Write something.");
+    if (containsPhone(text)) return chatPage(res, l, req.params.token, `${esc6(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc6(PHONE_IN_CHAT_MSG.en)}</small>`);
+    if (hit(`sp-chatmsg:${l.id}`, 40, 36e5) > 0) return chatPage(res, l, req.params.token, "\u092C\u0939\u0941\u0924 \u0938\u0902\u0926\u0947\u0936 \u0939\u094B \u0917\u090F \u2014 \u0925\u094B\u0921\u093C\u0940 \u0926\u0947\u0930 \u092C\u093E\u0926\u0964 / Too many messages \u2014 try later.");
+    addMsg(l, { by: "CUSTOMER", kind: "MSG", text });
+    db.save();
+    if (hit(`sp-chatpush:${l.id}`, 1, 3e5) === 0) void pushTo(l.brokerId, { kind: "matches", title: `${l.name} wrote in the chat`, body: text.slice(0, 80), url: "/?tab=partners" });
+    res.redirect(303, `/q/chat/${req.params.token}`);
+  });
+  r.post("/chat/:token/ans", rateLimit("sp-chat", 120, 36e5), form, (req, res) => {
+    const l = chatBy(req.params.token);
+    if (!l?.chat) return chatPage(res, void 0, req.params.token);
+    if (!askPending(l)) return res.redirect(303, `/q/chat/${req.params.token}`);
+    const a = String(req.body?.a || "");
+    if (a === "YES") {
+      l.chat.reqConfirmedAt = nowIso22();
+      l.chat.reqText = needLine(l);
+      addMsg(l, { by: "CUSTOMER", kind: "ANSWER", text: "\u2705 \u0939\u093E\u0901, \u092E\u0947\u0930\u0940 \u091C\u093C\u0930\u0942\u0930\u0924 \u0938\u0939\u0940 \u0939\u0948\u0964" });
+      hist(l, "CUSTOMER", "Confirmed his need in the chat");
+      db.appendAuditEvent("public", "SUPERADMIN", "LEAD", l.id, "SHOP_LEAD_NEED_CONFIRMED", "The customer confirmed his need in the in-app chat (number still hidden from the broker)");
+      if (ownerSide(l)) revealNumber(l, {});
+      db.save();
+      void pushTo(l.brokerId, { kind: "matches", title: `${l.name} confirmed his need`, body: ownerSide(l) ? "His number is now visible." : "Share a matching home to see his number.", url: "/?tab=partners" });
+    } else if (a === "EDIT") {
+      const text = str(req.body?.text, MSG_MAX);
+      if (text.length < 2) return chatPage(res, l, req.params.token, "\u092C\u0926\u0932\u093E\u0935 \u0932\u093F\u0916\u0947\u0902\u0964 / Write the change.");
+      if (containsPhone(text)) return chatPage(res, l, req.params.token, `${esc6(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc6(PHONE_IN_CHAT_MSG.en)}</small>`);
+      addMsg(l, { by: "CUSTOMER", kind: "ANSWER", text: `\u270F\uFE0F ${text}` });
+      l.chat.reqAskedAt = void 0;
+      db.save();
+      if (hit(`sp-chatpush:${l.id}`, 1, 3e5) === 0) void pushTo(l.brokerId, { kind: "matches", title: `${l.name} changed his need`, body: text.slice(0, 80), url: "/?tab=partners" });
+    }
+    res.redirect(303, `/q/chat/${req.params.token}`);
+  });
   r.get("/:code", rateLimit("sp-view", 90, 6e4), (req, res) => {
     noStore(res);
     const p = byCode(req.params.code);
@@ -82978,6 +83188,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
       return res.redirect(303, `/q/${p.qrCode}/thanks`);
     }
     const lockUntil = new Date(Date.now() + p.terms.lockDays * 864e5).toISOString();
+    const chatToken = newToken();
     const lead = {
       id: rid4("PLD"),
       partnerId: p.id,
@@ -82999,6 +83210,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
       createdAt: now,
       updatedAt: now,
       ...keep.outcome === "1" ? { outcomeOk: true } : {},
+      chat: { keyHash: sha2(chatToken), msgs: [] },
       ...home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {},
       ...buyerSide ? (() => {
         const a = ackText(broker?.name || "broker", home ? home.title : "the properties shown by the broker");
@@ -83007,40 +83219,13 @@ ${homes.length && b ? homeCards(b, p, homes) : ""}
     };
     hist(lead, "CUSTOMER", `Came in by scanning the QR at ${p.shopName} (consent recorded${lead.outcomeOk ? "; agreed to one SMS asking whether it went ahead" : ""})${home ? ` \xB7 interested in \u201C${home.title}\u201D${lead.homeOwn ? "" : " (another GENZ broker\u2019s listing)"}` : ""}`);
     if (lead.promise) hist(lead, "CUSTOMER", `Agreed \u201Cno direct deal\u201D (wording ${ACK_VERSION}) and signed as \u201C${lead.promise.signName}\u201D`);
-    if (kind === "BUY" || kind === "RENT_IN") {
-      const has = s.clientCards.find((c) => c.brokerId === p.brokerId && phone102(c.phone) === phone && c.stage !== "LOST");
-      if (has) lead.clientCardId = has.id;
-      else {
-        const n2 = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split("-").pop()) || 0), 0) + 1;
-        const card2 = {
-          id: `CLI-${String(n2).padStart(4, "0")}`,
-          brokerId: p.brokerId,
-          name: keep.name,
-          phone,
-          budgetMin: 0,
-          budgetMax: 0,
-          city: p.city,
-          areas: [keep.locality],
-          propertyType: keep.ptype || "Any",
-          transactionType: kind === "BUY" ? "Sale" : "Rent",
-          tags: ["Shop QR"],
-          notes: `Via ${p.shopName} QR${home ? ` \xB7 home: ${home.title}` : ""}${keep.budget ? ` \xB7 budget ${keep.budget}` : ""}${keep.note ? ` \xB7 ${keep.note}` : ""}`,
-          stage: "NEW",
-          consent: true,
-          timeline: [{ at: now, kind: "CREATED", text: `From the QR at ${p.shopName}` }],
-          createdAt: now,
-          updatedAt: now
-        };
-        s.clientCards.unshift(card2);
-        lead.clientCardId = card2.id;
-      }
-    }
+    addMsg(lead, { by: "SYSTEM", kind: "INFO", text: `\u0906\u092A\u0915\u0940 \u091C\u093C\u0930\u0942\u0930\u0924: ${needLine(lead)}${lead.homeTitle ? ` \xB7 \u092A\u0938\u0902\u0926 \u0906\u092F\u093E: ${lead.homeTitle}` : ""}` });
     s.partnerLeads.unshift(lead);
     hist(p, "CUSTOMER", `New ${LEAD_KINDS.find((k) => k.id === kind).en.toLowerCase()} lead (\u2022\u2022${lead.phoneLast4})`);
     db.save();
     db.appendAuditEvent("public", "SUPERADMIN", "LEAD", lead.id, "SHOP_QR_LEAD", `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ""}${home ? `; home ${home.id}` : ""})`);
-    void pushTo(p.brokerId, { kind: "matches", title: `New lead from ${p.shopName}`, body: `${keep.name} \u2014 ${LEAD_KINDS.find((k) => k.id === kind).en}, ${keep.locality}${home ? ` \xB7 ${home.title}` : ""}. Call soon.`, url: "/?tab=partners" });
-    res.redirect(303, `/q/${p.qrCode}/thanks`);
+    void pushTo(p.brokerId, { kind: "matches", title: `New lead from ${p.shopName}`, body: `${keep.name} \u2014 ${LEAD_KINDS.find((k) => k.id === kind).en}, ${keep.locality}${home ? ` \xB7 ${home.title}` : ""}. Chat with him in the app \u2014 his number shows after he confirms his need and you share a matching home.`, url: "/?tab=partners" });
+    res.redirect(303, `/q/chat/${chatToken}`);
   });
   r.get("/:code/thanks", (req, res) => {
     noStore(res);
@@ -85168,7 +85353,7 @@ function searchKind(raw) {
   if (Array.from(q).length < SEARCH_MIN) return { kind: "TOO_SHORT", q };
   return { kind: "TEXT", q };
 }
-var norm3 = (s) => String(s ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+var norm4 = (s) => String(s ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 var TITLE2 = /^(?:dr|mr|mrs|ms|er|adv|shri|smt|sri|prof|ca|cs)\.?$/i;
 function shortName(name) {
   let w = String(name || "").trim().split(/\s+/).filter(Boolean);
@@ -85401,8 +85586,8 @@ function createProfilesRouter() {
     if (kind === "PHONE") hits = s.users.filter((x) => live(x) && seen2(x) && digits(x.phone).slice(-10) === q);
     else if (kind === "CODE") hits = s.users.filter((x) => live(x) && seen2(x) && x.brokerId?.toUpperCase() === q);
     else {
-      const n2 = norm3(q);
-      hits = s.users.filter((x) => verified2(x) && groupOfRole(x.role) && !GROUPS[groupOfRole(x.role)].private && x.profile?.visible !== false && (norm3(x.name).includes(n2) || norm3(firmOf(x)).includes(n2) || norm3(x.city).includes(n2) || (x.profile?.areas || []).some((a) => norm3(a).includes(n2))));
+      const n2 = norm4(q);
+      hits = s.users.filter((x) => verified2(x) && groupOfRole(x.role) && !GROUPS[groupOfRole(x.role)].private && x.profile?.visible !== false && (norm4(x.name).includes(n2) || norm4(firmOf(x)).includes(n2) || norm4(x.city).includes(n2) || (x.profile?.areas || []).some((a) => norm4(a).includes(n2))));
     }
     const priv = (x) => GROUPS[groupOfRole(x.role)].private;
     hits = hits.filter((x) => x.id !== u.id && (isStaffRole(seeker) || mayOpenProfile({ id: u.id, role: seeker }, { id: x.id, role: x.role, visible: x.profile?.visible }, kind !== "TEXT" && !priv(x))));
@@ -96279,8 +96464,8 @@ function createDealCloseRouter() {
 var import_express71 = __toESM(require_express2(), 1);
 
 // src/shared/redflags.ts
-var norm4 = (s) => (s || "").toLowerCase().replace(/\b(shri|smt|mr|mrs|ms|dr|late|sri)\b\.?/g, "").replace(/[^a-zऀ-ॿ ]/g, " ").replace(/\s+/g, " ").trim();
-var tokens = (s) => new Set(norm4(s).split(" ").filter((t2) => t2.length > 1));
+var norm5 = (s) => (s || "").toLowerCase().replace(/\b(shri|smt|mr|mrs|ms|dr|late|sri)\b\.?/g, "").replace(/[^a-zऀ-ॿ ]/g, " ").replace(/\s+/g, " ").trim();
+var tokens = (s) => new Set(norm5(s).split(" ").filter((t2) => t2.length > 1));
 function nameMatches(a, b) {
   const A = tokens(a), B = tokens(b);
   if (!A.size || !B.size) return true;
@@ -96616,8 +96801,8 @@ function createConnectorRouter() {
     const phone = intro ? "" : digits(d.customerPhone);
     if (!intro && phone === digits(u.phone)) return res.status(400).json({ error: "You cannot refer your own number" });
     const cutoff = Date.now() - DUP_WINDOW_DAYS * 864e5;
-    const norm5 = (t2) => (t2 || "").trim().toLowerCase().replace(/\s+/g, " ");
-    const dup = state.connectorReferrals.find((x) => intro ? x.connectorId === u.id && norm5(x.customerName) === norm5(d.customerName) && norm5(x.locality) === norm5(d.locality) && x.type === d.type && new Date(x.createdAt).getTime() > cutoff && !["CLOSED_LOST", "DUPLICATE", "REJECTED"].includes(x.status) : phone && digits(x.customerPhone) === phone && x.type === d.type && new Date(x.createdAt).getTime() > cutoff && !["CLOSED_LOST", "DUPLICATE", "REJECTED"].includes(x.status));
+    const norm6 = (t2) => (t2 || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const dup = state.connectorReferrals.find((x) => intro ? x.connectorId === u.id && norm6(x.customerName) === norm6(d.customerName) && norm6(x.locality) === norm6(d.locality) && x.type === d.type && new Date(x.createdAt).getTime() > cutoff && !["CLOSED_LOST", "DUPLICATE", "REJECTED"].includes(x.status) : phone && digits(x.customerPhone) === phone && x.type === d.type && new Date(x.createdAt).getTime() > cutoff && !["CLOSED_LOST", "DUPLICATE", "REJECTED"].includes(x.status));
     if (dup) return res.status(409).json({ error: "This person is already registered with GENZ for the same need. Please refer someone else." });
     const ref = {
       id: nextId6(state.connectorReferrals),
@@ -96636,7 +96821,7 @@ function createConnectorRouter() {
       details: d.details,
       status: "SUBMITTED",
       rewardStatus: "NONE",
-      duplicateHash: intro ? `intro:${u.id}:${norm5(d.customerName)}:${d.type}` : `${phone}:${d.type}`,
+      duplicateHash: intro ? `intro:${u.id}:${norm6(d.customerName)}:${d.type}` : `${phone}:${d.type}`,
       createdAt: nowIso48(),
       updatedAt: nowIso48(),
       events: []
@@ -98122,9 +98307,9 @@ app.put("/api/properties/:id", needs("property:update"), (req, res) => {
   }
   const data = parsed.data;
   const isOwner = prop.ownerId === currentUser2.id;
-  const ownerSide = isOwner || isAdmin(currentUser2);
+  const ownerSide2 = isOwner || isAdmin(currentUser2);
   const changesOwnerField = data.ownerApprovedNetPrice !== void 0 && data.ownerApprovedNetPrice !== prop.ownerApprovedNetPrice || data.ownerName !== void 0 && data.ownerName !== prop.ownerName || data.ownerPhone !== void 0 && data.ownerPhone !== prop.ownerPhone;
-  if (!ownerSide && changesOwnerField) {
+  if (!ownerSide2 && changesOwnerField) {
     return res.status(403).json({ error: "Only the property owner or an admin can change owner-confidential fields (net price, owner name/phone)." });
   }
   if (["sold", "rented"].includes(prop.listingStatus)) {

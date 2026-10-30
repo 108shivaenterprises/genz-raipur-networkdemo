@@ -45,7 +45,7 @@ const TERMS = { sale: { mode: 'PCT', value: 20 }, rent: { mode: 'FIXED', value: 
 const SHOP_PHONE = '9876500022';
 let partner: any; let token = ''; let pCookie = '';
 const list = async () => (await call(jar.BRK1, 'GET', '/api/shop-partners')).json();
-const leadOf = async (phone: string) => (await list()).leads.find((l: any) => l.phone === phone);
+const leadOf = async (phone: string) => (await list()).leads.find((l: any) => l.phoneLast4 === phone.slice(-4));
 const shopPage = async () => (await fetch(`${B}/sp/${token}`, { headers: { cookie: pCookie } })).text();
 
 async function scan(phone: string, extra: Record<string, string> = {}, kind = 'RENT_IN') {

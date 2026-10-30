@@ -1,6 +1,24 @@
-# v85 (yojana, abhi code nahi) — Propi se seekh + WhatsApp jaisa chat-first UI
+# v85 — Propi se seekh + chat-first UI: pehla hissa BANA (shop-QR lead ki chat, number chhupa), baaki yojana
 
-Ye sirf plan hai. Propi ka homepage dekha (propi.in); andar ke pages / pricing nahi dekhe.
+Propi ka homepage dekha (propi.in); andar ke pages / pricing nahi dekhe.
+
+## Jo is baar bana aur live gaya (v85, pehla hissa)
+Aapka niyam: *"Shopkeeper se lead aaye to broker ko number nahi dikhe, sirf last ke kuch digit; requirement chat mein confirm ho; phir broker ke paas match aaye to share karne par number dikhe."*
+1. **Number chhupa.** QR form bharte hi customer ko ek **private chat page** milta hai (`/q/chat/<link>`, signup nahi). Broker ko sirf **••last4** dikhta hai — API ke kisi bhi hisse mein (lead, history, links) poora number nahi jaata; client card bhi tab tak nahi banta.
+2. **Chat mein kisi ko number likhne ki ijazat nahi** (customer ya broker) — dono taraf rok.
+3. **Requirement chat mein confirm:** broker "ज़रूरत पक्की करवाएँ" dabata hai → customer ko ek line mein uski ज़रूरत dikhti hai → **✅ हाँ, सही है** ya **✏️ बदलाव भेजें** (badlav par broker dobara poochta hai).
+4. **Match + share:** confirm ke baad broker ko sirf wahi ghar dikhte hain jo ज़रूरत se milte hain (bikri/kiraya, इलाका ya wahi ghar jo customer ne pasand kiya, budget agar padha ja sake — "40 lakh", "1.2 cr", "12k" samajhta hai; na padha jaye to budget ginta nahi). Ek ghar **share** karte hi: customer ki chat mein ghar ka card, broker ko **number khulta hai**, aur buyer/renter broker ke client list mein judta hai. Koi match nahi → number band rehta hai aur broker ko saaf likha dikhta hai.
+5. **Owner (SELL / RENT_OUT) lead:** "match wala ghar" nahi hota; owner jab chat mein property ki jaankari ✅ kare, tab number khulta hai.
+6. **Purani leads (v85 se pehle) ka number waise hi dikhta rahta hai** — jo pehle se chal raha tha wo band nahi kiya.
+7. Audit: `SHOP_LEAD_NEED_CONFIRMED`, `SHOP_LEAD_NUMBER_SHOWN`, `SHOP_LEAD_HOME_SHARED`. Customer ki sahmati ka text badla: ab "ऐप की चैट में बात", aur "नंबर तभी दिखेगा जब ज़रूरत पक्की + मेल खाता घर शेयर".
+
+**Imaandari wali limits:**
+- Customer ko broker ka jawab tab dikhta hai jab wo apna chat link dobara kholta hai (yahi link bookmark karne ko kaha hai). Sidha SMS/WhatsApp alert **API ke bina nahi** — aapne kaha tha baad mein; abhi nahi.
+- Match ka niyam sidha hai (bikri/kiraya + इलाका + budget). Hindi mein likha इलाका aur English mein likha ghar ka इलाका aksar nahi milte — tab broker ko match nahi dikhega; isse behtar matching baad ka kaam.
+- Customer ek hi mobile se dobara scan kare to naya chat link nahi banta; purana link hi chalta hai.
+- Chat ka pehla version — voice, photo, typing-indicator nahi.
+
+## Baaki (abhi code nahi — ye yojana hai)
 
 ## 1) Propi se jo seekhna final hua
 | # | Seekh | Hamare app mein kya | Mehnat |

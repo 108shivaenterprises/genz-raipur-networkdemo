@@ -92,12 +92,12 @@ describe('shop QR partner', () => {
     const r = await scan(CUST);
     expect(r.status).toBe(303);
     const list = await (await call(jar.BRK1, 'GET', '/api/shop-partners')).json();
-    const lead = list.leads.find((l: any) => l.phone === CUST); leadId = lead.id;
-    expect(lead.partnerId).toBe(partner.id); expect(lead.kind).toBe('BUY'); expect(lead.clientCardId).toBeTruthy();
+    const lead = list.leads.find((l: any) => l.phoneLast4 === CUST.slice(-4)); leadId = lead.id;
+    expect(lead.partnerId).toBe(partner.id); expect(lead.kind).toBe('BUY'); expect(lead.masked).toBe(true); expect(lead.phone).toBeUndefined(); expect(lead.clientCardId).toBeUndefined();   // v85: the number (and so the client card) comes only after the need is confirmed and a home is shared
     expect(lead.terms.sale.value).toBe(20);
     expect((await scan(CUST)).status).toBe(303);
     const again = await (await call(jar.BRK1, 'GET', '/api/shop-partners')).json();
-    expect(again.leads.filter((l: any) => l.phone === CUST).length).toBe(1);
+    expect(again.leads.filter((l: any) => l.phoneLast4 === CUST.slice(-4)).length).toBe(1);
     const page = await (await fetch(`${B}/sp/${token}`, { headers: { cookie: pCookie } })).text();
     expect(page).toContain('••8801'); expect(page).not.toContain(CUST);
     // a form sent too fast / without consent is refused
@@ -143,7 +143,7 @@ describe('shop QR partner', () => {
     const old = (await (await call(jar.BRK1, 'GET', '/api/shop-partners')).json()).leads.find((l: any) => l.id === leadId);
     expect(old.terms.sale.value).toBe(20);
     expect((await scan('9123488803', 'SELL')).status).toBe(303);
-    const fresh = (await (await call(jar.BRK1, 'GET', '/api/shop-partners')).json()).leads.find((l: any) => l.phone === '9123488803');
+    const fresh = (await (await call(jar.BRK1, 'GET', '/api/shop-partners')).json()).leads.find((l: any) => l.phoneLast4 === '8803');
     expect(fresh.terms.sale.value).toBe(10); expect(fresh.clientCardId).toBeUndefined();
   }, 30000);
 
