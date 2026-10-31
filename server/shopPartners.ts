@@ -15,6 +15,8 @@ import { sealLink, linkOf } from './linkSeal.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { brandedQrSvg } from './brandlogo.js';
+import { makeSahayak } from './sahayak.js';
+import type { NeedChange } from '../src/shared/sahayak.js';
 import { localityFit, areasOf, canonPlace } from '../src/shared/places.js';
 import { PROPERTY_TYPES, RELATED_TYPE_GROUPS } from '../src/shared/india.js';
 import { Router, type Request, type Response } from 'express';
@@ -193,6 +195,36 @@ function revealNumber(l: PartnerLead, how: { homeId?: string; title?: string }) 
   hist(l, 'SYSTEM', `Number shown to the broker${how.title ? ` after he shared “${how.title}”` : ' after the owner confirmed the property details'}`);
   addMsg(l, { by: 'SYSTEM', kind: 'INFO', text: how.title ? 'आपका नंबर अब ब्रोकर को दिख गया है — आपकी ज़रूरत से मेल खाता घर शेयर हुआ। / The broker can now see your number — a home matching your need was shared.' : 'आपका नंबर अब ब्रोकर को दिख गया है। / The broker can now see your number.' });
 }
+
+// ───────────────────────────── v97 — GENZ सहायक (the chat helper): its hands in this module ─────────────────────────────
+/** the assistant (or the customer's own tap on Explore) shows a home in the chat — same effect as the broker's "share a home": the number opens once, with the audit line */
+function shareHomeAuto(l: PartnerLead, h: Property, by: 'BOT' | 'CUSTOMER') {
+  if (!l.chat) return;
+  const b = homeBrief(h);
+  addMsg(l, { by: 'BOT', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
+  const first = !l.chat.revealedAt;
+  revealNumber(l, { homeId: h.id, title: h.title });
+  hist(l, 'SYSTEM', `GENZ assistant showed “${h.title}” in the chat${by === 'CUSTOMER' ? ' (he picked it on Explore)' : ''}`);
+  db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED',
+    first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}, listed ${(h as any).createdAt || 'before v92'}) was shown by the GENZ assistant` : `Another home (${h.id}) shown in the chat by the GENZ assistant`);
+}
+/** what the customer wrote → the lead (budget / type / area / BHK; buy↔rent only before the number is open). Returns the words of what changed. */
+function applyNeedChange(l: PartnerLead, ch: NeedChange): string[] {
+  const out: string[] = [];
+  if (ch.kind && ch.kind !== l.kind && (l.kind === 'BUY' || l.kind === 'RENT_IN') && !l.chat?.revealedAt) { l.kind = ch.kind; out.push(ch.kind === 'BUY' ? 'खरीदना' : 'किराया'); }
+  if (ch.budget && ch.budget !== l.budget) { l.budget = ch.budget.slice(0, 40); out.push('बजट'); }
+  if (ch.ptype && ch.ptype !== l.propertyType) { l.propertyType = ch.ptype; out.push('प्रकार'); }
+  if (ch.locality && ch.locality !== l.locality) { l.locality = ch.locality; out.push('इलाका'); }
+  if (ch.bhk) { const tag = `${ch.bhk}BHK`; if (!String(l.note || '').includes(tag)) { l.note = [l.note, tag].filter(Boolean).join(' · ').slice(0, 200); out.push('BHK'); } }
+  if (out.length) l.updatedAt = nowIso();
+  return out;
+}
+const botTell = (l: PartnerLead, title: string, body: string) => { if (hit(`sp-botpush:${l.id}`, 10, 3600_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title, body, url: '/?tab=partners' }); };
+export const sahayak = makeSahayak({
+  addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
+  audit: (l, action, text) => db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, action, text),
+  isLive: h => pageLive(h), applyNeed: applyNeedChange,
+});
 
 // ───────────────────────────── links: later work on the same mobile by the same broker ─────────────────────────────
 export interface LeadLink { kind: 'VISIT' | 'ROOM' | 'NEED' | 'DEAL' | 'BOND' | 'CLIENT' | 'LISTING'; id: string; at: string; done?: boolean; en: string; hi: string }
@@ -447,7 +479,7 @@ function leadView(l: PartnerLead) {
     ...rest, ...(rev ? { phone } : {}), masked: !rev,
     // v85 — the in-app chat (never the customer's link token); `matches` = the homes he may share now (only offered once the need is confirmed)
     chat: chat ? { msgs: chat.msgs.slice(-80), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
-    alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0,
+    alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0, bot: chat ? sahayak.view(l) : null,
     matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [], needLine: needLine(l),
     shopName: p?.shopName || '', city: p?.city || '', links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),
     // v82 — what the app itself works out from the deal (shown fixed to the broker), the changes the shop was told about, how long it has been unpaid, and the customer's answer
@@ -616,9 +648,32 @@ export function createShopPartnerRouter() {
     const text = str(req.body?.text, MSG_MAX);
     if (text.length < 1) return bad(res, 'Write a message');
     if (containsPhone(text)) return bad(res, PHONE_IN_CHAT_MSG.en, 400, { code: 'PHONE_IN_CHAT', hi: PHONE_IN_CHAT_MSG.hi });
-    addMsg(l, { by: 'BROKER', kind: 'MSG', text }); l.chat.brokerSeenAt = nowIso(); db.save();
+    addMsg(l, { by: 'BROKER', kind: 'MSG', text }); l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l); db.save();
     void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
     res.json({ success: true, lead: leadView(l) });
+  });
+  /** v97 — the broker answers a visit request the customer made in the chat: yes / another time / no */
+  r.post('/leads/:id/visit/:vid', needs('partner:manage'), (req: Request, res: Response) => {
+    const l = chatLead(req, res); if (!l?.chat) return;
+    const out = sahayak.brokerReply(l, String(req.params.vid), String(req.body?.action || ''), str(req.body?.text, 80), me().name);
+    if (!out.ok) return bad(res, out.error, out.status || 400);
+    l.chat.brokerSeenAt = nowIso(); audit(l.id, 'SHOP_LEAD_VISIT_ANSWERED', `Broker answered the customer's visit request: ${String(req.body?.action)}`); db.save();
+    void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
+    res.json({ success: true, lead: leadView(l) });
+  });
+  /** v97 — switch the GENZ assistant on / off for ONE chat (“I will talk to him myself”) */
+  r.post('/leads/:id/bot', needs('partner:manage'), (req: Request, res: Response) => {
+    const l = chatLead(req, res); if (!l?.chat) return;
+    const b = (l.chat.bot ||= {}); b.off = req.body?.off === true; if (b.off) b.awaiting = undefined;
+    hist(l, 'BROKER', b.off ? 'Switched the GENZ assistant off for this chat' : 'Switched the GENZ assistant on for this chat'); db.save();
+    res.json({ success: true, lead: leadView(l) });
+  });
+  /** v97 — the same switch for ALL his shop-QR chats */
+  r.get('/sahayak', needs('partner:manage'), (_req: Request, res: Response) => { res.json({ success: true, off: !!me().sahayakOff, serverOff: process.env.SAHAYAK === 'off' }); });
+  r.post('/sahayak', needs('partner:manage'), (req: Request, res: Response) => {
+    const u = me(); u.sahayakOff = req.body?.off === true; db.save();
+    db.appendAuditEvent(u.id, u.role, 'LEAD', u.id, 'SHOP_BOT_SWITCH', `GENZ assistant switched ${u.sahayakOff ? 'OFF' : 'ON'} for all shop-QR chats`);
+    res.json({ success: true, off: !!u.sahayakOff });
   });
   r.post('/leads/:id/chat/seen', needs('partner:manage'), (req: Request, res: Response) => {
     const l = chatLead(req, res); if (!l?.chat) return; l.chat.brokerSeenAt = nowIso(); db.save(); res.json({ success: true });
@@ -645,7 +700,7 @@ export function createShopPartnerRouter() {
     }
     const b = homeBrief(h);
     addMsg(l, { by: 'BROKER', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
-    l.chat.brokerSeenAt = nowIso();
+    l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l);
     const first = !l.chat.revealedAt;
     revealNumber(l, { homeId: h.id, title: h.title });
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
@@ -905,18 +960,32 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
       if (m.by === 'SYSTEM') return `<div class="bub sys">${esc(m.text)}</div>`;
       if (m.kind === 'HOME') return `<div class="bub br"><b>🏠 ${esc(m.title || '')}</b><br>${esc(m.price || '')} · ${esc(m.place || '')}${b?.publicCard?.enabled && b.referralCode && m.homeId ? `<br><a href="/c/${esc(b.referralCode)}#h-${esc(m.homeId)}" rel="noopener">देखें / View</a>` : ''}<br>${t}</div>`;
       if (m.kind === 'ASK') return `<div class="bub br ask"><b>✔ क्या आपकी ज़रूरत यही है?</b><br>${esc(m.text)}<br>${t}</div>`;
+      if (m.by === 'BOT') return `<div class="bub bot" data-testid="bot-msg"><small class="bn">🤖 GENZ सहायक · <i>automatic</i></small><br>${esc(m.text).replace(/\n/g, '<br>')}${m.en ? `<br><small style="color:#64748b">${esc(m.en).replace(/\n/g, '<br>')}</small>` : ''}<br>${t}</div>`;
       return `<div class="bub ${m.by === 'CUSTOMER' ? 'me' : 'br'}">${esc(m.text)}<br>${t}</div>`;
     }).join('');
+    // v97 — the assistant's one-tap answers (only under its last message), the promise card, the visits he asked for, his client room, and Explore
+    const bs = l.chat.bot || {}; const lastM = l.chat.msgs[l.chat.msgs.length - 1];
+    const chipsHtml = lastM && lastM.by === 'BOT' && lastM.chips?.length && !askPending(l)
+      ? `<form method="post" action="/q/chat/${esc(tok)}/quick" data-testid="bot-chips"><div class="chips">${lastM.chips.map(c => `<button class="l" type="submit" name="k" value="${esc(c.id)}">${esc(c.hi)}<br><small>${esc(c.en)}</small></button>`).join('')}</div></form>` : '';
+    const promiseHome = bs.pendingHome ? st().properties.find(x => x.id === bs.pendingHome) : undefined;
+    const ackP = ackText(who, promiseHome ? promiseHome.title : 'the properties shown by the broker');
+    const promiseHtml = bs.awaiting === 'PROMISE' ? `<div class="card warn" data-testid="chat-promise"><p class="t"><b>विज़िट से पहले एक वचन · A promise before the visit</b></p><p class="t">${esc(ackP.hi)}</p><p class="t"><small>${esc(ackP.en)}</small></p>
+<form method="post" action="/q/chat/${esc(tok)}/promise"><label class="ck"><input type="checkbox" name="direct" value="1" required><span>मैं सहमत हूँ / I agree</span></label><label>अपना नाम लिखकर हस्ताक्षर करें / Sign with your name</label><input name="sign" required minlength="2" maxlength="60" autocomplete="name"><div class="row"><button class="g" type="submit" data-testid="chat-promise-go">✍️ हस्ताक्षर करें / Sign</button></div></form></div>` : '';
+    const VST: Record<string, [string, string]> = { ASKED: ['⏳', 'ब्रोकर के जवाब का इंतज़ार · waiting for the broker'], OK: ['✅', 'तय · agreed'], COUNTER: ['🕐', 'ब्रोकर ने दूसरा समय सुझाया · the broker suggested another time'], NO: ['✖', 'इस समय नहीं हो पाया · could not do that time'], DONE: ['✔', 'हो गई · done'] };
+    const visitsHtml = (bs.visits || []).length ? `<div class="card" data-testid="chat-visits"><p class="t"><b>📅 मेरी विज़िट रिक्वेस्ट · My visit requests</b></p>${(bs.visits || []).slice(-3).map(v => `<p class="t">${VST[v.status]?.[0] || ''} <b>${esc(v.title)}</b> · ${esc(v.counter && v.status !== 'ASKED' ? v.counter : v.preferred)}<br><small>${esc(VST[v.status]?.[1] || '')}</small></p>`).join('')}</div>` : '';
+    const rl = sahayak.roomLink(l);
+    const roomHtml = rl ? `<div class="card ok" data-testid="chat-room"><p class="t"><b>🏠 आपका क्लाइंट रूम · Your client room</b></p><p class="t"><small>अपना वही मोबाइल नंबर डालें जो आपने QR फ़ॉर्म में दिया था; कोड आपके फ़ोन पर SMS से आएगा (SMS चालू न हो तो ब्रोकर बताएँगे)। · Type the same mobile number you gave in the QR form; the code comes by SMS (if SMS is off, the broker tells you).</small></p><a class="btn g" href="/r/${esc(rl.replace(/^\/r\//, ''))}" data-testid="chat-room-open">खोलें / Open</a></div>` : '';
+    const exploreHtml = l.chat.reqConfirmedAt && !ownerSide(l) ? `<div class="card" data-testid="chat-explore-card"><a class="btn l" href="/q/chat/${esc(tok)}/explore" data-testid="chat-explore">🔎 मेरी ज़रूरत के सारे घर देखें · Explore homes for my need</a></div>` : '';
     const ask = askPending(l) ? `<div class="card pick" data-testid="chat-confirm"><p class="t"><b>${esc(who)} पूछ रहे हैं: क्या आपकी ज़रूरत यही है?</b><br><small>${esc(who)} asks: is this what you need?</small></p><p class="t">${esc(needLine(l))}</p>
 <form method="post" action="/q/chat/${esc(tok)}/ans"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="chat-yes">✅ हाँ, सही है<br><small style="color:#e9ffe9">Yes, correct</small></button><button class="l" type="submit" name="a" value="EDIT" data-testid="chat-edit">✏️ बदलाव भेजें<br><small>Send a change</small></button></div>
 <label>बदलाव (सिर्फ़ ✏️ के लिए) / Change (only for ✏️)</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" placeholder="जैसे: बजट 50 लाख, 3BHK"></textarea></form></div>` : '';
     const done = l.chat.reqConfirmedAt && !l.chat.revealedAt ? `<div class="card ok"><p class="t">✔ आपकी ज़रूरत पक्की हो गई। ${esc(who)} अब आपके लिए मेल खाता घर ढूँढ रहे हैं।<br><small>Your need is confirmed. ${esc(who)} is now looking for a home that matches.</small></p></div>` : '';
     const showApp = l.chat.msgs.some(m => m.by === 'CUSTOMER' && m.kind !== 'INFO');   // offered once he has written / confirmed — not on the very first look
     const appCard = showApp ? `<div class="card app" id="app-card" style="display:none" data-testid="chat-app-card"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>` : '';
-    res.send(shell('GENZ चैट', `<style>.bub{max-width:85%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px}</style>
+    res.send(shell('GENZ चैट', `<style>.bub{max-width:85%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.bub.bot{border-left:4px solid #6366f1;background:#f5f3ff}.bn{color:#4338ca;font-weight:700}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.chips button{flex:1 1 44%;min-height:46px;line-height:1.25}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px}</style>
 <div class="top"><h1>${esc(who)}</h1><p>GENZ verified broker${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} · ${esc(partnerOf(l.partnerId)?.shopName || '')}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
-<div class="cb" data-testid="chat-box">${bubbles}</div>${appCard}${ask}${done}
+<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${promiseHtml}${visitsHtml}${roomHtml}${exploreHtml}${appCard}${ask}${done}
 <div class="card"><form method="post" action="/q/chat/${esc(tok)}/msg"><label>संदेश / Message</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" required placeholder="अपना सवाल या ज़रूरत लिखें…"></textarea><div class="row"><button class="g" type="submit" data-testid="chat-send">भेजें / Send</button><a class="btn l" href="/q/chat/${esc(tok)}">🔄 नया देखें / Refresh</a></div></form>
 <p class="small" style="margin-top:8px">🔒 इस चैट में फ़ोन नंबर न लिखें। आपका नंबर ब्रोकर को तभी दिखेगा जब आप अपनी ज़रूरत पक्की कर दें और आपकी ज़रूरत से मेल खाता घर शेयर हो। इस पेज को बुकमार्क कर लें — जवाब देखने के लिए यही लिंक खोलें। GENZ आपसे कोई पैसा नहीं माँगता।<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page — open this link to see replies. GENZ never asks you for money.</p></div>`, showApp ? `<link rel="manifest" href="/q/chat/${tok}/manifest.webmanifest"><meta name="theme-color" content="#14213d">` : '', showApp ? '/q/chat-app.js' : ''));
   };
@@ -956,7 +1025,8 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     if (text.length < 1) return chatPage(res, l, req.params.token, 'कुछ लिखें। / Write something.');
     if (containsPhone(text)) return chatPage(res, l, req.params.token, `${esc(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc(PHONE_IN_CHAT_MSG.en)}</small>`);
     if (hit(`sp-chatmsg:${l.id}`, 40, 3600_000) > 0) return chatPage(res, l, req.params.token, 'बहुत संदेश हो गए — थोड़ी देर बाद। / Too many messages — try later.');
-    addMsg(l, { by: 'CUSTOMER', kind: 'MSG', text }); db.save();
+    addMsg(l, { by: 'CUSTOMER', kind: 'MSG', text });
+    sahayak.onText(l, text); db.save();   // v97 — the assistant answers (or stays quiet when the broker is talking / has switched it off)
     if (hit(`sp-chatpush:${l.id}`, 1, 300_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} wrote in the chat`, body: text.slice(0, 80), url: '/?tab=partners' });
     res.redirect(303, `/q/chat/${req.params.token}`);
   });
@@ -970,15 +1040,57 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       hist(l, 'CUSTOMER', 'Confirmed his need in the chat');
       db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_NEED_CONFIRMED', 'The customer confirmed his need in the in-app chat (number still hidden from the broker)');
       if (ownerSide(l)) revealNumber(l, {});   // an owner has no "matching home": confirming the property details is the step
+      if (!sahayak.off(l)) sahayak.onConfirmed(l);   // v97 — the assistant shows the live homes that fit and tells the broker
       db.save();
-      void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} confirmed his need`, body: ownerSide(l) ? 'His number is now visible.' : 'Share a matching home to see his number.', url: '/?tab=partners' });
+      if (sahayak.off(l)) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} confirmed his need`, body: ownerSide(l) ? 'His number is now visible.' : 'Share a matching home to see his number.', url: '/?tab=partners' });
     } else if (a === 'EDIT') {
       const text = str(req.body?.text, MSG_MAX);
       if (text.length < 2) return chatPage(res, l, req.params.token, 'बदलाव लिखें। / Write the change.');
       if (containsPhone(text)) return chatPage(res, l, req.params.token, `${esc(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc(PHONE_IN_CHAT_MSG.en)}</small>`);
-      addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: `✏️ ${text}` }); l.chat.reqAskedAt = undefined; db.save();   // the broker asks again with the corrected need
+      addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: `✏️ ${text}` });
+      if (sahayak.off(l)) l.chat.reqAskedAt = undefined; else sahayak.onEdit(l, text);   // the broker asks again by hand — or the assistant reads the change and asks him again
+      db.save();
       if (hit(`sp-chatpush:${l.id}`, 1, 300_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} changed his need`, body: text.slice(0, 80), url: '/?tab=partners' });
     }
+    res.redirect(303, `/q/chat/${req.params.token}`);
+  });
+
+  // ───────── v97 — GENZ सहायक: one-tap answers, the promise card, Explore ─────────
+  r.post('/chat/:token/quick', rateLimit('sp-chat', 120, 3600_000), form, (req: Request, res: Response) => {
+    const l = chatBy(req.params.token); if (!l?.chat) return chatPage(res, undefined, req.params.token);
+    if (sahayak.off(l)) return res.redirect(303, `/q/chat/${req.params.token}`);
+    if (hit(`sp-chatquick:${l.id}`, 60, 3600_000) > 0) return chatPage(res, l, req.params.token, 'बहुत बार दबाया — थोड़ी देर बाद। / Too many taps — try later.');
+    sahayak.onChip(l, String(req.body?.k || '')); db.save();
+    res.redirect(303, `/q/chat/${req.params.token}`);
+  });
+  r.post('/chat/:token/promise', rateLimit('sp-chat', 120, 3600_000), form, (req: Request, res: Response) => {
+    const l = chatBy(req.params.token); if (!l?.chat) return chatPage(res, undefined, req.params.token);
+    const bs = l.chat.bot; if (!bs || bs.awaiting !== 'PROMISE') return res.redirect(303, `/q/chat/${req.params.token}`);
+    const sign = str(req.body?.sign, 60);
+    if (req.body?.direct !== '1' || sign.length < 2) return chatPage(res, l, req.params.token, 'टिक करें और अपना नाम लिखें। / Tick the box and type your name.');
+    const home = bs.pendingHome ? st().properties.find(x => x.id === bs.pendingHome) : undefined;
+    const a = ackText(userOf(l.brokerId)?.name || 'broker', home ? home.title : 'the properties shown by the broker');
+    sahayak.onPromise(l, sign, { at: nowIso(), signName: sign, version: ACK_VERSION, text: a.en }); db.save();
+    res.redirect(303, `/q/chat/${req.params.token}`);
+  });
+  /** “Explore”: every LIVE home that fits the need he confirmed (sold / rented / held homes are not here), each with 👍 and 📅 */
+  r.get('/chat/:token/explore', rateLimit('sp-chat', 120, 3600_000), (req: Request, res: Response) => {
+    noStore(res); const tok = req.params.token; const l = chatBy(tok); if (!l?.chat) return chatPage(res, undefined, tok);
+    if (!l.chat.reqConfirmedAt || ownerSide(l)) return res.redirect(303, `/q/chat/${tok}`);
+    const rows = sahayak.explore(l); const b = userOf(l.brokerId);
+    const cards = rows.map(({ h, sent }) => {
+      const ph = pagePhotos(h)[0]; const bf = homeBrief(h);
+      return `<div class="card" data-testid="ex-${esc(h.id)}">${ph ? `<img src="${esc(ph)}" alt="" loading="lazy" style="width:100%;border-radius:10px;max-height:190px;object-fit:cover">` : ''}<p class="t"><b>${esc(h.title)}</b><br>${esc(bf.price)}${bf.rent ? ' / माह' : ''} · ${esc(bf.place)}<br><small>${esc(h.propertyType)} · ✅ उपलब्ध / available${sent ? ' · 📨 चैट में भेजा गया / sent in the chat' : ''}</small></p>
+<form method="post" action="/q/chat/${esc(tok)}/like"><input type="hidden" name="h" value="${esc(h.id)}"><div class="big2"><button class="l" type="submit" name="v" value="0">👍 पसंद आया<br><small>I like it</small></button><button class="g" type="submit" name="v" value="1">📅 विज़िट चाहिए<br><small style="color:#e9ffe9">Book a visit</small></button></div></form></div>`;
+    }).join('');
+    res.send(shell('GENZ — Explore', `<div class="top"><h1>🔎 आपकी ज़रूरत के घर</h1><p>${esc(needLine(l))}</p></div>
+${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आपकी ज़रूरत से मेल खाता कोई उपलब्ध घर नहीं है। नया घर आते ही ${esc(b?.name || 'ब्रोकर')} आपको यहीं बताएँगे।<br><small>No available home matches your need right now. We will tell you in the chat when one comes.</small></p></div>`}
+<div class="card"><a class="btn l" href="/q/chat/${esc(tok)}">← चैट पर वापस / Back to the chat</a><p class="small" style="margin-top:8px">सिर्फ़ वही घर दिखते हैं जो अभी बिके या किराये पर गए नहीं हैं। 👍 दबाने पर ब्रोकर को पता चलता है कि आपको वह घर पसंद है। / Only homes that are not sold or rented are shown. Tapping 👍 tells the broker you like that home.</p></div>`));
+  });
+  r.post('/chat/:token/like', rateLimit('sp-chat', 120, 3600_000), form, (req: Request, res: Response) => {
+    const l = chatBy(req.params.token); if (!l?.chat) return chatPage(res, undefined, req.params.token);
+    if (hit(`sp-chatlike:${l.id}`, 40, 3600_000) > 0) return chatPage(res, l, req.params.token, 'बहुत बार दबाया — थोड़ी देर बाद। / Too many taps — try later.');
+    sahayak.like(l, str(req.body?.h, 40), req.body?.v === '1'); db.save();
     res.redirect(303, `/q/chat/${req.params.token}`);
   });
 
@@ -1040,6 +1152,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     // v85 — the number is hidden: the buyer / renter lands in the broker's client list only when it is shown (after the need is confirmed and a matching home is shared)
     addMsg(lead, { by: 'SYSTEM', kind: 'INFO', text: `आपकी ज़रूरत: ${needLine(lead)}${lead.homeTitle ? ` · पसंद आया: ${lead.homeTitle}` : ''}` });
     s.partnerLeads.unshift(lead);
+    sahayak.welcome(lead);   // v97 — the assistant opens the chat and asks him to confirm his need (a broker who switched it off asks by hand, as before)
     hist(p, 'CUSTOMER', `New ${LEAD_KINDS.find(k => k.id === kind)!.en.toLowerCase()} lead (••${lead.phoneLast4})`);
     db.save();
     db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', lead.id, 'SHOP_QR_LEAD', `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ''}${home ? `; home ${home.id}` : ''})`);
@@ -1437,7 +1550,7 @@ export function partnerCounts(uid: string) {
     // v90: the first reply wins the lead — a customer who wrote and has waited more than 2 hours (for up to 3 days) with no answer from the broker
     partnerReply: leads.filter(l => {
       if (['WON', 'LOST'].includes(l.status) || !l.chat) return false;
-      const last = [...l.chat.msgs].reverse().find(m => m.by !== 'SYSTEM'); if (!last || last.by !== 'CUSTOMER' || last.kind !== 'MSG') return false;
+      const last = [...l.chat.msgs].reverse().find(m => m.by !== 'SYSTEM' && m.by !== 'BOT'); if (!last || last.by !== 'CUSTOMER' || last.kind !== 'MSG') return false;   // v97: the assistant's answer is not the broker's
       const age = Date.now() - Date.parse(last.at); return age > 2 * 3600_000 && age < 3 * 86400_000;
     }).length,
     partnerDue: leads.filter(l => l.payout && ['DUE', 'NOT_RECEIVED'].includes(l.payout.status)).length,

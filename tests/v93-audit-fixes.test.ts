@@ -67,7 +67,7 @@ describe('demo server', { timeout: 90000 }, () => {
     expect(r.status, id).toBe(200); return cookieOf(r);
   };
   beforeAll(async () => {
-    S = await start({ DEMO_MODE: 'true', SEED_DEMO_DATA: 'true' }); expect(S.cfg).toBeTruthy();
+    S = await start({ SAHAYAK: 'off', DEMO_MODE: 'true', SEED_DEMO_DATA: 'true' }); expect(S.cfg).toBeTruthy();
     call = caller(S.B); form = former(S.B);
     for (const [k, id] of Object.entries({ BRK1: 'USR-BRK-001', OWN: 'USR-OWNER-001', ADMIN: 'USR-ADMIN-1' })) jar[k] = await login(id);
   }, 60000);

@@ -156,9 +156,41 @@ const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }
   );
 };
 
+/** v97 — the visits the customer asked for through the GENZ assistant: he waits for "yes / another time / no" */
+const BotVisits: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
+  const tx = useTx(); const vs: any[] = l.bot?.visits || []; const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [alt, setAlt] = useState<Record<string, string>>({}); const [openAlt, setOpenAlt] = useState('');
+  if (!vs.length) return null;
+  const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const ST: Record<string, [string, string]> = { ASKED: ['⏳ Waiting for you', '⏳ आपके जवाब का इंतज़ार'], OK: ['✅ Agreed', '✅ तय'], COUNTER: ['🕐 Waiting for his answer to your time', '🕐 आपके सुझाए समय पर उनके जवाब का इंतज़ार'], NO: ['✖ You said no — he will send another time', '✖ आपने मना किया — वे दूसरा समय भेजेंगे'], DONE: ['✔ Done', '✔ हो गई'] };
+  return (
+    <div className="space-y-1.5 rounded-md border border-indigo-200 bg-indigo-50/60 p-2" data-testid="sp-bot-visits">
+      <p className="text-xs font-bold text-indigo-900">📅 {tx('Visit requests from the chat', 'चैट से आई विज़िट रिक्वेस्ट')}</p>
+      {vs.map((v) => (
+        <div key={v.id} className="rounded-md bg-white p-1.5 text-xs" data-testid={`sp-visit-${v.id}`}>
+          <p><b>{v.title}</b> · {v.status === 'COUNTER' || v.status === 'OK' ? (v.counter || v.preferred) : v.preferred}</p>
+          <p className="text-slate-600">{tx(ST[v.status]?.[0] || v.status, ST[v.status]?.[1] || v.status)}</p>
+          {v.status === 'ASKED' && (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              <button className={dark + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spVisitReply(l.id, v.id, 'OK'))} data-testid={`sp-visit-ok-${v.id}`}>✔ {tx('I can do it', 'हो सकता है')}</button>
+              <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => setOpenAlt(openAlt === v.id ? '' : v.id)} data-testid={`sp-visit-alt-${v.id}`}>🕐 {tx('Another time', 'दूसरा समय')}</button>
+              <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spVisitReply(l.id, v.id, 'NO'))} data-testid={`sp-visit-no-${v.id}`}>✖ {tx('Cannot', 'नहीं हो सकता')}</button>
+            </div>
+          )}
+          {v.status === 'ASKED' && openAlt === v.id && (
+            <div className="mt-1 flex gap-1"><input className={inp + ' !min-h-9 !text-xs'} maxLength={80} placeholder={tx('e.g. Sunday 11 am', 'जैसे: रविवार सुबह 11 बजे')} value={alt[v.id] || ''} onChange={(e) => setAlt({ ...alt, [v.id]: e.target.value })} data-testid={`sp-visit-alt-input-${v.id}`} />
+              <button className={dark + ' !min-h-9 !text-xs'} disabled={busy || (alt[v.id] || '').trim().length < 3} onClick={() => run(async () => { await api.spVisitReply(l.id, v.id, 'COUNTER', alt[v.id].trim()); setOpenAlt(''); })} data-testid={`sp-visit-alt-send-${v.id}`}><Send className="h-3.5 w-3.5" /></button></div>
+          )}
+          {v.status === 'OK' && <p className="mt-0.5 text-emerald-800">{tx('Now book it with “Book a visit” below — he then gets his code.', 'अब नीचे “विज़िट तय करें” से बुक करें — फिर उन्हें कोड मिलेगा।')}</p>}
+        </div>
+      ))}
+      {err && <p className="text-xs font-semibold text-red-700" role="alert">{err}</p>}
+    </div>
+  );
+};
+
 /** v85 — the in-app chat with the customer. His number stays hidden (only ••last4) until he confirms his need here AND a home that fits it is shared. */
 const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
-  const tx = useTx(); const c = l.chat; const [text, setText] = useState(''); const [open, setOpen] = useState(!!l.masked || (c?.unread || 0) > 0); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const tx = useTx(); const c = l.chat; const [text, setText] = useState(''); const [open, setOpen] = useState(!!l.masked || (c?.unread || 0) > 0 || !!l.bot?.needsBroker || (l.bot?.visits || []).some((v: any) => v.status === 'ASKED')); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   if (!c) return null;
   const owner = l.kind === 'SELL' || l.kind === 'RENT_OUT';
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
@@ -174,12 +206,19 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         <p className="mt-1 text-xs text-amber-900" data-testid="sp-masked">🔒 {tx(`Number hidden — ••${l.phoneLast4}. ${owner ? 'It shows once the owner confirms the property details here.' : 'It shows once he confirms his need here and you share a home that matches it.'}`, `नंबर छुपा है — ••${l.phoneLast4}। ${owner ? 'मालिक के यहाँ प्रॉपर्टी की जानकारी पक्की करते ही दिखेगा।' : 'जब वह यहाँ अपनी ज़रूरत पक्की करे और आप उससे मेल खाता घर शेयर करें, तब दिखेगा।'}`)}</p>
       ) : <p className="mt-1 text-xs text-emerald-900" data-testid="sp-unmasked">✔ {tx('Number is now visible (need confirmed + home shared).', 'नंबर अब दिख रहा है (ज़रूरत पक्की + घर शेयर)।')}</p>}
       <p className="text-xs text-slate-600" data-testid="sp-chat-alerts">{(l.alerts || 0) > 0 ? `🔔 ${tx('His phone gets alerts when you write', 'उनके फ़ोन पर आपके संदेश का अलर्ट जाएगा')}` : `🔕 ${tx('No alerts on his phone yet — he sees your reply when he opens his chat link', 'उनके फ़ोन पर अलर्ट अभी चालू नहीं — वे चैट लिंक खोलने पर ही जवाब देखेंगे')}`}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]" data-testid="sp-bot-bar">
+        <span className={l.bot?.on ? 'font-semibold text-indigo-800' : 'text-slate-500'} data-testid="sp-bot-state">🤖 {l.bot?.on ? (l.bot?.quiet ? tx('Assistant is quiet — you are talking', 'सहायक शांत है — आप बात कर रहे हैं') : tx('Assistant is answering', 'सहायक जवाब दे रहा है')) : (l.bot?.offByBroker ? tx('Assistant is off for all chats', 'सहायक सभी चैट के लिए बंद है') : tx('Assistant is off for this chat', 'इस चैट के लिए सहायक बंद है'))}</span>
+        {!l.bot?.offByBroker && <button type="button" className="rounded-full border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700" disabled={busy} onClick={() => run(() => api.spBotLead(l.id, !!l.bot?.on))} data-testid="sp-bot-toggle">{l.bot?.on ? tx('I will talk myself', 'मैं खुद बात करूँगा') : tx('Switch assistant on', 'सहायक चालू करें')}</button>}
+        {l.bot?.needsBroker && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-900" data-testid="sp-bot-needs">🙋 {tx('Needs you', 'आपकी ज़रूरत')}: {({ price: tx('rate / bargain', 'रेट / मोलभाव'), photos: tx('photos / video', 'फ़ोटो / वीडियो'), human: tx('wants to talk to you', 'आपसे बात करना चाहते हैं'), 'no-match': tx('no matching home', 'मेल खाता घर नहीं'), 'need-change': tx('changed his need', 'ज़रूरत बदली'), other: tx('a question I could not answer', 'ऐसा सवाल जिसका जवाब नहीं मिला') } as Record<string, string>)[l.bot.needsBroker] || l.bot.needsBroker}</span>}
+      </div>
+      <BotVisits l={l} onChange={onChange} />
       {open && (
         <div className="mt-1.5 space-y-1.5">
           <div className="max-h-56 space-y-1 overflow-y-auto rounded-md bg-[#efeae2] p-2" data-testid="sp-chat-msgs">
             {c.msgs.map((m: any, i: number) => (
-              <div key={i} className={`max-w-[88%] rounded-lg px-2 py-1 text-xs shadow-sm ${m.by === 'SYSTEM' ? 'mx-auto bg-yellow-100 text-center' : m.by === 'BROKER' ? 'ml-auto bg-[#d9fdd3]' : 'bg-white'}`}>
-                {m.kind === 'ASK' ? <>✔ <b>{tx('Asked him to confirm', 'पुष्टि माँगी')}</b>: {m.text}</> : m.kind === 'HOME' ? <>🏠 <b>{m.title}</b> · {m.price} · {m.place}</> : m.text}
+              <div key={i} className={`max-w-[88%] rounded-lg px-2 py-1 text-xs shadow-sm ${m.by === 'SYSTEM' ? 'mx-auto bg-yellow-100 text-center' : m.by === 'BROKER' ? 'ml-auto bg-[#d9fdd3]' : m.by === 'BOT' ? 'ml-auto border-l-4 border-indigo-400 bg-indigo-50' : 'bg-white'}`}>
+                {m.by === 'BOT' && <span className="block text-[10px] font-bold text-indigo-800">🤖 {tx('GENZ assistant (automatic)', 'GENZ सहायक (स्वचालित)')}</span>}
+                {m.kind === 'ASK' ? <>✔ <b>{tx('Asked him to confirm', 'पुष्टि माँगी')}</b>: {m.text}</> : m.kind === 'HOME' ? <>🏠 <b>{m.title}</b> · {m.price} · {m.place}</> : <span className="whitespace-pre-wrap">{m.by === 'BOT' ? tx(m.en || m.text, m.text) : m.text}</span>}
                 <span className="ml-1 text-slate-500">{hm(m.at)}</span>
               </div>
             ))}
@@ -513,6 +552,8 @@ export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: b
   const [tab, setTab] = useState<'leads' | 'partners' | 'desk'>(canManage ? 'leads' : 'desk');
   const [adding, setAdding] = useState(false); const [fresh, setFresh] = useState<{ partner: any; link: string } | null>(null);
   const [filter, setFilter] = useState<'all' | 'new' | 'open' | 'won' | 'due' | 'flag'>('all');
+  const [botOff, setBotOff] = useState<boolean | null>(null);
+  useEffect(() => { if (canManage) api.spBotState().then((r) => setBotOff(!!r.off)).catch(() => undefined); }, [canManage]);
   const load = () => { if (canManage) api.spList().then(setD).catch((e) => setErr(e.message)); };
   useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) load(); }, 20000); return () => clearInterval(t); /* eslint-disable-next-line */ }, []);
   const leads = useMemo(() => (d?.leads || []).filter((l: any) => filter === 'all' || (filter === 'new' && l.status === 'NEW') || (filter === 'open' && !['WON', 'LOST'].includes(l.status))
@@ -527,6 +568,13 @@ export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: b
         </div>
         {canManage && !adding && <button className={dark} onClick={() => { setAdding(true); setFresh(null); }} data-testid="sp-new"><Plus className="h-4 w-4" />{tx('New partner', 'नया पार्टनर')}</button>}
       </div>
+
+      {canManage && botOff !== null && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 text-xs text-indigo-950" data-testid="sp-bot-all">
+          <p className="min-w-0 flex-1"><b>🤖 {tx('GENZ assistant', 'GENZ सहायक')}</b> — {botOff ? tx('OFF: you start and answer every chat yourself.', 'बंद: हर चैट आप खुद शुरू करते और जवाब देते हैं।') : tx('ON: it greets each QR customer, confirms his need, shows only live matching homes, takes visit requests and asks you “can you do it?”. You can take over any chat.', 'चालू: यह हर QR ग्राहक से बात शुरू करता है, ज़रूरत पक्की कराता है, सिर्फ़ उपलब्ध मेल खाते घर दिखाता है, विज़िट रिक्वेस्ट लेकर आपसे पूछता है “हो सकता है?”। किसी भी चैट में आप खुद बात कर सकते हैं।')}</p>
+          <button className={light + ' !min-h-9 !text-xs'} onClick={() => api.spBotAll(!botOff).then((r) => setBotOff(!!r.off)).catch((e) => setErr(e.message))} data-testid="sp-bot-all-toggle">{botOff ? tx('Switch on', 'चालू करें') : tx('Switch off', 'बंद करें')}</button>
+        </div>
+      )}
 
       {canManage && d && d.partners.length === 0 && !adding && (
         <ol className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 sm:grid-cols-3">

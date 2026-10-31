@@ -130,6 +130,35 @@ const openVisits = (r: ClientRoom) => r.items.reduce((n, i) => n + i.visitReques
 
 /** v63 — the client's full mobile: the broker who owns the room always; his office staff by the same "customer numbers" switch the client list uses */
 const phoneAad = (r: ClientRoom) => `clientroom:${r.id}:phone`;
+/**
+ * v97 — the GENZ assistant opens a room for a QR-chat customer who tapped “my client room”. His number is already with the broker (the need was
+ * confirmed and a matching home shared), the tap is his consent, and the homes the assistant already showed him go in. He still signs in with his
+ * mobile + a code, like any client. `EXISTS` = this broker already has an open room for that number (the link of that one is not ours to show).
+ */
+export function openRoomAuto(brokerId: string, a: { name: string; phone: string; kind: 'BUYER' | 'RENTER'; note: string; propertyIds: string[] }):
+  { ok: true; room: ClientRoom; token: string } | { ok: false; code: 'PHONE' | 'FULL' | 'BLOCKED' | 'EXISTS'; roomId?: string; error: string } {
+  const phone = phone10(a.phone); if (!PHONE_RE.test(phone)) return { ok: false, code: 'PHONE', error: 'The mobile number is not valid' };
+  if (st().clientRooms.filter(x => x.brokerId === brokerId && x.status === 'ACTIVE').length >= L.activeRooms) return { ok: false, code: 'FULL', error: 'The broker has too many open rooms' };
+  if (partyBlock(phone, 'buyer')) return { ok: false, code: 'BLOCKED', error: 'Not allowed' };
+  const phoneKey = hmac('cr-phone', phone);
+  const dup = st().clientRooms.find(x => x.brokerId === brokerId && x.status === 'ACTIVE' && x.phoneKey === phoneKey && x.kind !== 'OWNER');
+  if (dup) return { ok: false, code: 'EXISTS', roomId: dup.id, error: 'A room is already open for this number' };
+  const token = newToken(); const now = nowIso();
+  const room: ClientRoom = {
+    id: rid('CRM'), brokerId, clientName: String(a.name || '').trim().slice(0, 80) || 'Customer', kind: a.kind, note: a.note.slice(0, 300) || undefined,
+    phoneKey, phoneLast4: phone.slice(-4), tokenHash: sha(token), sessVersion: 1, status: 'ACTIVE', createdAt: now, updatedAt: now, linkAt: now,
+    expiresAt: new Date(Date.now() + L.linkDays * 86400_000).toISOString(), items: [], messages: [], events: [],
+  };
+  sealPhone(room, phone);
+  ev(room, 'Room opened by the GENZ assistant — the customer asked for it in his QR chat');
+  for (const id of a.propertyIds.slice(0, 6)) {
+    const p = st().properties.find(x => x.id === id);
+    if (p && live(p) && !room.items.some(i => i.propertyId === p.id)) room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: now, note: undefined, visitRequests: [] });
+  }
+  if (room.items.length) ev(room, `Shared ${room.items.map(i => i.propertyId).join(', ')} (the homes already shown in his chat)`);
+  st().clientRooms.push(room);
+  return { ok: true, room, token };
+}
 const sealPhone = (r: ClientRoom, phone: string) => { try { if (vaultReady()) r.phoneSealed = seal(phone, phoneAad(r)); } catch { /* no vault key: the room works with the last 4 only */ } };
 const openPhone = (r: ClientRoom): string | undefined => { try { return r.phoneSealed ? unseal(r.phoneSealed, phoneAad(r)) : undefined; } catch { return undefined; } };
 /**

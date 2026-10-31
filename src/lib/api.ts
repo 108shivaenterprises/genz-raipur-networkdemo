@@ -624,6 +624,10 @@ export const api = {
   // v85 — the lead chat: the number stays hidden until the customer confirms his need and a matching home is shared
   spLeadChat: (id: string, text: string) => request<any>(`/api/shop-partners/leads/${id}/chat`, { method: 'POST', body: JSON.stringify({ text }) }),
   spLeadSeen: (id: string) => request<any>(`/api/shop-partners/leads/${id}/chat/seen`, { method: 'POST', body: '{}' }),
+  spBotState: () => request<any>('/api/shop-partners/sahayak'),
+  spBotAll: (off: boolean) => request<any>('/api/shop-partners/sahayak', { method: 'POST', body: JSON.stringify({ off }) }),
+  spBotLead: (id: string, off: boolean) => request<any>(`/api/shop-partners/leads/${id}/bot`, { method: 'POST', body: JSON.stringify({ off }) }),
+  spVisitReply: (id: string, vid: string, action: 'OK' | 'COUNTER' | 'NO', text?: string) => request<any>(`/api/shop-partners/leads/${id}/visit/${vid}`, { method: 'POST', body: JSON.stringify({ action, text }) }),
   spAskNeed: (id: string) => request<any>(`/api/shop-partners/leads/${id}/ask-need`, { method: 'POST', body: '{}' }),
   spOffer: (id: string, homeId: string) => request<any>(`/api/shop-partners/leads/${id}/offer`, { method: 'POST', body: JSON.stringify({ homeId }) }),
   spLeadStatus: (id: string, status: string, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) }),
