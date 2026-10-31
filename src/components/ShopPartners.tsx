@@ -366,7 +366,7 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
           <button className={dark + ' !min-h-9 !text-xs'} disabled={busy || !(Number(val) > 0)} data-testid="sp-need-save" onClick={() => run(async () => {
             const rent = l.kind === 'RENT_IN'; const max = Math.round(Number(val) * (rent ? 1000 : 100000));
             const T: Record<string, string> = { Flat: 'Residential Flat', House: 'Independent House', Plot: 'Residential Plot', Shop: 'Commercial Shop', Office: 'Commercial Office', Warehouse: 'Warehouse / Godown' };
-            await api.createRequirement({ customerName: l.name, customerPhone: l.phone, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city: l.city || 'Raipur', preferredLocalities: [l.locality], preferredTags: [], propertyType: T[l.propertyType || ''] || 'Residential Flat', transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)' });
+            await api.createRequirement({ customerName: l.name, customerPhone: l.phone, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city: l.city || '', preferredLocalities: [l.locality], preferredTags: [], propertyType: T[l.propertyType || ''] || 'Residential Flat', transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)' });
             window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'matches' }));
           })}>{tx('Add & find matches', 'जोड़ें और मैच ढूँढें')}</button>
         </div>

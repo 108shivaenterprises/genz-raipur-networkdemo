@@ -44,7 +44,7 @@ export const VoiceNote: React.FC<{ onText: (spoken: string) => void }> = ({ onTe
         {on && <span className="text-[11px] font-medium text-red-700" aria-live="polite">● {tx('Listening…', 'सुन रहा है…')} {live}</span>}
       </div>
       {msg && <p className="mt-1 text-[11px] text-red-700" role="alert">{msg}</p>}
-      <p className="mt-1 text-[10px] text-slate-500">{tx('Say: type, area, budget — e.g. “3 BHK flat chahiye Shankar Nagar Raipur, budget 60 lakh”. Your browser’s speech service hears the audio; GENZ only receives the text you keep. Do not say the client’s mobile number aloud — type it in the next step.', 'बोलें: प्रकार, इलाका, बजट — जैसे “3 BHK flat chahiye Shankar Nagar Raipur, budget 60 lakh”। आवाज़ आपके ब्राउज़र की स्पीच सर्विस सुनती है; GENZ को सिर्फ़ वही टेक्स्ट मिलता है जो आप रखते हैं। क्लाइंट का मोबाइल नंबर बोलकर न लिखवाएँ — अगले स्टेप में टाइप करें।')}</p>
+      <p className="mt-1 text-[10px] text-slate-500">{tx('Say: type, area, budget — e.g. “3 BHK flat chahiye, my area and city, budget 60 lakh”. Your browser’s speech service hears the audio; GENZ only receives the text you keep. Do not say the client’s mobile number aloud — type it in the next step.', 'बोलें: प्रकार, इलाका, बजट — जैसे “3 BHK flat chahiye, मेरा इलाका और शहर, budget 60 lakh”। आवाज़ आपके ब्राउज़र की स्पीच सर्विस सुनती है; GENZ को सिर्फ़ वही टेक्स्ट मिलता है जो आप रखते हैं। क्लाइंट का मोबाइल नंबर बोलकर न लिखवाएँ — अगले स्टेप में टाइप करें।')}</p>
     </div>
   );
 };

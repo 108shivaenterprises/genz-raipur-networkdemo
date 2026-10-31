@@ -2079,7 +2079,7 @@ export const AddConstructionLeadModal: React.FC<{
               type="text"
               required
               value={approximateLocation}
-              placeholder={tx('Area / city (e.g. Whitefield, Bengaluru)', 'इलाका / शहर (जैसे: टाटीबंध, रायपुर)')}
+              placeholder={tx('Area / city (e.g. Whitefield, Bengaluru)', 'इलाका / शहर (जैसे: व्हाइटफ़ील्ड, बेंगलुरु)')}
               onChange={(e) => setApproximateLocation(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900"
             />

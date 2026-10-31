@@ -123,7 +123,7 @@ export const LandRecordsView: React.FC<{ currentUser: UserProfile }> = ({ curren
           );
         })}
       </div>
-      <p className="text-[11px] text-slate-400">{tx('Chhattisgarh: bhuiyan.cg.nic.in; other states: your state land-record portal.','छत्तीसगढ़: bhuiyan.cg.nic.in; अन्य राज्य: अपने राज्य का भू-अभिलेख पोर्टल।')} <ExternalLink className="inline h-3 w-3" /> {tx('Copy the portal data and enter it here yourself.','पोर्टल का डेटा खुद कॉपी करके यहाँ भरें।')}</p>
+      <p className="text-[11px] text-slate-400">{tx('Look it up on your own state’s land-record portal — e.g. Bhulekh (UP, MP, Odisha), Apna Khata (Rajasthan), Bhoomi (Karnataka), 7/12 Mahabhulekh (Maharashtra), Jamabandi (Punjab, Haryana), Bhuiyan (Chhattisgarh).','अपने राज्य के भू-अभिलेख पोर्टल पर देखें — जैसे भूलेख (UP, MP, ओडिशा), अपना खाता (राजस्थान), भूमि (कर्नाटक), 7/12 महाभूलेख (महाराष्ट्र), जमाबंदी (पंजाब, हरियाणा), भुइयाँ (छत्तीसगढ़)।')} <ExternalLink className="inline h-3 w-3" /> {tx('Copy the portal data and enter it here yourself.','पोर्टल का डेटा खुद कॉपी करके यहाँ भरें।')}</p>
     </div>
   );
 };

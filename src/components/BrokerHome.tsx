@@ -90,7 +90,8 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
   ];
   const left = steps.filter(s => !s.done).length;
   // v80 — the to-do counters live ONLY in the notification bell now (same list: src/shared/homeTodoRules.ts → server/homebell.ts). The Home no longer repeats them below.
-  const reportUrl = `${window.location.origin}/report/${encodeURIComponent(String(h.city || 'Raipur'))}${h.refCode ? `?ref=${encodeURIComponent(h.refCode)}` : ''}`;
+  const cityName = String(h.city || '').trim(); // v98: the broker's own city — never a made-up default
+  const reportUrl = `${window.location.origin}/report/${encodeURIComponent(cityName || 'India')}${h.refCode ? `?ref=${encodeURIComponent(h.refCode)}` : ''}`;
   // v79 — with his public page ON, the WhatsApp link is HIS page (his homes + an enquiry form; the city report is a link inside it); with it OFF the city report, which now tells who shared it
   const pageUrl = h.page?.on && h.refCode ? `${window.location.origin}/c/${encodeURIComponent(h.refCode)}` : '';
   const confirm = async (x: any) => { setBusy(x.refId + x.toId); try { await api.reputationConfirm(x.refId, x.toId); load(); } finally { setBusy(''); } };
@@ -179,7 +180,7 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
           <CalendarDays className="h-5 w-5 text-indigo-500" />
           <span className="text-xs text-slate-700">{h.chapter ? (h.chapter.nextMeet ? tx(`${h.chapter.name}: ${h.chapter.nextMeet.title}, ${new Date(h.chapter.nextMeet.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`, `${h.chapter.name}: ${h.chapter.nextMeet.title}, ${new Date(h.chapter.nextMeet.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`) : tx(`${h.chapter.name} · Captain ${h.chapter.captain || '—'}`, `${h.chapter.name} · कैप्टन ${h.chapter.captain || '—'}`)) : tx('Join your area’s chapter and its monthly meet', 'अपने इलाक़े के चैप्टर और मासिक मीट से जुड़ें')}</span>
         </button>
-        <a href={`https://wa.me/?text=${encodeURIComponent(pageUrl ? `${h.city || 'Raipur'} ke verified ghar dekhein aur seedhe poochhein — ${name} (GENZ verified broker): ${pageUrl}` : `${h.city || 'Raipur'} property report — locality rates & buyer demand (GENZ): ${reportUrl}`)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left" data-testid="home-report" data-target={pageUrl ? 'page' : 'report'}>
+        <a href={`https://wa.me/?text=${encodeURIComponent(pageUrl ? `${cityName ? cityName + ' ke' : 'Mere'} verified ghar dekhein aur seedhe poochhein — ${name} (GENZ verified broker): ${pageUrl}` : `${cityName || 'City'} property report — locality rates & buyer demand (GENZ): ${reportUrl}`)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left" data-testid="home-report" data-target={pageUrl ? 'page' : 'report'}>
           <Share2 className="h-5 w-5 text-emerald-600" /><span className="text-xs text-slate-700">{pageUrl ? tx('Share your public page on WhatsApp — customers see your homes and can ask', 'अपना पब्लिक पेज WhatsApp पर भेजें — ग्राहक आपके घर देखेंगे और पूछ सकेंगे') : tx(`Share the ${h.city || 'city'} property report on WhatsApp`, `${h.city || 'शहर'} की प्रॉपर्टी रिपोर्ट WhatsApp पर भेजें`)}</span>
         </a>
         </div>

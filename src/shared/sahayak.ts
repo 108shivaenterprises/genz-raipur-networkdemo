@@ -3,7 +3,7 @@
  * No AI service and no cost: plain rules for Hindi / Hinglish / English. These are the PURE parts (what did he mean, what time did he say,
  * what changed in his need) so they can be tested alone. The bot never invents a fact: prices, availability and homes come from the app's data.
  */
-import { areasOf, placeKey } from './places.js';
+import { areasOf, placeKey, canonPlace, isCityLevel } from './places.js';
 
 export type Intent = 'GREET' | 'VISIT' | 'PHOTOS' | 'PRICE' | 'AVAIL' | 'MORE' | 'HUMAN' | 'THANKS' | 'NEED' | 'OTHER';
 
@@ -44,7 +44,8 @@ const TYPE_RULES: [RegExp, string][] = [
   [/villa|विला/, 'Residential Villa'], [/penthouse/, 'Penthouse'], [/builder\s*floor|बिल्डर\s*फ्लोर/, 'Builder Floor'], [/plot|zameen|jamin|जमीन|ज़मीन|प्लॉट/, 'Residential Plot'],
   [/independent|house|makaan|makan|मकान|कोठी|kothi/, 'Independent House'], [/flat|apartment|अपार्टमेंट|फ्लैट|\d\s*bhk|बीएचके/, 'Residential Flat'],
 ];
-export function readNeedChange(text: string, city = 'Raipur'): NeedChange {
+/** `city` = the shop's / broker's city (any city of India); '' = unknown, then the area is read from the sentence itself */
+export function readNeedChange(text: string, city = ''): NeedChange {
   const raw = String(text || ''); const t = flat(raw); const out: NeedChange = {};
   if (/(kiraya|किराया|किराये|kiraye|rent\b|rental|lease)/.test(t)) out.kind = 'RENT_IN';
   else if (/(khareed|kharid|खरीद|खरीदना|buy\b|purchase|sale\b|bikri|बिक्री|lena\s*hai|लेना\s*है)/.test(t)) out.kind = 'BUY';
@@ -59,12 +60,40 @@ export function readNeedChange(text: string, city = 'Raipur'): NeedChange {
   const loc = findArea(raw, city); if (loc) out.locality = loc;
   return out;
 }
-/** a known area of the city written in the text ("Shankar Nagar mein 2bhk") — whole words only, so "nagar" alone never matches */
-export function findArea(text: string, city = 'Raipur'): string | undefined {
+/** words that are never part of a place name — type, money, filler (Hindi / Hinglish / English) */
+const NOT_PLACE = new Set(('budget rent rental kiraya kiraye sale buy purchase flat flats house houses plot plots shop shops office offices bhk bedroom villa penthouse apartment apartments godown warehouse showroom factory land farm farmhouse '
+  + 'makaan makan dukaan dukan kothi zameen jamin lakh lakhs lac lacs cr crore crores thousand under within below above upto max min maximum minimum around about nearby near and aur or ya for with the a an my me mein mai main to of from want need '
+  + 'chahiye chahie chaiye hai hain ho hu hoon ka ki ke ko se tak per month monthly mahina mahine price rate sasta accha achha good best safe quiet new old purana city town area location locality place ghar kharidna lena dena dekhna dekhni '
+  + 'please plz pls kindly looking searching interested ready furnished unfurnished semi parking floor ground first second third lift gated society sq ft sqft i we you he she it is are was be do does can could would should will '
+  + 'mujhe humein hamein mera meri mere hume koi koi bhi bahut thoda zyada kam abhi aaj kal ya wala wali wale ek do teen char paanch').split(' '));
+const GENERIC_PLACE_WORD = new Set('nagar ngr colony road marg vihar sector phase ward para chowk enclave extension layout society town gram gaon naya nava purana main east west north south block mohalla basti nagara कॉलोनी नगर रोड सेक्टर'.split(' '));
+/** a place named after "in / at / near" or before "mein / ke paas / में" — for cities where we hold no list, and for areas no list holds */
+function areaFromPhrase(text: string): string | undefined {
+  const t = String(text || '').normalize('NFKC').replace(/[​-‍﻿]/g, ' ').replace(/\s+/g, ' ').trim();
+  const take = (words: string[]): string[] => { const out: string[] = []; for (const w of words) { const k = w.toLowerCase().replace(/[^a-z\u0900-\u097f]/g, ''); if (!k || NOT_PLACE.has(k) || /\d/.test(w)) break; out.push(w.replace(/[^\p{L}\p{M}\p{N}.'-]/gu, '')); if (out.length >= 3) break; } return out.filter(Boolean); };
+  let words: string[] = [];
+  // 1. English: "… in Whitefield under 50 lakh"
+  const en = /(?:^|\s)(?:in|at|near|around|nearby|close to|towards)\s+([^,;.!?\n]{3,60})/i.exec(t);
+  if (en) words = take(en[1].split(' '));
+  // 2. Hinglish / Hindi: "Whitefield mein 2bhk", "वाकड़ के पास", "Aundh me"
+  if (!words.length) {
+    const hi = /([^,;.!?\n]{3,60}?)\s+(?:mein|me|mai|main|में|मे|ke\s*paas|ke\s*pass|ke\s*aaspas|ke\s*aas\s*paas|के\s*पास|के\s*आसपास)(?=\s|$|[,.;!?])/i.exec(t);
+    if (hi) words = take(hi[1].split(' ').reverse()).reverse();
+  }
+  const phrase = words.join(' ').trim();
+  if (phrase.length < 4 || phrase.length > 40) return undefined;
+  // "nagar mein ghar", "main road", "sector" — a bare generic suffix is not a place
+  if (words.every(w => GENERIC_PLACE_WORD.has(w.toLowerCase().replace(/[^a-z\u0900-\u097f]/g, '')))) return undefined;
+  return phrase;
+}
+/** an area written in the text: first the known areas of the city (any city we hold a list for), then a place named in the sentence ("Whitefield mein", "in Baner"). Whole words only, so "nagar" alone never matches. */
+export function findArea(text: string, city = ''): string | undefined {
   const key = ' ' + placeKey(text) + ' '; if (key.trim().length < 4) return undefined;
   const known = areasOf(city).map(a => a.replace(/\s*\(.*\)\s*/g, '').trim()).filter(a => a.length >= 5).sort((a, b) => b.length - a.length);
   for (const a of known) { const k = placeKey(a); if (k.length >= 5 && key.includes(' ' + k + ' ')) return a; }
-  return undefined;
+  const guess = areaFromPhrase(text); if (!guess) return undefined;
+  if (isCityLevel(city, guess)) return undefined;                 // "in Raipur" / "in Pune" is the city, not an area
+  return canonPlace(city, guess) || undefined;
 }
 
 // ───────────────────────── when he wants to come ─────────────────────────

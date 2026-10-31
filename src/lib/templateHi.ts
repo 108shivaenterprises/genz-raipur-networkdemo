@@ -49,7 +49,7 @@ const HI: Record<string, string> = {
   'Rent Agreement, E-stamp & Notary': 'किराया अनुबंध, ई-स्टाम्प और नोटरी',
   'Put the agreed rent, deposit, lock-in, yearly increase and notice in the rent agreement on e-stamp paper; both sign before a notary. A lease of a year or more must be registered — that is why most agreements are for 11 months.': 'तय किराया, डिपॉज़िट, लॉक-इन, सालाना बढ़ोतरी और नोटिस ई-स्टाम्प पेपर पर किराया अनुबंध में लिखें; दोनों नोटरी के सामने साइन करें। एक साल या उससे लंबी लीज़ रजिस्टर करानी पड़ती है — इसीलिए ज़्यादातर अनुबंध 11 महीने के होते हैं।',
   'Tenant Police Verification': 'किरायेदार का पुलिस वेरिफ़िकेशन',
-  'Submit the tenant verification form with the tenant’s photo and ID at the local police station or on the CG Police Citizen Portal; keep the acknowledgement number.': 'किरायेदार की फ़ोटो और ID के साथ वेरिफ़िकेशन फ़ॉर्म नज़दीकी थाने में या CG Police Citizen Portal पर जमा करें; पावती नंबर रखें।',
+  'Submit the tenant verification form with the tenant’s photo and ID at the local police station or on your state police’s citizen portal; keep the acknowledgement number.': 'किरायेदार की फ़ोटो और ID के साथ वेरिफ़िकेशन फ़ॉर्म नज़दीकी थाने में या अपने राज्य पुलिस के सिटीज़न पोर्टल पर जमा करें; पावती नंबर रखें।',
   'No registry for an 11-month rent agreement.': '11 महीने के किराया अनुबंध की रजिस्ट्री नहीं होती।',
   'Deposit, Keys & Meter Readings': 'डिपॉज़िट, चाबी और मीटर रीडिंग',
   'Confirm the deposit and the first rent reached the owner directly (GENZ never holds money), hand over the keys, and note the meter readings and fittings.': 'पक्का करें कि डिपॉज़िट और पहला किराया सीधे मालिक को मिला (GENZ पैसे कभी नहीं रखता), चाबी सौंपें, और मीटर रीडिंग व फ़िटिंग लिख लें।',

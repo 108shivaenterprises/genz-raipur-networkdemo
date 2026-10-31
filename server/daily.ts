@@ -412,7 +412,7 @@ export function createDailyRouter() {
   r.get('/map', needs('daily:use'), (req, res) => {
     const u = me(); const st = db.getState(); const now = Date.now();
     const listings = st.properties.filter(p => canBrowseProperty(u, p) && days(p.confirmedAt, now) <= FRESH_DAYS).map(p => {
-      const pt = approxPoint(p.city, p.locality, p.latitude, p.longitude);
+      const pt = approxPoint(p.city, p.locality, p.latitude, p.longitude, p.state);
       return { kind: 'LISTING', id: p.id, title: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType, transactionType: p.transactionType, price: p.askingPrice, mine: p.listingBrokerId === u.id, lat: pt.lat, lng: pt.lng };
     });
     // requirements are shown without any customer detail: only what the need is and where

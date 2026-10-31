@@ -785,7 +785,7 @@ export const BuilderLaunchpadView: React.FC<BuilderLaunchpadViewProps> = ({
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="text-xs font-semibold text-slate-700">{tx('CGRERA Project Registration #:', 'CGRERA प्रोजेक्ट रजिस्ट्रेशन #:')}</label>
+                  <label className="text-xs font-semibold text-slate-700">{tx('RERA Project Registration # (your state’s RERA):', 'RERA प्रोजेक्ट रजिस्ट्रेशन # (आपके राज्य का RERA):')}</label>
                   <input
                     type="text"
                     required

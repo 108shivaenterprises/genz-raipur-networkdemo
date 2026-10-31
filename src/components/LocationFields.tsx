@@ -121,7 +121,7 @@ export const LocationFields: React.FC<Props> = ({ value, onChange, showLocality 
             value={value.locality}
             onChange={(e) => set({ locality: e.target.value })}
             onBlur={() => { if (value.locality) { const c = canonPlace(value.city, value.locality); if (c && c !== value.locality) set({ locality: c }); } }}
-            placeholder={hi ? 'जैसे शंकर नगर, अंधेरी वेस्ट' : 'e.g. Shankar Nagar, Andheri West'}
+            placeholder={(() => { const ex = areasOf(value.city).slice(0, 2).map(a => a.replace(/\s*\(.*\)\s*/g, '')).join(', '); return ex ? (hi ? `जैसे ${ex}` : `e.g. ${ex}`) : (hi ? 'अपना इलाका / कॉलोनी लिखें' : 'Type your area / colony'); })()}
             className={input}
             data-testid="loc-locality"
           />

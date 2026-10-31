@@ -49,13 +49,13 @@ export const PAYER = [
   { id: 'TENANT', en: 'Tenant', hi: 'किरायेदार' },
 ] as const;
 
-/** the tenant's police verification — what to carry (Chhattisgarh: the local police station, or the CG Police Citizen Portal) */
+/** the tenant's police verification — what to carry (any state: the local police station, or your state police’s citizen portal) */
 export const POLICE_CHECKLIST = [
   { en: 'Tenant’s passport-size photo', hi: 'किरायेदार की पासपोर्ट साइज़ फ़ोटो' },
   { en: 'Tenant’s ID copy: Aadhaar / voter card / driving licence / PAN / passport', hi: 'किरायेदार की ID कॉपी: आधार / वोटर कार्ड / ड्राइविंग लाइसेंस / पैन / पासपोर्ट' },
   { en: 'Tenant’s permanent (home-town) address and one family contact', hi: 'किरायेदार का स्थायी (घर का) पता और परिवार का एक संपर्क' },
   { en: 'Owner’s name and address, and the rented address', hi: 'मालिक का नाम और पता, और किराये के घर का पता' },
-  { en: 'Submit at the local police station (thana) or online on the CG Police Citizen Portal — keep the acknowledgement number', hi: 'नज़दीकी थाने में या CG Police Citizen Portal पर ऑनलाइन जमा करें — पावती (acknowledgement) नंबर रखें' },
+  { en: 'Submit at the local police station (thana) or online on your state police’s citizen portal — keep the acknowledgement number', hi: 'नज़दीकी थाने में या अपने राज्य पुलिस के सिटीज़न पोर्टल पर ऑनलाइन जमा करें — पावती (acknowledgement) नंबर रखें' },
 ] as const;
 export const NEVER_STORE = {
   en: 'Do not upload the tenant’s Aadhaar or any ID here — it goes to the police, not to GENZ. GENZ keeps only the step, the date, the police station and the acknowledgement number.',
@@ -144,8 +144,8 @@ export function waText(kind: WaKind, t: WaInput, hi: boolean, broker: string): s
     ? `नमस्ते ${first(t.tenantName)} जी, ${t.place} का आपका किराया अनुबंध ${end} को ख़त्म हो रहा है। आगे रहना हो तो बताइए — नया किराया लगभग ${nr} होगा। ख़ाली करना हो तो ${notice} दिन पहले बताना ज़रूरी है।${sign}`
     : `Namaste ${first(t.tenantName)} ji, your rent agreement for ${t.place} ends on ${end}. If you want to stay on, the new rent will be about ${nr}. If you plan to move out, please tell us ${notice} days before.${sign}`;
   if (kind === 'POLICE') return hi
-    ? `नमस्ते ${first(t.ownerName)} जी, ${t.place} के किरायेदार ${first(t.tenantName)} जी का पुलिस वेरिफ़िकेशन ज़रूरी है। किरायेदार की फ़ोटो और ID कॉपी के साथ नज़दीकी थाने में या CG Police Citizen Portal पर फ़ॉर्म जमा करें, और पावती नंबर मुझे भेज दें।${sign}`
-    : `Namaste ${first(t.ownerName)} ji, the police verification of ${first(t.tenantName)} ji, the tenant at ${t.place}, is required. Please submit the form with the tenant's photo and ID copy at the local police station or on the CG Police Citizen Portal, and send me the acknowledgement number.${sign}`;
+    ? `नमस्ते ${first(t.ownerName)} जी, ${t.place} के किरायेदार ${first(t.tenantName)} जी का पुलिस वेरिफ़िकेशन ज़रूरी है। किरायेदार की फ़ोटो और ID कॉपी के साथ नज़दीकी थाने में या अपने राज्य पुलिस के सिटीज़न पोर्टल पर फ़ॉर्म जमा करें, और पावती नंबर मुझे भेज दें।${sign}`
+    : `Namaste ${first(t.ownerName)} ji, the police verification of ${first(t.tenantName)} ji, the tenant at ${t.place}, is required. Please submit the form with the tenant's photo and ID copy at the local police station or on your state police’s citizen portal, and send me the acknowledgement number.${sign}`;
   const lines = hi ? [
     `${t.place} — तय शर्तें`,
     `किराया: ${rupees(t.rent)} / महीना${t.maintenance ? ` + मेंटेनेंस ${rupees(t.maintenance)}` : ''}`,

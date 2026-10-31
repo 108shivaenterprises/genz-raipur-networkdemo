@@ -33,6 +33,8 @@ export interface BotDeps {
   isLive(h?: Property): boolean;
   /** put what he wrote into the lead (budget / type / area / BHK / buy-or-rent) → the words of what changed */
   applyNeed(l: PartnerLead, ch: NeedChange): string[];
+  /** v98 — the city this lead is in (the shop's, else the broker's); '' when unknown. Any city of India. */
+  cityOf(l: PartnerLead): string;
 }
 
 const rnd = () => crypto.randomBytes(4).toString('hex');
@@ -104,15 +106,15 @@ export function makeSahayak(d: BotDeps) {
   /** he tapped ✏️ and wrote a change: apply what can be read, ask him to confirm again */
   function onEdit(l: PartnerLead, text: string) {
     if (off(l) || !l.chat) return;
-    const ch = readNeedChange(text); const changed = d.applyNeed(l, ch);
+    const ch = readNeedChange(text, d.cityOf(l)); const changed = d.applyNeed(l, ch);
     if (changed.length) {
       l.chat.reqConfirmedAt = undefined; l.chat.reqAskedAt = nowIso();
       say(l, `समझ गया — मैंने आपकी ज़रूरत बदल दी (${changed.join(', ')}). नीचे देखकर ✅ दबाएँ।`, `Got it — I updated your need (${changed.join(', ')}). Check below and tap ✅.`);
       d.addMsg(l, { by: 'BOT', kind: 'ASK', text: d.needLine(l) });
     } else {
       l.chat.reqAskedAt = undefined;
-      say(l, 'आपका बदलाव ब्रोकर को भेज दिया है — वे ज़रूरत सही करके आपसे पूछेंगे। (मैं बजट, इलाका, BHK और घर का प्रकार खुद समझ लेता हूँ — जैसे “2BHK, शंकर नगर, 15000 किराया”.)',
-        'I have sent your change to the broker — he will fix your need and ask you again. (I can read budget, area, BHK and type myself — for example “2BHK, Shankar Nagar, 15000 rent”.)', [M.human]);
+      say(l, 'आपका बदलाव ब्रोकर को भेज दिया है — वे ज़रूरत सही करके आपसे पूछेंगे। (मैं बजट, इलाका, BHK और घर का प्रकार खुद समझ लेता हूँ — जैसे “2BHK, ' + (l.locality || 'आपका इलाका') + ', 15000 किराया”.)',
+        'I have sent your change to the broker — he will fix your need and ask you again. (I can read budget, area, BHK and type myself — for example “2BHK, ' + (l.locality || 'your area') + ', 15000 rent”.)', [M.human]);
       botOf(l).needsBroker = 'need-change';
     }
   }
@@ -226,7 +228,7 @@ export function makeSahayak(d: BotDeps) {
         return handoff(l, 'price', [`रेट और मोलभाव पर ब्रोकर आपसे खुद बात करेंगे — मैंने उन्हें बता दिया है।${list}`, `The broker will talk to you himself about the rate and any negotiation — I have told him.${listEn}`]);
       }
       case 'NEED': {
-        const ch = readNeedChange(text); const changed = d.applyNeed(l, ch);
+        const ch = readNeedChange(text, d.cityOf(l)); const changed = d.applyNeed(l, ch);
         if (!changed.length) return fallback(l);
         if (!l.chat.revealedAt) {
           l.chat.reqConfirmedAt = undefined; l.chat.reqAskedAt = nowIso();

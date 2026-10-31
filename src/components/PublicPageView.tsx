@@ -239,10 +239,10 @@ export const PublicPageView: React.FC = () => {
       {sec === 'about' && (
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" data-testid="pp-about">
           <label className="block text-sm font-semibold text-slate-800">{tx('One line about you', 'आपके बारे में एक लाइन')}
-            <input className={inp + ' mt-1'} maxLength={d.limits.headline} value={form.headline} onChange={e => setForm({ ...form, headline: e.target.value })} placeholder={tx('e.g. Flats and plots in East Raipur — clear papers, fair price', 'जैसे: पूर्वी रायपुर में फ़्लैट और प्लॉट — साफ़ कागज़, सही दाम')} data-testid="pp-headline" />
+            <input className={inp + ' mt-1'} maxLength={d.limits.headline} value={form.headline} onChange={e => setForm({ ...form, headline: e.target.value })} placeholder={tx('e.g. Verified flats and plots in my city — clear papers, fair price', 'जैसे: मेरे शहर में सत्यापित फ़्लैट और प्लॉट — साफ़ कागज़, सही दाम')} data-testid="pp-headline" />
           </label>
           <label className="block text-sm font-semibold text-slate-800">{tx(`Areas you work in (up to ${d.limits.areas}, separated by commas)`, `आपके इलाक़े (ज़्यादा से ज़्यादा ${d.limits.areas}, कॉमा से अलग)`)}
-            <input className={inp + ' mt-1'} value={form.areas} onChange={e => setForm({ ...form, areas: e.target.value })} placeholder="Shankar Nagar, Telibandha" data-testid="pp-areas" />
+            <input className={inp + ' mt-1'} value={form.areas} onChange={e => setForm({ ...form, areas: e.target.value })} placeholder={tx('The areas you work in, separated by commas', 'जिन इलाकों में आप काम करते हैं, कॉमा से अलग')} data-testid="pp-areas" />
           </label>
           <Toggle on={form.showPhone} onClick={() => setForm({ ...form, showPhone: !form.showPhone })} testId="pp-phone" label={tx('Show my Call / WhatsApp buttons', 'मेरे कॉल / WhatsApp बटन दिखाएँ')} sub={tx('Off: customers reach you through the enquiry form only (it is recorded in GENZ).', 'बंद: ग्राहक सिर्फ़ पूछताछ फ़ॉर्म से पहुँचेंगे (यह GENZ में दर्ज होता है)।')} />
           <button type="button" className={dark} disabled={busy === 'about'} onClick={() => run('about', () => api.ppSettings({ headline: form.headline, areas: form.areas, showPhone: form.showPhone }), tx('Saved', 'सेव हो गया'))} data-testid="pp-save">{busy === 'about' && <Loader2 className="h-4 w-4 animate-spin" />}{tx('Save', 'सेव करें')}</button>

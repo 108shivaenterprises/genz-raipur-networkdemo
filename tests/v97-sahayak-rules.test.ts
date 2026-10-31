@@ -23,7 +23,7 @@ describe('readIntent — Hindi / Hinglish / English', () => {
 
 describe('readNeedChange — budget, type, BHK, buy / rent, area', () => {
   it('rent + BHK + area + plain-number budget', () => {
-    expect(readNeedChange('2bhk rent 15000 shankar nagar')).toEqual({ kind: 'RENT_IN', bhk: 2, budget: '15000', ptype: 'Residential Flat', locality: 'Shankar Nagar' });
+    expect(readNeedChange('2bhk rent 15000 shankar nagar', 'Raipur')).toEqual({ kind: 'RENT_IN', bhk: 2, budget: '15000', ptype: 'Residential Flat', locality: 'Shankar Nagar' });
   });
   it('buy + lakh budget, no area written', () => {
     const c = readNeedChange('budget 50 lakh me 3 bhk flat kharidna hai'); expect(c.kind).toBe('BUY'); expect(c.budget).toBe('50 lakh'); expect(c.bhk).toBe(3); expect(c.locality).toBeUndefined();
@@ -33,7 +33,7 @@ describe('readNeedChange — budget, type, BHK, buy / rent, area', () => {
     expect(readNeedChange('15k kiraya').budget).toBe('15k'); expect(readNeedChange('मुझे 12,000 तक किराये पर चाहिए')).toMatchObject({ kind: 'RENT_IN', budget: '12000' });
   });
   it('the BHK count is not mistaken for the budget', () => expect(readNeedChange('3 bhk flat chahiye').budget).toBeUndefined());
-  it('a generic word alone is not an area', () => { expect(findArea('nagar mein ghar')).toBeUndefined(); expect(findArea('Tatibandh me shop')).toBe('Tatibandh'); });
+  it('a generic word alone is not an area', () => { expect(findArea('nagar mein ghar', 'Raipur')).toBeUndefined(); expect(findArea('nagar mein ghar')).toBeUndefined(); expect(findArea('main road mein flat', 'Pune')).toBeUndefined(); expect(findArea('Tatibandh me shop', 'Raipur')).toBe('Tatibandh'); });
 });
 
 describe('readWhen — the time he wants to come (IST)', () => {

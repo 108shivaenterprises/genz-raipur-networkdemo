@@ -22,7 +22,7 @@ export const RENT_TASK_OVERRIDES: Record<string, { title?: string; description?:
   T7_SURVEY_BOUNDARY_VERIF: { na: 'No survey is needed for a rental.' },
   T8_LOAN_BANK_COORD: { na: 'No loan in a rental.' },
   T9_AGREEMENT_DRAFTING: { title: 'Rent Agreement, E-stamp & Notary', description: 'Put the agreed rent, deposit, lock-in, yearly increase and notice in the rent agreement on e-stamp paper; both sign before a notary. A lease of a year or more must be registered — that is why most agreements are for 11 months.' },
-  T10_STAMP_DUTY_REGISTRATION: { title: 'Tenant Police Verification', description: 'Submit the tenant verification form with the tenant’s photo and ID at the local police station or on the CG Police Citizen Portal; keep the acknowledgement number.' },
+  T10_STAMP_DUTY_REGISTRATION: { title: 'Tenant Police Verification', description: 'Submit the tenant verification form with the tenant’s photo and ID at the local police station or on your state police’s citizen portal; keep the acknowledgement number.' },
   T11_REGISTRY_APPOINTMENT: { na: 'No registry for an 11-month rent agreement.' },
   T12_PAYMENT_POSSESSION_HANDOVER: { title: 'Deposit, Keys & Meter Readings', description: 'Confirm the deposit and the first rent reached the owner directly (GENZ never holds money), hand over the keys, and note the meter readings and fittings.' },
   T13_CONSTRUCTION_CONTRACTOR: { na: 'No construction work in a rental.' },

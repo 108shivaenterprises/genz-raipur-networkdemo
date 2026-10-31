@@ -340,7 +340,7 @@ export const SecureDocumentUploadModal: React.FC<SecureDocumentUploadModalProps>
                   value={documentNumber}
                   onChange={(e) => setDocumentNumber(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900 font-mono"
-                  placeholder={tx('e.g. CGRERA-P-492001 or Deed # 4921/2014', 'जैसे: CGRERA-P-492001 या डीड # 4921/2014')}
+                  placeholder={tx('e.g. your RERA number or Deed # 4921/2014', 'जैसे: आपका RERA नंबर या डीड # 4921/2014')}
                 />
               </div>
             </div>
