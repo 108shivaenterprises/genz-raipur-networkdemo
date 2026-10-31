@@ -727,8 +727,27 @@ button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;f
 .hms{display:grid;gap:10px;margin-top:8px}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
 .hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
 .net{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;margin-top:6px}.big2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.big2 .btn{text-align:center;padding:14px 8px}.pick{background:#e9f7ee;border:1px solid #86efac}
-.more>summary{cursor:pointer;font-size:13px;font-weight:600;color:#14213d;padding:6px 0;list-style:none}.more>summary::-webkit-details-marker{display:none}.more>summary::before{content:'▸ ';color:#6b7280}.more[open]>summary::before{content:'▾ '}.more[open]>summary{margin-bottom:6px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}
+.lang{display:flex;gap:6px;justify-content:flex-end;margin:0 0 8px}.lang a{font-size:12px;padding:4px 10px;border-radius:999px;background:#e5e7eb;color:#14213d;text-decoration:none}.lang a.on{background:#14213d;color:#fff}.say{background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:12px}.say b{font-size:17px;line-height:1.5;display:block;margin-bottom:8px}.more>summary{cursor:pointer;font-size:13px;font-weight:600;color:#14213d;padding:6px 0;list-style:none}.more>summary::-webkit-details-marker{display:none}.more>summary::before{content:'▸ ';color:#6b7280}.more[open]>summary::before{content:'▾ '}.more[open]>summary{margin-bottom:6px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}
 .app{background:#ecfdf5;border:1px solid #0f766e}.chg{border:2px solid #f59e0b;background:#fffbeb}.fig{font-size:22px;font-weight:800}.old{text-decoration:line-through;color:#888}.rank{background:linear-gradient(135deg,#14213d,#1e3a8a);color:#fff;box-shadow:none}.rank small{color:#cbd5e1}details.ask{margin-top:8px}details summary{cursor:pointer;font-size:13px;font-weight:600;min-height:32px}`;
+
+/** v95 — the shopkeeper's page is written "हिन्दी / English". Hindi only (default), English only, or both — chosen with ?lang= and remembered. */
+export type SpLang = 'hi' | 'en' | 'both';
+export function pickLang(html: string, mode: SpLang): string {
+  if (mode === 'both') return html;
+  const parts = html.split(/(<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>)/i);
+  const dev = /[ऀ-ॿ]/;
+  for (let i = 0; i < parts.length; i += 2) {
+    const t = parts[i]; if (!t || !dev.test(t)) continue;
+    const m = /\s\/\s(?=[A-Za-z0-9“"'(₹])/.exec(t); if (!m) continue;
+    const a = t.slice(0, m.index), b = t.slice(m.index + m[0].length);
+    if (!dev.test(a) || dev.test(b)) continue;     // only "हिन्दी / English"
+    parts[i] = mode === 'hi' ? a : b;
+  }
+  return parts.join('');
+}
+const langOf = (req: Request): SpLang => { const q = String(req.query.lang || ''); if (q === 'hi' || q === 'en' || q === 'both') return q; const c = parseCookies(req.headers.cookie)['sp_lang']; return c === 'en' || c === 'both' ? c : 'hi'; };
+const langBar = (cur: SpLang) => `<div class="lang" data-testid="sp-lang">${(['hi', 'en', 'both'] as const).map(l => `<a href="?lang=${l}" class="${l === cur ? 'on' : ''}">${l === 'hi' ? 'हिन्दी' : l === 'en' ? 'English' : 'दोनों'}</a>`).join('')}</div>`;
+
 const shell = (title: string, body: string, head = '', js = '') => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png">${head}<title>${esc(title)}</title><style>${CSS}</style></head><body><div class="w">${body}</div>${js ? `<script src="${js}" defer></script>` : ''}</body></html>`;
 const noStore = (res: Response) => { res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer'); res.set('X-Robots-Tag', 'noindex, nofollow'); };
 const formTs = () => { const t = Date.now(); return `${t}.${hmac('sp-form', String(t)).slice(0, 16)}`; };
@@ -1123,8 +1142,8 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     const kind = LEAD_KINDS.find(k => k.id === l.kind)!; const by = SHARE_CHANGE_LABEL[c.by];
     return `<div class="card chg" data-testid="share-change"><p class="t"><b>⚠ आपका हिस्सा बदला है / Your share changed</b><br><small>${kind.hi} · ${esc(l.locality)} · ••${esc(l.phoneLast4)}</small></p>
 <p class="t">${c.from > 0 ? `<span class="old">${inr(c.from)}</span> → ` : ''}<b class="fig">${inr(c.to)}</b></p>
-<p class="small">${esc(by.hi)} / ${esc(by.en)}${c.reason ? ` — “${esc(c.reason)}”` : ''} · ${when(c.at)}</p>
-${c.brokerNote ? `<p class="small">ब्रोकर का जवाब / Broker’s reply: ${esc(c.brokerNote)}</p>` : ''}
+<p class="small"><span>${esc(by.hi)} / ${esc(by.en)}</span>${c.reason ? ` — “${esc(c.reason)}”` : ''} · ${when(c.at)}</p>
+${c.brokerNote ? `<p class="small"><span>ब्रोकर का जवाब / Broker’s reply:</span> ${esc(c.brokerNote)}</p>` : ''}
 ${c.status === 'PENDING' ? `<div class="row"><form method="post" action="/sp/${tok}/lead/${esc(l.id)}/change/${esc(c.id)}/ok"><button class="g" type="submit" data-testid="change-ok">✔ ठीक है / It is fine</button></form></div>
 <details><summary>✖ सही नहीं है / This is not right</summary><form method="post" action="/sp/${tok}/lead/${esc(l.id)}/change/${esc(c.id)}/no"><input type="text" name="note" maxlength="300" required placeholder="क्या सही नहीं? / What is not right?"><div class="row"><button class="r" type="submit" data-testid="change-no">GENZ को बताएँ / Tell GENZ</button></div></form></details>`
   : c.status === 'OK' ? `<p class="small">✔ आपने मान लिया (${when(c.answeredAt)})</p>`
@@ -1176,22 +1195,26 @@ ${wonLine}${lastLine}
     }).join('');
     const cert = p.acceptedAt && p.status !== 'PENDING' && p.status !== 'ENDED' ? `<a class="btn l" href="/sp/${tok}/certificate" target="_blank" rel="noopener" data-testid="cert-link">🏅 प्रमाणपत्र / Certificate</a>` : '';
     const html = shell('QR पार्टनर', `<div class="top"><h1>नमस्ते ${esc(p.personName.split(' ')[0])} 🙏</h1><p>${esc(p.shopName)} · ${esc(b?.name || '')} के साथ QR पार्टनर</p></div>
+${langBar(langOf(req))}
 ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}
+${p.status === 'ACTIVE' ? `<div class="say" data-testid="shop-say"><b>🗣️ ग्राहक से कहें: “भैया, घर, दुकान या प्लॉट लेना या बेचना हो तो ये QR स्कैन करके अपनी ज़रूरत भर दीजिए — सही प्रॉपर्टी वाले आपको ख़ुद फ़ोन करेंगे।” / Tell customers: “Scan this QR, fill what you need — we’ll find it for you.”</b><div class="row"><a class="btn g" href="/sp/${tok}/show" data-testid="shop-show-qr">📲 QR ग्राहक को दिखाएँ / Show QR</a><a class="btn l" href="https://wa.me/?text=${encodeURIComponent(`भैया, घर / दुकान / प्लॉट लेना या बेचना हो तो ये लिंक खोलकर अपनी ज़रूरत भर दीजिए: ${req.protocol}://${req.get('host')}/q/${p.qrCode}`)}" target="_blank" rel="noopener" data-testid="shop-wa">💬 WhatsApp पर भेजें / Send on WhatsApp</a></div></div>` : ''}
 ${p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' ? `<div class="card red" data-testid="auto-paused"><p class="t"><b>⏸ आपका QR GENZ ने रोका है</b></p><p class="t">आपका हिस्सा ${OVERDUE.pauseDays} दिन से ज़्यादा बाकी है, इसलिए नए अनुरोध फ़िलहाल रुके हैं। ब्रोकर के चुकाते ही QR फिर चालू हो जाएगा। <small>GENZ paused new requests because your share is over ${OVERDUE.pauseDays} days late; it starts again once it is paid.</small></p></div>` : ''}
 ${need.length ? `<h2>आपके ध्यान के लिए / Needs your eye (${need.length})</h2>${need.map(x => chgCard(x.l, x.c, tok)).join('')}` : ''}
 ${agree}
 <div class="card"><div class="stats"><div><b>${leads.length}</b><small>लीड</small></div><div><b>${leads.filter(l => l.status === 'WON').length}</b><small>डील</small></div><div><b>${inr(due)}</b><small>बाकी ₹ / due</small></div></div>
-<p class="small" style="margin-top:8px" data-testid="shop-money">मिला ${inr(got)} · रास्ते में ${inr(onWay)} · स्कैन ${p.scans}</p>
+<p class="small" style="margin-top:8px" data-testid="shop-money"><span>मिला / Received ${inr(got)}</span> · <span>रास्ते में / On the way ${inr(onWay)}</span> · <span>स्कैन / Scans ${p.scans}</span></p>
 ${rank ? `<div class="rank card" style="margin-top:10px" data-testid="shop-rank"><b>🏆 इस महीने आप ${esc(p.city)} के ${mates.length} QR पार्टनर्स में #${rank}</b><br><small>पिछले 30 दिन में ${mine30} लीड · This month you are #${rank} of ${mates.length} QR partners in ${esc(p.city)}</small></div>` : ''}
 ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record">🤝 ${esc(b?.name || 'ब्रोकर')}: ${esc(recText)}</p>` : ''}
 <div class="row"><a class="btn l" href="/q/${esc(p.qrCode)}/poster" target="_blank" rel="noopener">🖨 QR पोस्टर / Poster</a>${cert}</div></div>
 <h2>आपके QR से आई लीड / Leads from your QR (${leads.length})</h2><div class="card">${rows || '<p class="t">अभी कोई लीड नहीं। / No leads yet.</p>'}<details class="more"><summary>🔒 पूरा नंबर क्यों नहीं दिखता / Why only 4 digits</summary><p class="small">ग्राहक का पूरा नंबर आपको नहीं दिखता — सिर्फ़ आख़िरी 4 अंक। अगर ब्रोकर इसी नंबर पर बाद में काम करता है तो वह यहाँ अपने आप दिखता है। / You see only the last 4 digits. If the broker works this number later, it shows here by itself.</p></details></div>
-<div class="card" data-testid="shop-tips"><details class="more"><summary>💡 ज़्यादा लीड कैसे लाएँ / How to get more leads</summary><p class="small">1) पोस्टर काउंटर के सामने, आँख की ऊँचाई पर लगाएँ। 2) ग्राहक से कहें: “घर, दुकान या प्लॉट चाहिए तो यह QR स्कैन करें”। 3) अपने WhatsApp स्टेटस पर पोस्टर डालें।<br>Put the poster at eye level near the counter · tell customers “scan if you need or want to sell a home” · post it on your WhatsApp status.</p></details></div>
+<div class="card" data-testid="shop-tips"><details class="more"><summary>💡 ज़्यादा लीड कैसे लाएँ / How to get more leads</summary><p class="small">1) पोस्टर काउंटर के सामने, आँख की ऊँचाई पर लगाएँ। 2) ग्राहक से कहें: “घर, दुकान या प्लॉट चाहिए तो यह QR स्कैन करें”। 3) अपने WhatsApp स्टेटस पर पोस्टर डालें। / Put the poster at eye level near the counter · tell customers “scan if you need or want to sell a home” · post it on your WhatsApp status.</p></details></div>
 <div class="card app" id="app-card" style="display:none"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>
 <div class="card"><details class="more"><summary>✉️ ब्रोकर से कुछ कहना है? / Message the broker</summary><form method="post" action="/sp/${tok}/ask"><label class="small">संदेश / Message</label><textarea name="note" rows="2" maxlength="300" required></textarea><div class="row"><button type="submit">भेजें / Send</button></div></form></details></div>
 <p class="small" style="margin:12px 4px">इस पेज को बुकमार्क कर लें — इसी फ़ोन पर बिना कोड के खुलेगा। / Bookmark this page — on this phone it opens without a code. GENZ never asks you for money.</p>`,
     `<link rel="manifest" href="/sp/${tok}/manifest.webmanifest"><meta name="theme-color" content="#14213d">`, '/sp/app.js');
-    res.send(html);
+    const mode = langOf(req);
+    if (typeof req.query.lang === 'string' && ['hi', 'en', 'both'].includes(req.query.lang)) res.append('Set-Cookie', `sp_lang=${req.query.lang}; Path=/sp; Max-Age=31536000; SameSite=Lax`);
+    res.send(pickLang(html, mode));
   };
 
   const authed = (req: Request, res: Response) => {
@@ -1358,6 +1381,18 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     else db.save();
     res.json({ success: true, fresh: !before });
   });
+  /** v95 — a full-screen QR the shopkeeper holds up (or turns the phone) for the customer, with the line to say */
+  r.get('/:token/show', rateLimit('sp-page', 60, 60_000), async (req: Request, res: Response) => {
+    const p = authed(req, res); if (!p) return;
+    if (p.status !== 'ACTIVE') return back(res, req.params.token);
+    const svg = await brandedQrSvg(`${req.protocol}://${req.get('host')}/q/${p.qrCode}`, 320);
+    const mode = langOf(req);
+    const html = shell('QR स्कैन', `<div class="top" style="text-align:center"><h1>📲 स्कैन करें / Scan</h1><p>घर · दुकान · प्लॉट — लेना या बेचना / Buy · sell · rent</p></div>
+<div class="card" style="text-align:center" data-testid="show-qr"><div style="width:min(80vw,320px);margin:0 auto">${svg}</div><p class="t" style="font-size:18px;margin-top:10px"><b>कैमरा खोलें, QR पर रखें, अपनी ज़रूरत भरें / Open the camera, point at the QR, fill what you need</b></p><p class="small">ब्रोकर आपको सही प्रॉपर्टी बताएँगे। / The broker will show you the right property.</p></div>
+<div class="row"><a class="btn l" href="/sp/${esc(req.params.token)}">← वापस / Back</a></div>`);
+    res.send(pickLang(html, mode));
+  });
+
   r.get('/:token/certificate', rateLimit('sp-page', 60, 60_000), async (req: Request, res: Response) => {
     const p = authed(req, res); if (!p) return;
     if (!p.acceptedAt || p.status === 'PENDING' || p.status === 'ENDED') return back(res, req.params.token);
