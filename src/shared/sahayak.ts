@@ -5,7 +5,7 @@
  */
 import { areasOf, placeKey, canonPlace, isCityLevel } from './places.js';
 
-export type Intent = 'GREET' | 'VISIT' | 'PHOTOS' | 'PRICE' | 'AVAIL' | 'MORE' | 'HUMAN' | 'THANKS' | 'NEED' | 'OTHER';
+export type Intent = 'GREET' | 'VISIT' | 'PHOTOS' | 'PRICE' | 'AVAIL' | 'MORE' | 'HUMAN' | 'THANKS' | 'NEED' | 'STATUS' | 'OTHER';
 
 const flat = (t: string) => String(t || '').normalize('NFKC').toLowerCase().replace(/[​-‍﻿]/g, '').replace(/\s+/g, ' ').trim();
 
@@ -16,6 +16,7 @@ const RX = {
   avail: /(available|availab|avail\b|उपलब्ध|bik\s*gay|bik\s*chuk|बिक\s*गय|बिक\s*चुक|sold|rented|kiraye\s*pe\s*ja|किराये\s*पर\s*जा|khali|खाली|still\s*(there|open)|abhi\s*(bhi)?\s*(hai|h|mil)|अभी\s*(भी)?\s*(है|मिल)|mil\s*(jayega|jaega|sakta)|मिल\s*(जाएगा|सकता))/,
   price: /(price|rate\b|rates\b|kitn[aei]|कितन[ाेी]|kimat|keemat|कीमत|क़ीमत|दाम|daam|रेट|negotiat|bargain|kam\s*(kar|ho)|कम\s*(कर|हो)|discount|final\s*(rate|price)|sasta|सस्ता|costly|mehenga|महँगा|महंगा|emi\b|token|advance|deposit|डिपॉज़िट|डिपोजिट|brokerage|ब्रोकरेज)/,
   more: /(aur\s*(ghar|flat|option|dikha|koi|bhi)|और\s*(घर|फ्लैट|विकल्प|दिखा|कोई|भी)|more\s*(homes|houses|options|flats|properties)|other\s*(homes|options|properties)|dusr[ae]|doosr[ae]|दूसर[ेा]|दुसर[ेा]|options|explore|एक्सप्लोर|dikhao|दिखाओ|दिखाइए|दिखाइये|koi\s*aur|कोई\s*और|kuch\s*aur|कुछ\s*और|next\b)/,
+  status: /(status|स्टेटस|kab\s*tak|कब\s*तक|kab\s*(lag|ho\s*ga|hog|live)|कब\s*(लग|हो\s*ग)|kya\s*hua|क्या\s*हुआ|aage\s*kya|आगे\s*क्या|next\s*step|listing\s*(ho|lag|live|kab|ban)|लिस्टिंग\s*(हो|लग|कब|बन)|live\s*(hua|ho|kab)|लाइव|draft|ड्राफ़्ट|ड्राफ्ट)/,
   thanks: /(thank|thanks|thx|shukriya|shukria|शुक्रिया|dhanyavad|dhanyawad|धन्यवाद|आभार|bahut\s*achha|बहुत\s*अच्छा|great|nice\b)/,
   greet: /^(hi+|hello+|hey+|hii+|namaste|namaskar|नमस्ते|नमस्कार|हेलो|हैलो|हाय|ram\s*ram|राम\s*राम|jai\s*(shri\s*)?(ram|krishna|mata)|जय|good\s*(morning|evening|afternoon)|suprabhat|सुप्रभात)(?![a-z0-9\u0900-\u097f])/,
   need: /(bhk|बीएचके|बी\.?एच\.?के|bedroom|\d\s*(lakh|lac|lakhs|cr|crore|k\b)|\d\s*(लाख|करोड़|करोड|हज़ार|हजार)|budget|बजट|kiraya|किराया|किराये|rent\b|khareed|kharid|खरीद|buy\b|sale\b|plot\b|प्लॉट|flat\b|फ्लैट|fl[ae]t|makaan|makan|मकान|dukaan|dukan|दुकान|shop\b|office\b|ऑफिस|ऑफ़िस|villa|विला|chahiye|चाहिए|chahie|chaiye|चाहिये)/,
@@ -29,6 +30,7 @@ export function readIntent(text: string): Intent {
   if (RX.photos.test(t)) return 'PHOTOS';
   if (RX.avail.test(t)) return 'AVAIL';
   if (RX.price.test(t)) return 'PRICE';
+  if (RX.status.test(t) && t.length < 80) return 'STATUS';
   if (RX.need.test(t) && (/\d/.test(t) || /(chahiye|चाहिए|चाहिये|chahie|chaiye|looking|want|need|dhund|ढूँढ|ढूंढ)/.test(t))) return 'NEED';
   if (RX.more.test(t)) return 'MORE';
   if (RX.thanks.test(t) && t.length < 60) return 'THANKS';

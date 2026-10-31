@@ -18,7 +18,9 @@ import { brandedQrSvg } from './brandlogo.js';
 import { makeSahayak } from './sahayak.js';
 import type { NeedChange } from '../src/shared/sahayak.js';
 import { localityFit, areasOf, canonPlace } from '../src/shared/places.js';
-import { PROPERTY_TYPES, RELATED_TYPE_GROUPS } from '../src/shared/india.js';
+import { PROPERTY_TYPES, RELATED_TYPE_GROUPS, findState } from '../src/shared/india.js';
+import { saveOwnerChatDraft, stateFor } from './consent.js';
+import { draftMissing } from '../src/shared/consentRules.js';
 import { normCity } from '../src/shared/cities.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
@@ -223,10 +225,27 @@ function applyNeedChange(l: PartnerLead, ch: NeedChange): string[] {
   return out;
 }
 const botTell = (l: PartnerLead, title: string, body: string) => { if (hit(`sp-botpush:${l.id}`, 10, 3600_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title, body, url: '/?tab=partners' }); };
+/** v99 — what the QR form already told us about an OWNER's property (the questions only ask what is missing) */
+function ownerFacts(l: PartnerLead): Record<string, any> {
+  const city = cityOfLead(l); const u = userOf(l.brokerId); const rent = l.kind === 'RENT_OUT';
+  const price = budgetRupees(l.budget, rent);
+  const pt = (PROPERTY_TYPES as readonly string[]).includes(String(l.propertyType)) ? String(l.propertyType) : '';
+  const bhk = Number(/(\d{1,2})\s*bhk/i.exec(String(l.note || ''))?.[1]) || null;
+  const known = (u?.state && findState(u.state)?.name) || stateFor('', city);
+  return { propertyType: pt, transactionType: rent ? 'Rent' : 'Sale', state: stateFor(known, city), city, locality: l.locality, ...(bhk ? { bhk } : {}),
+    ...(price ? { askingPrice: price, ownerApprovedNetPrice: price } : {}), ownerName: l.name, ownerPhone: l.phone, tags: [], addressHidden: '', shopId: l.partnerId };
+}
+function draftState(l: PartnerLead) {
+  const id = l.chat?.bot?.interview?.draftId; if (!id) return null;
+  const d0 = st().listingDrafts.find(x => x.id === id); if (!d0) return null;
+  const p = d0.propertyId ? st().properties.find(x => x.id === d0.propertyId) : undefined;
+  return { draftId: d0.id, status: d0.status, missing: draftMissing(d0.fields).length, ...(p ? { propertyId: p.id, propertyStatus: p.listingStatus } : {}) };
+}
 export const sahayak = makeSahayak({
   addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
   audit: (l, action, text) => db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, action, text),
   isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead,
+  ownerFacts, saveDraft: (l, fields) => saveOwnerChatDraft(l.brokerId, fields, l.id), draftState,
 });
 
 // ───────────────────────────── links: later work on the same mobile by the same broker ─────────────────────────────

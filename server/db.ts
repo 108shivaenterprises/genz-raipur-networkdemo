@@ -26,6 +26,7 @@ import type { LandRecordFields } from '../src/shared/redflags.js';
 import { DEFAULT_REWARDS } from '../src/shared/connector.js';
 import { buildConnectorDemo } from './connectorSeed.js';
 import { seedDemoBulk } from './demoBulk.js';
+import { seedDemoCities } from './demoCities.js';
 import { PRELOADED } from './bootstrap.js';
 import { pgStore } from './pgstore.js';
 import { DEMO_MODE, DEMO_PASSWORD, IS_PROD, hashPassword, unusablePasswordHash, randomPassword, secret as authSecret } from './auth.js';
@@ -1501,6 +1502,8 @@ export interface LeadBot {
   off?: boolean; quietUntil?: string; handoffAt?: string;
   awaiting?: 'WHEN' | 'PROMISE' | 'HOME'; pendingHome?: string;
   visits?: LeadVisitReq[]; sentHomes?: string[]; roomId?: string; roomSealed?: string; roomAt?: string; lastFallbackAt?: string; needsBroker?: string;
+  /** v99 — an OWNER's listing interview: the facts gathered so far, the question open now, what he skipped, and the broker's draft once it is made */
+  interview?: { fields: Record<string, any>; step?: string; skipped: string[]; tries: number; startedAt: string; doneAt?: string; draftId?: string };
 }
 export interface PartnerLead {
   id: string;                      // PLD-xxxxxxxxxx
@@ -3382,6 +3385,10 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   // ── demo only, opt-in: 10–15 accounts for every role and a full set of records (server/demoBulk.ts) ──
   if (SEED_DEMO && SEED_DEMO_BULK && !parsed.users.some(u => u.id === 'USR-BRK-005')) {
     seedDemoBulk(parsed, DEMO_MODE ? hashPassword(DEMO_PASSWORD) : unusablePasswordHash());
+  }
+  // v99 — a few accounts and listings outside Raipur (Pune, Indore, Jaipur): the app is for all of India
+  if (SEED_DEMO && SEED_DEMO_BULK && parsed.users.some(u => u.id === 'USR-BRK-005')) {
+    seedDemoCities(parsed, DEMO_MODE ? hashPassword(DEMO_PASSWORD) : unusablePasswordHash());
   }
 }
 

@@ -70,6 +70,7 @@ import { DealPipeline, StageStepper, NextSteps, MandatesBoard, DealCard, SubTabB
 import { ShareToRoom } from './ShareToRoom.js';
 import { SideFeePanel } from './SideFeePanel.js';
 import { DealStatusPanel } from './DealStatusPanel.js';
+import { DealSimple, type SimpleDoor } from './DealSimple.js';
 import { PaymentRequestsPanel } from './PaymentRequestsPanel.js';
 import { isClosed } from '../shared/dealClose.js';
 import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare } from 'lucide-react';
@@ -179,6 +180,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     const q = urlQ.get('sub');   // v53 — a link / card can open any section of the deal room
     return (['overview', 'antibypass_protocol', 'chat_call', 'media_vault', 'responsibilities', 'commission_agreement', 'due_diligence', 'readiness_report', 'legal_help', 'disputes_holds'].includes(q || '') ? q : 'overview') as DealSubTab;
   });
+  // v99 — SIMPLE deal room by default (stage, next step, a few numbers, five doors); the full ten-section room is one tap away and remembered
+  const [simple, setSimple] = useState<boolean>(() => {
+    if (urlQ.get('sub')) return false;      // a link into a particular section opens the full room on that section
+    try { const v = localStorage.getItem('genz_deal_view'); return v ? v === 'simple' : true; } catch { return true; }
+  });
+  const pickView = (s: boolean) => { setSimple(s); try { localStorage.setItem('genz_deal_view', s ? 'simple' : 'full'); } catch { /* private window */ } setActiveSubTab('overview'); };
   const [selectedVisitForQrPass, setSelectedVisitForQrPass] = useState<SiteVisit | null>(null);
   // v67 — a visit card in the chat opens that visit's QR pass (a link can too: ?sub=visit:SV-…)
   const pendingQr = useRef<string>((urlQ.get('sub') || '').startsWith('visit:') ? (urlQ.get('sub') || '').slice(6) : '');
@@ -590,6 +597,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const filterFor = (kind?: string) => (kind === 'TASKS_TO_VERIFY' ? 'REVIEW' : kind === 'TASKS_OVERDUE' ? 'OVERDUE' : kind === 'TASKS_TO_ACCEPT' || kind === 'TASKS_TO_DO' ? 'MINE' : 'AUTO') as typeof taskFilter;
   // v83 — switching a deal-room section scrolls to the top of that section (under the sticky tab bar); a phone's chat is a full screen, so it needs no scroll
   const goTab = (id: DealSubTab) => {
+    if (id !== 'overview') setSimple(false);   // v99 — a section other than the overview lives in the full room (not remembered: the next deal opens simple again)
     setActiveSubTab(id);
     if (id === 'chat_call' && typeof window !== 'undefined' && window.innerWidth < 1024) return;
     window.setTimeout(() => {
@@ -603,6 +611,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   };
   const openDeal = (id: string, tab?: string, kind?: string) => {
     setSelectedDealId(id);
+    if (tab && tab !== 'overview') setSimple(false);
     setActiveSubTab(tabAllowed(tab) ? tab : 'overview');
     setTaskFilter(filterFor(kind));
     setMainMode('DEAL_ROOMS');
@@ -801,6 +810,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const activeDeal = dealDetail?.deal;
   // v21: a GENZ admin without an open dispute sees the summary only; the brokers see a notice about when GENZ may look inside
   const summaryOnly = dealDetail?.access?.level === 'SUMMARY';
+  const showSimple = simple && activeSubTab === 'overview' && !summaryOnly;
   const isDealBrokerViewer = !!activeDeal && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id);
   // The commission split between the two brokers is confidential: owners never see it.
   const hideCommercials = isOwnerViewer || !!activeDeal?.commercialsHidden;
@@ -960,6 +970,31 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 </div>
               </div>
 
+              {/* v99 — Simple ⇄ Full */}
+              {!summaryOnly && (
+                <div className="flex items-center justify-between gap-2" data-testid="deal-view-toggle">
+                  <span className="text-xs font-semibold text-slate-500">{tx('View', 'दृश्य')}</span>
+                  <div role="group" aria-label={tx('Deal room view', 'डील रूम का दृश्य')} className="inline-flex rounded-xl border border-slate-300 bg-white p-0.5">
+                    <button type="button" aria-pressed={showSimple} onClick={() => pickView(true)} data-testid="deal-view-simple" className={`min-h-10 rounded-[10px] px-4 text-sm font-semibold ${showSimple ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{tx('Simple', 'सरल')}</button>
+                    <button type="button" aria-pressed={!showSimple} onClick={() => pickView(false)} data-testid="deal-view-full" className={`min-h-10 rounded-[10px] px-4 text-sm font-semibold ${!showSimple ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{tx('Full', 'पूरा')}</button>
+                  </div>
+                </div>
+              )}
+              {showSimple && (
+                <DealSimple item={hubItemOf(activeDeal.id)}
+                  doors={[
+                    ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(perm('task:read') ? ['responsibilities' as const] : []),
+                    ...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const]),
+                    ...(perm('property:read') ? ['media_vault' as const] : []), ...(perm('dd:read') ? ['due_diligence' as const] : []),
+                    ...(hideCommercials ? [] : ['money' as const]),
+                  ] as SimpleDoor[]}
+                  onOpen={(d) => {
+                    if (d === 'full') { pickView(false); return; }
+                    if (d === 'money') { setSimple(false); setActiveSubTab('overview'); window.setTimeout(() => { try { (document.querySelector('[data-testid="deal-money"]') as HTMLElement | null)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* old browser */ } }, 150); return; }
+                    goTab(d);
+                  }} />
+              )}
+              {!showSimple && (<>
               {/* Sub-Navigation Tabs (v52: four on the bar, the rest behind "More").
                   v83: the bar sticks under the top bar while you scroll, and picking a tab scrolls to its content (before, a tab changed below the fold and looked like nothing happened). */}
               <div className="sticky top-[61px] z-30 -mx-4 bg-slate-50/95 px-4 py-1 backdrop-blur sm:mx-0 sm:px-0" data-testid="deal-subtabs-sticky">
@@ -2488,6 +2523,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                   </div>
                 </div>
               )}
+              </>)}
             </div>
           )}
         </div>

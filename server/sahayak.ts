@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import { db } from './db.js';
 import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot } from './db.js';
 import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, type NeedChange, type When } from '../src/shared/sahayak.js';
+import { nextAsk, applyAnswer, progress, composeListing, summaryLine, SKIP_CHIP, type AskId } from '../src/shared/listingAsk.js';
 import { containsPhone } from '../src/shared/clientRoomRules.js';
 import { openRoomAuto } from './clientroom.js';
 import { sealLink, openLink } from './linkSeal.js';
@@ -35,6 +36,12 @@ export interface BotDeps {
   applyNeed(l: PartnerLead, ch: NeedChange): string[];
   /** v98 — the city this lead is in (the shop's, else the broker's); '' when unknown. Any city of India. */
   cityOf(l: PartnerLead): string;
+  /** v99 — what the QR form already told us about an OWNER's property (type, sale / rent, place, price, name, number) */
+  ownerFacts(l: PartnerLead): Record<string, any>;
+  /** v99 — put the gathered facts in the broker's Drafts (one per owner + place) */
+  saveDraft(l: PartnerLead, fields: Record<string, any>): { id: string; missing: string[]; created: boolean; locked: boolean } | { error: string };
+  /** v99 — where the owner's listing stands now (draft → consent asked → agreed → live) */
+  draftState(l: PartnerLead): { draftId: string; status: string; missing: number; propertyId?: string; propertyStatus?: string } | null;
 }
 
 const rnd = () => crypto.randomBytes(4).toString('hex');
@@ -46,6 +53,8 @@ const M = {
   human: { id: 'HUMAN', hi: '💬 ब्रोकर से बात', en: 'Talk to the broker' } as Chip,
   room: { id: 'ROOM', hi: '🏠 मेरा क्लाइंट रूम', en: 'My client room' } as Chip,
   avail: { id: 'AVAIL', hi: '✅ अभी उपलब्ध है?', en: 'Still available?' } as Chip,
+  info: { id: 'ASKGO', hi: '📝 जानकारी पूरी करें', en: 'Finish the details' } as Chip,
+  status: { id: 'STATUS', hi: '📋 मेरी लिस्टिंग कहाँ तक पहुँची?', en: 'Where is my listing?' } as Chip,
 };
 
 export function makeSahayak(d: BotDeps) {
@@ -59,7 +68,7 @@ export function makeSahayak(d: BotDeps) {
   const liveSent = (l: PartnerLead) => sentIds(l).map(propOf).filter(h => d.isLive(h)) as Property[];
   const confirmed = (l: PartnerLead) => !!l.chat?.reqConfirmedAt;
   const buyerSide = (l: PartnerLead) => !d.ownerSide(l);
-  const menu = (l: PartnerLead): Chip[] => { const m = [M.visit, M.more]; if (l.chat?.revealedAt && !botOf(l).roomId && buyerSide(l)) m.push(M.room); m.push(M.human); return m; };
+  const menu = (l: PartnerLead): Chip[] => { if (d.ownerSide(l)) { const iv = l.chat?.bot?.interview; return [...(iv && !iv.doneAt ? [M.info] : [M.status]), M.human]; } const m = [M.visit, M.more]; if (l.chat?.revealedAt && !botOf(l).roomId && buyerSide(l)) m.push(M.room); m.push(M.human); return m; };
   const price = (h: Property) => { const p = Number(h.askingPrice) || 0; return p >= 1e7 ? `₹${(p / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr` : p >= 1e5 ? `₹${(p / 1e5).toFixed(2).replace(/\.?0+$/, '')} लाख` : `₹${p.toLocaleString('en-IN')}`; };
 
   /** the first thing he sees: who this is, and his need to confirm (the ✅ / ✏️ card) */
@@ -93,12 +102,91 @@ export function makeSahayak(d: BotDeps) {
     return n;
   }
 
+  // ───────────────────────── v99 — the owner's listing interview ─────────────────────────
+  const askChips = (id: AskId, chips: { id: string; hi: string; en: string }[], optional: boolean): Chip[] =>
+    [...chips.map(c => ({ id: `ASK:${id}:${c.id}`, hi: c.hi, en: c.en })), ...(optional ? [{ id: `ASK:${id}:SKIP`, hi: SKIP_CHIP.hi, en: SKIP_CHIP.en }] : [])];
+  const asking = (l: PartnerLead) => { const iv = l.chat?.bot?.interview; return !!iv && !!iv.step && !iv.doneAt; };
+
+  function startInterview(l: PartnerLead) {
+    const b = botOf(l);
+    if (b.interview?.doneAt) { say(l, 'धन्यवाद! जानकारी पक्की हो गई। ब्रोकर जल्द आपसे यहीं बात करेंगे।', 'Thank you! The details are confirmed. The broker will talk to you here soon.', menu(l)); return; }
+    b.interview ||= { fields: d.ownerFacts(l), skipped: [], tries: 0, startedAt: nowIso() };
+    d.hist(l, 'The GENZ assistant started the listing questions for the owner');
+    askNext(l, { hi: 'धन्यवाद! जानकारी पक्की हो गई ✅ — ब्रोकर को आपका नंबर दिखने लगा है।\nअब ब्रोकर आपकी लिस्टिंग जल्दी बना सकें, इसलिए कुछ छोटे सवाल (ज़्यादातर एक टैप)। जिस पर पक्का नहीं हैं, “पता नहीं” दबा दें।', en: 'Thank you! Confirmed ✅ — the broker can now see your number.\nSo he can make your listing quickly, a few short questions (mostly one tap). Tap “Not sure” where you are not sure.' });
+  }
+  /** ask the next relevant question — or finish when there is none */
+  function askNext(l: PartnerLead, lead?: { hi: string; en: string }) {
+    const b = botOf(l); const iv = b.interview; if (!iv) return;
+    const a = nextAsk(iv.fields, iv.skipped);
+    if (!a) { if (lead) say(l, lead.hi, lead.en); return finishInterview(l); }
+    iv.step = a.id; iv.tries = 0;
+    const pr = progress(iv.fields, iv.skipped); const tag = `(${Math.min(pr.done + 1, pr.total)}/${pr.total}) `;
+    say(l, `${lead ? lead.hi + '\n\n' : ''}${tag}${a.hi}`, `${lead ? lead.en + '\n\n' : ''}${tag}${a.en}`, askChips(a.id, a.chips, a.optional));
+  }
+  /** a tapped answer or typed words for the open question. Returns false when the text was not an answer at all (so normal replies can run). */
+  function answerAsk(l: PartnerLead, input: { chip?: string; text?: string }): boolean {
+    const b = botOf(l); const iv = b.interview; if (!iv?.step || iv.doneAt) return false;
+    const id = iv.step as AskId; const r = applyAnswer(iv.fields, id, input);
+    if (!r.ok) {
+      // a typed line that is clearly something else (rate, photos, "when will it be live") is served normally; the question stays open
+      if (input.text && !input.chip) { const it = readIntent(input.text); if (['PRICE', 'PHOTOS', 'VISIT', 'STATUS'].includes(it) && id !== 'price') return false; }
+      iv.tries += 1;
+      if (iv.tries >= 3 && id !== 'price' && id !== 'ptype' && id !== 'address') { iv.skipped.push(id); iv.step = undefined; askNext(l, { hi: 'कोई बात नहीं, इसे ब्रोकर आपसे पूछ लेंगे।', en: 'No problem — the broker will ask you this later.' }); return true; }
+      if (iv.tries >= 4) { iv.step = undefined; b.needsBroker = 'listing-answer'; say(l, 'मैं ये समझ नहीं पा रहा — मैंने ब्रोकर को बता दिया है, वे आपसे यहीं पूछ लेंगे। 🙏', 'I cannot read this — I have told the broker, he will ask you here. 🙏', [M.human]); d.tellBroker(l, `✍️ ${l.name}: जवाब नहीं पढ़ पाया`, 'सहायक मालिक का जवाब नहीं समझ सका — आप ड्राफ़्ट पूरा कर लें।'); return true; }
+      say(l, r.hint.hi, r.hint.en, (() => { const a = nextAsk(iv.fields, iv.skipped.filter(x => x !== id)); return a && a.id === id ? askChips(a.id, a.chips, a.optional) : undefined; })());
+      return true;
+    }
+    iv.fields = r.fields; if (r.skip) iv.skipped.push(id);
+    iv.step = undefined; keepDraft(l); askNext(l, r.ack); return true;
+  }
+  /** save what the owner has said so far as the broker's draft (silently) — an owner who answers three questions and leaves is not lost */
+  function keepDraft(l: PartnerLead) {
+    const iv = botOf(l).interview; if (!iv || iv.doneAt) return;
+    const c = composeListing(iv.fields); const res = d.saveDraft(l, { ...iv.fields, title: c.title, description: c.description });
+    if (!('error' in res)) iv.draftId = res.id;
+  }
+  function finishInterview(l: PartnerLead) {
+    const b = botOf(l); const iv = b.interview; if (!iv) return;
+    iv.step = undefined; iv.doneAt = nowIso();
+    const c = composeListing(iv.fields); iv.fields.title = c.title; iv.fields.description = c.description; iv.fields.tags = [...new Set([...(iv.fields.tags || []), ...c.tags])];
+    const res = d.saveDraft(l, iv.fields);
+    const sum = summaryLine(iv.fields);
+    if ('error' in res) {
+      b.needsBroker = 'listing-draft';
+      say(l, `शुक्रिया ${first(l.name)}! 🙏 आपकी जानकारी मैंने ब्रोकर को भेज दी है: ${sum.hi}\nब्रोकर आगे का काम आपसे यहीं करेंगे।`, `Thank you ${first(l.name)}! 🙏 I have passed your details to the broker: ${sum.en}\nHe will take the next step with you here.`, menu(l));
+      d.tellBroker(l, `📝 ${l.name}: जानकारी तैयार`, `${sum.hi} — ड्राफ़्ट अपने आप नहीं बन पाया, कृपया ‘Add listing’ से जोड़ें।`); return;
+    }
+    const fresh = res.created || iv.draftId === res.id;   // made by these very questions (even if saved bit by bit) → “ready”; the owner's earlier draft → “updated”
+    iv.draftId = res.id;
+    say(l, `शुक्रिया ${first(l.name)}! 🙏 आपकी प्रॉपर्टी की जानकारी ब्रोकर के पास ड्राफ़्ट के रूप में पहुँच गई:\n${sum.hi}\n\nआगे क्या होगा: ब्रोकर आपको लिस्टिंग की मंज़ूरी का लिंक भेजेंगे — आपकी “हाँ” के बिना लिस्टिंग लाइव नहीं होगी। फ़ोटो और काग़ज़ ब्रोकर आपसे अलग से मँगवाएँगे। कभी भी नीचे दबाकर स्थिति देख सकते हैं।`,
+      `Thank you ${first(l.name)}! 🙏 Your property details are with the broker as a draft:\n${sum.en}\n\nWhat happens next: the broker will send you an approval link — the listing does NOT go live without your “yes”. He will ask you for photos and papers separately. Tap below any time to see where it stands.`, menu(l));
+    d.audit(l, 'SHOP_LEAD_OWNER_DRAFT', `The GENZ assistant asked the owner the listing questions and made draft ${res.id}${fresh ? '' : ' (updated the owner\'s earlier draft)'}${res.locked ? ' — not changed: the owner was already asked for consent' : ''}`);
+    d.hist(l, `Listing questions answered by the owner — draft ${res.id} ${fresh ? 'made' : 'updated'} (${res.missing.length} item(s) still needed)`);
+    d.tellBroker(l, `📝 ${l.name}: ड्राफ़्ट ${fresh ? 'तैयार' : 'अपडेट'}`, `${sum.hi}. ${res.missing.length ? `अभी ${res.missing.length} चीज़ बाकी — ड्राफ़्ट खोलें।` : 'सब भरा है — मालिक को मंज़ूरी का लिंक भेज सकते हैं।'}`);
+  }
+  /** "where is my listing?" — said from the real state, never promised */
+  function ownerStatus(l: PartnerLead) {
+    const b = botOf(l); const iv = b.interview;
+    if (iv && !iv.doneAt) { say(l, 'बस कुछ सवाल बाकी हैं — उसके बाद ब्रोकर के पास पूरा ड्राफ़्ट पहुँच जाएगा।', 'Just a few questions left — then the full draft reaches the broker.'); if (!iv.step) askNext(l); else { const a = nextAsk(iv.fields, iv.skipped); if (a) say(l, a.hi, a.en, askChips(a.id, a.chips, a.optional)); } return; }
+    const st0 = d.draftState(l);
+    if (!st0) return handoff(l, 'other', ['ब्रोकर ने आपकी जानकारी देख ली है — वे खुद बताएँगे कि अगला कदम क्या है। मैंने उन्हें याद दिला दिया है।', 'The broker has your details — he will tell you the next step himself. I have reminded him.']);
+    const P = st0.propertyStatus;
+    const [hi, en] = P && ['active', 'under_negotiation'].includes(P) ? ['✅ आपकी प्रॉपर्टी लाइव है — ग्राहकों को दिख रही है।', '✅ Your property is live — customers can see it.']
+      : P === 'sold' ? ['आपकी प्रॉपर्टी “बिक गई” दर्ज है।', 'Your property is marked as sold.'] : P === 'rented' ? ['आपकी प्रॉपर्टी “किराये पर गई” दर्ज है।', 'Your property is marked as rented.']
+      : P ? ['आपकी लिस्टिंग बन चुकी है; अभी लाइव होने का इंतज़ार है।', 'Your listing is made; it is waiting to go live.']
+      : st0.status === 'CONSENT_PENDING' ? ['⏳ मंज़ूरी का लिंक आपके नंबर पर भेजा जा चुका है — खोलकर “हाँ” कहें, तभी लिस्टिंग आगे बढ़ेगी।', '⏳ The approval link has been sent to your number — open it and say “yes”; only then does the listing move on.']
+      : st0.status === 'READY' ? ['👍 आपकी “हाँ” मिल चुकी है — ब्रोकर लिस्टिंग लाइव कर रहे हैं।', '👍 Your “yes” is in — the broker is putting the listing live.']
+      : st0.missing ? [`📝 ड्राफ़्ट ब्रोकर के पास है; उसमें अभी ${st0.missing} चीज़ बाकी है — ब्रोकर आपसे पूछेंगे।`, `📝 The draft is with the broker; ${st0.missing} item(s) are still needed — he will ask you.`]
+      : ['📝 ड्राफ़्ट तैयार है — ब्रोकर जल्द आपको मंज़ूरी का लिंक भेजेंगे।', '📝 The draft is ready — the broker will send you the approval link soon.'];
+    say(l, hi, en, menu(l));
+  }
+
   /** he tapped ✅ on his need */
   function onConfirmed(l: PartnerLead) {
     if (off(l) || !l.chat) return;
     if (d.ownerSide(l)) {
-      say(l, 'धन्यवाद! जानकारी पक्की हो गई। ब्रोकर जल्द आपसे यहीं बात करेंगे।', 'Thank you! The details are confirmed. The broker will talk to you here soon.', [M.human]);
-      d.tellBroker(l, `🤖 ${l.name}: जानकारी पक्की`, 'मालिक ने प्रॉपर्टी की जानकारी पक्की की — उसका नंबर अब दिख रहा है।'); return;
+      d.tellBroker(l, `🤖 ${l.name}: जानकारी पक्की`, 'मालिक ने प्रॉपर्टी की जानकारी पक्की की — उसका नंबर अब दिख रहा है। सहायक अब बाकी सवाल पूछकर ड्राफ़्ट बनाएगा।');
+      return startInterview(l);
     }
     showHomes(l, 'BOT', 'first');
   }
@@ -204,7 +292,7 @@ export function makeSahayak(d: BotDeps) {
   function onText(l: PartnerLead, text: string) {
     if (!l.chat) return;
     const b = botOf(l); const intent = readIntent(text);
-    if (intent === 'HUMAN') { b.awaiting = undefined; if (!off(l)) handoff(l, 'human'); return; }
+    if (intent === 'HUMAN') { b.awaiting = undefined; if (b.interview) b.interview.step = undefined; if (!off(l)) handoff(l, 'human'); return; }
     // a question the bot asked him is answered even while it is "quiet" (he started the flow)
     if (b.awaiting === 'WHEN' && b.pendingHome) {
       const w = readWhen(text);
@@ -213,8 +301,11 @@ export function makeSahayak(d: BotDeps) {
       return;
     }
     if (b.awaiting === 'PROMISE') { say(l, 'विज़िट से पहले ऊपर के कार्ड में वचन टिक करके नाम लिखें।', 'Before the visit, tick the promise and type your name in the card above.'); return; }
+    // v99 — an open listing question: what he writes is the answer (even while "quiet"); a clearly different request falls through to the normal replies
+    if (!off(l) && asking(l) && answerAsk(l, { text })) return;
     if (off(l) || quiet(l)) return;
     switch (intent) {
+      case 'STATUS': if (d.ownerSide(l)) return ownerStatus(l); return fallback(l);
       case 'GREET': if (!confirmed(l)) return remindConfirm(l); return say(l, `नमस्ते ${first(l.name)}! 👋 बताइए, क्या मदद करूँ?`, `Hello ${first(l.name)}! 👋 How can I help?`, menu(l));
       case 'THANKS': return say(l, 'आपका स्वागत है 🙏 कोई भी सवाल हो तो यहीं लिखिए।', 'You are welcome 🙏 Write here for any question.', menu(l));
       case 'VISIT': return startVisit(l);
@@ -263,7 +354,18 @@ export function makeSahayak(d: BotDeps) {
       case 'VISIT': echo(label(M.visit)); return startVisit(l);
       case 'MORE': echo(label(M.more)); if (!confirmed(l)) return remindConfirm(l); if (d.ownerSide(l)) return handoff(l, 'other'); showHomes(l); return;
       case 'AVAIL': echo(label(M.avail)); return availReport(l);
-      case 'HUMAN': echo(label(M.human)); return handoff(l, 'human');
+      case 'HUMAN': echo(label(M.human)); if (b.interview) b.interview.step = undefined; return handoff(l, 'human');
+      case 'STATUS': if (!d.ownerSide(l)) return; echo(label(M.status)); return ownerStatus(l);
+      case 'ASKGO': { if (!d.ownerSide(l) || !b.interview || b.interview.doneAt) return; echo(label(M.info)); const iv = b.interview; iv.step = undefined; return askNext(l); }
+      case 'ASK': {
+        const iv = b.interview; if (!iv?.step || iv.doneAt) return;
+        const i = arg.indexOf(':'); const qid = arg.slice(0, i); const ck = arg.slice(i + 1);
+        if (qid !== iv.step) return;                                     // an old chip from an earlier question — ignore
+        const a = nextAsk(iv.fields, iv.skipped.filter(x => x !== qid));
+        const c = ck === 'SKIP' ? SKIP_CHIP : (a?.chips.find(x => x.id === ck));
+        if (c) echo(c.hi);
+        answerAsk(l, { chip: ck }); return;
+      }
       case 'ROOM': echo(label(M.room)); return openRoom(l);
       case 'VISITH': { if (!sentIds(l).includes(arg)) return; const h = propOf(arg); echo(`🏠 ${h?.title || arg}`); return startVisit(l, arg); }
       case 'WHEN': {
@@ -321,7 +423,7 @@ export function makeSahayak(d: BotDeps) {
   }
 
   /** the broker wrote himself: the assistant keeps quiet for a while */
-  function brokerSaid(l: PartnerLead) { const b = botOf(l); b.quietUntil = new Date(Date.now() + BOT_LIMITS.quietMinutes * 60_000).toISOString(); b.needsBroker = undefined; }
+  function brokerSaid(l: PartnerLead) { const b = botOf(l); if (b.interview && !b.interview.doneAt) b.interview.step = undefined; /* the broker is asking him himself — the owner can resume with the “finish the details” button */ b.quietUntil = new Date(Date.now() + BOT_LIMITS.quietMinutes * 60_000).toISOString(); b.needsBroker = undefined; }
 
   /** the homes he may browse (Explore) = the live homes that fit, with whether each was already sent */
   function explore(l: PartnerLead): { h: Property; sent: boolean }[] {
@@ -343,7 +445,8 @@ export function makeSahayak(d: BotDeps) {
   }
 
   const roomLink = (l: PartnerLead) => { const s = l.chat?.bot?.roomSealed; if (!s) return ''; try { return openLink(s, `lr|${l.id}`); } catch { return ''; } };
-  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; return { on: !off(l), offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId }; };
+  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
+    interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null }; };
 
   return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes };
 }

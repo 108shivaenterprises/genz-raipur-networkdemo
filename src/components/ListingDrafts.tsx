@@ -12,6 +12,7 @@ const NEED_RULES = { needMissing };
 import { ProtectionPicker, useProtectionConfig } from './ProtectionDays.js';
 import { formatINR } from '../lib/utils.js';
 import { VoiceNote } from './VoiceNote.js';
+import { ListingQuickAsk } from './ListingQuickAsk.js';
 
 type Draft = any;
 const MISSING_LABEL: Record<string, [string, string]> = {
@@ -157,7 +158,7 @@ const DraftRow: React.FC<{ d: Draft; open: boolean; onToggle: () => void; onChan
   const forProp: string = f.forPropertyId || '';
   const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); setErr(''); setTaken(null); try { await fn(); } catch (e: any) { if (e?.code === 'CONSENT_TAKEN') setTaken(e.body); else setErr(hi && e.body?.hi ? e.body.hi : e.message); } finally { setBusy(''); } };
   const numOrNull = (v: any) => (v === '' || v === null || v === undefined ? null : Number(String(v).replace(/[^\d.]/g, '')) || null);
-  const saveFields = () => api.draftSave(d.id, { title: f.title, description: f.description, propertyType: f.propertyType, transactionType: f.transactionType, state: f.state, city: f.city, locality: f.locality, addressHidden: f.addressHidden, ownerName: f.ownerName, ownerPhone: f.ownerPhone, tags: f.tags || [], areaSqft: numOrNull(f.areaSqft), askingPrice: numOrNull(f.askingPrice), ownerApprovedNetPrice: numOrNull(f.ownerApprovedNetPrice), bhk: numOrNull(f.bhk), remunerationBasis: f.remunerationBasis || '', agreedCommissionPct: numOrNull(f.agreedCommissionPct), fixedFeeAmount: numOrNull(f.fixedFeeAmount) });
+  const saveFields = () => api.draftSave(d.id, { title: f.title, description: f.description, propertyType: f.propertyType, transactionType: f.transactionType, state: f.state, city: f.city, locality: f.locality, addressHidden: f.addressHidden, ownerName: f.ownerName, ownerPhone: f.ownerPhone, tags: f.tags || [], areaSqft: numOrNull(f.areaSqft), askingPrice: numOrNull(f.askingPrice), ownerApprovedNetPrice: numOrNull(f.ownerApprovedNetPrice), bhk: numOrNull(f.bhk), ...(typeof f.floor === 'string' ? { floor: f.floor } : {}), ...(f.furnishing !== undefined ? { furnishing: f.furnishing || '' } : {}), ...(typeof f.availableFrom === 'string' ? { availableFrom: f.availableFrom } : {}), ...(f.papers !== undefined ? { papers: f.papers || '' } : {}), ...(typeof f.papersNote === 'string' ? { papersNote: f.papersNote } : {}), ...(typeof f.priceConfirmed === 'boolean' ? { priceConfirmed: f.priceConfirmed } : {}), ...(typeof f.dimensions === 'string' ? { dimensions: f.dimensions } : {}), remunerationBasis: f.remunerationBasis || '', agreedCommissionPct: numOrNull(f.agreedCommissionPct), fixedFeeAmount: numOrNull(f.fixedFeeAmount) });
   const save = () => run('save', async () => { await saveFields(); onChanged(); });
   const ask = () => run('ask', async () => { if (!locked) await saveFields(); const r = await api.consentRequest(d.id, days, agree || undefined); setLink({ url: r.url, wa: r.whatsapp.link }); onChanged(); try { window.open(r.whatsapp.link, '_blank', 'noopener'); } catch { /* popup blocked: the button below still works */ } });
   const paper = (file: File) => run('paper', async () => { if (!locked) await saveFields(); await api.consentPaper(d.id, days, await toDataUrl(file), agree || undefined); onChanged(); });
@@ -196,6 +197,7 @@ const DraftRow: React.FC<{ d: Draft; open: boolean; onToggle: () => void; onChan
       {open && (
         <div className="border-t border-slate-100 p-3">
           <details className="mb-2"><summary className="cursor-pointer text-[11px] text-slate-500">{tx('Original message', 'असली मैसेज')}</summary><pre className="mt-1 whitespace-pre-wrap rounded bg-slate-50 p-2 text-[11px] text-slate-600">{d.raw}</pre></details>
+          {!locked && !forProp && <ListingQuickAsk f={f} setF={setF} hi={hi} />}
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="text-xs text-slate-700 sm:col-span-2">{tx('Title', 'शीर्षक')}<input className={inp} value={f.title || ''} onChange={set('title')} maxLength={160} /></label>
             <label className="text-xs text-slate-700">{tx('Type', 'प्रकार')}<select className={inp} disabled={locked} value={f.propertyType || ''} onChange={set('propertyType')} data-testid="draft-type"><option value="">—</option>{PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}</select></label>

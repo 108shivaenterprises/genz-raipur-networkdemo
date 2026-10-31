@@ -43,8 +43,9 @@ import { PROPERTY_TYPES, findState } from '../src/shared/india.js';
 import { sniffMime } from '../src/shared/propDocs.js';
 import { daysLabel } from '../src/shared/protectionRules.js';
 import { TOP_CITIES, normCity } from '../src/shared/cities.js';
+import { samePlace } from '../src/shared/places.js';
 /** v28 — older listings often carry only the city: take the state from the city when we know it */
-const stateFor = (state: unknown, city: unknown) => findState(String(state || ''))?.name || TOP_CITIES.find(c => c.name === normCity(city))?.state || String(state || '');
+export const stateFor = (state: unknown, city: unknown) => findState(String(state || ''))?.name || TOP_CITIES.find(c => c.name === normCity(city))?.state || String(state || '');
 
 const nowIso = () => new Date().toISOString();
 const st = () => db.getState();
@@ -149,6 +150,9 @@ const draftFields = z.object({
   localities: z.array(z.string().trim().max(80)).max(10),
   purpose: z.enum(['Self-use', 'Investment', 'Rental Yield', 'Commercial Relocation']), urgency: z.enum(['Immediate (< 15 days)', 'Moderate (1-3 months)', 'Exploratory (3-6 months)']),
   agreedCommissionPct: z.number().nonnegative().max(100).nullable(), fixedFeeAmount: z.number().nonnegative().max(1e12).nullable(),
+  /** v99 — answers from the listing questions (owner chat / broker wizard) */
+  floor: z.string().trim().max(40), furnishing: z.enum(['UNF', 'SEMI', 'FULL']).or(z.literal('')), availableFrom: z.string().trim().max(60),
+  papers: z.enum(['REG', 'LOAN', 'SOME', 'UNSURE']).or(z.literal('')), papersNote: z.string().trim().max(80), priceConfirmed: z.boolean(), dimensions: z.string().trim().max(30),
 }).partial();
 
 function draftView(d: ListingDraft) {
@@ -207,6 +211,39 @@ export function draftForProperty(u: UserProfile, p: Property): { draft: ListingD
   const d: ListingDraft = { id: nextId('LD', s.listingDrafts), brokerId: u.id, kind: 'LISTING', status: 'DRAFT', raw: `Listing ${p.id} — owner approval`, fields, createdAt: nowIso(), updatedAt: nowIso() };
   s.listingDrafts.unshift(d);
   return { draft: d };
+}
+
+/**
+ * v99 — the GENZ assistant asked an OWNER the listing questions in the shop-QR chat → a DRAFT in the listing broker's Drafts.
+ * Private to the broker, never live by itself; the owner's consent link comes next, exactly as for a pasted WhatsApp message.
+ * The same owner + same place never gets a second draft: a draft still untouched is refreshed, one already sent for consent is left alone.
+ */
+export function saveOwnerChatDraft(brokerId: string, fields: Record<string, any>, leadId: string): { id: string; missing: string[]; created: boolean; locked: boolean } | { error: string } {
+  const s = st(); const u = db.byId('users', brokerId) as UserProfile | undefined;
+  if (!u) return { error: 'broker not found' };
+  const f: Record<string, any> = { ...fields, ownerPhone: phone10(fields.ownerPhone) || fields.ownerPhone, source: 'QR_CHAT', leadId };
+  const open = ['DRAFT', 'CONSENT_PENDING', 'READY'];
+  const same = s.listingDrafts.find(d => d.brokerId === brokerId && open.includes(d.status) && (d.kind || 'LISTING') === 'LISTING'
+    && (d.fields?.leadId === leadId || (phone10(d.fields?.ownerPhone) === phone10(f.ownerPhone) && d.fields?.transactionType === f.transactionType && samePlace(d.fields?.locality, f.locality))));
+  if (same) {
+    if (same.status !== 'DRAFT') return { id: same.id, missing: draftMissing(same.fields), created: false, locked: true };
+    // v99 — the bot only writes where the field is empty or still holds what the BOT wrote last time; whatever the broker typed or fixed is never overwritten
+    const sf = same.fields as any; const botSet: Record<string, any> = { ...(sf.botSet || {}) };
+    const empty = (c: any) => c === undefined || c === null || c === '' || (Array.isArray(c) && !c.length);
+    for (const [k, v] of Object.entries(f)) {
+      if (k === 'botSet') continue;
+      const cur = sf[k];
+      if (empty(cur) || (k in botSet && JSON.stringify(cur) === JSON.stringify(botSet[k]))) { sf[k] = v; botSet[k] = v; }
+    }
+    sf.botSet = botSet;
+    same.updatedAt = nowIso(); db.save();
+    return { id: same.id, missing: draftMissing(same.fields), created: false, locked: false };
+  }
+  const open0 = s.listingDrafts.filter(d => d.brokerId === brokerId && open.includes(d.status)).length;
+  if (open0 >= MAX_OPEN_DRAFTS) return { error: 'too many open drafts' };
+  const d: ListingDraft = { id: nextId('LD', s.listingDrafts), brokerId, kind: 'LISTING', status: 'DRAFT', raw: 'From the owner\'s answers in the shop-QR chat (GENZ assistant)', fields: { ...f, botSet: { ...f } }, createdAt: nowIso(), updatedAt: nowIso() };
+  s.listingDrafts.unshift(d); db.save();
+  return { id: d.id, missing: draftMissing(d.fields), created: true, locked: false };
 }
 
 export function createConsentRouter() {
