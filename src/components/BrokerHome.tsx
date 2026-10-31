@@ -166,6 +166,10 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
               : tx('Make your free public page — your homes and an enquiry form, no login for customers', 'अपना मुफ़्त पब्लिक पेज बनाएँ — आपके घर और पूछताछ फ़ॉर्म, ग्राहक को लॉगिन नहीं चाहिए')}</span>
           </button>
         )}
+      </div>
+      <details className="rounded-xl border border-slate-200 bg-white px-3 py-2" data-testid="home-extras">
+        <summary className="cursor-pointer text-xs font-semibold text-slate-700">{tx('More: rank, meet-ups, share', 'और: रैंक, मीटिंग, शेयर')}</summary>
+        <div className="mt-2 grid gap-2">
         <button onClick={() => onNavigate('community')} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left" data-testid="home-rank">
           <Trophy className="h-5 w-5 text-amber-500" />
           <span className="text-xs text-slate-700">{h.rank.position ? tx(`This month you are #${h.rank.position} of ${h.rank.of} (${h.rank.points} points)`, `इस महीने आप ${h.rank.of} में #${h.rank.position} हैं (${h.rank.points} अंक)`) : tx('Earn points: listings, consents, answers', 'अंक कमाएँ: लिस्टिंग, सहमति, जवाब')}
@@ -178,7 +182,8 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
         <a href={`https://wa.me/?text=${encodeURIComponent(pageUrl ? `${h.city || 'Raipur'} ke verified ghar dekhein aur seedhe poochhein — ${name} (GENZ verified broker): ${pageUrl}` : `${h.city || 'Raipur'} property report — locality rates & buyer demand (GENZ): ${reportUrl}`)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left" data-testid="home-report" data-target={pageUrl ? 'page' : 'report'}>
           <Share2 className="h-5 w-5 text-emerald-600" /><span className="text-xs text-slate-700">{pageUrl ? tx('Share your public page on WhatsApp — customers see your homes and can ask', 'अपना पब्लिक पेज WhatsApp पर भेजें — ग्राहक आपके घर देखेंगे और पूछ सकेंगे') : tx(`Share the ${h.city || 'city'} property report on WhatsApp`, `${h.city || 'शहर'} की प्रॉपर्टी रिपोर्ट WhatsApp पर भेजें`)}</span>
         </a>
-      </div>
+        </div>
+      </details>
     </section>
   );
 };
