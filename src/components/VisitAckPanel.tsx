@@ -41,7 +41,8 @@ export const VisitAckPanel: React.FC<{ kind: Kind; refId: string; status?: 'NONE
         {info.codeForBuyer && <div className="rounded-lg border border-amber-400 bg-white p-2 text-center" data-testid="ack-code">
           <p className="text-[11px] font-bold text-amber-900">{tx(`${buyerName} is asking for his code — read it out:`, `${buyerName} कोड माँग रहा है — उसे बताएँ:`)}</p>
           <p className="font-mono text-3xl font-black tracking-[0.3em] text-amber-950">{info.codeForBuyer}</p></div>}
-        {!info.codeForBuyer && !info.smsOn && <p className="text-[11px] text-amber-900">{tx('When he asks for the code, it will show here for you to read out.', 'जब वह कोड माँगेगा, यहाँ दिखेगा — उसे बता दें।')}</p>}
+        {!info.codeForBuyer && !info.smsOn && info.brokerReads !== false && <p className="text-[11px] text-amber-900">{tx('When he asks for the code, it will show here for you to read out.', 'जब वह कोड माँगेगा, यहाँ दिखेगा — उसे बता दें।')}</p>}
+        {!info.smsOn && info.brokerReads === false && <p className="text-[11px] text-amber-900">{tx('SMS is not set up on this server, so the buyer cannot get a code yet — ask GENZ support.', 'इस सर्वर पर SMS चालू नहीं है, इसलिए ख़रीदार को अभी कोड नहीं मिल सकता — GENZ सहायता से पूछें।')}</p>}
         {!info.codeForBuyer && info.smsOn && <p className="text-[11px] text-amber-900">{tx('The code goes to his mobile by SMS.', 'कोड उसके मोबाइल पर SMS से जाता है।')}</p>}
       </>}
     </div>

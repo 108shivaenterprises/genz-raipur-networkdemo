@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v26 — launch batch: WhatsApp paste → owner consent → publish; one property = one consented broker (co-broke instead of a
  * duplicate); bypass protection days under the superadmin's maximum; Web Push (RFC 8291 / 8292); buyer-need broadcast;
@@ -150,7 +151,7 @@ describe('static guarantees', () => {
 });
 
 // ───────────────────────── the server ─────────────────────────
-const PORT = 5000 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

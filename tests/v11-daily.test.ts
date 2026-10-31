@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -9,7 +10,7 @@ import { approxPoint, clusterPoints } from '../src/shared/geo';
 import { LESSONS } from '../src/shared/academy';
 
 /** v11: digest, client pipeline, lead score, listing freshness + reports, map, view-only docs, spam guards, chapters, points, loan desk. */
-const PORT = 4600 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

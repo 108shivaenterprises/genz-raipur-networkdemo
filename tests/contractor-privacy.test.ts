@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -16,7 +17,7 @@ const j = (r: Response) => r.json();
 
 interface Srv { B: string; proc: ChildProcess; dir: string; cfg: any; }
 async function start(dir: string): Promise<Srv> {
-  const port = 5100 + Math.floor(Math.random() * 800);
+  const port = await freePort();
   const proc = spawn(path.join(root, 'node_modules/.bin/tsx'), [path.join(root, 'server.ts')], {
     cwd: dir, stdio: 'ignore',
     env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'development', DEMO_MODE: 'true', SEED_DEMO_DATA: 'true', DISABLE_HMR: 'true' },

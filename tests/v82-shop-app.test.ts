@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v82 — the shopkeeper's page as an app + the anti-bypass pack, over real HTTP:
  * a written brokerage is shown to the shop as a change he can accept or reject, payment needs a reference, alerts (web push) are switched on from his page,
@@ -11,8 +12,8 @@ import { tmpdir } from 'os';
 import path from 'path';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7300 + Math.floor(Math.random() * 90);
-const SMS_PORT = 7400 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
+const SMS_PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any; let smsSrv: Server;
 const sms: { to: string; message: string }[] = [];

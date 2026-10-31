@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v28 — fixes Krishna found in v27: WhatsApp paste also reads BUYER requirements; brokerage terms are confirmed with a tick
  * (no password — browsers auto-filled a saved superadmin password); a listing made with the normal form gets the owner's
@@ -43,7 +44,7 @@ describe('WhatsApp paste: buyer requirements (pure)', () => {
   });
 });
 
-const PORT = 6300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v90 — a client need is tidied when saved ("shanker nagar, raipur" → "Shankar Nagar"; a bare city stays a whole-city wish), the broker sees what the
  * NETWORK holds for it right away, only he can ask, and the QR page shows only the homes he ticks. Over real HTTP.
@@ -9,7 +10,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7400 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

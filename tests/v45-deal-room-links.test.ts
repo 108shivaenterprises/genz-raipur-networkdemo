@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /** v45 — a deal room shows the broker's client rooms that carry its property (room list now carries propertyIds, own rooms only) */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'child_process';
@@ -7,7 +8,7 @@ import path from 'path';
 
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7100 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

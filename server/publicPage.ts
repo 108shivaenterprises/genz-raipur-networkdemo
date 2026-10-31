@@ -276,7 +276,7 @@ export function createBrokerPagePublicRouter() {
     s.pageEnquiries.unshift(e);
     usedForms.set(String(req.body?.t || '').split('.')[1] || '', Date.now());
     db.save();
-    db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', e.id, 'PAGE_ENQUIRY', `Enquiry from the public page of ${u.id}${home ? ` about ${home}` : ''} (consent recorded)`);
+    db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', e.id, 'PAGE_ENQUIRY', `Enquiry from the public page of ${u.id}${home ? ` about ${home}` : ''} (consent recorded)`);
     const p = home ? db.byId('properties', home) as Property | undefined : undefined;
     void pushTo(u.id, { kind: 'deals', title: 'New enquiry from your public page', body: `${draft.name!.split(' ')[0]} ${p ? `asked about ${p.title}` : 'sent an enquiry'}. Open My Public Page.`, url: '/?tab=mypage', tag: e.id });
     done();

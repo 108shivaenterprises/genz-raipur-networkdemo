@@ -68,7 +68,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
       <form onSubmit={(e) => { e.preventDefault(); submitCode(); }} className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="login-2fa">
         <h1 className="text-base font-bold text-slate-900">{tx('Two-step sign-in', 'टू-स्टेप साइन-इन')}</h1>
         <p className="mt-1 text-xs text-slate-600">{tx('Open your authenticator app and type the 6-digit GENZ code. Lost the phone? Type one of your recovery codes.', 'अपना ऑथेंटिकेटर ऐप खोलें और GENZ का 6 अंकों का कोड लिखें। फ़ोन खो गया? कोई एक रिकवरी कोड लिखें।')}</p>
-        <input autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={14} value={code} onChange={(e) => setCode(e.target.value)} data-testid="login-2fa-code"
+        <input aria-label="Authenticator code" autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={14} value={code} onChange={(e) => setCode(e.target.value)} data-testid="login-2fa-code"
           className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-3 text-center font-mono text-xl tracking-widest focus:border-slate-900 focus:outline-none" />
         {error && <p className="mt-2 text-xs font-medium text-red-700">{error}</p>}
         <button disabled={busy || code.trim().length < 6} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" data-testid="login-2fa-submit">
@@ -99,11 +99,11 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
             <LangToggle className="ml-auto" />
           </div>
           {notice && <p className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">{notice === 'SESSION_ENDED' ? tx('Your session ended. Please sign in again.', 'आपका सेशन ख़त्म हो गया। कृपया फिर से साइन इन करें।') : notice}</p>}
-          <label className="block text-xs font-semibold text-slate-700 mb-1">{t('login.email', 'Email or mobile number')}</label>
-          <input type="text" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)}
+          <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1">{t('login.email', 'Email or mobile number')}</label>
+          <input id="login-email" type="text" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)}
             className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none" />
-          <label className="block text-xs font-semibold text-slate-700 mb-1">{t('login.password', 'Password')}</label>
-          <input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1">{t('login.password', 'Password')}</label>
+          <input id="login-password" type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}
             className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none" />
           {error && <p className="mb-3 text-xs font-medium text-red-700">{error}</p>}
           <button disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">
@@ -204,11 +204,11 @@ export const ChangePasswordView: React.FC<{ onDone: () => void; onLogout: () => 
         {!known && (
           <>
             <p className="mt-3 text-[11px] text-slate-500">{tx('Enter the password you just signed in with (the temporary one).', 'वह पासवर्ड डालें जिससे अभी साइन इन किया (अस्थायी वाला)।')}</p>
-            <input type={show ? 'text' : 'password'} required autoComplete="off" name="temp-password" placeholder={tx('Current (temporary) password', 'मौजूदा (अस्थायी) पासवर्ड')} value={cur} onChange={(e) => setCur(e.target.value)} className={field} />
+            <input aria-label={tx('Current (temporary) password', 'मौजूदा (अस्थायी) पासवर्ड')} type={show ? 'text' : 'password'} required autoComplete="off" name="temp-password" placeholder={tx('Current (temporary) password', 'मौजूदा (अस्थायी) पासवर्ड')} value={cur} onChange={(e) => setCur(e.target.value)} className={field} />
           </>
         )}
-        <input type={show ? 'text' : 'password'} required autoComplete="new-password" name="new-password" placeholder={tx('New password', 'नया पासवर्ड')} value={next} onChange={(e) => setNext(e.target.value)} className={field} />
-        <input type={show ? 'text' : 'password'} required autoComplete="new-password" name="new-password-confirm" placeholder={tx('Repeat new password', 'नया पासवर्ड दोबारा')} value={again} onChange={(e) => setAgain(e.target.value)} className={field} />
+        <input aria-label={tx('New password', 'नया पासवर्ड')} type={show ? 'text' : 'password'} required autoComplete="new-password" name="new-password" placeholder={tx('New password', 'नया पासवर्ड')} value={next} onChange={(e) => setNext(e.target.value)} className={field} />
+        <input aria-label={tx('Repeat new password', 'नया पासवर्ड दोबारा')} type={show ? 'text' : 'password'} required autoComplete="new-password" name="new-password-confirm" placeholder={tx('Repeat new password', 'नया पासवर्ड दोबारा')} value={again} onChange={(e) => setAgain(e.target.value)} className={field} />
         <label className="mt-3 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> {tx('Show passwords', 'पासवर्ड दिखाएँ')}</label>
         {error && <p className="mt-3 text-xs font-medium text-red-700">{error}</p>}
         <button disabled={busy} className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{tx('Update password', 'पासवर्ड बदलें')}</button>

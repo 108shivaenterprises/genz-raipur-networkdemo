@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -10,7 +11,7 @@ import path from 'node:path';
  * people directory with ETag, masked client names of other brokers, crash / slow-request monitor, and a guard that
  * every record has an id (the PostgreSQL store needs it — activity days had none).
  */
-const PORT = 4900 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess | null = null; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

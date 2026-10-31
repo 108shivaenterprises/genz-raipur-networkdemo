@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -13,7 +14,7 @@ import { PERMISSION_HI } from '../src/lib/permHi';
  * Photos are private to the two sides; a notice photo to whoever may read that notice. A finished partnership leaves a read-only chat.
  */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7800 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

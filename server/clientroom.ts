@@ -17,7 +17,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { ClientRoom, UserProfile, Property } from './db.js';
-import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, setSessionCookie as _unused } from './auth.js';
+import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, setSessionCookie as _unused, DEMO_MODE } from './auth.js';
 import { sendSms } from './notify.js';
 import fs from 'fs';
 import path from 'path';
@@ -46,6 +46,9 @@ const phone10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
 const PHONE_RE = /^[6-9]\d{9}$/;
 const newToken = () => crypto.randomBytes(18).toString('base64url');
 const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+/** audit F2 — only a local DEMO shows the customer's / shop's code to the broker; a real server needs SMS (the broker never sees it) */
+const brokerReads = () => !smsOn() && DEMO_MODE;
+const NO_SMS = 'कोड अभी नहीं भेजा जा सकता — SMS चालू नहीं है। GENZ सहायता से संपर्क करें। / A code cannot be sent right now — SMS is not set up. Please contact GENZ support.';
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const bad = (res: Response, error: string, status = 400, extra: Record<string, unknown> = {}) => res.status(status).json({ error, ...extra });
 const ev = (r: ClientRoom, text: string) => { r.events.push({ at: nowIso(), text }); r.updatedAt = nowIso(); };
@@ -163,7 +166,7 @@ function summary(r: ClientRoom) {
 }
 function detail(r: ClientRoom) {
   const props = st().properties;
-  const awaiting = r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
+  const awaiting = brokerReads() && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
   return {
     ...summary(r), note: r.note, messages: r.messages, events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
     ...(r.kind === 'OWNER' ? { propertyId: r.propertyId, propertyTitle: st().properties.find(p => p.id === r.propertyId)?.title, ownerStats: ownerStats(r) } : {}),
@@ -682,13 +685,14 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     if (hit(`cr-phone:${room.id}`, 8, 3600_000, 3600_000) > 0) return gate(res, room, req.params.token, 'बहुत बार कोशिश हो चुकी। एक घंटे बाद फिर करें। / Too many tries — please wait an hour.', 'phone', 429);
     if (!safeEqual(hmac('cr-phone', phone), room.phoneKey)) return gate(res, room, req.params.token, 'यह नंबर इस रूम से मेल नहीं खाता। उसी नंबर से कोशिश करें जो आपने अपने ब्रोकर को दिया था। / This number does not match this room — use the number you gave your broker.');
     if (!knownDevice(req, room) && (room.devices || []).length >= L.devices) return gate(res, room, req.params.token, FULL_DEVICES, 'phone', 403);
+    if (!smsOn() && !DEMO_MODE) return gate(res, room, req.params.token, NO_SMS, 'phone', 503);
     const otp = secureOtp();
     room.otpHash = hmac('cr-otp', `${room.id}|${otp}`); room.otpExpires = new Date(Date.now() + L.otpMinutes * 60_000).toISOString(); room.otpTries = 0;
-    room.otpPlain = smsOn() ? undefined : otp;
+    room.otpPlain = brokerReads() ? otp : undefined;
     if (smsOn()) await sendSms(`+91${phone}`, `GENZ: your code to open your private property room is ${otp}. Valid ${L.otpMinutes} minutes. Do not share it.`);
     ev(room, smsOn() ? 'Code sent to the client by SMS' : 'Client asked for a code — the broker reads it out');
     db.save();
-    if (!smsOn()) pingBroker(room, 'Your client is opening the room', `${room.clientName} asked for the code. Open Client Rooms and read it out.`);
+    if (brokerReads()) pingBroker(room, 'Your client is opening the room', `${room.clientName} asked for the code. Open Client Rooms and read it out.`);
     gate(res, room, req.params.token, '', 'code');
   });
 

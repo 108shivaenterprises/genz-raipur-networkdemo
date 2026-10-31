@@ -16,7 +16,7 @@ import crypto from 'crypto';
 import QRCode from 'qrcode';
 import { db } from './db.js';
 import type { UserProfile, VisitAck } from './db.js';
-import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual } from './auth.js';
+import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, DEMO_MODE } from './auth.js';
 import { can } from './permissions.js';
 import { sendSms } from './notify.js';
 import { pushTo } from './webpush.js';
@@ -30,6 +30,9 @@ const hmac = (tag: string, v: string) => crypto.createHmac('sha256', secret()).u
 const phone10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
 const PHONE_RE = /^[6-9]\d{9}$/;
 const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+/** audit F2 — only a local DEMO shows the customer's / shop's code to the broker; a real server needs SMS (the broker never sees it) */
+const brokerReads = () => !smsOn() && DEMO_MODE;
+const NO_SMS = 'कोड अभी नहीं भेजा जा सकता — SMS चालू नहीं है। GENZ सहायता से संपर्क करें। / A code cannot be sent right now — SMS is not set up. Please contact GENZ support.';
 const bad = (res: Response, error: string, status = 400) => res.status(status).json({ error });
 
 // ───────────────────────────── used by the other modules ─────────────────────────────
@@ -86,10 +89,10 @@ export function createVisitAckRouter() {
     const a = ackFor(kind, String(req.params.refId));
     if (!a || !mayManage(a)) return res.json({ success: true, ack: null });
     const pass = kind === 'PASS' ? db.byId('visitPasses', a.refId) : undefined;
-    const waiting = a.status === 'PENDING' && a.otpPlain && a.otpExpires && Date.parse(a.otpExpires) > Date.now() ? a.otpPlain : undefined;
+    const waiting = brokerReads() && a.status === 'PENDING' && a.otpPlain && a.otpExpires && Date.parse(a.otpExpires) > Date.now() ? a.otpPlain : undefined;
     res.json({ success: true, ack: {
       id: a.id, status: a.status, buyerName: a.buyerName, phoneLast4: a.phoneLast4, createdAt: a.createdAt, tickedAt: a.tickedAt, ackedAt: a.ackedAt, textVersion: a.textVersion,
-      link: ackLinkFor(a, pass?.code), page: ackBase(a), /** only when no SMS gateway is set: the code the buyer has just asked for — the broker reads it out */ codeForBuyer: waiting, smsOn: smsOn(),
+      link: ackLinkFor(a, pass?.code), page: ackBase(a), /** only when no SMS gateway is set: the code the buyer has just asked for — the broker reads it out */ codeForBuyer: waiting, smsOn: smsOn(), brokerReads: brokerReads(),
     } });
   });
   return r;
@@ -164,12 +167,13 @@ export function createVisitAckPageRouter() {
     if (!phone) return res.send(renderAckGate(a, base, 'अपना मोबाइल नंबर डालें। / Enter your mobile number.', 'phone', true));
     if (hit(`va-phone:${a.id}`, ACK_LIMITS.askPerHour, 3600_000, 3600_000) > 0) return res.status(429).send(renderAckGate(a, base, 'बहुत बार कोशिश हो चुकी। एक घंटे बाद फिर करें। / Too many tries — please wait an hour.', 'phone', true));
     if (!safeEqual(hmac('va-phone', phone), a.phoneKey)) return res.send(renderAckGate(a, base, 'यह नंबर इस विज़िट से मेल नहीं खाता। उसी नंबर से कोशिश करें जो आपने अपने ब्रोकर को दिया था। / This number does not match this visit — use the number you gave your broker.', 'phone', true));
+    if (!smsOn() && !DEMO_MODE) return res.status(503).send(renderAckGate(a, base, NO_SMS, 'phone', true));
     const otp = secureOtp();
     a.tickedAt = nowIso(); a.otpHash = hmac('va-otp', `${a.id}|${otp}`); a.otpExpires = new Date(Date.now() + ACK_LIMITS.otpMinutes * 60_000).toISOString(); a.otpTries = 0;
-    a.otpPlain = smsOn() ? undefined : otp;
+    a.otpPlain = brokerReads() ? otp : undefined;
     if (smsOn()) await sendSms(`+91${phone}`, `GENZ: your code to confirm your site visit is ${otp}. Valid ${ACK_LIMITS.otpMinutes} minutes. Do not share it.`);
     db.save();
-    if (!smsOn()) ping(a, 'Your buyer is confirming the visit', `${a.buyerName} ticked the agreement and asked for the code. Open Visit QR and read it out.`);
+    if (brokerReads()) ping(a, 'Your buyer is confirming the visit', `${a.buyerName} ticked the agreement and asked for the code. Open Visit QR and read it out.`);
     res.send(renderAckGate(a, base, '', 'code'));
   });
 
@@ -183,7 +187,7 @@ export function createVisitAckPageRouter() {
     if (!safeEqual(a.otpHash, hmac('va-otp', `${a.id}|${code}`))) { a.otpTries = (a.otpTries || 0) + 1; db.save(); return res.send(renderAckGate(a, base, 'कोड सही नहीं है। / The code is not correct.', 'code')); }
     a.otpHash = undefined; a.otpPlain = undefined; a.otpExpires = undefined; a.otpTries = 0; a.status = 'ACKED'; a.ackedAt = nowIso();
     db.save();
-    db.appendAuditEvent('SYSTEM', 'SUPERADMIN', 'VISIT', a.refId, 'VISIT_ACK_DONE', `${a.buyerName} (••${a.phoneLast4}, mobile verified by code) agreed on ${a.ackedAt}: no direct dealing with the owner / builder of ${a.subject} without ${a.brokerName} during the protection period (wording ${a.textVersion}).`);
+    db.appendAuditEvent('public', 'PUBLIC' as any, 'VISIT', a.refId, 'VISIT_ACK_DONE', `${a.buyerName} (••${a.phoneLast4}, ${smsOn() ? 'mobile verified by an SMS code' : 'DEMO mode: code read out by the broker — not proof of the buyer’s consent'}) agreed on ${a.ackedAt}: no direct dealing with the owner / builder of ${a.subject} without ${a.brokerName} during the protection period (wording ${a.textVersion}).`);
     ping(a, 'Buyer confirmed', `${a.buyerName} confirmed the visit. The pass is ready.`);
     res.redirect(303, base);
   });

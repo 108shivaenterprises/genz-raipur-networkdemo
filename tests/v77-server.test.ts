@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -9,7 +10,7 @@ import path from 'node:path';
  * (3) project papers that go builder → partner (personally or to all) → his team → his client, checked live at every step.
  * One fresh project of builder 1 carries all three, with partner 1 (team: Pooja sees only what is posted and cannot send, Rakesh sees all and may send) and partner 2.
  */
-const PORT = 7900 + Math.floor(Math.random() * 60);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

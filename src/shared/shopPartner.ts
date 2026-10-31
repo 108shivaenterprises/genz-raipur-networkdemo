@@ -135,3 +135,16 @@ export const OUTCOME_CONSENT = {
   hi: 'वैकल्पिक: मैं सहमत हूँ कि GENZ मुझे एक SMS भेजकर पूछ सकता है कि बात आगे बढ़ी या नहीं।',
   en: 'Optional: I agree that GENZ may send me one SMS asking whether it went ahead.',
 };
+
+/** audit F4 — words that say nothing about WHICH area it is ("Nagar", "Colony", "Naya"…): they never make two areas "the same" */
+export const AREA_STOP_WORDS = new Set(['nagar', 'ngr', 'colony', 'road', 'marg', 'vihar', 'sector', 'phase', 'ward', 'para', 'chowk', 'enclave', 'extension', 'layout', 'society', 'city', 'town', 'gram', 'gaon', 'naya', 'nava', 'purana', 'main', 'east', 'west', 'north', 'south', 'near', 'block', 'mohalla', 'basti', 'नगर', 'कॉलोनी', 'रोड', 'नया']);
+/**
+ * the customer's area words vs the home's area (both already lower-cased / cleaned): the same name, or one shared
+ * distinctive whole word (4+ letters, not a generic word, not the city's own name). "Shankar Nagar" ≠ "Ram Nagar"; "Naya Raipur" ≠ any Raipur home.
+ */
+export function areaWordsMatch(lead: string, home: string, city = ''): boolean {
+  if (!lead) return false;
+  if (lead === home) return true;
+  const cityWords = new Set(city.split(' ')); const homeWords = new Set(home.split(' '));
+  return lead.split(' ').some(w => w.length >= 4 && !AREA_STOP_WORDS.has(w) && !cityWords.has(w) && homeWords.has(w));
+}

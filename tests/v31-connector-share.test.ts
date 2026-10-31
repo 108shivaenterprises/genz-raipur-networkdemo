@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v31 — Connector % share: the connector and the working broker agree a % of the BROKER's commission on a referral.
  * Paid by the broker outside GENZ; GENZ caps the %, records the terms and keeps the trail.
@@ -9,7 +10,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 6500 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

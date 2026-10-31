@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, spawnSync, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
@@ -74,7 +75,7 @@ describe('"clean document look" (pure)', () => {
 });
 
 // ── the server takes the PDF made on the phone exactly like any other PDF ──
-const PORT = 5400 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any; let cookie = '';
 beforeAll(async () => {

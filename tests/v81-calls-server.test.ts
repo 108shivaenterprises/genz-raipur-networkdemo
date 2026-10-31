@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
@@ -6,7 +7,7 @@ import path from 'node:path';
 
 /** v81 — in-app voice calls on a real server: who may call, ringing, signals, consent-based recording, who may listen, the log. */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7990 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
@@ -12,7 +13,7 @@ const PNG64 = PNG.toString('base64');
 
 interface Srv { B: string; proc: ChildProcess; dir: string; cfg: any; sup: string; b1: string }
 async function boot(env: Record<string, string>): Promise<Srv> {
-  const port = 8200 + Math.floor(Math.random() * 700); const dir = mkdtempSync(path.join(tmpdir(), 'genz-v74-')); mkdirSync(path.join(dir, 'data'));
+  const port = await freePort(); const dir = mkdtempSync(path.join(tmpdir(), 'genz-v74-')); mkdirSync(path.join(dir, 'data'));
   const proc = spawn(path.join(ROOT, 'node_modules/.bin/tsx'), [path.join(ROOT, 'server.ts')], { cwd: dir, env: { ...process.env, SMS_WEBHOOK_URL: '', PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'development', DEMO_MODE: 'true', SEED_DEMO_DATA: 'true', DISABLE_HMR: 'true', ...env }, stdio: 'ignore' });
   const B = `http://127.0.0.1:${port}`; let cfg: any;
   for (let i = 0; i < 80; i++) { try { const r = await fetch(B + '/api/auth/config'); if (r.ok) { cfg = await r.json(); break; } } catch { /* not up */ } await new Promise(r => setTimeout(r, 250)); }

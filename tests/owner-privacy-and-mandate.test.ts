@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
@@ -9,7 +10,7 @@ import { INDIA_STATES, isPincode, cleanTags, reraAuthorityOf, sameCity } from '.
  * End-to-end checks for: owner never sees the broker↔broker commission, owners only see their own
  * properties, the surplus-above-net mandate flow, and India-wide location/tag validation.
  */
-const PORT = 4100 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;
@@ -44,7 +45,7 @@ beforeAll(async () => {
   jar.BROKER2 = await login(acct('BROKER', 1).email);
 }, 40_000);
 
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true }); });
 
 describe('commission confidentiality (owner is not party to the broker split)', () => {
   it('owner sees the deal but not the split, fee, hash or notes', async () => {

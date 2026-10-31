@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -10,7 +11,7 @@ import { valueReport, lastMonths, monthOf } from '../src/shared/valueRules';
  * v20 — Revenue & Growth: GENZ's master-CP commission book (builder → GENZ → broker, money outside the app),
  * growth & value numbers, and the read-only network-strength link for builders.
  */
-const PORT = 5000 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

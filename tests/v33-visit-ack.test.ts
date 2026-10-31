@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v33 — “no direct deal” acknowledgement: the buyer ticks a promise and confirms his own mobile before his visit QR / code works.
  * Both flows: broker-to-broker site visit (VISIT) and builder-project pass (PASS). Older visits without an acknowledgement keep working.
@@ -10,7 +11,7 @@ import path from 'path';
 import { ackBuyer } from './helpers/ack.js';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 6700 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};
@@ -47,7 +48,7 @@ describe('broker-to-broker site visit', () => {
   it('scheduling makes a pending acknowledgement; the visit cannot be verified yet (OTP and QR)', async () => {
     const v = await j(await call(jar.BRK2, 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Mohan Buyer', customerPhone: phone, scheduledTime: slot(1) }));
     id = v.siteVisit.id; expect(v.siteVisit.ackStatus).toBe('PENDING');
-    sec = (await j(await call(jar.OWN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
+    sec = (await j(await call(jar.ADMIN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
     const a = await call(jar.BRK1, 'POST', `/api/site-visits/${id}/verify-otp`, { otpCode: sec.otpCode });
     expect(a.status).toBe(409); expect((await j(a)).code).toBe('ACK_REQUIRED');
     const q = await call(jar.BRK1, 'POST', `/api/site-visits/${id}/checkin-qr`, { qrToken: sec.qrToken });
@@ -89,7 +90,7 @@ describe('broker-to-broker site visit', () => {
     expect(audit).toContain('VISIT_ACK_DONE'); expect(audit).toContain('wording v1'); expect(audit).not.toContain(phone);
     const v = await j(await call(jar.BRK2, 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Walk In', scheduledTime: slot(1) }));
     expect(v.siteVisit.ackStatus).toBe('NONE');
-    const s2 = (await j(await call(jar.OWN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === v.siteVisit.id);
+    const s2 = (await j(await call(jar.ADMIN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === v.siteVisit.id);
     expect((await call(jar.BRK1, 'POST', `/api/site-visits/${v.siteVisit.id}/verify-otp`, { otpCode: s2.otpCode })).status).toBe(200);
   });
   it('wrong codes lock the code (5 tries) and asking again is rate limited', async () => {

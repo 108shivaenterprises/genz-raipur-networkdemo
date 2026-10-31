@@ -28,7 +28,7 @@ import { buildConnectorDemo } from './connectorSeed.js';
 import { seedDemoBulk } from './demoBulk.js';
 import { PRELOADED } from './bootstrap.js';
 import { pgStore } from './pgstore.js';
-import { DEMO_MODE, DEMO_PASSWORD, IS_PROD, hashPassword, unusablePasswordHash, randomPassword } from './auth.js';
+import { DEMO_MODE, DEMO_PASSWORD, IS_PROD, hashPassword, unusablePasswordHash, randomPassword, secret as authSecret } from './auth.js';
 
 // Supported User Roles (single definition lives in permissions.ts)
 export type { UserRole } from './permissions.js';
@@ -909,6 +909,8 @@ export interface DealRoom {
 
 export interface SiteVisit {
   id: string; // e.g. SV-2026-101
+  /** audit F12 — QR check-in: true when the phone's location was checked against the property, false when none was sent */
+  gpsChecked?: boolean;
   dealRoomId: string;
   propertyId: string;
   brokerId: string;
@@ -1056,6 +1058,8 @@ export interface SystemSettings {
   brandLogo?: BrandLogoSettings;
   /** v20 — when the one-time legacy re-seal of the audit chain happened (never again after this) */
   auditChainSealedAt?: string;
+  /** audit F10 — when the chain was first sealed with the keyed HMAC */
+  auditChainKeyedAt?: string;
   platformName: string;
   poweredBy: string;
   city: string;
@@ -1441,7 +1445,7 @@ export interface PaymentRequest {
   propertyTitle: string; propertyPlace: string;
   items: { text: string; amount: number }[];
   gstPct: number; gstin?: string; upiId?: string; dueOn: string; note?: string;
-  tokenHash: string; token?: string;
+  tokenHash: string; /** legacy plain link (sealed on first read) */ token?: string; tokenSealed?: string;
   status: 'SENT' | 'PARTY_SAYS_PAID' | 'PAID' | 'CANCELLED';
   partySaid?: { at: string; ref: string };
   paid?: { at: string; ref: string };
@@ -1458,8 +1462,8 @@ export interface ShopPartner {
   phoneKey: string; phoneLast4: string;
   qrCode: string;                  // public code for /q/:code (the customer's form)
   tokenHash: string; sessVersion: number; linkAt: string; // the partner's own page /sp/:token
-  /** the page link itself, so the broker can send it again (opening it still needs the partner's mobile + a code) */
-  token?: string;
+  /** the page link, sealed (server/linkSeal.ts), so the broker can send it again (opening it still needs the partner's mobile + a code); `token` = legacy plain copy */
+  token?: string; tokenSealed?: string;
   status: 'PENDING' | 'ACTIVE' | 'PAUSED' | 'ENDED';
   terms: import('../src/shared/shopPartner.js').PartnerTerms;
   termsVersion: number;
@@ -1812,6 +1816,11 @@ export interface DatabaseState {
 }
 
 const DB_FILE = path.resolve(process.cwd(), 'data', 'database.json');
+const BACKUP_DIR = path.resolve(process.cwd(), 'data', 'backups');
+/** newest first */
+function listBackups(): string[] {
+  try { return fs.readdirSync(BACKUP_DIR).filter(f => /^database-.*\.json$/.test(f)).sort().reverse().map(f => path.join(BACKUP_DIR, f)); } catch { return []; }
+}
 /** Demo data (fake brokers/properties) only when SEED_DEMO_DATA=true. Default: a clean database with a single SUPERADMIN. */
 const SEED_DEMO = (process.env.SEED_DEMO_DATA ?? 'false').toLowerCase() === 'true';
 /** SEED_DEMO_BULK=true (with SEED_DEMO_DATA) adds the large demo set — the public Vercel demo turns it on */
@@ -2958,17 +2967,27 @@ function getInitialSeedData(): DatabaseState {
 }
 
 // ───────────────────────── migrations / hardening on load ─────────────────────────
-function auditHash(e: Pick<AuditEvent, 'id' | 'timestamp' | 'actorId' | 'actorRole' | 'entityType' | 'entityId' | 'action' | 'details'>, previousHash: string) {
-  return sha256(`${e.id}:${e.timestamp}:${e.actorId}:${e.actorRole}:${e.entityType}:${e.entityId}:${e.action}:${e.details}:${previousHash}`);
+type HashFields = Pick<AuditEvent, 'id' | 'timestamp' | 'actorId' | 'actorRole' | 'entityType' | 'entityId' | 'action' | 'details'>;
+const auditLine = (e: HashFields, previousHash: string) => `${e.id}:${e.timestamp}:${e.actorId}:${e.actorRole}:${e.entityType}:${e.entityId}:${e.action}:${e.details}:${previousHash}`;
+/** the pre-audit formula (plain SHA-256: anyone who can edit the file can recompute it) — only read once, to upgrade an old chain */
+function legacyAuditHash(e: HashFields, previousHash: string) { return sha256(auditLine(e, previousHash)); }
+/**
+ * Audit F10 — the chain is an HMAC: without AUDIT_HMAC_KEY (or, when unset, the server's AUTH_SECRET) an edited event
+ * cannot be re-sealed. Keep the key OUT of data/ in production; changing it makes the existing chain read as broken.
+ */
+let auditKeyCache: Buffer | null = null;
+const auditKey = () => (auditKeyCache ??= process.env.AUDIT_HMAC_KEY && process.env.AUDIT_HMAC_KEY.length >= 24 ? Buffer.from(process.env.AUDIT_HMAC_KEY) : crypto.createHmac('sha256', authSecret()).update('genz-audit-chain-v1').digest());
+function auditHash(e: HashFields, previousHash: string) {
+  return crypto.createHmac('sha256', auditKey()).update(auditLine(e, previousHash)).digest('hex');
 }
 
 const GENESIS_HASH = '0'.repeat(64);
 
-function verifyChain(events: AuditEvent[]): { isValid: boolean; checkedCount: number; brokenEventId?: number } {
+function verifyChain(events: AuditEvent[], hashOf: (e: HashFields, prev: string) => string = auditHash): { isValid: boolean; checkedCount: number; brokenEventId?: number } {
   let prev = GENESIS_HASH;
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
-    if (ev.previousHash !== prev || ev.hash !== auditHash(ev, prev)) {
+    if (ev.previousHash !== prev || ev.hash !== hashOf(ev, prev)) {
       return { isValid: false, checkedCount: i, brokenEventId: ev.id };
     }
     prev = ev.hash;
@@ -3238,9 +3257,13 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   // ── audit chain: legacy seed events were not hashed with the live formula → re-seal ONCE ──
   // v20: only the first time. After that a broken chain at start-up is kept broken and shown to the admins
   // (re-sealing on every start would quietly hide anyone who edited the database file).
+  // audit F10 — a chain written with the old plain-SHA formula is checked first and, only when it is intact, re-sealed ONCE with the HMAC.
+  // Once keyed, a broken chain is never re-sealed (not even when the settings flags are removed from the file).
   const v = verifyChain(parsed.auditEvents);
   const sealedBefore = !!parsed.settings.auditChainSealedAt;
-  if (!v.isValid && !sealedBefore) {
+  const keyedBefore = !!parsed.settings.auditChainKeyedAt;
+  const legacyIntact = !v.isValid && !keyedBefore && verifyChain(parsed.auditEvents, legacyAuditHash).isValid;
+  if (!v.isValid && !keyedBefore && (legacyIntact || !sealedBefore)) {
     let prev = GENESIS_HASH;
     for (const ev of parsed.auditEvents) {
       ev.previousHash = prev;
@@ -3252,8 +3275,10 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
     const timestamp = new Date().toISOString();
     const ev: AuditEvent = {
       id, timestamp, actorId: 'SYSTEM', actorRole: 'SUPERADMIN', entityType: 'SYSTEM', entityId: 'AUDIT_CHAIN',
-      action: 'AUDIT_CHAIN_RESEALED',
-      details: `Hash chain re-sealed during security migration (legacy events were not verifiable). ${parsed.auditEvents.length} prior events preserved.`,
+      action: legacyIntact ? 'AUDIT_CHAIN_KEYED' : 'AUDIT_CHAIN_RESEALED',
+      details: legacyIntact
+        ? `The intact hash chain (${parsed.auditEvents.length} events) was re-sealed with a keyed HMAC — edits to the file can no longer be re-hashed without the server key.`
+        : `Hash chain re-sealed during security migration (legacy events were not verifiable). ${parsed.auditEvents.length} prior events preserved.`,
       previousHash: prev, hash: '',
     };
     ev.hash = auditHash(ev, prev);
@@ -3262,6 +3287,8 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
     console.error(`[AUDIT] hash chain is BROKEN at event #${v.brokenEventId} — not re-sealing; Control Center shows it.`);
   }
   if (!sealedBefore) parsed.settings.auditChainSealedAt = new Date().toISOString();
+  if (!keyedBefore) parsed.settings.auditChainKeyedAt = new Date().toISOString();
+  { const tip = parsed.auditEvents[parsed.auditEvents.length - 1]; if (tip) console.log(`[AUDIT] chain tip #${tip.id} ${tip.hash.slice(0, 16)}… (keep this log line off-box: it anchors the chain)`); }
 
   // ── demo only: unit grids for two builder projects + escalator slabs on the plotted project ──
   if (SEED_DEMO && parsed.inventoryUnits.length === 0) {
@@ -3381,11 +3408,39 @@ class Database {
     }
   }
 
-  private loadState(): DatabaseState {
+  /**
+   * Audit F1 — an existing database.json that cannot be read is NEVER replaced by a fresh seed. It is moved aside
+   * (database.corrupt-<time>.json), the newest readable backup in data/backups/ is used instead, and with no backup
+   * the server refuses to start unless ALLOW_FRESH_DB=true says that starting empty is really wanted.
+   */
+  private readExisting(): DatabaseState | null {
+    if (!fs.existsSync(DB_FILE)) return null;
     try {
-      if (fs.existsSync(DB_FILE)) {
-        const data = fs.readFileSync(DB_FILE, 'utf-8');
-        const parsed: DatabaseState = JSON.parse(data);
+      return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')) as DatabaseState;
+    } catch (err) {
+      const aside = path.join(path.dirname(DB_FILE), `database.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+      try { fs.renameSync(DB_FILE, aside); } catch { /* keep going: the original stays where it was */ }
+      console.error(`[DB] data/database.json could not be read (${(err as Error).message}). It was moved to ${path.basename(aside)}.`);
+      for (const f of listBackups()) {
+        try {
+          const st = JSON.parse(fs.readFileSync(f, 'utf-8')) as DatabaseState;
+          console.error(`[DB] Restored the newest readable backup: ${path.relative(path.dirname(DB_FILE), f)}. Check what changed since it was taken.`);
+          return st;
+        } catch { /* try an older one */ }
+      }
+      if ((process.env.ALLOW_FRESH_DB ?? 'false').toLowerCase() === 'true') {
+        console.error('[DB] No readable backup. ALLOW_FRESH_DB=true → starting with a fresh database.');
+        return null;
+      }
+      throw new Error('[DB] data/database.json is damaged and there is no readable backup in data/backups/. Refusing to start so nothing is overwritten. Restore a copy, or set ALLOW_FRESH_DB=true to start empty on purpose.');
+    }
+  }
+
+  private loadState(): DatabaseState {
+    const existing = this.readExisting();
+    if (existing) {
+      {
+        const parsed: DatabaseState = existing;
         const seed = (SEED_DEMO ? getInitialSeedData() : productionSeed());
         if (!parsed.builderProjects || parsed.builderProjects.length === 0) {
           parsed.builderProjects = seed.builderProjects;
@@ -3431,8 +3486,6 @@ class Database {
         this.saveStateDirect(parsed);
         return parsed;
       }
-    } catch (err) {
-      console.error('[DB] Failed to parse existing db file, initializing seed:', err);
     }
     const seed = (SEED_DEMO ? getInitialSeedData() : productionSeed());
     migrateState(seed, seed);
@@ -3446,10 +3499,28 @@ class Database {
     this.writeNow(state);
   }
 
+  /** Audit F9 — the temp file is fsync'd before the rename and the folder after it, so a power cut cannot leave an empty file. */
   private writeNow(state: DatabaseState) {
     const tmp = `${DB_FILE}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(state), { encoding: 'utf-8', mode: 0o600 });
+    const fd = fs.openSync(tmp, 'w', 0o600);
+    try { fs.writeSync(fd, JSON.stringify(state)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    this.backupIfDue();
     fs.renameSync(tmp, DB_FILE);
+    try { const dfd = fs.openSync(path.dirname(DB_FILE), 'r'); try { fs.fsyncSync(dfd); } finally { fs.closeSync(dfd); } } catch { /* not supported on every OS */ }
+  }
+
+  /** Rolling backups: the file as it was, at most once an hour, the newest BACKUP_KEEP (default 48) kept. */
+  private lastBackupAt = 0;
+  private backupIfDue() {
+    const every = Number(process.env.BACKUP_EVERY_MS || 3600_000);
+    if (!fs.existsSync(DB_FILE) || Date.now() - this.lastBackupAt < every) return;
+    this.lastBackupAt = Date.now();
+    try {
+      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      fs.copyFileSync(DB_FILE, path.join(BACKUP_DIR, `database-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
+      const keep = Math.max(1, Number(process.env.BACKUP_KEEP || 48));
+      for (const f of listBackups().slice(keep)) fs.unlinkSync(f);
+    } catch (e) { console.error('[DB] backup failed', e); }
   }
 
   private flushTimer: NodeJS.Timeout | null = null;
@@ -3494,7 +3565,7 @@ class Database {
     if (pgStore) { pgStore.schedule(this.state as any); return; }
     if (this.flushTimer) return;
     // v20: the JSON file is rewritten whole; space writes by how long the last one took so a big file cannot hog the server
-    const delay = Math.max(150, Math.min(10_000, this.lastWriteMs * 3));
+    const delay = Math.max(150, Math.min(2_000, this.lastWriteMs * 3)); // audit F9: at most ~2 s of changes are ever only in memory
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
       const t0 = Date.now();
@@ -3506,6 +3577,13 @@ class Database {
       }
     }, delay);
     this.flushTimer.unref?.();
+  }
+
+  /** Audit F9 — money, consent and auth changes: written to disk before the answer goes out (not after the debounce). */
+  public saveNow() {
+    this.version++;
+    if (pgStore) { pgStore.schedule(this.state as any); return; }
+    this.flush();
   }
 
   /** Write any pending change immediately (used on SIGTERM / SIGINT / exit). */

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
@@ -5,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 /** Team members (employees of a broker/builder) + a broker's own referral-partner network. */
-const PORT = 4300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;
@@ -43,7 +44,7 @@ beforeAll(async () => {
   jar.T1 = await login('9000030001');
 }, 40_000);
 
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true }); });
 
 describe('team member — demo seed and visibility', () => {
   it('logs in by mobile and sees only the leads the employer allotted', async () => {

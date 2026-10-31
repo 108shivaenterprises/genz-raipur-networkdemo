@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { ackBuyer } from './helpers/ack.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
@@ -7,7 +8,7 @@ import path from 'node:path';
 
 /** v70 — owner room (mandate-gated, numbers only), two rooms for one mobile, owner confirms a visit by the buyer's QR / code, full-Aadhaar switch. */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7900 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

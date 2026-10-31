@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { tierOf, inProbation, sameParty, splitOk, tieupDays, monthKey } from '..
 import { verhoeffCheckDigit } from '../src/shared/idRules';
 
 /** v15: property-side visit verification, multi-offer + token lock, sold/relist/purge, poster, deal timeline. */
-const PORT = 4800 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

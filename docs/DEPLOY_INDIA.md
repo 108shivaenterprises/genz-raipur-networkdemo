@@ -33,7 +33,15 @@ v26: the backup now also packs the files on disk (ID copies, signed owner-consen
 3. Admin verifies the RERA number on https://rera.cgstate.gov.in and PAN/GST, then **Approve**. Only then do marketplace, deal rooms and CRM unlock.
 
 ## 6. Site-visit OTP / SMS
-SMS is currently printed to the server log unless `SMS_WEBHOOK_URL` is set (POST `{to, message}` with Bearer token). Until you connect a DLT-registered provider (MSG91 etc.), the OTP must be shared with the customer manually — **keep DEMO_MODE=false** so brokers never see it.
+Codes for the customer / shop / client (shop-partner page, visit "no direct deal" acknowledgement, client room) are sent by SMS through `SMS_WEBHOOK_URL` (POST `{to, message}` with Bearer token). **Without it, and with DEMO_MODE=false, these pages say "SMS is not set up" and no code is made** — the broker never sees a code (v93, audit F2). Only a local DEMO shows the code to the broker so it can be read out. Connect a DLT-registered provider (MSG91 etc.) before launch.
+
+## 6a. v93 hardening switches (AUDIT_REPORT.md)
+- `AUTH_SECRET` — set it (32+ chars). It also keys the sealed page links and, unless `AUDIT_HMAC_KEY` is set, the audit chain.
+- `AUDIT_HMAC_KEY` — optional separate key (24+ chars) for the audit-trail HMAC. Keep it stable: a new key makes the existing chain read as broken. Ship the server log off-box: every start prints `[AUDIT] chain tip …`.
+- `KYC_VAULT_KEY` — **required in production**: with `NODE_ENV=production` a key file inside `data/` is refused and the vault stays OFF (override only with `ALLOW_VAULT_KEY_IN_DATA=true`).
+- `TRUST_PROXY=true` behind nginx / a load balancer (docker-compose sets it). Without it every user shares the proxy's IP for rate limits.
+- Database file: a damaged `data/database.json` is moved aside and the newest `data/backups/database-*.json` is used; with no backup the server **refuses to start** (`ALLOW_FRESH_DB=true` starts empty on purpose). Backups: `BACKUP_EVERY_MS` (default 1 h), `BACKUP_KEEP` (default 48). Copy `data/backups/` off the server too.
+- Signing out ends the account's sessions on every device.
 
 ## 7. Legal checklist before public launch
 - [ ] Counsel reviews `/#/privacy` and `/#/terms` (they are templates) and the 8-year retention note.

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /** v31 — the extras on each role's home: /api/home/insights returns a small, role-shaped summary and nothing private. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'child_process';
@@ -6,7 +7,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 6700 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const acct = (role: string) => cfg.demoAccounts.find((a: any) => a.role === role && a.verificationStatus === 'VERIFIED');

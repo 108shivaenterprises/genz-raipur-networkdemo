@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync } from 'node:fs';
@@ -6,7 +7,7 @@ import path from 'node:path';
 import { normCity, cityStage, badgesFor, TOP_CITIES } from '../src/shared/cities';
 
 /** v10: invite loop, public waitlist, public card, city launch board, forgot-password queue, coalesced DB writes. */
-const PORT = 4500 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;

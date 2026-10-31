@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
@@ -5,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 /** GENZ Connector programme: local shopkeepers / community members referring customers. */
-const PORT = 4200 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;
@@ -49,7 +50,7 @@ beforeAll(async () => {
   jar.BUYER = await login(acct('BUYER_TENANT').email);
 }, 40_000);
 
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true }); });
 
 describe('demo seed', () => {
   it('has 13 connector users (12 verified, 1 pending) covering 12 shop types, and 50 referrals', async () => {

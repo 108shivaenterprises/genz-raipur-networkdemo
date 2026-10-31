@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { ackBuyer } from './helpers/ack.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
@@ -7,7 +8,7 @@ import path from 'node:path';
 
 /** v70 — owner room (mandate-gated, numbers only), two rooms for one mobile, owner confirms a visit by the buyer's QR / code, full-Aadhaar switch. */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7800 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};
@@ -103,7 +104,8 @@ describe('visit cannot be bypassed: the owner confirms with the buyer’s QR / c
   it('before the buyer’s promise the owner cannot confirm', async () => {
     const v = await j(await call(jar.B2, 'POST', '/api/site-visits', { propertyId: 'PROP-RAI-101', customerName: 'Mohan Buyer', customerPhone: buyerPhone, scheduledTime: new Date(Date.now() + 86400_000).toISOString() }));
     vid = v.siteVisit.id;
-    sec = (await j(await call(jar.OWN, 'GET', `/api/site-visits?propertyId=PROP-RAI-101`))).siteVisits.find((x: any) => x.id === vid);
+    // audit F13: the owner no longer holds the code — the demo booker does
+    sec = (await j(await call(jar.B2, 'GET', `/api/site-visits?propertyId=PROP-RAI-101`))).siteVisits.find((x: any) => x.id === vid);
     await signIn(OLINK, OROOM, OPH);
     const a = await page('POST', `${OLINK}/scan`, { json: { code: JSON.stringify({ visitId: vid, secret: sec.qrToken }) } });
     expect(a.status).toBe(409);

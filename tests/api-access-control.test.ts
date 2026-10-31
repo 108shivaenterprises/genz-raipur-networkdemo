@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, cpSync, rmSync } from 'node:fs';
@@ -8,7 +9,7 @@ import path from 'node:path';
  * End-to-end: boots the real server against a throw-away data directory and asserts
  * what each role can / cannot do over HTTP.
  */
-const PORT = 3900 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;
@@ -43,7 +44,7 @@ beforeAll(async () => {
   }
 }, 40_000);
 
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true }); });
 
 describe('authentication', () => {
   it('rejects anonymous calls and the old x-user-id header', async () => {

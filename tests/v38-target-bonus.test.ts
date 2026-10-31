@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /** v38 — Target Bonus: target by the partner's own deadline, extra % above target, early-finish bonus; frozen terms; payouts */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'child_process';
@@ -48,7 +49,7 @@ describe('target bonus rules', () => {
 
 // ───────────── API ─────────────
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 6800 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

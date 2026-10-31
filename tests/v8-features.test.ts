@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { validateSlabs, slabFor, commissionPctFor, slabProgress, leaderPoints } 
 import { scanRedFlags, nameMatches } from '../src/shared/redflags.js';
 import { renderTemplate, waLink } from '../src/shared/templates.js';
 
-const PORT = 4400 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};
@@ -46,7 +47,7 @@ beforeAll(async () => {
   jar.BUYER = await login(cfg.demoAccounts.find((a: any) => a.role === 'BUYER_TENANT').email);
   jar.T1 = await login('9000030001');
 }, 40_000);
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true }); });
 
 describe('pure rules', () => {
   it('slab validation catches gaps, overlaps and bad pct; progress points to the next step', () => {

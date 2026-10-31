@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /** v48 — brokerage bills to the owner / buyer: made from the Agreement stage, public bill page with UPI, party says paid, broker confirms, reminders, privacy */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'child_process';
@@ -7,7 +8,7 @@ import path from 'path';
 
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7400 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

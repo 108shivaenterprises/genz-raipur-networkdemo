@@ -48,12 +48,23 @@ export function logoStrip(): string {
   return `<div data-gz-logo="page" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid #e5e7eb;font:700 12px system-ui,sans-serif;color:#14213d"><img src="/api/brand/logo" alt="" width="24" height="24" style="border-radius:6px;object-fit:contain"><span>${name.replace(/[<>&]/g, '')}</span></div>`;
 }
 
+/**
+ * Audit F17 — the public pages write `<label>Text</label><input name="x">` side by side; screen readers then hear an unnamed box.
+ * Give every such field an id and its label a matching `for` (fields already inside their label, or with an id, are left alone).
+ */
+export function linkLabels(html: string): string {
+  let n = 0;
+  return html.replace(/<label(?![^>]*\bfor=)([^>]*)>((?:(?!<\/?label|<input|<select|<textarea)[\s\S]){1,300})<\/label>(\s*)<(input|select|textarea)\b(?![^>]*\bid=)([^>]*)>/g,
+    (_m, la, text, gap, tag, attrs) => { const id = `gzf-${++n}`; return `<label for="${id}"${la}>${text}</label>${gap}<${tag} id="${id}"${attrs}>`; });
+}
+
 /** Inject the strip into HTML responses of the public pages. */
 export function brandInject(req: Request, res: Response, next: NextFunction) {
   const send = res.send.bind(res);
   res.send = ((body?: any) => {
     try {
       const ct = String(res.getHeader('Content-Type') || '');
+      if (typeof body === 'string' && (ct.includes('text/html') || /^\s*<(!doctype|html)/i.test(body))) body = linkLabels(body);
       if (typeof body === 'string' && (ct.includes('text/html') || (!ct && /^\s*<(!doctype|html)/i.test(body))) && brandOn('page') && !body.includes('data-gz-logo="page"')) {
         const i = body.search(/<body[^>]*>/i);
         if (i >= 0) { const tag = body.slice(i).match(/<body[^>]*>/i)![0]; body = body.slice(0, i + tag.length) + logoStrip() + body.slice(i + tag.length); }

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { scannedPages } from '../server/pdfPages.js';
  * and the mandate showing the owner's name + full mobile (and the broker's details) to the parties.
  */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 6700 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v31 — Client Room: a broker's private room with his own client. Link + mobile OTP, no signup. The chat belongs to the client and the
  * introducing broker only; the client sees marketing facts only (no exact address, no owner details); phone numbers cannot be typed in the chat.
@@ -9,7 +10,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 6600 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

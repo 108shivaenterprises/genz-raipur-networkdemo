@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v64 — the shop QR page shows the broker's public-page homes (his own + other brokers' that opened theirs), "I'm interested" keeps the lead
  * with the QR's broker only, a buyer / renter ticks + signs the "no direct deal" promise, and the lead shows which shop and which home.
@@ -22,7 +23,7 @@ describe('shop partner rules', () => {
 });
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7200 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

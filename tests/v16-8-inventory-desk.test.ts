@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
@@ -13,7 +14,7 @@ import { verhoeffCheckDigit } from '../src/shared/idRules';
 import { ROLE_PERMISSIONS, memberPermissions } from '../server/permissions';
 
 /** v16.8 "Inventory Desk": unit facts + rate control + who-sees, team board, customer links, GENZ launch, Reassign list. */
-const PORT = 5300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

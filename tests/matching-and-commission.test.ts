@@ -131,7 +131,7 @@ describe('GENZ BROKER NETWORK - Core Engine Tests', () => {
 
   it('masks phone numbers to protect customer privacy', () => {
     const masked = maskPhoneNumber('+91 98261 44001');
-    expect(masked).toBe('+91 98261 •••••');
+    expect(masked).toBe('+91 ••••••4001'); // audit F7: last 4 only, the same digits every other mask shows
   });
 
   it('generates deterministic SHA-256 cryptographic mandate seal', () => {

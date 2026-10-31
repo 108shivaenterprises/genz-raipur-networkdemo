@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v29 — Buyer bond: the broker who brought the BUYER first (verified visit / offer) is protected on that property.
  * Another broker is stopped (visit + offer) without being told who holds the buyer, can ask to co-broke, and the holder is
@@ -11,7 +12,7 @@ import path from 'path';
 import { ackBuyer } from './helpers/ack.js';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 6400 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};
@@ -45,7 +46,7 @@ async function verifiedVisit(maker: string, phone: string, name = 'Sunil Buyer')
   const r = await call(jar[maker], 'POST', '/api/site-visits', { propertyId: PA.id, customerName: name, customerPhone: phone, scheduledTime: slot(1) });
   const v = await r.json(); expect(r.status, JSON.stringify(v)).toBe(200);
   const id = (v.siteVisit || v.visit || v).id as string;
-  const sec = (await j(await call(jar.OWN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
+  const sec = (await j(await call(jar.ADMIN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
   expect(await ackBuyer(B, call, jar[maker], 'VISIT', id, phone), 'buyer acknowledgement').toBe(303);   // v33
   const ok = await call(jar.BRK1, 'POST', `/api/site-visits/${id}/verify-otp`, { otpCode: sec.otpCode });
   expect(ok.status, await ok.clone().text()).toBe(200);

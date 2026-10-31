@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ import path from 'node:path';
  * v16.4 — regression tests from the all-roles audit (browser crawl + API sweep per role).
  * Each test pins down something the audit found broken.
  */
-const PORT = 4200 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;
@@ -43,7 +44,7 @@ beforeAll(async () => {
   jar.B2 = await login('amit.verma@shrikriparealty.in');
 }, 40_000);
 
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true }); });
 
 const SENSITIVE = ['email', 'phone', 'panNumber', 'gstin', 'verificationNotes', 'consent', 'passwordHash', 'aadhaarLast4', 'idCheckedAt', 'sponsorId'];
 

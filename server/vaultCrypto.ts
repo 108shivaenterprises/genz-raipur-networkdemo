@@ -34,6 +34,12 @@ export function vaultKey(): VaultKey | null {
   }
   try {
     const f = keyFile();
+    // audit F10 — in production the key may not live next to the data it protects (a copy of data/ would be a copy of the plaintext)
+    const inData = path.resolve(f).startsWith(path.resolve(process.cwd(), 'data') + path.sep);
+    if (process.env.NODE_ENV === 'production' && inData && (process.env.ALLOW_VAULT_KEY_IN_DATA ?? 'false').toLowerCase() !== 'true') {
+      keyProblem = 'production needs KYC_VAULT_KEY (or KYC_VAULT_KEY_FILE outside data/) — the vault stays OFF until it is set';
+      return (keyCache = null);
+    }
     if (fs.existsSync(f)) {
       const k = parseKey(fs.readFileSync(f, 'utf8'));
       if (!k) { keyProblem = 'the key file in data/ is damaged'; return (keyCache = null); }

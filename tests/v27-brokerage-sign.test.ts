@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v27 — brokerage terms at listing time + the owner's signature (typed initials or drawn) on the consent link;
  * the mandate becomes ACTIVE the moment the listing is live; an existing listing can get its owner signature too.
@@ -40,7 +41,7 @@ describe('brokerage terms (pure)', () => {
   });
 });
 
-const PORT = 6100 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

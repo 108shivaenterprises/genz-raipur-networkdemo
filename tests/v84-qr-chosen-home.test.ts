@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v84 — on the shop QR page the home the customer chose stays in front of him ON the form (photo, price, title, place, a way to change it),
  * and a broker whose QR shows no homes is told why (his public page is off / he is not verified / none of his listings is switched on).
@@ -10,7 +11,7 @@ import path from 'path';
 import { readFileSync } from 'fs';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

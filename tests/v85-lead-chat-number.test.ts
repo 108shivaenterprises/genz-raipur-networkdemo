@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v85 — a shop-QR lead's number is hidden from the broker (only ••last4) until, in the in-app chat, the customer has confirmed his need
  * AND the broker has shared a home that matches it (an owner: until he confirms the property details). Over real HTTP.
@@ -9,7 +10,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

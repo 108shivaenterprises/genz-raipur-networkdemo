@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { PERMISSION_CATALOG, ROLE_PERMISSIONS } from '../server/permissions.js';
  * v16.6 — Property Papers library: real PDF / photo papers kept on the server, searchable, private by default,
  * shared by name, every open logged, linked to due-diligence evidence, deleted for real.
  */
-const PORT = 5200 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;
@@ -61,7 +62,7 @@ beforeAll(async () => {
   jar.BUYER = await login(acct('BUYER_TENANT').email);
 }, 60_000);
 
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }); });
 
 describe('the shared rules', () => {
   it('reads the real bytes of a file, not its name', () => {

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -9,7 +10,7 @@ import path from 'node:path';
  * deal see initials and a masked number (found in the role audit: GET /api/site-visits gave them the other broker's client in full).
  */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7000 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};
@@ -37,7 +38,7 @@ beforeAll(async () => {
 afterAll(async () => { proc?.kill('SIGTERM'); await new Promise(r => setTimeout(r, 300)); if (dir && existsSync(dir)) rmSync(dir, { recursive: true, force: true }); });
 
 describe('site-visit buyer privacy', () => {
-  it('the owner sees initials and a masked mobile for every visit to his property (the OTP stays — he witnesses the visit)', async () => {
+  it('the owner sees initials and a masked mobile for every visit to his property (and no visit code: he confirms with the customer’s code)', async () => {
     const list = await visits('OWNER');
     const theirs = list.filter(v => v.brokerId !== 'USR-OWNER-001');
     expect(theirs.length).toBeGreaterThan(0);
@@ -45,7 +46,7 @@ describe('site-visit buyer privacy', () => {
       expect(String(v.customerPhone || '')).not.toMatch(FULL);
       expect(v.customerName).toMatch(/^([A-Zऀ-ॿ]\. ?)+$|^Client$/);
     }
-    expect(theirs.some(v => v.otpCode)).toBe(true);
+    expect(theirs.some(v => v.otpCode || v.qrToken)).toBe(false); // audit F13: the owner is a checker — the code comes from the customer
   });
 
   it('the other broker of the deal sees the same initials; the broker who brought the buyer sees him in full', async () => {

@@ -325,7 +325,7 @@ ${broker ? `<div class="card"><b>${esc(broker.name)}</b>${broker.companyName ? `
     if (hit(`penq:${digits(ph.data).slice(-10)}:${p.id}`, 2, 24 * 3600_000)) return bad(res, 'You have already sent an enquiry for this property today', 429);
     if (hit(`penq-prop:${p.id}`, 60, 24 * 3600_000)) return bad(res, 'Too many enquiries for this listing today', 429);
     st().posterEnquiries.unshift({ id: `PE-${Date.now().toString(36)}${crypto.randomBytes(2).toString('hex')}`, propertyId: p.id, brokerId: p.listingBrokerId, name, phone: ph.data, message: msg || undefined, consentAt: nowIso(), status: 'NEW', createdAt: nowIso() });
-    db.save(); db.appendAuditEvent('public', 'SUPERADMIN', 'PROPERTY', p.id, 'POSTER_ENQUIRY', `Enquiry received via site poster for ${p.id} (consent recorded)`);
+    db.save(); db.appendAuditEvent('public', 'PUBLIC' as any, 'PROPERTY', p.id, 'POSTER_ENQUIRY', `Enquiry received via site poster for ${p.id} (consent recorded)`);
     res.json({ success: true });
   });
   return r;

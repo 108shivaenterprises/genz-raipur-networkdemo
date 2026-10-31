@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { ROLE_PERMISSIONS } from '../server/permissions';
 import { PERMISSION_HI } from '../src/lib/permHi';
 
 /** v23 — Plans & Fees: GENZ admins decide fee rules (flat / %, per group / state / person), plans, member-only features. */
-const PORT = 5300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

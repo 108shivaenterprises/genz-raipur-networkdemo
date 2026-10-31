@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { STAFF_PRESETS, presetPatch, presetOf, DEFAULT_POLICY } from '../src/sha
 
 /** v75 — team limits by employer, contractor roles, and one-tap staff presets (every preset must be accepted by the server for the employer it is offered to). */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7800 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

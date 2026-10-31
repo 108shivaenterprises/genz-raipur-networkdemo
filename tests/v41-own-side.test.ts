@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /** v41 — Apna-apna side: each broker keeps the brokerage of his own client (no split, the other's fee stays private) */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'child_process';
@@ -30,7 +31,7 @@ describe('side fee rules', () => {
 });
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 7000 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

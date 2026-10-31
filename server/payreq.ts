@@ -9,6 +9,7 @@
  * a "tax invoice" only when the broker has a GSTIN and charges GST, otherwise it says so. Reminders go on the broker's own WhatsApp
  * (no paid SMS); GENZ counts them and nudges the broker when a bill is past its due date.
  */
+import { sealLink, linkOf } from './linkSeal.js';
 import { priceOf, cutAt } from './hisaab.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
@@ -43,8 +44,9 @@ const fy = (d = new Date()) => { const y = d.getMonth() >= 3 ? d.getFullYear() :
 const totals = (items: { amount: number }[], gstPct: number) => { const sub = items.reduce((n, i) => n + i.amount, 0); const gst = Math.round(sub * gstPct / 100); return { sub, gst, total: sub + gst }; };
 const overdue = (r: PaymentRequest) => r.status === 'SENT' && Date.parse(`${r.dueOn}T23:59:59+05:30`) < Date.now();
 const view = (r: PaymentRequest) => {
-  const { tokenHash: _h, ...rest } = r;
-  return { ...rest, link: r.token ? `/pay/${r.token}` : '', overdue: overdue(r), ...totals(r.items, r.gstPct) };
+  const link = linkOf(r, `pay|${r.id}`);
+  const { tokenHash: _h, tokenSealed: _s, ...rest } = r;
+  return { ...rest, link: link ? `/pay/${link}` : '', overdue: overdue(r), ...totals(r.items, r.gstPct) };
 };
 
 /** who the bill can be addressed to, with what this broker may already know (names / numbers only where he is allowed to see them) */
@@ -125,8 +127,9 @@ export function createPaymentRequestRouter() {
       dealId: d.id, brokerId: u.id, party, partyName, partyPhone,
       propertyTitle: p?.title || d.propertyId, propertyPlace: [p?.locality, p?.city].filter(Boolean).join(', '),
       items, gstPct, gstin: gstin || undefined, upiId: upiId || undefined, dueOn, note: str(b.note, 300) || undefined,
-      tokenHash: sha(token), token, status: 'SENT', reminders: [], views: 0, createdAt: now, updatedAt: now,
+      tokenHash: sha(token), tokenSealed: '', status: 'SENT', reminders: [], views: 0, createdAt: now, updatedAt: now,
     };
+    pr.tokenSealed = sealLink(token, `pay|${pr.id}`);
     s.paymentRequests.unshift(pr); db.save();
     db.appendAuditEvent(u.id, u.role, 'COMMISSION', d.id, 'PAYMENT_REQUEST_SENT', `Brokerage bill ${pr.number} made for the ${party === 'OWNER' ? 'owner' : 'buyer'} (••${partyPhone.slice(-4)})`);
     res.json({ success: true, request: view(pr) });

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { verhoeffCheckDigit, panProblem, aadhaarProblem, isLast4, ID_DOC_MAX_BYT
  * the sponsor's details come PREFILLED at sign-up; an ID Review desk for admin + superadmin (queue, assign, seen / ask again);
  * and the switch "auto-verify people registered by a RERA broker" with its notification (open task) and its safety conditions.
  */
-const PORT = 4800 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

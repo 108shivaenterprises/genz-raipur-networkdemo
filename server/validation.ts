@@ -341,9 +341,11 @@ export const disputeCreateSchema = z.object({
 // Helper to mask phone numbers: +91 98261 44001 -> +91 98261 •••••
 export function maskPhoneNumber(phone: string): string {
   if (!phone) return '••••••••••';
-  const clean = phone.trim();
-  if (clean.length < 6) return '••••••';
-  return clean.substring(0, clean.length - 5) + '•••••';
+  // audit F7 — one mask everywhere: only the LAST 4 digits (shop leads, visit acks and partners show the same 4),
+  // so two masked views of one person never add up to more than 4 digits
+  const d = phone.replace(/\D/g, '');
+  if (d.length < 6) return '••••••';
+  return `${/^\s*\+91/.test(phone) || (d.length === 12 && d.startsWith('91')) ? '+91 ' : ''}••••••${d.slice(-4)}`;
 }
 
 // Helper to format Indian Currency

@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -10,7 +11,7 @@ import { priceShort, cleanAreas, mobile10, PAGE_LIMITS } from '../src/shared/pub
  * brokers' listings only when their listing broker opened them), never an owner's details, and enquiries that reach ONLY the page broker.
  */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

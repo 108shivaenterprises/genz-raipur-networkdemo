@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -13,7 +14,7 @@ import path from 'node:path';
  *  (5) "use my location" has a network-address fallback for city / state;
  *  (6) the owner who sits on a broker's own listing is found by his exact mobile in Profiles even though he has no GENZ login.
  */
-const PORT = 8200 + Math.floor(Math.random() * 60);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

@@ -12,12 +12,32 @@ export type RoomKind = (typeof ROOM_KINDS)[number]['id'];
  *  the link itself also slides with use, up to `maxLifeDays` from when the room was made (then the broker makes a new link). */
 export const ROOM_LIMITS = { activeRooms: 100, items: 30, messages: 500, textChars: 1000, linkDays: 60, otpMinutes: 10, otpTries: 5, sessionDays: 60, purgeClosedDays: 90, devices: 2, maxLifeDays: 365 } as const;
 
-/** a 10-digit Indian mobile (with or without +91 / 0 / spaces / dashes) typed anywhere in a message */
+/** any Unicode decimal digit (Devanagari, Arabic-Indic, full-width, mathematical bold…) → its ASCII digit */
+function asciiDigits(t: string): string {
+  return t.replace(/\p{Nd}/gu, ch => {
+    let cp = ch.codePointAt(0)!; let start = cp;
+    while (/\p{Nd}/u.test(String.fromCodePoint(start - 1))) start -= 1; // digit runs come in aligned blocks of ten
+    return String((cp - start) % 10);
+  });
+}
+const NUMBER_WORDS: Record<string, string> = {
+  zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+  shunya: '0', ek: '1', teen: '3', char: '4', chaar: '4', paanch: '5', panch: '5', chhe: '6', chhah: '6', saat: '7', aath: '8', nau: '9',
+  'शून्य': '0', 'एक': '1', 'दो': '2', 'तीन': '3', 'चार': '4', 'पांच': '5', 'पाँच': '5', 'छह': '6', 'छः': '6', 'सात': '7', 'आठ': '8', 'नौ': '9',
+};
+/**
+ * a 10-digit Indian mobile (with or without +91 / 0) typed anywhere in a message.
+ * Audit F5 — the text is normalised first: full-width / styled / any-script digits, invisible characters, any short run of
+ * symbols between digits, o/O and l/I written for 0/1, number words, and one filler word between two digit groups of 3+.
+ */
 export function containsPhone(text: string): boolean {
-  // v85b — Devanagari (०-९) and Arabic-Indic digits count as digits too: “९१२३४५५५०१” is a number, not a way round the rule
-  const digits = String(text || '').replace(/[०-९]/g, d => String(d.charCodeAt(0) - 0x0966)).replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660));
-  const flat = digits.replace(/[\s\-().,_/|]/g, '');
-  return /(?:\+?91|0)?[6-9]\d{9}(?!\d)/.test(flat);
+  let t = asciiDigits(String(text || '').normalize('NFKC')).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, '');
+  t = t.replace(/[\p{L}\p{M}]+/gu, w => NUMBER_WORDS[w.toLowerCase()] ?? w);
+  for (let i = 0; i < 3; i++) t = t.replace(/(\d)[oO](?=\d)/g, '$10').replace(/(\d)[lI|](?=\d)/g, '$11');
+  const joined = t
+    .replace(/(\d{3,})[^\p{L}\p{N}]*[\p{L}]{1,8}[^\p{L}\p{N}]*(?=\d{3,})/gu, '$1')   // "98265 then 11223"
+    .replace(/(\d)[^\p{L}\p{N}]{1,4}(?=\d)/gu, '$1');                                   // "98265+11223", "9 8 2 6 5"
+  return /(?<!\d)(?:\+?91|0)?[6-9]\d{9}(?!\d)/.test(joined);
 }
 export const PHONE_IN_CHAT_MSG = {
   en: 'Please do not type phone numbers in this chat. The owner\'s number is shared only after a verified visit, and your broker\'s number is already on this page.',

@@ -137,6 +137,8 @@ const DAILY_CAP = 40;
 export const pushLog: { userId: string; msg: PushMsg; endpoints: number; at: string }[] = [];
 let fetchImpl: typeof fetch = (...a) => fetch(...a);
 export function setPushFetch(f: typeof fetch) { fetchImpl = f; }
+/** tests: PUSH_DRY_RUN=true answers every push with 201 instead of calling the real push service (a fake endpoint got a real 404 and was dropped — flaky) */
+if ((process.env.PUSH_DRY_RUN ?? '').toLowerCase() === 'true') fetchImpl = async () => new Response(null, { status: 201 });
 
 const istHour = (d = new Date()) => (d.getUTCHours() + 5 + (d.getUTCMinutes() + 30 >= 60 ? 1 : 0)) % 24;
 const istDay = (d = new Date()) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 10);

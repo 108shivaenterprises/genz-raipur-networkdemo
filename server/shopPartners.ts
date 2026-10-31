@@ -11,6 +11,7 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import { sealLink, linkOf } from './linkSeal.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { brandedQrSvg } from './brandlogo.js';
@@ -22,7 +23,7 @@ import crypto from 'crypto';
 import QRCode from 'qrcode';
 import { db } from './db.js';
 import type { ShopPartner, PartnerLead, UserProfile, ClientCard, ShareChange, LeadMsg, Property } from './db.js';
-import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies } from './auth.js';
+import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, DEMO_MODE } from './auth.js';
 import { sendSms } from './notify.js';
 import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
 import { partyBlock } from './partywatch.js';
@@ -33,7 +34,7 @@ import { brandOf } from './share.js';
 import { priceShort } from '../src/shared/publicPageRules.js';
 import { ackText, ACK_VERSION } from '../src/shared/visitAckRules.js';
 import {
-  PARTNER_LIMITS as L, LEAD_KINDS, LEAD_STATUSES, PAYOUT_LABEL, checkTerms, cleanTerms, sameTerms, partnerAmount, sideOfKind, termsText, cutText,
+  PARTNER_LIMITS as L, LEAD_KINDS, LEAD_STATUSES, PAYOUT_LABEL, checkTerms, cleanTerms, areaWordsMatch, sameTerms, partnerAmount, sideOfKind, termsText, cutText,
   SHARE_CHANGE_LABEL, SHARE_LIMITS, PAY_MODES, refOk, OVERDUE, unpaidDays, daysSince, payRecord, payRecordText, ASK_LIMITS, OUTCOME_CONSENT,
   type PartnerTerms, type LeadKind, type LeadStatus, type ShareChangeBy, type PartnerPayMode,
 } from '../src/shared/shopPartner.js';
@@ -77,6 +78,9 @@ const QR_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newQrCode = () => Array.from(crypto.randomBytes(8), b => QR_ALPHA[b % QR_ALPHA.length]).join('');
 const rid = (p: string) => `${p}-${crypto.randomBytes(5).toString('hex')}`;
 const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+/** audit F2 — only a local DEMO shows the customer's / shop's code to the broker; a real server needs SMS (the broker never sees it) */
+const brokerReads = () => !smsOn() && DEMO_MODE;
+const NO_SMS = 'कोड अभी नहीं भेजा जा सकता — SMS चालू नहीं है। GENZ सहायता से संपर्क करें। / A code cannot be sent right now — SMS is not set up. Please contact GENZ support.';
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const bad = (res: Response, error: string, status = 400, extra: Record<string, unknown> = {}) => res.status(status).json({ error, ...extra });
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -102,14 +106,21 @@ export function parseMoney(t?: string): number | null {
   return n;
 }
 const norm = (t: unknown) => String(t || '').toLowerCase().replace(/[^a-z0-9ऀ-ॿ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** audit F3 — a listing made AFTER the customer scanned only counts as his "matching home" once it is this old (a home typed in just to open the number does not) */
+export const REVEAL_FRESH_LISTING_MS = Number(process.env.REVEAL_FRESH_LISTING_HOURS || 48) * 3600_000;
+const tooFreshFor = (l: Pick<PartnerLead, 'createdAt'>, h: Property, now = Date.now()) => {
+  const made = Date.parse(String((h as any).createdAt || (h as any).listedAt || '')); if (!Number.isFinite(made)) return false;
+  return made > Date.parse(l.createdAt) && now - made < REVEAL_FRESH_LISTING_MS;
+};
 /** does this home fit what the customer asked for? buy/rent side, the area (or the very home he tapped), and the budget when it can be read. Owner-side leads have no "match" */
 export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | 'homeId'> & { propertyType?: string }, h: Property): boolean {
   if (l.kind !== 'BUY' && l.kind !== 'RENT_IN') return false;
   if ((l.kind === 'BUY') !== (h.transactionType === 'Sale')) return false;
   const chosen = !!l.homeId && l.homeId === h.id;
-  const a = norm(l.locality); const b = norm(`${h.locality} ${h.city || ''}`);
+  const a = norm(l.locality); const b = norm(h.locality);
   const fit = localityFit(h.city || '', l.locality, h.locality).level; // v90: spelling slips and a bare city name count; a merely "nearby" area does not (this gate decides when the number opens)
-  const area = chosen || fit === 'exact' || fit === 'city' || (!!a && (b.includes(a) || a.split(' ').some(w => w.length >= 4 && b.includes(w))));
+  // audit F4 — the word fallback (src/shared/shopPartner.ts areaWordsMatch) compares whole, distinctive words of the area name only
+  const area = chosen || fit === 'exact' || fit === 'city' || (!!a && areaWordsMatch(a, b, norm(h.city)));
   if (!area) return false;
   // v91: a plot customer is not offered a flat — the picked type (or its close family) must fit; blank / "Other" means any
   if (!chosen && (l as any).propertyType && (l as any).propertyType !== 'Other' && !typeFits(inferPtype((l as any).propertyType), h.propertyType)) return false;
@@ -124,7 +135,7 @@ function matchesFor(l: PartnerLead): Property[] {
   const pool = new Map<string, Property>();
   for (const p of st().properties) if (p.listingBrokerId === b.id && pageLive(p)) pool.set(p.id, p);
   for (const h of shownHomes(b)) pool.set(h.id, h);
-  return [...pool.values()].filter(h => homeFits(l, h)).slice(0, 12);
+  return [...pool.values()].filter(h => homeFits(l, h) && !tooFreshFor(l, h)).slice(0, 12);
 }
 const homeBrief = (h: Property) => ({ id: h.id, title: h.title, price: priceShort(h.askingPrice), place: `${h.locality}, ${h.city}`, rent: h.transactionType !== 'Sale' });
 /** the customer's need, as one readable line (what the broker asks him to confirm) */
@@ -417,11 +428,11 @@ function partnerView(p: ShopPartner) {
     id: p.id, shopName: p.shopName, personName: p.personName, area: p.area, city: p.city, phoneLast4: p.phoneLast4, status: p.status,
     proof: p.proof ? { at: p.proof.at, acc: Math.round(p.proof.acc), photo: p.proof.photo } : null,
     terms: p.terms, termsVersion: p.termsVersion, pending: p.pending || null, qrCode: p.qrCode,
-    qrUrl: `/q/${p.qrCode}`, posterUrl: `/q/${p.qrCode}/poster`, pageUrl: p.token ? `/sp/${p.token}` : '',
+    qrUrl: `/q/${p.qrCode}`, posterUrl: `/q/${p.qrCode}/poster`, pageUrl: (() => { const t = linkOf(p, `sp|${p.id}`); return t ? `/sp/${t}` : ''; })(),
     scans: p.scans, lastScanAt: p.lastScanAt, lastPartnerSeenAt: p.lastPartnerSeenAt, acceptedAt: p.acceptedAt, createdAt: p.createdAt,
     pausedBy: p.pausedBy, pauseReason: p.pauseReason, alerts: shopAlertInfo(p.id), overdue: overdueOf(p).length,
     devices: (p.devices || []).map(d => ({ id: d.id, label: d.label, lastAt: d.lastAt })),
-    codeForPartner: p.otpPlain && p.otpExpires && Date.parse(p.otpExpires) > Date.now() ? p.otpPlain : undefined, smsOn: smsOn(),
+    codeForPartner: brokerReads() && p.otpPlain && p.otpExpires && Date.parse(p.otpExpires) > Date.now() ? p.otpPlain : undefined, smsOn: smsOn(),
     counts: {
       leads: leads.length, open: leads.filter(l => !['WON', 'LOST'].includes(l.status)).length, won: leads.filter(l => l.status === 'WON').length,
       due: leads.filter(l => l.payout && ['DUE', 'NOT_RECEIVED'].includes(l.payout.status)).reduce((n, l) => n + (l.won?.amount || 0), 0),
@@ -513,7 +524,7 @@ export function createShopPartnerRouter() {
       const nearby = st().shopPartners.filter(o => o.brokerId !== u.id && holdsShop(o) && o.proof && metersBetween(pr.proof!, o.proof) <= NEAR_M);
       if (nearby.length) db.appendAuditEvent(u.id, u.role, 'LEAD', p.id, 'SHOP_QR_NEAR_ANOTHER', `A new shop QR was placed within ${NEAR_M} m of ${nearby.length} other GENZ shop QR(s) — different shop name / mobile`);
     }
-    p.token = token; // the broker can send the same page link again; the page still needs the partner's mobile + a code
+    p.tokenSealed = sealLink(token, `sp|${p.id}`); // the broker can send the same page link again; the page still needs the partner's mobile + a code
     hist(p, 'BROKER', `Partner added — terms proposed: ${termsText(p.terms)}`);
     st().shopPartners.unshift(p); db.save();
     audit(p.id, 'SHOP_PARTNER_ADDED', `Shop QR partner added (${shopName}, ••${p.phoneLast4}) — waiting for the partner to accept the terms`);
@@ -530,7 +541,7 @@ export function createShopPartnerRouter() {
   r.post('/:id/link', needs('partner:manage'), (req: Request, res: Response) => {
     const p = mine(req.params.id); if (!p) return bad(res, 'Partner not found', 404);
     if (p.status === 'ENDED') return bad(res, 'This partnership has ended', 409);
-    const token = newToken(); p.tokenHash = sha(token); p.token = token; p.sessVersion += 1; p.linkAt = nowIso(); p.devices = [];
+    const token = newToken(); p.tokenHash = sha(token); p.tokenSealed = sealLink(token, `sp|${p.id}`); delete p.token; p.sessVersion += 1; p.linkAt = nowIso(); p.devices = [];
     hist(p, 'BROKER', 'New page link made — the old link stopped working'); db.save();
     res.json({ success: true, partner: partnerView(p), link: `/sp/${token}` });
   });
@@ -627,14 +638,18 @@ export function createShopPartnerRouter() {
     if (ownerSide(l)) return bad(res, 'An owner lead needs no matching home — his number shows once he confirms the property details');
     if (!l.chat.reqConfirmedAt) return bad(res, 'Ask him to confirm his need first — the number stays hidden until he does', 409);
     const h = matchesFor(l).find(x => x.id === str(req.body?.homeId, 40));
-    if (!h) return bad(res, 'That home does not match what he asked for (or is not on your page). Pick one from the list.', 400);
+    if (!h) {
+      const asked = st().properties.find(x => x.id === str(req.body?.homeId, 40));
+      if (asked && homeFits(l, asked) && tooFreshFor(l, asked)) return bad(res, `A listing added after this customer scanned counts as his matching home only after ${Math.round(REVEAL_FRESH_LISTING_MS / 3600_000)} hours. Share it in the chat later, or pick an older home.`, 409, { code: 'LISTING_TOO_NEW' });
+      return bad(res, 'That home does not match what he asked for (or is not on your page). Pick one from the list.', 400);
+    }
     const b = homeBrief(h);
     addMsg(l, { by: 'BROKER', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
     l.chat.brokerSeenAt = nowIso();
     const first = !l.chat.revealedAt;
     revealNumber(l, { homeId: h.id, title: h.title });
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
-    audit(l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED', first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}) was shared` : `Another home (${h.id}) shared in the chat`);
+    audit(l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED', first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}, listed ${(h as any).createdAt || 'before v92'}) was shared` : `Another home (${h.id}) shared in the chat`);
     db.save();
     void brokerWrote(`lc-${l.id}`, me().name, 'HOME');
     res.json({ success: true, lead: leadView(l) });
@@ -662,6 +677,7 @@ export function createShopPartnerRouter() {
     const sent = req.body?.brokerage === undefined || req.body?.brokerage === null || req.body?.brokerage === '' ? undefined : Number(req.body.brokerage);
     const r2 = closeLead(l, sent, str(req.body?.reason, 160));
     if ('error' in r2) return bad(res, r2.error, r2.status, r2.extra);
+    db.saveNow();
     audit(l.id, 'SHOP_PARTNER_LEAD_WON', r2.auditText);
     res.json({ success: true, lead: leadView(l) });
   });
@@ -678,7 +694,7 @@ export function createShopPartnerRouter() {
     if (amount === from) return bad(res, 'That gives the same share', 409);
     l.won = { ...l.won, brokerage, amount }; l.shareSeen = { amount, at: nowIso() };
     const { change } = addChange(l, from, amount, 'REVISED', reason);
-    hist(l, 'BROKER', `Share corrected ${inr(from)} → ${inr(amount)}: ${reason}`); db.save();
+    hist(l, 'BROKER', `Share corrected ${inr(from)} → ${inr(amount)}: ${reason}`); db.saveNow();
     audit(l.id, 'SHOP_PARTNER_SHARE_REVISED', `Broker corrected the shop’s share ${inr(from)} → ${inr(amount)}`);
     if (change) tellChange(p, change);
     res.json({ success: true, lead: leadView(l) });
@@ -705,7 +721,7 @@ export function createShopPartnerRouter() {
     hist(l, 'BROKER', `Marked paid to the partner (${mode}${ref ? `, ref ${ref}` : ''}) — waiting for the partner to confirm`);
     const p = partnerOf(l.partnerId);
     if (p && p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' && !overdueOf(p).length) { p.status = 'ACTIVE'; p.pausedBy = undefined; p.pauseReason = undefined; hist(p, 'SYSTEM', 'Resumed — the overdue share is paid'); }
-    db.save();
+    db.saveNow();
     audit(l.id, 'SHOP_PARTNER_PAID', `Broker marked the partner share as paid (${mode})`);
     if (p) tellShop(p, 'हिस्सा भेजा गया', 'Share sent', `${inr(l.won?.amount || 0)} भेजा गया (${mode}) — मिल गया हो तो पेज पर “पैसा मिल गया” दबाएँ। / Confirm on your page once you have it.`, `paid-${l.id}`);
     res.json({ success: true, lead: leadView(l) });
@@ -800,7 +816,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 ${homes.length && b ? homeCards(b, p, homes) : ''}
 <style>#form form:has(input[name=kind][value=SELL]:checked) #promise,#form form:has(input[name=kind][value=RENT_OUT]:checked) #promise{display:none}#sellnote{display:none}#form form:has(input[name=kind][value=SELL]:checked) #sellnote,#form form:has(input[name=kind][value=RENT_OUT]:checked) #sellnote{display:block}.kinds label{min-width:0}.w{padding-bottom:96px}</style>
 <div class="card${picked ? ' pick' : ''}" id="form">${picked && b ? pickedCard(b, p, picked) : ''}
-<form method="post" action="/q/${esc(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc(picked.id)}">` : ''}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
+<form method="post" action="/q/${esc(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc(picked.id)}">` : ''}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
 <label>आपको क्या चाहिए? / What do you need?</label><div class="kinds">${kinds}</div>
 <p class="small" id="sellnote" data-testid="qr-seller-note">🏠 मालिक के लिए: प्रॉपर्टी कहाँ है, किस तरह की है, और आप कितना चाहते हैं (कीमत / किराया) — नीचे लिखें। <small>For owners: write where the property is, its type, and the price or rent you expect.</small></p>
 <label>नाम / Name</label><input type="text" name="name" maxlength="80" required value="${esc(keep.name || '')}" autocomplete="name">
@@ -840,7 +856,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
     l.ask = { ...l.ask!, answer: a, answeredAt: nowIso() };
     hist(l, 'CUSTOMER', `Customer answered the SMS: ${a === 'YES' ? 'it went ahead (deal done)' : 'it did not go ahead'}`);
     db.save();
-    db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_CUSTOMER_ANSWER', `Customer answered “${a}” to the one-tap question (${l.status === 'WON' ? 'deal is written' : 'no deal written'})`);
+    db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_CUSTOMER_ANSWER', `Customer answered “${a}” to the one-tap question (${l.status === 'WON' ? 'deal is written' : 'no deal written'})`);
     const p = partnerOf(l.partnerId); if (p) tellShop(p, 'ग्राहक ने जवाब दिया', 'The customer answered', 'अपना पेज खोलकर देखें। / Open your page to see it.', `ans-${l.id}`);
     askPage(res, l, req.params.token, true);
   });
@@ -952,7 +968,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       l.chat.reqConfirmedAt = nowIso(); l.chat.reqText = needLine(l);
       addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: '✅ हाँ, मेरी ज़रूरत सही है।' });
       hist(l, 'CUSTOMER', 'Confirmed his need in the chat');
-      db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_LEAD_NEED_CONFIRMED', 'The customer confirmed his need in the in-app chat (number still hidden from the broker)');
+      db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_NEED_CONFIRMED', 'The customer confirmed his need in the in-app chat (number still hidden from the broker)');
       if (ownerSide(l)) revealNumber(l, {});   // an owner has no "matching home": confirming the property details is the step
       db.save();
       void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} confirmed his need`, body: ownerSide(l) ? 'His number is now visible.' : 'Share a matching home to see his number.', url: '/?tab=partners' });
@@ -1026,7 +1042,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     s.partnerLeads.unshift(lead);
     hist(p, 'CUSTOMER', `New ${LEAD_KINDS.find(k => k.id === kind)!.en.toLowerCase()} lead (••${lead.phoneLast4})`);
     db.save();
-    db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', lead.id, 'SHOP_QR_LEAD', `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ''}${home ? `; home ${home.id}` : ''})`);
+    db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', lead.id, 'SHOP_QR_LEAD', `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ''}${home ? `; home ${home.id}` : ''})`);
     void pushTo(p.brokerId, { kind: 'matches', title: `New lead from ${p.shopName}`, body: `${keep.name} — ${LEAD_KINDS.find(k => k.id === kind)!.en}, ${keep.locality}${home ? ` · ${home.title}` : ''}. Chat with him in the app — his number shows after he confirms his need and you share a matching home.`, url: '/?tab=partners' });
     res.redirect(303, `/q/chat/${chatToken}`);
   });
@@ -1241,11 +1257,12 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     if (hit(`sp-phone:${p.id}`, 8, 3600_000, 3600_000) > 0) return gate(res, p, req.params.token, 'बहुत बार कोशिश हुई — एक घंटे बाद। / Too many tries — wait an hour.', 'phone', 429);
     if (!PHONE_RE.test(phone) || !safeEqual(hmac('sp-phone', phone), p.phoneKey)) return gate(res, p, req.params.token, 'यह नंबर इस पेज से मेल नहीं खाता। / This number does not match.');
     if (!spKnown(req, p) && (p.devices || []).length >= L.devices) return gate(res, p, req.params.token, 'यह पेज पहले से 2 फ़ोन पर खुला है — ब्रोकर से एक हटवाएँ। / Already open on 2 phones — ask the broker to remove one.', 'phone', 403);
+    if (!smsOn() && !DEMO_MODE) return gate(res, p, req.params.token, NO_SMS, 'phone', 503);
     const otp = secureOtp();
-    p.otpHash = hmac('sp-otp', `${p.id}|${otp}`); p.otpExpires = new Date(Date.now() + L.otpMinutes * 60_000).toISOString(); p.otpTries = 0; p.otpPlain = smsOn() ? undefined : otp;
+    p.otpHash = hmac('sp-otp', `${p.id}|${otp}`); p.otpExpires = new Date(Date.now() + L.otpMinutes * 60_000).toISOString(); p.otpTries = 0; p.otpPlain = brokerReads() ? otp : undefined;
     if (smsOn()) await sendSms(`+91${phone}`, `GENZ: your code to open your QR partner page is ${otp}. Valid ${L.otpMinutes} minutes.`);
     db.save();
-    if (!smsOn()) ping(p, 'Your shop partner wants his code', `${p.shopName} is opening his page — read the code out from Shop QR partners.`);
+    if (brokerReads()) ping(p, 'Your shop partner wants his code', `${p.shopName} is opening his page — read the code out from Shop QR partners.`);
     gate(res, p, req.params.token, '', 'code');
   });
   r.post('/:token/verify', rateLimit('sp-verify', 40, 3600_000), form, (req: Request, res: Response) => {
@@ -1271,8 +1288,8 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     if (p.status !== 'PENDING') return back(res, req.params.token);
     if (req.body?.ok !== '1') return render(req, res, p, 'सहमति वाले बॉक्स पर टिक करें। / Tick the box.');
     p.status = 'ACTIVE'; p.acceptedAt = nowIso();
-    hist(p, 'PARTNER', `Accepted the terms: ${termsText(p.terms)} — QR is live`); db.save();
-    db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', p.id, 'SHOP_PARTNER_ACCEPTED', `Shop partner accepted the terms on his own phone (mobile verified) — v${p.termsVersion}`);
+    hist(p, 'PARTNER', `Accepted the terms: ${termsText(p.terms)} — QR is live`); db.saveNow();
+    db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', p.id, 'SHOP_PARTNER_ACCEPTED', `Shop partner accepted the terms on a phone opened with a code sent ${smsOn() ? 'by SMS to his registered mobile' : 'in DEMO mode (read out by the broker — not proof of the shop\'s consent)'} — v${p.termsVersion}`);
     ping(p, `${p.shopName} accepted`, 'The QR is live now. Print the poster and put it up.');
     back(res, req.params.token);
   });
@@ -1282,13 +1299,13 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     if (req.params.answer === 'accept') {
       const old = p.terms; p.terms = p.pending.terms; p.termsVersion += 1; p.pending = undefined;
       hist(p, 'PARTNER', `Accepted the change (v${p.termsVersion}): ${termsText(p.terms)} — was ${termsText(old)}; earlier leads keep their terms`);
-      db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', p.id, 'SHOP_PARTNER_TERMS_ACCEPTED', `Shop partner accepted new terms v${p.termsVersion} (mobile verified)`);
+      db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', p.id, 'SHOP_PARTNER_TERMS_ACCEPTED', `Shop partner accepted new terms v${p.termsVersion} (mobile verified)`);
       ping(p, `${p.shopName} accepted the new share`, termsText(p.terms));
     } else if (req.params.answer === 'decline') {
       hist(p, 'PARTNER', `Declined the proposed change (${termsText(p.pending.terms)}) — current terms stay`); p.pending = undefined;
       ping(p, `${p.shopName} declined the new share`, 'The current terms stay.');
     }
-    db.save(); back(res, req.params.token);
+    db.saveNow(); back(res, req.params.token);
   });
   r.post('/:token/lead/:id/change/:cid/:answer', rateLimit('sp-act', 60, 3600_000), form, (req: Request, res: Response) => {
     const p = authed(req, res); if (!p) return;
@@ -1301,10 +1318,10 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     } else if (req.params.answer === 'no') {
       const note = str(req.body?.note, 300); if (note.length < 3) return render(req, res, p, 'लिखें कि क्या सही नहीं है। / Write what is not right.');
       c.status = 'DISPUTED'; c.answeredAt = nowIso(); c.note = note; hist(l, 'PARTNER', `Partner says the share ${changeWords(c)} is NOT right: ${note}`);
-      db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_SHARE_DISPUTED', `Shop partner says the changed share ${changeWords(c)} is not right (GENZ desk sees it)`);
+      db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_SHARE_DISPUTED', `Shop partner says the changed share ${changeWords(c)} is not right (GENZ desk sees it)`);
       ping(p, `${p.shopName}: हिस्सा सही नहीं / share not right`, `${changeWords(c)} — ${note.slice(0, 100)}`);
     } else return back(res, req.params.token);
-    db.save(); back(res, req.params.token);
+    db.saveNow(); back(res, req.params.token);
   });
   r.post('/:token/lead/:id/:what', rateLimit('sp-act', 60, 3600_000), form, async (req: Request, res: Response) => {
     const p = authed(req, res); if (!p) return;
@@ -1317,7 +1334,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     } else if (what === 'not-received' && l.payout && ['DUE', 'PAID'].includes(l.payout.status)) {
       const note = str(req.body?.note, 200); if (note.length < 3) return render(req, res, p, 'बताएँ क्या हुआ। / Write what happened.');
       l.payout = { ...l.payout, status: 'NOT_RECEIVED', partnerAt: nowIso(), partnerNote: note }; hist(l, 'PARTNER', `Partner says NOT received: ${note}`);
-      db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_PARTNER_NOT_RECEIVED', 'Shop partner says the share was not received (GENZ desk sees it)');
+      db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_PARTNER_NOT_RECEIVED', 'Shop partner says the share was not received (GENZ desk sees it)');
       ping(p, `${p.shopName}: share not received`, note);
     } else if (what === 'ask-broker') {
       const note = str(req.body?.note, 300); if (note.length < 2) return back(res, req.params.token);
@@ -1336,7 +1353,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
       const token = newToken(); l.ask = { hash: sha(token), at: nowIso(), n: (a?.n || 0) + 1 };
       const who = userOf(l.brokerId)?.name || 'ब्रोकर';
       hist(l, 'PARTNER', 'Partner asked the customer (one SMS) whether it went ahead'); db.save();
-      db.appendAuditEvent('public', 'SUPERADMIN', 'LEAD', l.id, 'SHOP_CUSTOMER_ASKED', 'Shop partner asked the customer by SMS (he had agreed on the QR page)');
+      db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_CUSTOMER_ASKED', 'Shop partner asked the customer by SMS (he had agreed on the QR page)');
       await sendSms(`+91${l.phone}`, `GENZ: क्या ${who} के साथ आपकी प्रॉपर्टी की बात आगे बढ़ी? हाँ/नहीं बताने के लिए खोलें: ${req.protocol}://${req.get('host')}/q/ok/${token} (${ASK_LIMITS.validDays} दिन मान्य)`);
       ping(p, `${p.shopName}: ग्राहक से पूछा गया`, `••${l.phoneLast4} पर GENZ का SMS गया।`);
       return render(req, res, p, 'ग्राहक को SMS भेज दिया गया। / The customer has been sent an SMS.');

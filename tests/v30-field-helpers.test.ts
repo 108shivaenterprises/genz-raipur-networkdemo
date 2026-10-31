@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v30 — field helpers from the role audit: a pasted forward's phone number never reaches a public description, the all-in
  * cost sheet / EMI maths, and the live demand ticker on public pages (real counts only, never a name or number).
@@ -48,7 +49,7 @@ describe('cost sheet maths', () => {
   });
 });
 
-const PORT = 6500 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

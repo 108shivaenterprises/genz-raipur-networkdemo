@@ -287,24 +287,25 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
+              aria-label={hi ? 'प्रॉपर्टी खोजें' : 'Search properties'}
               placeholder={hi ? 'शीर्षक, इलाका, शहर, पिनकोड, ID...' : 'Title, locality, city, PIN or ID...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-900 focus:outline-none"
             />
           </div>
-          <select value={selectedState} onChange={(e) => { setSelectedState(e.target.value); setSelectedCity('All'); }} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'राज्य' : 'State'} value={selectedState} onChange={(e) => { setSelectedState(e.target.value); setSelectedCity('All'); }} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
             <option value="All">{hi ? 'सभी राज्य' : 'All states'}</option>
             {statesInUse.map((st) => <option key={st} value={st}>{hi ? (INDIA_STATES.find((x) => x.name === st)?.hi || st) : st}</option>)}
           </select>
-          <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'शहर' : 'City'} value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
             <option value="All">{hi ? 'सभी शहर' : 'All cities'}</option>
             {citiesInUse.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'प्रॉपर्टी का प्रकार' : 'Property type'} value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
             {propertyTypes.map((t) => <option key={t} value={t}>{t === 'All' ? (hi ? 'सभी प्रकार' : 'All property types') : label('propertyType', t)}</option>)}
           </select>
-          <select value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'टैग' : 'Tag'} value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
             <option value="All">{hi ? 'सभी टैग' : 'Any tag'}</option>
             {tagsInUse.map((t) => <option key={t} value={t}>{label('tag', t)}</option>)}
           </select>

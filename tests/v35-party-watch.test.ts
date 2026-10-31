@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 /**
  * v35 — Buyer bond: the broker who brought the BUYER first (verified visit / offer) is protected on that property.
  * Another broker is stopped (visit + offer) without being told who holds the buyer, can ask to co-broke, and the holder is
@@ -11,7 +12,7 @@ import path from 'path';
 import { ackBuyer } from './helpers/ack.js';
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 6500 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

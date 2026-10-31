@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs';
@@ -14,7 +15,7 @@ import { localizeActivity } from '../src/lib/activityHi.js';
  * invented data (phones, stock photos, fake file sizes, demo prefills, fake stats), over-claims
  * (escrow, "RERA Section …", "legally binding"), consent (DPDP) and a few real defects.
  */
-const PORT = 4300 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess;
 let dir: string;
@@ -53,7 +54,7 @@ beforeAll(async () => {
   jar.B2 = await login('amit.verma@shrikriparealty.in');
 }, 40_000);
 
-afterAll(() => { proc?.kill(); if (dir) rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { proc?.kill(); await new Promise(r => setTimeout(r, 500)); if (dir) rmSync(dir, { recursive: true, force: true }); });
 
 describe('the UI never invents data or over-claims', () => {
   it('no demo prefills, invented phone numbers, stock photos or fake stats are left in any screen', () => {

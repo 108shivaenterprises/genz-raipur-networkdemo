@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -9,7 +10,7 @@ import { eraseHr } from '../server/hr.js';
 /** v76 — HR on a real server: who may use which tool, a member sees only himself, a statement stays hidden until published (and never shows brokerage),
  *  an approved leave puts him on leave and brings him back, selfies are files, privacy. */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7900 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

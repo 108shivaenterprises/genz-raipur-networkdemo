@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -6,7 +7,7 @@ import path from 'node:path';
 
 /** v56 — growth batch: a buyer's saved homes, the owner's anonymous "buyers looking" count, and the pending broker's own ID screen. */
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 7200 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

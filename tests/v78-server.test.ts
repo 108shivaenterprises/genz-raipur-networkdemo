@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -13,7 +14,7 @@ import path from 'node:path';
  * Demo people who have really worked together: BRK-001 ↔ BRK-002 ↔ OWNER-001 (a deal room), BRK-001/BRK-002 ↔ BUILDER-001 (partnership), OWNER-001 ↔ BRK-001 (mandate).
  * BRK-003 and the buyer have worked with nobody.
  */
-const PORT = 8000 + Math.floor(Math.random() * 60);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

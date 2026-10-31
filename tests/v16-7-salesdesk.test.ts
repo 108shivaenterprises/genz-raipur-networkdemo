@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
@@ -10,7 +11,7 @@ import {
 import { ROLE_PERMISSIONS } from '../server/permissions';
 
 /** v16.7 "Sales Desk": lead source + customer details, telecaller calls, forwarding, booking request with amount + payment condition. */
-const PORT = 4700 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};

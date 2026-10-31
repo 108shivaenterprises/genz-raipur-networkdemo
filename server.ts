@@ -157,6 +157,8 @@ import { createOffersRouter, sweepOffers } from './server/offers.js';
 import { createListingsRouter, createPublicPosterRouter, sweepSoldPurge } from './server/listings.js';
 import { createVisitRouter, createPublicVisitRouter, sweepVisitPasses } from './server/visitpass.js';
 import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
+import { containsPhone } from './src/shared/clientRoomRules.js';
+const PHONE_IN_DEAL_MSG = 'Phone numbers cannot be shared in the deal room — it is seen by both sides. Use the in-app call, or the visit / deal tools.';
 import { mandateShareAt } from './src/shared/mandateShare.js';
 import { visitGate, windowEnd, rescheduleError, REMIND_EVERY_MIN } from './src/shared/visitGateRules.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
@@ -238,6 +240,9 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
     const origin = req.headers.origin;
+    // audit F15 — browsers always send Sec-Fetch-Site: a cross-site write is refused even when no Origin header came with it
+    const site = String(req.headers['sec-fetch-site'] || '');
+    if (site && site !== 'same-origin' && site !== 'none') return res.status(403).json({ error: 'Cross-origin request blocked' });
     if (origin) {
       try {
         if (new URL(origin).host !== req.headers.host) {
@@ -458,7 +463,8 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   const email = parsed.data.email.trim().toLowerCase();
   const accountKey = `login:${getClientIp(req)}:${email}`;
   // per account: 6 tries / 15 min. Per IP: 300 / 15 min (v28: was 60 — many brokers share one mobile-carrier IP in India)
-  const wait = hit(accountKey, 6, 15 * 60_000, 15 * 60_000) || hit(`login-ip:${getClientIp(req)}`, 300, 15 * 60_000);
+  // audit F14 — plus a per-account limit that does not depend on the IP (rotating IPs no longer buys more guesses)
+  const wait = hit(accountKey, 6, 15 * 60_000, 15 * 60_000) || hit(`login-acct:${email}`, 20, 15 * 60_000, 15 * 60_000) || hit(`login-ip:${getClientIp(req)}`, 300, 15 * 60_000);
   if (wait) {
     res.setHeader('Retry-After', String(wait));
     return res.status(429).json({ error: `Too many failed attempts. Try again in ${Math.ceil(wait / 60)} minute(s).` });
@@ -483,7 +489,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     return res.status(403).json({ error: `This account is ${user.verificationStatus.toLowerCase()}. Contact GENZ Operations.` });
   }
 
-  resetHits(accountKey);
+  resetHits(accountKey); resetHits(`login-acct:${email}`);
   // v26 — two-step sign-in: the password was right; the session starts only after the authenticator code
   if (twoFactorOn(user.id)) {
     return res.json({ success: true, twoFactorRequired: true, ticket: makeTicket(user) });
@@ -523,6 +529,13 @@ app.post('/api/auth/login/2fa', rateLimit('login-2fa', 30, 15 * 60_000), (req: R
 });
 
 app.post('/api/auth/logout', (_req: Request, res: Response) => {
+  // audit F8 — signing out really ends the session: the token stops working everywhere (sessionVersion moves on).
+  // A "view as" session only ends itself (the superadmin and the viewed user stay signed in).
+  const c = ctx();
+  if (c.user && !c.impersonatedBy) {
+    const u = db.byId('users', c.user.id);
+    if (u) { u.sessionVersion = (u.sessionVersion || 1) + 1; db.saveNow(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'LOGOUT', 'Signed out; all sessions of this account ended'); }
+  }
   clearSessionCookie(res);
   res.json({ success: true });
 });
@@ -2511,15 +2524,15 @@ app.post('/api/deals/:id/commission', needs('deal:commission'), (req: Request, r
 
 /**
  * The OTP / QR secret proves that the *customer or owner* was physically present — so it must never
- * be readable by the broker who is being verified. It is shown to: the property owner, the customer
+ * be readable by the broker who is being verified, nor by the owner who confirms it (audit F13). It is shown to: the customer
  * (matched by phone), admins; and — in DEMO_MODE only — the visit's own broker, so the flow can be
  * demonstrated on a single machine.
  */
 function sanitizeVisit(v: any, user: UserProfile, state = db.getState()) {
   const prop = db.byId('properties', v.propertyId);
+  // audit F13 — the owner is a CHECKER (he may confirm the visit), so he must not hold the code: it comes from the customer on the spot
   const secretVisible =
     isAdmin(user) ||
-    (!!prop && prop.ownerId === user.id) ||
     (user.role === 'BUYER_TENANT' && customerMatchesUser(v.customerPhone, user)) ||
     (DEMO_MODE && v.brokerId === user.id);
   const out: any = { ...v, otpAttempts: undefined, otpExpiresAt: v.otpExpiresAt, ackStatus: visitAckStatus('VISIT', v.id) };
@@ -2842,6 +2855,12 @@ app.post('/api/site-visits/:id/checkin-qr', needs('sitevisit:verify'), rateLimit
       }
     }
     geoText = ` [GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}]`;
+    visit.gpsChecked = true;
+  } else {
+    // audit F12 — no location sent: the check-in still counts, but the evidence says plainly that the distance was NOT checked
+    const prop = db.byId('properties', visit.propertyId);
+    visit.gpsChecked = false;
+    if (prop?.latitude !== undefined && prop?.longitude !== undefined) geoText = ' [NO GPS sent — distance to the property not checked]';
   }
 
   const deal = finishVisitVerification(
@@ -4736,7 +4755,7 @@ app.post('/api/deals/:id/commission-agreements/:agreementId/settle-payment', (re
       return res.status(409).json({ error: 'Commission payments are frozen while a dispute is open on this deal room — the GENZ admin decides in the dispute.' });
     }
     const outstanding = alloc.allocationAmount - (alloc.paidAmount || 0) - pendingAmount(alloc);
-    if (!Number.isFinite(delta) || delta <= 0 || delta > outstanding) {
+    if (!Number.isInteger(delta) || delta <= 0 || delta > outstanding) { // whole rupees only: fractions drifted the running totals
       return res.status(400).json({ error: `Payment must be between ₹1 and the outstanding ₹${Math.max(0, outstanding).toLocaleString('en-IN')}` });
     }
     const refText = str(ref, 60);
@@ -4760,7 +4779,7 @@ app.post('/api/deals/:id/commission-agreements/:agreementId/settle-payment', (re
     (alloc as any).payments = [...((alloc as any).payments || []), entry];
     if (solo) { applyConfirmedPayment(alloc, delta); chargeDealFee(deal, agreement, alloc, entry); }
     agreement.updatedAt = now;
-    db.save();
+    db.saveNow();
     db.appendAuditEvent(currentUser.id, currentUser.role, 'COMMISSION', agreement.id, 'COMMISSION_PAYMENT_RECORDED',
       `${currentUser.name} wrote down a payment of ₹${delta.toLocaleString('en-IN')} for ${alloc.participantName} (ref ${refText}, paid on ${day}). ${solo ? 'Confirmed (single-broker deal).' : 'Waiting for the other broker to confirm.'}`);
   }
@@ -4780,7 +4799,7 @@ app.post('/api/deals/:id/commission-agreements/:agreementId/settle-payment', (re
       fileDispute(state, currentUser, { dealRoomId: deal.id, counterparty: other, reason: 'COMMISSION_NON_PAYMENT', description: `Commission dispute on ${alloc.participantName}'s share: ${text}` }, deal);
     }
     agreement.updatedAt = now;
-    db.save();
+    db.saveNow();
     db.appendAuditEvent(currentUser.id, currentUser.role, 'COMMISSION', agreement.id, 'COMMISSION_PAYMENT_DISPUTED', `Commission share of ${alloc.participantName} marked DISPUTED by ${currentUser.name}.`);
   }
 
@@ -4813,7 +4832,7 @@ for (const decision of ['confirm', 'reject'] as const) {
     }
     entry.confirmedById = currentUser.id; entry.confirmedByName = currentUser.name; entry.confirmedAt = now;
     agreement.updatedAt = now;
-    db.save();
+    db.saveNow();
     db.appendAuditEvent(currentUser.id, currentUser.role, 'COMMISSION', agreement.id, decision === 'confirm' ? 'COMMISSION_PAYMENT_CONFIRMED' : 'COMMISSION_PAYMENT_REJECTED',
       `${currentUser.name} ${decision === 'confirm' ? 'confirmed' : 'rejected'} payment ${entry.id} of ₹${entry.amount.toLocaleString('en-IN')} for ${alloc.participantName} (ref ${entry.ref}). Paid so far: ₹${(alloc.paidAmount || 0).toLocaleString('en-IN')}, status ${alloc.entitlementStatus}.`);
     res.json({ success: true, agreement: shapeAgreementFor(agreement, currentUser) });
@@ -5576,7 +5595,8 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
   const text = typeof b.text === 'string' ? b.text.trim() : '';
   if (kind ? text.length > 300 : (!text || text.length > 2000)) return res.status(400).json({ error: kind ? 'A caption can be up to 300 characters' : 'Message must be 1–2000 characters' });
   if (text) {
-    const blocked = filterMessage(currentUser, text);
+    // audit F6 — a deal room joins both sides (owner / buyer and the other broker): no phone numbers, whatever the account's age
+    const blocked = filterMessage(currentUser, text) || (containsPhone(text) ? PHONE_IN_DEAL_MSG : null);
     if (blocked) { db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'CHAT_BLOCKED', blocked); return res.status(400).json({ error: blocked, code: 'CHAT_FILTER' }); }
   }
   if (b.mediaUrl && !isSafeUrl(b.mediaUrl)) return res.status(400).json({ error: 'mediaUrl must be an https URL' });

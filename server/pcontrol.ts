@@ -12,6 +12,7 @@
  *  • Staff only get what the employer allows (phone mode, scope, claim, caps) — and every reveal is logged.
  *  • No cash, no paid third party; everything is audited in the hash-chained trail.
  */
+import { maskPhoneNumber } from './validation.js';
 import { alert, firstName } from './alerts.js';
 import { savePhoto, photoById, sendPhoto, erasePhoto } from './workphotos.js';
 import express from 'express';
@@ -171,7 +172,7 @@ export function createPcontrolRouter() {
     const p = projectFor(req.params.id, false);
     if (!p) return bad(res, 'Project not found', 404);
     const leads = st.crmLeads.filter(l => l.projectId === p.id);
-    const mask = (l: CrmLead) => (isAdmin(u) && !isSuper(u) ? { ...l, phone: l.phone.slice(0, -5) + '•••••' } : l);
+    const mask = (l: CrmLead) => (isAdmin(u) && !isSuper(u) ? { ...l, phone: maskPhoneNumber(l.phone) } : l);
     const partners = st.associateMandates.filter(m => m.projectId === p.id).map(m => {
       const broker = db.byId('users', m.brokerId);
       return {

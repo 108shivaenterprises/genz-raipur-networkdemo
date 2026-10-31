@@ -1,3 +1,4 @@
+import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { ackBuyer } from './helpers/ack';
 import { priceBand, checkOfferAmount, validityHours, canUndoSold, purgeDue, nextBackup, resaleKeyOf, buyerShown, closedStatusFor } from '../src/shared/dealRules';
 
 /** v14: property-side visit verification, multi-offer + token lock, sold/relist/purge, poster, deal timeline. */
-const PORT = 4700 + Math.floor(Math.random() * 90);
+const PORT = await freePort();
 const B = `http://127.0.0.1:${PORT}`;
 let proc: ChildProcess; let dir: string; let cfg: any;
 const jar: Record<string, string> = {};
@@ -69,7 +70,7 @@ describe('property-side visit verification (maker ≠ checker)', () => {
   it('buyer-side broker cannot verify own visit; listing broker (property side) can; strangers cannot', async () => {
     const v = await j(await call(jar.BRK2, 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Test Buyer', customerPhone: '9876501234', scheduledTime: slot(1) }));
     expect(v.success).toBe(true); const id = v.siteVisit.id;
-    const sec = (await j(await call(jar.OWN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
+    const sec = (await j(await call(jar.ADMIN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
     expect(sec.otpCode).toMatch(/^\d{6}$/);
     const own = await call(jar.BRK2, 'POST', `/api/site-visits/${id}/verify-otp`, { otpCode: sec.otpCode });
     expect(own.status).toBe(403); expect((await j(own)).code).toBe('MAKER_CHECKER');
@@ -83,7 +84,7 @@ describe('property-side visit verification (maker ≠ checker)', () => {
   it('self-deal (listing broker brings his own buyer): only the owner may verify', async () => {
     const v = await j(await call(jar.BRK1, 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Own Buyer', customerPhone: '9876505555', scheduledTime: slot(1) }));
     const id = v.siteVisit.id;
-    const sec = (await j(await call(jar.OWN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
+    const sec = (await j(await call(jar.ADMIN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === id);
     const self = await call(jar.BRK1, 'POST', `/api/site-visits/${id}/verify-otp`, { otpCode: sec.otpCode });
     expect(self.status).toBe(403); expect((await j(self)).code).toBe('MAKER_CHECKER');
     expect(await ackBuyer(B, call, jar.BRK1, 'VISIT', id, '9876505555')).toBe(303);
