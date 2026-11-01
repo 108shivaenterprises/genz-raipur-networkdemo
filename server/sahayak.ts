@@ -13,7 +13,7 @@
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot } from './db.js';
-import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, type NeedChange, type When } from '../src/shared/sahayak.js';
+import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, BOT_WATCH, GONE_WORDS, goneKind, type GoneKind, type NeedChange, type When } from '../src/shared/sahayak.js';
 import { nextAsk, applyAnswer, progress, composeListing, summaryLine, SKIP_CHIP, type AskId } from '../src/shared/listingAsk.js';
 import { containsContact } from '../src/shared/clientRoomRules.js';
 import { openRoomAuto } from './clientroom.js';
@@ -32,6 +32,8 @@ export interface BotDeps {
   tellBroker(l: PartnerLead, title: string, body: string): void;
   audit(l: PartnerLead, action: string, text: string): void;
   isLive(h?: Property): boolean;
+  /** v103 — a phone alert to the customer (his name-less lock-screen words: “GENZ सहायक sent a property / a message”) */
+  ping(l: PartnerLead, what: 'MSG' | 'HOME'): void;
   /** put what he wrote into the lead (budget / type / area / BHK / buy-or-rent) → the words of what changed */
   applyNeed(l: PartnerLead, ch: NeedChange): string[];
   /** v101 — search the NETWORK (other brokers' live homes) for his need: makes / updates his buyer need and returns how many homes there are and their price range; null = no budget yet / not a buyer */
@@ -110,7 +112,8 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
 
   /** show up to 3 live homes that fit and have not been shown yet. Returns how many were shown. */
   function showHomes(l: PartnerLead, by: 'BOT' | 'CUSTOMER' = 'BOT', why: 'first' | 'more' = 'more'): number {
-    const sent = sentIds(l); const pick = d.matchesFor(l).filter(h => !sent.includes(h.id)).slice(0, BOT_LIMITS.autoHomes);
+    const all = d.matchesFor(l); botOf(l).seen = all.map(h => h.id);   // v103 — every home that fits NOW is known to the assistant; only a home that is not in this list counts as "new" later
+    const sent = sentIds(l); const pick = all.filter(h => !sent.includes(h.id)).slice(0, BOT_LIMITS.autoHomes);
     if (!pick.length) {
       if (!sent.length) {
         const b = botOf(l); const nw = b.network?.count || 0; const who = d.broker(l)?.name || 'ब्रोकर';
@@ -220,6 +223,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       return startInterview(l);
     }
     networkNote(l);   // v101 — his need goes to the network search + the broker's Buyers list now, whether or not a home of the broker's own fits
+    botOf(l).followedAt ||= nowIso();   // v103 — from here the chat follows the homes by itself
     showHomes(l, 'BOT', 'first');
   }
 
@@ -294,6 +298,79 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     }
     say(l, `अभी की स्थिति:\n${lines.join('\n')}`, `Status right now:\n${en.join('\n')}`, menu(l));
     if (gone) showHomes(l);
+  }
+
+  // ───────────────────────── v103 — the chat follows the homes by itself ─────────────────────────
+  // Level-triggered: it looks at the facts (which homes he was shown, which are live, which homes fit) and only writes when something is NEW,
+  // so it can be called as often as needed — when a listing changes, when he opens the chat, and by the hourly sweep.
+  //   · a home he was shown is sold / rented / withdrawn / suspended / gone → one plain line, and the next best homes (or “I will tell you when one comes”)
+  //   · a home that was gone is live again (an undo) → one line
+  //   · a NEW home fits his confirmed need → it is shown in the chat (at most 3, at most one push per 4 h, 10 in 30 days)
+  // It keeps quiet when the bot is off, the broker is writing, the chat is in a visit flow (new homes only), he stopped answering for 30 days, or the lead is won / lost.
+  const botSpoke = (l: PartnerLead, ms: number) => (l.chat?.msgs || []).filter(m => m.by === 'BOT' && m.kind !== 'HOME' && Date.now() - Date.parse(m.at) < ms).length;   // the lines it wrote (a home card is not a line)
+  const followed = (l: PartnerLead, now: number) => {
+    const wrote = (l.chat?.msgs || []).filter(m => m.by === 'CUSTOMER').slice(-1).map(m => Date.parse(m.at) || 0)[0] || 0;
+    return now - Math.max(Date.parse(l.chat?.reqConfirmedAt || '') || 0, wrote) < BOT_WATCH.days * 86400_000;
+  };
+  function follow(l: PartnerLead, now = Date.now()): number {
+    if (!l.chat || off(l) || d.ownerSide(l) || !confirmed(l) || l.status === 'WON' || l.status === 'LOST') return 0;
+    const b = botOf(l); const gone = (b.gone ||= {}); const ids = sentIds(l);
+    if (!b.followedAt) {   // a chat from before v103: what is already gone would be old news — it is only noted; from here on he is followed
+      b.followedAt = nowIso(); b.seen = d.matchesFor(l).map(h => h.id);
+      for (const id of ids) { const k = goneKind(propOf(id), d.isLive(propOf(id))); if (k) gone[id] = k; }
+      return 0;
+    }
+    if (!followed(l, now) || quiet(l)) return 0;
+    const lost: { id: string; t: string; k: GoneKind }[] = []; const back: { id: string; t: string }[] = [];
+    for (const id of ids) {
+      const h = propOf(id); const k = goneKind(h, d.isLive(h)); const t = h?.title || id;
+      if (k && !gone[id]) lost.push({ id, t, k }); else if (k) gone[id] = k; else if (gone[id]) back.push({ id, t });
+    }
+    const sent = new Set(ids);
+    const showMore = (list: Property[]) => { const wasOpen = !!l.chat!.revealedAt; for (const h of list) d.shareHome(l, h, 'BOT'); autoRoom(l); return wasOpen; };
+    // 1 · a home he was shown is gone
+    if (lost.length) {
+      for (const x of lost) gone[x.id] = x.k;
+      const one = lost.length === 1; const W = GONE_WORDS;
+      say(l, one ? `ℹ️ अपडेट: “${lost[0].t}” ${W[lost[0].k].hi}।` : `ℹ️ अपडेट:\n${lost.map(x => `• ${x.t} — ${W[x.k].shortHi}`).join('\n')}`,
+        one ? `ℹ️ Update: “${lost[0].t}” ${W[lost[0].k].en}.` : `ℹ️ Update:\n${lost.map(x => `• ${x.t} — ${W[x.k].shortEn}`).join('\n')}`);
+      for (const x of lost) d.audit(l, 'SHOP_LEAD_HOME_GONE', `The GENZ assistant told the customer that ${x.id} is no longer available (${x.k.toLowerCase()})`);
+      d.hist(l, `The assistant told him: ${lost.map(x => `“${x.t}” ${W[x.k].en}`).join('; ')}`);
+      const more = d.matchesFor(l).filter(h => !sent.has(h.id)).slice(0, BOT_LIMITS.autoHomes);
+      if (more.length) {
+        showMore(more); const n = more.length;
+        say(l, `इसकी जगह ${n} मेल खाते ${n === 1 ? 'घर' : 'घर'} ऊपर भेजे हैं — ये अभी उपलब्ध हैं।`, `I have sent ${n} matching home${n === 1 ? '' : 's'} above instead — available right now.`, menu(l));
+        (b.watch ||= { pushes: 0 }).lastPushAt = nowIso();
+      } else say(l, 'अभी इसके जैसा कोई और मेल खाता घर नहीं है — नया घर आते ही मैं यहीं बता दूँगा। 🙏', 'There is no other matching home right now — I will tell you here as soon as a new one comes. 🙏', menu(l));
+      if (b.pendingHome && lost.some(x => x.id === b.pendingHome)) { b.awaiting = undefined; b.pendingHome = undefined; }
+      const openVisit = (b.visits || []).some(v => lost.some(x => x.id === v.homeId) && (v.status === 'ASKED' || v.status === 'COUNTER' || v.status === 'OK'));
+      if (openVisit || !more.length) d.tellBroker(l, `⚠️ ${l.name}: ${lost.map(x => x.t).join(', ').slice(0, 60)} — ${W[lost[0].k].shortHi.replace(/^[^\s]+\s/, '')}`,
+        `${openVisit ? 'इस घर की विज़िट रिक्वेस्ट खुली थी — देख लें। ' : ''}${more.length ? '' : 'इसके बदले कोई मेल खाता घर नहीं है। '}सहायक ने ग्राहक को चैट में बता दिया।`);
+      d.ping(l, more.length ? 'HOME' : 'MSG'); return more.length ? 2 : 1;
+    }
+    // 2 · a home that was gone is live again (an undo, a restore)
+    if (back.length) {
+      for (const x of back) delete gone[x.id];
+      const names = back.map(x => `“${x.t}”`).join(', ');
+      say(l, `✅ अच्छी खबर: ${names} फिर से उपलब्ध ${back.length === 1 ? 'है' : 'हैं'}।`, `✅ Good news: ${names} ${back.length === 1 ? 'is' : 'are'} available again.`, menu(l));
+      d.hist(l, `The assistant told him: ${names} available again`); d.ping(l, 'MSG'); return 1;
+    }
+    // 3 · a NEW home fits his need
+    if (b.awaiting || d.ownerSide(l) || botSpoke(l, 3600_000) >= BOT_LIMITS.perHour) return 0;   // a plain “gone / back” line above is never held back; a PUSH of new homes is (never a wall of bot talk)
+    const w = (b.watch ||= { pushes: 0 });
+    if (w.pushes >= BOT_WATCH.maxPushes || (w.lastPushAt && now - Date.parse(w.lastPushAt) < BOT_WATCH.gapHours * 3600_000)) return 0;
+    const known = new Set(b.seen || []);
+    const pick = d.matchesFor(l).filter(h => !sent.has(h.id) && !known.has(h.id)).slice(0, BOT_LIMITS.autoHomes);
+    if (!pick.length) return 0;
+    const wasOpen = showMore(pick); const n = pick.length;
+    w.pushes++; w.lastPushAt = nowIso(); b.seen = [...known, ...pick.map(h => h.id)];
+    say(l, `🆕 आपकी ज़रूरत से मेल खाता ${n === 1 ? 'नया घर' : `${n} नए घर`} आया है — ऊपर भेजा है। पसंद आए तो 📅 विज़िट दबाएँ।`,
+      `🆕 ${n === 1 ? 'A new home' : `${n} new homes`} that fit${n === 1 ? 's' : ''} your need just came — I have sent ${n === 1 ? 'it' : 'them'} above. If you like ${n === 1 ? 'it' : 'one'}, choose 📅 visit.`, menu(l));
+    d.hist(l, `The assistant showed ${n} new matching home(s) that came after he confirmed: ${pick.map(h => `“${h.title}”`).join(', ').slice(0, 160)}`);
+    if (b.needsBroker === 'no-match') b.needsBroker = undefined;
+    if (!wasOpen) d.tellBroker(l, `🤖 ${l.name}: नया घर आया — नंबर खुल गया`, `सहायक ने ${n} नया मेल खाता घर भेजा — अब उसका नंबर आपको दिखेगा।`);
+    else d.tellBroker(l, `🆕 ${l.name}: ${n} नया घर भेजा`, 'नया मेल खाता घर आया — सहायक ने चैट में दिखा दिया।');
+    d.ping(l, 'HOME'); return 2;
   }
 
   function handoff(l: PartnerLead, why: string, line?: [string, string]) {
@@ -486,10 +563,10 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   }
 
   const roomLink = (l: PartnerLead) => { const s = l.chat?.bot?.roomSealed; if (!s) return ''; try { return openLink(s, `lr|${l.id}`); } catch { return ''; } };
-  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
+  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), following: !off(l) && !!b.followedAt && followed(l, Date.now()), watchPushes: b.watch?.pushes || 0, offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
     interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
     network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
-  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes };
+  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow };
 }
 export type Sahayak = ReturnType<typeof makeSahayak>;

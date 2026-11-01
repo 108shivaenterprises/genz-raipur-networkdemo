@@ -17,6 +17,7 @@ import path from 'node:path';
 import { brandedQrSvg } from './brandlogo.js';
 import { makeSahayak } from './sahayak.js';
 import type { NeedChange } from '../src/shared/sahayak.js';
+import { goneKind, GONE_WORDS } from '../src/shared/sahayak.js';
 import { localityFit, areasOf, canonPlace, inferCity } from '../src/shared/places.js';
 import { PROPERTY_TYPES, RELATED_TYPE_GROUPS, findState, sameCity } from '../src/shared/india.js';
 import { findCityNames } from '../src/shared/waParse.js';
@@ -155,7 +156,8 @@ function matchesFor(l: PartnerLead): Property[] {
   for (const h of shownHomes(b)) pool.set(h.id, h);
   // v100 — a customer who wants ANOTHER city than the shop's: the homes of that city that their brokers opened to pages (the same rule a broker's own page follows)
   if (l.wantCity && !sameCity(l.wantCity, shopCityOf(l))) for (const h of st().properties) if (sameCity(h.city, l.wantCity) && canShow(b, h)) pool.set(h.id, h);
-  return [...pool.values()].filter(h => homeFits(l, h) && !tooFreshFor(l, h)).slice(0, 12);
+  // v103 — the 48-hour wait (audit F3) only guards the moment the NUMBER opens; once it is open a new home can be shown at once
+  return [...pool.values()].filter(h => homeFits(l, h) && (!tooFreshFor(l, h) || !!l.chat?.revealedAt)).slice(0, 12);
 }
 const homeBrief = (h: Property) => ({ id: h.id, title: h.title, price: priceShort(h.askingPrice), place: `${h.locality}, ${h.city}`, rent: h.transactionType !== 'Sale' });
 /** the customer's need, as one readable line (what the broker asks him to confirm) */
@@ -295,8 +297,44 @@ export const sahayak = makeSahayak({
   addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
   audit: (l, action, text) => db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, action, text),
   isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead, networkScan,
+  ping: (l, what) => { void brokerWrote(`lc-${l.id}`, 'GENZ सहायक', what); },   // v103 — the customer's phone hears about what the assistant wrote on its own
   ownerFacts, saveDraft: (l, fields) => saveOwnerChatDraft(l.brokerId, fields, l.id), draftState,
 });
+
+// ───────────────────────── v103 — the chats follow the homes ─────────────────────────
+let liveSeen: Set<string> | null = null;
+const liveNow = () => { const o = new Set<string>(); for (const p of st().properties) if (pageLive(p)) o.add(p.id); return o; };
+/** before any change is made (first time only): the homes that are live right now */
+export function primeHomes(): void { if (!liveSeen) liveSeen = liveNow(); }
+/**
+ * after ANY change: which homes became live (new listing, approved, relisted, an undo) or stopped being live (sold, rented, withdrawn, suspended, a broker un-verified…)?
+ * The chats that were shown such a home — or that such a home fits — follow it at once. Compared as a set, so no route has to remember to call it.
+ */
+export function followHomes(): number {
+  const now = liveNow(); const prev = liveSeen; liveSeen = now; if (!prev) return 0;
+  const moved = new Set<string>(); const added: Property[] = [];
+  for (const id of prev) if (!now.has(id)) moved.add(id);
+  for (const id of now) if (!prev.has(id)) { moved.add(id); const p = db.byId('properties', id); if (p) added.push(p); }
+  if (!moved.size) return 0;
+  let n = 0;
+  for (const l of st().partnerLeads) {
+    if (!l.chat?.reqConfirmedAt || ownerSide(l)) continue;
+    if (!sahayak.sentIds(l).some(id => moved.has(id)) && !added.some(h => homeFits(l, h))) continue;
+    try { n += sahayak.follow(l); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); }
+  }
+  if (n) db.save();
+  return n;
+}
+/** the hourly safety net (and the baseline): every confirmed chat looks at the homes once */
+export function sweepSahayak(): number {
+  let n = 0;
+  for (const l of st().partnerLeads) { if (!l.chat?.reqConfirmedAt || ownerSide(l)) continue; try { n += sahayak.follow(l); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); } }
+  liveSeen = liveNow();
+  if (n) db.save();
+  return n;
+}
+/** the status of a home he was shown, as the chat page and the broker's list show it (null = still there) */
+const homeGone = (homeId?: string) => { if (!homeId) return null; const h = st().properties.find(x => x.id === homeId); return goneKind(h, pageLive(h)); };
 
 // ───────────────────────────── links: later work on the same mobile by the same broker ─────────────────────────────
 export interface LeadLink { kind: 'VISIT' | 'ROOM' | 'NEED' | 'DEAL' | 'BOND' | 'CLIENT' | 'LISTING'; id: string; at: string; done?: boolean; en: string; hi: string }
@@ -550,7 +588,7 @@ function leadView(l: PartnerLead) {
   return {
     ...rest, ...(rev ? { phone } : {}), masked: !rev,
     // v85 — the in-app chat (never the customer's link token); `matches` = the homes he may share now (only offered once the need is confirmed)
-    chat: chat ? { msgs: chat.msgs.slice(-80), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
+    chat: chat ? { msgs: chat.msgs.slice(-80).map(m => m.kind === 'HOME' && m.homeId ? { ...m, gone: homeGone(m.homeId) || undefined } : m), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
     alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0, bot: chat ? sahayak.view(l) : null,
     matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [], needLine: needLine(l),
     shopName: p?.shopName || '', city: cityOfLead(l), links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),
@@ -1034,11 +1072,12 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
     noStore(res);
     if (!l || !l.chat) return res.status(404).send(shell('GENZ', `<div class="card"><p class="t">यह लिंक मान्य नहीं है।<br><small>This link is not valid.</small></p></div>`));
     const b = userOf(l.brokerId); const who = b?.name || 'ब्रोकर';
+    try { sahayak.follow(l); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); }   // v103 — opening the chat shows the homes as they are now
     l.chat.customerSeenAt = nowIso(); db.save();
     const bubbles = l.chat.msgs.map(m => {
       const t = `<small style="color:#64748b">${hm(m.at)}</small>`;
       if (m.by === 'SYSTEM') return `<div class="bub sys">${esc(m.text)}</div>`;
-      if (m.kind === 'HOME') return `<div class="bub br"><b>🏠 ${esc(m.title || '')}</b><br>${esc(m.price || '')} · ${esc(m.place || '')}${b?.publicCard?.enabled && b.referralCode && m.homeId ? `<br><a href="/c/${esc(b.referralCode)}#h-${esc(m.homeId)}" rel="noopener">देखें / View</a>` : ''}<br>${t}</div>`;
+      if (m.kind === 'HOME') { const gk = homeGone(m.homeId); return `<div class="bub br"${gk ? ' data-gone="' + gk + '"' : ''}><b>🏠 ${esc(m.title || '')}</b><br>${esc(m.price || '')} · ${esc(m.place || '')}${gk ? `<br><b style="color:#b91c1c">${GONE_WORDS[gk].shortHi}</b> <small style="color:#64748b">${GONE_WORDS[gk].shortEn}</small>` : b?.publicCard?.enabled && b.referralCode && m.homeId ? `<br><a href="/c/${esc(b.referralCode)}#h-${esc(m.homeId)}" rel="noopener">देखें / View</a>` : ''}<br>${t}</div>`; }
       if (m.kind === 'ASK') return `<div class="bub br ask"><b>✔ क्या आपकी ज़रूरत यही है?</b><br>${esc(m.text)}<br>${t}</div>`;
       if (m.by === 'BOT') return `<div class="bub bot" data-testid="bot-msg"><small class="bn">🤖 GENZ सहायक · <i>automatic</i></small><br>${esc(m.text).replace(/\n/g, '<br>')}${m.en ? `<br><small style="color:#64748b">${esc(m.en).replace(/\n/g, '<br>')}</small>` : ''}<br>${t}</div>`;
       return `<div class="bub ${m.by === 'CUSTOMER' ? 'me' : 'br'}">${esc(m.text)}<br>${t}</div>`;

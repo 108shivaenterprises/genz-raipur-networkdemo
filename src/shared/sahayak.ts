@@ -165,6 +165,29 @@ export const WHEN_CHIPS: { id: string; hi: string; en: string; say: string }[] =
 // ───────────────────────── words the bot may say (fixed, so a test can read them) ─────────────────────────
 export const BOT_NAME = { hi: 'GENZ सहायक', en: 'GENZ Assistant' };
 export const BOT_LIMITS = { perHour: 12, quietMinutes: 30, handoffHours: 6, autoHomes: 3, exploreHomes: 12, visitsOpen: 3 };
+
+/** v103 — how long, and how often, the assistant keeps following a customer's confirmed need on its own (new matching homes, homes that are gone) */
+export const BOT_WATCH = { days: 30, gapHours: 4, maxPushes: 10 };
+/** v103 — why a home he was shown can no longer be offered. SOLD / RENTED / WITHDRAWN are the broker's own act; EXPIRED = nobody confirmed it for 30 days; OFF = suspended, on hold after reports, not verified, or its broker is not verified; GONE = erased */
+export type GoneKind = 'SOLD' | 'RENTED' | 'WITHDRAWN' | 'EXPIRED' | 'OFF' | 'GONE';
+export function goneKind(h: { listingStatus?: string; expiredAt?: string; purgedAt?: string } | undefined | null, live: boolean): GoneKind | null {
+  if (live) return null;
+  if (!h || h.purgedAt) return 'GONE';
+  if (h.listingStatus === 'sold') return 'SOLD';
+  if (h.listingStatus === 'rented') return 'RENTED';
+  if (h.listingStatus === 'withdrawn') return 'WITHDRAWN';
+  if (h.expiredAt) return 'EXPIRED';
+  return 'OFF';
+}
+/** the words for each (Hindi first, English second); `short` = the badge on the home's card */
+export const GONE_WORDS: Record<GoneKind, { hi: string; en: string; shortHi: string; shortEn: string }> = {
+  SOLD: { hi: 'अब बिक चुका है', en: 'has been sold', shortHi: '❌ बिक चुका है', shortEn: 'sold' },
+  RENTED: { hi: 'किराये पर जा चुका है', en: 'has been rented out', shortHi: '❌ किराये पर जा चुका है', shortEn: 'rented out' },
+  WITHDRAWN: { hi: 'लिस्ट से हटा दिया गया है', en: 'has been taken off the list', shortHi: '❌ लिस्ट से हट गया', shortEn: 'taken off the list' },
+  EXPIRED: { hi: 'अब लिस्ट में नहीं है', en: 'is no longer listed', shortHi: '❌ अब लिस्ट में नहीं', shortEn: 'no longer listed' },
+  OFF: { hi: 'अभी उपलब्ध नहीं है', en: 'is not available right now', shortHi: '⚠️ अभी उपलब्ध नहीं', shortEn: 'not available now' },
+  GONE: { hi: 'अब लिस्ट में नहीं है', en: 'is no longer listed', shortHi: '❌ अब लिस्ट में नहीं', shortEn: 'no longer listed' },
+};
 export const BOT_NOTE = {
   hi: 'यह जवाब GENZ सहायक (स्वचालित) ने दिया है। ज़रूरत पड़ने पर ब्रोकर खुद भी जवाब देंगे।',
   en: 'This reply came from the GENZ assistant (automatic). The broker will also reply himself when needed.',

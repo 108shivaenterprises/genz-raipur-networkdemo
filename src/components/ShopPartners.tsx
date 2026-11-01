@@ -12,6 +12,7 @@ import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
 import { LEAD_KINDS, LEAD_STATUSES, PAYOUT_LABEL, DEFAULT_TERMS, PARTNER_LIMITS, PAY_MODES, OVERDUE, SHARE_CHANGE_LABEL, partnerAmount, sideOfKind, termsText, cutText, checkTerms, refOk, payRecordText, type PartnerTerms, type Cut, type PartnerPayMode } from '../shared/shopPartner.js';
+import { GONE_WORDS, type GoneKind } from '../shared/sahayak.js';
 import type { UserProfile } from '../types/index.js';
 
 const inp = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm';
@@ -220,7 +221,7 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
             {c.msgs.map((m: any, i: number) => (
               <div key={i} className={`max-w-[88%] rounded-lg px-2 py-1 text-xs shadow-sm ${m.by === 'SYSTEM' ? 'mx-auto bg-yellow-100 text-center' : m.by === 'BROKER' ? 'ml-auto bg-[#d9fdd3]' : m.by === 'BOT' ? 'ml-auto border-l-4 border-indigo-400 bg-indigo-50' : 'bg-white'}`}>
                 {m.by === 'BOT' && <span className="block text-[10px] font-bold text-indigo-800">🤖 {tx('GENZ assistant (automatic)', 'GENZ सहायक (स्वचालित)')}</span>}
-                {m.kind === 'ASK' ? <>✔ <b>{tx('Asked him to confirm', 'पुष्टि माँगी')}</b>: {m.text}</> : m.kind === 'HOME' ? <>🏠 <b>{m.title}</b> · {m.price} · {m.place}</> : <span className="whitespace-pre-wrap">{m.by === 'BOT' ? tx(m.en || m.text, m.text) : m.text}</span>}
+                {m.kind === 'ASK' ? <>✔ <b>{tx('Asked him to confirm', 'पुष्टि माँगी')}</b>: {m.text}</> : m.kind === 'HOME' ? <>🏠 <b>{m.title}</b> · {m.price} · {m.place}{m.gone && <b className="ml-1 text-red-600" data-testid="sp-home-gone">· {tx(GONE_WORDS[m.gone as GoneKind]?.shortEn || 'not available', GONE_WORDS[m.gone as GoneKind]?.shortHi || 'उपलब्ध नहीं')}</b>}</> : <span className="whitespace-pre-wrap">{m.by === 'BOT' ? tx(m.en || m.text, m.text) : m.text}</span>}
                 <span className="ml-1 text-slate-500">{hm(m.at)}</span>
               </div>
             ))}
