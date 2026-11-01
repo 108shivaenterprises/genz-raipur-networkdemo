@@ -15,6 +15,7 @@
  *    GENZ Network Watch is marked for the broker; the sender is never told.
  * Other roles (builder, contractor, lawyer) keep the plain visiting card of server/growth.ts.
  */
+import { DEMO_CITY_PAGES, type PageDemo } from './demoCities.js';
 import express, { Router, type Request, type Response, type NextFunction } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
@@ -437,24 +438,30 @@ export function sweepPageEnquiries(now = Date.now()) {
   return n;
 }
 
-/** demo only (SEED_DEMO_DATA + SEED_DEMO_BULK): the first demo broker's page is on, with his homes, two homes of a colleague and a few enquiries */
+/** demo only (SEED_DEMO_DATA + SEED_DEMO_BULK): the first demo broker's page of EVERY demo city is on, with his homes, two homes of a colleague and a few enquiries */
+const RAIPUR_PAGE: PageDemo = { brokerId: 'USR-BRK-001', colleagueId: 'USR-BRK-002', headline: 'Raipur ke verified ghar, plot aur dukaan — sahi daam, saaf kaagaz', areas: ['Shankar Nagar', 'Telibandha', 'Naya Raipur'], enquiries: [
+  { name: 'Neha Gupta', phone: '9131100011', about: 'OWN', message: 'Is it still available? We can visit on Sunday.', hours: 2 },
+  { name: 'Rahul Tiwari', phone: '9131100012', about: 'THEIRS', hours: 20 },
+  { name: 'Sunita Yadav', phone: '9131100013', about: 'NONE', message: '2BHK on rent near Telibandha, up to 15,000.', hours: 50, status: 'CONTACTED' } ] };
 export function seedDemoPage() {
   if ((process.env.SEED_DEMO_DATA || '').toLowerCase() !== 'true' || (process.env.SEED_DEMO_BULK || '').toLowerCase() !== 'true') return;
+  for (const d of [RAIPUR_PAGE, ...DEMO_CITY_PAGES]) seedPageFor(d);
+}
+function seedPageFor(d: PageDemo) {
   const s = st();
-  const u = db.byId('users', 'USR-BRK-001') as UserProfile | undefined;
-  if (!u || u.verificationStatus !== 'VERIFIED' || s.pageEnquiries.length || s.users.some(x => (x.publicCard?.homes || []).length)) return;
+  const u = db.byId('users', d.brokerId) as UserProfile | undefined;
+  if (!u || u.verificationStatus !== 'VERIFIED' || (u.publicCard?.homes || []).length || s.pageEnquiries.some(e => e.brokerId === u.id)) return;
   const own = s.properties.filter(p => p.listingBrokerId === u.id && pageLive(p)).slice(0, 5);
-  const theirs = s.properties.filter(p => p.listingBrokerId === 'USR-BRK-002' && pageLive(p)).slice(0, 2);
-  const at = (d: number) => new Date(Date.now() - d * 3600_000).toISOString();
+  const theirs = s.properties.filter(p => p.listingBrokerId === d.colleagueId && pageLive(p)).slice(0, 2);
+  const at = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
   for (const p of theirs) { p.publicShareOk = true; p.publicShareAt = at(72); }
-  const b2 = db.byId('users', 'USR-BRK-002') as UserProfile | undefined;
+  const b2 = db.byId('users', d.colleagueId) as UserProfile | undefined;
   if (b2 && theirs.length && !b2.publicCard?.ownerOkAt) { ensureReferralCode(b2); b2.publicCard = { ...(b2.publicCard || { enabled: false, showPhone: false, views: 0 }), ownerOkAt: at(72) }; }
   ensureReferralCode(u);
-  u.publicCard = { ...(u.publicCard || {}), enabled: true, showPhone: true, headline: u.publicCard?.headline || 'Raipur ke verified ghar, plot aur dukaan — sahi daam, saaf kaagaz', areas: ['Shankar Nagar', 'Telibandha', 'Naya Raipur'], views: Math.max(u.publicCard?.views || 0, 37), homes: [...own, ...theirs].map(p => p.id), ownerOkAt: at(72) };
-  const mk = (name: string, phone: string, p: Property | undefined, message: string | undefined, h: number, status: PageEnquiry['status'] = 'NEW') =>
-    s.pageEnquiries.push({ id: `PGE-demo${crypto.randomBytes(3).toString('hex')}`, brokerId: u.id, propertyId: p?.id, name, phone, message, consentAt: at(h), status, createdAt: at(h) });
-  mk('Neha Gupta', '9131100011', own[0], 'Is it still available? We can visit on Sunday.', 2);
-  mk('Rahul Tiwari', '9131100012', theirs[0], undefined, 20);
-  mk('Sunita Yadav', '9131100013', undefined, '2BHK on rent near Telibandha, up to 15,000.', 50, 'CONTACTED');
+  u.publicCard = { ...(u.publicCard || {}), enabled: true, showPhone: true, headline: u.publicCard?.headline || d.headline, areas: d.areas, views: Math.max(u.publicCard?.views || 0, 37), homes: [...own, ...theirs].map(p => p.id), ownerOkAt: at(72) };
+  for (const e of d.enquiries) {
+    const p = e.about === 'OWN' ? own[0] : e.about === 'THEIRS' ? theirs[0] : undefined;
+    s.pageEnquiries.push({ id: `PGE-demo${crypto.randomBytes(3).toString('hex')}`, brokerId: u.id, propertyId: p?.id, name: e.name, phone: e.phone, message: e.message, consentAt: at(e.hours), status: e.status || 'NEW', createdAt: at(e.hours) });
+  }
   db.save();
 }

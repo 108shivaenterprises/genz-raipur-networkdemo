@@ -15,6 +15,7 @@
  * The hourly sweep (9 AM – 8 PM IST) alerts the broker 60 / 30 / 7 days before the end, when the term is over, and once when the
  * police verification is still pending a week after the start. Names and numbers are erased RENT_LIMITS.keepDays after the end.
  */
+import { DEMO_CITY_RENT, type RentDemo } from './demoCities.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import crypto from 'node:crypto';
@@ -356,21 +357,30 @@ export function sweepRent(now = Date.now()): { reminders: number; erased: number
   return { reminders, erased };
 }
 
-/** demo only: three tenancies on the demo broker's desk (ending soon / police pending / ended) */
+/** demo only: three tenancies on the desk of the first demo broker of EVERY demo city (running / just started / ended) */
+const RAIPUR_RENT: RentDemo = { brokerId: 'USR-BRK-001', rows: [
+  { place: '2 BHK flat, Shankar Nagar', owner: 'Ramesh Agrawal', ownerPhone: '9131200021', tenant: 'Ankit Verma', tenantPhone: '9131200022', rent: 16000, deposit: 32000, startDaysAgo: 310, kind: 'RUNNING', station: 'Telibandha thana', ref: 'CG-TV-48211' },
+  { place: '1 BHK, Telibandha', owner: 'Kavita Sahu', ownerPhone: '9131200023', tenant: 'Rohit Nair', tenantPhone: '9131200024', rent: 9500, deposit: 19000, startDaysAgo: 12, kind: 'FRESH', station: '', ref: '' },
+  { place: 'Shop 12, Pandri market', owner: 'Harish Jain', ownerPhone: '9131200025', tenant: 'Meena Traders', tenantPhone: '9131200026', rent: 22000, deposit: 66000, startDaysAgo: 400, kind: 'ENDED', station: '', ref: '' },
+] };
 export function seedDemoRent() {
   if ((process.env.SEED_DEMO_DATA || '').toLowerCase() !== 'true' || (process.env.SEED_DEMO_BULK || '').toLowerCase() !== 'true') return;
-  const s = st(); const u = db.byId('users', 'USR-BRK-001') as UserProfile | undefined;
-  if (!u || s.tenancies.length) return;
+  for (const d of [RAIPUR_RENT, ...DEMO_CITY_RENT]) seedRentFor(d);
+}
+function seedRentFor(d: RentDemo) {
+  const s = st(); const u = db.byId('users', d.brokerId) as UserProfile | undefined;
+  if (!u || s.tenancies.some(t => t.brokerId === d.brokerId)) return;
   const today = todayIst(); const ts = nowIso();
   const mk = (place: string, owner: string, ownerPhone: string, tenant: string, tenantPhone: string, rent: number, deposit: number, startOn: string, police: Tenancy['police'], agreement: Tenancy['agreement'], extra: Partial<Tenancy> = {}): Tenancy => ({
     id: `TEN-demo${crypto.randomBytes(3).toString('hex')}`, brokerId: u.id, place, ownerName: owner, ownerPhone, tenantName: tenant, tenantPhone, rent, deposit,
     startOn, months: 11, endOn: endOf(startOn, 11), noticeDays: 30, escalationPct: 5, lockInMonths: 6, agreement, police, status: 'ACTIVE',
     renewals: [], reminded: {}, consentAt: ts, history: [{ at: ts, by: u.name, what: 'Recorded' }], createdAt: ts, updatedAt: ts, ...extra,
   });
-  s.tenancies.push(
-    mk('2 BHK flat, Shankar Nagar', 'Ramesh Agrawal', '9131200021', 'Ankit Verma', '9131200022', 16000, 32000, addDays(today, -310), { status: 'DONE', on: addDays(today, -300), station: 'Telibandha thana', ref: 'CG-TV-48211' }, 'SIGNED', { maintenance: 1500, meterNote: 'Electricity 14231 · Water 0412' }),
-    mk('1 BHK, Telibandha', 'Kavita Sahu', '9131200023', 'Rohit Nair', '9131200024', 9500, 19000, addDays(today, -12), { status: 'NOT_STARTED' }, 'DRAFTED'),
-    mk('Shop 12, Pandri market', 'Harish Jain', '9131200025', 'Meena Traders', '9131200026', 22000, 66000, addDays(today, -400), { status: 'DONE', on: addDays(today, -395) }, 'SIGNED', { status: 'ENDED', vacatedOn: addDays(today, -20), depositNote: 'Full deposit returned' }),
-  );
+  for (const x of d.rows) {
+    const startOn = addDays(today, -x.startDaysAgo);
+    if (x.kind === 'RUNNING') s.tenancies.push(mk(x.place, x.owner, x.ownerPhone, x.tenant, x.tenantPhone, x.rent, x.deposit, startOn, { status: 'DONE', on: addDays(today, -x.startDaysAgo + 10), station: x.station, ref: x.ref }, 'SIGNED', { maintenance: 1500, meterNote: 'Electricity 14231 · Water 0412' }));
+    else if (x.kind === 'FRESH') s.tenancies.push(mk(x.place, x.owner, x.ownerPhone, x.tenant, x.tenantPhone, x.rent, x.deposit, startOn, { status: 'NOT_STARTED' }, 'DRAFTED'));
+    else s.tenancies.push(mk(x.place, x.owner, x.ownerPhone, x.tenant, x.tenantPhone, x.rent, x.deposit, startOn, { status: 'DONE', on: addDays(today, -x.startDaysAgo + 5) }, 'SIGNED', { status: 'ENDED', vacatedOn: addDays(today, -20), depositNote: 'Full deposit returned' }));
+  }
   db.save();
 }

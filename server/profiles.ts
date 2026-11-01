@@ -15,6 +15,7 @@
  * Safeguards: proof of working together is looked up on the server; one reviewer counts once; a low rating needs a reason; no links / phone numbers in
  * text; searches are rate-limited and the exact-mobile / code ones are written to the audit trail; the reviewed person can reply and report; staff can hide.
  */
+import { DEMO_CITY_BROKERS } from './demoCities.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import { db } from './db.js';
@@ -154,20 +155,39 @@ export function exportProfileData(s: DatabaseState, userId: string) {
 /** demo only (SEED_DEMO_DATA + SEED_DEMO_BULK): a few honest-looking reviews between demo members who really have a deal / partnership together, so the screen is not empty */
 export function seedDemoReviews() {
   if ((process.env.SEED_DEMO_DATA || '').toLowerCase() !== 'true' || (process.env.SEED_DEMO_BULK || '').toLowerCase() !== 'true') return;
-  const s = st(); if (s.reviews.length) return;
+  const s = st();
   const at = (d: number) => new Date(Date.now() - d * DAY).toISOString();
   const mk = (reviewerId: string, targetId: string, rating: number, tags: string[], remark: string, days: number, reply?: string) => {
     const a = userOf(reviewerId); const t = userOf(targetId); if (!verified(a) || !verified(t)) return;
     const p = proofBetween(reviewerId, targetId, s)[0]; if (!p) return;
     s.reviews.push({ id: uid(), targetId, reviewerId, evidenceKind: p.kind, evidenceIds: [p.id], rating, tags, remark, at: at(days), status: 'VISIBLE', reports: [], ...(reply ? { reply: { text: reply, at: at(days - 1) } } : {}) });
   };
-  mk('USR-BRK-002', 'USR-BRK-001', 5, ['HONEST', 'FAIR_SPLIT'], 'Closed the Shankar Nagar deal smoothly. My share came in the same week.', 20);
-  mk('USR-OWNER-001', 'USR-BRK-001', 5, ['RESPONSIVE', 'ACCURATE'], 'Showed the flat only to serious buyers and kept me updated after every visit.', 12);
-  mk('USR-BUILDER-001', 'USR-BRK-001', 4, ['HONEST', 'RESPONSIVE'], 'Registers clean leads and follows up properly.', 9);
-  mk('USR-BRK-001', 'USR-BRK-002', 4, ['RESPONSIVE'], 'Good co-broker. Papers came a little late, otherwise no complaint.', 18, 'Thanks — I will keep the documents ready next time.');
-  mk('USR-OWNER-001', 'USR-BRK-002', 5, ['HONEST'], 'Explained the price honestly and did not pressure me.', 11);
-  mk('USR-BRK-001', 'USR-BUILDER-001', 5, ['PAYS_ON_TIME', 'CLEAR_TERMS'], 'Terms were clear from day one and the brokerage was released on time.', 7);
-  mk('USR-BRK-002', 'USR-BUILDER-001', 4, ['GOOD_SUPPORT'], 'Sales team helps with site visits.', 5);
+  const raipurReviews = () => {
+    mk('USR-BRK-002', 'USR-BRK-001', 5, ['HONEST', 'FAIR_SPLIT'], 'Closed the Shankar Nagar deal smoothly. My share came in the same week.', 20);
+    mk('USR-OWNER-001', 'USR-BRK-001', 5, ['RESPONSIVE', 'ACCURATE'], 'Showed the flat only to serious buyers and kept me updated after every visit.', 12);
+    mk('USR-BUILDER-001', 'USR-BRK-001', 4, ['HONEST', 'RESPONSIVE'], 'Registers clean leads and follows up properly.', 9);
+    mk('USR-BRK-001', 'USR-BRK-002', 4, ['RESPONSIVE'], 'Good co-broker. Papers came a little late, otherwise no complaint.', 18, 'Thanks — I will keep the documents ready next time.');
+    mk('USR-OWNER-001', 'USR-BRK-002', 5, ['HONEST'], 'Explained the price honestly and did not pressure me.', 11);
+    mk('USR-BRK-001', 'USR-BUILDER-001', 5, ['PAYS_ON_TIME', 'CLEAR_TERMS'], 'Terms were clear from day one and the brokerage was released on time.', 7);
+    mk('USR-BRK-002', 'USR-BUILDER-001', 4, ['GOOD_SUPPORT'], 'Sales team helps with site visits.', 5);
+  };
+  if (!s.reviews.length) { raipurReviews(); }
+  // every other demo city: honest-looking reviews between people who really share a deal room (so the Profiles screen is filled there too)
+  for (const c of DEMO_CITY_BROKERS) {
+    if (s.reviews.some(r => r.targetId === c.brokerId)) continue;
+    const deals = s.dealRooms.filter(d => (d.closingBrokerId === c.brokerId || d.introducingBrokerId === c.brokerId) && ['Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'].includes(d.stage)).slice(0, 3);
+    const LINES: [string[], string, string][] = [
+      [['HONEST', 'FAIR_SPLIT'], 'Closed the deal smoothly. My share was agreed in writing and came on time.', 'Thanks — glad it went well.'],
+      [['RESPONSIVE', 'ACCURATE'], 'Showed the property only to serious buyers and kept me updated after every visit.', ''],
+      [['RESPONSIVE'], 'Good co-broker. Papers came a little late, otherwise no complaint.', 'Thanks — I will keep the documents ready next time.'],
+    ];
+    deals.forEach((d, i) => {
+      const other = d.closingBrokerId === c.brokerId ? d.introducingBrokerId : d.closingBrokerId; const [tags, remark, reply] = LINES[i % LINES.length];
+      mk(other, c.brokerId, 5 - (i % 2), tags, remark, 20 - i * 6, reply || undefined);
+      if (i === 0) mk(c.brokerId, other, 4, ['RESPONSIVE'], 'Clear terms from day one. Documents shared on time.', 14);
+      if (i === 1) mk(d.ownerId, c.brokerId, 5, ['HONEST'], 'Explained the price honestly and did not pressure me.', 11);
+    });
+  }
   db.save();
 }
 

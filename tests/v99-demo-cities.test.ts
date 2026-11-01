@@ -1,11 +1,12 @@
 import { freePort } from './helpers/port';
 /**
- * v99 — demo accounts OUTSIDE Raipur (Pune, Indore, Jaipur) and a full QR → bot flow in each, using ONLY the seeded demo accounts/listings.
- * Proves the app is not "Raipur only": a shop in Pune shows Pune homes, an Indore owner gets a draft in Indore, a Jaipur renter is matched to a Jaipur rent flat.
+ * v99 / v99.2 — the demo OUTSIDE Raipur (Pune, Indore, Jaipur) is the SAME demo as Raipur: every kind of record Raipur has is there for each city (listings, buyer needs, deal rooms in every stage,
+ * offers, mandates, client rooms, construction leads, builder projects, legal cases, shop QRs with leads, rent desk, public page, reviews, team) — only the city and its localities differ.
+ * Then a full QR → bot flow in each city using ONLY the seeded accounts/listings: a shop in Pune shows Pune homes, an Indore owner gets a draft in Indore, a Jaipur renter is matched to a Jaipur rent flat.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'child_process';
-import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 
@@ -56,27 +57,87 @@ async function scan(s: { qr: string }, d: Record<string, string>) {
 const leadOf = async (ck: string, last4: string) => (await (await call(ck, 'GET', '/api/shop-partners')).json()).leads.find((l: any) => l.phoneLast4 === last4);
 const homesOf = (l: any) => l.chat.msgs.filter((m: any) => m.kind === 'HOME').map((m: any) => m.homeId);
 
-describe('the demo has brokers, owners, buyers and listings in Pune, Indore and Jaipur', { timeout: 120000 }, () => {
-  const CITIES = [['PUN', 'Pune', 'Maharashtra'], ['IND', 'Indore', 'Madhya Pradesh'], ['JAI', 'Jaipur', 'Rajasthan']] as const;
-  it('each city: a verified broker, an owner, a buyer who can log in', async () => {
+const dbOf = async (): Promise<any> => {
+  // the server writes its state to <cwd>/data/database.json — wait until the seeded demo cities are in it
+  for (let i = 0; i < 60; i++) { try { const t = readFileSync(path.join(dir, 'data', 'database.json'), 'utf8'); if (t.includes('DEAL-JAI-') && t.includes('"shopPartners"')) return JSON.parse(t); } catch { /* not written yet */ } await sleep(300); }
+  throw new Error('database.json never had the demo cities');
+};
+const CITIES = [['PUN', 'Pune', 'Maharashtra'], ['IND', 'Indore', 'Madhya Pradesh'], ['JAI', 'Jaipur', 'Rajasthan']] as const;
+
+describe('Pune, Indore and Jaipur have the SAME demo as Raipur — only the city and its localities differ', { timeout: 120000 }, () => {
+  it('each city has every kind of person Raipur has, all verified, and each can log in', async () => {
     for (const [code, city, state] of CITIES) {
-      for (const role of ['BRK', 'OWNER', 'BUYER']) {
-        const a = cfg.demoAccounts.find((x: any) => x.id === `USR-${role}-${code}`); expect(a, `${role}-${code}`).toBeTruthy(); expect(a.verificationStatus).toBe('VERIFIED');
+      for (const id of [`USR-BRK-${code}`, `USR-BRK-${code}-2`, `USR-BRK-${code}-3`, `USR-BRK-${code}-4`, `USR-OWNER-${code}`, `USR-OWNER-${code}-2`, `USR-BUYER-${code}`, `USR-BUYER-${code}-3`, `USR-CONTRACTOR-${code}`, `USR-BUILDER-${code}`, `USR-LEGAL-${code}`, `USR-TEAM-${code}1`]) {
+        const a = cfg.demoAccounts.find((x: any) => x.id === id); expect(a, id).toBeTruthy(); expect(a.verificationStatus, id).toBe('VERIFIED');
       }
-      const ck = await login(`USR-BRK-${code}`);
-      const me = await (await call(ck, 'GET', '/api/auth/me')).json(); const u = me.user || me;
+      const me = await (await call(await login(`USR-BRK-${code}`), 'GET', '/api/auth/me')).json(); const u = me.user || me;
       expect(u.city).toBe(city); expect(u.state).toBe(state);
     }
   });
-  it('each city: 5 live listings in that city only (sale flats, a rent flat, a shop on rent, a plot) with real localities', async () => {
-    for (const [code, city, state] of CITIES) {
-      const ck = await login(`USR-BRK-${code}`);
-      const r = await (await call(ck, 'GET', '/api/properties?mine=1')).json(); const mine = (r.properties || []).filter((p: any) => String(p.id).startsWith(`PROP-${code}-`));
-      expect(mine.length, city).toBe(5);
-      for (const p of mine) { expect(p.city).toBe(city); expect(p.state).toBe(state); expect(p.listingStatus).toBe('active'); expect(p.askingPrice).toBeGreaterThan(0); expect(JSON.stringify(p)).not.toMatch(/Raipur|Chhattisgarh/); }
-      expect(new Set(mine.map((p: any) => p.propertyType))).toEqual(new Set(['Residential Flat', 'Commercial Shop', 'Residential Plot']));
-      expect(mine.filter((p: any) => p.transactionType === 'Rent')).toHaveLength(2);
+  it('record-for-record: every record type is present in every city, in the same numbers in all three — and Raipur has each of them too', async () => {
+    const d = await dbOf();
+    const has = (arr: any[], re: RegExp) => (arr || []).filter(x => re.test(String(x.id))).length;
+    const KINDS: [string, (t: string) => RegExp][] = [
+      ['properties', t => new RegExp(`^PROP-${t}-`)], ['requirements', t => new RegExp(`^REQ-${t}-`)], ['dealRooms', t => new RegExp(`^DEAL-${t}-`)], ['dealTasks', t => new RegExp(`^TSK-${t}-`)],
+      ['commissionAgreements', t => new RegExp(`^AGR-DEAL-${t}-`)], ['dealMessages', t => new RegExp(`^MSG-${t}-`)], ['siteVisits', t => new RegExp(`^SV-${t}-`)], ['offers', t => new RegExp(`^OFFER-${t}-`)],
+      ['ownerMandates', t => new RegExp(`^OM-${t}-`)], ['constructionLeads', t => new RegExp(`^CL-${t}-`)], ['builderProjects', t => new RegExp(`^PROJ-${t}-`)], ['inventoryUnits', t => new RegExp(`^UNIT-PROJ-${t}-`)],
+      ['associateMandates', t => new RegExp(`^MAND-${t}-`)], ['crmLeads', t => new RegExp(`^CRM-L-${t}-`)], ['clientRooms', t => new RegExp(`^CRM-${t}\\d`)], ['legalRequests', t => new RegExp(`^LGL-${t}-`)], ['disputes', t => new RegExp(`^DISP-${t}-`)],
+    ];
+    for (const [key, re] of KINDS) {
+      const raipur = has(d[key], re('DMO')); expect(raipur, `Raipur ${key}`).toBeGreaterThan(0);
+      const per = CITIES.map(([code]) => has(d[key], re(code)));
+      for (const n of per) expect(n, `${key} per city ${per}`).toBeGreaterThan(0);
+      expect(new Set(per).size, `${key} differs between cities: ${per}`).toBe(1);
     }
+  });
+  it('deal rooms: every stage Raipur has is in every city; listings cover the same kinds; needs are for that city only', async () => {
+    const d = await dbOf();
+    const stages = (re: RegExp) => new Set(d.dealRooms.filter((x: any) => re.test(x.id)).map((x: any) => x.stage));
+    const raipur = stages(/^DEAL-DMO-/);
+    for (const [code] of CITIES) { const mine = stages(new RegExp(`^DEAL-${code}-`)); for (const st of raipur) expect(mine.has(st), `${code} lacks stage ${st}`).toBe(true); }
+    const kinds = (re: RegExp) => new Set(d.properties.filter((x: any) => re.test(x.id)).map((x: any) => `${x.propertyType}/${x.transactionType}`));
+    const rk = kinds(/^PROP-DMO-/);
+    for (const [code] of CITIES) { const mk = kinds(new RegExp(`^PROP-${code}-`)); for (const k of rk) expect(mk.has(k), `${code} lacks listing kind ${k}`).toBe(true); }
+    for (const [code, city, state] of CITIES) {
+      for (const p of d.properties.filter((x: any) => new RegExp(`^PROP-${code}-`).test(x.id))) { expect(p.city).toBe(city); expect(p.state).toBe(state); }
+      for (const q of d.requirements.filter((x: any) => new RegExp(`^REQ-${code}-`).test(x.id))) { expect(q.city).toBe(city); expect(q.state).toBe(state); }
+    }
+  });
+  it('the broker of each city has what the Raipur broker has: 3 shop QRs (2 live) with leads, a rent desk, a public page with enquiries, reviews, an employee', async () => {
+    const d = await dbOf();
+    for (const id of ['USR-BRK-001', 'USR-BRK-PUN', 'USR-BRK-IND', 'USR-BRK-JAI']) {
+      const shops = d.shopPartners.filter((x: any) => x.brokerId === id); expect(shops, id).toHaveLength(3);
+      expect(shops.filter((x: any) => x.status === 'ACTIVE' && x.qrCode)).toHaveLength(2);
+      expect(d.partnerLeads.filter((x: any) => x.brokerId === id).length, `${id} leads`).toBeGreaterThanOrEqual(6);
+      expect(d.tenancies.filter((x: any) => x.brokerId === id), `${id} tenancies`).toHaveLength(3);
+      const u = d.users.find((x: any) => x.id === id); expect(u.publicCard?.enabled, `${id} page`).toBe(true); expect((u.publicCard?.homes || []).length).toBeGreaterThan(0);
+      expect(d.pageEnquiries.filter((x: any) => x.brokerId === id).length, `${id} enquiries`).toBeGreaterThanOrEqual(3);
+      expect(d.reviews.filter((x: any) => x.targetId === id).length, `${id} reviews`).toBeGreaterThanOrEqual(3);
+      expect(d.users.filter((x: any) => x.employerId === id).length, `${id} team`).toBeGreaterThanOrEqual(2);
+    }
+  });
+  it('no Raipur / Chhattisgarh anywhere in a Pune, Indore or Jaipur record', async () => {
+    const d = await dbOf(); const bad = /Raipur|Chhattisgarh|Shankar Nagar|Telibandha|Civil Lines|VIP Road|Avanti|Pandri|Amlidih|Naya Raipur|Bhilai|CGRERA|\b4920\d\d\b/i;
+    const mineRe = /[-_](PUN|IND|JAI)(?![A-Z])/;
+    for (const [key, arr] of Object.entries<any>(d)) {
+      if (!Array.isArray(arr) || key === 'auditEvents') continue;
+      for (const x of arr) {
+        if (!x || typeof x !== 'object') continue;
+        const owned = mineRe.test(String(x.id || '')) || ['brokerId', 'listingBrokerId', 'closingBrokerId', 'builderId'].some(f => /^USR-[A-Z]+-(PUN|IND|JAI)(-\d)?$/.test(String(x[f] || '')));
+        if (owned) expect(JSON.stringify(x), `${key} ${x.id}`).not.toMatch(bad);
+      }
+    }
+  });
+  it('as the Pune broker: deal rooms in several stages, Pune buyer needs (in Pune), 3 shop QRs, listings of Pune', async () => {
+    const ck = await login('USR-BRK-PUN');
+    const hub = await (await call(ck, 'GET', '/api/deal-hub')).json(); const deals = hub.deals || [];
+    expect(deals.length).toBeGreaterThanOrEqual(5); expect(new Set(deals.map((x: any) => x.stage)).size).toBeGreaterThanOrEqual(4);
+    const reqs = await (await call(ck, 'GET', '/api/requirements')).json(); const list = reqs.requirements || reqs;
+    const mine = list.filter((q: any) => String(q.id).startsWith('REQ-PUN-')); expect(mine.length).toBeGreaterThan(3); for (const q of mine) { expect(q.city).toBe('Pune'); expect(JSON.stringify(q)).not.toMatch(/Raipur|Chhattisgarh/); }
+    const sp = await (await call(ck, 'GET', '/api/shop-partners')).json(); expect(sp.partners.filter((x: any) => x.status === 'ACTIVE')).toHaveLength(2); expect(sp.leads.length).toBeGreaterThanOrEqual(6);
+    const props = await (await call(ck, 'GET', '/api/properties?mine=1')).json(); const mineP = (props.properties || []).filter((p: any) => String(p.id).startsWith('PROP-PUN-'));
+    expect(mineP.length).toBeGreaterThanOrEqual(20); for (const p of mineP) { expect(p.city).toBe('Pune'); expect(JSON.stringify(p)).not.toMatch(/Raipur|Chhattisgarh/); }
+    expect(mineP.filter((p: any) => p.listingBrokerId === 'USR-BRK-PUN').length).toBeGreaterThanOrEqual(8);
   });
   it('a Raipur broker does not see the other cities’ owner phone numbers (masked as before)', async () => {
     const ck = await login('USR-BRK-001');
@@ -85,15 +146,22 @@ describe('the demo has brokers, owners, buyers and listings in Pune, Indore and 
   });
 });
 
-describe('Pune: a buyer at a Pune shop is matched to the seeded Pune flat — and the bot speaks of Pune, not Raipur', { timeout: 120000 }, () => {
+/** the id and a budget (as the buyer would type it) of a live Pune/Jaipur home of a kind — taken from the seeded data, so the test needs no fixed ids */
+const homeOf = async (code: string, type: string, tx: string) => {
+  const d = await dbOf(); const p = d.properties.find((x: any) => new RegExp(`^PROP-${code}-`).test(x.id) && x.listingBrokerId === `USR-BRK-${code}` && x.propertyType === type && x.transactionType === tx && x.listingStatus === 'active' && x.verificationStatus === 'VERIFIED');
+  expect(p, `a ${tx} ${type} in ${code}`).toBeTruthy(); return p as any;
+};
+
+describe('Pune: a buyer at a Pune shop is matched to seeded Pune flats — and the bot speaks of Pune, not Raipur', { timeout: 120000 }, () => {
   let s: { qr: string; ck: string };
-  it('the Pune broker adds a shop in Kothrud; a buyer scans (2 BHK flat, 60 lakh) → ✅ → the seeded Kothrud 2 BHK appears', async () => {
+  it('the Pune broker adds a shop; a buyer scans (a flat in a seeded locality, a budget that fits) → ✅ → Pune homes appear, only Pune homes', async () => {
+    const home = await homeOf('PUN', 'Residential Flat', 'Sale'); const lakhs = Math.ceil(home.askingPrice / 100000) + 5;
     s = await shop(await login('USR-BRK-PUN'), 'Kothrud Dairy', 'Kothrud', 'Pune', '9876500191');
-    const r = await scan(s, { kind: 'BUY', name: 'Isha Patwardhan', phone: '9123459811', locality: 'Kothrud', budget: '60 lakh', ptype: 'Residential Flat', direct: '1', sign: 'Isha Patwardhan' });
+    const r = await scan(s, { kind: 'BUY', name: 'Isha Patwardhan', phone: '9123459811', locality: home.locality, budget: `${lakhs} lakh`, ptype: 'Residential Flat', direct: '1', sign: 'Isha Patwardhan' });
     expect(r.status).toBe(303); const tok = tokOf(r);
     await form(undefined, `/q/chat/${tok}/ans`, { a: 'YES' });
     const l = await leadOf(s.ck, '9811');
-    expect(l.city).toBe('Pune'); expect(homesOf(l)).toContain('PROP-PUN-002');
+    expect(l.city).toBe('Pune'); const homes = homesOf(l); expect(homes.length).toBeGreaterThan(0); expect(homes.every((h: string) => h.startsWith('PROP-PUN-'))).toBe(true);
     expect(JSON.stringify(l.chat.msgs)).not.toContain('Raipur');
   });
   it('the shop page for Pune shows Pune homes and Pune areas only', async () => {
@@ -102,13 +170,14 @@ describe('Pune: a buyer at a Pune shop is matched to the seeded Pune flat — an
   });
 });
 
-describe('Jaipur: a renter is matched to the seeded Jaipur rent flat', { timeout: 120000 }, () => {
-  it('a 2 BHK for rent, 25000 a month, Mansarovar → ✅ → PROP-JAI-003', async () => {
+describe('Jaipur: a renter is matched to a seeded Jaipur rent flat', { timeout: 120000 }, () => {
+  it('a flat for rent in a seeded locality, a budget that fits → ✅ → Jaipur homes appear, only Jaipur homes', async () => {
+    const home = await homeOf('JAI', 'Residential Flat', 'Rent');
     const s = await shop(await login('USR-BRK-JAI'), 'Mansarovar Kirana', 'Mansarovar', 'Jaipur', '9876500192');
-    const r = await scan(s, { kind: 'RENT_IN', name: 'Deepika Rathore', phone: '9123459812', locality: 'Mansarovar', budget: '25000', ptype: 'Residential Flat', direct: '1', sign: 'Deepika Rathore' });
+    const r = await scan(s, { kind: 'RENT_IN', name: 'Deepika Rathore', phone: '9123459812', locality: home.locality, budget: String(Math.ceil(home.askingPrice / 1000) * 1000 + 5000), ptype: 'Residential Flat', direct: '1', sign: 'Deepika Rathore' });
     expect(r.status).toBe(303); const tok = tokOf(r);
     await form(undefined, `/q/chat/${tok}/ans`, { a: 'YES' });
-    const l = await leadOf(s.ck, '9812'); expect(l.city).toBe('Jaipur'); expect(homesOf(l)).toContain('PROP-JAI-003');
+    const l = await leadOf(s.ck, '9812'); expect(l.city).toBe('Jaipur'); const homes = homesOf(l); expect(homes.length).toBeGreaterThan(0); expect(homes.every((h: string) => h.startsWith('PROP-JAI-'))).toBe(true);
   });
 });
 

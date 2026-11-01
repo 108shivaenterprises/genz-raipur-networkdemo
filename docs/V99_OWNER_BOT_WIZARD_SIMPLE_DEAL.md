@@ -37,25 +37,22 @@ Dealroom mein dus section the; ab khulte hi **सरल** view dikhta hai:
 - Kisi bhi section ka link / "agla kadam" tap / pipeline card jo kisi tab par khulta hai → seedha **poora** view us section par. GENZ admin ka summary view hamesha purana rehta hai. Jinhe commission dekhna mana hai (owner/team) unhe "समझौता"/"रेट और हिसाब" button nahi dikhta.
 - Kuch hataya nahi: v83 ke saare test-ids aur section waise hi.
 
-### 4. Naye demo IDs (Raipur ke bahar)
-`SEED_DEMO_DATA + SEED_DEMO_BULK` ke saath (public demo mein bhi) — sab **FAKE** data, password wahi demo password:
+### 4. Pune / Indore / Jaipur — Raipur jaisa hi poora demo (V99.2)
+Pehle in teeno shehron ko "light" demo diya tha (3 account + 5 listing). Ye galat tha — sab shehar ek hi system hain, sirf **location (city/areas) alag**. Ab har shehar ko Raipur ka *wahi* network milta hai (`SEED_DEMO_DATA + SEED_DEMO_BULK`, public demo mein bhi) — sab **FAKE**, password wahi demo password:
 
-| Shehar | Broker | Owner | Buyer | Listings |
+| | Raipur | Pune | Indore | Jaipur |
 |---|---|---|---|---|
-| Pune, Maharashtra | `USR-BRK-PUN` Mahesh Kulkarni (Baner Homes Pune) | `USR-OWNER-PUN` | `USR-BUYER-PUN` | `PROP-PUN-001…005` (Baner, Kothrud, Wakad, Viman Nagar, Hinjewadi) |
-| Indore, Madhya Pradesh | `USR-BRK-IND` Pooja Chouhan (Vijay Nagar Realty) | `USR-OWNER-IND` | `USR-BUYER-IND` | `PROP-IND-001…005` |
-| Jaipur, Rajasthan | `USR-BRK-JAI` Rajesh Meena (Pink City Properties) | `USR-OWNER-JAI` | `USR-BUYER-JAI` | `PROP-JAI-001…005` |
+| Demo broker (login) | `USR-BRK-001` | `USR-BRK-PUN` Mahesh Kulkarni | `USR-BRK-IND` Pooja Chouhan | `USR-BRK-JAI` Rajesh Meena |
+| Baaki log | — | 3 aur broker (`-2/-3/-4`), 3 owner, 4 buyer, 2 contractor, 2 builder, 2 legal, 2 employee (`USR-TEAM-PUN1/2`) | same | same |
+| Listings | 45 | 30 (`PROP-PUN-001…`) | 30 (`PROP-IND-…`) | 30 (`PROP-JAI-…`) |
+| Buyer needs | 30 | 20 (`REQ-PUN-…`) | 20 | 20 |
+| Deal rooms (har stage: Lead→Intro→Site Visit→Negotiation→Agreement→Handover→Settled→Disputed) | 16 | 12 (`DEAL-PUN-…`) | 12 | 12 |
+| Offers/proposals, owner mandates, client rooms, construction leads, builder projects+units+CRM, disputes, legal cases | ✔ | ✔ | ✔ | ✔ |
+| Shop QR (3, 2 live) + leads + client cards | ✔ | ✔ | ✔ | ✔ |
+| Rent desk (3 tenancies), public page + enquiries, reviews, team | ✔ | ✔ | ✔ | ✔ |
 
-Har shehar mein: 2 sale flats, 1 rent flat, 1 dukan (rent), 1 plot. Ye accounts demo login list mein khud aa jaate hain.
-
-## Technical
-- `src/shared/listingAsk.ts` (naya): pure engine — `nextAsk / applyAnswer / progress(f, skipped, withOwner) / composeListing / summaryLine`. Teen jagah ek hi rules: bot (owner chat), broker wizard, tests. Ask ids: ptype, bhk, area, floor, price, furn, avail, address, papers, **owner** (sirf broker wizard mein; owner chat mein naam/number pehle se pata hai).
-- `server/sahayak.ts`: `startInterview / askNext / answerAsk / keepDraft / finishInterview / ownerStatus`; chip ids `ASK:<qid>:<chip>`, `STATUS`, `ASKGO`; intent `STATUS`. `server/db.ts`: `LeadBot.interview`.
-- `server/consent.ts`: `saveOwnerChatDraft()` (dedupe: leadId, ya phone+kind+same locality; `botSet` overwrite-guard); `draftFields` zod mein floor/furnishing/availableFrom/papers/papersNote/priceConfirmed/dimensions.
-- `server/shopPartners.ts`: `ownerFacts(l)`, `draftState(l)`.
-- UI: `src/components/ListingQuickAsk.tsx`, `DealSimple.tsx` (naye); `ListingDrafts.tsx`, `DealRoomsView.tsx`, `ShopPartners.tsx` (chhote badlav).
-- `server/demoCities.ts` (naya) + `db.ts` mein seeding call.
-- Tests (naye): `v99-listing-ask` (16 — pure), `v99-owner-listing-bot` (14 — real HTTP, Pune), `v99-demo-cities` (7 — Pune buyer match, Jaipur renter match, Indore owner draft), `v99-deal-simple` (6), `v99-paste-rent` (8).
+**Kaise:** `server/demoNetwork.ts` (naya) = Raipur wale seed ka wahi code, ab city/state/localities/id-family/log-baag parameter se. Raipur (`tag DMO`) wahi function chalata hai — **Raipur ka data pehle jaisa hi hai (record-by-record compare kiya, 0 farq)**. Pune/Indore/Jaipur `server/demoCities.ts` se wahi function chalate hain; QR/rent/page/reviews ke seeds (`seedDemoPartners / seedDemoRent / seedDemoPage / seedDemoReviews`) bhi ab har shehar ke broker ke liye chalte hain (data `demoCities.ts` mein).
+Har shehar ke records mein Raipur/Chhattisgarh ka koi shabd nahi (test se pakda jaata hai). Chhote shehron ka pehla broker (demo login) ke paas har tarah ka ghar hai (sale flat, rent flat, dukaan, plot…).
 
 ### 5. V99.1 — "sab check karo" ke baad ek fix
 - **Paste parser (WhatsApp forward se draft)**: kiraye ka seedha number ab padha jaata hai — "3 BHK for rent Baner Pune 18000", "2bhk Kothrud 15000 per month" → ₹18,000 / ₹15,000. Sirf 4–5 digit (₹2,000–₹99,999), sirf jab transaction *Rent* ho, aur sirf jab text mein ek hi aisa number ho. Area (sqft/sq ft), BHK, floor, pincode, phone ke saath wale number kabhi rent nahi maane jaate; 6 digit ya do-do number mein andaza nahi lagata. `bareRent()` in `src/shared/waParse.ts`; "need" paste (`findBudget`) mein bhi rent-context ke liye.
@@ -67,7 +64,7 @@ Har shehar mein: 2 sale flats, 1 rent flat, 1 dukan (rent), 1 plot. Ye accounts 
 - **Bhasha abhi Hindi + English hi.** Marathi/Gujarati/Tamil… nahi — agla bada kaam; batayein kaun si pehle.
 - Bot **photo/kagaz nahi leta** (chat text-only) — sirf batata hai ki broker alag se maangega.
 - Owner ke jawab "jaise likhe waise" maane jaate hain; ghalat ho to broker draft mein theek karta hai (owner ki haan **draft ke tathyon par** hi li jaati hai, isliye consent ke baad type/shehar/locality badalne ke liye pehle request wapas leni padti hai — purana rule).
-- Demo city shops (QR) seed nahi kiye — QR/OTP/partner-accept ka asli flow dikhana tha; test ye flow chalate hain. Pune/Indore/Jaipur ke liye demo **buyer requirement/deal rooms** abhi nahi banaye.
+- Network mein sab shehar ek saath dikhte hain; **location filter** (state/city) se shehar chuna jaata hai — default "All network" hi hai (Raipur ke broker ke liye bhi). Default ko apne shehar par set karna ek chhota option hai, abhi nahi kiya.
 - Simple deal room ka "doosra broker / mera hissa" jaisa data Deal Hub se aata hai — jahan hub ko hissa nahi pata wahan wo fact chhup jaata hai (kuch bana ke nahi dikhata).
 - Asli phone par test nahi hua; screenshots 390px browser mein.
 - Pitch PDF aur USER_MANUAL **nahi chhue** (aapke kahe anusaar).

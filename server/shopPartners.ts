@@ -27,7 +27,8 @@ import express from 'express';
 import crypto from 'crypto';
 import QRCode from 'qrcode';
 import { db } from './db.js';
-import type { ShopPartner, PartnerLead, UserProfile, ClientCard, ShareChange, LeadMsg, Property } from './db.js';
+import type { ShopPartner, PartnerLead, UserProfile, ClientCard, ShareChange, LeadMsg, Property, DatabaseState } from './db.js';
+import { DEMO_CITY_PARTNERS, type PartnerDemo } from './demoCities.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, DEMO_MODE } from './auth.js';
 import { sendSms } from './notify.js';
 import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
@@ -1608,42 +1609,61 @@ export function leadVisitEvent(v: { id: string; brokerId: string; customerPhone?
   } catch (e: any) { console.error('[SHOP] visit mark failed:', e?.message || e); return 0; }
 }
 
-/** demo only (SEED_DEMO_DATA + SEED_DEMO_BULK): three shop partners and a few leads for the first demo broker, so the screen is not empty */
+/** demo only (SEED_DEMO_DATA + SEED_DEMO_BULK): three shop partners and a few leads for the first demo broker of EVERY demo city (Raipur, then Pune / Indore / Jaipur), so the screen is not empty anywhere */
 export function seedDemoPartners() {
   const s = st();
   if ((process.env.SEED_DEMO_DATA || '').toLowerCase() !== 'true' || (process.env.SEED_DEMO_BULK || '').toLowerCase() !== 'true') return;
-  if (s.shopPartners.length || !s.users.some(u => u.id === 'USR-BRK-001')) return;
-  const brokerId = 'USR-BRK-001'; const day = 86400_000; const ago = (d: number) => new Date(Date.now() - d * day).toISOString();
-  const mk = (shopName: string, personName: string, phone: string, area: string, status: ShopPartner['status'], terms: PartnerTerms, scans: number, d: number): ShopPartner => {
-    const token = newToken();
-    const p: ShopPartner = { id: rid('SHP'), brokerId, shopName, personName, area, city: 'Raipur', phoneKey: hmac('sp-phone', phone), phoneLast4: phone.slice(-4), qrCode: newQrCode(),
-      tokenHash: sha(token), token, sessVersion: 1, linkAt: ago(d), status, terms, termsVersion: 1, scans, history: [{ at: ago(d), by: 'BROKER', text: `Partner added — terms proposed: ${termsText(terms)}` }],
-      createdAt: ago(d), updatedAt: ago(1), ...(status === 'ACTIVE' ? { acceptedAt: ago(d - 1) } : {}) };
-    if (status === 'ACTIVE') p.history.push({ at: ago(d - 1), by: 'PARTNER', text: `Accepted the terms: ${termsText(terms)} — QR is live` });
+  seedPartnersFor(s, RAIPUR_PARTNERS);
+  for (const d of DEMO_CITY_PARTNERS) seedPartnersFor(s, d);
+}
+const RAIPUR_PARTNERS: PartnerDemo = {
+  brokerId: 'USR-BRK-001', city: 'Raipur',
+  shops: [
+    { name: 'Gupta Kirana Store', person: 'Mohan Gupta', phone: '9826011101', area: 'Shankar Nagar', status: 'ACTIVE', sale: { mode: 'PCT', value: 20 }, rent: { mode: 'FIXED', value: 2000 }, lockDays: 180, scans: 46, days: 40 },
+    { name: 'Sai Medical', person: 'Rakesh Sahu', phone: '9826011102', area: 'Telibandha', status: 'PENDING', sale: { mode: 'PCT', value: 15 }, rent: { mode: 'FIXED', value: 1500 }, lockDays: 180, scans: 0, days: 2 },
+    { name: 'Green Valley Society — main gate', person: 'Ramesh (guard)', phone: '9826011103', area: 'Amlidih', status: 'ACTIVE', sale: { mode: 'FIXED', value: 10000 }, rent: { mode: 'FIXED', value: 1500 }, lockDays: 120, scans: 18, days: 25 },
+  ],
+  leads: [
+    { shop: 0, kind: 'BUY', name: 'Sanjay Verma', phone: '9131100001', locality: 'Shankar Nagar', budget: '60 लाख तक', days: 1 },
+    { shop: 0, kind: 'RENT_IN', name: 'Pooja Sinha', phone: '9131100002', locality: 'Telibandha', budget: '15,000 / महीना', days: 6, as: 'CONTACTED' },
+    { shop: 0, kind: 'SELL', name: 'Harish Agrawal', phone: '9131100003', locality: 'Shankar Nagar', budget: '1.2 करोड़', days: 30, as: 'WON' },
+    { shop: 0, kind: 'BUY', name: 'Deepak Soni', phone: '9131100004', locality: 'Pandri', budget: '40 लाख', days: 20, as: 'LOST' },
+    { shop: 2, kind: 'RENT_OUT', name: 'Kavita Jain', phone: '9131100005', locality: 'Amlidih', budget: '18,000 / महीना', days: 3 },
+    { shop: 2, kind: 'BUY', name: 'Anil Dubey', phone: '9131100006', locality: 'Amlidih', budget: '75 लाख', days: 12, as: 'VISIT' },
+  ],
+  reworked: { name: 'Deepak Soni', phone: '9131100004', area: 'Pandri', days: 5 },
+};
+function seedPartnersFor(s: DatabaseState, d: PartnerDemo) {
+  const brokerId = d.brokerId;
+  if (s.shopPartners.some(p => p.brokerId === brokerId) || !s.users.some(u => u.id === brokerId)) return;
+  const day = 86400_000; const ago = (n: number) => new Date(Date.now() - n * day).toISOString();
+  const shops = d.shops.map((x): ShopPartner => {
+    const terms: PartnerTerms = { sale: x.sale, rent: x.rent, lockDays: x.lockDays } as PartnerTerms; const token = newToken();
+    const p: ShopPartner = { id: rid('SHP'), brokerId, shopName: x.name, personName: x.person, area: x.area, city: d.city, phoneKey: hmac('sp-phone', x.phone), phoneLast4: x.phone.slice(-4), qrCode: newQrCode(),
+      tokenHash: sha(token), token, sessVersion: 1, linkAt: ago(x.days), status: x.status, terms, termsVersion: 1, scans: x.scans, history: [{ at: ago(x.days), by: 'BROKER', text: `Partner added — terms proposed: ${termsText(terms)}` }],
+      createdAt: ago(x.days), updatedAt: ago(1), ...(x.status === 'ACTIVE' ? { acceptedAt: ago(x.days - 1) } : {}) };
+    if (x.status === 'ACTIVE') p.history.push({ at: ago(x.days - 1), by: 'PARTNER', text: `Accepted the terms: ${termsText(terms)} — QR is live` });
     s.shopPartners.push(p); return p;
-  };
-  const gupta = mk('Gupta Kirana Store', 'Mohan Gupta', '9826011101', 'Shankar Nagar', 'ACTIVE', { sale: { mode: 'PCT', value: 20 }, rent: { mode: 'FIXED', value: 2000 }, lockDays: 180 }, 46, 40);
-  mk('Sai Medical', 'Rakesh Sahu', '9826011102', 'Telibandha', 'PENDING', { sale: { mode: 'PCT', value: 15 }, rent: { mode: 'FIXED', value: 1500 }, lockDays: 180 }, 0, 2);
-  const gate = mk('Green Valley Society — main gate', 'Ramesh (guard)', '9826011103', 'Amlidih', 'ACTIVE', { sale: { mode: 'FIXED', value: 10000 }, rent: { mode: 'FIXED', value: 1500 }, lockDays: 120 }, 18, 25);
+  });
   let n = s.clientCards.reduce((m, c) => Math.max(m, Number(c.id.split('-').pop()) || 0), 0);
   const card = (name: string, phone: string, area: string, tx: 'Sale' | 'Rent', at: string, shop: string) => {
-    n += 1; const c: ClientCard = { id: `CLI-${String(n).padStart(4, '0')}`, brokerId, name, phone, budgetMin: 0, budgetMax: 0, city: 'Raipur', areas: [area], propertyType: 'Any', transactionType: tx, tags: ['Shop QR'],
+    n += 1; const c: ClientCard = { id: `CLI-${String(n).padStart(4, '0')}`, brokerId, name, phone, budgetMin: 0, budgetMax: 0, city: d.city, areas: [area], propertyType: 'Any', transactionType: tx, tags: ['Shop QR'],
       notes: shop ? `Via ${shop} QR` : 'Met at site', stage: 'NEW', consent: true, timeline: [{ at, kind: 'CREATED', text: shop ? `From the QR at ${shop}` : 'Client added' }], createdAt: at, updatedAt: at };
     s.clientCards.unshift(c); return c.id;
   };
-  const lead = (p: ShopPartner, kind: LeadKind, name: string, phone: string, locality: string, budget: string, d: number, extra: Partial<PartnerLead> = {}) => {
-    const at = ago(d);
+  const lead = (p: ShopPartner, kind: LeadKind, name: string, phone: string, locality: string, budget: string, dd: number, extra: Partial<PartnerLead> = {}) => {
+    const at = ago(dd);
     const l: PartnerLead = { id: rid('PLD'), partnerId: p.id, brokerId, kind, name, phone, phoneLast4: phone.slice(-4), locality, budget, consentAt: at, termsVersion: 1, terms: cleanTerms(p.terms),
       lockUntil: new Date(Date.parse(at) + p.terms.lockDays * day).toISOString(), status: 'NEW', history: [{ at, by: 'CUSTOMER', text: `Came in by scanning the QR at ${p.shopName} (consent recorded)` }], createdAt: at, updatedAt: at, ...extra };
     if ((kind === 'BUY' || kind === 'RENT_IN') && !extra.clientCardId && extra.status !== 'LOST') l.clientCardId = card(name, phone, locality, kind === 'BUY' ? 'Sale' : 'Rent', at, p.shopName);
     s.partnerLeads.unshift(l); return l;
   };
-  lead(gupta, 'BUY', 'Sanjay Verma', '9131100001', 'Shankar Nagar', '60 लाख तक', 1);
-  lead(gupta, 'RENT_IN', 'Pooja Sinha', '9131100002', 'Telibandha', '15,000 / महीना', 6, { status: 'CONTACTED' });
-  lead(gupta, 'SELL', 'Harish Agrawal', '9131100003', 'Shankar Nagar', '1.2 करोड़', 30, { status: 'WON', won: { at: ago(4), brokerage: 120000, amount: 24000, side: 'SALE' }, payout: { status: 'PAID', paidAt: ago(2), ref: 'UPI 4471' } });
-  lead(gupta, 'BUY', 'Deepak Soni', '9131100004', 'Pandri', '40 लाख', 20, { status: 'LOST', lostAt: ago(10), lostReason: 'बजट नहीं था' });
-  card('Deepak Soni', '9131100004', 'Pandri', 'Sale', ago(5), ''); // worked again after "lost" → the shop and GENZ see a flag
-  lead(gate, 'RENT_OUT', 'Kavita Jain', '9131100005', 'Amlidih', '18,000 / महीना', 3);
-  lead(gate, 'BUY', 'Anil Dubey', '9131100006', 'Amlidih', '75 लाख', 12, { status: 'VISIT' });
+  for (const x of d.leads) {
+    const extra: Partial<PartnerLead> = x.as === 'CONTACTED' ? { status: 'CONTACTED' } : x.as === 'VISIT' ? { status: 'VISIT' }
+      : x.as === 'WON' ? { status: 'WON', won: { at: ago(4), brokerage: 120000, amount: 24000, side: 'SALE' }, payout: { status: 'PAID', paidAt: ago(2), ref: 'UPI 4471' } }
+      : x.as === 'LOST' ? { status: 'LOST', lostAt: ago(10), lostReason: 'बजट नहीं था' } : {};
+    lead(shops[x.shop], x.kind, x.name, x.phone, x.locality, x.budget, x.days, extra);
+  }
+  card(d.reworked.name, d.reworked.phone, d.reworked.area, 'Sale', ago(d.reworked.days), ''); // worked again after "lost" → the shop and GENZ see a flag
   db.save();
 }
