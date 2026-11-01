@@ -127,7 +127,7 @@ describe('shop QR page with homes', { timeout: 40000 }, () => {
     const l = (await leads()).find(x => x.phoneLast4 === '7703');
     expect(l).toBeTruthy();
     expect(l.shopName).toBe('Verma Medical'); expect(l.homeId).toBe(net); expect(l.homeTitle).toBe(netTitle); expect(l.homeOwn).toBe(false);
-    expect(l.promise.signName).toBe('Mohit Garg'); expect(l.promise.version).toBe('v1'); expect(l.promise.text).toMatch(/directly/);
+    expect(l.promise.signName).toBe('Mohit Garg'); expect(l.promise.version).toBe('v2'); expect(l.promise.text).toMatch(/directly/); expect(l.promise.text).toMatch(/family/); expect(l.promise.text).toMatch(/relative/); expect(l.promise.text).toMatch(/nominee/); expect(l.promise.text).toMatch(/commission is payable/);
     expect(l.clientCardId).toBeUndefined(); expect(l.phone).toBeUndefined();   // v85: no client card (no number) until the need is confirmed and a home is shared
     // the listing broker (another broker) sees nothing of this lead — not in his shop-QR list, not in his client list, not in the audit text
     const other = await (await call(jar.BRK2, 'GET', '/api/shop-partners')).json();

@@ -9,6 +9,7 @@ import { SiteVisitQrPassModal } from './SiteVisitQrPassModal.js';
 import { VisitAckPanel } from './VisitAckPanel.js';
 import { ScanPointSelect, ScanLineNote } from './ScanPoint.js';
 import { normalizeCode, VISIT_RULES, MAX_PARTY } from '../shared/visitRules.js';
+import { otherGenzQr, OTHER_QR_WORDS, NOT_GENZ_QR } from '../shared/scanRules.js';
 import type { UserProfile, SiteVisit } from '../types/index.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
@@ -190,7 +191,7 @@ const BrokerVisits: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) =
     const t = String(raw || '').trim();
     if (/^GENZV:/i.test(t) || /\/v\/[A-Za-z0-9]{10}/.test(t)) return setScanMsg({ ok: false, text: tx('This is a builder-project visit pass — only that builder’s team can scan it, at the project. It is not for broker-to-broker visits.', 'यह बिल्डर-प्रोजेक्ट का विज़िट पास है — इसे सिर्फ़ उसी बिल्डर की टीम प्रोजेक्ट पर स्कैन कर सकती है। यह ब्रोकर-से-ब्रोकर विज़िट का नहीं है।') });
     let j: any = null; try { j = JSON.parse(t); } catch { /* not json */ }
-    if (!j || typeof j.visitId !== 'string' || !String(j.token || '').startsWith('VISIT-PASS-')) return setScanMsg({ ok: false, text: tx('This is not a GENZ visit QR. Ask the buyer to open his pass from the GENZ link again.', 'यह GENZ का विज़िट QR नहीं है। खरीदार से GENZ लिंक से अपना पास दोबारा खुलवाएँ।') });
+    if (!j || typeof j.visitId !== 'string' || !String(j.token || '').startsWith('VISIT-PASS-')) { const other = otherGenzQr(t); return setScanMsg({ ok: false, text: other ? tx(OTHER_QR_WORDS[other].en, OTHER_QR_WORDS[other].hi) : tx(NOT_GENZ_QR.en, NOT_GENZ_QR.hi) }); }
     const v = (visits || []).find(x => x.id === j.visitId);
     if (!v) return setScanMsg({ ok: false, text: tx('This is a GENZ visit QR, but NOT yours — it is not a visit you booked and not one on your property, so you cannot scan it.', 'यह GENZ का विज़िट QR है, पर आपका नहीं — न यह आपकी बुक की हुई विज़िट है, न आपकी प्रॉपर्टी की, इसलिए आप इसे स्कैन नहीं कर सकते।') });
     if (v.isVerified) return setScanMsg({ ok: false, text: tx('This visit is already verified.', 'यह विज़िट पहले ही वेरिफाई हो चुकी है।') });

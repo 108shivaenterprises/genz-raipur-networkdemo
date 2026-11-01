@@ -20,7 +20,7 @@ import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, DEMO_MODE } f
 import { can } from './permissions.js';
 import { sendSms } from './notify.js';
 import { pushTo } from './webpush.js';
-import { ACK_VERSION, ACK_LIMITS, ACK_NOTE, ackText, type AckKind } from '../src/shared/visitAckRules.js';
+import { ACK_VERSION, ACK_LIMITS, ACK_NOTE, ackTextFor, type AckKind } from '../src/shared/visitAckRules.js';
 import { qrPayload, scanLine } from '../src/shared/visitRules.js';
 
 const st = () => db.getState();
@@ -49,13 +49,14 @@ export function ackBlock(kind: AckKind, refId: string): string | undefined {
   return 'The buyer has not yet confirmed the “no direct deal” acknowledgement (tick + mobile code) — send him the link first. / खरीदार ने अभी “सीधा सौदा नहीं” की सहमति नहीं दी — पहले उसे लिंक भेजें।';
 }
 /** one acknowledgement per visit; none when the buyer's mobile is not a valid Indian mobile (the screens then warn the broker) */
-export function createAck(a: { kind: AckKind; refId: string; phone?: string; buyerName: string; brokerId: string; subject: string }): VisitAck | null {
+export function createAck(a: { kind: AckKind; refId: string; phone?: string; buyerName: string; brokerId: string; subject: string; /** v102 — the OTHER broker of a broker-to-broker visit (the property's listing broker): he is named in the promise too */ alsoBrokerId?: string }): VisitAck | null {
   const phone = phone10(a.phone); if (!PHONE_RE.test(phone)) return null;
   const old = ackFor(a.kind, a.refId); if (old) return old;
   const broker = db.byId('users', a.brokerId) as UserProfile | undefined;
   const ack: VisitAck = {
     id: `VAK-${crypto.randomBytes(5).toString('hex')}`, kind: a.kind, refId: a.refId, phoneKey: hmac('va-phone', phone), phoneLast4: phone.slice(-4),
     buyerName: a.buyerName, brokerId: a.brokerId, brokerName: broker?.name || 'your broker', subject: a.subject, textVersion: ACK_VERSION, status: 'PENDING', createdAt: nowIso(),
+    ...(a.alsoBrokerId && a.alsoBrokerId !== a.brokerId && (db.byId('users', a.alsoBrokerId) as UserProfile | undefined)?.name ? { alsoName: (db.byId('users', a.alsoBrokerId) as UserProfile).name } : {}),
   };
   st().visitAcks.unshift(ack);
   db.appendAuditEvent('SYSTEM', 'SUPERADMIN', 'VISIT', a.refId, 'VISIT_ACK_REQUESTED', `“No direct deal” acknowledgement requested from ${a.buyerName} (••${ack.phoneLast4}) for ${a.subject}, introduced by ${ack.brokerName}. Wording ${ACK_VERSION}.`);
@@ -111,7 +112,7 @@ button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;f
 const shell = (body: string) => `<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><link rel="icon" type="image/png" href="/icon-192.png"><title>Visit confirmation</title><style>${CSS}</style></head><body><div class="w">${body}</div></body></html>`;
 
 export function renderAckGate(a: VisitAck, base: string, msg = '', step: 'phone' | 'code' = 'phone', agreed = false): string {
-  const t = ackText(a.brokerName, a.subject);
+  const t = ackTextFor(a.textVersion, a.brokerName, a.subject, a.alsoName);
   return shell(`<div class="top"><h1>${esc(a.subject)}</h1><p>साइट विज़िट की पुष्टि · Confirm your site visit · GENZ</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <div class="card">${step === 'phone' ? `<p class="h">नमस्ते ${esc((a.buyerName || '').split(' ')[0])} जी — विज़िट पास पाने से पहले यह पुष्टि करें।</p><p class="t">Hello — please confirm this before you get your visit pass.</p>
@@ -187,7 +188,7 @@ export function createVisitAckPageRouter() {
     if (!safeEqual(a.otpHash, hmac('va-otp', `${a.id}|${code}`))) { a.otpTries = (a.otpTries || 0) + 1; db.save(); return res.send(renderAckGate(a, base, 'कोड सही नहीं है। / The code is not correct.', 'code')); }
     a.otpHash = undefined; a.otpPlain = undefined; a.otpExpires = undefined; a.otpTries = 0; a.status = 'ACKED'; a.ackedAt = nowIso();
     db.save();
-    db.appendAuditEvent('public', 'PUBLIC' as any, 'VISIT', a.refId, 'VISIT_ACK_DONE', `${a.buyerName} (••${a.phoneLast4}, ${smsOn() ? 'mobile verified by an SMS code' : 'DEMO mode: code read out by the broker — not proof of the buyer’s consent'}) agreed on ${a.ackedAt}: no direct dealing with the owner / builder of ${a.subject} without ${a.brokerName} during the protection period (wording ${a.textVersion}).`);
+    db.appendAuditEvent('public', 'PUBLIC' as any, 'VISIT', a.refId, 'VISIT_ACK_DONE', `${a.buyerName} (••${a.phoneLast4}, ${smsOn() ? 'mobile verified by an SMS code' : 'DEMO mode: code read out by the broker — not proof of the buyer’s consent'}) agreed on ${a.ackedAt}: ${a.textVersion === 'v1' ? `no direct dealing with the owner / builder of ${a.subject} without ${a.brokerName}` : `neither he, nor his family, relatives, nominee or any firm of theirs will buy / rent or deal directly for ${a.subject} without ${a.brokerName}${a.alsoName ? ` and ${a.alsoName}` : ''}; the agreed commission is then payable to them`} during the protection period (wording ${a.textVersion}).`);
     ping(a, 'Buyer confirmed', `${a.buyerName} confirmed the visit. The pass is ready.`);
     res.redirect(303, base);
   });

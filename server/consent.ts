@@ -729,7 +729,7 @@ ${c.otpHash ? `<label>SMS में आया कोड / Code from SMS</label><
     const ev = c.evidence || {};
     ev.ipHash = ipOf(req); ev.uaHash = uaOf(req); ev.at = nowIso(); ev.otpVerified = !!c.otpHash;
     ev.sameDeviceSuspected = !!(ev.brokerIpHash && ev.brokerUaHash && ev.ipHash === ev.brokerIpHash && ev.uaHash === ev.brokerUaHash);
-    c.evidence = ev; c.ownerTypedName = name;
+    c.evidence = ev; c.ownerTypedName = name; c.formVersion = CONSENT_FORM_VERSION;   // v102 — which words he agreed to (oc-v2 also covers the buyer's family / relatives / nominee / firm)
     c.ownerSignature = { initials: sig.initials, drawn: !!sig.png, at: nowIso() };
     if (sig.png) {
       try { fs.mkdirSync(SIG_DIR(), { recursive: true }); fs.writeFileSync(path.join(SIG_DIR(), `${c.id}.png`), sig.png); c.ownerSignature.sha256 = crypto.createHash('sha256').update(sig.png).digest('hex'); c.ownerSignature.size = sig.png.length; }
@@ -737,7 +737,7 @@ ${c.otpHash ? `<label>SMS में आया कोड / Code from SMS</label><
     }
     accept(c, `Owner agreed on the link as “${name}” (signed: ${[sig.initials ? `initials ${sig.initials}` : '', sig.png ? 'drawn signature' : ''].filter(Boolean).join(' + ')})${ev.otpVerified ? ' with the SMS code' : ''}${ev.sameDeviceSuspected ? ' (same phone/browser as the broker — GENZ will check)' : ''}`);
     db.save();
-    db.appendAuditEvent('PUBLIC', 'PROPERTY_OWNER', 'PROPERTY', c.id, 'OWNER_CONSENT_ACCEPTED', `Owner “${name}” agreed to list “${c.snapshot.title}” — ${c.protectionDays} days protection until ${c.expiresAt!.slice(0, 10)}${ev.sameDeviceSuspected ? ' — SAME DEVICE AS BROKER, flagged' : ''}`);
+    db.appendAuditEvent('PUBLIC', 'PROPERTY_OWNER', 'PROPERTY', c.id, 'OWNER_CONSENT_ACCEPTED', `Owner “${name}” agreed to list “${c.snapshot.title}” (form ${CONSENT_FORM_VERSION}) — ${c.protectionDays} days protection until ${c.expiresAt!.slice(0, 10)}${ev.sameDeviceSuspected ? ' — SAME DEVICE AS BROKER, flagged' : ''}`);
     void pushTo(c.brokerId, { kind: 'consent', title: 'Owner agreed ✔', body: `${c.ownerName} said yes to “${c.snapshot.title}”. Publish it now — protected for ${c.protectionDays} days.`, url: '/?tab=properties&drafts=1' });
     render(req, res, c);
   });

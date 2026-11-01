@@ -14,7 +14,8 @@
 import { findState } from './india.js';
 
 export const CONSENT_LINK_DAYS = 7;
-export const CONSENT_FORM_VERSION = 'oc-v1';
+/** oc-v1 — bypass protection for anyone the broker / network brought. oc-v2 (v102) — that person's family members, relatives, nominees and firms count as him. */
+export const CONSENT_FORM_VERSION = 'oc-v2';
 /** two listings are the same property when the areas differ by at most this much */
 export const SAME_AREA_TOLERANCE = 0.1;
 export const MAX_OPEN_DRAFTS = 200;
@@ -50,8 +51,8 @@ export interface ConsentFacts { brokerName: string; company?: string; rera?: str
 export function consentWords(f: ConsentFacts) {
   const who = `${f.brokerName}${f.company ? ` (${f.company})` : ''}${f.rera ? `, RERA ${f.rera}` : ''}`;
   return {
-    en: `I am the owner (or the owner's authorised family member) of “${f.title}” in ${f.locality}, ${f.city}. I allow ${who} to list it on GENZ Broker Network at ${f.priceText} and to show it to other verified brokers. For ${f.days} days ${f.paper ? 'from the date I sign this form' : 'from today'}, if this property is sold or rented to anyone this broker or the GENZ network brought, I will treat ${f.brokerName} as the broker who brought them (bypass protection).${f.terms ? ` ${termsWords(f.terms, f.rent).en}` : ''} GENZ does not take any money from me and is not a party to the sale.`,
-    hi: `मैं “${f.title}” (${f.locality}, ${f.city}) का मालिक हूँ (या मालिक का अधिकृत परिवारजन)। मैं ${who} को इसे GENZ ब्रोकर नेटवर्क पर ${f.priceText} पर डालने और दूसरे वेरिफ़ाइड ब्रोकरों को दिखाने की अनुमति देता/देती हूँ। ${f.paper ? 'इस फ़ॉर्म पर मेरे साइन की तारीख़ से' : 'आज से'} ${f.days} दिन तक, अगर यह प्रॉपर्टी किसी ऐसे व्यक्ति को बिकती या किराये पर जाती है जिसे यह ब्रोकर या GENZ नेटवर्क लाया, तो मैं ${f.brokerName} को ही लाने वाला ब्रोकर मानूँगा/मानूँगी (बायपास सुरक्षा)।${f.terms ? ` ${termsWords(f.terms, f.rent).hi}` : ''} GENZ मुझसे कोई पैसा नहीं लेता और सौदे में पक्ष नहीं है।`,
+    en: `I am the owner (or the owner's authorised family member) of “${f.title}” in ${f.locality}, ${f.city}. I allow ${who} to list it on GENZ Broker Network at ${f.priceText} and to show it to other verified brokers. For ${f.days} days ${f.paper ? 'from the date I sign this form' : 'from today'}, if this property is sold or rented to anyone this broker or the GENZ network brought — or to that person's family member, relative, nominee, or any firm or company of theirs — I will treat ${f.brokerName} as the broker who brought them (bypass protection).${f.terms ? ` ${termsWords(f.terms, f.rent).en}` : ''} GENZ does not take any money from me and is not a party to the sale.`,
+    hi: `मैं “${f.title}” (${f.locality}, ${f.city}) का मालिक हूँ (या मालिक का अधिकृत परिवारजन)। मैं ${who} को इसे GENZ ब्रोकर नेटवर्क पर ${f.priceText} पर डालने और दूसरे वेरिफ़ाइड ब्रोकरों को दिखाने की अनुमति देता/देती हूँ। ${f.paper ? 'इस फ़ॉर्म पर मेरे साइन की तारीख़ से' : 'आज से'} ${f.days} दिन तक, अगर यह प्रॉपर्टी किसी ऐसे व्यक्ति को — या उसके परिवार के सदस्य, रिश्तेदार, नॉमिनी या उनकी किसी फ़र्म / कंपनी को — बिकती या किराये पर जाती है जिसे यह ब्रोकर या GENZ नेटवर्क लाया, तो मैं ${f.brokerName} को ही लाने वाला ब्रोकर मानूँगा/मानूँगी (बायपास सुरक्षा)।${f.terms ? ` ${termsWords(f.terms, f.rent).hi}` : ''} GENZ मुझसे कोई पैसा नहीं लेता और सौदे में पक्ष नहीं है।`,
   };
 }
 

@@ -1218,6 +1218,8 @@ export interface OwnerConsent {
   snapshot: { title: string; propertyType: string; transactionType: string; city: string; state?: string; locality: string; price: number; areaSqft?: number };
   protectionDays: number;
   acceptedAt?: string; expiresAt?: string;
+  /** v102 — the consent wording the owner agreed to on the link (oc-v1 / oc-v2) */
+  formVersion?: string;
   ownerTypedName?: string;
   /** v27 — brokerage the owner agreed to (and the broker signed with his password); turns into an ACTIVE mandate when the listing goes live */
   terms?: { basis: 'SURPLUS_ABOVE_NET' | 'PERCENTAGE' | 'FIXED_FEE'; advertised: number; net: number; pct: number; fee: number; brokerSignedAt?: string };
@@ -1553,6 +1555,8 @@ export interface VisitAck {
   /** buyer's mobile: HMAC + last 4 only */
   phoneKey: string; phoneLast4: string;
   buyerName: string; brokerId: string; brokerName: string; subject: string;
+  /** v102 — the other broker named in the promise (broker-to-broker visit: the listing broker) */
+  alsoName?: string;
   textVersion: string;
   status: 'PENDING' | 'ACKED';
   createdAt: string;
@@ -3269,6 +3273,8 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
     const confirmed = (parsed.ownerMandates || []).some(m => m.propertyId === d.propertyId && m.isConfirmed);
     if (d.ownerRemunerationConfirmed && !confirmed) d.ownerRemunerationConfirmed = false;
   }
+  // v102 — a broker who brought his own buyer to his own listing used to get an EMPTY closing broker; he is both sides (introducing = closing)
+  for (const d of parsed.dealRooms || []) if (!d.closingBrokerId && d.introducingBrokerId) d.closingBrokerId = d.introducingBrokerId;
 
   if (parsed.crmLeads.length === 0 && parsed.crmBookings.length === 0 && parsed.builderProjects.length > 0) {
     seedCrmDemo(parsed);

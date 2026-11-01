@@ -65,6 +65,8 @@ describe('broker-to-broker site visit', () => {
     const r = await fetch(B + ack.page); const t = await r.text();
     expect(r.status).toBe(200); expect(r.headers.get('cache-control')).toMatch(/no-store/); expect(r.headers.get('x-robots-tag')).toMatch(/noindex/);
     expect(t).toContain('name="agree"'); expect(t).toContain('Mohan'); expect(t).not.toContain('<svg'); expect(t).not.toContain(sec.otpCode); expect(t).not.toContain(phone);
+    // v102 — wording v2: both brokers of the visit are named, and the buyer's family / relatives / nominee / firm are covered
+    expect(t).toContain(acct('USR-BRK-002').name); expect(t).toContain(acct('USR-BRK-001').name); expect(t).toMatch(/family/); expect(t).toMatch(/relative/); expect(t).toMatch(/nominee/); expect(t).toMatch(/commission is payable/); expect(t).toContain('परिवार का कोई सदस्य');
     expect((await fetch(B + '/a/0000000000-000000000000000000000000')).status).toBe(404);
     expect((await fetch(B + ack.page.slice(0, -3) + 'abc')).status).toBe(404);
   });
@@ -87,7 +89,7 @@ describe('broker-to-broker site visit', () => {
   });
   it('the agreement is in the audit trail (wording version, no full mobile); a visit with no mobile has no acknowledgement and still works', async () => {
     const audit = JSON.stringify(await j(await call(jar.ADMIN, 'GET', '/api/audit-logs')));
-    expect(audit).toContain('VISIT_ACK_DONE'); expect(audit).toContain('wording v1'); expect(audit).not.toContain(phone);
+    expect(audit).toContain('VISIT_ACK_DONE'); expect(audit).toContain('wording v2'); expect(audit).toContain('family, relatives, nominee'); expect(audit).not.toContain(phone);
     const v = await j(await call(jar.BRK2, 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Walk In', scheduledTime: slot(1) }));
     expect(v.siteVisit.ackStatus).toBe('NONE');
     const s2 = (await j(await call(jar.ADMIN, 'GET', `/api/site-visits?propertyId=${PA.id}`))).siteVisits.find((x: any) => x.id === v.siteVisit.id);

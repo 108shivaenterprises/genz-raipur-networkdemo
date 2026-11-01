@@ -2673,7 +2673,8 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
       propertyId,
       requirementId: '',
       introducingBrokerId: currentUser.id,
-      closingBrokerId: isListingBroker ? '' : prop.listingBrokerId,
+      // a broker who brings his own buyer to his own listing is BOTH sides (v102) — never an empty closing broker, or solo payments / one-broker close / hisaab would not recognise the deal
+      closingBrokerId: !isListingBroker && prop.listingBrokerId ? prop.listingBrokerId : currentUser.id,
       ownerId: prop.ownerId || '',
       customerId: customerName,
       stage: 'Introduction',
@@ -2722,7 +2723,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   state.siteVisits.unshift(newVisit);
   if (roomLink) linkVisitToRoom(roomLink.room, roomLink.item, clientRoomRequestId, newVisit);
   // v33 — “no direct deal” acknowledgement from the buyer (tick + mobile code) before his QR / code is shown
-  const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title });
+  const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title, alsoBrokerId: prop.listingBrokerId });
 
   if (deal) {
     deal.siteVisitsCount = (deal.siteVisitsCount || 0) + 1;
@@ -2747,6 +2748,10 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   if (customerPhone && !visitAck) void sendSms(customerPhone, msg);   // with an acknowledgement the buyer gets his link instead; the code shows only after he confirms
   const ownerUser = db.byId('users', prop.ownerId);
   if (ownerUser?.phone) void sendSms(ownerUser.phone, msg);
+  // v102 — the property side (owner + listing broker) hears that a visit is booked on their property, so somebody is there to confirm it
+  { const when = visitWhen(newVisit.scheduledTime); const who = clientInitials(customerName);
+    alert([prop.ownerId, prop.listingBrokerId], 'deals', `Visit booked · ${prop.title}`, `${who} · ${when} · by ${currentUser.name}. When he arrives, scan his QR or type his code.`, `/?tab=deals&deal=${targetDealId}`, {
+      not: currentUser.id, tag: `visit-booked-${visitId}`, hi: [`विज़िट बुक · ${prop.title}`, `${who} · ${when} · ${currentUser.name} द्वारा। वे पहुँचें तो उनका QR स्कैन करें या कोड डालें।`] }); }
 
   res.json({ success: true, siteVisit: sanitizeVisit(newVisit, currentUser, state), dealRoom: deal, watch: (customerPhone && partyCaution(customerPhone)) || undefined });
 });
@@ -2776,7 +2781,7 @@ function loadVerifiableVisit(req: Request, res: Response, user: UserProfile) {
     PROPERTY_SIDE_ONLY: g.selfDeal ? 'The listing broker brought this customer himself — only the property owner can verify this visit' : 'Only the property side (the owner or the listing broker) can verify this visit',
     DONE: 'This site visit is already verified',
     ACK_REQUIRED: visitAckBlock('VISIT', visit.id) || 'The buyer has not yet confirmed the “no direct deal” acknowledgement',
-    TOO_EARLY: 'Too early: a visit can only be verified on the day of the scheduled visit',
+    TOO_EARLY: 'Too early: a visit can be verified from 6 hours before its scheduled time. If the time has changed, the broker who booked it can move the visit.',
     EXPIRED: 'Verification window has expired. The broker who booked it can set a new time — then it opens again.',
     LOCKED: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.',
   };
@@ -2802,6 +2807,10 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
   db.save();
   leadVisitEvent(visit, 'DONE'); // v91: lead → “Visit done”, client card follows, the shop is told
   db.appendAuditEvent(user.id, user.role, 'VISIT', visit.id, auditAction, auditText);
+  // v102 — whoever was NOT the one who confirmed hears it (the broker who brought the buyer, the owner, the listing broker); it also lands in their bell
+  { const vprop = db.byId('properties', visit.propertyId); const who = clientInitials(visit.customerName); const how = method === 'QR' ? 'QR' : 'code';
+    alert([visit.brokerId, vprop?.ownerId, vprop?.listingBrokerId], 'deals', `Visit verified ✔ · ${vprop?.title || visit.propertyId}`, `${who} reached the property — confirmed by ${user.id === 'SYSTEM' ? 'the owner' : user.name} (${how}).`, `/?tab=deals&deal=${visit.dealRoomId}`, {
+      not: user.id, tag: `visit-done-${visit.id}`, hi: [`विज़िट वेरिफाई ✔ · ${vprop?.title || visit.propertyId}`, `${who} प्रॉपर्टी पर पहुँचे — ${user.id === 'SYSTEM' ? 'मालिक' : user.name} ने ${method === 'QR' ? 'QR' : 'कोड'} से कन्फ़र्म किया।`] }); }
   return deal;
 }
 
@@ -2848,7 +2857,7 @@ app.post('/api/site-visits/:id/checkin-qr', needs('sitevisit:verify'), rateLimit
   if (!visit.qrToken || !safeEqual(String(visit.qrToken), String(qrToken ?? '').trim())) {
     visit.otpAttempts = (visit.otpAttempts || 0) + 1;
     db.save();
-    return res.status(400).json({ error: 'Invalid or expired QR verification token.' });
+    return res.status(400).json({ error: `Invalid or expired QR verification token. ${Math.max(0, 5 - visit.otpAttempts)} attempt(s) left.` });
   }
 
   let geoText = '';

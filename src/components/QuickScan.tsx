@@ -4,7 +4,8 @@
  *    property (owner / listing broker) the check-in opens right away with the scanned secret; if I cannot confirm it (v79: I booked it,
  *    it is too early, the window closed …) the pass opens with the reason and what to do next;
  *  - a builder-project pass (GENZV:… or /v/CODE): only the builder's team may scan it → Visit QR opens with that code;
- *  - anything else: a plain message saying what it is and who scans it.
+ *  - another GENZ QR (shop QR, broker card, owner-consent link, bill, the buyer's promise link): a message saying what it is (v102);
+ *  - anything else: a plain message saying it is not a GENZ visit QR.
  * Same rules as the Visit QR screen (v34): never verify a visit you booked yourself, never someone else's visit.
  */
 import React, { useState } from 'react';
@@ -13,9 +14,10 @@ import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { goto } from '../lib/goto.js';
 import { normalizeCode } from '../shared/visitRules.js';
+import { otherGenzQr, OTHER_QR_WORDS, NOT_GENZ_QR } from '../shared/scanRules.js';
 import { QrScanner } from './QrScanner.js';
 import { SiteVisitQrPassModal } from './SiteVisitQrPassModal.js';
-import type { SiteVisit, UserProfile } from '../types/index.js';
+import type { Property, SiteVisit, UserProfile } from '../types/index.js';
 import type { TabType } from './NavigationTabs.js';
 
 /** the small sheet behind the header QR button: my card, or scan */
@@ -50,7 +52,7 @@ export const QuickScan: React.FC<{ currentUser: UserProfile; canBuilderScan: boo
   const [cam, setCam] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  const [open, setOpen] = useState<{ visit: SiteVisit; raw: string } | null>(null);
+  const [open, setOpen] = useState<{ visit: SiteVisit; raw: string; property?: Property } | null>(null);
 
   const onResult = async (raw: string) => {
     setCam(false); setMsg('');
@@ -64,11 +66,13 @@ export const QuickScan: React.FC<{ currentUser: UserProfile; canBuilderScan: boo
         const v = (r.siteVisits || []).find((x: SiteVisit) => x.id === j.visitId);
         if (!v) return setMsg(tx('This is a GENZ visit QR, but NOT yours — it is not a visit on your property, so you cannot scan it.', 'यह GENZ का विज़िट QR है, पर आपका नहीं — यह आपकी प्रॉपर्टी की विज़िट नहीं है, इसलिए आप इसे स्कैन नहीं कर सकते।'));
         if (v.isVerified) return setMsg(tx('This visit is already verified.', 'यह विज़िट पहले ही वेरिफाई हो चुकी है।'));
+        // v102 — show the property by its name and place (the pass screen used to show only “PROP-104” and “Location not set”)
+        const property = await api.getProperty(v.propertyId).then(x => x.property).catch(() => undefined);
         // v79 — a visit I cannot confirm (I booked it, it is too early / past its window …) opens the pass with the reason and the way forward,
         // instead of a dead-end line; only a visit I CAN confirm is checked in with the scanned QR
-        if (v.gate && !v.gate.ok) { setOpen({ visit: v, raw: '' }); return; }
+        if (v.gate && !v.gate.ok) { setOpen({ visit: v, raw: '', property }); return; }
         if (v.brokerId === currentUser.id) return setMsg(tx('You booked this visit, so you cannot verify it yourself — the owner or the listing broker scans the buyer’s QR.', 'यह विज़िट आपने बुक की है, इसलिए आप खुद वेरिफाई नहीं कर सकते — खरीदार का QR मालिक या लिस्टिंग ब्रोकर स्कैन करेगा।'));
-        setOpen({ visit: v, raw: t });
+        setOpen({ visit: v, raw: t, property });
       } catch (e: any) { setMsg(e?.message || 'Error'); } finally { setBusy(false); }
       return;
     }
@@ -78,11 +82,13 @@ export const QuickScan: React.FC<{ currentUser: UserProfile; canBuilderScan: boo
       if (canBuilderScan && code) { goto('visits', { pass: code }, onNavigate); onClose(); return; }
       return setMsg(tx('This is a builder-project visit pass — only that builder’s team can scan it, at the project.', 'यह बिल्डर-प्रोजेक्ट का विज़िट पास है — इसे सिर्फ़ उसी बिल्डर की टीम प्रोजेक्ट पर स्कैन कर सकती है।'));
     }
-    setMsg(tx('This is not a GENZ visit QR. Ask the buyer to open his pass from the GENZ link again.', 'यह GENZ का विज़िट QR नहीं है। खरीदार से GENZ लिंक से अपना पास दोबारा खुलवाएँ।'));
+    // v102 — another GENZ QR (a shop QR, a broker card, an owner-consent link, a bill …) is named for what it is; anything else is simply not ours
+    const other = otherGenzQr(t);
+    setMsg(other ? tx(OTHER_QR_WORDS[other].en, OTHER_QR_WORDS[other].hi) : tx(NOT_GENZ_QR.en, NOT_GENZ_QR.hi));
   };
 
   if (open) {
-    return <SiteVisitQrPassModal isOpen visit={open.visit} dealId={open.visit.dealRoomId} currentUser={currentUser} initialScan={open.raw}
+    return <SiteVisitQrPassModal isOpen visit={open.visit} property={open.property} dealId={open.visit.dealRoomId} currentUser={currentUser} initialScan={open.raw}
       onClose={onClose} onSuccess={() => window.dispatchEvent(new Event('genz:visits-changed'))} />;
   }
   return (

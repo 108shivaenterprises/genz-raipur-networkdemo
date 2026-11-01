@@ -82,7 +82,7 @@ function provisionDeal(o: PropertyOffer, p: Property): string {
   if (tu) { tu.dealsUsed = (tu.dealsUsed || 0) + 1; tu.history.push({ at: ts, by: 'system', action: `DEAL_OPENED ${id}` }); }
   s.dealRooms.unshift({
     id, propertyId: p.id, requirementId: o.requirementId || '', introducingBrokerId: o.brokerId,
-    closingBrokerId: p.listingBrokerId === o.brokerId ? '' : p.listingBrokerId, ownerId: p.ownerId || '', customerId: o.buyerName,
+    closingBrokerId: p.listingBrokerId || o.brokerId, ownerId: p.ownerId || '', customerId: o.buyerName,
     stage: 'Negotiation', introducingBrokerSharePct: tu ? tu.introSharePct : 50, closingBrokerSharePct: tu ? 100 - tu.introSharePct : 50, ...(tu ? { tieupId: tu.id } : {}), totalCommissionExpected: Math.round(o.amount * 0.02),
     antiBypassTailDays: days, antiBypassExpiresAt: new Date(Date.now() + days * 86400_000).toISOString(),
     ownerProtectionExpiresAt: new Date(Date.now() + days * 86400_000).toISOString(),

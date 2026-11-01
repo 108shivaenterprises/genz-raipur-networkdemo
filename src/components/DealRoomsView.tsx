@@ -1331,8 +1331,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
                           {tx(
-                            'The other broker never sees the buyer or seller phone number or email. On the platform, co-broking brokers agree not to approach the client directly without mutual consent.',
-                            'दूसरे ब्रोकर को खरीदार या विक्रेता का फ़ोन नंबर / ईमेल नहीं दिखता। प्लेटफ़ॉर्म पर को-ब्रोकिंग करने वाले ब्रोकर मानते हैं कि आपसी सहमति के बिना ग्राहक से सीधे संपर्क नहीं करेंगे।',
+                            'The other broker never sees the buyer or seller phone number or email. On the platform, co-broking brokers agree not to approach the client directly without mutual consent. This also covers the buyer’s family members, relatives, nominee and their firms: if any of them buys or rents this property during the protection period, the brokers who introduced it can claim the agreed commission.',
+                            'दूसरे ब्रोकर को खरीदार या विक्रेता का फ़ोन नंबर / ईमेल नहीं दिखता। प्लेटफ़ॉर्म पर को-ब्रोकिंग करने वाले ब्रोकर मानते हैं कि आपसी सहमति के बिना ग्राहक से सीधे संपर्क नहीं करेंगे। यह खरीदार के परिवार, रिश्तेदार, नॉमिनी और उनकी फ़र्म पर भी लागू है: सुरक्षा अवधि में इनमें से कोई भी यह प्रॉपर्टी ख़रीदे या किराये पर ले, तो परिचय कराने वाले ब्रोकर तय कमीशन का दावा कर सकते हैं।',
                           )}
                         </p>
                       </div>

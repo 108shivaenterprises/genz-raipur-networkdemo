@@ -27,7 +27,7 @@ describe('the visit pass says why it cannot be confirmed, and what to do', () =>
   });
   it('the home-header scan opens the pass for a visit the scanner cannot confirm — it is no longer a dead-end line', () => {
     const q = read('src/components/QuickScan.tsx');
-    expect(q).toContain("if (v.gate && !v.gate.ok) { setOpen({ visit: v, raw: '' }); return; }");
+    expect(q).toContain("if (v.gate && !v.gate.ok) { setOpen({ visit: v, raw: '', property }); return; }");
     expect(q.indexOf("v.gate && !v.gate.ok")).toBeLessThan(q.indexOf('You booked this visit, so you cannot verify it yourself'));
   });
   it('the deal room opens the same pass', () => {
