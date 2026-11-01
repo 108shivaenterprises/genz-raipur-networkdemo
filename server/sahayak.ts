@@ -15,7 +15,7 @@ import { db } from './db.js';
 import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot } from './db.js';
 import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, type NeedChange, type When } from '../src/shared/sahayak.js';
 import { nextAsk, applyAnswer, progress, composeListing, summaryLine, SKIP_CHIP, type AskId } from '../src/shared/listingAsk.js';
-import { containsPhone } from '../src/shared/clientRoomRules.js';
+import { containsContact } from '../src/shared/clientRoomRules.js';
 import { openRoomAuto } from './clientroom.js';
 import { sealLink, openLink } from './linkSeal.js';
 
@@ -407,7 +407,7 @@ export function makeSahayak(d: BotDeps) {
     } else if (action === 'COUNTER') {
       const t = String(text || '').trim().slice(0, 80);
       if (t.length < 3) return { ok: false, error: 'Write the time you can do (for example “Sunday 11 am”)' };
-      if (containsPhone(t)) return { ok: false, error: 'Do not write a phone number' };
+      if (containsContact(t)) return { ok: false, error: 'Do not write a phone number or any contact id' };
       v.status = 'COUNTER'; v.counter = t; v.answeredAt = nowIso();
       d.addMsg(l, { by: 'BOT', kind: 'CHIPS', vid: v.id, text: `${who} ने दूसरा समय सुझाया: ${t}। क्या यह ठीक है?`, en: `${who} suggested another time: ${t}. Is that fine?`, chips: [{ id: `VOK:${v.id}`, hi: '✔ ठीक है', en: 'Fine' }, { id: `VAGAIN:${v.id}`, hi: '🕐 मेरा दूसरा समय', en: 'My other time' }] });
       d.hist(l, `Broker suggested another visit time: ${t}`);

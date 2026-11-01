@@ -6,7 +6,7 @@
  * that were in it. A draft is only a suggestion — it never goes live until the broker completes it AND the property
  * owner has given consent (link or signed paper form). See server/consent.ts.
  */
-import { PROPERTY_TYPES, CITY_LOCALITIES, findState, ALL_TAGS, type PropertyType } from './india.js';
+import { PROPERTY_TYPES, CITY_LOCALITIES, INDIA_STATES, findState, ALL_TAGS, type PropertyType } from './india.js';
 import { TOP_CITIES, normCity } from './cities.js';
 
 export const PASTE_MAX_CHARS = 20_000;
@@ -105,6 +105,17 @@ export function stripPhones(t: string): string {
   return String(t ?? '').replace(/(?:(?:call|contact|cont|ph|phone|mob|mobile|whatsapp|wa|no|number|नंबर|संपर्क)\.?\s*[:\-]?\s*)?(?<![\d])(?:\+?91[\s-]?|0)?(?:[6-9]\d{2}[\s-]?\d{2}[\s-]?\d{5}|[6-9]\d{4}[\s-]?\d{5})(?![\d])/gi, '').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
 }
 
+/** v100 — a pasted forward also carries e-mails, links, @handles and "insta: x" lines: none of them may reach a description other people read */
+export function stripContacts(t: string): string {
+  return stripPhones(t)
+    .replace(/[a-z0-9._%+-]{2,}\s?(?:@|\(at\)|\[at\])\s?[a-z0-9-]{2,}(?:\.[a-z0-9-]{2,})*/gi, '')
+    .replace(/(?:https?:\/\/|www\.)\S+/gi, '')
+    .replace(/\b(?:wa\.me|t\.me|telegram\.(?:me|dog)|instagram\.com|ig\.me|facebook\.com|fb\.(?:me|com)|linkedin\.com|linktr\.ee|bit\.ly|tinyurl\.com|goo\.gl)\/?\S*/gi, '')
+    .replace(/(?<![\w@.])@[a-z][a-z0-9_.]{3,}/gi, '')
+    .replace(/\b(?:insta(?:gram)?|telegram|tg|snap(?:chat)?|skype|fb|facebook)\b[\s:\-–=]*(?:id|handle|username)?[\s:\-–=]*@?[a-z][a-z0-9_.]*[0-9_.][a-z0-9_.]*/gi, '')
+    .replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
+}
+
 /** text without phone numbers, so a phone is never read as a price or an area */
 const withoutPhones = (t: string) => t.replace(/(?<![\d])(?:\+?91[\s-]?|0)?(?:[6-9]\d{2}[\s-]?\d{2}[\s-]?\d{5}|[6-9]\d{4}[\s-]?\d{5})(?![\d])/g, ' ');
 
@@ -149,6 +160,13 @@ export function findPrice(t: string): { price?: number; perSqft?: number; monthl
 }
 
 const TYPE_RULES: [RegExp, PropertyType][] = [
+  [/\bpg\b|paying\s*guest|hostel|हॉस्टल|co-?living/i, 'PG / Hostel'],
+  [/co-?working|को-?वर्किंग/i, 'Co-working Space'],
+  [/banquet|marriage\s*(?:hall|garden|lawn)|wedding\s*(?:hall|lawn)|मैरिज\s*हॉल|बैंक्वेट/i, 'Banquet / Marriage Hall'],
+  [/guest\s*house|गेस्ट\s*हाउस|\bhotel\s*(?:for|property|building|business)\b|\bresort\s*(?:for|property)\b|\blodge\s*(?:for|property|building)\b/i, 'Hotel / Guest House'],
+  [/\bparking\s*(?:space|slot)s?\s*(?:for\s*)?(?:sale|rent|available)|\bgarage\s*for\s*(?:sale|rent)/i, 'Parking / Garage'],
+  [/(?:factory|industrial)\s*(?:shed|building)|फैक्ट्री\s*शेड/i, 'Factory / Industrial Shed'],
+  [/(?:school|hospital|college|nursing\s*home)\s*(?:building|campus|property|for\s*(?:sale|lease|rent))/i, 'School / Hospital Building'],
   [/penthouse/i, 'Penthouse'],
   [/builder\s*floor/i, 'Builder Floor'],
   [/farm\s*house|फार्म\s*हाउस/i, 'Farm House'],
@@ -205,6 +223,32 @@ const DEVANAGARI_CITY: Record<string, string> = {
   'जबलपुर': 'Jabalpur', 'रांची': 'Ranchi', 'भुवनेश्वर': 'Bhubaneswar', 'देहरादून': 'Dehradun', 'अमृतसर': 'Amritsar', 'लुधियाना': 'Ludhiana', 'गाज़ियाबाद': 'Ghaziabad', 'गाजियाबाद': 'Ghaziabad',
   'फरीदाबाद': 'Faridabad', 'मेरठ': 'Meerut', 'प्रयागराज': 'Prayagraj', 'इलाहाबाद': 'Prayagraj', 'अयोध्या': 'Ayodhya', 'उज्जैन': 'Ujjain', 'रायगढ़': 'Raigarh', 'कोरबा': 'Korba',
 };
+/** words that are a town AND an ordinary word / surname / colony name: never read as a city from running text ("ghar gaya", "Anand Nagar") */
+const TOWN_STOP = new Set(['mandi', 'puri', 'anand', 'sagar', 'diu', 'leh', 'tura', 'mahe', 'rewa', 'gaya', 'ponda', 'jowai', 'daman']);
+let TOWNS: { key: string; city: string; state: string }[] | null = null;
+function townPool() {
+  if (!TOWNS) {
+    const seen = new Set<string>(ALL_KNOWN.map(c => c.city.toLowerCase())); TOWNS = [];
+    for (const st of INDIA_STATES) for (const raw of st.cities) {
+      const c = raw.replace(/\s*\(.*\)\s*/g, '').trim(); const k = c.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+      if (k.length < 4 || seen.has(k) || TOWN_STOP.has(k)) continue; seen.add(k); TOWNS.push({ key: k, city: c, state: st.name });
+    }
+  }
+  return TOWNS;
+}
+/** v100 — every city NAME written in a text (English or Devanagari, a few spellings like "bangalore"), in the order written. Unlike findCity it never guesses a city from an area name. */
+export function findCityNames(t: string): { city: string; state?: string }[] {
+  const text = String(t || ''); const low = ` ${text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')} `; const hits: { at: number; city: string; state?: string }[] = [];
+  for (const [dv, name] of Object.entries(DEVANAGARI_CITY)) { const at = text.indexOf(dv); if (at >= 0) { const c = ALL_KNOWN.find(x => x.city === name); if (c) hits.push({ at, city: c.city, state: c.state }); } }
+  for (const c of ALL_KNOWN) { const at = low.indexOf(` ${c.city.toLowerCase()} `); if (at >= 0) hits.push({ at, city: c.city, state: c.state }); }
+  for (const c of townPool()) { const at = low.indexOf(` ${c.key} `); if (at >= 0) hits.push({ at, city: c.city, state: c.state }); }   // every town of every state list (a word that is also a common name is left out)
+  for (const alias of ['naya raipur', 'nava raipur', 'new raipur', 'gurgaon', 'bangalore', 'bombay', 'calcutta', 'madras', 'poona', 'baroda', 'vizag']) {
+    const at = low.indexOf(` ${alias} `); if (at >= 0) { const name = normCity(alias); const c = TOP_CITIES.find(x => x.name === name); if (c) hits.push({ at, city: c.name, state: c.state }); }
+  }
+  const seen = new Set<string>(); const out: { city: string; state?: string }[] = [];
+  for (const h of hits.sort((a, b) => a.at - b.at)) if (!seen.has(h.city)) { seen.add(h.city); out.push({ city: h.city, state: h.state }); }
+  return out;
+}
 export function findCity(t: string): { city?: string; state?: string } {
   for (const [dv, name] of Object.entries(DEVANAGARI_CITY)) if (t.includes(dv)) { const c = TOP_CITIES.find(x => x.name === name) || ALL_KNOWN.find(x => x.city === name); if (c) return { city: (c as any).name || (c as any).city, state: (c as any).state }; }
   const low = ` ${t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;

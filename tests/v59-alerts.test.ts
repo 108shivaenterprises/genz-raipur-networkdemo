@@ -240,7 +240,7 @@ describe('KYC and disputes', () => {
     expect((await loud(jar.ADMIN)).status).toBe(200);
     const sup = await login(cfg.demoAccounts.find((a: any) => a.role === 'SUPERADMIN').id);
     const inv = await j(await call(sup, 'POST', '/api/invitations', { invitedEmail: 'v59.join@example.in', invitedPhone: '9826100059', targetRole: 'BROKER' }));
-    const r = await call(undefined, 'POST', '/api/auth/register-invite', { code: inv.invitation.code, name: 'Naveen Sahu', email: 'v59.join@example.in', phone: '9826100059', password: 'Strong#Pass2026', consent: true, reraNumber: 'PCGRERA250518-0059', panNumber: 'ABCPE1234F', aadhaarNumber: '234567890124', idConsent: true });
+    const r = await call(undefined, 'POST', '/api/auth/register-invite', { code: inv.invitation.code, name: 'Naveen Sahu', email: 'v59.join@example.in', phone: '9826100059', password: 'Strong#Pass2026', consent: true, city: 'Raipur', reraNumber: 'PCGRERA250518-0059', panNumber: 'ABCPE1234F', aadhaarNumber: '234567890124', idConsent: true });
     expect(r.status, await r.clone().text()).toBe(200);
     const a = await find(jar.ADMIN, /^New member waiting for KYC · broker/);
     expect(a).toHaveLength(1); expect(a[0].body).toMatch(/Naveen Sahu/); expect(a[0].body).not.toMatch(/ABCPE|2345|9826100059/); expect(a[0].url).toBe('/?tab=onboarding');

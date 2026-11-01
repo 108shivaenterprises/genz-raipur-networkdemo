@@ -14,8 +14,8 @@ const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = 
 const iconFor = (t?: string) => {
   const x = String(t || '').toLowerCase();
   if (/plot|land|farm|agri/.test(x)) return Trees;
-  if (/shop|commercial|office|showroom|warehouse|godown/.test(x)) return Store;
-  if (/house|villa|bungalow|independent|row/.test(x)) return Home;
+  if (/shop|commercial|office|showroom|warehouse|godown|co-working|factory|shed|parking|garage|banquet|hotel|school|hospital/.test(x)) return Store;
+  if (/house|villa|bungalow|independent|row|pg|hostel/.test(x)) return Home;
   return Building2;
 };
 

@@ -1511,6 +1511,8 @@ export interface PartnerLead {
   kind: import('../src/shared/shopPartner.js').LeadKind;
   name: string; phone: string; phoneLast4: string;
   locality: string; budget?: string; propertyType?: string; note?: string;
+  /** v100 — the customer wants a city other than the shop's (the form's City box, or he said so in the chat); homes, the need and alerts all follow THIS city */
+  wantCity?: string;
   consentAt: string;
   /** the terms in force when the customer scanned (a later change never touches this lead) */
   termsVersion: number; terms: import('../src/shared/shopPartner.js').PartnerTerms;

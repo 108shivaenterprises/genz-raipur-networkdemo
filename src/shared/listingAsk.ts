@@ -5,7 +5,7 @@
  * A draft is private to the broker and never goes live by itself — the owner's consent (server/consent.ts) still comes first.
  */
 import { findArea, findPrice, findType, stripPhones } from './waParse.js';
-import { containsPhone } from './clientRoomRules.js';
+import { containsContact } from './clientRoomRules.js';
 
 export type AskId = 'ptype' | 'bhk' | 'area' | 'floor' | 'price' | 'furn' | 'avail' | 'address' | 'papers' | 'owner';
 export interface AskChip { id: string; hi: string; en: string }
@@ -169,7 +169,7 @@ export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: 
       f.availableFrom = `available ${t}`; return ok(`ठीक है — ${t}।`, `Noted — ${t}.`);
     }
     case 'address': {
-      if (containsPhone(text)) return { ok: false, hint: { hi: 'पते में फ़ोन नंबर न लिखें — सिर्फ़ गली / मकान नंबर।', en: 'No phone number in the address — only the lane / house number.' } };
+      if (containsContact(text)) return { ok: false, hint: { hi: 'पते में फ़ोन नंबर न लिखें — सिर्फ़ गली / मकान नंबर।', en: 'No phone number in the address — only the lane / house number.' } };
       const t = clean(text, 200); if (t.length < 5) return { ok: false, hint: { hi: 'थोड़ा और लिखें — गली / मकान नंबर / पास की पहचान।', en: 'A little more please — lane / house number / a landmark.' } };
       f.addressHidden = t; return ok('पता नोट किया (सिर्फ़ ब्रोकर को दिखेगा)।', 'Address noted (only the broker sees it).');
     }

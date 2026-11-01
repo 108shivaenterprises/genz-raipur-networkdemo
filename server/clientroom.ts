@@ -26,7 +26,7 @@ import { sniffMime } from '../src/shared/propDocs.js';
 import { DOC_KINDS, DOC_LIMITS, FULL_AADHAAR_DAYS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
 import { ackFor, ackLinkFor, ackBlock } from './visitack.js';
 import { stripPhones } from '../src/shared/waParse.js';
-import { ROOM_KINDS, ROOM_LIMITS as L, containsPhone, PHONE_IN_CHAT_MSG } from '../src/shared/clientRoomRules.js';
+import { ROOM_KINDS, ROOM_LIMITS as L, contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
 import { joinFooter } from './publicFooter.js';
 import { partyBlock, partyCaution } from './partywatch.js';
 import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId } from '../src/shared/roomMedia.js';
@@ -325,7 +325,7 @@ export function createClientRoomRouter() {
     const text = String(req.body?.text || '').trim();
     if (!text) return bad(res, 'Write a message');
     if (text.length > L.textChars) return bad(res, `Keep it under ${L.textChars} characters`);
-    if (containsPhone(text)) return bad(res, PHONE_IN_CHAT_MSG.en, 400, { code: 'PHONE_IN_CHAT', hi: PHONE_IN_CHAT_MSG.hi });
+    { const k = contactKind(text, recentOwn(room.messages.filter(m => m.from === 'BROKER'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return bad(res, m.en, 400, { code: k === 'PHONE' ? 'PHONE_IN_CHAT' : 'CONTACT_IN_CHAT', hi: m.hi }); } }
     if (room.messages.length >= L.messages) return bad(res, 'This chat is full — open a new room or close this one');
     const u = me();
     room.messages.push({ id: rid('CRX'), from: 'BROKER', text, at: nowIso(), propertyId: validPropRef(room, req.body?.propertyId), ...(isStaff(u) ? { byId: u.id, byName: u.name } : {}) });
@@ -798,7 +798,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     const text = String(req.body?.text || '').trim();
     if (!text) return res.redirect(303, `/r/${req.params.token}#chat`);
     if (text.length > L.textChars) return render(req, res, room, `संदेश ${L.textChars} अक्षरों से छोटा रखें। / Keep the message under ${L.textChars} characters.`);
-    if (containsPhone(text)) return render(req, res, room, `${esc(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc(PHONE_IN_CHAT_MSG.en)}</small>`);
+    { const k = contactKind(text, recentOwn(room.messages.filter(m => m.from === 'CLIENT'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return render(req, res, room, `${esc(m.hi)}<br><small>${esc(m.en)}</small>`); } }
     if (room.messages.length >= L.messages) return render(req, res, room, 'यह चैट भर गई है — अपने ब्रोकर को कॉल करें। / This chat is full — please call your broker.');
     room.messages.push({ id: rid('CRX'), from: 'CLIENT', text, at: nowIso(), propertyId: validPropRef(room, req.body?.item) });
     room.lastClientSeenAt = nowIso(); ev(room, 'Client wrote'); db.save();

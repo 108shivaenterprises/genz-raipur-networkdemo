@@ -120,6 +120,14 @@ export const PROPERTY_TYPES = [
   'Industrial Plot',
   'Agricultural Land',
   'Farm House',
+  // v100 — the other things people really buy, rent and lease in Indian towns
+  'PG / Hostel',
+  'Co-working Space',
+  'Hotel / Guest House',
+  'Banquet / Marriage Hall',
+  'Parking / Garage',
+  'Factory / Industrial Shed',
+  'School / Hospital Building',
 ] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
@@ -128,8 +136,12 @@ export const RELATED_TYPE_GROUPS: string[][] = [
   ['Residential Flat', 'Builder Floor', 'Penthouse'],
   ['Independent House', 'Residential Villa', 'Farm House'],
   ['Residential Plot', 'Commercial Plot', 'Industrial Plot'],
-  ['Commercial Office', 'Commercial Shop', 'Showroom'],
-  ['Warehouse / Godown', 'Industrial Plot'],
+  ['Commercial Office', 'Commercial Shop', 'Showroom', 'Co-working Space'],
+  ['Warehouse / Godown', 'Industrial Plot', 'Factory / Industrial Shed'],
+  ['Hotel / Guest House', 'Banquet / Marriage Hall', 'PG / Hostel'],
+  ['Residential Flat', 'PG / Hostel'],
+  ['Commercial Shop', 'Parking / Garage'],
+  ['School / Hospital Building', 'Commercial Office'],
   ['Agricultural Land', 'Farm House'],
 ];
 

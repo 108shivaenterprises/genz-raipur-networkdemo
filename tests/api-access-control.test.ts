@@ -139,7 +139,7 @@ describe('Builder ⇄ Associates CRM', () => {
 
 describe('DPDP & India KYC', () => {
   // 234567890124 passes the Aadhaar (Verhoeff) check digit; v18: brokers must give PAN + Aadhaar + consent
-  const regBody = (code: string, extra: any = {}) => ({ code, name: 'Test Broker', email: 'kyc.test@example.in', phone: '9826100011', password: 'Strong#Pass2026', consent: true, reraNumber: 'PCGRERA250518-0001', panNumber: 'ABCPE1234F', aadhaarNumber: '234567890124', idConsent: true, ...extra });
+  const regBody = (code: string, extra: any = {}) => ({ code, name: 'Test Broker', email: 'kyc.test@example.in', phone: '9826100011', password: 'Strong#Pass2026', consent: true, city: 'Raipur', reraNumber: 'PCGRERA250518-0001', panNumber: 'ABCPE1234F', aadhaarNumber: '234567890124', idConsent: true, ...extra });
 
   it('registration enforces consent, PAN, GSTIN and RERA for brokers', async () => {
     const inv = await (await call(jar.SUPERADMIN, 'POST', '/api/invitations', { invitedEmail: 'kyc.test@example.in', invitedPhone: '9826100011', targetRole: 'BROKER' })).json();

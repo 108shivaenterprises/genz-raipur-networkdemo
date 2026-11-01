@@ -36,16 +36,21 @@ import { can } from './permissions.js';
 import { awardPoints } from './community.js';
 import { pushTo } from './webpush.js';
 import { checkDays, daysFor, currentProtection } from './protection.js';
-import { parsePaste, PASTE_MAX_CHARS, priceLabel, stripPhones } from '../src/shared/waParse.js';
+import { parsePaste, PASTE_MAX_CHARS, priceLabel, stripPhones, stripContacts } from '../src/shared/waParse.js';
 import { draftMissing, needMissing, termsOf, termsLine, validInitials, SIGN_MIN_POINTS, SIGN_MAX_BYTES } from '../src/shared/consentRules.js';
 import { looseKeyText, sameArea, phone10, consentWords, CONSENT_LINK_DAYS, CONSENT_FORM_VERSION, MAX_OPEN_DRAFTS, TAKEN_MSG, STATUS_LABEL } from '../src/shared/consentRules.js';
-import { PROPERTY_TYPES, findState } from '../src/shared/india.js';
+import { PROPERTY_TYPES, INDIA_STATES, findState } from '../src/shared/india.js';
 import { sniffMime } from '../src/shared/propDocs.js';
 import { daysLabel } from '../src/shared/protectionRules.js';
 import { TOP_CITIES, normCity } from '../src/shared/cities.js';
 import { samePlace } from '../src/shared/places.js';
 /** v28 — older listings often carry only the city: take the state from the city when we know it */
-export const stateFor = (state: unknown, city: unknown) => findState(String(state || ''))?.name || TOP_CITIES.find(c => c.name === normCity(city))?.state || String(state || '');
+/** v100 — the state of a town: the big-city list first, then every town of every state list (was: 34 cities only, so a broker in Ambala / Kota / Vellore had no state) */
+const stateOfTown = (city: unknown): string => {
+  const n = normCity(city); if (!n) return '';
+  return TOP_CITIES.find(c => c.name === n)?.state || INDIA_STATES.find(s => s.cities.some(x => normCity(x.replace(/\s*\(.*\)\s*/g, '')) === n))?.name || '';
+};
+export const stateFor = (state: unknown, city: unknown) => findState(String(state || ''))?.name || stateOfTown(city) || String(state || '');
 
 const nowIso = () => new Date().toISOString();
 const st = () => db.getState();
@@ -265,7 +270,7 @@ export function createConsentRouter() {
       const city = it.city || homeCity;
       if (it.kind === 'NEED') {
         const nf: Record<string, any> = {
-          title: it.title, description: stripPhones(it.raw).slice(0, 1500), propertyType: it.propertyType || '', transactionType: it.transactionType || 'Sale',
+          title: it.title, description: stripContacts(it.raw).slice(0, 1500), propertyType: it.propertyType || '', transactionType: it.transactionType || 'Sale',
           state: it.state || (city === homeCity && u.state ? u.state : stateFor('', city)), city, localities: it.localities || [], budgetMin: it.budgetMin ?? null, budgetMax: it.budgetMax ?? null,
           minAreaSqFt: it.areaSqft ?? null, bhk: it.bhk ?? null, customerName: '', customerPhone: '', tags: it.tags, phonesFound: it.phones,
           purpose: 'Self-use', urgency: 'Moderate (1-3 months)',
@@ -274,7 +279,7 @@ export function createConsentRouter() {
         continue;
       }
       const fields: Record<string, any> = {
-        title: it.title, description: stripPhones(it.raw).slice(0, 1500), propertyType: it.propertyType || '', transactionType: it.transactionType || '',
+        title: it.title, description: stripContacts(it.raw).slice(0, 1500), propertyType: it.propertyType || '', transactionType: it.transactionType || '',
         state: it.state || (city === homeCity && u.state ? u.state : stateFor('', city)), city, locality: it.locality || '', addressHidden: '',
         areaSqft: it.areaSqft ?? null, bhk: it.bhk ?? null, askingPrice: it.price ?? null, ownerApprovedNetPrice: null,
         ownerName: '', ownerPhone: '', tags: it.tags, phonesFound: it.phones,

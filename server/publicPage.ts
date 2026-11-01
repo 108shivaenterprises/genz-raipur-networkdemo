@@ -25,7 +25,7 @@ import { ctx, needs, hit, digits, secret, safeEqual, parseCookies } from './auth
 import { brandOf } from './share.js';
 import { findByCode, ensureReferralCode } from './growth.js';
 import { joinFooter, reputationHtml } from './publicFooter.js';
-import { stripPhones } from '../src/shared/waParse.js';
+import { stripContacts } from '../src/shared/waParse.js';
 import { okMediaUrl, youtubeId } from '../src/shared/roomMedia.js';
 import { publicLevel } from './partywatch.js';
 import { pushTo } from './webpush.js';
@@ -170,7 +170,7 @@ export function renderBrokerPage(req: Request, res: Response, u: UserProfile, o:
     const area = areaOf(p);
     const vid = youtubeId(String((p as any).videoUrl || ''));
     const more = ph.slice(1);
-    const descText = stripPhones(p.description || '').slice(0, 400);
+    const descText = stripContacts(p.description || '').slice(0, 400);
     return `<article class="home" id="h-${esc(p.id)}">${photoBox(ph[0], wm, p.title)}<span class="badge">${esc(dealHi(p.transactionType))} · ${esc(dealEn(p.transactionType))}</span></div>
 <div class="bd"><div class="price">${esc(priceShort(p.askingPrice))}${rent ? ' <small>/ माह · month</small>' : ''}</div><div class="t">${esc(p.title)}</div>
 <div class="s">${esc(p.propertyType)} · ${esc(p.locality)}, ${esc(p.city)}${area ? `<br>${esc(area)}` : ''}</div>
@@ -346,7 +346,7 @@ export function createPublicPageRouter() {
     const card = ensureCard(u); const was = card.enabled;
     if (p.data.enabled !== undefined) card.enabled = p.data.enabled;
     if (p.data.showPhone !== undefined) card.showPhone = p.data.showPhone;
-    if (p.data.headline !== undefined) card.headline = stripPhones(p.data.headline).slice(0, L.headline) || undefined;
+    if (p.data.headline !== undefined) card.headline = stripContacts(p.data.headline).slice(0, L.headline) || undefined;
     if (p.data.areas !== undefined) card.areas = cleanAreas(p.data.areas);
     db.save();
     if (was !== card.enabled) audit(u, 'SYSTEM', u.id, card.enabled ? 'PUBLIC_CARD_ENABLED' : 'PUBLIC_CARD_DISABLED', `Public page ${card.enabled ? 'on' : 'off'}${card.showPhone ? ' (phone shown)' : ''}`);

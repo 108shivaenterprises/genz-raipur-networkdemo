@@ -17,11 +17,12 @@ import path from 'node:path';
 import { brandedQrSvg } from './brandlogo.js';
 import { makeSahayak } from './sahayak.js';
 import type { NeedChange } from '../src/shared/sahayak.js';
-import { localityFit, areasOf, canonPlace } from '../src/shared/places.js';
-import { PROPERTY_TYPES, RELATED_TYPE_GROUPS, findState } from '../src/shared/india.js';
+import { localityFit, areasOf, canonPlace, inferCity } from '../src/shared/places.js';
+import { PROPERTY_TYPES, RELATED_TYPE_GROUPS, findState, sameCity } from '../src/shared/india.js';
+import { findCityNames } from '../src/shared/waParse.js';
 import { saveOwnerChatDraft, stateFor } from './consent.js';
 import { draftMissing } from '../src/shared/consentRules.js';
-import { normCity } from '../src/shared/cities.js';
+import { normCity, TOP_CITIES } from '../src/shared/cities.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'crypto';
@@ -35,7 +36,7 @@ import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEn
 import { partyBlock } from './partywatch.js';
 import { alertNeedNetwork } from './broadcast.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
-import { containsPhone, PHONE_IN_CHAT_MSG } from '../src/shared/clientRoomRules.js';
+import { contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
 import { brandOf } from './share.js';
 import { priceShort } from '../src/shared/publicPageRules.js';
 import { ackText, ACK_VERSION } from '../src/shared/visitAckRules.js';
@@ -95,7 +96,9 @@ const hist = (x: { history: ShopPartner['history']; updatedAt: string }, by: Sho
 const partnerOf = (id: string) => st().shopPartners.find(p => p.id === id);
 const userOf = (id: string) => st().users.find(u => u.id === id);
 /** v98 — the city of a lead: the shop's, else the broker's own. Never a made-up default (the app is for every city of India) */
-const cityOfLead = (l: PartnerLead): string => partnerOf(l.partnerId)?.city || userOf(l.brokerId)?.city || '';
+const shopCityOf = (l: Pick<PartnerLead, 'partnerId' | 'brokerId'>): string => partnerOf(l.partnerId)?.city || userOf(l.brokerId)?.city || '';
+/** v100 — the city the CUSTOMER wants (his own choice on the form / in the chat), else the shop's. A Pune customer at a Pune shop who wants Raipur gets Raipur homes */
+const cityOfLead = (l: PartnerLead): string => l.wantCity || shopCityOf(l);
 const audit = (refId: string, action: string, text: string) => { const u = me(); db.appendAuditEvent(u.id, u.role, 'LEAD', refId, action, text); };
 
 
@@ -121,8 +124,9 @@ const tooFreshFor = (l: Pick<PartnerLead, 'createdAt'>, h: Property, now = Date.
   return made > Date.parse(l.createdAt) && now - made < REVEAL_FRESH_LISTING_MS;
 };
 /** does this home fit what the customer asked for? buy/rent side, the area (or the very home he tapped), and the budget when it can be read. Owner-side leads have no "match" */
-export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | 'homeId'> & { propertyType?: string }, h: Property): boolean {
+export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | 'homeId'> & { propertyType?: string; wantCity?: string }, h: Property): boolean {
   if (l.kind !== 'BUY' && l.kind !== 'RENT_IN') return false;
+  if (l.wantCity && !sameCity(l.wantCity, h.city)) return false;   // v100 — the customer named a city: only homes of that city
   if ((l.kind === 'BUY') !== (h.transactionType === 'Sale')) return false;
   const chosen = !!l.homeId && l.homeId === h.id;
   const a = norm(l.locality); const b = norm(h.locality);
@@ -143,11 +147,13 @@ function matchesFor(l: PartnerLead): Property[] {
   const pool = new Map<string, Property>();
   for (const p of st().properties) if (p.listingBrokerId === b.id && pageLive(p)) pool.set(p.id, p);
   for (const h of shownHomes(b)) pool.set(h.id, h);
+  // v100 — a customer who wants ANOTHER city than the shop's: the homes of that city that their brokers opened to pages (the same rule a broker's own page follows)
+  if (l.wantCity && !sameCity(l.wantCity, shopCityOf(l))) for (const h of st().properties) if (sameCity(h.city, l.wantCity) && canShow(b, h)) pool.set(h.id, h);
   return [...pool.values()].filter(h => homeFits(l, h) && !tooFreshFor(l, h)).slice(0, 12);
 }
 const homeBrief = (h: Property) => ({ id: h.id, title: h.title, price: priceShort(h.askingPrice), place: `${h.locality}, ${h.city}`, rent: h.transactionType !== 'Sale' });
 /** the customer's need, as one readable line (what the broker asks him to confirm) */
-const needLine = (l: PartnerLead) => `${LEAD_KINDS.find(k => k.id === l.kind)?.hi || ''} · ${l.locality}${l.budget ? ` · ${l.budget}` : ''}${l.propertyType ? ` · ${l.propertyType}` : ''}${l.note ? ` · “${l.note}”` : ''}`;
+const needLine = (l: PartnerLead) => `${LEAD_KINDS.find(k => k.id === l.kind)?.hi || ''} · ${l.locality}${l.wantCity && !sameCity(l.locality, l.wantCity) ? `, ${l.wantCity}` : ''}${l.budget ? ` · ${l.budget}` : ''}${l.propertyType ? ` · ${l.propertyType}` : ''}${l.note ? ` · “${l.note}”` : ''}`;
 /** the moment the number becomes visible: the buyer / renter also lands in the broker's own client list now (not before) */
 /** v87 — a number in the shop's budget box → rupees. "50 lakh", "1.2 cr", "15k" read as written; a bare small number is read the way a customer means it (sale: lakh, rent: thousand). null when it cannot be read */
 export function budgetRupees(text: string | undefined, rent: boolean): number | null {
@@ -162,7 +168,7 @@ export function inferPtype(picked: string | undefined, note = ''): string {
   if (picked && KNOWN_TYPES.has(picked)) return picked;
   if (picked && REQ_TYPES[picked]) return REQ_TYPES[picked];
   const t = `${picked || ''} ${note}`.toLowerCase();
-  const rules: [RegExp, string][] = [[/farm\s*house|फ़ार्म|फार्म/, 'Farm House'], [/agri|khet|खेत|कृषि/, 'Agricultural Land'], [/godown|warehouse|गोदाम/, 'Warehouse / Godown'], [/factory|industr|फैक्ट्री|उद्योग/, 'Industrial Plot'], [/showroom|शोरूम/, 'Showroom'], [/shop|dukaan|dukan|दुकान/, 'Commercial Shop'], [/office|ऑफ़िस|ऑफिस/, 'Commercial Office'], [/villa|विला/, 'Residential Villa'], [/penthouse/, 'Penthouse'], [/plot|zameen|जमीन|ज़मीन|प्लॉट/, 'Residential Plot'], [/house|makaan|makan|मकान|कोठी/, 'Independent House']];
+  const rules: [RegExp, string][] = [[/\bpg\b|paying\s*guest|hostel|हॉस्टल/, 'PG / Hostel'], [/co-?working|को-?वर्किंग/, 'Co-working Space'], [/banquet|marriage\s*(?:hall|garden|lawn)|मैरिज\s*हॉल|बैंक्वेट/, 'Banquet / Marriage Hall'], [/guest\s*house|गेस्ट\s*हाउस|\bhotel\s*(?:for|property|building|business)\b/, 'Hotel / Guest House'], [/(?:factory|industrial)\s*(?:shed|building)/, 'Factory / Industrial Shed'], [/(?:school|hospital|college|nursing\s*home)\s*(?:building|campus|property|for\s*(?:sale|lease|rent))/, 'School / Hospital Building'], [/farm\s*house|फ़ार्म|फार्म/, 'Farm House'], [/agri|khet|खेत|कृषि/, 'Agricultural Land'], [/godown|warehouse|गोदाम/, 'Warehouse / Godown'], [/factory|industr|फैक्ट्री|उद्योग/, 'Industrial Plot'], [/showroom|शोरूम/, 'Showroom'], [/shop|dukaan|dukan|दुकान/, 'Commercial Shop'], [/office|ऑफ़िस|ऑफिस/, 'Commercial Office'], [/villa|विला/, 'Residential Villa'], [/penthouse/, 'Penthouse'], [/plot|zameen|जमीन|ज़मीन|प्लॉट/, 'Residential Plot'], [/house|makaan|makan|मकान|कोठी/, 'Independent House']];
   for (const [re, ty] of rules) if (re.test(t)) return ty;
   return 'Residential Flat';
 }
@@ -220,10 +226,21 @@ function applyNeedChange(l: PartnerLead, ch: NeedChange): string[] {
   if (ch.kind && ch.kind !== l.kind && (l.kind === 'BUY' || l.kind === 'RENT_IN') && !l.chat?.revealedAt) { l.kind = ch.kind; out.push(ch.kind === 'BUY' ? 'खरीदना' : 'किराया'); }
   if (ch.budget && ch.budget !== l.budget) { l.budget = ch.budget.slice(0, 40); out.push('बजट'); }
   if (ch.ptype && ch.ptype !== l.propertyType) { l.propertyType = ch.ptype; out.push('प्रकार'); }
+  if (ch.city && !sameCity(ch.city, cityOfLead(l))) { l.wantCity = ch.city; out.push('शहर'); }   // v100 — he named another city
   if (ch.locality && ch.locality !== l.locality) { l.locality = ch.locality; out.push('इलाका'); }
   if (ch.bhk) { const tag = `${ch.bhk}BHK`; if (!String(l.note || '').includes(tag)) { l.note = [l.note, tag].filter(Boolean).join(' · ').slice(0, 200); out.push('BHK'); } }
   if (out.length) l.updatedAt = nowIso();
+  if (out.includes('शहर') || out.includes('इलाका')) syncNeedPlace(l);
   return out;
+}
+/** v100 — the customer moved his wish to another city / area AFTER his number opened: the broker's buyer need and client card follow, and the network is told about the new need */
+function syncNeedPlace(l: PartnerLead) {
+  if (!l.chat?.revealedAt || (l.kind !== 'BUY' && l.kind !== 'RENT_IN')) return;
+  const s = st(); const city = cityOfLead(l);
+  const q = s.requirements.find(x => x.assignedBrokerId === l.brokerId && phone10(x.customerPhone) === l.phone && x.status !== 'closed' && x.status !== 'fulfilled');
+  const moved = !!q && (!sameCity(q.city, city) || !(q.preferredLocalities || []).some(a => norm(a) === norm(l.locality)));
+  if (q && moved) { q.city = city; q.state = stateFor('', city) || q.state; q.preferredLocalities = [l.locality]; void alertNeedNetwork(q as any); }
+  const c = s.clientCards.find(x => x.id === l.clientCardId); if (c) { c.city = city; c.areas = [l.locality]; c.updatedAt = nowIso(); }
 }
 const botTell = (l: PartnerLead, title: string, body: string) => { if (hit(`sp-botpush:${l.id}`, 10, 3600_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title, body, url: '/?tab=partners' }); };
 /** v99 — what the QR form already told us about an OWNER's property (the questions only ask what is missing) */
@@ -670,7 +687,7 @@ export function createShopPartnerRouter() {
     const l = chatLead(req, res); if (!l?.chat) return;
     const text = str(req.body?.text, MSG_MAX);
     if (text.length < 1) return bad(res, 'Write a message');
-    if (containsPhone(text)) return bad(res, PHONE_IN_CHAT_MSG.en, 400, { code: 'PHONE_IN_CHAT', hi: PHONE_IN_CHAT_MSG.hi });
+    { const k = contactKind(text, recentOwn(l.chat.msgs.filter(m => m.by === 'BROKER'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return bad(res, m.en, 400, { code: k === 'PHONE' ? 'PHONE_IN_CHAT' : 'CONTACT_IN_CHAT', hi: m.hi }); } }
     addMsg(l, { by: 'BROKER', kind: 'MSG', text }); l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l); db.save();
     void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
     res.json({ success: true, lead: leadView(l) });
@@ -885,7 +902,7 @@ export function createPartnerQrRouter() {
     const preKind = keep.kind || (picked ? (picked.transactionType === 'Sale' ? 'BUY' : 'RENT_IN') : want === 'buy' ? 'BUY' : want === 'sell' ? 'SELL' : '');
     const sellerSide = preKind === 'SELL' || preKind === 'RENT_OUT';   // v89 — the big buttons above the form follow what was chosen (they used to stay "I need a home" green even for a seller)
     const kinds = LEAD_KINDS.map(k => `<label><input type="radio" name="kind" value="${k.id}" ${preKind === k.id ? 'checked' : ''} required> ${k.hi}<br><small>${k.en}</small></label>`).join('');
-    const typeGroups: [string, string[]][] = [['🏠 घर / Homes', ['Residential Flat', 'Independent House', 'Residential Villa', 'Builder Floor', 'Penthouse', 'Farm House']], ['🌱 प्लॉट · ज़मीन / Plots & land', ['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land']], ['🏪 दुकान · ऑफ़िस / Commercial', ['Commercial Shop', 'Showroom', 'Commercial Office']], ['🏭 गोदाम · उद्योग / Industry', ['Warehouse / Godown']]];
+    const typeGroups: [string, string[]][] = [['🏠 घर / Homes', ['Residential Flat', 'Independent House', 'Residential Villa', 'Builder Floor', 'Penthouse', 'Farm House']], ['🌱 प्लॉट · ज़मीन / Plots & land', ['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land']], ['🏪 दुकान · ऑफ़िस / Commercial', ['Commercial Shop', 'Showroom', 'Commercial Office']], ['🏭 गोदाम · उद्योग / Industry', ['Warehouse / Godown', 'Factory / Industrial Shed']], ['🏨 और / More', ['PG / Hostel', 'Co-working Space', 'Hotel / Guest House', 'Banquet / Marriage Hall', 'Parking / Garage', 'School / Hospital Building']]];
     const who = b?.name || 'ब्रोकर';
     const ack = ackText(who, picked ? picked.title : 'ब्रोकर द्वारा दिखाई जाने वाली प्रॉपर्टी / the properties shown by the broker');
     res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट · फ़ार्म · गोदाम</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>
@@ -900,6 +917,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
 <p class="small" id="sellnote" data-testid="qr-seller-note">🏠 मालिक के लिए: प्रॉपर्टी कहाँ है, किस तरह की है, और आप कितना चाहते हैं (कीमत / किराया) — नीचे लिखें। <small>For owners: write where the property is, its type, and the price or rent you expect.</small></p>
 <label>नाम / Name</label><input type="text" name="name" maxlength="80" required value="${esc(keep.name || '')}" autocomplete="name">
 <label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required value="${esc(keep.phone || '')}" autocomplete="tel-national" placeholder="98XXXXXXXX">
+<label>शहर / City</label><input type="text" name="city" maxlength="40" list="cities" autocomplete="off" data-testid="qr-city" value="${esc(keep.city || p.city || userOf(p.brokerId)?.city || '')}"><datalist id="cities">${TOP_CITIES.slice(0, 60).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist><p class="small" style="margin:2px 0 0">घर किस शहर में चाहिए? दूसरे शहर में चाहिए तो यहाँ बदल दें। / Which city do you want the home in? Change it if it is not this city.</p>
 <label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required list="areas" autocomplete="off" value="${esc(keep.locality || (picked ? picked.locality : p.area))}"><datalist id="areas">${areasOf(p.city || userOf(p.brokerId)?.city || '').slice(0, 80).map(a => `<option value="${esc(a.replace(/\s*\(.*\)\s*/g, ''))}">`).join('')}</datalist><p class="small" style="margin:2px 0 0">पूरा शहर चाहिए तो शहर का नाम लिख दें / For the whole city just write the city name.</p>
 <label>बजट / किराया (अंदाज़न) / Budget or rent</label><input type="text" name="budget" maxlength="60" value="${esc(keep.budget || '')}" placeholder="जैसे 40 लाख / 12,000 महीना">
 <label>प्रॉपर्टी / Property type</label><select name="ptype"><option value="">— कोई भी / Any —</option>${typeGroups.map(([g, list]) => `<optgroup label="${g}">${list.map(x => `<option value="${x}" ${keep.ptype === x ? 'selected' : ''}>${x}</option>`).join('')}</optgroup>`).join('')}<option value="Other" ${keep.ptype === 'Other' ? 'selected' : ''}>कुछ और / Other</option></select>
@@ -1047,7 +1065,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     const l = chatBy(req.params.token); if (!l?.chat) return chatPage(res, undefined, req.params.token);
     const text = str(req.body?.text, MSG_MAX);
     if (text.length < 1) return chatPage(res, l, req.params.token, 'कुछ लिखें। / Write something.');
-    if (containsPhone(text)) return chatPage(res, l, req.params.token, `${esc(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc(PHONE_IN_CHAT_MSG.en)}</small>`);
+    { const k = contactKind(text, recentOwn(l.chat.msgs.filter(m => m.by === 'CUSTOMER'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return chatPage(res, l, req.params.token, `${esc(m.hi)}<br><small>${esc(m.en)}</small>`); } }
     if (hit(`sp-chatmsg:${l.id}`, 40, 3600_000) > 0) return chatPage(res, l, req.params.token, 'बहुत संदेश हो गए — थोड़ी देर बाद। / Too many messages — try later.');
     addMsg(l, { by: 'CUSTOMER', kind: 'MSG', text });
     sahayak.onText(l, text); db.save();   // v97 — the assistant answers (or stays quiet when the broker is talking / has switched it off)
@@ -1070,7 +1088,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     } else if (a === 'EDIT') {
       const text = str(req.body?.text, MSG_MAX);
       if (text.length < 2) return chatPage(res, l, req.params.token, 'बदलाव लिखें। / Write the change.');
-      if (containsPhone(text)) return chatPage(res, l, req.params.token, `${esc(PHONE_IN_CHAT_MSG.hi)}<br><small>${esc(PHONE_IN_CHAT_MSG.en)}</small>`);
+      { const k = contactKind(text, recentOwn(l.chat.msgs.filter(m => m.by === 'CUSTOMER'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return chatPage(res, l, req.params.token, `${esc(m.hi)}<br><small>${esc(m.en)}</small>`); } }
       addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: `✏️ ${text}` });
       if (sahayak.off(l)) l.chat.reqAskedAt = undefined; else sahayak.onEdit(l, text);   // the broker asks again by hand — or the assistant reads the change and asks him again
       db.save();
@@ -1129,7 +1147,15 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     noStore(res);
     const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
     const body = req.body || {};
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), locality: canonPlace(p.city || userOf(p.brokerId)?.city || '', str(body.locality, 80)), budget: str(body.budget, 60), ptype: str(body.ptype, 30), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
+    const shopCity = p.city || userOf(p.brokerId)?.city || '';
+    // v100 — the customer says which city he wants: the City box, else a city written in the area box; it is his city, not the shop's, that decides the homes
+    const cityIn = str(body.city, 40); const locIn = str(body.locality, 80);
+    let wantCity = ''; let cityBad = false;
+    if (cityIn && !sameCity(cityIn, shopCity)) { const f = findCityNames(cityIn)[0]?.city || inferCity(cityIn); if (f) wantCity = f; else cityBad = true; }
+    if (!wantCity && !cityBad) { const f = findCityNames(locIn).find(c => !sameCity(c.city, shopCity)); if (f) wantCity = f.city; }
+    if (wantCity && sameCity(wantCity, shopCity)) wantCity = '';
+    const locClean = wantCity ? (locIn.replace(new RegExp(`\\b${wantCity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig'), ' ').replace(/\s{2,}/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '') || wantCity) : locIn;
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), city: cityIn, locality: canonPlace(wantCity || shopCity, locClean), budget: str(body.budget, 60), ptype: str(body.ptype, 30), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`); // a bot filled the hidden field
     if (!formTsOk(body.t)) return page(res, p, 'कृपया फ़ॉर्म दोबारा भरें। / Please fill the form again.', keep);
     const kind = LEAD_KINDS.find(k => k.id === keep.kind)?.id as LeadKind | undefined;
@@ -1137,6 +1163,7 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     const phone = phone10(keep.phone);
     if (keep.name.length < 2) return page(res, p, 'अपना नाम लिखें। / Write your name.', keep);
     if (!PHONE_RE.test(phone)) return page(res, p, 'सही 10 अंकों का मोबाइल नंबर लिखें। / Write a valid 10-digit mobile number.', keep);
+    if (cityBad) return page(res, p, 'इस शहर का नाम पहचान नहीं पाए — शहर का सही नाम लिखें (जैसे Raipur, Pune, Indore)। / We could not recognise that city — write its proper name (for example Raipur, Pune, Indore).', keep);
     if (keep.locality.length < 2) return page(res, p, 'इलाका लिखें। / Write the area.', keep);
     if (body.consent !== '1') return page(res, p, 'सहमति वाले बॉक्स पर टिक करें। / Tick the consent box.', keep);
     // v64 — a buyer / renter ticks and signs the "no direct deal" promise (the wording is versioned, like the visit acknowledgement)
@@ -1164,13 +1191,14 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     const chatToken = newToken();
     const lead: PartnerLead = {
       id: rid('PLD'), partnerId: p.id, brokerId: p.brokerId, kind, name: keep.name, phone, phoneLast4: phone.slice(-4),
-      locality: keep.locality, budget: keep.budget || undefined, propertyType: keep.ptype || undefined, note: keep.note || undefined, consentAt: now,
+      locality: keep.locality, ...(wantCity ? { wantCity } : {}), budget: keep.budget || undefined, propertyType: keep.ptype || undefined, note: keep.note || undefined, consentAt: now,
       termsVersion: p.termsVersion, terms: cleanTerms(p.terms), lockUntil, status: 'NEW', history: [], createdAt: now, updatedAt: now,
       ...(keep.outcome === '1' ? { outcomeOk: true } : {}),
       chat: { keyHash: sha(chatToken), msgs: [] },
       ...(home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {}),
       ...(buyerSide ? (() => { const a = ackText(broker?.name || 'broker', home ? home.title : 'the properties shown by the broker'); return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } }; })() : {}),
     };
+    if (wantCity) hist(lead, 'CUSTOMER', `Wants a home in ${wantCity} (the shop is in ${shopCity || 'another city'}) — homes, the need and alerts follow ${wantCity}`);
     hist(lead, 'CUSTOMER', `Came in by scanning the QR at ${p.shopName} (consent recorded${lead.outcomeOk ? '; agreed to one SMS asking whether it went ahead' : ''})${home ? ` · interested in “${home.title}”${lead.homeOwn ? '' : ' (another GENZ broker’s listing)'}` : ''}`);
     if (lead.promise) hist(lead, 'CUSTOMER', `Agreed “no direct deal” (wording ${ACK_VERSION}) and signed as “${lead.promise.signName}”`);
     // v85 — the number is hidden: the buyer / renter lands in the broker's client list only when it is shown (after the need is confirmed and a matching home is shared)
@@ -1180,7 +1208,7 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     hist(p, 'CUSTOMER', `New ${LEAD_KINDS.find(k => k.id === kind)!.en.toLowerCase()} lead (••${lead.phoneLast4})`);
     db.save();
     db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', lead.id, 'SHOP_QR_LEAD', `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ''}${home ? `; home ${home.id}` : ''})`);
-    void pushTo(p.brokerId, { kind: 'matches', title: `New lead from ${p.shopName}`, body: `${keep.name} — ${LEAD_KINDS.find(k => k.id === kind)!.en}, ${keep.locality}${home ? ` · ${home.title}` : ''}. Chat with him in the app — his number shows after he confirms his need and you share a matching home.`, url: '/?tab=partners' });
+    void pushTo(p.brokerId, { kind: 'matches', title: `New lead from ${p.shopName}`, body: `${keep.name} — ${LEAD_KINDS.find(k => k.id === kind)!.en}, ${keep.locality}${wantCity ? `, ${wantCity}` : ''}${home ? ` · ${home.title}` : ''}. Chat with him in the app — his number shows after he confirms his need and you share a matching home.`, url: '/?tab=partners' });
     res.redirect(303, `/q/chat/${chatToken}`);
   });
 

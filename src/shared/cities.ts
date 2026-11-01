@@ -20,6 +20,7 @@ const ALIAS: Record<string, string> = {
   bombay: 'Mumbai', 'new bombay': 'Navi Mumbai', gurgaon: 'Gurugram', bangalore: 'Bengaluru', bengalooru: 'Bengaluru', calcutta: 'Kolkata', madras: 'Chennai',
   poona: 'Pune', baroda: 'Vadodara', trivandrum: 'Thiruvananthapuram', cochin: 'Kochi', allahabad: 'Prayagraj', benares: 'Varanasi', banaras: 'Varanasi',
   'naya raipur': 'Raipur', 'nava raipur': 'Raipur', 'new raipur': 'Raipur', 'new delhi': 'Delhi', 'greater noida': 'Noida', vizag: 'Visakhapatnam', 'new delhi ncr': 'Delhi',
+  'udaipur tripura': 'Udaipur (Tripura)', mysore: 'Mysuru', pondicherry: 'Puducherry', mangalore: 'Mangaluru', belgaum: 'Belagavi', hubli: 'Hubballi', trichy: 'Tiruchirappalli', gauhati: 'Guwahati', panjim: 'Panaji', simla: 'Shimla', bhubaneshwar: 'Bhubaneswar', banglore: 'Bengaluru', 'new mumbai': 'Navi Mumbai', vijayawada: 'Vijayawada', ahmadabad: 'Ahmedabad',
 };
 
 /** Canonical city name: trims, collapses spaces, fixes old/alternate names and casing ("gurgaon " → "Gurugram"). */

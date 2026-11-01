@@ -96,7 +96,12 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
 
   const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'my'>(() => (isOwner ? 'my' : 'all'));
   const [selectedState, setSelectedState] = useState<string>('All');
-  const [selectedCity, setSelectedCity] = useState<string>('All');
+  // v100 — a broker / buyer first sees homes of THEIR OWN city (the network is India-wide); "All cities" is one tap away and the choice is remembered
+  const [selectedCity, setSelectedCityRaw] = useState<string>(() => {
+    try { const v = localStorage.getItem('genz.propCity.' + currentUser.id); if (v) return v; } catch { /* storage blocked */ }
+    return (!isAdmin && (currentUser.role === 'BROKER' || currentUser.role === 'BUYER_TENANT') && currentUser.city) ? currentUser.city : 'All';
+  });
+  const setSelectedCity = (v: string) => { setSelectedCityRaw(v); try { localStorage.setItem('genz.propCity.' + currentUser.id, v); } catch { /* storage blocked */ } };
   const [selectedTag, setSelectedTag] = useState<string>('All');
   const [selectedType, setSelectedType] = useState<string>('All');
   const [mandateFor, setMandateFor] = useState<Property | null>(null);
@@ -300,6 +305,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
           </select>
           <select aria-label={hi ? 'शहर' : 'City'} value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
             <option value="All">{hi ? 'सभी शहर' : 'All cities'}</option>
+            {selectedCity !== 'All' && !citiesInUse.includes(selectedCity) && <option value={selectedCity}>{selectedCity}</option>}
             {citiesInUse.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <select aria-label={hi ? 'प्रॉपर्टी का प्रकार' : 'Property type'} value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
@@ -347,6 +353,11 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 {tx('See all network', 'पूरा नेटवर्क देखें')}
+              </button>
+            )}
+            {ownershipFilter !== 'my' && selectedCity !== 'All' && (
+              <button type="button" data-testid="props-all-cities" onClick={() => { setSelectedCity('All'); setSelectedState('All'); }} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                {tx(`Showing only ${selectedCity} — see all cities`, `सिर्फ़ ${selectedCity} दिख रहा है — सभी शहर देखें`)}
               </button>
             )}
             {may('property:create') && (

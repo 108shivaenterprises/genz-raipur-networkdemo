@@ -4,6 +4,8 @@
  * what changed in his need) so they can be tested alone. The bot never invents a fact: prices, availability and homes come from the app's data.
  */
 import { areasOf, placeKey, canonPlace, isCityLevel } from './places.js';
+import { findCityNames } from './waParse.js';
+import { sameCity } from './india.js';
 
 export type Intent = 'GREET' | 'VISIT' | 'PHOTOS' | 'PRICE' | 'AVAIL' | 'MORE' | 'HUMAN' | 'THANKS' | 'NEED' | 'STATUS' | 'OTHER';
 
@@ -39,9 +41,12 @@ export function readIntent(text: string): Intent {
 }
 
 // ───────────────────────── the need, read from free text ─────────────────────────
-export interface NeedChange { kind?: 'BUY' | 'RENT_IN'; budget?: string; ptype?: string; bhk?: number; locality?: string }
+export interface NeedChange { kind?: 'BUY' | 'RENT_IN'; budget?: string; ptype?: string; bhk?: number; locality?: string; /** v100 — a city other than the shop's / broker's that the customer named */ city?: string }
 const TYPE_RULES: [RegExp, string][] = [
-  [/farm\s*house|फ़ार्म|फार्म/, 'Farm House'], [/agri|khet|खेत|कृषि/, 'Agricultural Land'], [/godown|warehouse|गोदाम/, 'Warehouse / Godown'],
+  [/\bpg\b|paying\s*guest|hostel|हॉस्टल/, 'PG / Hostel'], [/co-?working|को-?वर्किंग/, 'Co-working Space'], [/banquet|marriage\s*(?:hall|garden|lawn)|मैरिज\s*हॉल|बैंक्वेट/, 'Banquet / Marriage Hall'],
+  [/guest\s*house|गेस्ट\s*हाउस|\bhotel\s*(?:for|property|building|business)\b/, 'Hotel / Guest House'], [/(?:factory|industrial)\s*(?:shed|building)|फैक्ट्री\s*शेड/, 'Factory / Industrial Shed'],
+  [/(?:school|hospital|college|nursing\s*home)\s*(?:building|campus|property|for\s*(?:sale|lease|rent))/, 'School / Hospital Building'],
+    [/farm\s*house|फ़ार्म|फार्म/, 'Farm House'], [/agri|khet|खेत|कृषि/, 'Agricultural Land'], [/godown|warehouse|गोदाम/, 'Warehouse / Godown'],
   [/factory|industr|फैक्ट्री|उद्योग/, 'Industrial Plot'], [/showroom|शोरूम/, 'Showroom'], [/shop|dukaan|dukan|दुकान/, 'Commercial Shop'], [/office|ऑफ़िस|ऑफिस/, 'Commercial Office'],
   [/villa|विला/, 'Residential Villa'], [/penthouse/, 'Penthouse'], [/builder\s*floor|बिल्डर\s*फ्लोर/, 'Builder Floor'], [/plot|zameen|jamin|जमीन|ज़मीन|प्लॉट/, 'Residential Plot'],
   [/independent|house|makaan|makan|मकान|कोठी|kothi/, 'Independent House'], [/flat|apartment|अपार्टमेंट|फ्लैट|\d\s*bhk|बीएचके/, 'Residential Flat'],
@@ -59,7 +64,11 @@ export function readNeedChange(text: string, city = ''): NeedChange {
     || ((/(budget|बजट|kiraya|किराया|rent|price|कीमत|tak|तक|under|within)/.test(t)) ? /(?:₹|rs\.?|inr)?\s*(\d{4,9})(?!\d)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2')) : null);
   if (mm) { const n = Number(mm[1]); if (n > 0) out.budget = mm[2] ? (/^(k|thousand)$/i.test(mm[2]) ? `${mm[1]}k` : `${mm[1]} ${mm[2]}`) : String(Math.round(n)); }
   for (const [re, ty] of TYPE_RULES) if (re.test(t)) { out.ptype = ty; break; }
-  const loc = findArea(raw, city); if (loc) out.locality = loc;
+  // v100 — "Indore mein chahiye" at a Pune shop: the customer's own city wins; the area is then read inside THAT city, and a bare city name means "any area"
+  const other = findCityNames(raw).find(c => !sameCity(c.city, city));
+  if (other) out.city = other.city;
+  const loc = findArea(raw, out.city || city); if (loc) out.locality = loc;
+  else if (out.city) out.locality = out.city;
   return out;
 }
 /** words that are never part of a place name — type, money, filler (Hindi / Hinglish / English) */

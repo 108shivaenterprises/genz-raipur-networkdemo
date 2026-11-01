@@ -417,7 +417,7 @@ export function createDailyRouter() {
     });
     // requirements are shown without any customer detail: only what the need is and where
     const reqs = st.requirements.filter(q => ['active', 'matching'].includes(q.status)).flatMap(q => (q.preferredLocalities.length ? q.preferredLocalities.slice(0, 1) : ['']).map(loc => {
-      const pt = approxPoint(q.city || '', loc);
+      const pt = approxPoint(q.city || '', loc, undefined, undefined, q.state);
       return { kind: 'REQUIREMENT', id: q.id, title: `${q.propertyType} wanted`, locality: loc || (q.city || ''), city: q.city || '', propertyType: q.propertyType, transactionType: q.transactionType, price: q.budgetMax, priceMin: q.budgetMin, mine: q.assignedBrokerId === u.id, lat: pt.lat, lng: pt.lng };
     }));
     const all = [...listings, ...reqs];

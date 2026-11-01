@@ -150,7 +150,7 @@ describe('a local associate enters only through a RERA-registered sponsor', () =
     // the RERA route
     const email = `dup.${Date.now()}@example.in`; const ph2 = rnd();
     const inv = await j(await call(jar.SUP, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: ph2, targetRole: 'BROKER' }));
-    const rr = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.invitation.code, name: 'Dup Pan', email, phone: ph2, password: PW, consent: true, reraNumber: 'PCGRERA250999-0001', panNumber: S.pan, aadhaarNumber: mkAadhaar(), idConsent: true }) });
+    const rr = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.invitation.code, name: 'Dup Pan', email, phone: ph2, password: PW, consent: true, city: 'Raipur', reraNumber: 'PCGRERA250999-0001', panNumber: S.pan, aadhaarNumber: mkAadhaar(), idConsent: true }) });
     expect(rr.status).toBe(409);
     // and a fresh PAN works — Umesh stays PENDING for the later tests
     const pan = mkPan(); const ok = await regRaw(p.invitation.code, phone, { panNumber: pan }); expect(ok.status).toBe(200);

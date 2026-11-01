@@ -4,7 +4,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { db, UserRole, UserProfile, sha256, type DatabaseState, type DealRoom, type BuyerRequirement as BuyerRequirementT, type AuditEvent as AuditEventT } from './server/db.js';
 import {
-  calculatePropertyMatch
+  calculatePropertyMatch,
+  cityMismatch
 } from './server/matching.js';
 import {
   generateDealTasks,
@@ -136,7 +137,7 @@ import { createSidesRouter, shapeSideDeal, stripSideData } from './server/sides.
 import { allSidesDone, checkProposerSide, feeFor, isOwnSide, otherSide, undertakingDone } from './src/shared/sideFees.js';
 import { createPartyWatchRouter, partyBlock, partyCaution, sweepPartyWatch } from './server/partywatch.js';
 import { createBuyerBondRouter, buyerBondBlock, makeBuyerBond } from './server/buyerbond.js';
-import { createConsentRouter, createOwnerConsentPageRouter, sweepConsents, findBlockingBond, blockedAnswer, consentForPublish, markPublished, listingKey, signatureSummary, draftForProperty } from './server/consent.js';
+import { createConsentRouter, createOwnerConsentPageRouter, sweepConsents, findBlockingBond, blockedAnswer, consentForPublish, markPublished, listingKey, signatureSummary, draftForProperty, stateFor } from './server/consent.js';
 import { createPushRouter } from './server/webpush.js';
 import { createInboxRouter, sweepInbox, setTodoSync } from './server/inbox.js';
 import { syncHomeBell } from './server/homebell.js';
@@ -157,8 +158,10 @@ import { createOffersRouter, sweepOffers } from './server/offers.js';
 import { createListingsRouter, createPublicPosterRouter, sweepSoldPurge } from './server/listings.js';
 import { createVisitRouter, createPublicVisitRouter, sweepVisitPasses } from './server/visitpass.js';
 import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
-import { containsPhone } from './src/shared/clientRoomRules.js';
+import { contactKind, recentOwn } from './src/shared/clientRoomRules.js';
+import { priceProblem } from './src/shared/priceSanity.js';
 const PHONE_IN_DEAL_MSG = 'Phone numbers cannot be shared in the deal room — it is seen by both sides. Use the in-app call, or the visit / deal tools.';
+const CONTACT_IN_DEAL_MSG = 'E-mail, UPI, Instagram / Telegram IDs and chat links cannot be shared in the deal room — it is seen by both sides. Use the in-app chat, call, or the visit / deal tools.';
 import { mandateShareAt } from './src/shared/mandateShare.js';
 import { visitGate, windowEnd, rescheduleError, REMIND_EVERY_MIN } from './src/shared/visitGateRules.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
@@ -870,6 +873,11 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     }
   }
 
+  // v100 — every member (except a shop partner) belongs to a city: homes, needs, alerts, the map and the Properties list all start from it
+  const signupCity = normCity(req.body?.city || t2app?.city);
+  if (invite.targetRole !== 'GENZ_CONNECTOR' && !signupCity) return res.status(400).json({ error: 'Your city is required — GENZ matches clients and homes city by city.', code: 'CITY_REQUIRED' });
+  const signupState = findState(req.body?.state)?.name || stateFor('', signupCity) || undefined;
+
   const userId = `USR-${invite.targetRole.slice(0, 3)}-${Date.now()}`;
   const now = new Date().toISOString();
 
@@ -879,8 +887,8 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     email,
     phone,
     role: invite.targetRole,
-    city: normCity(req.body?.city || t2app?.city),
-    state: findState(req.body?.state)?.name,
+    city: signupCity,
+    state: signupState,
     ...(parsed.data.locality ? { homeLocality: canonPlace(req.body?.city || t2app?.city, parsed.data.locality) } : {}),
     ...((parsed.data.areas || []).length ? { profile: { areas: [...new Set((parsed.data.areas || []).flatMap(a => splitPlaces(a)).map(a => canonPlace(req.body?.city || t2app?.city, a)).filter(Boolean))].slice(0, 10) } } : {}),
     companyName: companyName || connectorProfile?.shopName || '',
@@ -1204,6 +1212,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
 
   const data = parseResult.data;
   data.locality = canonPlace(data.city, data.locality) || data.locality; // v90: one spelling per place, so duplicates and matches line up
+  { const pp = priceProblem(data as any); if (pp && !isAdmin(currentUser)) return res.status(422).json({ error: pp, code: 'PRICE_SANITY' }); }   // v100: a price that cannot be real (typo or bait)
   const state = db.getState();
 
   // Resolve the two principals explicitly — never default to a hard-coded broker/owner account.
@@ -1450,6 +1459,7 @@ app.post('/api/properties/:id/price-update', needs('property:update'), (req: Req
   if (prop.ownerApprovedNetPrice && price < prop.ownerApprovedNetPrice) {
     return res.status(400).json({ error: 'Asking price cannot be set below the owner-approved net price' });
   }
+  { const pp = priceProblem({ ...(prop as any), askingPrice: price }); if (pp && !isAdmin(currentUser)) return res.status(422).json({ error: pp, code: 'PRICE_SANITY' }); }
 
   const now = new Date().toISOString();
   prop.priceHistory.push({
@@ -1512,6 +1522,7 @@ app.put('/api/properties/:id', needs('property:update'), (req: Request, res: Res
   const now = new Date().toISOString();
   const nextAsking = data.askingPrice ?? prop.askingPrice;
   const nextNet = data.ownerApprovedNetPrice ?? prop.ownerApprovedNetPrice;
+  if (data.askingPrice !== undefined && data.askingPrice !== prop.askingPrice) { const pp = priceProblem({ ...(prop as any), ...(data as any), askingPrice: nextAsking }); if (pp && !isAdmin(currentUser)) return res.status(422).json({ error: pp, code: 'PRICE_SANITY' }); }
   if (nextNet && nextAsking < nextNet) {
     return res.status(400).json({ error: 'Asking price cannot be below the owner-approved net price' });
   }
@@ -1776,7 +1787,7 @@ app.get('/api/matching/requirement/:reqId', needs('matching:run'), (req: Request
   }
 
   const activeProperties = state.properties.filter(p => p.listingStatus === 'active' && p.verificationStatus === 'VERIFIED');
-  const matches = activeProperties.map(prop => {
+  const matches = activeProperties.filter(prop => !cityMismatch(prop, requirement)).map(prop => {
     const matchResult = calculatePropertyMatch(prop, requirement);
     return {
       property: {
@@ -1811,7 +1822,7 @@ app.get('/api/matching/property/:propId', needs('matching:run'), (req: Request, 
   }
 
   const activeRequirements = state.requirements.filter(r => r.status === 'active' || r.status === 'matching');
-  const matches = activeRequirements.map(reqItem => {
+  const matches = activeRequirements.filter(reqItem => !cityMismatch(property, reqItem)).map(reqItem => {
     const matchResult = calculatePropertyMatch(property, reqItem);
     const mine = isAdmin(currentUser) || reqItem.assignedBrokerId === currentUser.id;
     return {
@@ -5596,7 +5607,8 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
   if (kind ? text.length > 300 : (!text || text.length > 2000)) return res.status(400).json({ error: kind ? 'A caption can be up to 300 characters' : 'Message must be 1–2000 characters' });
   if (text) {
     // audit F6 — a deal room joins both sides (owner / buyer and the other broker): no phone numbers, whatever the account's age
-    const blocked = filterMessage(currentUser, text) || (containsPhone(text) ? PHONE_IN_DEAL_MSG : null);
+    const ck = contactKind(text, recentOwn(state.dealMessages.filter(m => m.dealRoomId === deal.id && m.senderId === currentUser.id), m => m.timestamp, m => m.text));   // v100: also a number split over messages, e-mail / UPI / social ids / chat links
+    const blocked = filterMessage(currentUser, text) || (ck === 'PHONE' ? PHONE_IN_DEAL_MSG : ck ? CONTACT_IN_DEAL_MSG : null);
     if (blocked) { db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'CHAT_BLOCKED', blocked); return res.status(400).json({ error: blocked, code: 'CHAT_FILTER' }); }
   }
   if (b.mediaUrl && !isSafeUrl(b.mediaUrl)) return res.status(400).json({ error: 'mediaUrl must be an https URL' });

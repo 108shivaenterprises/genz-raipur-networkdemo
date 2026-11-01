@@ -921,7 +921,11 @@ export const AddRequirementModal: React.FC<{
             </div>
           </div>
 
-          <LocationFields value={loc} onChange={(v) => { setLoc(v); }} showLocality={false} showPincode={false} />
+          <div data-testid="req-where">
+            <p className="mb-1 text-xs font-semibold text-slate-700">{hi ? 'क्लाइंट को प्रॉपर्टी कहाँ चाहिए?' : 'Where does the client want the property?'}</p>
+            <p className="mb-1.5 text-[11px] leading-snug text-slate-500">{hi ? 'यह आपके अपने शहर से अलग भी हो सकता है — मैच उसी शहर के घरों से होगा जो आप यहाँ चुनेंगे।' : 'This can be a different city from yours — matches come only from the city you pick here.'}</p>
+            <LocationFields value={loc} onChange={(v) => { setLoc(v); }} showLocality={false} showPincode={false} />
+          </div>
 
           <div>
             <label className="text-xs font-semibold text-slate-700">{hi ? 'पसंदीदा इलाके' : 'Preferred localities'}{loc.city ? ` — ${loc.city}` : ''}:</label>

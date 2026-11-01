@@ -41,6 +41,7 @@ const MAX_MONEY = 100_000_000_000; // ₹10,000 Cr sanity ceiling
 const safeUrl = z.string().max(2048).refine(isSafeUrl, { message: 'Only http(s) URLs are allowed' });
 const optionalSafeUrl = z.union([z.literal(''), safeUrl]).optional();
 import { PROPERTY_TYPES, findState, isPincode, cleanTags } from '../src/shared/india.js';
+import { containsContact } from '../src/shared/clientRoomRules.js';
 
 /** A real Indian state / UT (English or Hindi name) → canonical English name. */
 const stateField = z.string().trim().min(2, 'Select the state / UT').max(80)
@@ -53,13 +54,17 @@ const tagsField = z.array(z.string().max(60)).max(30).optional().transform(v => 
 // Indian Phone Number Validator: +91 followed by 10 digits starting with 6-9, or 10 digits
 export const indianPhoneRegex = /^(?:(?:\+91[\s-]?)?[6789]\d{9})$/;
 
+/** v100 — text that ANOTHER person reads (listing text, offer terms, visit notes) never carries a phone number, e-mail, UPI / social id or chat link: GENZ connects people itself */
+export const NO_CONTACT_MSG = 'Do not write phone numbers, e-mail, UPI, Instagram / Telegram IDs or chat links here — GENZ connects people itself (chat, visit, call).';
+const noContact = (v: string) => !containsContact(v);
+
 export const phoneSchema = z.string().refine(val => indianPhoneRegex.test(val.replace(/\s+/g, '')), {
   message: 'Please provide a valid Indian 10-digit mobile number (+91 9XXXX XXXXX)',
 });
 
 export const propertyCreateSchema = z.object({
-  title: z.string().trim().min(5, 'Title must be at least 5 characters').max(160),
-  description: z.string().trim().min(10, 'Description must be at least 10 characters').max(5000),
+  title: z.string().trim().min(5, 'Title must be at least 5 characters').max(160).refine(noContact, NO_CONTACT_MSG),
+  description: z.string().trim().min(10, 'Description must be at least 10 characters').max(5000).refine(noContact, NO_CONTACT_MSG),
   propertyType: z.enum(PROPERTY_TYPES),
   transactionType: z.enum(['Sale', 'Rent', 'Lease']),
   state: stateField,
@@ -70,9 +75,9 @@ export const propertyCreateSchema = z.object({
   street: z.string().max(200).optional(),
   pincode: pincodeField.optional(),
   tags: tagsField,
-  locality: z.string().trim().min(2, 'Locality is required (e.g. Koramangala, Shankar Nagar, Andheri West)').max(80),
+  locality: z.string().trim().min(2, 'Locality is required (e.g. Koramangala, Shankar Nagar, Andheri West)').max(80).refine(noContact, NO_CONTACT_MSG),
   addressHidden: z.string().trim().min(5, 'Specific address is required for confidential verification').max(300),
-  landmark: z.string().max(200).optional().default(''),
+  landmark: z.string().max(200).refine(noContact, NO_CONTACT_MSG).optional().default(''),
   googleMapsUrl: optionalSafeUrl,
   googleMapsDirectionsUrl: optionalSafeUrl,
   latitude: z.number().min(-90).max(90).optional(),
@@ -96,15 +101,15 @@ export const propertyCreateSchema = z.object({
 
 /** Whitelisted, validated fields for PUT /api/properties/:id (no mass-assignment). */
 export const propertyUpdateSchema = z.object({
-  title: z.string().trim().min(5).max(160),
-  description: z.string().trim().min(10).max(5000),
+  title: z.string().trim().min(5).max(160).refine(noContact, NO_CONTACT_MSG),
+  description: z.string().trim().min(10).max(5000).refine(noContact, NO_CONTACT_MSG),
   propertyType: z.enum(PROPERTY_TYPES),
   transactionType: z.enum(['Sale', 'Rent', 'Lease']),
   city: z.string().trim().min(2).max(80),
   state: stateField,
   district: z.string().max(80),
   tags: tagsField,
-  locality: z.string().trim().min(2).max(80),
+  locality: z.string().trim().min(2).max(80).refine(noContact, NO_CONTACT_MSG),
   landmark: z.string().max(200),
   village: z.string().max(80),
   street: z.string().max(200),
@@ -126,7 +131,7 @@ export const propertyUpdateSchema = z.object({
 export const projectCreateSchema = z.object({
   projectName: z.string().trim().min(3, 'Project name is required').max(120),
   tagline: z.string().trim().max(200).optional(),
-  locality: z.string().trim().min(2, 'Locality is required').max(80),
+  locality: z.string().trim().min(2, 'Locality is required').max(80).refine(noContact, NO_CONTACT_MSG),
   reraNumber: z.string().trim().min(5, 'RERA registration number is required').max(60),
   projectType: z.enum(['Luxury High-Rise', 'Gated Plotted Enclave', 'Commercial Mall & Business Hub', 'Ultra-Luxury Villas']).optional(),
   projectStage: z.enum(['Pre-Launch / Upcoming', 'Under Construction', 'Ready to Move']).optional(),
@@ -182,7 +187,7 @@ export const registerSchema = z.object({
   email: z.string().trim().email('A valid e-mail address is required').max(200).optional().or(z.literal('')),
   shopType: z.string().max(40).optional(),
   shopName: z.string().trim().max(100).optional(),
-  locality: z.string().trim().max(80).optional(),
+  locality: z.string().trim().max(80).refine(noContact, NO_CONTACT_MSG).optional(),
   /** v90 — the areas of the city this person works in (brokers, builders…), so the network knows who is where */
   areas: z.array(z.string().trim().max(80)).max(10).optional(),
   payoutUpi: z.string().trim().max(80).optional(),
@@ -229,7 +234,7 @@ export const requirementCreateSchema = z.object({
   budgetMax: z.number().positive('Maximum budget must be positive').max(MAX_MONEY),
   state: stateField.optional(),
   city: z.string().trim().min(2, 'City is required').max(80),
-  preferredLocalities: z.array(z.string().trim().max(80)).min(1, 'At least one preferred locality is required').max(10),
+  preferredLocalities: z.array(z.string().trim().max(80).refine(noContact, NO_CONTACT_MSG)).min(1, 'At least one preferred locality is required').max(10),
   preferredTags: tagsField,
   propertyType: z.enum(PROPERTY_TYPES),
   transactionType: z.enum(['Sale', 'Rent', 'Lease']),
@@ -258,7 +263,7 @@ export const collaborationOfferSchema = z.object({
   /** v41 — OWN_SIDE: no split, each broker keeps the fee of his own client */
   feeMode: z.enum(['SPLIT', 'OWN_SIDE']).optional().default('SPLIT'),
   proposerSide: z.enum(['SELLER', 'BUYER']).optional(),
-  terms: z.string().min(5, 'Terms and brokerage split notes required').max(2000),
+  terms: z.string().min(5, 'Terms and brokerage split notes required').max(2000).refine(noContact, NO_CONTACT_MSG),
 }).refine(data => data.feeMode === 'OWN_SIDE'
   || (data.proposedIntroducingShare !== undefined && data.proposedClosingShare !== undefined
     && Math.abs(data.proposedIntroducingShare + data.proposedClosingShare - 100) < 0.001), {
@@ -273,7 +278,7 @@ export const siteVisitCreateSchema = z.object({
   customerName: z.string().trim().min(1, 'Customer name is required').max(120),
   customerPhone: z.union([z.literal(''), phoneSchema]).optional().default(''),
   scheduledTime: z.string().min(1, 'Visit time is required').refine(v => !Number.isNaN(Date.parse(v)), 'Invalid visit date/time'),
-  notes: z.string().max(1000).optional().default(''),
+  notes: z.string().max(1000).refine(noContact, NO_CONTACT_MSG).optional().default(''),
   scanAt: z.enum(['PROPERTY', 'MEET']).optional(),
   /** v40 — booked from a Client Room: the room, the home and (optionally) the client's visit request it answers */
   clientRoomId: z.string().max(40).optional(),

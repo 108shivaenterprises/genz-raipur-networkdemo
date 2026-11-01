@@ -91,6 +91,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       if (addrIssue || pinIssue) { const w = addrIssue || pinIssue!; setError(hi ? w.hi : w.en); return; }
       if (!idConsent) { setError(hi ? 'PAN, आधार नंबर और पता रखने की सहमति दें' : 'Please agree to GENZ keeping your PAN, Aadhaar number and address'); return; }
     }
+    if (!loc.city.trim()) { setError(hi ? 'अपना शहर चुनें — GENZ क्लाइंट और घर शहर के हिसाब से मिलाता है।' : 'Choose your city — GENZ matches clients and homes city by city.'); return; }
     setBusy(true);
     try {
       const reg = await api.registerInvite({
@@ -144,7 +145,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <div><label className="text-xs font-semibold text-slate-700">{hi ? 'मोबाइल नंबर' : 'Mobile number'} *</label><input required value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="9XXXXXXXXX" className={input} /></div>
               {!phoneOnly && <div><label className="text-xs font-semibold text-slate-700">Email *</label><input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></div>}
             </div>
-            <LocationFields value={loc} onChange={setLoc} showLocality showPincode={false} required={false} />
+            <LocationFields value={loc} onChange={setLoc} showLocality showPincode={false} required />
             {role !== 'GENZ_CONNECTOR' && (
               <AreaChips city={loc.city} value={areas} onChange={setAreas} testId="join-areas"
                 label={hi ? 'आप किन इलाकों में काम करते हैं?' : 'Which areas do you work in?'}

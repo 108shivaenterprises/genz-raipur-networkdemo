@@ -2,6 +2,12 @@ import { Property, BuyerRequirement, MatchScore } from './db.js';
 import { RELATED_TYPE_GROUPS, sameCity } from '../src/shared/india.js';
 import { localityFit, inferCity } from '../src/shared/places.js';
 
+/** v100 — true when the client clearly wants a DIFFERENT city than this home is in. Such a pair is never shown to anyone. */
+export function cityMismatch(property: Pick<Property, 'city'>, requirement: Pick<BuyerRequirement, 'city' | 'preferredLocalities'>): boolean {
+  const reqCity = requirement.city || inferCity(requirement.preferredLocalities);
+  return !!reqCity && !sameCity(reqCity, property.city);
+}
+
 export function calculatePropertyMatch(property: Property, requirement: BuyerRequirement): MatchScore {
   let score = 0;
   const reasons: string[] = [];
