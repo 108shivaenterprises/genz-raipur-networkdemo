@@ -799,6 +799,8 @@ export interface Property {
 
 export interface BuyerRequirement {
   id: string; // e.g. REQ-RAI-201
+  /** v101 — made from a shop-QR lead the moment he confirmed his need; the number stays hidden ('') until the chat opens it */
+  leadId?: string;
   customerId: string; // Persistent customer entity ID
   customerName: string;
   customerPhone: string; // Masked for unauthorized brokers
@@ -1504,6 +1506,10 @@ export interface LeadBot {
   visits?: LeadVisitReq[]; sentHomes?: string[]; roomId?: string; roomSealed?: string; roomAt?: string; lastFallbackAt?: string; needsBroker?: string;
   /** v99 — an OWNER's listing interview: the facts gathered so far, the question open now, what he skipped, and the broker's draft once it is made */
   interview?: { fields: Record<string, any>; step?: string; skipped: string[]; tries: number; startedAt: string; doneAt?: string; draftId?: string };
+  /** v101 — what the NETWORK (other brokers' live homes) held for his need when it was last searched: how many, and the price range (never which homes) */
+  network?: { count: number; min: number; max: number; at: string; reqId?: string; toldKey?: string };
+  /** v101 — he was asked once to write his budget (so the network search can run) */
+  askedBudget?: boolean;
 }
 export interface PartnerLead {
   id: string;                      // PLD-xxxxxxxxxx
@@ -1531,7 +1537,7 @@ export interface PartnerLead {
   clientCardId?: string;
   /** v85 — the number is NOT shown to the broker (only ••last4) until, in this in-app chat, the customer has confirmed his need AND the broker has shared a home that matches it
    *  (owner-side leads: until the owner confirms the property details). No `chat` = a lead from before v85 (number already visible). `keyHash` = sha256 of the customer's private link token. */
-  chat?: { keyHash: string; msgs: LeadMsg[]; reqAskedAt?: string; reqConfirmedAt?: string; reqText?: string; revealedAt?: string; revealedBy?: { homeId?: string; title?: string }; brokerSeenAt?: string; customerSeenAt?: string; bot?: LeadBot };
+  chat?: { keyHash: string; /** v101 — the customer's private link, sealed, so the SAME link can be given back after an SMS code (a lost / second phone) */ keySealed?: string; /** v101 — an SMS code asked on the QR page to reopen this chat (hash, expiry, wrong tries) */ resume?: { hash: string; expires: string; tries: number }; msgs: LeadMsg[]; reqAskedAt?: string; reqConfirmedAt?: string; reqText?: string; revealedAt?: string; revealedBy?: { homeId?: string; title?: string }; brokerSeenAt?: string; customerSeenAt?: string; bot?: LeadBot };
   /** v64 — the home he tapped "I'm interested" on (on the broker's own public page); `homeOwn` false = another GENZ broker's listing (that broker never sees this lead) */
   homeId?: string; homeTitle?: string; homeOwn?: boolean;
   /** v64 — the "no direct deal" promise he ticked and signed (typed name) on the QR page; wording version + text are kept so a dispute can show what he agreed to */

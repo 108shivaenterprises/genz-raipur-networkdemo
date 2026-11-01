@@ -34,6 +34,8 @@ export interface BotDeps {
   isLive(h?: Property): boolean;
   /** put what he wrote into the lead (budget / type / area / BHK / buy-or-rent) → the words of what changed */
   applyNeed(l: PartnerLead, ch: NeedChange): string[];
+  /** v101 — search the NETWORK (other brokers' live homes) for his need: makes / updates his buyer need and returns how many homes there are and their price range; null = no budget yet / not a buyer */
+  networkScan(l: PartnerLead): { count: number; min: number; max: number; reqId: string } | null;
   /** v98 — the city this lead is in (the shop's, else the broker's); '' when unknown. Any city of India. */
   cityOf(l: PartnerLead): string;
   /** v99 — what the QR form already told us about an OWNER's property (type, sale / rent, place, price, name, number) */
@@ -71,6 +73,31 @@ export function makeSahayak(d: BotDeps) {
   const menu = (l: PartnerLead): Chip[] => { if (d.ownerSide(l)) { const iv = l.chat?.bot?.interview; return [...(iv && !iv.doneAt ? [M.info] : [M.status]), M.human]; } const m = [M.visit, M.more]; if (l.chat?.revealedAt && !botOf(l).roomId && buyerSide(l)) m.push(M.room); m.push(M.human); return m; };
   const price = (h: Property) => { const p = Number(h.askingPrice) || 0; return p >= 1e7 ? `₹${(p / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr` : p >= 1e5 ? `₹${(p / 1e5).toFixed(2).replace(/\.?0+$/, '')} लाख` : `₹${p.toLocaleString('en-IN')}`; };
 
+  /** the Hindi words applyNeed returns for what changed → the same in English (the English line of a bot message never carries Hindi words) */
+const CH_EN: Record<string, string> = { 'खरीदना': 'buy', 'किराया': 'rent', 'बजट': 'budget', 'प्रकार': 'type', 'शहर': 'city', 'इलाका': 'area', 'BHK': 'BHK' };
+const chEn = (c: string[]) => c.map(x => CH_EN[x] || x).join(', ');
+const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड़` : n >= 1e5 ? `₹${+(n / 1e5).toFixed(2)} लाख` : `₹${Math.round(n).toLocaleString('en-IN')}`;
+  const rsEn = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${+(n / 1e5).toFixed(2)} L` : `₹${Math.round(n).toLocaleString('en-IN')}`;
+  /** v101 — he confirmed (or changed) his need: search the NETWORK for it and tell him how many homes the network holds and their price range — never which homes, where, or whose.
+   *  The same step makes his buyer need for the broker (number still hidden), so the network search and Magic Match work even before any home of the broker's own fits. Told once per result. */
+  function networkNote(l: PartnerLead): void {
+    if (off(l) || !l.chat || !buyerSide(l)) return;
+    const b = botOf(l); const who = d.broker(l)?.name || 'ब्रोकर';
+    const n = d.networkScan(l);
+    if (!n) {
+      if (!b.askedBudget) { b.askedBudget = true; say(l, 'अपना बजट भी लिख दें (जैसे “बजट 60 लाख”) — तब मैं पूरे नेटवर्क में आपके लिए घर खोज सकूँगा। 🔎', 'Please write your budget too (for example “budget 60 lakh”) — then I can search the whole network for you. 🔎'); }
+      return;
+    }
+    const key = `${n.count}|${n.min}|${n.max}|${d.needLine(l)}`; if (b.network?.toldKey === key) return;
+    if (b.network) b.network.toldKey = key;
+    if (n.count > 0) {
+      const same = n.min === n.max;
+      say(l, `🌐 GENZ नेटवर्क में आपके लिए ${n.count} प्रॉपर्टी उपलब्ध ${n.count === 1 ? 'है' : 'हैं'} — कीमत ${same ? rsHi(n.min) : `${rsHi(n.min)} से ${rsHi(n.max)} तक`}। ${who} आपकी तरफ़ से इन ब्रोकरों से बात कर रहे हैं; जो घर आपके लायक होंगे वो यहीं भेजे जाएँगे।`,
+        `🌐 The GENZ network has ${n.count} propert${n.count === 1 ? 'y' : 'ies'} for you — priced ${same ? rsEn(n.min) : `${rsEn(n.min)} to ${rsEn(n.max)}`}. ${who} is talking to those brokers on your behalf; the homes worth your time will be sent here.`);
+      d.hist(l, `Network search for his need: ${n.count} home(s), ${rsEn(n.min)}–${rsEn(n.max)} — he was told the count and range only`);
+    } else d.hist(l, 'Network search for his need: nothing yet — his need stays saved, the broker is alerted when a home fits');   // nothing to tell him: the "no home right now" line (or his homes) follows
+  }
+
   /** the first thing he sees: who this is, and his need to confirm (the ✅ / ✏️ card) */
   function welcome(l: PartnerLead) {
     if (off(l) || !l.chat) return;
@@ -86,10 +113,13 @@ export function makeSahayak(d: BotDeps) {
     const sent = sentIds(l); const pick = d.matchesFor(l).filter(h => !sent.includes(h.id)).slice(0, BOT_LIMITS.autoHomes);
     if (!pick.length) {
       if (!sent.length) {
-        say(l, 'अभी आपकी ज़रूरत से मेल खाता कोई घर उपलब्ध नहीं है। मैंने ब्रोकर को बता दिया है — नया घर आते ही यहीं दिखा दूँगा। आप चाहें तो ✏️ लिखकर ज़रूरत बदल भी सकते हैं (जैसे “बजट 60 लाख”).',
-          'No live home matches your need right now. I have told the broker — I will show a new one here as soon as it comes. You can also write a change (for example “budget 60 lakh”).', [M.human]);
-        const b = botOf(l); b.needsBroker = 'no-match';
-        d.tellBroker(l, `🔎 ${l.name}: मेल खाता घर नहीं`, `${d.needLine(l)} — आपकी कोई live लिस्टिंग इससे मेल नहीं खाती। नई लिस्टिंग जोड़ें।`);
+        const b = botOf(l); const nw = b.network?.count || 0; const who = d.broker(l)?.name || 'ब्रोकर';
+        if (nw > 0) say(l, `${who} के अपने घरों में अभी सीधा मेल नहीं है — पर ऊपर बताए नेटवर्क के घरों पर वे काम कर रहे हैं। नया घर आते ही यहीं दिखा दूँगा। आप चाहें तो ज़रूरत बदलकर भी लिख सकते हैं (जैसे “बजट 60 लाख”)।`,
+          `${who} has no home of his own that fits right now — but he is working on the network homes mentioned above. I will show a new one here as soon as it comes. You can also write a change (for example “budget 60 lakh”).`, [M.human]);
+        else say(l, 'अभी आपकी ज़रूरत से मेल खाता कोई घर उपलब्ध नहीं है। मैंने ब्रोकर को बता दिया है — नया घर आते ही यहीं दिखा दूँगा। आप चाहें तो लिखकर ज़रूरत बदल भी सकते हैं (जैसे “बजट 60 लाख”, “शंकर नगर में चाहिए”)।',
+          'No live home matches your need right now. I have told the broker — I will show a new one here as soon as it comes. You can also write a change (for example “budget 60 lakh”, “I want it in Shankar Nagar”).', [M.human]);
+        b.needsBroker = 'no-match';
+        d.tellBroker(l, `🔎 ${l.name}: मेल खाता घर नहीं`, `${d.needLine(l)} — आपकी कोई live लिस्टिंग इससे मेल नहीं खाती${nw > 0 ? `, पर नेटवर्क में ${nw} घर हैं — Buyers / Match Center में देखें` : ''}। ${nw > 0 ? '' : 'नई लिस्टिंग जोड़ें।'}`);
       } else say(l, 'अभी इससे ज़्यादा मेल खाते घर नहीं हैं। नया घर आते ही बता दूँगा। 🙏', 'No more matching homes right now. I will tell you when a new one comes.', menu(l));
       return 0;
     }
@@ -97,6 +127,7 @@ export function makeSahayak(d: BotDeps) {
     const n = pick.length;
     say(l, `✅ आपकी ज़रूरत से मेल खाते ${n} ${n === 1 ? 'घर' : 'घर'} ऊपर भेजे हैं — ये अभी उपलब्ध हैं (बिके या किराये पर गए घर मैं नहीं दिखाता)। पसंद आए तो 📅 विज़िट चुनें।`,
       `I have sent ${n} matching home${n === 1 ? '' : 's'} above — they are available right now (I never show a sold or rented home). If you like one, choose 📅 visit.`, menu(l));
+    autoRoom(l);   // v101 — his number is open now: the client room opens by itself (it needs his number)
     if (why === 'first' || !l.chat!.revealedAt) d.tellBroker(l, `🤖 ${l.name}: ज़रूरत पक्की`, `सहायक ने ${n} मेल खाते घर भेजे — अब उसका नंबर आपको दिखेगा।`);
     else d.tellBroker(l, `🤖 ${l.name}: ${n} और घर भेजे`, 'सहायक ने चैट में नए मेल खाते घर दिखाए।');
     return n;
@@ -188,6 +219,7 @@ export function makeSahayak(d: BotDeps) {
       d.tellBroker(l, `🤖 ${l.name}: जानकारी पक्की`, 'मालिक ने प्रॉपर्टी की जानकारी पक्की की — उसका नंबर अब दिख रहा है। सहायक अब बाकी सवाल पूछकर ड्राफ़्ट बनाएगा।');
       return startInterview(l);
     }
+    networkNote(l);   // v101 — his need goes to the network search + the broker's Buyers list now, whether or not a home of the broker's own fits
     showHomes(l, 'BOT', 'first');
   }
 
@@ -197,7 +229,7 @@ export function makeSahayak(d: BotDeps) {
     const ch = readNeedChange(text, d.cityOf(l)); const changed = d.applyNeed(l, ch);
     if (changed.length) {
       l.chat.reqConfirmedAt = undefined; l.chat.reqAskedAt = nowIso();
-      say(l, `समझ गया — मैंने आपकी ज़रूरत बदल दी (${changed.join(', ')}). नीचे देखकर ✅ दबाएँ।`, `Got it — I updated your need (${changed.join(', ')}). Check below and tap ✅.`);
+      say(l, `समझ गया — मैंने आपकी ज़रूरत बदल दी (${changed.join(', ')}). नीचे देखकर ✅ दबाएँ।`, `Got it — I updated your need (${chEn(changed)}). Check below and tap ✅.`);
       d.addMsg(l, { by: 'BOT', kind: 'ASK', text: d.needLine(l) });
     } else {
       l.chat.reqAskedAt = undefined;
@@ -270,13 +302,16 @@ export function makeSahayak(d: BotDeps) {
     d.tellBroker(l, `🙋 ${l.name} आपसे बात करना चाहते हैं`, why === 'photos' ? 'फ़ोटो / वीडियो माँगे हैं।' : why === 'price' ? 'रेट / मोलभाव पर बात करना चाहते हैं।' : why === 'human' ? 'ग्राहक ने खुद आपसे बात करने को कहा।' : 'सहायक उनके सवाल का जवाब नहीं दे पाया।');
   }
 
-  function openRoom(l: PartnerLead) {
+  /** v101 — silently, once, right after his number opened; a failure (a room of that number already exists, a limit) is left to the broker and his tap */
+  function autoRoom(l: PartnerLead) { const b = botOf(l); if (!buyerSide(l) || !l.chat?.revealedAt || b.roomId || b.roomSealed) return; openRoom(l, true); }
+  function openRoom(l: PartnerLead, auto = false) {
     const b = botOf(l);
     if (!buyerSide(l)) return;
     if (!l.chat!.revealedAt) { say(l, 'क्लाइंट रूम तब बनता है जब आपकी ज़रूरत पक्की हो और आपको कोई घर भेजा जा चुका हो।', 'A client room opens once your need is confirmed and a home has been sent to you.'); return; }
     if (b.roomSealed) { say(l, 'आपका क्लाइंट रूम तैयार है — नीचे के कार्ड से खोलें।', 'Your client room is ready — open it from the card below.'); return; }
     const r = openRoomAuto(l.brokerId, { name: l.name, phone: l.phone, kind: l.kind === 'RENT_IN' ? 'RENTER' : 'BUYER', note: `Shop QR lead ${l.id} · opened by the GENZ assistant on his tap`, propertyIds: sentIds(l) });
     if (!r.ok) {
+      if (auto) return;
       if (r.code === 'EXISTS') { say(l, 'आपका क्लाइंट रूम ब्रोकर के पास पहले से है — मैंने उन्हें कहा है कि आपको उसका लिंक भेजें।', 'The broker already has a client room for you — I have asked him to send you its link.'); d.tellBroker(l, `🏠 ${l.name} को रूम का लिंक चाहिए`, 'उसने चैट में क्लाइंट रूम माँगा — रूम खोलकर “नया लिंक” भेजें।'); }
       else { say(l, 'अभी क्लाइंट रूम नहीं बन पाया — ब्रोकर इसे देख लेंगे।', 'I could not open the client room right now — the broker will look into it.'); d.tellBroker(l, `🏠 ${l.name}: रूम नहीं बन पाया`, r.error); }
       return;
@@ -284,7 +319,7 @@ export function makeSahayak(d: BotDeps) {
     b.roomId = r.room.id; b.roomSealed = sealLink(r.token, `lr|${l.id}`); b.roomAt = nowIso();
     d.audit(l, 'SHOP_LEAD_ROOM_OPENED', `Client room ${r.room.id} opened by the GENZ assistant after the customer tapped for it (${r.room.items.length} home(s) put in)`);
     d.hist(l, `Client room opened by the assistant on his tap (${r.room.items.length} homes)`);
-    say(l, '🏠 आपका क्लाइंट रूम तैयार है — इसमें अभी तक भेजे गए सारे घर हैं, फ़ोटो-वीडियो आने पर वहीं मिलेंगे। नीचे के कार्ड से खोलें (अपना मोबाइल नंबर + कोड से)।', '🏠 Your client room is ready — all the homes sent so far are in it, and photos / videos will come there. Open it from the card below (with your mobile number + a code).');
+    say(l, '🏠 आपका क्लाइंट रूम तैयार है — इसमें अभी तक भेजे गए सारे घर हैं, फ़ोटो-वीडियो आने पर वहीं मिलेंगे। नीचे के कार्ड से खोलें (अपना मोबाइल नंबर + कोड से)।', '🏠 Your client room is ready — all the homes sent so far are in it, and photos / videos will come there. Open it from the card below (with your mobile number + a code).', menu(l));
     d.tellBroker(l, `🏠 ${l.name} का क्लाइंट रूम खुला`, 'सहायक ने ग्राहक के कहने पर रूम बनाया। कोड ग्राहक के फ़ोन पर SMS से जाता है।');
   }
 
@@ -303,7 +338,10 @@ export function makeSahayak(d: BotDeps) {
     if (b.awaiting === 'PROMISE') { say(l, 'विज़िट से पहले ऊपर के कार्ड में वचन टिक करके नाम लिखें।', 'Before the visit, tick the promise and type your name in the card above.'); return; }
     // v99 — an open listing question: what he writes is the answer (even while "quiet"); a clearly different request falls through to the normal replies
     if (!off(l) && asking(l) && answerAsk(l, { text })) return;
-    if (off(l) || quiet(l)) return;
+    if (off(l)) return;
+    // v101 — a clear change of his NEED is data, not chat: it is applied even while the assistant is "quiet" (after “talk to the broker”, or while the broker is writing). He asked in plain words — the answer must not be silence.
+    const brokerActive = quiet(l) && !b.needsBroker;
+    if (quiet(l) && !(intent === 'NEED' && buyerSide(l))) return;
     switch (intent) {
       case 'STATUS': if (d.ownerSide(l)) return ownerStatus(l); return fallback(l);
       case 'GREET': if (!confirmed(l)) return remindConfirm(l); return say(l, `नमस्ते ${first(l.name)}! 👋 बताइए, क्या मदद करूँ?`, `Hello ${first(l.name)}! 👋 How can I help?`, menu(l));
@@ -320,17 +358,20 @@ export function makeSahayak(d: BotDeps) {
       }
       case 'NEED': {
         const ch = readNeedChange(text, d.cityOf(l)); const changed = d.applyNeed(l, ch);
-        if (!changed.length) return fallback(l);
+        if (!changed.length) return quiet(l) ? undefined : fallback(l);
         if (!l.chat.revealedAt) {
           l.chat.reqConfirmedAt = undefined; l.chat.reqAskedAt = nowIso();
-          say(l, `समझ गया — आपकी ज़रूरत अब ये है (${changed.join(', ')} बदला). सही हो तो ✅ दबाएँ।`, `Understood — your need is now this (${changed.join(', ')} changed). Tap ✅ if it is right.`);
+          say(l, `समझ गया — आपकी ज़रूरत अब ये है (${changed.join(', ')} बदला). सही हो तो ✅ दबाएँ।`, `Understood — your need is now this (${chEn(changed)} changed). Tap ✅ if it is right.`);
           d.addMsg(l, { by: 'BOT', kind: 'ASK', text: d.needLine(l) });
         } else {
           l.chat.reqText = d.needLine(l);
           say(l, `ज़रूरत अपडेट कर दी: ${d.needLine(l)}। नए मेल खाते घर देखता हूँ…`, `Need updated: ${d.needLine(l)}. Looking for new matching homes…`);
-          d.hist(l, `Changed his need in the chat (${changed.join(', ')})`);
-          showHomes(l);
+          d.hist(l, `Changed his need in the chat (${chEn(changed)})`);
+          networkNote(l);
+          if (brokerActive) d.tellBroker(l, `✏️ ${l.name}: ज़रूरत बदली`, `${d.needLine(l)} — ग्राहक ने चैट में ज़रूरत बदली; आपका Buyers नीड भी अपडेट हो गया।`);
+          else showHomes(l);
         }
+        if (quiet(l) && !brokerActive) d.tellBroker(l, `✏️ ${l.name}: ज़रूरत बदली`, `${d.needLine(l)} — ग्राहक ने बदली हुई ज़रूरत लिखी; Buyers नीड अपडेट हो गया।`);
         return;
       }
       default: return fallback(l);
@@ -446,7 +487,8 @@ export function makeSahayak(d: BotDeps) {
 
   const roomLink = (l: PartnerLead) => { const s = l.chat?.bot?.roomSealed; if (!s) return ''; try { return openLink(s, `lr|${l.id}`); } catch { return ''; } };
   const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
-    interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null }; };
+    interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
+    network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
   return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes };
 }

@@ -66,6 +66,12 @@ export function networkMatchesFor(r: BuyerRequirement, brokerId: string) {
     }),
   };
 }
+/** v101 — how many live homes of OTHER brokers fit this need and the price range they span (count + range only: no title, place or broker — safe to tell the client) */
+export function networkRange(r: BuyerRequirement, brokerId: string): { count: number; min: number; max: number } {
+  // a home far above his budget is not "a home for you" (the 60-point match still scores it for the broker's own alert): only prices up to 10% over the top of his budget are counted
+  const prices = fits(r, brokerId).map(f => Number(f.p.askingPrice) || 0).filter(x => x > 0 && (!r.budgetMax || x <= r.budgetMax * 1.1));
+  return { count: prices.length, min: prices.length ? Math.min(...prices) : 0, max: prices.length ? Math.max(...prices) : 0 };
+}
 /** one push telling the broker what the network holds for a client need that just arrived (never names the client) */
 export function alertNeedNetwork(r: BuyerRequirement) {
   try {

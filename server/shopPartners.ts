@@ -11,7 +11,7 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
-import { sealLink, linkOf } from './linkSeal.js';
+import { sealLink, linkOf, openLink } from './linkSeal.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { brandedQrSvg } from './brandlogo.js';
@@ -34,7 +34,7 @@ import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies,
 import { sendSms } from './notify.js';
 import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
 import { partyBlock } from './partywatch.js';
-import { alertNeedNetwork } from './broadcast.js';
+import { alertNeedNetwork, networkRange } from './broadcast.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
 import { contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
 import { brandOf } from './share.js';
@@ -85,6 +85,12 @@ const QR_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newQrCode = () => Array.from(crypto.randomBytes(8), b => QR_ALPHA[b % QR_ALPHA.length]).join('');
 const rid = (p: string) => `${p}-${crypto.randomBytes(5).toString('hex')}`;
 const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+/** v101 — this phone remembers its chat per shop QR (an HttpOnly cookie holding the private link): scanning the same QR again opens the chat instead of a blank form */
+const CHAT_CK = 'gq_';
+function chatCookie(req: Request, res: Response, qr: string, token: string) {
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production';
+  res.append('Set-Cookie', `${CHAT_CK}${qr}=${token}; Path=/q; HttpOnly; SameSite=Lax; Max-Age=${180 * 86400}${secure ? '; Secure' : ''}`);
+}
 /** audit F2 — only a local DEMO shows the customer's / shop's code to the broker; a real server needs SMS (the broker never sees it) */
 const brokerReads = () => !smsOn() && DEMO_MODE;
 const NO_SMS = 'कोड अभी नहीं भेजा जा सकता — SMS चालू नहीं है। GENZ सहायता से संपर्क करें। / A code cannot be sent right now — SMS is not set up. Please contact GENZ support.';
@@ -173,16 +179,51 @@ export function inferPtype(picked: string | undefined, note = ''): string {
   return 'Residential Flat';
 }
 const REQ_TYPES: Record<string, string> = { Flat: 'Residential Flat', House: 'Independent House', Plot: 'Residential Plot', Shop: 'Commercial Shop', Office: 'Commercial Office', Warehouse: 'Warehouse / Godown' };
-/** v87 — the client card and the buyer need are two lists the broker looks at (Today & Clients / Buyers + Magic Match). A shop lead must land in BOTH, or he sees a client with no need, or a need with no client */
+/** v101 — the buyer need that belongs to this lead: the one made for him (leadId), else an open one of this broker on his number */
+function needOfLead(l: PartnerLead) {
+  const open = (q: any) => q.status !== 'closed' && q.status !== 'fulfilled'; const s = st();
+  return s.requirements.find(q => (q as any).leadId === l.id && open(q))
+    || s.requirements.find(q => q.assignedBrokerId === l.brokerId && !!q.customerPhone && phone10(q.customerPhone) === l.phone && open(q));
+}
+/** the number may sit on the need only once it is open to the broker (a lead from before v85 has no chat: open already) */
+const numberOpen = (l: PartnerLead) => !l.chat || !!l.chat.revealedAt;
+/** v87 — the client card and the buyer need are two lists the broker looks at (Today & Clients / Buyers + Magic Match). A shop lead must land in BOTH, or he sees a client with no need, or a need with no client.
+ *  v101 — the NEED is made the moment he confirms it (number still hidden: customerPhone is '' until the chat opens it), so the network search and Magic Match work even when none of the broker's own homes fits */
 function ensureNeed(l: PartnerLead, rent: boolean, city: string): string | undefined {
-  const s = st(); const max = budgetRupees(l.budget, rent); if (!max) return undefined;
-  const has = s.requirements.find(q => q.assignedBrokerId === l.brokerId && phone10(q.customerPhone) === l.phone && q.status !== 'closed' && q.status !== 'fulfilled');
-  if (has) return has.id;
+  const s = st(); const has = needOfLead(l);
+  if (has) { if (numberOpen(l) && !has.customerPhone) { has.customerPhone = l.phone; has.updatedAt = nowIso(); } return has.id; }
+  const max = budgetRupees(l.budget, rent); if (!max) return undefined;
   const seq = s.requirements.reduce((m, q) => Math.max(m, Number(/REQ-(?:RAI-)?(\d+)/.exec(q.id)?.[1] ?? 0)), 200) + 1; const now = nowIso();
-  const prior = s.requirements.find(q => phone10(q.customerPhone) === l.phone);
-  s.requirements.unshift({ id: `REQ-${seq}`, customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: l.name, customerPhone: l.phone, assignedBrokerId: l.brokerId, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city, preferredLocalities: [l.locality || city].filter(Boolean), preferredTags: [], propertyType: inferPtype(l.propertyType, l.note) as any, transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)', status: 'matching', createdAt: now, updatedAt: now } as any);
+  const prior = s.requirements.find(q => !!q.customerPhone && phone10(q.customerPhone) === l.phone);
+  s.requirements.unshift({ id: `REQ-${seq}`, leadId: l.id, customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: l.name, customerPhone: numberOpen(l) ? l.phone : '', assignedBrokerId: l.brokerId, budgetMin: Math.max(1, Math.round(max * 0.7)), budgetMax: max, city, state: stateFor('', city) || undefined, preferredLocalities: [l.locality || city].filter(Boolean), preferredTags: [], propertyType: inferPtype(l.propertyType, l.note) as any, transactionType: rent ? 'Rent' : 'Sale', purpose: 'Self-use', urgency: 'Moderate (1-3 months)', status: 'matching', createdAt: now, updatedAt: now } as any);
   { const made = s.requirements.find(q => q.id === `REQ-${seq}`); if (made) void alertNeedNetwork(made as any); } // v90: tell the broker what the network already holds for this need
   return `REQ-${seq}`;
+}
+/** v101 — what he wrote (budget / type / buy↔rent / area / city) goes into the broker's buyer need and client card, and the network is told when the need really moved */
+function syncNeed(l: PartnerLead) {
+  if (l.kind !== 'BUY' && l.kind !== 'RENT_IN') return;
+  const s = st(); const q = needOfLead(l); const city = cityOfLead(l); const rent = l.kind === 'RENT_IN'; let moved = false;
+  if (q) {
+    const max = budgetRupees(l.budget, rent);
+    if (max && q.budgetMax !== max) { q.budgetMax = max; q.budgetMin = Math.max(1, Math.round(max * 0.7)); moved = true; }
+    const tt = rent ? 'Rent' : 'Sale'; if (q.transactionType !== tt) { q.transactionType = tt as any; moved = true; }
+    const pt = inferPtype(l.propertyType, l.note); if (q.propertyType !== pt) { q.propertyType = pt as any; moved = true; }
+    if (!sameCity(q.city || '', city) || !(q.preferredLocalities || []).some(a => norm(a) === norm(l.locality))) { q.city = city; q.state = stateFor('', city) || q.state; q.preferredLocalities = [l.locality || city].filter(Boolean); moved = true; }
+    if (numberOpen(l) && !q.customerPhone) q.customerPhone = l.phone;
+    if (moved) { q.updatedAt = nowIso(); void alertNeedNetwork(q as any); }
+  }
+  const c = s.clientCards.find(x => x.id === l.clientCardId);
+  if (c) { const bud = budgetRupees(l.budget, rent); if (bud) { c.budgetMax = bud; c.budgetMin = Math.round(bud * 0.7); } c.city = city; c.areas = [l.locality]; c.transactionType = rent ? 'Rent' : 'Sale'; if (l.propertyType) c.propertyType = l.propertyType; c.updatedAt = nowIso(); }
+}
+/** v101 — the NETWORK search for his need (other brokers' live homes): makes / updates his buyer need, and answers how many homes there are and the price range — never which homes */
+function networkScan(l: PartnerLead): { count: number; min: number; max: number; reqId: string } | null {
+  if (l.kind !== 'BUY' && l.kind !== 'RENT_IN') return null;
+  const id = ensureNeed(l, l.kind === 'RENT_IN', cityOfLead(l)); if (!id) return null;
+  syncNeed(l);
+  const q = st().requirements.find(x => x.id === id); if (!q) return null;
+  const r = networkRange(q as any, l.brokerId);
+  if (l.chat) (l.chat.bot ||= {}).network = { ...r, at: nowIso(), reqId: id, toldKey: l.chat.bot?.network?.toldKey };
+  return { ...r, reqId: id };
 }
 
 function revealNumber(l: PartnerLead, how: { homeId?: string; title?: string }) {
@@ -230,17 +271,8 @@ function applyNeedChange(l: PartnerLead, ch: NeedChange): string[] {
   if (ch.locality && ch.locality !== l.locality) { l.locality = ch.locality; out.push('इलाका'); }
   if (ch.bhk) { const tag = `${ch.bhk}BHK`; if (!String(l.note || '').includes(tag)) { l.note = [l.note, tag].filter(Boolean).join(' · ').slice(0, 200); out.push('BHK'); } }
   if (out.length) l.updatedAt = nowIso();
-  if (out.includes('शहर') || out.includes('इलाका')) syncNeedPlace(l);
+  if (out.length) syncNeed(l);   // v101 — budget, type, buy↔rent, area and city all follow into his buyer need + client card
   return out;
-}
-/** v100 — the customer moved his wish to another city / area AFTER his number opened: the broker's buyer need and client card follow, and the network is told about the new need */
-function syncNeedPlace(l: PartnerLead) {
-  if (!l.chat?.revealedAt || (l.kind !== 'BUY' && l.kind !== 'RENT_IN')) return;
-  const s = st(); const city = cityOfLead(l);
-  const q = s.requirements.find(x => x.assignedBrokerId === l.brokerId && phone10(x.customerPhone) === l.phone && x.status !== 'closed' && x.status !== 'fulfilled');
-  const moved = !!q && (!sameCity(q.city, city) || !(q.preferredLocalities || []).some(a => norm(a) === norm(l.locality)));
-  if (q && moved) { q.city = city; q.state = stateFor('', city) || q.state; q.preferredLocalities = [l.locality]; void alertNeedNetwork(q as any); }
-  const c = s.clientCards.find(x => x.id === l.clientCardId); if (c) { c.city = city; c.areas = [l.locality]; c.updatedAt = nowIso(); }
 }
 const botTell = (l: PartnerLead, title: string, body: string) => { if (hit(`sp-botpush:${l.id}`, 10, 3600_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title, body, url: '/?tab=partners' }); };
 /** v99 — what the QR form already told us about an OWNER's property (the questions only ask what is missing) */
@@ -262,7 +294,7 @@ function draftState(l: PartnerLead) {
 export const sahayak = makeSahayak({
   addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
   audit: (l, action, text) => db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, action, text),
-  isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead,
+  isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead, networkScan,
   ownerFacts, saveDraft: (l, fields) => saveOwnerChatDraft(l.brokerId, fields, l.id), draftState,
 });
 
@@ -836,7 +868,7 @@ button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;f
 .ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px}.ck input{width:20px;height:20px;margin-top:2px}.hp{position:absolute;left:-9999px}
 .lead{border-top:1px solid #eee;padding:10px 0}.prog{display:flex;gap:3px;margin:8px 0 4px}.prog .st{flex:1;text-align:center;font-size:10px;font-weight:700;padding:5px 0;border-radius:6px;background:#eef1f7;color:#64748b}.prog .st.on{background:#16a34a;color:#fff}.prog .st.now{background:#fde68a;color:#92400e}.chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;background:#eef1f7;margin:2px 4px 0 0}.chip.ok{background:#dcfce7;color:#166534}.chip.w{background:#fef3c7;color:#92400e}.chip.x{background:#fee2e2;color:#991b1b}
 .hms{display:grid;gap:10px;margin-top:8px}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
-.hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
+.hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .ph.nophoto{aspect-ratio:auto;height:40px}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
 .net{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;margin-top:6px}.big2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.big2 .btn{text-align:center;padding:14px 8px}.pick{background:#e9f7ee;border:1px solid #86efac}
 .lang{display:flex;gap:6px;justify-content:flex-end;margin:0 0 8px}.lang a{font-size:12px;padding:4px 10px;border-radius:999px;background:#e5e7eb;color:#14213d;text-decoration:none}.lang a.on{background:#14213d;color:#fff}.say{background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:12px}.say b{font-size:17px;line-height:1.5;display:block;margin-bottom:8px}.more>summary{cursor:pointer;font-size:13px;font-weight:600;color:#14213d;padding:6px 0;list-style:none}.more>summary::-webkit-details-marker{display:none}.more>summary::before{content:'▸ ';color:#6b7280}.more[open]>summary::before{content:'▾ '}.more[open]>summary{margin-bottom:6px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats div{background:#f3f4f6;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:18px}
 .app{background:#ecfdf5;border:1px solid #0f766e}.chg{border:2px solid #f59e0b;background:#fffbeb}.fig{font-size:22px;font-weight:800}.old{text-decoration:line-through;color:#888}.rank{background:linear-gradient(135deg,#14213d,#1e3a8a);color:#fff;box-shadow:none}.rank small{color:#cbd5e1}details.ask{margin-top:8px}details summary{cursor:pointer;font-size:13px;font-weight:600;min-height:32px}`;
@@ -904,12 +936,18 @@ export function createPartnerQrRouter() {
     const kinds = LEAD_KINDS.map(k => `<label><input type="radio" name="kind" value="${k.id}" ${preKind === k.id ? 'checked' : ''} required> ${k.hi}<br><small>${k.en}</small></label>`).join('');
     const typeGroups: [string, string[]][] = [['🏠 घर / Homes', ['Residential Flat', 'Independent House', 'Residential Villa', 'Builder Floor', 'Penthouse', 'Farm House']], ['🌱 प्लॉट · ज़मीन / Plots & land', ['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land']], ['🏪 दुकान · ऑफ़िस / Commercial', ['Commercial Shop', 'Showroom', 'Commercial Office']], ['🏭 गोदाम · उद्योग / Industry', ['Warehouse / Godown', 'Factory / Industrial Shed']], ['🏨 और / More', ['PG / Hostel', 'Co-working Space', 'Hotel / Guest House', 'Banquet / Marriage Hall', 'Parking / Garage', 'School / Hospital Building']]];
     const who = b?.name || 'ब्रोकर';
+    // v101 — a line of proof before he fills anything: how many verified homes the whole GENZ network holds in this city (a number only — no homes, no brokers)
+    const city0 = p.city || b?.city || '';
+    const nwN = city0 ? st().properties.filter(x => x.verificationStatus === 'VERIFIED' && x.listingStatus === 'active' && !(x as any).heldAt && !(x as any).expiredAt && sameCity(x.city, city0)).length : 0;
+    const nwShow = nwN >= 20 ? `${Math.floor(nwN / 10) * 10}+` : String(nwN);
+    const nwLine = nwN >= 5 ? `<p class="small" data-testid="qr-network" style="margin:8px 4px">🌐 GENZ नेटवर्क में ${esc(city0)} के <b>${nwShow}</b> वेरिफ़ाइड घर — ${esc(who)} आपकी ज़रूरत के हिसाब से इन सबमें खोजते हैं। <small>The GENZ network holds ${nwShow} verified homes in ${esc(city0)} — ${esc(who)} searches all of them for your need.</small></p>` : '';
+    const stepsLine = `<p class="small" data-testid="qr-steps" style="margin:8px 4px">① फ़ॉर्म भरें → ② आपकी निजी चैट खुलेगी (GENZ सहायक पहले जवाब देगा) → ③ मेल खाते घर और ब्रोकर का जवाब वहीं मिलेगा। <small>Fill the form → your private chat opens (the GENZ assistant answers first) → matching homes and the broker's replies come there.</small></p>`;
     const ack = ackText(who, picked ? picked.title : 'ब्रोकर द्वारा दिखाई जाने वाली प्रॉपर्टी / the properties shown by the broker');
     res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट · फ़ार्म · गोदाम</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <div class="card"><p class="t">${esc(who)}${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} आपसे संपर्क करेंगे। <small>A GENZ-verified broker will call you.</small></p>
 <div class="big2"><a class="btn ${sellerSide ? 'l' : 'g'}" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home" ${sellerSide ? '' : 'aria-current="true"'}>🏠 मुझे प्रॉपर्टी चाहिए<br><small${sellerSide ? '' : ' style="color:#e9ffe9"'}>I need a property (home · plot · shop · godown)</small></a><a class="btn ${sellerSide ? 'g' : 'l'}" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list" ${sellerSide ? 'aria-current="true"' : ''}>📋 मुझे अपनी प्रॉपर्टी देनी है<br><small${sellerSide ? ' style="color:#e9ffe9"' : ''}>I want to list my property</small></a></div></div>
-${homes.length && b ? homeCards(b, p, homes) : ''}
+${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
 <style>#form form:has(input[name=kind][value=SELL]:checked) #promise,#form form:has(input[name=kind][value=RENT_OUT]:checked) #promise{display:none}#sellnote{display:none}#form form:has(input[name=kind][value=SELL]:checked) #sellnote,#form form:has(input[name=kind][value=RENT_OUT]:checked) #sellnote{display:block}.kinds label{min-width:0}.w{padding-bottom:96px}</style>
 <div class="card${picked ? ' pick' : ''}" id="form">${picked && b ? pickedCard(b, p, picked) : ''}
 <form method="post" action="/q/${esc(p.qrCode)}"><input type="hidden" name="t" value="${formTs()}">${picked ? `<input type="hidden" name="home" value="${esc(picked.id)}">` : ''}<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
@@ -927,7 +965,7 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
 <label>अपना नाम लिखकर हस्ताक्षर करें / Sign by typing your name</label><input type="text" name="sign" maxlength="80" value="${esc(keep.sign || '')}" autocomplete="off"><p class="small">यह आपकी सहमति का रिकॉर्ड है — GENZ आपसे कोई पैसा नहीं लेता। / This is a record of your agreement — GENZ takes no money from you.</p></div>
 <label class="ck"><input type="checkbox" name="consent" value="1" required><span>मैं सहमत हूँ कि ${esc(who)} मुझसे इस ऐप की चैट में बात करें। मेरा नंबर ब्रोकर को तभी दिखेगा जब मैं अपनी ज़रूरत पक्की कर दूँ और मेरी ज़रूरत से मेल खाता घर शेयर हो; दुकान वाले को पूरा नंबर कभी नहीं दिखेगा। <small>I agree that this broker may talk to me in this app’s chat. My number is shown to him only after I confirm my need and a home matching it is shared; the shop never sees my full number.</small></span></label>
 <label class="ck"><input type="checkbox" name="outcome" value="1" ${keep.outcome === '1' ? 'checked' : ''} data-testid="qr-outcome"><span>${esc(OUTCOME_CONSENT.hi)} <small>${esc(OUTCOME_CONSENT.en)}</small></span></label>
-<div class="row"><button class="g" type="submit">भेजें / Send</button></div></form></div>
+<div class="row"><button class="g" type="submit">भेजें / Send</button></div><p class="small" style="margin-top:8px" data-testid="qr-home-hint">📲 भेजते ही चैट खुलेगी — उसे होम स्क्रीन पर जोड़ लें और अलर्ट चालू करें, ताकि अगला जवाब मिस न हो। / Your chat opens right after — add it to your home screen and turn alerts on so you never miss a reply.</p></form></div>
 <p class="small" style="margin:12px 4px">GENZ आपसे कोई पैसा नहीं माँगता। कोई भी रकम देने से पहले कागज़ और RERA ज़रूर जाँचें। / GENZ never asks you for money.</p>${homes.length ? '<script src="/c/page.js" defer></script>' : ''}`));
   };
 
@@ -1022,12 +1060,12 @@ ${homes.length && b ? homeCards(b, p, homes) : ''}
 <form method="post" action="/q/chat/${esc(tok)}/ans"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="chat-yes">✅ हाँ, सही है<br><small style="color:#e9ffe9">Yes, correct</small></button><button class="l" type="submit" name="a" value="EDIT" data-testid="chat-edit">✏️ बदलाव भेजें<br><small>Send a change</small></button></div>
 <label>बदलाव (सिर्फ़ ✏️ के लिए) / Change (only for ✏️)</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" placeholder="जैसे: बजट 50 लाख, 3BHK"></textarea></form></div>` : '';
     const done = l.chat.reqConfirmedAt && !l.chat.revealedAt ? `<div class="card ok"><p class="t">✔ आपकी ज़रूरत पक्की हो गई। ${esc(who)} अब आपके लिए मेल खाता घर ढूँढ रहे हैं।<br><small>Your need is confirmed. ${esc(who)} is now looking for a home that matches.</small></p></div>` : '';
-    const showApp = l.chat.msgs.some(m => m.by === 'CUSTOMER' && m.kind !== 'INFO');   // offered once he has written / confirmed — not on the very first look
-    const appCard = showApp ? `<div class="card app" id="app-card" style="display:none" data-testid="chat-app-card"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-push-msg"></p></div>` : '';
+    const showApp = !!l.chat.reqConfirmedAt || l.chat.msgs.some(m => m.by === 'CUSTOMER' && m.kind !== 'INFO');   // offered once he has written / confirmed — not on the very first look
+    const appCard = showApp ? `<div class="card app" id="app-card" style="display:none" data-testid="chat-app-card"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-how" style="display:none" data-testid="chat-app-how">Android: Chrome में ⋮ मेन्यू → “Install app / Add to Home screen”। / Android: Chrome ⋮ menu → “Install app / Add to Home screen”.</p><p class="small" id="app-push-msg"></p></div>` : '';
     res.send(shell('GENZ चैट', `<style>.bub{max-width:85%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.bub.bot{border-left:4px solid #6366f1;background:#f5f3ff}.bn{color:#4338ca;font-weight:700}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.chips button{flex:1 1 44%;min-height:46px;line-height:1.25}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px}</style>
 <div class="top"><h1>${esc(who)}</h1><p>GENZ verified broker${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} · ${esc(partnerOf(l.partnerId)?.shopName || '')}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
-<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${promiseHtml}${visitsHtml}${roomHtml}${exploreHtml}${appCard}${ask}${done}
+${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${promiseHtml}${visitsHtml}${roomHtml}${exploreHtml}${ask}${done}
 <div class="card"><form method="post" action="/q/chat/${esc(tok)}/msg"><label>संदेश / Message</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" required placeholder="अपना सवाल या ज़रूरत लिखें…"></textarea><div class="row"><button class="g" type="submit" data-testid="chat-send">भेजें / Send</button><a class="btn l" href="/q/chat/${esc(tok)}">🔄 नया देखें / Refresh</a></div></form>
 <p class="small" style="margin-top:8px">🔒 इस चैट में फ़ोन नंबर न लिखें। आपका नंबर ब्रोकर को तभी दिखेगा जब आप अपनी ज़रूरत पक्की कर दें और आपकी ज़रूरत से मेल खाता घर शेयर हो। इस पेज को बुकमार्क कर लें — जवाब देखने के लिए यही लिंक खोलें। GENZ आपसे कोई पैसा नहीं माँगता।<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page — open this link to see replies. GENZ never asks you for money.</p></div>`, showApp ? `<link rel="manifest" href="/q/chat/${tok}/manifest.webmanifest"><meta name="theme-color" content="#14213d">` : '', showApp ? '/q/chat-app.js' : ''));
   };
@@ -1060,7 +1098,11 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     db.save();
     res.json({ success: true, fresh: !before });
   });
-  r.get('/chat/:token', rateLimit('sp-chat', 120, 3600_000), (req: Request, res: Response) => chatPage(res, chatBy(req.params.token), req.params.token));
+  r.get('/chat/:token', rateLimit('sp-chat', 120, 3600_000), (req: Request, res: Response) => {
+    const l = chatBy(req.params.token); const pp = l ? partnerOf(l.partnerId) : undefined;
+    if (l && pp) chatCookie(req, res, pp.qrCode, req.params.token);   // v101 — opened by any browser: that browser remembers it too
+    chatPage(res, l, req.params.token);
+  });
   r.post('/chat/:token/msg', rateLimit('sp-chat', 120, 3600_000), form, (req: Request, res: Response) => {
     const l = chatBy(req.params.token); if (!l?.chat) return chatPage(res, undefined, req.params.token);
     const text = str(req.body?.text, MSG_MAX);
@@ -1083,6 +1125,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
       db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_NEED_CONFIRMED', 'The customer confirmed his need in the in-app chat (number still hidden from the broker)');
       if (ownerSide(l)) revealNumber(l, {});   // an owner has no "matching home": confirming the property details is the step
       if (!sahayak.off(l)) sahayak.onConfirmed(l);   // v97 — the assistant shows the live homes that fit and tells the broker
+      else if (!ownerSide(l)) networkScan(l);        // v101 — with the assistant off, his need still reaches the broker's Buyers list + the network search
       db.save();
       if (sahayak.off(l)) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} confirmed his need`, body: ownerSide(l) ? 'His number is now visible.' : 'Share a matching home to see his number.', url: '/?tab=partners' });
     } else if (a === 'EDIT') {
@@ -1140,7 +1183,64 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     noStore(res);
     const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
     p.scans += 1; p.lastScanAt = nowIso(); db.save();
+    // v101 — this phone already has a chat with this broker (his own cookie): open it, don't start again. "New request" (?new=1) and an owner's ?want=sell still show the form.
+    if (req.query.new !== '1' && req.query.want !== 'sell') {
+      const ck = parseCookies(req.headers.cookie); let hit_: { l: PartnerLead; tok: string } | undefined;
+      for (const [k, v] of Object.entries(ck)) {
+        if (!k.startsWith(CHAT_CK)) continue; const l = chatBy(String(v)); if (!l?.chat || l.brokerId !== p.brokerId || l.status === 'LOST') continue;
+        if (!hit_ || (l.partnerId === p.id && hit_.l.partnerId !== p.id)) hit_ = { l, tok: String(v) };
+      }
+      if (hit_) return welcomeBack(res, p, hit_.l, hit_.tok);
+    }
     page(res, p, '', {}, req.query as Record<string, unknown>);
+  });
+  /** v101 — "welcome back": his chat is waiting (and how many new answers) */
+  const welcomeBack = (res: Response, p: ShopPartner, l: PartnerLead, tok: string) => {
+    const b = userOf(p.brokerId); const who = b?.name || 'ब्रोकर'; const seen = l.chat?.customerSeenAt || '';
+    const fresh = (l.chat?.msgs || []).filter(m => (m.by === 'BOT' || m.by === 'BROKER' || m.kind === 'HOME') && m.by !== 'CUSTOMER' && (!seen || m.at > seen)).length;
+    res.send(shell('फिर से स्वागत है — GENZ', `<div class="top"><h1>फिर से स्वागत है, ${esc(l.name.split(' ')[0])} 🙏</h1><p>Welcome back</p></div>
+<div class="card ok" data-testid="qr-welcome-back"><p class="t"><b>आपकी चैट ${esc(who)} के साथ खुली हुई है</b><br><small>Your chat with ${esc(who)} is open.</small></p><p class="t">${esc(needLine(l))}</p>${fresh ? `<p class="t" data-testid="qr-fresh"><b>🔔 ${fresh} नया संदेश / new</b></p>` : ''}
+<a class="btn g" href="/q/chat/${esc(tok)}" data-testid="qr-continue">💬 चैट जारी रखें / Continue my chat</a><p class="small" style="margin-top:8px">पुरानी बातें, भेजे गए घर और ब्रोकर के जवाब वहीं हैं। / Your old messages, the homes sent to you and the broker's replies are all there.</p></div>
+<div class="card"><p class="t"><small>कुछ और चाहिए — जैसे अपनी प्रॉपर्टी बेचनी है, या किसी और के लिए? / Need something else — selling your own property, or for someone else?</small></p><a class="btn l" href="/q/${esc(p.qrCode)}?new=1" data-testid="qr-new">➕ नया अनुरोध / New request</a></div>`));
+  };
+
+  /** v101 — the same mobile on ANOTHER phone / browser: an SMS code reopens the old chat (the number is the proof, so a stranger who types it learns nothing) */
+  const resumePage = (res: Response, p: ShopPartner, step: 'phone' | 'code', msg = '', extra: { phone?: string; demoCode?: string } = {}, status = 200) => {
+    noStore(res);
+    res.status(status).send(shell('चैट फिर से खोलें — GENZ', `<div class="top"><h1>अपनी पुरानी चैट खोलें</h1><p>Reopen your chat</p></div>${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
+<div class="card" data-testid="resume-${step}">${step === 'phone'
+      ? `<p class="t">वही मोबाइल नंबर डालें जो QR फ़ॉर्म में दिया था — SMS से कोड आएगा।<br><small>Enter the mobile number you gave on the QR form — a code comes by SMS.</small></p><form method="post" action="/q/${esc(p.qrCode)}/resume"><label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required autocomplete="tel-national" placeholder="98XXXXXXXX" data-testid="resume-phone"><div class="row"><button class="g" type="submit" data-testid="resume-send">कोड भेजें / Send code</button></div></form>`
+      : `<p class="t">${smsOn() ? 'अगर इस नंबर पर चैट है तो 6 अंकों का कोड SMS से भेजा गया है।' : DEMO_MODE ? 'यह डेमो है — कोड नीचे दिख रहा है।' : 'अभी SMS चालू नहीं है — अपने ब्रोकर से चैट का नया लिंक माँगें।'}<br><small>${smsOn() ? 'If this number has a chat, a 6-digit code was sent by SMS.' : DEMO_MODE ? 'This is a demo — the code is shown below.' : 'SMS is not switched on — ask your broker for the chat link again.'}</small></p>${extra.demoCode ? `<div class="card warn" data-testid="resume-demo-code"><p class="t">डेमो कोड / Demo code: <b>${esc(extra.demoCode)}</b></p></div>` : ''}
+<form method="post" action="/q/${esc(p.qrCode)}/resume/verify"><input type="hidden" name="phone" value="${esc(extra.phone || '')}"><label>कोड / Code</label><input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" data-testid="resume-code"><div class="row"><button class="g" type="submit" data-testid="resume-open">चैट खोलें / Open chat</button></div></form>`}</div>`));
+  };
+  const resumeLead = (p: ShopPartner, phone: string) => st().partnerLeads.filter(x => x.brokerId === p.brokerId && x.phone === phone && !!x.chat).sort((a, z) => z.createdAt.localeCompare(a.createdAt))[0];
+  r.get('/:code/resume', rateLimit('sp-view', 90, 60_000), (req: Request, res: Response) => { const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p); resumePage(res, p, 'phone'); });
+  r.post('/:code/resume', rateLimit('sp-resume-ip', 12, 3600_000), form, async (req: Request, res: Response) => {
+    const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
+    const phone = phone10(str(req.body?.phone, 14)); if (!PHONE_RE.test(phone)) return resumePage(res, p, 'phone', 'सही 10 अंकों का मोबाइल नंबर लिखें। / Write a valid 10-digit mobile number.');
+    if (hit(`sp-resume:${phone}`, 3, 3600_000) > 0) return resumePage(res, p, 'phone', 'बहुत बार कोड माँगा गया — एक घंटे बाद कोशिश करें। / Too many codes asked — try again in an hour.', {}, 429);
+    const l = resumeLead(p, phone); let demoCode = '';
+    if (l?.chat) {
+      const otp = secureOtp(); l.chat.resume = { hash: hmac('lc-resume', `${l.id}|${otp}`), expires: new Date(Date.now() + 10 * 60_000).toISOString(), tries: 0 }; db.save();
+      if (smsOn()) await sendSms(`+91${phone}`, `GENZ: your code to reopen your chat is ${otp}. Valid 10 minutes. Do not share it.`); else if (DEMO_MODE) demoCode = otp;
+    }
+    resumePage(res, p, 'code', '', { phone, demoCode });   // the same page whether or not a chat exists — the page never tells a stranger which numbers have chats
+  });
+  r.post('/:code/resume/verify', rateLimit('sp-resume-ip', 12, 3600_000), form, (req: Request, res: Response) => {
+    const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
+    const phone = phone10(str(req.body?.phone, 14)); const code = str(req.body?.code, 6).replace(/\D/g, '');
+    const l = PHONE_RE.test(phone) ? resumeLead(p, phone) : undefined; const rs = l?.chat?.resume;
+    const bad = (m: string) => resumePage(res, p, 'code', m, { phone }, 400);
+    if (!l?.chat || !rs || code.length !== 6) return bad('कोड सही नहीं है। / The code is not right.');
+    if (Date.parse(rs.expires) < Date.now()) { l.chat.resume = undefined; db.save(); return bad('कोड की मियाद ख़त्म — नया कोड मँगाएँ। / The code has expired — ask for a new one.'); }
+    if (rs.tries >= 5) { l.chat.resume = undefined; db.save(); return bad('बहुत बार ग़लत कोड — नया कोड मँगाएँ। / Too many wrong codes — ask for a new one.'); }
+    if (!safeEqual(rs.hash, hmac('lc-resume', `${l.id}|${code}`))) { rs.tries += 1; db.save(); return bad('कोड सही नहीं है। / The code is not right.'); }
+    l.chat.resume = undefined;
+    let tok = openLink(l.chat.keySealed, `lc|${l.id}`);
+    if (!tok) { tok = newToken(); l.chat.keyHash = sha(tok); l.chat.keySealed = sealLink(tok, `lc|${l.id}`); }   // a chat from before v101 has no sealed copy of its link: a fresh link replaces the old one
+    hist(l, 'CUSTOMER', 'Reopened his chat on another phone / browser with an SMS code'); db.save();
+    chatCookie(req, res, p.qrCode, tok);
+    res.redirect(303, `/q/chat/${tok}`);
   });
 
   r.post('/:code', rateLimit('sp-lead-ip', 20, 3600_000), form, (req: Request, res: Response) => {
@@ -1188,13 +1288,13 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
       return res.redirect(303, `/q/${p.qrCode}/thanks?again=1`);
     }
     const lockUntil = new Date(Date.now() + p.terms.lockDays * 86400_000).toISOString();
-    const chatToken = newToken();
+    const chatToken = newToken(); const leadId = rid('PLD');
     const lead: PartnerLead = {
-      id: rid('PLD'), partnerId: p.id, brokerId: p.brokerId, kind, name: keep.name, phone, phoneLast4: phone.slice(-4),
+      id: leadId, partnerId: p.id, brokerId: p.brokerId, kind, name: keep.name, phone, phoneLast4: phone.slice(-4),
       locality: keep.locality, ...(wantCity ? { wantCity } : {}), budget: keep.budget || undefined, propertyType: keep.ptype || undefined, note: keep.note || undefined, consentAt: now,
       termsVersion: p.termsVersion, terms: cleanTerms(p.terms), lockUntil, status: 'NEW', history: [], createdAt: now, updatedAt: now,
       ...(keep.outcome === '1' ? { outcomeOk: true } : {}),
-      chat: { keyHash: sha(chatToken), msgs: [] },
+      chat: { keyHash: sha(chatToken), keySealed: sealLink(chatToken, `lc|${leadId}`), msgs: [] },
       ...(home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {}),
       ...(buyerSide ? (() => { const a = ackText(broker?.name || 'broker', home ? home.title : 'the properties shown by the broker'); return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } }; })() : {}),
     };
@@ -1209,6 +1309,7 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     db.save();
     db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', lead.id, 'SHOP_QR_LEAD', `Lead from shop QR ${p.id} (consent recorded${lead.promise ? `; no-direct-deal promise ${ACK_VERSION}` : ''}${home ? `; home ${home.id}` : ''})`);
     void pushTo(p.brokerId, { kind: 'matches', title: `New lead from ${p.shopName}`, body: `${keep.name} — ${LEAD_KINDS.find(k => k.id === kind)!.en}, ${keep.locality}${wantCity ? `, ${wantCity}` : ''}${home ? ` · ${home.title}` : ''}. Chat with him in the app — his number shows after he confirms his need and you share a matching home.`, url: '/?tab=partners' });
+    chatCookie(req, res, p.qrCode, chatToken);   // v101 — this phone remembers the chat: scanning the same QR again opens it
     res.redirect(303, `/q/chat/${chatToken}`);
   });
 
@@ -1217,7 +1318,7 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     const p = byCode(req.params.code); if (!p) return notLive(res);
     const b = userOf(p.brokerId);
     const again = req.query.again === '1';
-    res.send(shell('धन्यवाद — GENZ', `<div class="top"><h1>धन्यवाद 🙏</h1><p>Thank you</p></div><div class="card ok"><p class="t"><b>${esc(b?.name || 'ब्रोकर')}</b> आपसे जल्द संपर्क करेंगे।</p><p class="t">${esc(b?.name || 'The broker')} will contact you soon.</p></div>${again ? `<div class="card" data-testid="qr-again"><p class="t">ℹ️ यह मोबाइल नंबर पहले से इस ब्रोकर के पास दर्ज है। आपकी नई जानकारी उन्हें भेज दी गई है — पहले वाला नाम और ज़रूरत वैसी ही रहेगी।</p><p class="t"><small>This mobile number is already with this broker. Your new details were passed on — the first name and need stay as they were. To talk to him, open the chat link you got the first time (bookmark / home-screen icon). A new request for something different (for example, selling after buying) is taken as a separate one.</small></p></div>` : ''}`));
+    res.send(shell('धन्यवाद — GENZ', `<div class="top"><h1>धन्यवाद 🙏</h1><p>Thank you</p></div><div class="card ok"><p class="t"><b>${esc(b?.name || 'ब्रोकर')}</b> आपसे जल्द संपर्क करेंगे।</p><p class="t">${esc(b?.name || 'The broker')} will contact you soon.</p></div>${again ? `<div class="card" data-testid="qr-again"><p class="t">ℹ️ यह मोबाइल नंबर पहले से इस ब्रोकर के पास दर्ज है। आपकी नई जानकारी उन्हें भेज दी गई है — पहले वाला नाम और ज़रूरत वैसी ही रहेगी।</p><p class="t"><small>This mobile number is already with this broker. Your new details were passed on — the first name and need stay as they were. To talk to him, open the chat link you got the first time (bookmark / home-screen icon). A new request for something different (for example, selling after buying) is taken as a separate one.</small></p><a class="btn l" href="/q/${esc(p.qrCode)}/resume" data-testid="qr-resume">🔑 SMS कोड से पुरानी चैट खोलें / Open my old chat with an SMS code</a></div>` : ''}`));
   });
   return r;
 }
@@ -1243,14 +1344,14 @@ const devLabel = (ua: unknown) => { const u = String(ua || ''); return `${/iPhon
 /** the shop page as an app (served as /sp/app.js — public pages allow only same-origin scripts): service worker, "add to home", alerts */
 const SP_JS = `(function(){var TOK=(location.pathname.split('/')[2]||'');function $(i){return document.getElementById(i)}
 var sw=null;if('serviceWorker' in navigator&&TOK&&$('app-card')){navigator.serviceWorker.register('/sw.js').then(function(r){sw=r;setup()}).catch(function(){setup()})}else{setup()}
-var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b&&standalone()===false)b.style.display='inline-block'});
+var dip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();dip=e;var b=$('app-install');if(b&&standalone()===false)b.style.display='inline-block';var hw=$('app-how');if(hw)hw.style.display='none'});
 function standalone(){return window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}
 var IOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
 function show(st){var c=$('app-card');if(!c)return;c.style.display='block';c.setAttribute('data-alerts',st);
 var t=$('app-title'),s2=$('app-sub'),bp=$('app-push'),bl=$('app-later'),ih=$('app-ios'),bi=$('app-install');
 var on=st==='on';c.style.background=on?'#f0fdf4':'#ecfdf5';c.style.borderColor=on?'#86efac':'#0f766e';
 if(bp)bp.style.display=st==='ask'?'inline-block':'none';if(bl)bl.style.display=st==='ask'?'inline-block':'none';
-if(ih)ih.style.display=st==='ios'?'block':'none';if(bi&&(on||st==='ios'||standalone())&&!dip)bi.style.display='none';
+if(ih)ih.style.display=st==='ios'?'block':'none';if(bi&&(on||st==='ios'||standalone())&&!dip)bi.style.display='none';var hw=$('app-how');if(hw)hw.style.display=(st==='ask'&&!standalone()&&!dip&&!IOS)?'block':'none';
 if(st==='on'){t.textContent='🔔 अलर्ट चालू हैं ✔ / Alerts are on';s2.textContent='लीड आगे बढ़ने, हिस्सा बदलने या पैसा भेजे जाने पर इस फ़ोन पर अलर्ट आएगा। / You will be alerted here when a lead moves, your share changes or money is sent.'}
 else if(st==='ios'){t.textContent='🔔 iPhone पर अलर्ट के लिए पहले होम स्क्रीन पर जोड़ें / On iPhone, add this to your home screen first';s2.textContent='iPhone में अलर्ट सिर्फ़ होम स्क्रीन वाले ऐप में आते हैं (iOS 16.4+)। / On iPhone, alerts work only in the home-screen app (iOS 16.4 or newer).'}
 else if(st==='denied'){t.textContent='🔕 अलर्ट रुके हुए हैं / Alerts are blocked';s2.textContent='फ़ोन की सेटिंग → ब्राउज़र/ऐप → Notifications में “Allow” करें, फिर यह पेज दोबारा खोलें। / Allow notifications for this page in the phone settings, then open it again.'}
@@ -1282,9 +1383,9 @@ return r.pushManager.getSubscription().then(function(sub){return sub||r.pushMana
 const CHAT_JS = SP_JS
   .replace("(location.pathname.split('/')[2]||'')", "(location.pathname.split('/')[3]||'')")
   .replace("fetch('/sp/'+TOK+'/push'", "fetch('/q/chat/'+TOK+'/push'")
-  .replace('🔔 लीड और हिस्से की ख़बर सीधे फ़ोन पर पाएँ / Get lead and share news on your phone', '🔔 ब्रोकर का जवाब सीधे फ़ोन पर पाएँ / Get your broker’s reply on your phone')
+  .replace('🔔 लीड और हिस्से की ख़बर सीधे फ़ोन पर पाएँ / Get lead and share news on your phone', '📲🔔 अगला जवाब मिस न हो! / Do not miss the next reply')
   .replace('लीड आगे बढ़ने, हिस्सा बदलने या पैसा भेजे जाने पर इस फ़ोन पर अलर्ट आएगा। / You will be alerted here when a lead moves, your share changes or money is sent.', 'ब्रोकर का संदेश या घर आते ही इस फ़ोन पर अलर्ट आएगा — लिंक बार-बार नहीं खोलना पड़ेगा। / You will be alerted here when your broker writes or shares a home — no need to keep opening the link.')
-  .replace('एक बार नीचे का बटन दबाएँ — पेज बार-बार खोलना नहीं पड़ेगा। / Tap once — no need to open this page again and again.', 'एक बार नीचे का बटन दबाएँ — चैट बार-बार खोलनी नहीं पड़ेगी। / Tap once — no need to keep opening the chat.');
+  .replace('एक बार नीचे का बटन दबाएँ — पेज बार-बार खोलना नहीं पड़ेगा। / Tap once — no need to open this page again and again.', 'चैट को होम स्क्रीन पर जोड़ें और अलर्ट चालू करें — ब्रोकर का जवाब और नए घर आते ही फ़ोन पर खबर आएगी। / Add the chat to your home screen and turn alerts on — you are told the moment the broker replies or a new home comes.');
 
 export function createPartnerPageRouter() {
   const r = Router();

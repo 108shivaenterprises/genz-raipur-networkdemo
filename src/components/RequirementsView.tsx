@@ -186,7 +186,7 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
                 <h3 className="text-base font-bold text-slate-900">{req.customerName}</h3>
                 <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-600">
                   <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                  <span className="font-mono">{req.customerPhone}</span>
+                  {req.customerPhone ? <span className="font-mono">{req.customerPhone}</span> : (req as any).leadId ? <span className="text-amber-800" data-testid="req-phone-hidden">🔒 {tx('Number opens when you share him a matching home', 'नंबर तब खुलेगा जब आप उन्हें मेल खाता घर शेयर करें')}</span> : <span className="font-mono"></span>}
                   <span aria-hidden="true">·</span>
                   <span className="text-slate-500">{label('purpose', req.purpose)}</span>
                 </div>

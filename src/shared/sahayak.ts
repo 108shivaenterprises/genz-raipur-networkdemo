@@ -19,6 +19,7 @@ const RX = {
   price: /(price|rate\b|rates\b|kitn[aei]|कितन[ाेी]|kimat|keemat|कीमत|क़ीमत|दाम|daam|रेट|negotiat|bargain|kam\s*(kar|ho)|कम\s*(कर|हो)|discount|final\s*(rate|price)|sasta|सस्ता|costly|mehenga|महँगा|महंगा|emi\b|token|advance|deposit|डिपॉज़िट|डिपोजिट|brokerage|ब्रोकरेज)/,
   more: /(aur\s*(ghar|flat|option|dikha|koi|bhi)|और\s*(घर|फ्लैट|विकल्प|दिखा|कोई|भी)|more\s*(homes|houses|options|flats|properties)|other\s*(homes|options|properties)|dusr[ae]|doosr[ae]|दूसर[ेा]|दुसर[ेा]|options|explore|एक्सप्लोर|dikhao|दिखाओ|दिखाइए|दिखाइये|koi\s*aur|कोई\s*और|kuch\s*aur|कुछ\s*और|next\b)/,
   status: /(status|स्टेटस|kab\s*tak|कब\s*तक|kab\s*(lag|ho\s*ga|hog|live)|कब\s*(लग|हो\s*ग)|kya\s*hua|क्या\s*हुआ|aage\s*kya|आगे\s*क्या|next\s*step|listing\s*(ho|lag|live|kab|ban)|लिस्टिंग\s*(हो|लग|कब|बन)|live\s*(hua|ho|kab)|लाइव|draft|ड्राफ़्ट|ड्राफ्ट)/,
+  update: /(change|chng|badal|badlo|badli|बदल|अपडेट|update|sudhar|सुधार|instead|nahi\s*(chahiye|chahie|chaiye)|नहीं\s*चाहिए|ab\s+(mujhe|hame|humein)|अब\s+(मुझे|हमें)|\b(?:nahi|nahin|nhi|नहीं)\b.*\b(?:mein|mai|me|में|dekho|dikhao|chahiye|chahie))/,
   thanks: /(thank|thanks|thx|shukriya|shukria|शुक्रिया|dhanyavad|dhanyawad|धन्यवाद|आभार|bahut\s*achha|बहुत\s*अच्छा|great|nice\b)/,
   greet: /^(hi+|hello+|hey+|hii+|namaste|namaskar|नमस्ते|नमस्कार|हेलो|हैलो|हाय|ram\s*ram|राम\s*राम|jai\s*(shri\s*)?(ram|krishna|mata)|जय|good\s*(morning|evening|afternoon)|suprabhat|सुप्रभात)(?![a-z0-9\u0900-\u097f])/,
   need: /(bhk|बीएचके|बी\.?एच\.?के|bedroom|\d\s*(lakh|lac|lakhs|cr|crore|k\b)|\d\s*(लाख|करोड़|करोड|हज़ार|हजार)|budget|बजट|kiraya|किराया|किराये|rent\b|khareed|kharid|खरीद|buy\b|sale\b|plot\b|प्लॉट|flat\b|फ्लैट|fl[ae]t|makaan|makan|मकान|dukaan|dukan|दुकान|shop\b|office\b|ऑफिस|ऑफ़िस|villa|विला|chahiye|चाहिए|chahie|chaiye|चाहिये)/,
@@ -33,6 +34,8 @@ export function readIntent(text: string): Intent {
   if (RX.avail.test(t)) return 'AVAIL';
   if (RX.price.test(t)) return 'PRICE';
   if (RX.status.test(t) && t.length < 80) return 'STATUS';
+  // v101 — "change kar do … Shankar Nagar … 2.5 cr", "Amlidih nahi, Pandri mein dekho": a change word + something readable as a need = a change of his need
+  if (RX.update.test(t) && Object.keys(readNeedChange(text)).length) return 'NEED';
   if (RX.need.test(t) && (/\d/.test(t) || /(chahiye|चाहिए|चाहिये|chahie|chaiye|looking|want|need|dhund|ढूँढ|ढूंढ)/.test(t))) return 'NEED';
   if (RX.more.test(t)) return 'MORE';
   if (RX.thanks.test(t) && t.length < 60) return 'THANKS';
@@ -53,15 +56,18 @@ const TYPE_RULES: [RegExp, string][] = [
 ];
 /** `city` = the shop's / broker's city (any city of India); '' = unknown, then the area is read from the sentence itself */
 export function readNeedChange(text: string, city = ''): NeedChange {
-  const raw = String(text || ''); const t = flat(raw); const out: NeedChange = {};
+  const full = String(text || ''); const out: NeedChange = {};
+  // v101 — "farm house nahi, flat chahiye" / "Amlidih nahi, Pandri mein dekho": what he rejects is not read — the type, buy / rent and place come from the part AFTER "nahi" (the money is read from the whole line)
+  const neg = /^(.{2,70}?)\s*\b(?:nahi|nahin|nhi|नहीं|not)\b[\s,;:.-]*(.{3,})$/i.exec(full.replace(/\s+/g, ' ').trim());
+  const raw = neg && !/\d/.test(neg[1]) ? neg[2] : full; const t = flat(raw); const t0 = flat(full);
   if (/(kiraya|किराया|किराये|kiraye|rent\b|rental|lease)/.test(t)) out.kind = 'RENT_IN';
   else if (/(khareed|kharid|खरीद|खरीदना|buy\b|purchase|sale\b|bikri|बिक्री|lena\s*hai|लेना\s*है)/.test(t)) out.kind = 'BUY';
   // 50 lakh / 1.2 cr / 15k / 15000 / ₹ 12,000
-  const bhk = /(\d)\s*(?:bhk|बीएचके|bedroom)/.exec(t);
+  const bhk = /(\d)\s*(?:bhk|बीएचके|bedroom)/.exec(t0);
   if (bhk) out.bhk = Number(bhk[1]);
-  const moneyText = raw.replace(/(\d)\s*(?:bhk|बीएचके|bedroom)\w*/gi, ' ');
+  const moneyText = full.replace(/(\d)\s*(?:bhk|बीएचके|bedroom)\w*/gi, ' ');
   const mm = /(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(lakhs?|lacs?|cr(?:ore)?s?|k\b|thousand|लाख|करोड़|करोड|हज़ार|हजार)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2'))
-    || ((/(budget|बजट|kiraya|किराया|rent|price|कीमत|tak|तक|under|within)/.test(t)) ? /(?:₹|rs\.?|inr)?\s*(\d{4,9})(?!\d)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2')) : null);
+    || ((/(budget|बजट|kiraya|किराया|rent|price|कीमत|tak|तक|under|within)/.test(t0)) ? /(?:₹|rs\.?|inr)?\s*(\d{4,9})(?!\d)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2')) : null);
   if (mm) { const n = Number(mm[1]); if (n > 0) out.budget = mm[2] ? (/^(k|thousand)$/i.test(mm[2]) ? `${mm[1]}k` : `${mm[1]} ${mm[2]}`) : String(Math.round(n)); }
   for (const [re, ty] of TYPE_RULES) if (re.test(t)) { out.ptype = ty; break; }
   // v100 — "Indore mein chahiye" at a Pune shop: the customer's own city wins; the area is then read inside THAT city, and a bare city name means "any area"

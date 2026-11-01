@@ -92,7 +92,7 @@ describe('GENZ सहायक — buyer chat from the QR to a visit', { timeout
     homes = l.chat.msgs.filter((m: any) => m.kind === 'HOME').map((m: any) => m.homeId);
     expect(homes.length).toBeGreaterThan(1); expect(homes.length).toBeLessThanOrEqual(3); expect(homes).toContain(mine);
     expect(l.masked).toBe(false); expect(l.phone).toBe(BUYER); expect(l.clientCardId).toBeTruthy();
-    expect(lastBot(l).kind).toBe('CHIPS'); expect(lastBot(l).chips.map((c: any) => c.id)).toEqual(expect.arrayContaining(['VISIT', 'MORE', 'ROOM', 'HUMAN']));
+    expect(lastBot(l).kind).toBe('CHIPS'); expect(lastBot(l).chips.map((c: any) => c.id)).toEqual(expect.arrayContaining(['VISIT', 'MORE', 'HUMAN']));   // v101 — the client room opens by itself with the first home, so no 🏠 chip (and the chips stay under the LAST message)
     const page = await chat(tok); expect(page).toContain('data-testid="bot-chips"'); expect(page).toContain('data-testid="chat-explore"');
     const all = (await (await call(jar.BRK1, 'GET', '/api/properties')).json()).properties;
     for (const id of homes) { const p = all.find((x: any) => x.id === id); expect(p.listingStatus).toBe('active'); expect(p.transactionType).toBe('Sale'); }
@@ -165,15 +165,13 @@ describe('GENZ सहायक — buyer chat from the QR to a visit', { timeout
     await form(undefined, `/q/chat/${tok}/like`, { h: 'PROP-RAI-999', v: '1' });                     // a home that does not fit / does not exist
     expect((await lead('9701')).chat.msgs.length).toBe(before);
   });
-  it('the client room opens on his tap: a room for broker 1 with the homes shown; its link works; a second tap does not open a second room', async () => {
-    const roomsBefore = (await (await call(jar.BRK1, 'GET', '/api/client-rooms')).json()).rooms.length;
-    await tap(tok, 'ROOM');
-    const rooms = (await (await call(jar.BRK1, 'GET', '/api/client-rooms')).json()).rooms; expect(rooms.length).toBe(roomsBefore + 1);
-    const room = rooms.find((r: any) => /Shop QR lead/.test(r.note || '')) || rooms[0]; expect(room.itemCount ?? room.items?.length ?? 1).toBeGreaterThan(0);
+  it('v101 — the client room opens BY ITSELF with his first home: one room for broker 1, its link works; a tap on "my room" never opens a second one', async () => {
+    const rooms = (await (await call(jar.BRK1, 'GET', '/api/client-rooms')).json()).rooms; const roomsBefore = rooms.length;
+    expect((await lead('9701')).bot.room).toBe(true); const room = rooms.find((r: any) => /Shop QR lead/.test(r.note || '')) || rooms[0]; expect(room).toBeTruthy(); expect(room.itemCount ?? room.items?.length ?? 1).toBeGreaterThan(0);
     const page = await chat(tok); expect(page).toContain('data-testid="chat-room"');
     const href = /data-testid="chat-room-open"/.test(page) ? /href="(\/r\/[^"]+)"[^>]*data-testid="chat-room-open"/.exec(page)?.[1] : '';
     expect(href).toMatch(/^\/r\/[A-Za-z0-9_-]{20,}/); expect((await fetch(B + href!)).status).toBe(200);
-    await tap(tok, 'ROOM'); expect((await (await call(jar.BRK1, 'GET', '/api/client-rooms')).json()).rooms.length).toBe(roomsBefore + 1);
+    await tap(tok, 'ROOM'); expect((await (await call(jar.BRK1, 'GET', '/api/client-rooms')).json()).rooms.length).toBe(roomsBefore);
     expect(JSON.stringify(await lead('9701'))).not.toContain(href!.replace('/r/', ''));            // the room link is never in what the broker's list returns
   });
 });

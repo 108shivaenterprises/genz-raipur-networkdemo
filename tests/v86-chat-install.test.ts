@@ -80,7 +80,7 @@ describe('customer chat: add to home + alerts', { timeout: 60000 }, () => {
   it('the script points at the chat link, not at the shop page, and speaks to the customer', async () => {
     const js = await (await fetch(`${B}/q/chat-app.js`)).text();
     expect(js).toContain("split('/')[3]"); expect(js).toContain("'/q/chat/'+TOK+'/push'"); expect(js).not.toContain("'/sp/'+TOK");
-    expect(js).toContain('ब्रोकर का जवाब सीधे फ़ोन पर पाएँ'); expect(js).not.toContain('लीड और हिस्से');
+    expect(js).toContain('अगला जवाब मिस न हो'); expect(js).not.toContain('लीड और हिस्से');   // v101 — the card now says: do not miss the next reply
   });
   it('his phone subscribes (bad keys / unknown push service are refused); the broker sees the alerts are on', async () => {
     expect((await leadByLast4('5601')).alerts).toBe(0);

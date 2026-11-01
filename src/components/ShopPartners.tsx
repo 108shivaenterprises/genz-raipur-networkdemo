@@ -238,6 +238,7 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
             </div>
           )}
           {l.masked && c.reqConfirmedAt && !owner && (l.matches || []).length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it (area, rent/sale, budget). Add or switch on a matching listing — until you share one, his number stays hidden.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर उससे मेल नहीं खाता (इलाका, किराया/बिक्री, बजट)। मेल खाती लिस्टिंग जोड़ें या चालू करें — जब तक शेयर नहीं, नंबर छुपा रहेगा।')}</p>}
+          {l.bot?.network && l.bot.network.count > 0 && !owner && <p className="rounded-lg bg-indigo-50 p-2 text-xs text-indigo-900" data-testid="sp-network">🌐 {tx(`The network holds ${l.bot.network.count} home${l.bot.network.count > 1 ? 's' : ''} for his need (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''}). He was told the count and range. His need is in your Buyers list — open Buyers → Magic Match to talk to those brokers.`, `नेटवर्क में उनकी ज़रूरत के ${l.bot.network.count} घर हैं (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''})। उन्हें गिनती और दाम की सीमा बता दी गई है। उनकी ज़रूरत आपकी Buyers लिस्ट में है — Buyers → Magic Match से उन ब्रोकरों से बात करें।`)}</p>}
           {err && <p className="text-xs font-semibold text-red-700" role="alert">{err}</p>}
         </div>
       )}
