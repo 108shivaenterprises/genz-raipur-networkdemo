@@ -3886,6 +3886,8 @@ app.get('/api/audit-logs', needs('audit:read_all', 'audit:read_own'), (req: Requ
     state.offers.forEach(o => { if (o.proposingBrokerId === currentUser.id || o.receivingBrokerId === currentUser.id) mine.add(o.id); });
     state.siteVisits.forEach(v => { if (v.brokerId === currentUser.id || mine.has(v.dealRoomId)) mine.add(v.id); });
     state.ownerMandates.forEach(m => { if (m.ownerId === currentUser.id || m.brokerId === currentUser.id) mine.add(m.id); });
+    // v102 — the owner's consent (asked / agreed / declined / reported / approved / void) is part of the broker's own trail: he asked for it, it is his listing's proof
+    (state.ownerConsents || []).forEach(c => { if (c.brokerId === currentUser.id) mine.add(c.id); });
     state.constructionLeads.forEach(l => { if (l.referringBrokerId === currentUser.id || l.assignedContractorId === currentUser.id) mine.add(l.id); });
     state.disputes.forEach(d => { if (canSeeDispute(currentUser, d, state)) mine.add(d.id); });
     (state.legalRequests || []).forEach(r => { if (r.requestedById === currentUser.id || r.counsellorId === currentUser.id) mine.add(r.id); });

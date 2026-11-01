@@ -73,6 +73,6 @@ Builder pass ka API matrix (`tests/v102-scanner.test.ts`, B1–B6): promise se p
 - GPS **simulated** (Playwright location) — asli GPS drift/denied ka case nahi.
 - "EXPIRED" (slot ke 24 ghante baad) API par nahi chala sakte (time travel nahi) — pure rules tests (v79-rules) mein covered.
 - SMS/push asli nahi (DRY_RUN) — bell line check hui, phone ki notification nahi.
-- Owner consent accept hone ki audit line **broker ki apni trail mein nahi dikhti** (admin ko dikhti hai) — jaan-bujhkar chheda nahi, batana tha. Agar chahiye to bol dena.
+- ~~Owner consent accept hone ki audit line broker ki trail mein nahi dikhti~~ → **V102.1: ab dikhti hai.** Jis broker ne consent maanga (listing broker) uski apni audit trail mein poora consent chain aata hai: maanga / owner ne haan-na kaha / report kiya / GENZ ne approve-reject-void kiya (`form oc-v2` ke saath). Doosra broker aur owner ka apna login nahi dekhta (test `v102-journey` Part C).
 - Wording ke liye **advocate review** zaroori.
 - Pitch PDF aur USER_MANUAL waise hi (tumhare kehne tak).

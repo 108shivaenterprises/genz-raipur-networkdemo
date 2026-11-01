@@ -387,5 +387,11 @@ describe('Part C — the owner’s consent (mandate) carries the v2 wording: fam
     expect(page).toMatch(/family member, relative, nominee, or any firm or company of theirs/); expect(page).toContain('परिवारजन'); expect(page).toMatch(/रिश्तेदार/); expect(page).toMatch(/नॉमिनी/);
     const agree = await form(`/oc/${token}`, { action: 'agree', name: 'Ram Prasad', ok: '1', sigMode: 'type', initials: 'RP' }); const agreeText = await agree.text(); expect(agreeText).toMatch(/आपने \d{1,2} \w{3} \d{4} को सहमति दी/);
     const logs = JSON.stringify(((await j(await call(jar.ADMIN, 'GET', '/api/audit-logs?limit=500&q=oc-v2'))).events) || []); expect(logs).toContain('form oc-v2');
+    // the broker who asked for it reads it in HIS OWN trail too (it used to be GENZ-only); another broker and the owner’s own login do not
+    const trail = async (who: string) => ((await j(await call(jar[who], 'GET', '/api/audit-logs?limit=200&q=consent'))).events || []) as any[];
+    const mineB = await trail('BRK1'); const acc = mineB.find(e => e.action === 'OWNER_CONSENT_ACCEPTED' && e.details.includes(loc));
+    expect(acc, 'BRK1 sees the owner’s “agreed” line').toBeTruthy(); expect(acc.details).toContain('form oc-v2');
+    expect(mineB.some(e => e.action === 'OWNER_CONSENT_REQUESTED' && e.details.includes(loc))).toBe(true);
+    for (const who of ['BRK2', 'BRK3', 'OWN']) expect((await trail(who)).some(e => e.details.includes(loc)), who).toBe(false);
   });
 });
