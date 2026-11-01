@@ -16,7 +16,7 @@ import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot
 import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, BOT_WATCH, GONE_WORDS, goneKind, type GoneKind, type NeedChange, type When } from '../src/shared/sahayak.js';
 import { nextAsk, applyAnswer, progress, composeListing, summaryLine, SKIP_CHIP, type AskId } from '../src/shared/listingAsk.js';
 import { containsContact } from '../src/shared/clientRoomRules.js';
-import { openRoomAuto } from './clientroom.js';
+import { openRoomAuto, addRoomHomes } from './clientroom.js';
 import { sealLink, openLink } from './linkSeal.js';
 
 type Chip = { id: string; hi: string; en: string };
@@ -344,7 +344,13 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     const wrote = (l.chat?.msgs || []).filter(m => m.by === 'CUSTOMER').slice(-1).map(m => Date.parse(m.at) || 0)[0] || 0;
     return now - Math.max(Date.parse(l.chat?.reqConfirmedAt || '') || 0, wrote) < BOT_WATCH.days * 86400_000;
   };
+  /** v105 — whenever the chat is looked after (a listing changed, he opened the chat, the hourly sweep) his room is brought level with the chat too — even when the assistant is off or quiet */
   function follow(l: PartnerLead, now = Date.now()): number {
+    let n = 0;
+    try { n = followChat(l, now); } finally { try { syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); } }
+    return n;
+  }
+  function followChat(l: PartnerLead, now = Date.now()): number {
     if (!l.chat || off(l) || d.ownerSide(l) || !confirmed(l) || l.status === 'WON' || l.status === 'LOST') return 0;
     const b = botOf(l); const gone = (b.gone ||= {}); const ids = sentIds(l);
     if (!b.followedAt) {   // a chat from before v103: what is already gone would be old news — it is only noted; from here on he is followed
@@ -412,7 +418,17 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   }
 
   /** v101 — silently, once, right after his number opened; a failure (a room of that number already exists, a limit) is left to the broker and his tap */
-  function autoRoom(l: PartnerLead) { const b = botOf(l); if (!buyerSide(l) || !l.chat?.revealedAt || b.roomId || b.roomSealed) return; openRoom(l, true); }
+  function autoRoom(l: PartnerLead) { const b = botOf(l); if (!buyerSide(l) || !l.chat?.revealedAt) return; if (b.roomId || b.roomLinked) return syncRoom(l); openRoom(l, true); }
+  /** v105 — every home in his chat is in his client room: a home shown after the room opened (more homes, a new listing, one the broker sent) is added by itself.
+   *  A home is offered to the room once — one the broker took out is not put back. Works for the room we opened and for the broker's own open room for his number. */
+  function syncRoom(l: PartnerLead): void {
+    const b = botOf(l); const rid = b.roomId || b.roomLinked; if (!rid || !buyerSide(l) || l.status === 'LOST') return;
+    const offered = new Set(b.roomHomes || []);
+    const fresh = liveSent(l).map(h => h.id).filter(id => !offered.has(id)); if (!fresh.length) return;
+    const done = addRoomHomes(l.brokerId, rid, fresh); if (!done.length) return;
+    b.roomHomes = [...new Set([...(b.roomHomes || []), ...done])].slice(-80);
+    d.hist(l, `Put ${done.length} home(s) in his client room (shown to him in the chat)`);
+  }
   function openRoom(l: PartnerLead, auto = false) {
     const b = botOf(l);
     if (!buyerSide(l)) return;
@@ -420,12 +436,13 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     if (b.roomSealed) { say(l, 'आपका क्लाइंट रूम तैयार है — नीचे के कार्ड से खोलें।', 'Your client room is ready — open it from the card below.'); return; }
     const r = openRoomAuto(l.brokerId, { name: l.name, phone: l.phone, kind: l.kind === 'RENT_IN' ? 'RENTER' : 'BUYER', note: `Shop QR lead ${l.id} · opened by the GENZ assistant on his tap`, propertyIds: sentIds(l) });
     if (!r.ok) {
+      if (r.code === 'EXISTS' && r.roomId) { b.roomLinked = r.roomId; syncRoom(l); }   // v105 — the broker's own room for his number gets his homes too (its link is still the broker's to send)
       if (auto) return;
       if (r.code === 'EXISTS') { say(l, 'आपका क्लाइंट रूम ब्रोकर के पास पहले से है — मैंने उन्हें कहा है कि आपको उसका लिंक भेजें।', 'The broker already has a client room for you — I have asked him to send you its link.'); d.tellBroker(l, `🏠 ${l.name} को रूम का लिंक चाहिए`, 'उसने चैट में क्लाइंट रूम माँगा — रूम खोलकर “नया लिंक” भेजें।'); }
       else { say(l, 'अभी क्लाइंट रूम नहीं बन पाया — ब्रोकर इसे देख लेंगे।', 'I could not open the client room right now — the broker will look into it.'); d.tellBroker(l, `🏠 ${l.name}: रूम नहीं बन पाया`, r.error); }
       return;
     }
-    b.roomId = r.room.id; b.roomSealed = sealLink(r.token, `lr|${l.id}`); b.roomAt = nowIso();
+    b.roomId = r.room.id; b.roomSealed = sealLink(r.token, `lr|${l.id}`); b.roomAt = nowIso(); b.roomHomes = r.room.items.map(i => i.propertyId);
     d.audit(l, 'SHOP_LEAD_ROOM_OPENED', `Client room ${r.room.id} opened by the GENZ assistant after the customer tapped for it (${r.room.items.length} home(s) put in)`);
     d.hist(l, `Client room opened by the assistant on his tap (${r.room.items.length} homes)`);
     say(l, '🏠 आपका क्लाइंट रूम तैयार है — इसमें अभी तक भेजे गए सारे घर हैं, फ़ोटो-वीडियो आने पर वहीं मिलेंगे। नीचे के कार्ड से खोलें (अपना मोबाइल नंबर + कोड से)।', '🏠 Your client room is ready — all the homes sent so far are in it, and photos / videos will come there. Open it from the card below (with your mobile number + a code).', menu(l));
@@ -601,6 +618,6 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
     network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
-  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed };
+  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed, syncRoom };
 }
 export type Sahayak = ReturnType<typeof makeSahayak>;

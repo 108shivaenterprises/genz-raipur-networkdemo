@@ -822,6 +822,7 @@ export function createShopPartnerRouter() {
     l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l);
     const first = !l.chat.revealedAt;
     revealNumber(l, { homeId: h.id, title: h.title });
+    try { sahayak.syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); }   // v105 — the home he sent is in his client room too
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
     audit(l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED', first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}, listed ${(h as any).createdAt || 'before v92'}) was shared` : `Another home (${h.id}) shared in the chat`);
     db.save();

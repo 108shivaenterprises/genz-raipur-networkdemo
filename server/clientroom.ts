@@ -159,6 +159,26 @@ export function openRoomAuto(brokerId: string, a: { name: string; phone: string;
   st().clientRooms.push(room);
   return { ok: true, room, token };
 }
+/**
+ * v105 — a home shown in the customer's QR chat AFTER his room was opened (more homes, a new listing, one the broker sent) goes into the room by itself, with the
+ * same PUBLIC photos / video. Returns the ids that are in the room now (added or already there) — a closed / missing room returns none, a full room returns the rest unplaced.
+ * The customer's phone is told once per call (the room's own “a new home” alert).
+ */
+export function addRoomHomes(brokerId: string, roomId: string, propertyIds: string[]): string[] {
+  const room = st().clientRooms.find(x => x.id === roomId && x.brokerId === brokerId);
+  if (!room || room.status !== 'ACTIVE') return [];
+  const inRoom: string[] = []; const added: string[] = [];
+  for (const id of propertyIds) {
+    const p = st().properties.find(x => x.id === id); if (!p || !live(p)) continue;
+    if (room.items.some(i => i.propertyId === p.id)) { inRoom.push(p.id); continue; }
+    if (room.items.length >= L.items) break;
+    const m = allMedia({ id: '-' }, p);
+    room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note: undefined, visitRequests: [], ...(m.photos.length || m.videos.length ? { media: m } : {}) });
+    added.push(p.id); inRoom.push(p.id);
+  }
+  if (added.length) { ev(room, `Added ${added.join(', ')} (shown to him in his QR chat)`); room.updatedAt = nowIso(); tellMsg(room, 'HOME'); }
+  return inRoom;
+}
 const sealPhone = (r: ClientRoom, phone: string) => { try { if (vaultReady()) r.phoneSealed = seal(phone, phoneAad(r)); } catch { /* no vault key: the room works with the last 4 only */ } };
 const openPhone = (r: ClientRoom): string | undefined => { try { return r.phoneSealed ? unseal(r.phoneSealed, phoneAad(r)) : undefined; } catch { return undefined; } };
 /**

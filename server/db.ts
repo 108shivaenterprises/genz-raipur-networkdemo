@@ -1516,6 +1516,8 @@ export interface LeadBot {
   followedAt?: string; seen?: string[]; gone?: Record<string, string>; watch?: { lastPushAt?: string; pushes: number };
   /** v104 — the homes whose photos / video he opened in the chat (the broker is told once per home) */
   viewed?: string[];
+  /** v105 — the broker's own open room for his number that the assistant feeds (no link of ours to show), and the homes already offered to his room (a home the broker removed is not put back) */
+  roomLinked?: string; roomHomes?: string[];
 }
 export interface PartnerLead {
   id: string;                      // PLD-xxxxxxxxxx
