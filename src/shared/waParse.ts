@@ -171,6 +171,23 @@ export function findType(t: string): PropertyType | undefined {
 const PLOT_TYPES = new Set<PropertyType>(['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land']);
 export const isPlotType = (t?: string) => !!t && PLOT_TYPES.has(t as PropertyType);
 
+/**
+ * v99 — a monthly rent written as a plain number ("2bhk Kothrud for rent 18000", "kiraya 15000 per month").
+ * Only a 4–5 digit number (₹2,000–₹99,999) that is NOT an area / BHK / pincode, and only when there is exactly one such number.
+ * (6 digits are left alone: they are usually a pincode; a bigger rent needs "k", "lakh" or ₹.)
+ */
+export function bareRent(t: string): number | undefined {
+  const s = withoutPhones(t).replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
+  const re = /(?<![\d.,])(\d{4,5})(?![\d.,])/g; const found: number[] = []; let m: RegExpExecArray | null;
+  while ((m = re.exec(s))) {
+    const after = s.slice(m.index + m[1].length, m.index + m[1].length + 14); const before = s.slice(Math.max(0, m.index - 10), m.index);
+    if (/^\s*(?:sq|sft|sqft|square|गज|वर्ग|acre|एकड़|dismil|bhk|rk\b|lakh|lac|cr\b|k\b|l\b|x\s*\d|\*\s*\d|मीटर|meter|sqm)/i.test(after)) continue;
+    if (/(?:pin(?:code)?|पिन|floor|फ्लोर|plot\s*no\.?|house\s*no\.?|no\.?)\W*$/i.test(before)) continue;
+    const v = Number(m[1]); if (v >= 2000 && v <= 99_999) found.push(v);
+  }
+  return found.length === 1 ? found[0] : undefined;
+}
+
 export function findTransaction(t: string, monthly?: boolean): 'Sale' | 'Rent' | 'Lease' | undefined {
   if (/\blease\b|लीज़/i.test(t)) return 'Lease';
   if (/\b(?:rent|rental|to\s*let|kiraya|kiraye)\b|किराया|किराए|किराये/i.test(t) || monthly) return 'Rent';
@@ -179,7 +196,17 @@ export function findTransaction(t: string, monthly?: boolean): 'Sale' | 'Rent' |
 }
 
 const ALL_KNOWN: { city: string; state: string }[] = TOP_CITIES.map(c => ({ city: c.name, state: c.state }));
+/** v99 — city names written in Devanagari (a Hindi message). Localities in Devanagari are not read — only the city. */
+const DEVANAGARI_CITY: Record<string, string> = {
+  'जयपुर': 'Jaipur', 'पुणे': 'Pune', 'पूना': 'Pune', 'इंदौर': 'Indore', 'रायपुर': 'Raipur', 'भोपाल': 'Bhopal', 'नागपुर': 'Nagpur', 'लखनऊ': 'Lucknow', 'दिल्ली': 'Delhi', 'मुंबई': 'Mumbai',
+  'बेंगलुरु': 'Bengaluru', 'बेंगलूरु': 'Bengaluru', 'बैंगलोर': 'Bengaluru', 'हैदराबाद': 'Hyderabad', 'अहमदाबाद': 'Ahmedabad', 'सूरत': 'Surat', 'चंडीगढ़': 'Chandigarh', 'कोलकाता': 'Kolkata',
+  'चेन्नई': 'Chennai', 'नोएडा': 'Noida', 'गुरुग्राम': 'Gurugram', 'गुड़गांव': 'Gurugram', 'भिलाई': 'Bhilai', 'बिलासपुर': 'Bilaspur', 'दुर्ग': 'Durg', 'कानपुर': 'Kanpur', 'पटना': 'Patna',
+  'वाराणसी': 'Varanasi', 'आगरा': 'Agra', 'जोधपुर': 'Jodhpur', 'उदयपुर': 'Udaipur', 'कोटा': 'Kota', 'नासिक': 'Nashik', 'राजकोट': 'Rajkot', 'वडोदरा': 'Vadodara', 'ग्वालियर': 'Gwalior',
+  'जबलपुर': 'Jabalpur', 'रांची': 'Ranchi', 'भुवनेश्वर': 'Bhubaneswar', 'देहरादून': 'Dehradun', 'अमृतसर': 'Amritsar', 'लुधियाना': 'Ludhiana', 'गाज़ियाबाद': 'Ghaziabad', 'गाजियाबाद': 'Ghaziabad',
+  'फरीदाबाद': 'Faridabad', 'मेरठ': 'Meerut', 'प्रयागराज': 'Prayagraj', 'इलाहाबाद': 'Prayagraj', 'अयोध्या': 'Ayodhya', 'उज्जैन': 'Ujjain', 'रायगढ़': 'Raigarh', 'कोरबा': 'Korba',
+};
 export function findCity(t: string): { city?: string; state?: string } {
+  for (const [dv, name] of Object.entries(DEVANAGARI_CITY)) if (t.includes(dv)) { const c = TOP_CITIES.find(x => x.name === name) || ALL_KNOWN.find(x => x.city === name); if (c) return { city: (c as any).name || (c as any).city, state: (c as any).state }; }
   const low = ` ${t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
   for (const c of ALL_KNOWN) if (low.includes(` ${c.city.toLowerCase()} `)) return c;
   for (const alias of ['naya raipur', 'nava raipur', 'new raipur', 'gurgaon', 'bangalore', 'bombay', 'calcutta', 'madras', 'poona', 'baroda', 'vizag']) {
@@ -234,6 +261,7 @@ export function parseOne(raw: string, idx = 0): ParsedListing {
   const bhkM = t.match(/(\d)\s*(?:\.\s*5\s*)?bhk/i);
   const bhk = bhkM ? Number(bhkM[1]) : /\b1\s*rk\b/i.test(t) ? 0 : undefined;
   let price = pr.price;
+  if (!price && transactionType === 'Rent') price = bareRent(t);
   if (!price && pr.perSqft && area.sqft && transactionType !== 'Rent') price = Math.round(pr.perSqft * area.sqft);
   const tags = findTags(t);
   const out: ParsedListing = {
@@ -270,6 +298,7 @@ export function findBudget(t: string): { min?: number; max?: number } {
     if (a > 0 && b > 0) return { min: Math.min(a, b), max: Math.max(a, b) };
   }
   const p = findPrice(s);
+  if (!p.price && /\b(?:rent|kiraya|kiraye|to\s*let)\b|किराय/i.test(s)) { const r = bareRent(s); if (r) p.price = r; }
   if (p.price) {
     const upto = /\b(?:upto|up\s*to|max|maximum|tak|within|under|below)\b|तक/i.test(s);
     return { min: Math.round(p.price * (upto ? 0.7 : 0.85)), max: p.price };

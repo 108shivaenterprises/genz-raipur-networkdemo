@@ -55,7 +55,13 @@ Har shehar mein: 2 sale flats, 1 rent flat, 1 dukan (rent), 1 plot. Ye accounts 
 - `server/shopPartners.ts`: `ownerFacts(l)`, `draftState(l)`.
 - UI: `src/components/ListingQuickAsk.tsx`, `DealSimple.tsx` (naye); `ListingDrafts.tsx`, `DealRoomsView.tsx`, `ShopPartners.tsx` (chhote badlav).
 - `server/demoCities.ts` (naya) + `db.ts` mein seeding call.
-- Tests (naye): `v99-listing-ask` (16 — pure), `v99-owner-listing-bot` (14 — real HTTP, Pune), `v99-demo-cities` (7 — Pune buyer match, Jaipur renter match, Indore owner draft), `v99-deal-simple` (6).
+- Tests (naye): `v99-listing-ask` (16 — pure), `v99-owner-listing-bot` (14 — real HTTP, Pune), `v99-demo-cities` (7 — Pune buyer match, Jaipur renter match, Indore owner draft), `v99-deal-simple` (6), `v99-paste-rent` (8).
+
+### 5. V99.1 — "sab check karo" ke baad ek fix
+- **Paste parser (WhatsApp forward se draft)**: kiraye ka seedha number ab padha jaata hai — "3 BHK for rent Baner Pune 18000", "2bhk Kothrud 15000 per month" → ₹18,000 / ₹15,000. Sirf 4–5 digit (₹2,000–₹99,999), sirf jab transaction *Rent* ho, aur sirf jab text mein ek hi aisa number ho. Area (sqft/sq ft), BHK, floor, pincode, phone ke saath wale number kabhi rent nahi maane jaate; 6 digit ya do-do number mein andaza nahi lagata. `bareRent()` in `src/shared/waParse.ts`; "need" paste (`findBudget`) mein bhi rent-context ke liye.
+- **Hindi (Devanagari) shehar ka naam**: "जयपुर, पुणे, इंदौर, रायपुर, भोपाल, नागपुर…" ab city + state pehchante hain. (Mohalla/locality Devanagari mein abhi nahi padha jaata — wizard puchh leta hai.)
+- Test: `tests/v99-paste-rent.test.ts` (8).
+- Jo dekha aur theek mila: Simple dealroom — English, 1280px desktop, owner, team member, admin, buyer, aur Pune broker ka khaali dealroom (koi error/overflow nahi); broker wizard English mein; lead-card par "📝 मालिक से सवाल चल रहे हैं (x/9)" badge + "ड्राफ़्ट लिस्टिंग खोलें" button (click → wahi draft khulta hai).
 
 ## Imaandari wali baatein / baaki
 - **Bhasha abhi Hindi + English hi.** Marathi/Gujarati/Tamil… nahi — agla bada kaam; batayein kaun si pehle.
