@@ -1001,6 +1001,22 @@ export const api = {
   olNetwork: () => request<any>('/api/owner-listing/network'),
   omPhoto: (data: string) => request<{ url: string }>('/api/owner-media/photo', { method: 'POST', body: JSON.stringify({ data }) }),
   omVideo: (data: string) => request<{ url: string }>('/api/owner-media/video', { method: 'POST', body: JSON.stringify({ data }) }),
+  /** v104 — a real video: the file itself is sent (no base64), with a progress number; the server keeps it on its disk (about 80 MB). `code: 'NO_DISK'` = this copy has no disk (the demo) — the caller falls back to omVideo (≤ 3 MB) or a link. */
+  omVideoRaw: (file: File, onProgress?: (pct: number) => void) => new Promise<{ url: string; size: number; max: number }>((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', '/api/owner-media/video-raw'); x.withCredentials = true;
+    x.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    x.upload.onprogress = (ev) => { if (ev.lengthComputable) onProgress?.(Math.min(99, Math.round((ev.loaded / ev.total) * 100))); };
+    x.onload = () => {
+      let d: any = {}; try { d = JSON.parse(x.responseText); } catch { /* non-JSON body */ }
+      if (x.status >= 200 && x.status < 300 && d.url) { onProgress?.(100); return resolve(d); }
+      if (x.status === 401) onUnauthorized?.();
+      reject(new ApiError(d.error || (x.status === 413 ? 'The video is too big — use a shorter clip or a YouTube / Drive link.' : 'The video did not upload — please try again.'), x.status, d.code, d));
+    };
+    x.onerror = () => reject(new ApiError(file.size > 60 * 1024 * 1024 ? 'The upload stopped — the file may be too big (about 80 MB at most). Use a shorter clip or a link.' : 'The upload stopped — check the network and try again.', 0));
+    x.onabort = () => reject(new ApiError('The upload was cancelled.', 0));
+    x.send(file);
+  }),
   odocList: () => request<any>('/api/owner-media/doc'),
   odocUpload: (b: { kind: string; propertyId?: string; data: string; name?: string; consent: boolean }) => request<any>('/api/owner-media/doc', { method: 'POST', body: JSON.stringify(b) }),
   odocDelete: (id: string) => request<any>(`/api/owner-media/doc/${encodeURIComponent(id)}`, { method: 'DELETE' }),

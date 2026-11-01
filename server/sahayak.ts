@@ -32,6 +32,8 @@ export interface BotDeps {
   tellBroker(l: PartnerLead, title: string, body: string): void;
   audit(l: PartnerLead, action: string, text: string): void;
   isLive(h?: Property): boolean;
+  /** v104 — how many PUBLIC photos / videos a home has for an anonymous customer (the same set the preview page shows) */
+  media(h: Property): { photos: number; videos: number };
   /** v103 — a phone alert to the customer (his name-less lock-screen words: “GENZ सहायक sent a property / a message”) */
   ping(l: PartnerLead, what: 'MSG' | 'HOME'): void;
   /** put what he wrote into the lead (budget / type / area / BHK / buy-or-rent) → the words of what changed */
@@ -287,6 +289,36 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   }
 
   /** is each home he was shown still there? (sold / rented / held homes are said plainly, and a replacement is offered) */
+  // ───────────────────────── v104 — photos & video in the chat ─────────────────────────
+  const mediaWords = (m: { photos: number; videos: number }) => ({ hi: [m.photos ? `${m.photos} फ़ोटो` : '', m.videos ? `${m.videos} वीडियो` : ''].filter(Boolean).join(' · '), en: [m.photos ? `${m.photos} photo${m.photos === 1 ? '' : 's'}` : '', m.videos ? `${m.videos} video${m.videos === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ') });
+  const photoHandoff = (l: PartnerLead, h?: Property) => handoff(l, 'photos', [
+    `${h ? `“${h.title.slice(0, 40)}” की ` : ''}फ़ोटो / वीडियो ब्रोकर आपको यहीं भेजेंगे — मैंने उन्हें बता दिया है। 📷`,
+    `The broker will send ${h ? `the photos / video of “${h.title.slice(0, 40)}”` : 'photos / videos'} here — I have told him. 📷`]);
+  /** “photos / video?” — he is shown what the listing really holds (its public photos and video, the same page the 📷 button opens); only a home with nothing is left to the broker */
+  function mediaReply(l: PartnerLead) {
+    if (d.ownerSide(l)) return photoHandoff(l);
+    if (!confirmed(l)) return remindConfirm(l);
+    const hs = liveSent(l);
+    if (!hs.length) { showHomes(l); return; }
+    const have = hs.map(h => ({ h, m: d.media(h) })).filter(x => x.m.photos + x.m.videos > 0);
+    const none = hs.filter(h => !have.some(x => x.h.id === h.id));
+    if (!have.length) return photoHandoff(l, hs[0]);
+    const chips: Chip[] = have.slice(0, 4).map(({ h, m }) => ({ id: `MEDIA:${h.id}`, hi: `📷 ${h.title.slice(0, 28)}`, en: mediaWords(m).en }));
+    if (none.length) chips.push({ id: `MEDIAREQ:${none[0].id}`, hi: `🙋 ${none[0].title.slice(0, 22)} की फ़ोटो माँगें`, en: 'Ask the broker for its photos' });
+    chips.push(M.human);
+    say(l, `📷 नीचे घर चुनें — फ़ोटो और वीडियो यहीं खुलेंगे।${none.length ? `\n(${none.length} घर की फ़ोटो अभी नहीं डाली गई — ब्रोकर से माँग सकते हैं।)` : ''}`,
+      `📷 Choose a home below — its photos and video open right here.${none.length ? `\n(${none.length} home${none.length === 1 ? ' has' : 's have'} no photos yet — you can ask the broker.)` : ''}`, chips);
+  }
+  /** he opened the photos / video of a home: the broker is told once per home (a warm moment to offer the visit) */
+  function viewed(l: PartnerLead, homeId: string): void {
+    if (!l.chat || !sentIds(l).includes(homeId)) return;
+    const b = botOf(l); b.viewed ||= []; if (b.viewed.includes(homeId)) return;
+    b.viewed.push(homeId); if (b.viewed.length > 40) b.viewed.shift();
+    const h = propOf(homeId); if (!h) return;
+    d.hist(l, `Opened the photos / video of “${h.title}” in the chat`);
+    d.tellBroker(l, `👀 ${l.name}: फ़ोटो/वीडियो देखे`, `${h.title} — ग्राहक ने चैट में इस घर की फ़ोटो/वीडियो खोली। विज़िट पूछने का अच्छा समय है।`);
+  }
+
   function availReport(l: PartnerLead) {
     const ids = sentIds(l);
     if (!ids.length) { if (!confirmed(l)) return remindConfirm(l); showHomes(l); return; }
@@ -426,7 +458,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       case 'VISIT': return startVisit(l);
       case 'MORE': if (!confirmed(l)) return remindConfirm(l); if (d.ownerSide(l)) return handoff(l, 'other'); showHomes(l); return;
       case 'AVAIL': return availReport(l);
-      case 'PHOTOS': return handoff(l, 'photos', ['फ़ोटो / वीडियो ब्रोकर आपको यहीं भेजेंगे — मैंने उन्हें बता दिया है। 📷', 'The broker will send photos / videos here — I have told him. 📷']);
+      case 'PHOTOS': return mediaReply(l);
       case 'PRICE': {
         const hs = liveSent(l).slice(0, 4);
         const list = hs.length ? `\nलिस्टेड कीमत:\n${hs.map(h => `• ${h.title} — ${price(h)}`).join('\n')}` : '';
@@ -472,6 +504,8 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       case 'VISIT': echo(label(M.visit)); return startVisit(l);
       case 'MORE': echo(label(M.more)); if (!confirmed(l)) return remindConfirm(l); if (d.ownerSide(l)) return handoff(l, 'other'); showHomes(l); return;
       case 'AVAIL': echo(label(M.avail)); return availReport(l);
+      case 'MEDIA': { if (!sentIds(l).includes(arg)) return; const h = propOf(arg); echo(`📷 ${h?.title || arg}`); viewed(l, arg); return; }   // v104 — normally the page opens straight from the button; this only counts when a chip arrives without it
+      case 'MEDIAREQ': { if (!sentIds(l).includes(arg)) return; const h = propOf(arg); echo(`🙋 ${h?.title || arg}`); return photoHandoff(l, h); }
       case 'HUMAN': echo(label(M.human)); if (b.interview) b.interview.step = undefined; return handoff(l, 'human');
       case 'STATUS': if (!d.ownerSide(l)) return; echo(label(M.status)); return ownerStatus(l);
       case 'ASKGO': { if (!d.ownerSide(l) || !b.interview || b.interview.doneAt) return; echo(label(M.info)); const iv = b.interview; iv.step = undefined; return askNext(l); }
@@ -563,10 +597,10 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   }
 
   const roomLink = (l: PartnerLead) => { const s = l.chat?.bot?.roomSealed; if (!s) return ''; try { return openLink(s, `lr|${l.id}`); } catch { return ''; } };
-  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), following: !off(l) && !!b.followedAt && followed(l, Date.now()), watchPushes: b.watch?.pushes || 0, offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
+  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), following: !off(l) && !!b.followedAt && followed(l, Date.now()), watchPushes: b.watch?.pushes || 0, viewed: [...(b.viewed || [])], offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
     interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
     network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
-  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow };
+  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed };
 }
 export type Sahayak = ReturnType<typeof makeSahayak>;

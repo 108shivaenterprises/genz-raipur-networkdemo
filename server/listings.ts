@@ -9,6 +9,7 @@
  *  • A resale never reopens the old record — it creates a NEW listing linked by resaleOf, which must be verified again.
  */
 import { onPropertyClosed } from './buyerbond.js';
+import { eraseOwnerMediaOf } from './ownermedia.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
@@ -45,6 +46,7 @@ export function purgeProperty(p: Property, actor = { id: 'system', role: 'SUPERA
     id: `MR-${crypto.randomBytes(4).toString('hex')}`, city: p.city, locality: p.locality, propertyType: p.propertyType, transactionType: p.transactionType,
     areaSqFt: p.plotAreaSqFt || p.builtUpAreaSqFt || 0, month: monthOf(p.soldAt || nowIso()), priceBand: priceBand(p.soldPrice || p.askingPrice), via: p.soldVia || 'OUTSIDE',
   });
+  eraseOwnerMediaOf(s, p);   // v104 — the uploaded photos / video of a closed listing go with its personal data
   p.title = `${p.propertyType} in ${p.locality} (closed)`; p.description = ''; p.ownerName = 'Owner (data erased)'; p.ownerPhone = '';
   p.addressHidden = ''; p.landmark = ''; p.street = ''; p.googleMapsUrl = ''; p.googleMapsDirectionsUrl = ''; p.videoUrl = '';
   p.latitude = undefined; p.longitude = undefined; p.village = ''; p.images = []; p.documents = []; p.soldNote = undefined; p.soldPrice = undefined;

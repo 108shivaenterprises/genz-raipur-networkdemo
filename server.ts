@@ -124,7 +124,7 @@ import { createRevenueRouter, createPublicStrengthRouter, sweepRevenue } from '.
 import { createProtectionRouter, checkDays, daysFor } from './server/protection.js';
 import { verifySigningPassword } from './server/signing.js';
 import { createProfilePhotoRouter } from './server/profilephoto.js';
-import { createOwnerMediaRouter } from './server/ownermedia.js';
+import { createOwnerMediaRouter, createPublicMediaRouter } from './server/ownermedia.js';
 import { createLeadBoardRouter } from './server/leadboard.js';
 import { createKycRetainRouter, sweepKycHolds } from './server/kycretain.js';
 import { createDealHubRouter } from './server/dealhub.js';
@@ -224,7 +224,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Protected-document and property-paper uploads need a larger body; those routes parse their own JSON with their own limit.
 const jsonParser = express.json({ limit: '256kb' });
-app.use((req, res, next) => ((req.method === 'PUT' && req.path === '/api/brand') || (req.method === 'POST' && req.path === '/api/shop-partners') || req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/api\/owner-media\/(photo|video|doc)$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
+app.use((req, res, next) => ((req.method === 'PUT' && req.path === '/api/brand') || (req.method === 'POST' && req.path === '/api/shop-partners') || req.method === 'POST' && (req.path === '/api/pdocs' || req.path === '/api/property-docs' || /^\/api\/partner-chats\/[^/]+\/messages$/.test(req.path) || /^\/api\/pcontrol\/builder\/projects\/[^/]+\/updates$/.test(req.path) || /^\/api\/id-review\/(mine|applications\/[^/]+)\/docs$/.test(req.path) || /^\/api\/consent\/drafts\/[^/]+\/paper$/.test(req.path) || /^\/api\/owner-media\/(photo|video|video-raw|doc)$/.test(req.path) || /^\/r\/[A-Za-z0-9_-]+\/(doc|push)$/.test(req.path)) ? next() : jsonParser(req, res, next)));
 
 // Structured one-line access log for /api (no bodies, no cookies, no query strings -> no PII in logs).
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -258,7 +258,9 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     const hasBody = Number(req.headers['content-length'] || 0) > 0;
     // v81 — the one non-JSON body: a piece of a call recording (audio/webm, audio/mp4, audio/ogg), still behind the same Origin check and cookie
     const audioPiece = req.method === 'POST' && /^\/calls\/[A-Za-z0-9_-]+\/chunk$/.test(req.path) && /^audio\/(webm|mp4|ogg)\b/i.test(String(req.headers['content-type'] || ''));
-    if (hasBody && !audioPiece && !req.is('application/json')) {
+    // v104 — the other one: a video the broker uploads is the raw file (mp4 / webm / mov) — same Origin check and cookie, and the route itself checks the first bytes and the size
+    const rawVideo = req.method === 'POST' && req.path === '/owner-media/video-raw' && /^video\/(mp4|webm|quicktime|x-m4v|mov)\b/i.test(String(req.headers['content-type'] || ''));
+    if (hasBody && !audioPiece && !rawVideo && !req.is('application/json')) {
       return res.status(415).json({ error: 'Content-Type must be application/json' });
     }
   }
@@ -5729,6 +5731,7 @@ app.use('/api/visit-acks', createVisitAckRouter());
 app.use('/a', createVisitAckPageRouter());
 // v57 — a broker's card is his public page (homes + enquiry form); other roles fall through to the plain visiting card
 app.use('/c', createBrokerPagePublicRouter());
+app.use('/m', createPublicMediaRouter());   // v104 — an uploaded photo / video for someone with no login, only while a live listing uses it
 app.use('/c', createPublicCardRouter());
 app.use('/oc', createOwnerConsentPageRouter());
 app.use('/report', createReportRouter());

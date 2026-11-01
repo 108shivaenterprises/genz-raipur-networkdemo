@@ -23,9 +23,19 @@ export function youtubeId(url: string): string | null {
   } catch { return null; }
 }
 
+/**
+ * v104 — a photo / video uploaded in the app is stored at /api/owner-media/f/<id> (signed-in members only). A customer, a client-room visitor or a public page
+ * has no login, so they read the same file at /m/<id> — open ONLY while a live listing uses it (server/ownermedia.ts). Every place that hands a media link to
+ * someone without a login passes it through here.
+ */
+export const pubMediaUrl = (u: string): string => String(u).replace(/^\/api\/owner-media\/f\/((?:IMG|VID)-[0-9a-f]{12})$/, '/m/$1');
+/** a video that was uploaded in the app (it has no .mp4 in its link) */
+export const isUploadedVideo = (u: string): boolean => /^\/(?:api\/owner-media\/f|m)\/VID-[0-9a-f]{12}$/.test(String(u));
+
 /** YOUTUBE → embed (youtube-nocookie) · FILE → a <video> player · LINK → a button that opens the link (Drive etc.) */
 export function videoKind(url: string): 'YOUTUBE' | 'FILE' | 'LINK' {
   if (youtubeId(url)) return 'YOUTUBE';
+  if (isUploadedVideo(url)) return 'FILE';
   if (/\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(url)) return 'FILE';
   return 'LINK';
 }

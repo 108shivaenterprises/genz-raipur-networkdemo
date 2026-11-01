@@ -146,23 +146,24 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
     });
   };
 
-  // Gallery Video Upload Handler
-  const handleVideoFile = (files: FileList | null) => {
+  // Gallery Video Upload Handler — v104: the file goes to the server as it is (about 80 MB) and the listing keeps only its link
+  const [videoBusy, setVideoBusy] = useState(false); const [videoPct, setVideoPct] = useState(0); const [videoErr, setVideoErr] = useState('');
+  const handleVideoFile = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    if (!file.type.startsWith('video/')) {
-      alert(tx('Please select a valid video file (MP4, WebM, MOV).', 'कृपया सही वीडियो फ़ाइल चुनें (MP4, WebM, MOV)।'));
-      return;
-    }
-    setUploadedVideoName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      if (dataUrl) {
-        setVideoUrl(dataUrl);
+    if (!file.type.startsWith('video/')) { setVideoErr(tx('Please select a valid video file (MP4, WebM, MOV).', 'कृपया सही वीडियो फ़ाइल चुनें (MP4, WebM, MOV)।')); return; }
+    setVideoBusy(true); setVideoErr(''); setVideoPct(0);
+    try {
+      let r: { url: string };
+      try { r = await api.omVideoRaw(file, setVideoPct); }
+      catch (e: any) {
+        if (e?.code !== 'NO_DISK') throw e;
+        if (file.size > 3 * 1024 * 1024) throw new Error(tx('This demo copy cannot keep a big video — choose a clip up to 3 MB, or paste a YouTube / Drive link.', 'यह डेमो कॉपी बड़ा वीडियो नहीं रख सकती — 3 MB तक की क्लिप चुनें, या YouTube / Drive का लिंक डालें।'));
+        r = await api.omVideo(await new Promise<string>((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result)); fr.onerror = () => no(new Error('read')); fr.readAsDataURL(file); }));
       }
-    };
-    reader.readAsDataURL(file);
+      setUploadedVideoName(file.name); setVideoUrl(r.url);
+    } catch (e: any) { setVideoErr(e?.message || tx('The video did not upload.', 'वीडियो अपलोड नहीं हुआ।')); }
+    finally { setVideoBusy(false); setVideoPct(0); }
   };
 
   const handleAddImageUrl = () => {
@@ -689,7 +690,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                       className="cursor-pointer text-xs font-semibold text-purple-900 hover:underline flex items-center gap-1.5"
                     >
                       <Upload className="h-3.5 w-3.5" />
-                      {uploadedVideoName ? tx(`Replace Video (${uploadedVideoName})`, `वीडियो बदलें (${uploadedVideoName})`) : tx('Select video from device / gallery', 'फ़ोन / गैलरी से वीडियो चुनें')}
+                      {videoBusy ? tx(`Uploading… ${videoPct}%`, `अपलोड हो रहा है… ${videoPct}%`) : uploadedVideoName ? tx(`Replace Video (${uploadedVideoName})`, `वीडियो बदलें (${uploadedVideoName})`) : tx('Select video from device / gallery', 'फ़ोन / गैलरी से वीडियो चुनें')}
                     </label>
                     {videoUrl && (
                       <button
@@ -704,6 +705,9 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                       </button>
                     )}
                   </div>
+                  {videoBusy && <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-purple-100" data-testid="video-progress"><div className="h-full bg-purple-600 transition-all" style={{ width: `${videoPct}%` }} /></div>}
+                  <p className="mt-1 text-[11px] text-slate-500">{tx('MP4, MOV, WebM up to 80 MB — the customer watches it in the chat and the client room. Keep this page open while it uploads.', 'MP4, MOV, WebM — 80 MB तक। ग्राहक इसे चैट और क्लाइंट रूम में देखेगा। अपलोड के दौरान पेज खुला रखें।')}</p>
+                  {videoErr && <p className="mt-1 text-[11px] font-semibold text-red-600">{videoErr}</p>}
                 </div>
               )}
             </div>

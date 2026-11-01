@@ -29,7 +29,7 @@ import { stripPhones } from '../src/shared/waParse.js';
 import { ROOM_KINDS, ROOM_LIMITS as L, contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
 import { joinFooter } from './publicFooter.js';
 import { partyBlock, partyCaution } from './partywatch.js';
-import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId } from '../src/shared/roomMedia.js';
+import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId, pubMediaUrl } from '../src/shared/roomMedia.js';
 import { clientPaperState, viewerPages, logDocOpen } from './propdocs.js';
 import { makeViewToken, useViewToken, stampFor } from './viewToken.js';
 import { seal, unseal, vaultReady } from './vaultCrypto.js';
@@ -59,7 +59,7 @@ const goneText = (p?: Property) => !p ? 'removed' : p.listingStatus === 'sold' ?
 
 /** what a CLIENT may see of a property */
 function publicProperty(p: Property) {
-  const img = (p.images || []).find(x => typeof x === 'string' && (/^https?:\/\//.test(x) || x.startsWith('/')) && x.length < 400);
+  const img0 = (p.images || []).find(x => typeof x === 'string' && (/^https?:\/\//.test(x) || x.startsWith('/')) && x.length < 400); const img = img0 ? pubMediaUrl(img0) : img0;   // v104 — a client has no login: an uploaded photo is read at /m/<id>
   return {
     id: p.id, title: p.title, locality: p.locality, city: p.city, type: p.propertyType, deal: p.transactionType,
     price: p.askingPrice, plotArea: p.plotAreaSqFt || undefined, builtUp: p.builtUpAreaSqFt || undefined,
@@ -80,7 +80,7 @@ export function shareableMedia(u: { id: string }, p: Property) {
   const listed = live(p);
   const assets = (s.propertyMediaAssets || []).filter((a: any) => a.propertyId === p.id && a.status === 'ACTIVE' && (principal || (listed && a.sensitivity === 'PUBLIC')));
   const photos: string[] = []; const videos: string[] = [];
-  const add = (arr: string[], u2: unknown) => { if (okMediaUrl(u2) && !arr.includes(u2)) arr.push(u2); };
+  const add = (arr: string[], u2: unknown) => { if (okMediaUrl(u2)) { const v = pubMediaUrl(u2); if (!arr.includes(v)) arr.push(v); } };   // v104 — uploaded files are handed out as /m/<id> (no login needed)
   if (listed || principal) { (p.images || []).forEach(x => add(photos, x)); add(videos, (p as any).videoUrl); }
   assets.filter((a: any) => a.category === 'PHOTOGRAPH').forEach((a: any) => add(photos, a.fileUrl));
   assets.filter((a: any) => a.category === 'WALKTHROUGH_VIDEO').forEach((a: any) => add(videos, a.fileUrl));
@@ -90,7 +90,7 @@ export function shareableMedia(u: { id: string }, p: Property) {
 function chosenMedia(room: ClientRoom, item: ClientRoom['items'][number], p?: Property) {
   if (!p || !item.media) return { photos: [] as string[], videos: [] as string[] };
   const ok = shareableMedia({ id: room.brokerId }, p);
-  return { photos: item.media.photos.filter(x => ok.photos.includes(x)), videos: item.media.videos.filter(x => ok.videos.includes(x)) };
+  return { photos: item.media.photos.map(pubMediaUrl).filter(x => ok.photos.includes(x)), videos: item.media.videos.map(pubMediaUrl).filter(x => ok.videos.includes(x)) };   // v104 — rooms made before /m/ stored the signed-in link
 }
 const allMedia = (u: { id: string }, p: Property) => { const m = shareableMedia(u, p); return { photos: m.photos.slice(0, ROOM_MEDIA.maxPhotos), videos: m.videos.slice(0, ROOM_MEDIA.maxVideos), at: nowIso() }; };
 
@@ -153,7 +153,7 @@ export function openRoomAuto(brokerId: string, a: { name: string; phone: string;
   ev(room, 'Room opened by the GENZ assistant — the customer asked for it in his QR chat');
   for (const id of a.propertyIds.slice(0, 6)) {
     const p = st().properties.find(x => x.id === id);
-    if (p && live(p) && !room.items.some(i => i.propertyId === p.id)) room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: now, note: undefined, visitRequests: [] });
+    if (p && live(p) && !room.items.some(i => i.propertyId === p.id)) { const m = allMedia({ id: '-' }, p); room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: now, note: undefined, visitRequests: [], ...(m.photos.length || m.videos.length ? { media: m } : {}) }); }   // v104 — the room opens with the same PUBLIC photos / video he already saw in the chat (never the broker's private vault)
   }
   if (room.items.length) ev(room, `Shared ${room.items.map(i => i.propertyId).join(', ')} (the homes already shown in his chat)`);
   st().clientRooms.push(room);

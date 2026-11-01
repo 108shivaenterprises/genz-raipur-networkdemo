@@ -1514,6 +1514,8 @@ export interface LeadBot {
   askedBudget?: boolean;
   /** v103 — the chat follows the homes: when it first did, the homes it already told him are gone (home id → why), and how many new-home pushes it made */
   followedAt?: string; seen?: string[]; gone?: Record<string, string>; watch?: { lastPushAt?: string; pushes: number };
+  /** v104 — the homes whose photos / video he opened in the chat (the broker is told once per home) */
+  viewed?: string[];
 }
 export interface PartnerLead {
   id: string;                      // PLD-xxxxxxxxxx

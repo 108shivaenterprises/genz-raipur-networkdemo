@@ -1,8 +1,10 @@
 /**
  * v73 — owner uploads.   /api/owner-media
  *   POST /photo   a listing photo (the app shrinks it to ≤ ~1280 px first) → { url }            (anyone who may list: owner / broker)
- *   POST /video   a short listing video (≤ 3 MB mp4 / webm) → { url }
- *   GET  /f/:id   the photo / video, to any signed-in member (listing media is not secret; the address and the owner's phone never sit in it)
+ *   POST /video   a short listing video (≤ 3 MB mp4 / webm, base64 in JSON) → { url }
+ *   POST /video-raw  v104 — a real walkthrough video, streamed as the raw file (≤ 80 MB, set VIDEO_MAX_MB; mp4 / mov / webm) → { url }
+ *   GET  /f/:id   the photo / video, to any signed-in member (listing media is not secret; the address and the owner's phone never sit in it) — with Range, so a video can be seeked
+ *   GET  /m/:id   v104 — the SAME file for someone with no login (a customer in the QR chat, a client room, a public page): open only while a LIVE listing uses it
  *   POST /doc     a verification paper: selfie, ID, electricity bill / tax receipt / title … (private: the owner and GENZ staff only)
  *   GET  /doc, GET /doc/:id/file, DELETE /doc/:id (while still PENDING)
  *   GET  /admin/docs, POST /admin/docs/:id   GENZ staff check a paper and write who checked it (approve / send back with a reason)
@@ -17,10 +19,14 @@ import type { OwnerDoc, OwnerDocKind, UserProfile, DatabaseState } from './db.js
 import { ctx, needs, rateLimit } from './auth.js';
 import { sniffMime } from '../src/shared/propDocs.js';
 import { pushTo } from './webpush.js';
+import { pageLive } from './publicPage.js';
 
 export const PHOTO_MAX = 450 * 1024;
 export const VIDEO_MAX = 3 * 1024 * 1024;
 export const DOC_MAX = 1536 * 1024;
+/** v104 — a streamed walkthrough video (the 3 MB cap above is for the base64 route; a phone clip is 20–80 MB) */
+export const VIDEO_RAW_MAX = Math.max(5, Number(process.env.VIDEO_MAX_MB || 80)) * 1024 * 1024;
+const MAX_BIG_VIDEOS_PER_USER = 12;
 const MAX_MEDIA_PER_USER = 150;
 const MAX_DOCS_PER_USER = 40;
 export const DOC_KINDS: Record<OwnerDocKind, { en: string; hi: string; group: 'FACE' | 'ID' | 'PAPER' }> = {
@@ -58,6 +64,42 @@ function readData(body: any): Buffer | null {
 }
 function write(file: string, buf: Buffer): boolean {
   try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, buf); fs.renameSync(tmp, file); return true; } catch { return false; }
+}
+
+/** v104 — send a stored file with Range support (a phone will not play or seek a video without it) */
+function serveFile(req: Request, res: Response, file: string, mime: string, cache: string) {
+  let size = 0; try { size = fs.statSync(file).size; } catch { return bad(res, 'Not found', 404); }
+  res.set({ 'Content-Type': mime, 'Accept-Ranges': 'bytes', 'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline', 'Referrer-Policy': 'no-referrer' });
+  const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+  const pipe = (opts?: { start: number; end: number }) => { if (req.method === 'HEAD') return void res.end(); const rs = fs.createReadStream(file, opts); rs.on('error', () => res.destroy()); res.on('close', () => rs.destroy()); rs.pipe(res); };
+  if (rg && (rg[1] || rg[2])) {
+    const start = rg[1] ? Number(rg[1]) : Math.max(0, size - Number(rg[2]));
+    const end = rg[1] && rg[2] ? Math.min(Number(rg[2]), size - 1) : size - 1;
+    if (!(start < size) || start > end) { res.status(416).set('Content-Range', `bytes */${size}`).end(); return; }
+    res.status(206).set({ 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': String(end - start + 1) });
+    return pipe({ start, end });
+  }
+  res.set('Content-Length', String(size));
+  return pipe();
+}
+/** v104 — is this uploaded file used by a LIVE listing (its photos, its video, or a PUBLIC vault photo / video)? Then anybody may open it at /m/<id>. */
+export function mediaIsPublic(s: DatabaseState, id: string): boolean {
+  const own = mediaUrl(id); const pub = `/m/${id}`; const is = (x: unknown) => x === own || x === pub;
+  for (const p of s.properties) if ((p.images || []).some(is) || is((p as any).videoUrl)) { if (pageLive(p)) return true; }
+  for (const a of s.propertyMediaAssets || []) if (a.status === 'ACTIVE' && a.sensitivity === 'PUBLIC' && is(a.fileUrl) && pageLive(s.properties.find(p => p.id === a.propertyId))) return true;
+  return false;
+}
+/** v104 — a closed listing's personal data is erased: the uploaded photos / video it used go too (unless another listing still uses the same file) */
+export function eraseOwnerMediaOf(s: DatabaseState, p: { id: string; images?: string[]; videoUrl?: string }): number {
+  const ids = new Set<string>(); const take = (x: unknown) => { const m = /^(?:\/api\/owner-media\/f|\/m)\/((?:IMG|VID)-[0-9a-f]{12})$/.exec(String(x || '')); if (m) ids.add(m[1]); };
+  (p.images || []).forEach(take); take(p.videoUrl);
+  let n = 0;
+  for (const id of ids) {
+    const own = mediaUrl(id); const pub = `/m/${id}`; const is = (x: unknown) => x === own || x === pub;
+    if (s.properties.some(q => q.id !== p.id && !q.purgedAt && ((q.images || []).some(is) || is((q as any).videoUrl)))) continue;
+    if (s.ownerMedia.some(m => m.id === id)) { erase(mediaFile(id)); s.ownerMedia = s.ownerMedia.filter(m => m.id !== id); n++; }
+  }
+  return n;
 }
 
 /** DPDP erasure */
@@ -102,7 +144,38 @@ export function createOwnerMediaRouter() {
   r.post('/video', may, rateLimit('omedia-video', 30, 3600_000), big, (req, res) => saveMedia('VIDEO', req, res));
   r.get('/f/:id', needs('property:read'), rateLimit('omedia-open', 1500, 3600_000), (req, res) => {
     const m = st().ownerMedia.find(x => x.id === req.params.id); if (!m) return bad(res, 'Not found', 404);
-    try { res.set({ 'Content-Type': m.mime, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline' }).send(fs.readFileSync(mediaFile(m.id))); } catch { bad(res, 'Not found', 404); }
+    serveFile(req, res, mediaFile(m.id), m.mime, 'private, max-age=3600');
+  });
+  /** v104 — a walkthrough video of a real length, streamed to disk as the raw file (no base64, never held in memory). The first bytes are checked, the size is counted while it arrives. */
+  r.post('/video-raw', may, rateLimit('omedia-vraw', 20, 3600_000), (req, res) => {
+    const u = me(); const s = st();
+    if (process.env.VERCEL) return bad(res, 'This demo copy has no disk for big videos — paste a YouTube / Drive link, or choose a clip under 3 MB.', 501, { code: 'NO_DISK', hi: 'इस डेमो कॉपी में बड़े वीडियो के लिए जगह नहीं है — YouTube / Drive का लिंक डालें, या 3 MB से छोटी क्लिप चुनें।' });
+    const mine = s.ownerMedia.filter(x => x.userId === u.id);
+    if (mine.length >= MAX_MEDIA_PER_USER || mine.filter(x => x.kind === 'VIDEO').length >= MAX_BIG_VIDEOS_PER_USER) return bad(res, 'Too many videos uploaded — delete a closed listing first or use a link.', 429);
+    const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!/^video\/(mp4|webm|quicktime|x-m4v|mov)$/.test(type)) return bad(res, 'Only an MP4, MOV or WebM video is accepted.', 415);
+    const mb = Math.round(VIDEO_RAW_MAX / 1048576);
+    const tooBig = () => bad(res, `This video is over ${mb} MB — record it shorter or in 720p, or paste a YouTube / Drive link.`, 413, { hi: `वीडियो ${mb} MB से बड़ा है — छोटा या 720p में बनाएँ, या YouTube / Drive का लिंक डालें।` });
+    const len = Number(req.headers['content-length']); if (Number.isFinite(len) && len > VIDEO_RAW_MAX) { if (len > VIDEO_RAW_MAX * 4) res.set('Connection', 'close'); return tooBig(); }   // a little over: Node drops the rest of the body itself, so the phone can read the “too big” answer; far over: the connection is closed
+    const id = rid('VID'); const file = mediaFile(id); const tmp = `${file}.up`;
+    try { fs.mkdirSync(MEDIA_DIR(), { recursive: true }); } catch { return bad(res, 'The video could not be saved. Please try again.', 500); }
+    const ws = fs.createWriteStream(tmp); let n = 0; let head = Buffer.alloc(0); let over = false;
+    const drop = () => { try { ws.destroy(); } catch { /* closed */ } erase(tmp); };
+    req.on('data', (c: Buffer) => {
+      n += c.length; if (head.length < 16) head = Buffer.concat([head, c.subarray(0, 16 - head.length)]);
+      if (n > VIDEO_RAW_MAX && !over) { over = true; req.unpipe(ws); drop(); res.set('Connection', 'close'); tooBig(); res.on('finish', () => req.destroy()); }
+    });
+    req.pipe(ws);
+    req.on('aborted', drop); req.on('error', drop);
+    ws.on('error', () => { drop(); if (!res.headersSent) bad(res, 'The video could not be saved. Please try again.', 500); });
+    ws.on('finish', () => {
+      if (over) return;
+      const mime = sniffVideo(head);
+      if (n < 1024 || !mime) { erase(tmp); return bad(res, 'Only an MP4, MOV or WebM video is accepted.', 415); }
+      try { fs.renameSync(tmp, file); } catch { erase(tmp); return bad(res, 'The video could not be saved. Please try again.', 500); }
+      s.ownerMedia.push({ id, userId: u.id, kind: 'VIDEO', mime, size: n, createdAt: nowIso() }); db.save();
+      res.json({ success: true, id, url: mediaUrl(id), size: n, max: VIDEO_RAW_MAX });
+    });
   });
 
   // ── verification papers ──
@@ -166,6 +239,23 @@ export function createOwnerMediaRouter() {
     db.save(); db.appendAuditEvent(a.id, a.role, 'VERIFICATION', d.id, approve ? 'OWNER_DOC_APPROVED' : 'OWNER_DOC_REJECTED', `${a.name} ${approve ? 'approved' : 'sent back'} an owner paper (${d.kind})${note ? ': ' + note : ''}`);
     void pushTo(d.userId, { kind: 'deals', title: approve ? 'Your paper was checked ✔' : 'A paper needs to be sent again', body: approve ? `${DOC_KINDS[d.kind].en} — checked by ${a.name}.` : `${DOC_KINDS[d.kind].en}: ${note}`, url: '/' });
     res.json({ success: true });
+  });
+  return r;
+}
+
+/**
+ * v104 — GET /m/:id  (no login). The customer in a QR chat, a client-room visitor and a public page cannot sign in, so the photo / video they were
+ * shown is read here. It opens ONLY while a live, verified listing uses the file; the id is random (12 hex), nothing lists them, and the address /
+ * owner phone never sit inside a listing photo or clip. A closed listing's files are erased with its personal data (eraseOwnerMediaOf).
+ */
+export function createPublicMediaRouter() {
+  const r = Router();
+  r.get('/:id', rateLimit('pmedia', 4000, 3600_000), (req, res) => {
+    const id = String(req.params.id || '');
+    if (!/^(IMG|VID)-[0-9a-f]{12}$/.test(id)) return bad(res, 'Not found', 404);
+    const s = st(); const m = s.ownerMedia.find(x => x.id === id);
+    if (!m || !mediaIsPublic(s, id)) return bad(res, 'Not found', 404);
+    serveFile(req, res, mediaFile(id), m.mime, 'private, max-age=600');
   });
   return r;
 }

@@ -37,6 +37,8 @@ import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEn
 import { partyBlock } from './partywatch.js';
 import { alertNeedNetwork, networkRange } from './broadcast.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
+import { shareableMedia } from './clientroom.js';
+import { videoKind, youtubeId } from '../src/shared/roomMedia.js';
 import { contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
 import { brandOf } from './share.js';
 import { priceShort } from '../src/shared/publicPageRules.js';
@@ -293,10 +295,17 @@ function draftState(l: PartnerLead) {
   const p = d0.propertyId ? st().properties.find(x => x.id === d0.propertyId) : undefined;
   return { draftId: d0.id, status: d0.status, missing: draftMissing(d0.fields).length, ...(p ? { propertyId: p.id, propertyStatus: p.listingStatus } : {}) };
 }
+/** v104 — the photos and videos of a home that a customer WITHOUT a login may see: only a live, verified listing, and only what the listing itself holds or the vault marks PUBLIC (never a private vault item, never a document) */
+export const previewMedia = (h?: Property): { photos: string[]; videos: string[] } => {
+  if (!h || !pageLive(h)) return { photos: [], videos: [] };
+  const m = shareableMedia({ id: '-' }, h);
+  return { photos: m.photos.slice(0, 10), videos: m.videos.slice(0, 2) };
+};
 export const sahayak = makeSahayak({
   addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
   audit: (l, action, text) => db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, action, text),
   isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead, networkScan,
+  media: h => { const m = previewMedia(h); return { photos: m.photos.length, videos: m.videos.length }; },
   ping: (l, what) => { void brokerWrote(`lc-${l.id}`, 'GENZ सहायक', what); },   // v103 — the customer's phone hears about what the assistant wrote on its own
   ownerFacts, saveDraft: (l, fields) => saveOwnerChatDraft(l.brokerId, fields, l.id), draftState,
 });
@@ -1074,10 +1083,19 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
     const b = userOf(l.brokerId); const who = b?.name || 'ब्रोकर';
     try { sahayak.follow(l); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); }   // v103 — opening the chat shows the homes as they are now
     l.chat.customerSeenAt = nowIso(); db.save();
+    // v104 — under a home: a small (watermarked) photo and “see photos / video” — the page it opens is /q/chat/<link>/home/<id>
+    const wmChat = `${b ? brandOf(b).displayName : 'GENZ'} · GENZ`; let anyThumb = false;
+    const mediaBit = (homeId?: string, gone?: string | null) => {
+      if (!homeId || gone) return '';
+      const pm = previewMedia(st().properties.find(x => x.id === homeId)); if (!pm.photos.length && !pm.videos.length) return '';
+      const cnt = [pm.photos.length ? `📷 ${pm.photos.length}` : '', pm.videos.length ? `🎬 ${pm.videos.length}` : ''].filter(Boolean).join(' · ');
+      if (pm.photos.length) anyThumb = true;
+      return `<br><a href="/q/chat/${esc(tok)}/home/${esc(homeId)}" data-testid="home-media" style="display:block;color:inherit;text-decoration:none">${pm.photos.length ? `<span class="hm" style="display:block;box-shadow:none;border-radius:10px;margin:6px 0 4px"><span class="ph" style="display:block"><canvas width="480" height="300" data-src="${esc(pm.photos[0])}" data-wm="${esc(wmChat)}" aria-label=""></canvas><span class="np">📷</span></span></span>` : ''}<b style="color:#14213d">${pm.videos.length ? '🎬' : '📷'} फ़ोटो / वीडियो देखें</b> <small style="color:#64748b">${cnt} · View photos / video</small></a>`;
+    };
     const bubbles = l.chat.msgs.map(m => {
       const t = `<small style="color:#64748b">${hm(m.at)}</small>`;
       if (m.by === 'SYSTEM') return `<div class="bub sys">${esc(m.text)}</div>`;
-      if (m.kind === 'HOME') { const gk = homeGone(m.homeId); return `<div class="bub br"${gk ? ' data-gone="' + gk + '"' : ''}><b>🏠 ${esc(m.title || '')}</b><br>${esc(m.price || '')} · ${esc(m.place || '')}${gk ? `<br><b style="color:#b91c1c">${GONE_WORDS[gk].shortHi}</b> <small style="color:#64748b">${GONE_WORDS[gk].shortEn}</small>` : b?.publicCard?.enabled && b.referralCode && m.homeId ? `<br><a href="/c/${esc(b.referralCode)}#h-${esc(m.homeId)}" rel="noopener">देखें / View</a>` : ''}<br>${t}</div>`; }
+      if (m.kind === 'HOME') { const gk = homeGone(m.homeId); return `<div class="bub br"${gk ? ' data-gone="' + gk + '"' : ''}><b>🏠 ${esc(m.title || '')}</b><br>${esc(m.price || '')} · ${esc(m.place || '')}${gk ? `<br><b style="color:#b91c1c">${GONE_WORDS[gk].shortHi}</b> <small style="color:#64748b">${GONE_WORDS[gk].shortEn}</small>` : b?.publicCard?.enabled && b.referralCode && m.homeId ? `<br><a href="/c/${esc(b.referralCode)}#h-${esc(m.homeId)}" rel="noopener">देखें / View</a>` : ''}${mediaBit(m.homeId, gk)}<br>${t}</div>`; }
       if (m.kind === 'ASK') return `<div class="bub br ask"><b>✔ क्या आपकी ज़रूरत यही है?</b><br>${esc(m.text)}<br>${t}</div>`;
       if (m.by === 'BOT') return `<div class="bub bot" data-testid="bot-msg"><small class="bn">🤖 GENZ सहायक · <i>automatic</i></small><br>${esc(m.text).replace(/\n/g, '<br>')}${m.en ? `<br><small style="color:#64748b">${esc(m.en).replace(/\n/g, '<br>')}</small>` : ''}<br>${t}</div>`;
       return `<div class="bub ${m.by === 'CUSTOMER' ? 'me' : 'br'}">${esc(m.text)}<br>${t}</div>`;
@@ -1106,7 +1124,7 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${promiseHtml}${visitsHtml}${roomHtml}${exploreHtml}${ask}${done}
 <div class="card"><form method="post" action="/q/chat/${esc(tok)}/msg"><label>संदेश / Message</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" required placeholder="अपना सवाल या ज़रूरत लिखें…"></textarea><div class="row"><button class="g" type="submit" data-testid="chat-send">भेजें / Send</button><a class="btn l" href="/q/chat/${esc(tok)}">🔄 नया देखें / Refresh</a></div></form>
-<p class="small" style="margin-top:8px">🔒 इस चैट में फ़ोन नंबर न लिखें। आपका नंबर ब्रोकर को तभी दिखेगा जब आप अपनी ज़रूरत पक्की कर दें और आपकी ज़रूरत से मेल खाता घर शेयर हो। इस पेज को बुकमार्क कर लें — जवाब देखने के लिए यही लिंक खोलें। GENZ आपसे कोई पैसा नहीं माँगता।<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page — open this link to see replies. GENZ never asks you for money.</p></div>`, showApp ? `<link rel="manifest" href="/q/chat/${tok}/manifest.webmanifest"><meta name="theme-color" content="#14213d">` : '', showApp ? '/q/chat-app.js' : ''));
+<p class="small" style="margin-top:8px">🔒 इस चैट में फ़ोन नंबर न लिखें। आपका नंबर ब्रोकर को तभी दिखेगा जब आप अपनी ज़रूरत पक्की कर दें और आपकी ज़रूरत से मेल खाता घर शेयर हो। इस पेज को बुकमार्क कर लें — जवाब देखने के लिए यही लिंक खोलें। GENZ आपसे कोई पैसा नहीं माँगता।<br>Do not type phone numbers here. Your number is shown to the broker only after you confirm your need and a matching home is shared. Bookmark this page — open this link to see replies. GENZ never asks you for money.</p></div>${anyThumb ? '<script src="/c/page.js" defer></script>' : ''}`, showApp ? `<link rel="manifest" href="/q/chat/${tok}/manifest.webmanifest"><meta name="theme-color" content="#14213d">` : '', showApp ? '/q/chat-app.js' : ''));
   };
   r.get('/chat-app.js', (_req, res) => { res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); res.send(CHAT_JS); });
   r.get('/chat/:token/manifest.webmanifest', (req: Request, res: Response) => {
@@ -1182,6 +1200,7 @@ ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${p
   // ───────── v97 — GENZ सहायक: one-tap answers, the promise card, Explore ─────────
   r.post('/chat/:token/quick', rateLimit('sp-chat', 120, 3600_000), form, (req: Request, res: Response) => {
     const l = chatBy(req.params.token); if (!l?.chat) return chatPage(res, undefined, req.params.token);
+    const kk = String(req.body?.k || ''); if (kk.startsWith('MEDIA:')) return res.redirect(303, `/q/chat/${req.params.token}/home/${encodeURIComponent(kk.slice(6, 60))}`);   // v104 — “photos / video” opens the home's page (nothing is written into the chat)
     if (sahayak.off(l)) return res.redirect(303, `/q/chat/${req.params.token}`);
     if (hit(`sp-chatquick:${l.id}`, 60, 3600_000) > 0) return chatPage(res, l, req.params.token, 'बहुत बार दबाया — थोड़ी देर बाद। / Too many taps — try later.');
     sahayak.onChip(l, String(req.body?.k || '')); db.save();
@@ -1197,6 +1216,36 @@ ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${p
     sahayak.onPromise(l, sign, { at: nowIso(), signName: sign, version: ACK_VERSION, text: a.en }); db.save();
     res.redirect(303, `/q/chat/${req.params.token}`);
   });
+  /** v104 — photos & video of a home he was shown: the photos with the broker's name across them, the video (YouTube, a file the broker uploaded, or a link), then “visit” / “ask the broker”. Only a home the chat itself showed; a private vault item or a document never gets here. */
+  r.get('/chat/:token/home/:homeId', rateLimit('sp-chat', 240, 3600_000), (req: Request, res: Response) => {
+    noStore(res); const tok = req.params.token; const l = chatBy(tok); if (!l?.chat) return chatPage(res, undefined, tok);
+    const id = String(req.params.homeId || '');
+    if (ownerSide(l) || !l.chat.msgs.some(m => m.kind === 'HOME' && m.homeId === id)) return res.redirect(303, `/q/chat/${tok}`);
+    const h = st().properties.find(x => x.id === id); const b = userOf(l.brokerId); const gk = homeGone(id);
+    const back = `<div class="card"><a class="btn l" href="/q/chat/${esc(tok)}" data-testid="media-back">← चैट पर वापस / Back to the chat</a></div>`;
+    if (!h || gk) {
+      const gw = GONE_WORDS[gk || 'GONE'];
+      return res.send(shell('GENZ — फ़ोटो', `<div class="top"><h1>${esc(h?.title || 'यह घर')}</h1></div><div class="card warn" data-testid="media-gone"><p class="t"><b>${gw.hi}</b><br><small>This home ${gw.en}.</small></p><p class="t">इसकी फ़ोटो / वीडियो अब नहीं दिखाई जाती। चैट में आपके लिए दूसरे घर आएँगे।<br><small>Its photos / video are no longer shown. Other homes will come in the chat.</small></p></div>${back}`));
+    }
+    const pm = previewMedia(h); const bf = homeBrief(h); const wm = `${b ? brandOf(b).displayName : 'GENZ'} · GENZ`;
+    if (pm.photos.length || pm.videos.length) { try { sahayak.viewed(l, id); db.save(); } catch (e) { console.error('[BOT] viewed failed:', (e as Error).message); } }
+    const box = 'position:relative;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;margin-top:8px';
+    const fill = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
+    const photos = pm.photos.map((src, i) => `<article class="hm" style="margin-top:8px"><div class="ph"><canvas width="800" height="500" data-src="${esc(src)}" data-wm="${esc(wm)}" aria-label="${esc(h.title)} ${i + 1}"></canvas><span class="np">📷 फ़ोटो नहीं खुली / Photo could not open</span></div></article>`).join('');
+    const videos = pm.videos.map(u => {
+      const k = videoKind(u); const yt = k === 'YOUTUBE' ? youtubeId(u) : null;
+      if (yt) return `<div style="${box}" data-testid="media-video-yt"><iframe src="https://www.youtube-nocookie.com/embed/${esc(yt)}" title="video" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="${fill}"></iframe></div>`;
+      if (k === 'FILE') return `<div style="${box}" data-testid="media-video-file"><video src="${esc(u)}" controls preload="metadata" playsinline style="${fill}"></video></div>`;
+      return /^https:\/\//i.test(u) ? `<p style="margin-top:8px"><a class="btn l" href="${esc(u)}" target="_blank" rel="noopener noreferrer" data-testid="media-video-link">🎬 वीडियो खोलें / Open the video</a></p>` : '';
+    }).join('');
+    const none = !pm.photos.length && !pm.videos.length;
+    const cta = `<form method="post" action="/q/chat/${esc(tok)}/quick"><div class="big2"><button class="g" type="submit" name="k" value="VISITH:${esc(id)}" data-testid="media-visit">📅 विज़िट चाहिए<br><small style="color:#e9ffe9">Book a visit</small></button><button class="l" type="submit" name="k" value="${none ? 'MEDIAREQ:' + esc(id) : 'HUMAN'}" data-testid="${none ? 'media-ask' : 'media-human'}">${none ? '🙋 फ़ोटो माँगें<br><small>Ask for photos</small>' : '💬 ब्रोकर से बात<br><small>Talk to the broker</small>'}</button></div></form>`;
+    res.send(shell('GENZ — फ़ोटो / वीडियो', `<div class="top"><h1>${esc(h.title)}</h1><p>${esc(bf.price)}${bf.rent ? ' / माह' : ''} · ${esc(bf.place)}</p></div>
+${none ? `<div class="card" data-testid="media-none"><p class="t">इस घर की फ़ोटो / वीडियो अभी नहीं डाली गई।<br><small>No photos or video have been added for this home yet.</small></p></div>` : `${photos}${videos}`}
+<div class="card">${cta}</div>${back}
+<p class="small" style="margin:8px 4px">फ़ोटो पर ब्रोकर का नाम इसलिए है कि आगे भेजने पर भी पता रहे कि यह किसकी है। कोई भी रकम देने से पहले काग़ज़ और RERA ज़रूर जाँचें।<br>The broker's name is on the photos so a forwarded copy still shows whose it is. Check the papers and RERA before you pay anything.</p>`, '', '/c/page.js'));
+  });
+
   /** “Explore”: every LIVE home that fits the need he confirmed (sold / rented / held homes are not here), each with 👍 and 📅 */
   r.get('/chat/:token/explore', rateLimit('sp-chat', 120, 3600_000), (req: Request, res: Response) => {
     noStore(res); const tok = req.params.token; const l = chatBy(tok); if (!l?.chat) return chatPage(res, undefined, tok);

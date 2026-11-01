@@ -26,7 +26,7 @@ import { brandOf } from './share.js';
 import { findByCode, ensureReferralCode } from './growth.js';
 import { joinFooter, reputationHtml } from './publicFooter.js';
 import { stripContacts } from '../src/shared/waParse.js';
-import { okMediaUrl, youtubeId } from '../src/shared/roomMedia.js';
+import { okMediaUrl, youtubeId, videoKind, pubMediaUrl } from '../src/shared/roomMedia.js';
 import { publicLevel } from './partywatch.js';
 import { pushTo } from './webpush.js';
 import { PAGE_LIMITS as L, cleanAreas, priceShort, isEnqStatus, OWNER_OK_TEXT, mobile10 } from '../src/shared/publicPageRules.js';
@@ -68,7 +68,7 @@ export function shownHomes(u: UserProfile): Property[] {
 /** the listing's own photos and the vault's PUBLIC photos — never a private vault photo, never a document */
 export function pagePhotos(p: Property): string[] {
   const out: string[] = [];
-  const add = (x: unknown) => { if (okMediaUrl(x) && !out.includes(x)) out.push(x); };
+  const add = (x: unknown) => { if (okMediaUrl(x)) { const v = pubMediaUrl(x); if (!out.includes(v)) out.push(v); } };   // v104 — an in-app upload is read at /m/<id> (a visitor has no login)
   (p.images || []).forEach(add);
   (st().propertyMediaAssets || []).filter((a: any) => a.propertyId === p.id && a.status === 'ACTIVE' && a.sensitivity === 'PUBLIC' && a.category === 'PHOTOGRAPH').forEach((a: any) => add(a.fileUrl));
   return out.slice(0, L.photos);
@@ -111,7 +111,7 @@ h2{font-size:17px;margin:22px 4px 8px}h2 small{font-weight:600;color:#666;font-s
 .price{font-size:21px;font-weight:800}.price small{font-size:13px;font-weight:600;color:#555}.t{font-weight:700;font-size:15px;margin-top:2px;line-height:1.35}.s{color:#555;font-size:13px;margin-top:3px;line-height:1.45}
 .tag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:99px;padding:3px 9px;font-size:11px;margin:6px 4px 0 0}.neg{display:inline-block;background:#fef3c7;color:#92400e;border-radius:8px;padding:3px 8px;font-size:12px;font-weight:700;margin-top:6px}
 details{margin-top:8px}summary{cursor:pointer;font-size:13px;font-weight:700;color:#14213d;padding:8px 0;min-height:36px}.gal{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
-.gal .ph{flex:0 0 86%;border-radius:12px;scroll-snap-align:start}.vid{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;margin-top:8px}.vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.gal .ph{flex:0 0 86%;border-radius:12px;scroll-snap-align:start}.vid{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;margin-top:8px}.vid video{position:absolute;inset:0;width:100%;height:100%;background:#000}.vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .desc{font-size:13px;line-height:1.55;color:#333;white-space:pre-wrap;margin:8px 0 0}.ask{margin-top:10px}.card{background:#fff;border-radius:16px;padding:16px;margin-top:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .note{border-radius:12px;padding:12px;font-size:14px;font-weight:600;margin-bottom:10px;line-height:1.5}.ok{background:#dcfce7;color:#14532d}.err{background:#fee2e2;color:#7f1d1d}
 label{display:block;font-size:13px;font-weight:700;margin-top:12px}input,select,textarea{display:block;width:100%;margin-top:5px;min-height:46px;border:1px solid #cbd5e1;border-radius:11px;padding:11px 12px;font-size:16px;font-family:inherit;background:#fff;color:#111}
@@ -169,15 +169,17 @@ export function renderBrokerPage(req: Request, res: Response, u: UserProfile, o:
     const rent = p.transactionType !== 'Sale';
     const area = areaOf(p);
     const vid = youtubeId(String((p as any).videoUrl || ''));
+    const vid_ = (x: string) => !!youtubeId(x);
+    const rawVid = String((p as any).videoUrl || ''); const fileVid = !vid_(rawVid) && okMediaUrl(rawVid) && videoKind(pubMediaUrl(rawVid)) === 'FILE' ? pubMediaUrl(rawVid) : '';   // v104 — a video uploaded in the app (or a direct .mp4 link) plays right on the page
     const more = ph.slice(1);
     const descText = stripContacts(p.description || '').slice(0, 400);
     return `<article class="home" id="h-${esc(p.id)}">${photoBox(ph[0], wm, p.title)}<span class="badge">${esc(dealHi(p.transactionType))} · ${esc(dealEn(p.transactionType))}</span></div>
 <div class="bd"><div class="price">${esc(priceShort(p.askingPrice))}${rent ? ' <small>/ माह · month</small>' : ''}</div><div class="t">${esc(p.title)}</div>
 <div class="s">${esc(p.propertyType)} · ${esc(p.locality)}, ${esc(p.city)}${area ? `<br>${esc(area)}` : ''}</div>
 ${(p.tags || []).slice(0, 6).map(t => `<span class="tag">${esc(t)}</span>`).join('')}${p.listingStatus === 'under_negotiation' ? '<div><span class="neg">बातचीत जारी — फिर भी पूछ सकते हैं / Under negotiation — you can still ask</span></div>' : ''}
-${more.length || descText || vid ? `<details><summary>${more.length ? `और ${more.length} फ़ोटो · ` : ''}ब्यौरा / ${more.length ? `${more.length} more photo(s) & ` : ''}details</summary>
+${more.length || descText || vid || fileVid ? `<details><summary>${more.length ? `और ${more.length} फ़ोटो · ` : ''}ब्यौरा / ${more.length ? `${more.length} more photo(s) & ` : ''}details</summary>
 ${more.length ? `<div class="gal">${more.map((x, i) => `${photoBox(x, wm, `${p.title} — photo ${i + 2}`, 640, 400)}</div>`).join('')}</div>` : ''}
-${vid ? `<div class="vid"><iframe src="https://www.youtube-nocookie.com/embed/${esc(vid)}" title="video" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>` : ''}
+${vid ? `<div class="vid"><iframe src="https://www.youtube-nocookie.com/embed/${esc(vid)}" title="video" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>` : fileVid ? `<div class="vid"><video src="${esc(fileVid)}" controls preload="metadata" playsinline></video></div>` : ''}
 ${descText ? `<p class="desc">${esc(descText)}</p>` : ''}</details>` : ''}
 <p class="lock">🔒 पूरा पता और मालिक की जानकारी वेरिफ़ाइड विज़िट पर। / Exact address and owner details on a verified visit.</p>
 <a class="btn l wide ask" href="?home=${encodeURIComponent(p.id)}#enquire">इस घर के बारे में पूछें / Ask about this home</a></div></article>`;

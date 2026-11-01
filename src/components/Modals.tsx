@@ -82,7 +82,7 @@ export const AddPropertyModal: React.FC<{
 
   // Video Media State (Gallery upload + URL)
   const [videoSourceMode, setVideoSourceMode] = useState<'GALLERY' | 'URL'>('GALLERY');
-  const [mediaBusy, setMediaBusy] = useState(false); const [mediaErr, setMediaErr] = useState(''); const [quote, setQuote] = useState<any>(null);
+  const [mediaBusy, setMediaBusy] = useState(false); const [videoPct, setVideoPct] = useState(0); const [mediaErr, setMediaErr] = useState(''); const [quote, setQuote] = useState<any>(null);
   useEffect(() => { if (!isOpen || !isOwnerUser) return; let live = true; api.olQuote(transactionType, propertyType).then(q => { if (live) setQuote(q.plan || { none: true }); }).catch(() => { if (live) setQuote(null); }); return () => { live = false; }; }, [isOpen, isOwnerUser, transactionType, propertyType]);
   const [videoUrl, setVideoUrl] = useState('');
   const [uploadedVideo, setUploadedVideo] = useState<{ name: string; url: string; size?: number } | null>(null);
@@ -118,11 +118,20 @@ export const AddPropertyModal: React.FC<{
     if (!files || files.length === 0) return;
     const file = files[0];
     if (!file.type.startsWith('video/')) { setMediaErr(hi ? 'सही वीडियो फ़ाइल चुनें (MP4, WebM, MOV)।' : 'Please select a valid video file (MP4, WebM, MOV).'); return; }
-    if (file.size > 3 * 1024 * 1024) { setMediaErr(hi ? 'वीडियो 3 MB से बड़ा है — छोटी क्लिप (लगभग 15–20 सेकंड) बनाएँ, या YouTube / Drive का लिंक डालें।' : 'This video is over 3 MB — record a shorter clip (about 15–20 s) or paste a YouTube / Drive link.'); return; }
-    setMediaBusy(true); setMediaErr('');
-    try { const r = await api.omVideo(await readAsDataUrl(file)); setUploadedVideo({ name: file.name, url: r.url, size: file.size }); }
+    setMediaBusy(true); setMediaErr(''); setVideoPct(0);
+    try {
+      let r: { url: string };
+      try { r = await api.omVideoRaw(file, setVideoPct); }
+      catch (e: any) {
+        if (e?.code !== 'NO_DISK') throw e;
+        // this copy has no disk for big files (the demo): a clip up to 3 MB still works, a bigger one needs a link
+        if (file.size > 3 * 1024 * 1024) throw new Error(hi ? 'यह डेमो कॉपी बड़ा वीडियो नहीं रख सकती — 3 MB तक की क्लिप चुनें, या YouTube / Drive का लिंक डालें।' : 'This demo copy cannot keep a big video — choose a clip up to 3 MB, or paste a YouTube / Drive link.');
+        r = await api.omVideo(await readAsDataUrl(file));
+      }
+      setUploadedVideo({ name: file.name, url: r.url, size: file.size });
+    }
     catch (e: any) { setMediaErr(e?.message || (hi ? 'वीडियो अपलोड नहीं हुआ।' : 'The video did not upload.')); }
-    finally { setMediaBusy(false); }
+    finally { setMediaBusy(false); setVideoPct(0); }
   };
 
   if (!isOpen) return null;
@@ -590,9 +599,16 @@ export const AddPropertyModal: React.FC<{
                       {hi ? 'गैलरी या फ़ोन से प्रॉपर्टी का वीडियो चुनें' : 'Select property walkthrough video from gallery or phone'}
                     </p>
                     <p className="text-[11px] text-slate-500 text-center">
-                      {hi ? 'MP4, MOV, WebM वीडियो चलेंगे' : 'Supports MP4, MOV, WebM walkthrough clips'}
+                      {hi ? 'MP4, MOV, WebM — 80 MB तक (ग्राहक को चैट और क्लाइंट रूम में यही वीडियो दिखेगा)' : 'MP4, MOV, WebM — up to 80 MB (the customer watches it in the chat and the client room)'}
                     </p>
                   </div>
+
+                  {mediaBusy && videoPct > 0 && (
+                    <div className="space-y-1" data-testid="video-progress">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-blue-600 transition-all" style={{ width: `${videoPct}%` }} /></div>
+                      <p className="text-[11px] font-semibold text-blue-700">{hi ? `वीडियो अपलोड हो रहा है… ${videoPct}% — पेज बंद न करें` : `Uploading the video… ${videoPct}% — keep this page open`}</p>
+                    </div>
+                  )}
 
                   {uploadedVideo && (
                     <div className="flex items-center justify-between rounded-lg bg-blue-50 border border-blue-200 p-2.5 text-xs text-blue-950">
