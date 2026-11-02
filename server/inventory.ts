@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { db } from './db.js';
 import type { BuilderProject, InventoryUnit, UserProfile } from './db.js';
 import { ctx, needs } from './auth.js';
+import { alert, builderVerifiers, firstName, inr as inrFmt } from './alerts.js';
 import { isAdmin } from './access.js';
 import { validateSlabs, slabProgress, leaderPoints, type CpSlab } from '../src/shared/slabs.js';
 import { cleanCharges, chargesError } from '../src/shared/costSheetRules.js';
@@ -35,15 +36,36 @@ export const DEFAULT_MIN_TOKEN = 21000;
 const MAX_ACTIVE_HOLDS_PER_BROKER = 3;
 const nowIso = () => new Date().toISOString();
 
-/** Lapse expired holds. Cheap; called on every inventory read and before every booking request. */
+/** minutes before a block ends when its broker is reminded (once) */
+export const HOLD_WARN_MIN = 15;
+
+/** v108 — a block's two moments that matter to its broker: "ends soon" (once) and "lapsed, the unit is free again" */
+function holdAlert(u: InventoryUnit, h: NonNullable<InventoryUnit['hold']>, kind: 'SOON' | 'LAPSED', mins = 0) {
+  try {
+    const who = firstName(h.customerName);
+    if (kind === 'SOON') alert(h.brokerId, 'deals', `Block ending · ${u.label}`, `${who}'s block on ${u.label} ends in ${mins} min — send the booking request in the CRM or the unit goes back`, '/?tab=crm',
+      { tag: `hold-${u.id}`, hi: [`ब्लॉक ख़त्म होने वाला · ${u.label}`, `${who} का ${u.label} का ब्लॉक ${mins} मिनट में ख़त्म — CRM में बुकिंग रिक्वेस्ट भेजें, वरना यूनिट वापस चली जाएगी`] });
+    else alert(h.brokerId, 'deals', `Block lapsed · ${u.label}`, `${who}'s block on ${u.label} ended — the unit is free again for everyone`, '/?tab=crm',
+      { tag: `hold-${u.id}`, hi: [`ब्लॉक ख़त्म · ${u.label}`, `${who} का ${u.label} का ब्लॉक ख़त्म — यूनिट अब सबके लिए फिर खाली है`] });
+  } catch { /* an alert never blocks the sweep */ }
+}
+
+/** Lapse expired holds, and remind the broker once shortly before. Cheap; called on every inventory read, before every booking request, and every minute by the server. */
 export function sweepHolds(now = Date.now()): number {
-  let n = 0;
+  let n = 0; let warned = false;
   for (const u of db.getState().inventoryUnits) {
-    if (u.status === 'HOLD' && u.hold && u.hold.expiresAt && Date.parse(u.hold.expiresAt) <= now) {
+    if (u.status !== 'HOLD' || !u.hold || !u.hold.expiresAt) continue;
+    const exp = Date.parse(u.hold.expiresAt);
+    if (exp <= now) {
+      const prev = u.hold;
       u.status = 'AVAILABLE'; u.hold = undefined; u.updatedAt = nowIso(); n++;
+      holdAlert(u, prev, 'LAPSED');
+    } else if (!u.hold.warnedAt && exp - now <= HOLD_WARN_MIN * 60_000) {
+      u.hold.warnedAt = nowIso(); warned = true;
+      holdAlert(u, u.hold, 'SOON', Math.max(1, Math.round((exp - now) / 60_000)));
     }
   }
-  if (n) db.save();
+  if (n || warned) db.save();
   return n;
 }
 
@@ -187,6 +209,8 @@ export function createInventoryRouter() {
     kind: actor.kind,
     canManage: actor.kind === 'OWNER',
     canHold: actor.kind === 'PARTNER',
+    /** v108 — blocks in use across all projects, and the most a broker may keep at a time */
+    holds: actor.kind === 'PARTNER' ? { used: db.getState().inventoryUnits.filter(x => x.status === 'HOLD' && x.hold?.brokerId === actor.user.id).length, max: MAX_ACTIVE_HOLDS_PER_BROKER } : undefined,
     canShare: actor.kind === 'OWNER' || actor.kind === 'PARTNER' || (actor.kind === 'MEMBER' && actor.policy.invShareOut),
     canPost: actor.kind === 'OWNER' || actor.kind === 'PARTNER',
     seesPrice: actor.kind !== 'MEMBER' || actor.policy.invPrice,
@@ -563,6 +587,9 @@ export function createInventoryRouter() {
     lead.updatedAt = at;
     db.save();
     audit('LEAD', lead.id, 'UNIT_HOLD_PLACED', `${u.name} held unit ${unit.label} of ${p.projectName} for ${lead.name} for ${hours}h; token ₹${d.tokenAmount.toLocaleString('en-IN')} ref ${d.tokenRef}`);
+    // v108 — the builder's desk learns at once that a unit is blocked (first name of the customer, never the number)
+    alert(builderVerifiers(p.builderId), 'deals', `Unit blocked · ${unit.label}`, `${u.name} blocked ${unit.label} for ${firstName(lead.name)} — token ${inrFmt(d.tokenAmount)}, ${hours} h`, '/?tab=crm',
+      { not: u.id, tag: `hold-${unit.id}`, hi: [`यूनिट ब्लॉक · ${unit.label}`, `${u.name} ने ${firstName(lead.name)} के लिए ${unit.label} ब्लॉक की — टोकन ${inrFmt(d.tokenAmount)}, ${hours} घंटे`] });
     res.json({ success: true, unit: shapeUnit(unit, p, a!.actor, seenBy(a!.actor, p, unit)) });
   });
 

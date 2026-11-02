@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTx, useI18n } from '../lib/i18n.js';
-import { Loader2, Trophy, Plus, Trash2, Timer, X, EyeOff, Eye, Send, Users, ListChecks, SlidersHorizontal, Pencil, Copy, Lock, Compass, Receipt } from 'lucide-react';
+import { Loader2, Trophy, Plus, Trash2, Timer, X, EyeOff, Eye, Send, Users, ListChecks, SlidersHorizontal, Pencil, Copy, Compass, Receipt } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { btnDark, btnLine, inp } from './CrmPlus.js';
 import { ProjectDocsCard } from './ProjectDocsCard.js';
+import { COLORS, useNow, useGridView, ViewToggle, UnitCell, GroupBlock, BlockStrip, HoldClock, BlockSheet } from './UnitBlockGrid.js';
 import { ChargesSheet, UnitCostSheet, CostSheetsCard } from './CostSheetPanel.js';
 import {
   RateSheet, VisibilitySheet, FactsSheet, UnitEditSheet, KindSheet, ShareSheet, PostSheet, TeamBoardCard, MyLinksCard, ImportCard, FeaturePicker, Chip, copyText,
@@ -11,28 +12,16 @@ import {
 import { FACINGS, UNIT_FEATURES, UNIT_KINDS, facingLabel, featureLabel, roadSidesLabel, unitShareLine, inrShort, kindLabel, unitKindOf, isFloorWise, rateCard, type UnitKind } from '../shared/inventoryRules.js';
 
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
-const COLORS: Record<string, string> = {
-  AVAILABLE: 'bg-emerald-100 border-emerald-400 text-emerald-900',
-  HOLD: 'bg-amber-100 border-amber-400 text-amber-900',
-  BOOKED: 'bg-red-100 border-red-400 text-red-900',
-  RESERVED: 'bg-violet-100 border-violet-400 text-violet-900',
-};
 const LABEL: Record<string, string> = { AVAILABLE: 'Available', HOLD: 'On hold', BOOKED: 'Booked / sold', RESERVED: 'Builder reserved' };
 const LABEL_HI: Record<string, string> = { AVAILABLE: 'उपलब्ध', HOLD: 'होल्ड पर', BOOKED: 'बुक / बिक गई', RESERVED: 'बिल्डर ने रिज़र्व की' };
-const fshort = (id?: string) => (id ? id.split('_').map(w => w[0]).join('') : '');
 
-const left = (iso: string | null | undefined, hi = false) => {
-  if (!iso) return hi ? 'बुकिंग बाकी' : 'booking pending';
-  const m = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60000));
-  return hi ? (m >= 60 ? `${Math.floor(m / 60)}घं ${m % 60}मि बाकी` : `${m}मि बाकी`) : (m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m left` : `${m}m left`);
-};
 
 const audLabel = (v: any, tx: (a: string, b: string) => string) =>
   !v ? '' : v.audience === 'HIDDEN' ? tx('Only me', 'सिर्फ़ मैं') : v.audience === 'SELECTED' ? tx(`${v.brokerIds.length} chosen partner(s)`, `${v.brokerIds.length} चुने पार्टनर`) : tx('All partners', 'सभी पार्टनर');
 
 interface Props { role: string; leads: any[]; /** v78 — opened from inside one project (the builder's project room): that project is fixed and the project picker is hidden */ fixedProjectId?: string }
 
-type SheetState = null | { kind: 'rate' | 'vis' | 'facts' | 'share' | 'post' | 'edit' | 'projvis' | 'kind' | 'charges' | 'cost'; ids?: string[]; unit?: any };
+type SheetState = null | { kind: 'rate' | 'vis' | 'facts' | 'share' | 'post' | 'edit' | 'projvis' | 'kind' | 'charges' | 'cost' | 'block'; ids?: string[]; unit?: any };
 
 export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId }) => {
   const tx = useTx();
@@ -93,6 +82,9 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
   const seesPrice = caps.seesPrice !== false && !hidePrice;
   const units: any[] = data?.units || [];
   const priceOf = (u: any) => (seesPrice && u.price != null ? u.price : null);
+  // v108 — the grid kind is remembered per device; one shared second-tick runs only while a visible block has a clock
+  const [view, setView] = useGridView();
+  const now = useNow(units.some(u => u.status === 'HOLD' && u.hold?.expiresAt) || (sel?.status === 'HOLD' && !!sel?.hold?.expiresAt));
 
   // filter option lists come from what is really in the grid
   const configs = useMemo(() => [...new Set(units.map(u => u.config).filter(Boolean))].sort(), [units]);
@@ -253,7 +245,7 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
       )}
 
       {data && <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-        <span>{tx(`Showing ${filtered.length} of ${units.length}`, `${units.length} में से ${filtered.length} दिख रही हैं`)}</span>
+        <span className="flex items-center gap-2">{units.length > 0 && <ViewToggle view={view} onChange={setView} />}<span>{tx(`Showing ${filtered.length} of ${units.length}`, `${units.length} में से ${filtered.length} दिख रही हैं`)}</span></span>
         {selectMode && <span className="flex gap-1.5">
           <button type="button" onClick={() => setPicked(new Set(filtered.map(u => u.id)))} className={btnLine}>{tx('Select all shown', 'दिख रही सभी चुनें')}</button>
           {picked.size > 0 && <button type="button" onClick={() => setPicked(new Set())} className={btnLine}>{tx('Clear', 'हटाएँ')} ({picked.size})</button>}
@@ -263,27 +255,14 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
       {data && units.length === 0 && !canManage && <p className="text-xs text-slate-500">{caps.kind === 'MEMBER' ? tx('Nothing has been shown to you yet.', 'अभी आपको कुछ दिखाया नहीं गया।') : tx('The builder has not created the unit grid for this project yet.', 'बिल्डर ने अभी इस प्रोजेक्ट का यूनिट ग्रिड नहीं बनाया है।')}</p>}
       {data && units.length > 0 && filtered.length === 0 && <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">{tx('No unit matches these filters.', 'इन फ़िल्टर से कोई यूनिट नहीं मिली।')} <button type="button" onClick={clearFilters} className="font-semibold underline">{tx('Clear filters', 'फ़िल्टर हटाएँ')}</button></p>}
 
+      {data && !selectMode && <BlockStrip units={units} now={now} canManage={canManage} holds={caps.holds} onOpen={u => setSel(u)} />}
+
       {Object.entries(groups).map(([g, list]) => (
-        <div key={g} className="rounded-xl border border-slate-200 bg-white p-3">
-          <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-800"><span>{g}</span><span className="font-normal text-slate-400">{list.length}</span></div>
-          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10">
-            {list.map((u: any) => {
-              const on = picked.has(u.id); const p = priceOf(u);
-              const hiddenFromSome = canManage && (u.vis?.audience !== 'ALL' || u.vis?.priceHidden);
-              return (
-                <button key={u.id} type="button" aria-label={`${u.label} ${lbl(u.status)}`}
-                  onClick={() => { if (selectMode) togglePick(u.id); else { setSel(u); setHold({ leadId: myLeads[0]?.id || '', tokenAmount: String(data.project.minToken), tokenRef: '' }); } }}
-                  className={`relative min-h-[3.25rem] rounded-md border px-1 py-1.5 text-center text-[11px] font-semibold leading-tight ${COLORS[u.status]} ${u.mine ? 'ring-2 ring-slate-900' : ''} ${on ? 'ring-4 ring-blue-600' : ''}`}>
-                  {selectMode && <span className={`absolute left-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px] ${on ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-400 bg-white'}`}>{on ? '✓' : ''}</span>}
-                  {hiddenFromSome && <EyeOff className="absolute right-0.5 top-0.5 h-3 w-3 text-slate-600" />}
-                  {u.label}
-                  <div className="text-[9px] font-normal opacity-80">{u.status === 'HOLD' ? left(u.hold?.expiresAt, hi) : p != null ? `${(p / 100000).toFixed(1)}L` : <span className="inline-flex items-center gap-0.5"><Lock className="h-2 w-2" />{tx('on request', 'पूछें')}</span>}</div>
-                  {(u.roadSides || u.facing) && <div className="text-[9px] font-normal opacity-70">{u.roadSides ? tx(`${u.roadSides}-side`, `${u.roadSides} तरफ़`) : ''}{u.roadSides && u.facing ? ' · ' : ''}{fshort(u.facing)}</div>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <GroupBlock key={g} name={g} list={list} view={view} renderCell={(u: any, tower: boolean) => (
+          <UnitCell u={u} now={now} price={priceOf(u)} tower={tower} selectMode={selectMode} picked={picked.has(u.id)} statusLabel={lbl(u.status)}
+            hiddenFromSome={canManage && (u.vis?.audience !== 'ALL' || !!u.vis?.priceHidden)}
+            onTap={() => { if (selectMode) togglePick(u.id); else setSel(u); }} />
+        )} />
       ))}
 
       {selectMode && picked.size > 0 && (
@@ -329,7 +308,7 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
               </div>
             )}
             {canManage && sel.vis && <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 p-2 text-slate-700"><Eye className="h-3.5 w-3.5" />{tx('Seen by:', 'किसे दिखता है:')} <b>{audLabel(sel.vis, tx)}</b>{sel.vis.priceHidden ? ` · ${tx('rate hidden', 'रेट छुपा')}` : ''}</div>}
-            {sel.status === 'HOLD' && <div className="flex items-center gap-1 text-slate-600"><Timer className="h-3.5 w-3.5" /> {left(sel.hold?.expiresAt, hi)}{sel.hold?.customerName ? ` · ${sel.hold.customerName} (${sel.hold.brokerName}) · ${tx('token', 'टोकन')} ${inr(sel.hold.tokenAmount)} / ${sel.hold.tokenRef}` : ''}</div>}
+            {sel.status === 'HOLD' && <HoldClock hold={sel.hold} now={now} mineOrOwner={!!(sel.mine || canManage)} hours={data.project.holdHours} />}
 
             <div className="grid grid-cols-2 gap-2">
               {caps.canShare && sel.status === 'AVAILABLE' && <button type="button" onClick={() => setSheet({ kind: 'share', ids: [sel.id] })} className={btnDark}><Send className="h-4 w-4" />{tx('Send to customer', 'ग्राहक को भेजें')}</button>}
@@ -344,20 +323,13 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
             </div>
 
             {sel.status === 'AVAILABLE' && caps.canHold && (
-              <div className="space-y-2 border-t border-slate-100 pt-3">
-                <div className="font-semibold">{tx('Hold this unit for your customer', 'इस यूनिट को अपने ग्राहक के लिए होल्ड करें')} ({data.project.holdHours} {tx('hours', 'घंटे')})</div>
-                <select value={hold.leadId} onChange={e => setHold({ ...hold, leadId: e.target.value })} className="w-full rounded border border-slate-300 px-2 py-2">
-                  {myLeads.length === 0 && <option value="">{tx('You have no open lead on this project', 'इस प्रोजेक्ट पर आपकी कोई ओपन लीड नहीं')}</option>}
-                  {myLeads.map(l => <option key={l.id} value={l.id}>{l.name} · {t(`stage.${l.stage}`, l.stage)}</option>)}
-                </select>
-                <input value={hold.tokenAmount} onChange={e => setHold({ ...hold, tokenAmount: e.target.value })} inputMode="numeric" placeholder={tx(`Token (min ${inr(data.project.minToken)})`, `टोकन (न्यूनतम ${inr(data.project.minToken)})`)} className="w-full rounded border border-slate-300 px-2 py-2" />
-                <input value={hold.tokenRef} onChange={e => setHold({ ...hold, tokenRef: e.target.value })} placeholder={tx('Builder receipt / UTR number', 'बिल्डर की रसीद / UTR नंबर')} className="w-full rounded border border-slate-300 px-2 py-2" />
-                <p className="text-[10px] text-slate-500">{tx('Money does not go through GENZ — pay the token to the builder directly and enter the receipt/UTR here. While held, no other broker can take this unit.', 'पैसा GENZ से नहीं जाता — टोकन सीधे बिल्डर को दें और रसीद/UTR यहाँ लिखें। होल्ड के दौरान कोई दूसरा ब्रोकर यह यूनिट नहीं ले सकता।')}</p>
-                <button type="button" disabled={busy || !hold.leadId} onClick={() => act(() => api.invHold(sel.id, { leadId: hold.leadId, tokenAmount: Number(hold.tokenAmount), tokenRef: hold.tokenRef }), tx('Unit held', 'यूनिट होल्ड हो गई'))} className="w-full rounded-lg bg-slate-900 py-2 font-semibold text-white disabled:opacity-50">{tx('Hold this unit', 'यह यूनिट होल्ड करें')}</button>
+              <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                <button type="button" data-testid="open-block" onClick={() => setSheet({ kind: 'block', unit: sel })} className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white"><Timer className="h-4 w-4" />{tx(`Block this unit · ${data.project.holdHours} h`, `यह यूनिट ब्लॉक करें · ${data.project.holdHours} घंटे`)}</button>
+                <p className="text-center text-[10px] text-slate-500">{caps.holds ? tx(`${caps.holds.used} of ${caps.holds.max} blocks used`, `${caps.holds.max} में से ${caps.holds.used} ब्लॉक इस्तेमाल`) : ''}</p>
               </div>
             )}
             {sel.status === 'HOLD' && (sel.mine || canManage) && !sel.hold?.bookingId && sel.hold?.expiresAt !== null && (
-              <button type="button" disabled={busy} onClick={() => act(() => api.invRelease(sel.id), tx('Hold released', 'होल्ड हटा दिया गया'))} className="w-full rounded-lg border border-slate-300 py-2 font-semibold">{tx('Release hold', 'होल्ड हटाएँ')}</button>
+              <button type="button" disabled={busy} onClick={() => act(() => api.invRelease(sel.id), tx('Hold released', 'होल्ड हटा दिया गया'))} className="w-full rounded-lg border border-slate-300 py-2 font-semibold">{tx('Release block', 'ब्लॉक हटाएँ')}</button>
             )}
             {canManage && (sel.status === 'AVAILABLE' || sel.status === 'RESERVED') && (
               <button type="button" disabled={busy} onClick={() => act(() => api.invUnit(sel.id, { status: sel.status === 'AVAILABLE' ? 'RESERVED' : 'AVAILABLE' }), tx('Updated', 'अपडेट हो गया'))} className="w-full rounded-lg border border-violet-300 py-2 font-semibold text-violet-800">
@@ -378,6 +350,9 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
       {sheet?.kind === 'share' && <ShareSheet pid={pid} projectName={projectName} units={units.filter(u => sheet.ids!.includes(u.id)).map(u => ({ ...u, price: priceOf(u) }))} caps={{ ...caps, seesPrice }} onClose={() => { setSheet(null); setRefresh(k => k + 1); }} />}
       {sheet?.kind === 'post' && <PostSheet pid={pid} units={units.filter(u => sheet.ids!.includes(u.id))} onClose={() => setSheet(null)} onDone={sheetDone} />}
       {sheet?.kind === 'charges' && data?.project?.charges && <ChargesSheet pid={pid} charges={data.project.charges} isSet={!!data.project.chargesSet} sample={(() => { const s = units.find(u => u.price && u.areaSqft); return s ? { price: s.price, areaSqft: s.areaSqft } : undefined; })()} onClose={() => setSheet(null)} onDone={sheetDone} />}
+      {sheet?.kind === 'block' && <BlockSheet unit={sheet.unit} project={{ minToken: data.project.minToken, holdHours: data.project.holdHours }} projectName={projectName} leads={myLeads}
+        busyLeadIds={new Set(units.filter(u => u.status === 'HOLD' && u.mine && u.hold?.leadId).map(u => u.hold.leadId as string))} holds={caps.holds}
+        onClose={() => { setSheet(null); setSel(null); loadProject(); }} />}
       {sheet?.kind === 'cost' && <UnitCostSheet unit={sheet.unit} projectName={projectName} leads={myLeads} onClose={() => { setSheet(null); setRefresh(k => k + 1); }} onMade={() => setRefresh(k => k + 1)} />}
 
       {showDocs && pid && <ProjectDocsCard role={role} projectId={pid} refreshKey={refresh} />}

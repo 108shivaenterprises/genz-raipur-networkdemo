@@ -378,6 +378,8 @@ export interface InventoryUnit {
     tokenAmount: number; tokenRef: string; at: string;
     /** null while a booking request is pending the builder's decision */
     expiresAt: string | null; bookingId?: string;
+    /** v108 — set when the broker was told "your block ends in a few minutes", so he is told once */
+    warnedAt?: string;
   };
   bookingId?: string;
   updatedAt: string;

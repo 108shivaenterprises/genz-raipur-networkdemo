@@ -101,7 +101,7 @@ import { createPulseRouter, activityMiddleware, recordActivity } from './server/
 import { createTeamRouter, createTeamLimitsRouter } from './server/team.js';
 import { createHrRouter, sweepHr } from './server/hr.js';
 import { createCallsRouter, sweepCalls } from './server/calls.js';
-import { createInventoryRouter } from './server/inventory.js';
+import { createInventoryRouter, sweepHolds } from './server/inventory.js';
 import { createInventoryDeskRouter } from './server/inventory2.js';
 import { createLaunchRouter } from './server/launch.js';
 import { normCity } from './src/shared/cities.js';
@@ -5949,6 +5949,8 @@ async function startServer() {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();
+  // v108 — a unit's block lapses (and its broker is warned 15 minutes before) on time, not only when somebody next opens the grid
+  setInterval(() => { try { sweepHolds(); } catch (e: any) { console.error('[SWEEP] holds failed:', e?.message || e); } }, 60_000).unref();
 
   // Graceful shutdown: stop accepting, make sure every pending write is durable, release the DB lock.
   let closing = false;
