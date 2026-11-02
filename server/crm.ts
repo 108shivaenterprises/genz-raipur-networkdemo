@@ -310,7 +310,7 @@ export const regDays = (p: BuilderProject) => Math.min(180, Math.max(15, p.regis
  * Rules (v12): project intake switch, partner daily cap, mandate validity, per-project protection window,
  * builder verification mode, employee policy, auto-routing to staff.
  */
-export function registerLead(worker: UserProfile, d: z.infer<typeof leadCreateSchema>, opts: { shortlistId?: string; via?: 'FORM' | 'IMPORT' | 'SHORTLIST' | 'API' } = {}): { status: number; body: any } {
+export function registerLead(worker: UserProfile, d: z.infer<typeof leadCreateSchema>, opts: { shortlistId?: string; via?: 'FORM' | 'IMPORT' | 'SHORTLIST' | 'API'; dryRun?: boolean } = {}): { status: number; body: any } {
   const fail = (status: number, error: string, code?: string) => ({ status, body: { error, ...(code ? { code } : {}) } });
   const state = db.getState();
   const emp = worker.role === 'TEAM_MEMBER' ? db.byId('users', worker.employerId) : worker;
@@ -365,6 +365,9 @@ export function registerLead(worker: UserProfile, d: z.infer<typeof leadCreateSc
       : '';
     return fail(409, `This customer is already registered for ${project.projectName} and is under registration protection until ${new Date(clash.protectedUntil).toLocaleDateString('en-IN')}.${detail}`, 'LEAD_DUPLICATE');
   }
+
+  // v107 — a test run answers "would this be taken?" with every rule above applied, and writes nothing
+  if (opts.dryRun) return { status: 200, body: { success: true, dryRun: true } };
 
   const id = nextId('CRM-L', state.crmLeads.map(l => l.id));
   const ts = nowIso();

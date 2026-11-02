@@ -166,6 +166,7 @@ import { mandateShareAt } from './src/shared/mandateShare.js';
 import { visitGate, windowEnd, rescheduleError, REMIND_EVERY_MIN } from './src/shared/visitGateRules.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
+import { createLeadInletRouter, createLeadInletPublicRouter } from './server/leadInlets.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
 import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
@@ -5713,10 +5714,12 @@ app.use('/api/inventory', createInventoryRouter());
 app.use('/api/invdesk', createInventoryDeskRouter());
 app.use('/api/launch', createLaunchRouter());
 app.use('/api/share', createShareRouter());
+app.use('/api/inlets', createLeadInletRouter());   // v107 — the owner's lead addresses (website form / webhook)
 app.use('/api/land-records', createLandRecordsRouter());
 app.use('/api/brand', createBrandRouter());
-app.use(['/s', '/r', '/q', '/sp', '/a', '/c', '/oc', '/report', '/pay', '/p', '/v'], brandInject);
+app.use(['/s', '/r', '/q', '/sp', '/a', '/c', '/oc', '/in', '/report', '/pay', '/p', '/v'], brandInject);
 app.use('/s', createPublicShareRouter());
+app.use('/in', createLeadInletPublicRouter());   // v107 — the public address: a hosted enquiry form, and the POST that files an enquiry as a lead
 app.use('/api/client-rooms', createClientRoomRouter());
 // v60 — Rent desk: the broker's tenancies after the deal (terms, police verification, renewal, vacating)
 app.use('/api/rent', createRentRouter());

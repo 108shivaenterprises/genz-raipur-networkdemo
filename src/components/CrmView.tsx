@@ -6,6 +6,7 @@ import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { CheckinModal } from './CheckinModal.js';
 import { InventoryPanel } from './InventoryPanel.js';
+import { LeadInletsPanel } from './LeadInletsPanel.js';
 import { BonusPanel } from './BonusPanel.js';
 import { TargetBonusPanel } from './TargetBonusPanel.js';
 import { LeadPassPanel } from './VisitsView.js';
@@ -50,7 +51,7 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
   const [bookings, setBookings] = useState<CrmBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const tx = useTx();
-  const [tab, setTab] = useState<'pipeline' | 'calls' | 'inventory' | 'bookings' | 'money' | 'brokerage' | 'bonus' | 'reports'>('pipeline');
+  const [tab, setTab] = useState<'pipeline' | 'calls' | 'inventory' | 'inlets' | 'bookings' | 'money' | 'brokerage' | 'bonus' | 'reports'>('pipeline');
   const [moneyBooking, setMoneyBooking] = useState<string | null>(null);
   const [f, setF] = useState<Filters>(EMPTY_FILTERS);
   const [fa, setFa] = useState<Filters>(EMPTY_FILTERS); // debounced copy that drives the server query
@@ -160,9 +161,9 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
       <AlertsBar refreshKey={alertKey} active={activeKind} onPick={pick} />
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
-        {((isMember ? ['pipeline', 'calls', ...(o.invMode && o.invMode !== 'OFF' ? ['inventory'] : []), ...(o.moneyTrail?.collect || o.moneyTrail?.confirm ? ['money'] : []), 'reports'] : ['pipeline', ...(can('crm:lead_manage') ? ['calls'] : []), 'bookings', 'money', 'brokerage', ...(can('inventory:read') ? ['inventory'] : []), 'bonus', 'reports']) as ('pipeline' | 'calls' | 'inventory' | 'bookings' | 'money' | 'brokerage' | 'bonus' | 'reports')[]).map(k => (
+        {((isMember ? ['pipeline', 'calls', ...(o.invMode && o.invMode !== 'OFF' ? ['inventory'] : []), ...(o.moneyTrail?.collect || o.moneyTrail?.confirm ? ['money'] : []), 'reports'] : ['pipeline', ...(can('crm:lead_manage') ? ['calls'] : []), 'bookings', 'money', 'brokerage', ...(can('inventory:read') ? ['inventory'] : []), ...((isBroker || isBuilder) && can('crm:lead_create') ? ['inlets'] : []), 'bonus', 'reports']) as ('pipeline' | 'calls' | 'inventory' | 'inlets' | 'bookings' | 'money' | 'brokerage' | 'bonus' | 'reports')[]).map(k => (
           <button key={k} onClick={() => setTab(k)} className={`min-h-9 shrink-0 whitespace-nowrap px-3 py-2 text-xs font-semibold ${tab === k ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>
-            {({ pipeline: tx('Pipeline', 'पाइपलाइन'), calls: tx('Call list', 'कॉल लिस्ट'), inventory: tx('Inventory', 'इन्वेंटरी'), bookings: tx('Bookings', 'बुकिंग'), money: tx('Money', 'पैसा'), brokerage: tx('Brokerage', 'ब्रोकरेज'), bonus: tx('Bonus', 'बोनस'), reports: tx('Reports', 'रिपोर्ट') } as Record<string, string>)[k]}{k === 'bookings' && o.pendingBookingRequests ? ` (${o.pendingBookingRequests})` : ''}
+            {({ pipeline: tx('Pipeline', 'पाइपलाइन'), calls: tx('Call list', 'कॉल लिस्ट'), inventory: tx('Inventory', 'इन्वेंटरी'), inlets: tx('Lead addresses', 'लीड पते'), bookings: tx('Bookings', 'बुकिंग'), money: tx('Money', 'पैसा'), brokerage: tx('Brokerage', 'ब्रोकरेज'), bonus: tx('Bonus', 'बोनस'), reports: tx('Reports', 'रिपोर्ट') } as Record<string, string>)[k]}{k === 'bookings' && o.pendingBookingRequests ? ` (${o.pendingBookingRequests})` : ''}
           </button>
         ))}
       </div>
@@ -224,6 +225,7 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
       {tab === 'money' && <MoneyPanel flash={flash} bookingId={moneyBooking} onClearBooking={() => setMoneyBooking(null)} alertIds={idFilter?.kind.startsWith('MONEY_') ? idFilter.ids : null} onClearAlert={() => setIdFilter(null)} onChanged={load} refreshKey={alertKey} />}
       {tab === 'calls' && <CallQueuePanel onOpen={id => setSelected(id)} canFilter={can('team:manage')} />}
       {tab === 'inventory' && <InventoryPanel role={currentUser.role} leads={leads} />}
+      {tab === 'inlets' && (isBroker || isBuilder) && <LeadInletsPanel />}
       {tab === 'bonus' && (
         <div className="space-y-6">
           <div>

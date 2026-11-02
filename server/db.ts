@@ -489,6 +489,33 @@ export interface ShareLink {
   revoked?: boolean;
 }
 
+/**
+ * v107 — a lead inlet: one secret address (a hosted enquiry form, or a webhook for Zapier / Make / a portal's e-mail parser) that files enquiries into the
+ * owner's CRM as ordinary leads for ONE project. The owner is the employer account (builder or broker with a mandate); his staff cannot own one.
+ */
+export interface LeadInlet {
+  id: string;                          // INL-0001
+  ownerId: string;
+  projectId: string;
+  label: string;
+  channel: import('../src/shared/inletRules.js').InletChannel;
+  kind: import('../src/shared/inletRules.js').InletKind;
+  source: 'WEBSITE_ENQUIRY' | 'PROPERTY_PORTAL' | 'DIGITAL_CAMPAIGN' | 'OTHER';
+  sourceDetail: string;
+  token: string;
+  /** the owner stated, when creating it, that people reaching this address agreed to be contacted — kept as the lead's consent record */
+  consentAttestedAt: string;
+  active: boolean;
+  createdAt: string;
+  rotatedAt?: string;
+  counts: { received: number; created: number; duplicate: number; rejected: number };
+  lastAt?: string;
+  /** today's accepted-or-not tries (the per-address daily cap) */
+  day: string; dayCount: number;
+  /** newest first, capped; never holds more of the customer than the first name and the last four digits */
+  log: { at: string; outcome: import('../src/shared/inletRules.js').InletOutcome; why: string; who: string; leadId?: string }[];
+}
+
 /** A person who asked to join (public waitlist) or was nominated by a member. Admin approves → invitation. */
 export interface GrowthLead {
   id: string;                       // GL-0001
@@ -1766,6 +1793,8 @@ export interface DatabaseState {
   calls: CallRecord[];
   callSettings: CallSettings[];
   shareLinks: ShareLink[];
+  /** v107 */
+  leadInlets: LeadInlet[];
   landRecords: LandRecord[];
   growthLeads: GrowthLead[];
   resetRequests: ResetRequest[];
@@ -2997,6 +3026,7 @@ function getInitialSeedData(): DatabaseState {
     siteCheckins: [],
     hrSettings: [], hrAttendance: [], hrLeaves: [], hrTargets: [], hrStatements: [], hrClaims: [], hrAssets: [], calls: [], callSettings: [],
     shareLinks: [],
+    leadInlets: [],
     landRecords: [],
     growthLeads: [],
     resetRequests: [],
@@ -3138,6 +3168,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.siteCheckins ||= [];
   parsed.hrSettings ||= []; parsed.hrAttendance ||= []; parsed.hrLeaves ||= []; parsed.hrTargets ||= []; parsed.hrStatements ||= []; parsed.hrClaims ||= []; parsed.hrAssets ||= []; parsed.calls ||= []; parsed.callSettings ||= [];
   parsed.shareLinks ||= [];
+  parsed.leadInlets ||= [];
   parsed.landRecords ||= [];
   parsed.growthLeads ||= [];
   parsed.resetRequests ||= [];
