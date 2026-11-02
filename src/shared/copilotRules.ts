@@ -18,6 +18,7 @@ export type CpPlan =
   | { kind: 'CONFIRM_LISTING'; hi: string; en: string; listingId: string }
   | { kind: 'SHOW_DUE' | 'SHOW_BRIEF' | 'SHOW_STALE'; hi: string; en: string }
   | { kind: 'ASK'; hi: string; en: string; choices?: { id: string; label: string }[] }
+  | { kind: 'INFO'; hi: string; en: string }
   | { kind: 'UNKNOWN'; hi: string; en: string };
 
 export const COPILOT_HELP = {
@@ -65,13 +66,28 @@ function parseBudget(t: string): { min: number; max: number } {
 
 const NAME_STOP = /^(budget|bajet|call|client|naya|nayi|new|add|ke|ka|ki|me|mein|mai|ko|se|tak|bhk|rent|sale|lakh|lac|cr|crore|follow|up|kal|aaj|parso|phone|number|no|flat|plot|house|ghar|customer|lead|grahak)$/i;
 
+/** plain words → the app's own property types (India.ts PROPERTY_TYPES) */
+function typeOf(t: string): string {
+  if (/(farm ?house)/.test(t)) return 'Farm House';
+  if (/(khet|kheti|agricultur|agri land|farm ?land)/.test(t)) return 'Agricultural Land';
+  if (/(godown|warehouse|godam)/.test(t)) return 'Warehouse / Godown';
+  if (/(shop|dukan|dukaan)/.test(t)) return 'Commercial Shop';
+  if (/(office)/.test(t)) return 'Commercial Office';
+  if (/(villa)/.test(t)) return 'Residential Villa';
+  if (/(independent|ghar|makaan|house)/.test(t)) return 'Independent House';
+  if (/(plot|zameen|jameen|land)/.test(t)) return /(commercial)/.test(t) ? 'Commercial Plot' : 'Residential Plot';
+  return 'Residential Flat';
+}
+
 function parseAdd(raw: string, now: Date): CpPlan {
   const t = low(raw);
   const sq = squeeze(raw);
   const lead = parseLeadText(sq);
   const phone = lead.phone || (RX.phone.exec(squeeze(t)) || [''])[0];
   const afterKw = /(?:client|customer|lead|grahak|क्लाइंट|ग्राहक)\s*(?:add|jodo)?\s*[:\-]?\s*([A-Za-zऀ-ॿ][A-Za-zऀ-ॿ .']{1,30}?)(?=\s+\d|\s+budget|\s+bajet|\s*,|\s+rent\b|\s+sale\b|$)/i.exec(raw);
-  let name = lead.name || (afterKw ? afterKw[1].trim() : '');
+  const kw = /(?:\b(?:naya|nayi|new|add)\s+)?\b(?:client|customer|lead|grahak)\b/i.exec(raw);
+  const beforeKw = kw && kw.index > 0 ? raw.slice(0, kw.index).replace(/[\d:,\-]+/g, ' ').trim() : '';
+  let name = lead.name || (afterKw ? afterKw[1].trim() : '') || beforeKw;
   name = name.split(/\s+/).filter(w => !NAME_STOP.test(w)).slice(0, 3).join(' ');
   const bhk = /(\d)\s*bhk/.exec(t)?.[1];
   const rent = /(rent|kiraya|kiraye)/.test(t);
@@ -81,7 +97,7 @@ function parseAdd(raw: string, now: Date): CpPlan {
   if (!name) return { kind: 'ASK', hi: 'क्लाइंट का नाम क्या है? जैसे “नया क्लाइंट Ramesh 98260 12345 budget 60 lakh”।', en: 'What is the client’s name? e.g. “new client Ramesh 98260 12345 budget 60 lakh”.' };
   if (!/^[6-9]\d{9}$/.test(phone)) return { kind: 'ASK', hi: `${name} का 10 अंकों का मोबाइल नंबर बताइए।`, en: `Please give ${name}’s 10-digit mobile number.` };
   const w = readWhen(raw, now);
-  const body = { name, phone, budgetMin: b.min, budgetMax: b.max, city: '', areas: area ? [area] : [], propertyType: bhk ? `${bhk} BHK Flat` : 'Residential Flat', transactionType: (rent ? 'Rent' : 'Sale') as 'Sale' | 'Rent', notes: '', ...(w?.iso ? { followUpAt: w.iso } : {}) };
+  const body = { name, phone, budgetMin: b.min, budgetMax: b.max, city: '', areas: area ? [area] : [], propertyType: bhk ? `${bhk} BHK Flat` : typeOf(t), transactionType: (rent ? 'Rent' : 'Sale') as 'Sale' | 'Rent', notes: '', ...(w?.iso ? { followUpAt: w.iso } : {}) };
   const bits = [bhk ? `${bhk}BHK` : '', b.max ? `≤ ₹${rupeesText(b.max)}` : '', area, rent ? 'Rent' : ''].filter(Boolean).join(' · ');
   return { kind: 'ADD_CLIENT', body, needsConsent: true, hi: `नया क्लाइंट जोड़ूँ: ${name} (${phone.slice(0, 5)}•••••)${bits ? ' — ' + bits : ''}${w ? ' — फॉलो-अप ' + w.hi : ''}`, en: `Add client: ${name} (${phone.slice(0, 5)}•••••)${bits ? ' — ' + bits : ''}${w ? ' — follow-up ' + w.en : ''}` };
 }
@@ -104,6 +120,8 @@ export function planCommand(raw: string, ctx: CpCtx): CpPlan {
   if (!who.length && RX.stale.test(t)) return { kind: 'SHOW_STALE', hi: 'ठंडे क्लाइंट (7+ दिन से संपर्क नहीं):', en: 'Cold clients (no contact for 7+ days):' };
   if (!who.length && RX.due.test(t)) return /follow/.test(t) ? { kind: 'SHOW_DUE', hi: 'आज/पेंडिंग फॉलो-अप:', en: 'Follow-ups due now:' } : { kind: 'SHOW_BRIEF', hi: 'आज का काम:', en: 'Today’s work:' };
 
+  if (!who.length && /(bik gay|bik gya|bik chuk|sold|rented|rent pe chal|kiraye pe chal|hata do|hatao|remove|withdraw|band karo listing)/.test(t) && /(listing|ghar|flat|plot|shop|dukan|property|makaan|bik|sold|rented)/.test(t))
+    return { kind: 'INFO', hi: 'लिस्टिंग बिक गई / किराए पर गई / हटानी है? “मेरी लिस्टिंग” टैब में उस लिस्टिंग पर “बिक गई / हटाएँ” दबाइए — वहाँ पूछा जाएगा कि सौदा कैसे हुआ।', en: 'Sold, rented or removing a listing? In the “My listings” tab tap “Sold / remove” on it — it will ask how the deal closed.' };
   if (!who.length && RX.confirm.test(t)) {
     const hits = ctx.listings.filter(l => words(l.title).split(' ').filter(w => w.length > 3).some(w => t.includes(w)));
     if (hits.length === 1) return { kind: 'CONFIRM_LISTING', listingId: hits[0].id, hi: `“${hits[0].title}” अभी भी उपलब्ध है — कन्फर्म करूँ?`, en: `Confirm “${hits[0].title}” is still available?` };

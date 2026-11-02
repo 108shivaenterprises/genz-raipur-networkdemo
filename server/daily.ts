@@ -336,7 +336,7 @@ export function createDailyRouter() {
     const mine = db.getState().properties.filter(p => p.listingBrokerId === u.id && ['active', 'under_negotiation'].includes(p.listingStatus));
     res.json({ success: true, listings: mine.map(p => {
       const age = days(p.confirmedAt || p.createdAt, now);
-      return { id: p.id, title: p.title, locality: p.locality, city: p.city, confirmedAt: p.confirmedAt, daysLeft: Math.max(0, Math.ceil(FRESH_DAYS - age)), state: p.heldAt ? 'HELD' : p.expiredAt ? 'EXPIRED' : age >= WARN_DAYS ? 'EXPIRING' : 'FRESH' };
+      return { id: p.id, title: p.title, locality: p.locality, city: p.city, transactionType: p.transactionType, confirmedAt: p.confirmedAt, daysLeft: Math.max(0, Math.ceil(FRESH_DAYS - age)), state: p.heldAt ? 'HELD' : p.expiredAt ? 'EXPIRED' : age >= WARN_DAYS ? 'EXPIRING' : 'FRESH' };
     }) });
   });
   r.post('/listings/:id/confirm', needs('daily:use'), rateLimit('confirm', 120, 60 * 60_000), (req: Request, res: Response) => {

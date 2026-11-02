@@ -29,6 +29,14 @@ describe('v110 copilot planner', () => {
     expect(r.body.budgetMax).toBe(6_000_000);
     expect(r.body.propertyType).toBe('2 BHK Flat');
   });
+  it('name before the keyword, plot, area (the line that failed on a phone)', () => {
+    const r: any = p('Ramdulri new client 7000458838 budget 50 lakh plot in sejbahar');
+    expect(r.kind).toBe('ADD_CLIENT');
+    expect(r.body).toMatchObject({ name: 'Ramdulri', phone: '7000458838', budgetMax: 5_000_000, propertyType: 'Residential Plot', areas: ['sejbahar'] });
+  });
+  it('a sold listing is pointed to the screen that asks how it closed', () => {
+    expect(p('sejbahar wali listing bik gayi').kind).toBe('INFO');
+  });
   it('asks for a missing phone instead of guessing', () => {
     expect(p('new client Mohan budget 50 lakh').kind).toBe('ASK');
   });
@@ -98,6 +106,8 @@ describe('v110 copilot end to end', () => {
     expect((await call('POST', `/api/daily/clients/${nt.clientId}/note`, { text: nt.text, kind: nt.noteKind, followUpAt: nt.followUpAt })).status).toBe(200);
     const lost: any = planCommand('Mohan lost budget kam', c2);
     expect((await call('POST', `/api/daily/clients/${lost.clientId}/stage`, { stage: lost.stage, lostReason: lost.lostReason })).status).toBe(200);
+    // the My-listings tile needs the deal type to say “Sold” or “Rented”
+    const ls = (await call('GET', '/api/daily/listings')).j.listings; expect(ls.length).toBeGreaterThan(0); expect(ls.every((x: any) => ['Sale', 'Rent', 'Lease'].includes(x.transactionType))).toBe(true);
     // a number the broker already has is refused by the server, not by the bot
     const dup = await call('POST', '/api/daily/clients', { ...add.body, name: 'Other', consent: true });
     expect([200, 409]).toContain(dup.status);

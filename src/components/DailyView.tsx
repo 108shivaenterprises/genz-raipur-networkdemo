@@ -6,6 +6,7 @@ import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { ClientsView } from './ClientsView.js';
 import { CopilotPanel } from './CopilotPanel.js';
+import { EditPropertyModal } from './EditPropertyModal.js';
 // Leaflet is ~150 KB: only downloaded when a broker opens the Map tab (keeps first load light on slow networks)
 const MapView = lazy(() => import('./MapView.js').then(m => ({ default: m.MapView })));
 import { ReportButton } from './ReportButton.js';
@@ -43,7 +44,7 @@ export const DailyView: React.FC<{ currentUser: UserProfile; onNavigate: (t: any
       {sub === 'today' && <Digest onGoClients={() => setSub('clients')} />}
       {sub === 'clients' && <ClientsView currentUser={currentUser} />}
       {sub === 'map' && <Suspense fallback={<div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>}><MapView /></Suspense>}
-      {sub === 'listings' && <Listings />}
+      {sub === 'listings' && <Listings currentUser={currentUser} />}
       {sub === 'rates' && <Rates city={currentUser.city} />}
       {sub === 'points' && <Points />}
     </div>
@@ -121,8 +122,10 @@ const Digest: React.FC<{ onGoClients: () => void }> = ({ onGoClients }) => {
 };
 
 // ───────── F2 listings freshness + trust ─────────
-const Listings: React.FC = () => {
+const Listings: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => {
   const tx = useTx();
+  const [editing, setEditing] = useState<any>(null);
+  const open = async (id: string) => { try { const r = await api.getProperty(id); setEditing(r.property); } catch (e: any) { setErr(e.message); } };
   const [l, setL] = useState<any[] | null>(null); const [t, setT] = useState<any>(null); const [err, setErr] = useState('');
   const load = useCallback(() => { api.myListings().then(r => setL(r.listings)).catch(e => setErr(e.message)); api.trustBreakdown().then(setT).catch(() => undefined); }, []);
   useEffect(() => { load(); }, [load]);
@@ -137,9 +140,10 @@ const Listings: React.FC = () => {
         {!l ? <Loader2 className="mt-3 h-5 w-5 animate-spin text-slate-400" /> : l.length === 0 ? <p className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center text-xs text-slate-500">{tx('You have no live listings. Add one from Property Inventory.', 'आपकी कोई लाइव लिस्टिंग नहीं है। Property Inventory से जोड़ें।')}</p> : (
           <ul className="mt-3 space-y-2">{l.map(x => (
             <li key={x.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
-              <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold text-slate-900">{x.title}</div><div className="text-xs text-slate-500">{x.locality}, {x.city}{x.state !== 'EXPIRED' && x.state !== 'HELD' ? ` · ${tx(`${x.daysLeft} days left`, `${x.daysLeft} दिन बाकी`)}` : ''}</div></div>
+              <button type="button" onClick={() => open(x.id)} aria-label={tx(`Open ${x.title}`, `${x.title} खोलें`)} className="min-w-0 flex-1 text-left"><div className="truncate text-sm font-semibold text-slate-900">{x.title}</div><div className="text-xs text-slate-500">{x.locality}, {x.city}{x.state !== 'EXPIRED' && x.state !== 'HELD' ? ` · ${tx(`${x.daysLeft} days left`, `${x.daysLeft} दिन बाकी`)}` : ''}</div></button>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATE[x.state][2]}`}>{tx(STATE[x.state][0], STATE[x.state][1])}</span>
               {x.state !== 'HELD' && <button onClick={() => confirm(x.id)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"><CheckCircle2 className="h-4 w-4" aria-hidden />{tx('Still available', 'अभी भी उपलब्ध')}</button>}
+              <button type="button" onClick={() => open(x.id)} data-testid="listing-close" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">{x.transactionType === 'Sale' ? tx('Sold / remove', 'बिक गई / हटाएँ') : tx('Rented / remove', 'किराए पर गई / हटाएँ')}</button>
             </li>))}</ul>
         )}
       </section>
@@ -151,6 +155,7 @@ const Listings: React.FC = () => {
           {t.tips.length > 0 && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><b>{tx('How to raise it', 'स्कोर कैसे बढ़ाएँ')}</b><ul className="mt-1 list-disc space-y-0.5 pl-4">{t.tips.map((x: any) => <li key={x.id}>{tx(x.en, x.hi)} (+{x.gain})</li>)}</ul></div>}
         </section>
       )}
+      {editing && <EditPropertyModal isOpen property={editing} currentUser={currentUser} onClose={() => setEditing(null)} onSuccess={() => { setEditing(null); load(); }} />}
     </div>
   );
 };
