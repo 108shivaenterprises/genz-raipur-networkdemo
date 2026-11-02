@@ -5,6 +5,7 @@ import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { ClientsView } from './ClientsView.js';
+import { CopilotPanel } from './CopilotPanel.js';
 // Leaflet is ~150 KB: only downloaded when a broker opens the Map tab (keeps first load light on slow networks)
 const MapView = lazy(() => import('./MapView.js').then(m => ({ default: m.MapView })));
 import { ReportButton } from './ReportButton.js';
@@ -38,6 +39,7 @@ export const DailyView: React.FC<{ currentUser: UserProfile; onNavigate: (t: any
         </div>
         <HelpLink lesson="app-start" onNavigate={onNavigate} />
       </div>
+      {sub === 'today' && !staff && <CopilotPanel />}
       {sub === 'today' && <Digest onGoClients={() => setSub('clients')} />}
       {sub === 'clients' && <ClientsView currentUser={currentUser} />}
       {sub === 'map' && <Suspense fallback={<div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>}><MapView /></Suspense>}
