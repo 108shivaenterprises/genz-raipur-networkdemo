@@ -6,6 +6,7 @@
  */
 import { findArea, findPrice, findType, stripPhones } from './waParse.js';
 import { containsContact } from './clientRoomRules.js';
+import { normNum, bareCount, asciiDigits } from './hiNum.js';
 
 export type AskId = 'ptype' | 'bhk' | 'area' | 'floor' | 'price' | 'furn' | 'avail' | 'address' | 'papers' | 'owner';
 export interface AskChip { id: string; hi: string; en: string }
@@ -114,7 +115,8 @@ const clean = (t: string, n: number) => stripPhones(String(t || '')).replace(/[<
 
 /** apply one answer (a tapped chip and/or typed text). Returns the new fields, or a hint if it could not be read. */
 export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: string; text?: string }): AnswerResult {
-  const f = { ...f0 }; const chip = String(input.chip || ''); const text = String(input.text || '').trim();
+  const f = { ...f0 }; const chip = String(input.chip || ''); const text = normNum(String(input.text || '').trim());   // v109 — Devanagari digits, “pachas lakh”, “ek crore”, “do bhk” read like digits
+  const rawText = String(input.text || '').trim();
   const ok = (hi: string, en: string): AnswerResult => ({ ok: true, fields: f, ack: { hi, en } });
   if (chip === 'SKIP') {
     const a = askOf(f, id); if (!a.optional) return { ok: false, hint: { hi: 'ये जानकारी ज़रूरी है — कृपया लिखें।', en: 'This one is needed — please write it.' } };
@@ -122,12 +124,12 @@ export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: 
   }
   switch (id) {
     case 'ptype': {
-      const c = PTYPE_CHIPS.find(x => x.id === chip); const v = c?.v || findType(text);
+      const c = PTYPE_CHIPS.find(x => x.id === chip); const v = c?.v || findType(text) || (/(godam|godown|गोदाम)/i.test(text) ? 'Warehouse / Godown' : /(^|\s)(ghar|घर|makaan|मकान)(\s|$)/i.test(text) ? 'Independent House' : '');
       if (!v) return { ok: false, hint: { hi: 'समझ नहीं आया — नीचे से चुनें या जैसे “फ़्लैट”, “प्लॉट”, “दुकान” लिखें।', en: 'I could not tell — pick below or write “flat”, “plot”, “shop”.' } };
       f.propertyType = v; return ok(`ठीक है — ${c?.hi.replace(/^\S+\s/, '') || v}।`, `Noted — ${c?.en || v}.`);
     }
     case 'bhk': {
-      const m = /(\d{1,2})\s*(?:bhk|बीएचके|bedroom|bed\b|rk\b)/i.exec(text) || /^\s*(\d{1,2})\s*$/.exec(text) || (chip && /^\d$/.test(chip) ? [chip, chip] : null);
+      const m = /(\d{1,2})\s*(?:bhk|बीएचके|bedroom|bed\b|rk\b)/i.exec(text) || /^\s*(\d{1,2})\s*$/.exec(text) || (bareCount(rawText) ? [rawText, String(bareCount(rawText))] : null) || (chip && /^\d$/.test(chip) ? [chip, chip] : null);
       const n = m ? Number(m[1]) : 0; if (!(n >= 1 && n <= 12)) return { ok: false, hint: { hi: 'BHK की संख्या लिखें, जैसे “2” या “3 BHK”।', en: 'Write the number of BHK, e.g. “2” or “3 BHK”.' } };
       f.bhk = n; return ok(`${n} BHK नोट किया।`, `${n} BHK noted.`);
     }
@@ -147,7 +149,7 @@ export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: 
     case 'price': {
       const rent = isRent(f);
       if (chip === 'KEEP' && Number(f.askingPrice) > 0) { f.priceConfirmed = true; f.ownerApprovedNetPrice = f.ownerApprovedNetPrice || f.askingPrice; return ok('कीमत पक्की की।', 'Price confirmed.'); }
-      const clean0 = stripPhones(text).replace(/(\d)\s*\/\s*-/g, '$1');
+      const clean0 = stripPhones(text).replace(/(\d)\s*\/\s*-/g, '$1').replace(/(\d+(?:\.\d+)?)\s*(?:hazar|hazaar|हज़ार|हजार)/gi, '$1k');
       let n = findPrice(clean0).price || 0;
       const bare = /^\s*(?:₹|rs\.?)?\s*(\d{1,3}(?:,\d{2,3})+|\d+(?:\.\d+)?)\s*$/i.exec(clean0);
       if (!n && bare) n = Number(bare[1].replace(/,/g, '')) || 0;
@@ -158,7 +160,7 @@ export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: 
       return ok(`${money(n)}${rent ? ' महीना' : ''} नोट किया।`, `${moneyEn(n)}${rent ? ' / month' : ''} noted.`);
     }
     case 'furn': {
-      const k = FURN_CHIPS.find(x => x.id === chip)?.id || (/(fully|full|poora|पूरा)/i.test(text) ? 'FULL' : /(semi|aadha|आधा)/i.test(text) ? 'SEMI' : /(unfurn|khali|खाली|bina)/i.test(text) ? 'UNF' : '');
+      const k = FURN_CHIPS.find(x => x.id === chip)?.id || (/(unfurn|khali|खाली|bina|nahi\s*hai)/i.test(text) ? 'UNF' : /(semi|aadha|आधा)/i.test(text) ? 'SEMI' : /(fully|full|poora|pura|पूरा|furnished|saja|सजा)/i.test(text) ? 'FULL' : '');
       if (!k) return { ok: false, hint: { hi: 'नीचे से चुनें।', en: 'Please pick one below.' } };
       f.furnishing = k; return ok('फ़र्नीचर नोट किया।', 'Furnishing noted.');
     }
@@ -184,7 +186,7 @@ export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: 
       return ok('मालिक की जानकारी नोट की।', 'Owner details noted.');
     }
     case 'papers': {
-      const k = PAPER_CHIPS.find(x => x.id === chip)?.id || (/(registry|रजिस्ट्री|mutation|खसरा|khasra|owner.?ship|मालिकाना)/i.test(text) ? 'REG' : /(loan|लोन)/i.test(text) ? 'LOAN' : '');
+      const k = PAPER_CHIPS.find(x => x.id === chip)?.id || (/((loan|लोन)\s*(nahi|nhi|नहीं|no|free|clear|0)|(?:no|nahi|nhi)\s*loan)/i.test(text) ? 'REG' : /(registry|रजिस्ट्री|mutation|खसरा|khasra|owner.?ship|मालिकाना|patta|पट्टा|sab\s*kagaz|सब\s*काग़ज़|clear\s*title)/i.test(text) ? 'REG' : /(loan|लोन)/i.test(text) ? 'LOAN' : '');
       if (!k) return { ok: false, hint: { hi: 'नीचे से चुनें।', en: 'Please pick one below.' } };
       f.papers = k; f.papersNote = PAPER_LABEL[k]; return ok('काग़ज़ों की स्थिति नोट की।', 'Papers noted.');
     }

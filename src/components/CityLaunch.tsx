@@ -17,6 +17,8 @@ export const CityLaunch: React.FC<{ canReset: boolean }> = ({ canReset }) => {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [out, setOut] = useState<{ title: string; text: string; phone: string } | null>(null);
   const [filter, setFilter] = useState('');
+  const [stalled, setStalled] = useState<any[]>([]);
+  useEffect(() => { api.growthStalled().then(r => setStalled(r.rows)).catch(() => setStalled([])); }, []);
 
   const load = useCallback(async () => {
     try { const [b, q] = await Promise.all([api.growthCities(), api.growthQueue('NEW')]); setBoard(b); setQueue(q); }
@@ -118,6 +120,21 @@ export const CityLaunch: React.FC<{ canReset: boolean }> = ({ canReset }) => {
           </table>
         </div>
       </div>
+
+      {stalled.length > 0 && (
+        <div data-testid="stalled-partners">
+          <h3 className="mb-1 text-sm font-bold text-slate-900">{tx('Stalled partners', 'रुके हुए पार्टनर')} · {stalled.length}</h3>
+          <p className="mb-2 text-[11px] text-slate-500">{tx('Verified, but no first listing / client yet. One tap opens WhatsApp with a ready text — nothing is sent by the app, and each nudge is offered once.', 'वेरिफ़ाइड, पर अभी पहली लिस्टिंग / ग्राहक नहीं। एक टैप पर WhatsApp में तैयार संदेश खुलता है — ऐप कुछ नहीं भेजता और हर नज अलग से एक बार ही आती है।')}</p>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white text-xs">
+            {stalled.slice(0, 30).map(r => (
+              <div key={r.userId} className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
+                <span className="min-w-0 truncate"><b>{r.name}</b> · {tx(`${r.days} days in`, `${r.days} दिन से`)}</span>
+                <a href={waLink(r.phone, hi ? r.hi : r.en)} target="_blank" rel="noreferrer" onClick={() => { api.growthNudged(r.userId, r.kind).then(() => setStalled(x => x.filter(y => y.userId !== r.userId))).catch(() => {}); }} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white"><MessageCircle className="h-3.5 w-3.5" />{tx('Nudge', 'नज')}</a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {board.topInviters.length > 0 && (
         <div>

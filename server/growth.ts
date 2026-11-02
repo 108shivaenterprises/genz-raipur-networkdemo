@@ -9,6 +9,7 @@
  *    is Waitlist / Seeding / Live / Hub, and which city to open next.
  *  - "Forgot password" requests (public, no account enumeration) land in an ops queue; ops issue a one-time password.
  */
+import { nextNudge } from '../src/shared/rescueRules.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import crypto from 'node:crypto';
@@ -226,6 +227,21 @@ export function createGrowthRouter() {
     });
   });
 
+  // v109 — verified partners who joined but have not done the first real thing: a ready text + one tap (nothing is sent by the app)
+  r.get('/stalled', needs('growth:manage'), (_req: Request, res: Response) => {
+    const st = db.getState(); const now = Date.now();
+    const listed = new Set(st.properties.map(p => p.listingBrokerId)); const hasLead = new Set(st.crmLeads.map(l => l.associateId).filter(Boolean));
+    const rows = st.users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED').flatMap(u => {
+      const n = nextNudge({ createdAt: u.createdAt, lastLoginAt: u.lastLoginAt, hasListing: listed.has(u.id), hasClient: hasLead.has(u.id), nudgedKind: (u as any).nudgedKind, nudgedAt: (u as any).nudgedAt }, u.name, now);
+      return n ? [{ userId: u.id, name: u.name, phone: u.phone, kind: n.kind, days: n.days, en: n.en, hi: n.hi }] : [];
+    }).sort((a, b) => b.days - a.days).slice(0, 200);
+    res.json({ success: true, rows });
+  });
+  r.post('/stalled/:id/nudged', needs('growth:manage'), (req: Request, res: Response) => {
+    const u = db.byId('users', req.params.id); const kind = String(req.body?.kind || '');
+    if (!u || u.role !== 'BROKER' || !['D3_FIRST_LISTING', 'D7_FIRST_CLIENT', 'D14_PERSONAL_CALL'].includes(kind)) return res.status(404).json({ error: 'Not found' });
+    (u as any).nudgedKind = kind; (u as any).nudgedAt = new Date().toISOString(); db.save(); res.json({ success: true });
+  });
   r.post('/queue/:id/approve', needs('growth:manage'), (req: Request, res: Response) => {
     const actor = me();
     const st = db.getState();

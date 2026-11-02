@@ -14,6 +14,7 @@
  *   PUT  /api/deals/:id/hisaab/due                 { amount }   (my brokerage amount, when the automatic figure is not right)
  *   GET  /api/hisaab                                my deals at a glance
  */
+import { isRealDay } from '../src/shared/crmRules.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'crypto';
 import { db } from './db.js';
@@ -179,7 +180,7 @@ function readEntry(body: any) {
   if (!Number.isFinite(amount) || amount < 1 || amount > MAX) return { error: 'Enter the amount in rupees (₹1 – ₹10 crore)' } as const;
   const mode = MODES.includes(body?.mode) ? (body.mode as PayMode) : null; if (!mode) return { error: 'Choose how it was paid (UPI / Bank / Cash / Cheque)' } as const;
   const paidOn = str(body?.paidOn, 10) || nowIso().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn) || Date.parse(paidOn) > Date.now() + 86400_000 || paidOn < '2020-01-01') return { error: 'Choose the date it was paid (not a future date)' } as const;
+  if (!isRealDay(paidOn) || Date.parse(paidOn) > Date.now() + 86400_000 || paidOn < '2020-01-01') return { error: 'Choose the date it was paid (not a future date)' } as const;
   const ref = safeRef(body?.ref); if (mode !== 'CASH' && !ref && (str(body?.ref, 60) !== '')) return { error: 'The reference may have letters, numbers and - / _ . only' } as const;
   return { amount, mode, paidOn, ref: ref || undefined, note: str(body?.note, 200) || undefined } as const;
 }

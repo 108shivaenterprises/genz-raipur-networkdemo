@@ -7,6 +7,7 @@
  *  GENZ earns a fixed platform fee per accepted case (lower for members) and an optional membership — never a cut of
  *  the advocate's fee. All money moves outside the app; the app only records it.
  */
+import { asciiDigits } from './hiNum.js';
 import { findState } from './india.js';
 
 export type LegalHelpType =
@@ -169,12 +170,12 @@ export function stateOfProperty(p: { state?: string; city?: string } | undefined
 }
 
 /** Indian mobile / landline numbers written in a free-text field (spaces, dashes, +91 allowed) are replaced. */
-const PHONE_RE = /(?:\+?\s*91[\s\-.]*)?(?:\(?0?\)?[\s\-.]*)?\b[6-9](?:[\s\-.]*\d){9}\b/g;
+const PHONE_RE = /(?:\+?\s*91[\s\-./,_|]*)?(?:\(?0?\)?[\s\-./,_|]*)?\b[6-9](?:[\s\-./,_|]*\d){9}\b/g;
 const LONG_DIGITS_RE = /\b\d{10,}\b/g;
 export function maskPhones(text: string): { text: string; masked: boolean } {
   let masked = false;
   const sub = (m: string) => { masked = true; return '••• (number hidden — shared after the fee is accepted)'; };
-  let out = String(text || '').replace(PHONE_RE, sub);
+  let out = asciiDigits(String(text || '')).replace(PHONE_RE, sub);
   out = out.replace(LONG_DIGITS_RE, sub);
   return { text: out, masked };
 }

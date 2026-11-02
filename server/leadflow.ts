@@ -44,7 +44,9 @@ export function maskLeadForViewer<T extends { phone: string }>(l: T, viewer: { r
   if (viewer.role !== 'TEAM_MEMBER') return l;
   const pol = policyOf(viewer as UserProfile);
   if (pol.phoneMode === 'FULL') return l;
-  return { ...l, phone: maskPhone(l.phone), phoneMasked: true } as T & { phoneMasked?: boolean };
+  // phoneKey is the whole number (last 10 digits): a masked view must not carry it
+  const { phoneKey: _k, ...rest } = l as T & { phoneKey?: string };
+  return { ...rest, phone: maskPhone(l.phone), phoneMasked: true } as unknown as T & { phoneMasked?: boolean };
 }
 
 /** Auto-allot a freshly registered lead according to the owner's routing rule. */

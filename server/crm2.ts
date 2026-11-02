@@ -483,9 +483,9 @@ export function sweepCrm() {
     const age = (now - Date.parse(l.updatedAt)) / DAY;
     if (!((l.optedOutAt && age >= OPTOUT_RETENTION_DAYS) || age >= LOST_RETENTION_DAYS)) continue;
     l.name = `${(l.name.split(' ')[0] || 'Customer').slice(0, 20)} (erased)`; l.phone = ''; l.phoneKey = `erased-${l.id}`; l.email = undefined; l.budgetMin = undefined; l.budgetMax = undefined;
-    l.followUps = []; l.nextFollowUpAt = undefined; l.visitFeedback = undefined; l.tags = undefined; l.profile = undefined; l.sourceDetail = undefined;
+    l.followUps = []; l.nextFollowUpAt = undefined; l.visitFeedback = undefined; l.tags = undefined; l.profile = undefined; l.sourceDetail = undefined; l.lostReason = undefined; l.unitInterest = '';
     l.handoffs = (l.handoffs || []).map(h => ({ ...h, note: '' }));
-    l.activities = l.activities.map(a => (a.type === 'STAGE_CHANGE' ? { ...a, note: a.note.replace(/:.*$/, '') } : { ...a, note: 'Entry removed (data retention)' }));
+    l.activities = l.activities.map(a => (a.type === 'STAGE_CHANGE' ? { ...a, note: a.note.match(/^Stage \w+ → \w+/)?.[0] ?? 'Entry removed (data retention)' } : { ...a, note: 'Entry removed (data retention)' }));
     l.erasedAt = nowIso(); n++;
   }
   if (n) { db.save(); db.appendAuditEvent('system', 'SUPERADMIN', 'LEAD', 'RETENTION', 'CRM_LEADS_ERASED', `${n} lost / opted-out leads had their personal data erased (retention: lost ${LOST_RETENTION_DAYS} days, opted-out ${OPTOUT_RETENTION_DAYS} days)`); }

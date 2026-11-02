@@ -18,6 +18,7 @@ import { SourceField, ProfileFields, LeadDetailsCard, CallPanel, ForwardSheet, H
 import { inferTeamRole, optLabel, TEAM_ROLES, type LeadProfile } from '../shared/crmSales.js';
 import { LOST_CODES } from '../shared/crmRules.js';
 import type { UserProfile } from '../types/index.js';
+import { slaState, slaLeftMin, SLA_DEFAULT_MIN } from '../shared/slaRules.js';
 import { CRM_STAGE_ORDER, type CrmBooking, type CrmLead, type CrmLeadStage } from '../types/crm.js';
 
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
@@ -195,6 +196,7 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
                           <div className="truncate text-[11px] text-slate-500">{l.projectName}</div>
                           <div className="mt-1 text-[11px] text-slate-600">{l.unitInterest || '—'}</div>
                           <div className="mt-1 flex flex-wrap gap-1">
+                            {(() => { const st = slaState(l, SLA_DEFAULT_MIN, Date.now()); const m = slaLeftMin(l, SLA_DEFAULT_MIN, Date.now()); return (st === 'BREACHED' || st === 'DUE_SOON') && m !== null ? <span data-testid="sla-chip" className={`rounded px-1.5 text-[9px] font-bold ${st === 'BREACHED' ? 'bg-red-600 text-white' : 'bg-amber-200 text-amber-900'}`}>{st === 'BREACHED' ? tx(`Call now · ${-m}m late`, `अभी कॉल करें · ${-m} मि देर`) : tx(`Reply in ${m}m`, `${m} मि में जवाब दें`)}</span> : null; })()}
                             {l.optedOutAt && <span className="rounded bg-red-100 px-1.5 text-[9px] font-bold text-red-700">{tx('OPTED OUT', 'ऑप्ट-आउट')}</span>}
                             {l.stale && <span className="rounded bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800">{tx('STALE', 'निष्क्रिय')}</span>}
                             {l.forwardUnseen && <span className="rounded bg-violet-100 px-1.5 text-[9px] font-bold text-violet-800">{tx('FORWARDED', 'फ़ॉरवर्ड')}</span>}

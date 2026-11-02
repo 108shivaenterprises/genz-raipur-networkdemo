@@ -37,6 +37,8 @@ export function sweepDealClosures(now = Date.now()) {
   for (const d of db.getState().dealRooms) {
     const c = d.closure;
     if (c?.status === 'ASKED' && Date.parse(c.autoAt) <= now) {
+      // v109 — a room with a dispute open is decided by the desk; closing it by silence would lock both brokers out of it
+      if (openDisputeOf(db.getState(), d.id) || d.settlementStatus === 'DISPUTED' || d.stage === 'Disputed') continue;
       d.closure = { ...c, status: 'CLOSED', closedAt: new Date(now).toISOString(), how: 'NO_REPLY' };
       note(d, `Deal room closed — no reply to the close request in ${CLOSE_AUTO_DAYS} days (${reasonText(c.reason)})`);
       db.appendAuditEvent('SYSTEM', 'SUPERADMIN', 'DEAL', d.id, 'DEAL_ROOM_CLOSED', `Closed after ${CLOSE_AUTO_DAYS} days without a reply to ${c.byName}'s request`);

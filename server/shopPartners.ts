@@ -17,7 +17,7 @@ import path from 'node:path';
 import { brandedQrSvg } from './brandlogo.js';
 import { makeSahayak } from './sahayak.js';
 import type { NeedChange } from '../src/shared/sahayak.js';
-import { goneKind, GONE_WORDS } from '../src/shared/sahayak.js';
+import { goneKind, GONE_WORDS, readIntent } from '../src/shared/sahayak.js';
 import { localityFit, areasOf, canonPlace, inferCity } from '../src/shared/places.js';
 import { PROPERTY_TYPES, RELATED_TYPE_GROUPS, findState, sameCity } from '../src/shared/india.js';
 import { findCityNames } from '../src/shared/waParse.js';
@@ -1078,6 +1078,19 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
   const chatBy = (token: string) => /^[A-Za-z0-9_-]{20,40}$/.test(token) ? st().partnerLeads.find(l => l.chat && safeEqual(l.chat.keyHash, sha(token))) : undefined;
   const hm = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
   const askPending = (l: PartnerLead) => !!l.chat?.reqAskedAt && !l.chat.reqConfirmedAt;
+  // the customer confirms the need card — by the ✅ button or by typing “haan / ok / sahi hai” (v109)
+  const confirmNeed = (l: PartnerLead) => {
+    if (!l.chat) return;
+      l.chat.reqConfirmedAt = nowIso(); l.chat.reqText = needLine(l);
+      addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: '✅ हाँ, मेरी ज़रूरत सही है।' });
+      hist(l, 'CUSTOMER', 'Confirmed his need in the chat');
+      db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_NEED_CONFIRMED', 'The customer confirmed his need in the in-app chat (number still hidden from the broker)');
+      if (ownerSide(l)) revealNumber(l, {});   // an owner has no "matching home": confirming the property details is the step
+      if (!sahayak.off(l)) sahayak.onConfirmed(l);   // v97 — the assistant shows the live homes that fit and tells the broker
+      else if (!ownerSide(l)) networkScan(l);        // v101 — with the assistant off, his need still reaches the broker's Buyers list + the network search
+      db.save();
+      if (sahayak.off(l)) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} confirmed his need`, body: ownerSide(l) ? 'His number is now visible.' : 'Share a matching home to see his number.', url: '/?tab=partners' });
+  };
   const chatPage = (res: Response, l: PartnerLead | undefined, tok: string, msg = '', status = 200) => {
     noStore(res);
     if (!l || !l.chat) return res.status(404).send(shell('GENZ', `<div class="card"><p class="t">यह लिंक मान्य नहीं है।<br><small>This link is not valid.</small></p></div>`));
@@ -1168,7 +1181,9 @@ ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${p
     { const k = contactKind(text, recentOwn(l.chat.msgs.filter(m => m.by === 'CUSTOMER'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return chatPage(res, l, req.params.token, `${esc(m.hi)}<br><small>${esc(m.en)}</small>`); } }
     if (hit(`sp-chatmsg:${l.id}`, 40, 3600_000) > 0) return chatPage(res, l, req.params.token, 'बहुत संदेश हो गए — थोड़ी देर बाद। / Too many messages — try later.');
     addMsg(l, { by: 'CUSTOMER', kind: 'MSG', text });
-    sahayak.onText(l, text); db.save();   // v97 — the assistant answers (or stays quiet when the broker is talking / has switched it off)
+    if (askPending(l) && readIntent(text) === 'CONFIRM') confirmNeed(l);   // v109 — a typed “haan / sahi hai” confirms the need card, exactly like the ✅ button
+    else sahayak.onText(l, text);
+    db.save();   // v97 — the assistant answers (or stays quiet when the broker is talking / has switched it off)
     if (hit(`sp-chatpush:${l.id}`, 1, 300_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} wrote in the chat`, body: text.slice(0, 80), url: '/?tab=partners' });
     res.redirect(303, `/q/chat/${req.params.token}`);
   });
@@ -1177,15 +1192,7 @@ ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${p
     if (!askPending(l)) return res.redirect(303, `/q/chat/${req.params.token}`);
     const a = String(req.body?.a || '');
     if (a === 'YES') {
-      l.chat.reqConfirmedAt = nowIso(); l.chat.reqText = needLine(l);
-      addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: '✅ हाँ, मेरी ज़रूरत सही है।' });
-      hist(l, 'CUSTOMER', 'Confirmed his need in the chat');
-      db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_NEED_CONFIRMED', 'The customer confirmed his need in the in-app chat (number still hidden from the broker)');
-      if (ownerSide(l)) revealNumber(l, {});   // an owner has no "matching home": confirming the property details is the step
-      if (!sahayak.off(l)) sahayak.onConfirmed(l);   // v97 — the assistant shows the live homes that fit and tells the broker
-      else if (!ownerSide(l)) networkScan(l);        // v101 — with the assistant off, his need still reaches the broker's Buyers list + the network search
-      db.save();
-      if (sahayak.off(l)) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} confirmed his need`, body: ownerSide(l) ? 'His number is now visible.' : 'Share a matching home to see his number.', url: '/?tab=partners' });
+      confirmNeed(l);
     } else if (a === 'EDIT') {
       const text = str(req.body?.text, MSG_MAX);
       if (text.length < 2) return chatPage(res, l, req.params.token, 'बदलाव लिखें। / Write the change.');

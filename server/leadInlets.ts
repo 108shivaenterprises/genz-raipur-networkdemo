@@ -227,7 +227,6 @@ ${msg ? `<div class="card warn"><p class="err" data-testid="inlet-err">${msg}</p
       if (i.dayCount === dailyCap()) { i.dayCount++; note('LIMIT', `More than ${dailyCap()} enquiries today — the rest are not taken until tomorrow`); const o = db.byId('users', i.ownerId); if (o) alert(o.id, 'deals', `Lead address “${i.label}” hit today's limit`, `More than ${dailyCap()} enquiries came in — check it is not spam`, '/?tab=crm', { tag: `inl-cap-${i.id}` }); }
       return reply(429, { ok: false, code: 'DAILY_LIMIT', error: 'Too many enquiries today — try again tomorrow' });
     }
-    i.dayCount++;
 
     const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
     const f = pickFields(body);
@@ -243,6 +242,7 @@ ${msg ? `<div class="card warn"><p class="err" data-testid="inlet-err">${msg}</p
     // the hosted form (and the owner's own website form) must carry a ticked box; a portal / lead-ad bridge stands on the owner's statement unless the sender says "no"
     if (f.consent === false || (i.kind === 'FORM' && f.consent !== true)) { note('REJECTED', 'The customer did not agree to be contacted', `${firstName(f.name)} ··${phone.slice(-4)}`); return reply(422, { ok: false, error: 'The customer must agree to be contacted' }, 'आगे बढ़ने के लिए सहमति का बॉक्स टिक करें। / Please tick the box to agree.', keep); }
 
+    i.dayCount++;   // v109 — only an enquiry that is a real, consented enquiry uses up the day's allowance; junk cannot lock a day out (the per-IP limit still applies)
     const name = f.name.length >= 2 ? f.name : `Enquiry ${phone.slice(-4)}`;
     const email = z.string().email().max(200).safeParse(f.email).success ? f.email : undefined;
     const parsed = leadCreateSchema.safeParse({
@@ -261,7 +261,7 @@ ${msg ? `<div class="card warn"><p class="err" data-testid="inlet-err">${msg}</p
         db.save();
         alert([owner!.id, lead.assignedMemberId || ''], 'deals', `New lead · ${lead.projectName}`, `${firstName(name)} enquired via ${i.label}`, '/?tab=crm', { tag: `lead-${lead.id}`, hi: [`नई लीड · ${lead.projectName}`, `${firstName(name)} ने ${i.label} से पूछताछ की`] });
       }
-      return reply(200, { ok: true, status: 'CREATED' });
+      return reply(200, { ok: true, status: 'RECEIVED' });   // v109 — same answer as for a repeat: a public address must not tell a stranger whether a number is already registered
     }
     if (out.status === 409 && out.body?.code === 'LEAD_DUPLICATE') {
       // already his customer: no second lead, but his timeline learns the customer came again
@@ -276,7 +276,7 @@ ${msg ? `<div class="card warn"><p class="err" data-testid="inlet-err">${msg}</p
         alert([clash.assignedMemberId || owner!.id], 'deals', `Enquired again · ${clash.name}`, `${firstName(clash.name)} came through ${i.label} again`, '/?tab=crm', { tag: `again-${clash.id}` });
       }
       note('DUPLICATE', clash ? 'Already in your CRM — a line was added to the lead' : 'Already registered for this project (by someone else) — nothing added', who, clash?.id);
-      return reply(200, { ok: true, status: 'DUPLICATE', duplicate: true });
+      return reply(200, { ok: true, status: 'RECEIVED' });
     }
     note('REJECTED', out.body?.error || 'Not taken', who);
     return reply(out.status === 423 || out.status === 429 ? out.status : out.status >= 500 ? 503 : 403, { ok: false, code: out.body?.code, error: tail(out.body?.error || 'Not taken') });

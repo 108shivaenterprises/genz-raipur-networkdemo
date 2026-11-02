@@ -3405,10 +3405,11 @@ app.post('/api/construction-leads/:id/settle-referral', needs('lead:settle'), (r
     if (!isSuper(currentUser) && !isReferrer) {
       return res.status(403).json({ error: 'Only the referring broker (who receives the fee) can confirm payment' });
     }
-    if (paid && !lead.referralCommissionDue) {
+    const paidFlag = typeof paid === 'string' ? ['true', '1', 'yes', 'on'].includes(paid.toLowerCase()) : Boolean(paid);
+    if (paidFlag && !lead.referralCommissionDue) {
       return res.status(400).json({ error: 'The contractor has not declared a final contract value yet' });
     }
-    lead.referralCommissionPaid = Boolean(paid);
+    lead.referralCommissionPaid = paidFlag;
     if (lead.referralCommissionPaid) {
       lead.status = 'COMPLETED';
     }

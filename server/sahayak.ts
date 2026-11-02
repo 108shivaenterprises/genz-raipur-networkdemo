@@ -467,14 +467,14 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     if (off(l)) return;
     // v101 — a clear change of his NEED is data, not chat: it is applied even while the assistant is "quiet" (after “talk to the broker”, or while the broker is writing). He asked in plain words — the answer must not be silence.
     const brokerActive = quiet(l) && !b.needsBroker;
-    if (quiet(l) && !(intent === 'NEED' && buyerSide(l))) return;
+    if (quiet(l) && !(intent === 'NEED' && buyerSide(l)) && intent !== 'CANCEL_VISIT' && intent !== 'STOP') return;   // v109 — cancelling a visit and “stop” are always heard
     switch (intent) {
       case 'STATUS': if (d.ownerSide(l)) return ownerStatus(l); return fallback(l);
       case 'GREET': if (!confirmed(l)) return remindConfirm(l); return say(l, `नमस्ते ${first(l.name)}! 👋 बताइए, क्या मदद करूँ?`, `Hello ${first(l.name)}! 👋 How can I help?`, menu(l));
       case 'THANKS': return say(l, 'आपका स्वागत है 🙏 कोई भी सवाल हो तो यहीं लिखिए।', 'You are welcome 🙏 Write here for any question.', menu(l));
       case 'VISIT': return startVisit(l);
       case 'MORE': if (!confirmed(l)) return remindConfirm(l); if (d.ownerSide(l)) return handoff(l, 'other'); showHomes(l); return;
-      case 'AVAIL': return availReport(l);
+      case 'AVAIL': if (d.ownerSide(l)) return ownerStatus(l); return availReport(l);
       case 'PHOTOS': return mediaReply(l);
       case 'PRICE': {
         const hs = liveSent(l).slice(0, 4);
@@ -483,6 +483,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
         return handoff(l, 'price', [`रेट और मोलभाव पर ब्रोकर आपसे खुद बात करेंगे — मैंने उन्हें बता दिया है।${list}`, `The broker will talk to you himself about the rate and any negotiation — I have told him.${listEn}`]);
       }
       case 'NEED': {
+        if (d.ownerSide(l)) return fallback(l);   // v109 — an owner is not a buyer: his property is changed in the interview, not by a search
         const ch = readNeedChange(text, d.cityOf(l)); const changed = d.applyNeed(l, ch);
         if (!changed.length) return quiet(l) ? undefined : fallback(l);
         if (!l.chat.revealedAt) {
@@ -498,6 +499,31 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
           else showHomes(l);
         }
         if (quiet(l) && !brokerActive) d.tellBroker(l, `✏️ ${l.name}: ज़रूरत बदली`, `${d.needLine(l)} — ग्राहक ने बदली हुई ज़रूरत लिखी; Buyers नीड अपडेट हो गया।`);
+        return;
+      }
+      // ── v109 ──
+      case 'CANCEL_VISIT': {
+        const b2 = botOf(l); const open = (b2.visits || []).filter(v => v.status === 'ASKED' || v.status === 'COUNTER' || v.status === 'OK');
+        if (!open.length) return say(l, 'अभी आपकी कोई खुली विज़िट नहीं है। नई विज़िट के लिए “विज़िट” लिखें।', 'You have no open visit right now. Write “visit” to ask for a new one.', menu(l));
+        const v = open[open.length - 1]; v.status = 'NO'; v.answeredAt = nowIso(); b2.pendingHome = v.homeId; b2.awaiting = undefined;
+        d.hist(l, `Cancelled the visit request for ${v.title} in the chat`);
+        d.tellBroker(l, `🚫 ${l.name}: विज़िट रद्द`, `${v.title} की विज़िट ग्राहक ने रद्द की (${v.preferred}).`);
+        return say(l, `ठीक है, ${v.title} की विज़िट रद्द कर दी और ब्रोकर को बता दिया। नया समय चाहिए तो “विज़िट” लिखें।`, `Done — the visit for ${v.title} is cancelled and the broker is told. Write “visit” for a new time.`);
+      }
+      case 'CONFIRM': return;   // “haan / ok” with nothing waiting for an answer: nothing to say
+      case 'DENY': if (!!l.chat.reqAskedAt && !l.chat.reqConfirmedAt) return say(l, 'ठीक है — क्या बदलना है? बजट, इलाका या BHK लिखें, जैसे “बजट 60 लाख” या “Pandri में 3BHK”।', 'Alright — what should change? Write the budget, area or BHK, e.g. “budget 60 lakh” or “3BHK in Pandri”.'); return;
+      case 'WHO': return say(l, `मैं GENZ सहायक हूँ — एक स्वचालित सहायक (इंसान नहीं)। घर दिखाना, विज़िट तय करना और आपकी ज़रूरत समझना मेरा काम है। रेट और मोलभाव ब्रोकर खुद करते हैं।`, `I am the GENZ assistant — an automatic assistant (not a person). I show homes, set up visits and note your need. Rates and bargaining are done by the broker himself.`, menu(l));
+      case 'HELP': return say(l, 'मैं ये कर सकता हूँ: 🏠 घर दिखाना · 📅 विज़िट तय/रद्द करना · 📷 फ़ोटो-वीडियो भेजना · ✏️ आपकी ज़रूरत बदलना (जैसे “बजट 60 लाख”). रेट पर ब्रोकर से बात करवाता हूँ।', 'I can: 🏠 show homes · 📅 set up or cancel a visit · 📷 send photos / videos · ✏️ change your need (e.g. “budget 60 lakh”). For rates I connect you to the broker.', menu(l));
+      case 'STOP': {
+        const w = (botOf(l).watch ||= { pushes: 0 }); w.pushes = BOT_WATCH.maxPushes; d.hist(l, 'Asked the assistant to stop sending new homes on its own');
+        d.tellBroker(l, `🔕 ${l.name}: नए घर भेजना बंद`, 'ग्राहक ने कहा कि अपने आप नए घर न भेजें। चैट में आप जवाब दे सकते हैं।');
+        return say(l, 'ठीक है 🙏 अब मैं अपने आप नए घर नहीं भेजूँगा। आप लिखेंगे तभी जवाब दूँगा; ब्रोकर भी यहीं उपलब्ध हैं।', 'Okay 🙏 I will not send new homes on my own any more. I will answer only when you write; the broker is here too.');
+      }
+      case 'PROPERTY_Q': {
+        // the assistant never invents a fact about a home: it says so, asks the broker once, and does NOT go quiet (he can keep asking)
+        const b2 = botOf(l); const addr = /(address|पता|kahan|kidhar|location)/i.test(text);
+        say(l, addr ? 'सही पता विज़िट तय होने पर ब्रोकर बताएँगे। बाकी जानकारी मैंने ब्रोकर से पूछ ली है — वे यहीं जवाब देंगे।' : 'ये जानकारी मेरे पास पक्की नहीं है, इसलिए मैं अंदाज़ा नहीं लगाऊँगा — ब्रोकर से पूछ लिया है, वे यहीं जवाब देंगे।', addr ? 'The exact address is shared by the broker once a visit is fixed. I have asked him the rest — he will reply here.' : 'I do not have this detail for sure, so I will not guess — I have asked the broker, he will reply here.', menu(l));
+        if (!b2.lastFallbackAt || Date.now() - Date.parse(b2.lastFallbackAt) > 20 * 60_000) { b2.lastFallbackAt = nowIso(); d.tellBroker(l, `❓ ${l.name} का सवाल`, text.slice(0, 120)); }
         return;
       }
       default: return fallback(l);

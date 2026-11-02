@@ -6,17 +6,19 @@
 import { areasOf, placeKey, canonPlace, isCityLevel } from './places.js';
 import { findCityNames } from './waParse.js';
 import { sameCity } from './india.js';
+import { normNum } from './hiNum.js';
 
-export type Intent = 'GREET' | 'VISIT' | 'PHOTOS' | 'PRICE' | 'AVAIL' | 'MORE' | 'HUMAN' | 'THANKS' | 'NEED' | 'STATUS' | 'OTHER';
+export type Intent = 'GREET' | 'VISIT' | 'PHOTOS' | 'PRICE' | 'AVAIL' | 'MORE' | 'HUMAN' | 'THANKS' | 'NEED' | 'STATUS' | 'OTHER'
+  /** v109 */ | 'CANCEL_VISIT' | 'CONFIRM' | 'DENY' | 'WHO' | 'HELP' | 'STOP' | 'PROPERTY_Q';
 
-const flat = (t: string) => String(t || '').normalize('NFKC').toLowerCase().replace(/[​-‍﻿]/g, '').replace(/\s+/g, ' ').trim();
+const flat = (t: string) => normNum(String(t || '')).normalize('NFKC').toLowerCase().replace(/[​-‍﻿]/g, '').replace(/\s+/g, ' ').trim();
 
 const RX = {
   human: /(broker|ब्रोकर|agent|एजेंट|insaan|इंसान|human|malik se|owner se|baat\s*(karo|karni|karna|karwa|krao)|बात\s*(करो|करनी|करना|करवा)|call\s*(me|karo|kar|back)|phone\s*karo|कॉल|फ़ोन\s*करो|फोन\s*करो|whatsapp|व्हाट्सएप|व्हाट्सऐप|mujhse\s*baat|मुझसे\s*बात|help\s*me|मदद)/,
   visit: /(visit|विज़िट|विजिट|dekh(na|ne|nay)?\s*(aa|a|hai|h|chah|ke)|dekhna|dekhne|देखना|देखने|देखनी|site\s*(par|pe|dekh)|मिलना|milna|milne|मिलने|ghar\s*dekh|aa\s*sakta|aa\s*sakti|आ\s*सकता|आ\s*सकती|aana\s*chah|आना\s*चाह|kab\s*dekh|कब\s*देख|see\s*the\s*(house|flat|property|place)|book\s*a?\s*visit|show\s*me\s*the\s*(house|flat))/,
   photos: /(photo|photos|फोटो|फ़ोटो|pic\b|pics\b|picture|tasvir|tasveer|तस्वीर|image|images|video|वीडियो|vedio|reel|walkthrough)/,
   avail: /(available|availab|avail\b|उपलब्ध|bik\s*gay|bik\s*chuk|बिक\s*गय|बिक\s*चुक|sold|rented|kiraye\s*pe\s*ja|किराये\s*पर\s*जा|khali|खाली|still\s*(there|open)|abhi\s*(bhi)?\s*(hai|h|mil)|अभी\s*(भी)?\s*(है|मिल)|mil\s*(jayega|jaega|sakta)|मिल\s*(जाएगा|सकता))/,
-  price: /(price|rate\b|rates\b|kitn[aei]|कितन[ाेी]|kimat|keemat|कीमत|क़ीमत|दाम|daam|रेट|negotiat|bargain|kam\s*(kar|ho)|कम\s*(कर|हो)|discount|final\s*(rate|price)|sasta|सस्ता|costly|mehenga|महँगा|महंगा|emi\b|token|advance|deposit|डिपॉज़िट|डिपोजिट|brokerage|ब्रोकरेज)/,
+  price: /(price|rate\b|rates\b|kitn[aei]\s*(?:ka|ki|ke|me|mein|hoga|padega|dena|lagega|paisa|rupay|rupee|ruppe|lag)|कितन[ाेी]\s*(?:का|की|के|में|होगा|पड़ेगा|देना|लगेगा|पैसा|रुपये)|kimat|keemat|कीमत|क़ीमत|दाम|daam|रेट|negotiat|bargain|kam\s*(kar|ho)|कम\s*(कर|हो)|discount|final\s*(rate|price)|sasta|सस्ता|costly|mehenga|महँगा|महंगा|emi\b|token|advance|deposit|डिपॉज़िट|डिपोजिट|brokerage|ब्रोकरेज)/,
   more: /(aur\s*(ghar|flat|option|dikha|koi|bhi)|और\s*(घर|फ्लैट|विकल्प|दिखा|कोई|भी)|more\s*(homes|houses|options|flats|properties)|other\s*(homes|options|properties)|dusr[ae]|doosr[ae]|दूसर[ेा]|दुसर[ेा]|options|explore|एक्सप्लोर|dikhao|दिखाओ|दिखाइए|दिखाइये|koi\s*aur|कोई\s*और|kuch\s*aur|कुछ\s*और|next\b)/,
   status: /(status|स्टेटस|kab\s*tak|कब\s*तक|kab\s*(lag|ho\s*ga|hog|live)|कब\s*(लग|हो\s*ग)|kya\s*hua|क्या\s*हुआ|aage\s*kya|आगे\s*क्या|next\s*step|listing\s*(ho|lag|live|kab|ban)|लिस्टिंग\s*(हो|लग|कब|बन)|live\s*(hua|ho|kab)|लाइव|draft|ड्राफ़्ट|ड्राफ्ट)/,
   update: /(change|chng|badal|badlo|badli|बदल|अपडेट|update|sudhar|सुधार|instead|nahi\s*(chahiye|chahie|chaiye)|नहीं\s*चाहिए|ab\s+(mujhe|hame|humein)|अब\s+(मुझे|हमें)|\b(?:nahi|nahin|nhi|नहीं)\b.*\b(?:mein|mai|me|में|dekho|dikhao|chahiye|chahie))/,
@@ -25,17 +27,42 @@ const RX = {
   need: /(bhk|बीएचके|बी\.?एच\.?के|bedroom|\d\s*(lakh|lac|lakhs|cr|crore|k\b)|\d\s*(लाख|करोड़|करोड|हज़ार|हजार)|budget|बजट|kiraya|किराया|किराये|rent\b|khareed|kharid|खरीद|buy\b|sale\b|plot\b|प्लॉट|flat\b|फ्लैट|fl[ae]t|makaan|makan|मकान|dukaan|dukan|दुकान|shop\b|office\b|ऑफिस|ऑफ़िस|villa|विला|chahiye|चाहिए|chahie|chaiye|चाहिये)/,
 } as const;
 
+
+const V109 = {
+  cancel: /(cancel|cncl|radd|रद्द|reschedul|postpone|time\s*badal|समय\s*बदल|दूसरा\s*समय|doosra\s*time|visit\s*nahi|नहीं\s*आ\s*सक|nahi\s*(aa|a)\s*(sakta|sakti|paunga|paungi)|kal\s*ki\s*jagah)/,
+  who: /(are\s*you\s*(a\s*)?(bot|robot|human|real|ai)|\bbot\s*(ho|hai|h)\b|kya\s*aap\s*(bot|insaan|human|robot)|aap\s*kaun|tum\s*kaun|आप\s*कौन|तुम\s*कौन|कौन\s*हो|who\s*are\s*you)/,
+  help: /^(help|menu|madad|मदद|kya\s*kar\s*sakte|kaise\s*kaam)/,
+  stop: /^(stop|unsubscribe|stop\s*messages?)\b|(mat|na)\s*bhejo|msg\s*mat|message\s*mat|ab\s*mat\s*bhej|मत\s*भेजो|मैसेज\s*मत|बंद\s*करो\s*(msg|message|मैसेज)/,
+  brokerage: /(brokerage|ब्रोकरेज|commission|कमीशन)/,
+  confirm: /^(haan|han|haa+n?|hn|ji|jee|yes|yep|y|ok(ay)?|sahi|sahi\s*hai|theek|thik|theek\s*hai|bilkul|done|सही|सही\s*है|हाँ|हां|जी|ठीक|ठीक\s*है|बिल्कुल|✅|👍)\s*[.!]*$/,
+  deny: /^(nahi|nhi|nahin|no|galat|गलत|नहीं)\s*[.!]*$|^(nahi|nhi|galat|नहीं|गलत)\s*(hai|है)\s*[.!]*$/,
+  fact: /(sq\s*ft|sqft|square\s*f|area\s*(kitn|kya)|kitne\s*(sqft|sq\s*ft|feet|फ़ीट|फीट)|size|साइज़|floor|manzil|मंज़िल|parking|पार्किंग|\blift\b|elevator|facing|vastu|वास्तु|furnish|pet\b|pets\b|bachelor|non\s*veg|age\s*of|kitna\s*purana|address|पता|location\s*kahan|kahan\s*(hai|pe|par)|kidhar)/,
+  question: /(\?|\bkya\b|क्या|\bhai\s*k(ya)?\b|\bh\s*kya\b)/,
+  ask: /(chahiye|चाहिए|चाहिये|chahie|chaiye|dikhao|dikha|dekho|दिखाओ|दिखा|दिखाइए|show|looking|dhund|ढूँढ|ढूंढ|change|badal|बदल|update)/,
+} as const;
+
 /** what the customer meant, in one word. Order matters: asking for a person / a visit beats a general word. */
 export function readIntent(text: string): Intent {
   const t = flat(text); if (!t) return 'OTHER';
+  // v109 — short, exact words first: a typed "haan" / "nahi" (answers to the need card), "stop", "help"; "are you a bot" is a question about the assistant, not a request for a person
+  if (t.length <= 30 && V109.confirm.test(t)) return 'CONFIRM';
+  if (t.length <= 30 && V109.deny.test(t)) return 'DENY';
+  if (V109.stop.test(t)) return 'STOP';
+  if (V109.who.test(t)) return 'WHO';
+  if (t.length < 40 && V109.help.test(t)) return 'HELP';
+  if (V109.brokerage.test(t) && !/(call|baat|bulao|number)/.test(t)) return 'PRICE';
+  if (V109.cancel.test(t) && /(visit|विज़िट|विजिट|aa|आ|site|dekh|देख|time|समय|kal|कल|reschedul|postpone|cancel|radd|रद्द)/.test(t)) return 'CANCEL_VISIT';
   if (RX.human.test(t)) return 'HUMAN';
   if (RX.visit.test(t)) return 'VISIT';
   if (RX.photos.test(t)) return 'PHOTOS';
   if (RX.avail.test(t)) return 'AVAIL';
+  // a question about the home he was sent ("2 bhk hai kya", "parking hai?", "kitne sqft ka hai") is a question — not a new need
+  if (V109.fact.test(t) && V109.question.test(t) && !V109.ask.test(t) && !RX.update.test(t)) return 'PROPERTY_Q';
   if (RX.price.test(t)) return 'PRICE';
   if (RX.status.test(t) && t.length < 80) return 'STATUS';
   // v101 — "change kar do … Shankar Nagar … 2.5 cr", "Amlidih nahi, Pandri mein dekho": a change word + something readable as a need = a change of his need
   if (RX.update.test(t) && Object.keys(readNeedChange(text)).length) return 'NEED';
+  if (V109.question.test(t) && /\b(\d\s*bhk|bhk)\b/.test(t) && !V109.ask.test(t) && !/(budget|बजट|lakh|crore|लाख|करोड़)/.test(t)) return 'PROPERTY_Q';
   if (RX.need.test(t) && (/\d/.test(t) || /(chahiye|चाहिए|चाहिये|chahie|chaiye|looking|want|need|dhund|ढूँढ|ढूंढ)/.test(t))) return 'NEED';
   if (RX.more.test(t)) return 'MORE';
   if (RX.thanks.test(t) && t.length < 60) return 'THANKS';
@@ -56,7 +83,7 @@ const TYPE_RULES: [RegExp, string][] = [
 ];
 /** `city` = the shop's / broker's city (any city of India); '' = unknown, then the area is read from the sentence itself */
 export function readNeedChange(text: string, city = ''): NeedChange {
-  const full = String(text || ''); const out: NeedChange = {};
+  const full = normNum(String(text || '')); const out: NeedChange = {};
   // v101 — "farm house nahi, flat chahiye" / "Amlidih nahi, Pandri mein dekho": what he rejects is not read — the type, buy / rent and place come from the part AFTER "nahi" (the money is read from the whole line)
   const neg = /^(.{2,70}?)\s*\b(?:nahi|nahin|nhi|नहीं|not)\b[\s,;:.-]*(.{3,})$/i.exec(full.replace(/\s+/g, ' ').trim());
   const raw = neg && !/\d/.test(neg[1]) ? neg[2] : full; const t = flat(raw); const t0 = flat(full);
@@ -117,7 +144,7 @@ export function findArea(text: string, city = ''): string | undefined {
 export interface When { hi: string; en: string; iso?: string }
 const DAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS_HI = ['रविवार', 'सोमवार', 'मंगलवार', 'बुधवार', 'गुरुवार', 'शुक्रवार', 'शनिवार'];
-const DAY_RX: RegExp[] = [/(sunday|sun\b|ravivar|ravi\b|इतवार|itwar|रविवार)/, /(monday|mon\b|somvar|सोमवार)/, /(tuesday|tue\b|mangalvar|मंगलवार)/, /(wednesday|wed\b|budhvar|बुधवार)/, /(thursday|thu\b|guruvar|brihaspati|veervar|गुरुवार|बृहस्पति|वीरवार)/, /(friday|fri\b|shukravar|शुक्रवार)/, /(saturday|sat\b|shanivar|shaniwar|शनिवार|शनिवार)/];
+const DAY_RX: RegExp[] = [/(sunday|\bsun\b|ravivar|\bravi\b|इतवार|itwar|रविवार)/, /(monday|\bmon\b|somvar|सोमवार)/, /(tuesday|\btue\b|mangalvar|मंगलवार)/, /(wednesday|\bwed\b|budhvar|बुधवार)/, /(thursday|\bthu\b|guruvar|brihaspati|veervar|गुरुवार|बृहस्पति|वीरवार)/, /(friday|\bfri\b|shukravar|शुक्रवार)/, /(saturday|\bsat\b|shanivar|shaniwar|शनिवार|शनिवार)/];
 /** "कल शाम 5 बजे", "tomorrow evening", "sunday 11am", "aaj dopahar", "weekend" → a label in both languages and (when the time is clear) an ISO instant in IST */
 export function readWhen(text: string, now = new Date()): When | null {
   const t = flat(text); if (!t) return null;

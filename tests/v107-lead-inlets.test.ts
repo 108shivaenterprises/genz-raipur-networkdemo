@@ -179,7 +179,7 @@ describe('a website form address (hosted form)', () => {
   it('the same customer again: thanked, no second lead, one line on his lead — and not twice within minutes', async () => {
     const before = (await leadsOf(jar.B1, 'Meena Shah'))[0]; const ph = before.phone;
     const again = await post(inl.token, { name: 'Meena S', phone: ph, consent: 'yes' }, { form: true }); expect(again.status).toBe(200);
-    expect(await again.json()).toMatchObject({ ok: true, duplicate: true });
+    expect(await again.json()).toMatchObject({ ok: true, status: 'RECEIVED' });
     await post(inl.token, { name: 'Meena S', phone: ph, consent: 'yes' }, { form: true });
     const ls = await leadsOf(jar.B1, 'Meena'); expect(ls.length).toBe(1);
     expect(ls[0].activities.filter((a: any) => /enquired again/.test(a.note)).length).toBe(1);
@@ -232,7 +232,7 @@ describe('a bridge address (Zapier / Make / portal e-mail parser)', () => {
     const g = await fetch(`${B}/in/${hook.token}`); expect(g.status).toBe(405); expect(g.headers.get('allow')).toMatch(/POST/);
     const ph = phone();
     const r = await post(hook.token, { full_name: 'Kavita Joshi', 'Phone Number': `+91 ${ph.slice(0, 5)} ${ph.slice(5)}`, email_address: 'kavita@example.com', Comments: 'Saw it on 99acres', Campaign: '99acres', budget: '40 lakh', city: 'Raipur' });
-    expect(r.status).toBe(200); expect(await r.json()).toMatchObject({ ok: true, status: 'CREATED' });
+    expect(r.status).toBe(200); expect(await r.json()).toMatchObject({ ok: true, status: 'RECEIVED' });
     const l = (await leadsOf(jar.B1, 'Kavita'))[0];
     expect(l).toMatchObject({ name: 'Kavita Joshi', source: 'PROPERTY_PORTAL', sourceDetail: '99acres', email: 'kavita@example.com' });
     expect(l.activities.map((a: any) => a.note).join('|')).toMatch(/budget: 40 lakh/); expect(l.activities.map((a: any) => a.note).join('|')).toMatch(/city: Raipur/);
@@ -295,7 +295,7 @@ describe('a builder’s own address', () => {
     partnerPhone = phone();
     const reg = await call(jar.B1, 'POST', '/api/crm/leads', { consent: true, projectId: PLOTS, name: 'Partner Lead', phone: partnerPhone, source: 'ASSOCIATE_REFERRAL' }); expect(reg.status).toBe(200);
     const before = (await leadsOf(jar.B1, 'Partner Lead'))[0];
-    const dup = await post(mine.token, { name: 'Partner Lead', phone: partnerPhone }); expect(dup.status).toBe(200); expect(await dup.json()).toMatchObject({ duplicate: true });
+    const dup = await post(mine.token, { name: 'Partner Lead', phone: partnerPhone }); expect(dup.status).toBe(200); expect(await dup.json()).toMatchObject({ ok: true, status: 'RECEIVED' });
     const after = (await leadsOf(jar.B1, 'Partner Lead'))[0];
     expect(after.activities.length).toBe(before.activities.length);
     expect((await inletOf(jar.BUILDER, mine.id)).log[0]).toMatchObject({ outcome: 'DUPLICATE' });

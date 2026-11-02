@@ -15,7 +15,7 @@ describe('readIntent — Hindi / Hinglish / English', () => {
     ['broker se baat karni hai', 'HUMAN'], ['mujhse call karo', 'HUMAN'], ['मुझे ब्रोकर से बात करनी है', 'HUMAN'],
     ['thank you', 'THANKS'], ['शुक्रिया', 'THANKS'],
     ['2bhk 15000 me kiraya chahiye', 'NEED'], ['मुझे दुकान चाहिए 20 लाख', 'NEED'],
-    ['ok', 'OTHER'], ['', 'OTHER'], ['hmm theek', 'OTHER'],
+    ['ok', 'CONFIRM'], ['', 'OTHER'], ['hmm theek', 'OTHER'],
   ];
   for (const [t, want] of cases) it(`“${t}” → ${want}`, () => expect(readIntent(t)).toBe(want));
   it('asking for a person beats everything else', () => expect(readIntent('visit se pehle broker se baat karni hai')).toBe('HUMAN'));

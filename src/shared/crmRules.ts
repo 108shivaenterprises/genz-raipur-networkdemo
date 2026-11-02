@@ -107,3 +107,9 @@ export const WA_TEMPLATES: { id: string; en: string; hi: string; textEn: string;
   { id: 'thanks', en: 'Thank you', hi: 'धन्यवाद', textEn: 'Thank you {name}! Wishing you a wonderful home at {project}.', textHi: 'धन्यवाद {name}! {project} में आपके नए घर के लिए शुभकामनाएँ।' },
 ];
 export const fillTemplate = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+
+/** v109 — a real calendar day written YYYY-MM-DD ("2026-13-45" and "2026-02-31" are not) */
+export const isRealDay = (d: unknown): d is string => {
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const t = new Date(d + 'T00:00:00Z'); return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
+};

@@ -34,7 +34,7 @@ import { digits } from './auth.js';
 import { checkBookingUnit, unitBookingRequested, unitBookingDecided } from './inventory.js';
 import { commissionPctFor } from '../src/shared/slabs.js';
 import { openTrailOn, closeOpenTrails } from '../src/shared/moneyTrail.js';
-import { AUTO_FOLLOWUP, LOST_CODES, lostCodeOk, TEMPERATURES, MAX_TAGS, isStale, lastActivityAt, protectionDaysLeft, effectiveTdsPct, isOpenStage } from '../src/shared/crmRules.js';
+import { AUTO_FOLLOWUP, LOST_CODES, lostCodeOk, TEMPERATURES, MAX_TAGS, isStale, lastActivityAt, protectionDaysLeft, effectiveTdsPct, isOpenStage, isRealDay } from '../src/shared/crmRules.js';
 import {
   LEAD_SOURCE_IDS, cleanProfile, profileCompleteness, callStats, PLAN_TYPE_IDS, TOKEN_MODES, FUNDINGS, scheduleError, MAX_SCHEDULE_LINES,
   type LeadProfile, type BookingPlan,
@@ -243,7 +243,8 @@ export function viewLead(l0: CrmLead, user: { id: string; role: string }) {
     const pol = policyOf(db.byId('users', user.id));
     return { ...maskLeadForViewer(l, user as any), memberCan: { forward: !!pol.canForward, requestBooking: !!pol.canRequestBooking } };
   }
-  return isAdmin(user as any) && !isSuper(user as any) ? { ...l, phone: maskPhoneNumber(l.phone) } : l;
+  if (isAdmin(user as any) && !isSuper(user as any)) { const { phoneKey: _k, ...rest } = l as any; return { ...rest, phone: maskPhoneNumber(l.phone) } as typeof l; }
+  return l;
 }
 
 /** What an employee may see of a booking: the unit, the plan and the booking-amount status — never brokerage, payouts, TDS or the collection ledger. */
@@ -529,11 +530,11 @@ export function createCrmRouter() {
 
   // ── projects the user can register leads on ──
   r.get('/projects', (_req: Request, res: Response) => {
-    const user = employerOf(me());
+    const user = employerOf(me()); const staff = me().role === 'TEAM_MEMBER';   // staff never see brokerage terms
     const state = db.getState();
     let projects = state.builderProjects || [];
     let mandates = state.associateMandates || [];
-    if (user.role === 'DEVELOPER_BUILDER') projects = projects.filter(p => p.builderId === user.id);
+    if (user.role === 'DEVELOPER_BUILDER') { projects = projects.filter(p => p.builderId === user.id); const own = new Set(projects.map(p => p.id)); mandates = mandates.filter(m => own.has(m.projectId)); }   // a builder sees only the partners on HIS projects
     else if (user.role === 'BROKER') {
       mandates = mandates.filter(m => m.brokerId === user.id && mandateIsActive(m));
       const ids = new Set(mandates.map(m => m.projectId));
@@ -544,9 +545,9 @@ export function createCrmRouter() {
       projects: projects.map(p => ({
         id: p.id, projectName: p.projectName, builderId: p.builderId, builderName: p.builderName, locality: p.locality,
         unitConfigurations: p.unitConfigurations, availableUnits: p.availableUnits, totalUnits: p.totalUnits,
-        priceStartingFrom: p.priceStartingFrom, priceMax: p.priceMax, channelPartnerCommissionPct: p.channelPartnerCommissionPct, status: p.status, tdsPct: p.tdsPct,
+        priceStartingFrom: p.priceStartingFrom, priceMax: p.priceMax, channelPartnerCommissionPct: staff ? undefined : p.channelPartnerCommissionPct, status: p.status, tdsPct: staff ? undefined : p.tdsPct,
       })),
-      mandates: mandates.map(m => ({ id: m.id, projectId: m.projectId, brokerId: m.brokerId, brokerName: m.brokerName, agreedCommissionPct: m.agreedCommissionPct, status: m.status })),
+      mandates: mandates.map(m => ({ id: m.id, projectId: m.projectId, brokerId: m.brokerId, brokerName: m.brokerName, agreedCommissionPct: staff ? undefined : m.agreedCommissionPct, status: m.status })),
     });
   });
 
@@ -636,6 +637,11 @@ export function createCrmRouter() {
       if (stage !== 'NEW' || !(user.role === 'DEVELOPER_BUILDER' || isSuper(user as any))) {
         return res.status(409).json({ error: 'Only the builder can re-open a lost lead' });
       }
+      // v109 — re-opening must not make two live, protected leads for one customer on one project (someone else may have registered him since)
+      const nowMs = Date.now();
+      const other = db.getState().crmLeads.find(x => x.id !== lead.id && x.projectId === lead.projectId && x.phoneKey === lead.phoneKey && x.verify !== 'REJECTED'
+        && (x.stage === 'BOOKED' || x.stage === 'BOOKING_REQUESTED' || (x.stage !== 'LOST' && Date.parse(x.protectedUntil) > nowMs)));
+      if (other) return res.status(409).json({ error: 'This customer is already registered on this project by another lead — re-opening would make two live leads', code: 'LEAD_DUPLICATE' });
     }
     if (stage === 'LOST' && user.role === 'TEAM_MEMBER' && !policyOf(db.byId('users', user.id)).canMarkLost) {
       return res.status(403).json({ error: 'Only your employer can mark a lead lost — add a note and ask them' });
@@ -789,7 +795,7 @@ export function createCrmRouter() {
     if (d.tokenAmount > 0) {
       if (!d.tokenMode) return res.status(400).json({ error: 'How did the customer pay the booking amount? (cheque / UPI / NEFT / cash …)' });
       if (d.tokenMode !== 'CASH' && ref.length < 3) return res.status(400).json({ error: 'Give the cheque number / UTR of the booking amount (min 3 characters) — the builder needs it to confirm' });
-      if (d.tokenPaidOn && Date.parse(d.tokenPaidOn) > Date.now() + 86400000) return res.status(400).json({ error: 'The payment date cannot be in the future' });
+      if (d.tokenPaidOn && (!isRealDay(d.tokenPaidOn) || Date.parse(d.tokenPaidOn) > Date.now() + 86400000)) return res.status(400).json({ error: 'The payment date cannot be in the future' });
     }
     const plan = d.plan;
     if (plan) {
@@ -1067,7 +1073,7 @@ export function createCrmRouter() {
     if (amount > row.payable) return res.status(400).json({ error: `Only ₹${row.payable.toLocaleString('en-IN')} bonus is payable right now` });
     if (reference.length < 4) return res.status(400).json({ error: 'Enter the bank / UPI payout reference (UTR)' });
     const mandate = db.byId('associateMandates', mandateId)!;
-    const rec = { id: `BP-${String(state.bonusPayouts.length + 1).padStart(4, '0')}`, projectId: project.id, mandateId, brokerId: mandate.brokerId, amount, tdsPct: 5, reference, paidBy: user.id, paidAt: nowIso() };
+    const rec = { id: `BP-${String(state.bonusPayouts.length + 1).padStart(4, '0')}`, projectId: project.id, mandateId, brokerId: mandate.brokerId, amount, tdsPct: effectiveTdsPct(project.tdsPct ?? 5, !!db.byId('users', mandate.brokerId)?.panNumber), reference, paidBy: user.id, paidAt: nowIso() };
     state.bonusPayouts.push(rec);
     db.save();
     const tds = Math.round((amount * rec.tdsPct) / 100);

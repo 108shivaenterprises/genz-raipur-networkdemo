@@ -586,6 +586,8 @@ export const api = {
   growthNominate: (b: any) => request<any>('/api/growth/nominations', { method: 'POST', body: JSON.stringify(b) }),
   growthCard: (b: any) => request<any>('/api/growth/card', { method: 'PUT', body: JSON.stringify(b) }),
   growthQueue: (status?: string) => request<any>(`/api/growth/queue${status ? `?status=${status}` : ''}`),
+  growthStalled: () => request<{ success: boolean; rows: { userId: string; name: string; phone: string; kind: string; days: number; en: string; hi: string }[] }>('/api/growth/stalled'),
+  growthNudged: (id: string, kind: string) => request<{ success: boolean }>(`/api/growth/stalled/${id}/nudged`, { method: 'POST', body: JSON.stringify({ kind }) }),
   growthApprove: (id: string) => request<any>(`/api/growth/queue/${id}/approve`, { method: 'POST', body: '{}' }),
   growthReject: (id: string, reason?: string) => request<any>(`/api/growth/queue/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   growthResetIssue: (id: string) => request<any>(`/api/growth/resets/${id}/issue`, { method: 'POST', body: '{}' }),
