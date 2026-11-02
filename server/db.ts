@@ -312,6 +312,8 @@ export interface BuilderProject {
   /** broker unit-hold window in hours (default 2) and minimum token to hold (default ₹21,000) */
   holdHours?: number;
   minToken?: number;
+  /** v106: the extra charges / GST / stamp / registration / payment steps a cost sheet of one of this project's units is made of (see src/shared/costSheetRules.ts) */
+  charges?: import('../src/shared/costSheetRules.js').ProjectCharges;
   /** v12 builder control: who may see/apply (default OPEN_APPLY), lead intake switch, lead verification mode, protection window */
   access?: 'OPEN_APPLY' | 'INVITE_ONLY';
   /** v16: TDS % the builder deducts on brokerage payouts (CA decides; default 5) */
@@ -357,6 +359,8 @@ export interface InventoryUnit {
   config: string;
   areaSqft?: number;
   price: number;
+  /** v106 — this unit's own PLC in ₹ per sq ft (a corner / park-facing unit); when absent the project's PLC line applies */
+  plcPerSqft?: number;
   /** v16.8 — property facts the builder adds: facing, open road sides, width, size, feature tags, a short note */
   facing?: string;
   roadSides?: number;
@@ -460,8 +464,11 @@ export interface CallSettings { id: string; employerId: string; enabled: boolean
 export interface ShareLink {
   token: string;
   ownerId: string;
-  kind: 'PROJECT' | 'PROPERTY' | 'UNITS' | 'DOC';
+  kind: 'PROJECT' | 'PROPERTY' | 'UNITS' | 'DOC' | 'COSTSHEET';
   refId: string;
+  /** v106 — COSTSHEET links: the figures as they were the day the sheet was sent (refId = unit id), and the lead it was prepared for */
+  sheet?: import('../src/shared/costSheetRules.js').CostSheetSnapshot;
+  leadId?: string;
   /** v77 — DOC links: the project paper (refId = project id) */
   docId?: string;
   /** v16.8 — UNITS links: the chosen units and what the customer may see (refId = project id) */

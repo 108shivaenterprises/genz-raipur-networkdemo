@@ -22,6 +22,7 @@ import { policyOf } from '../src/shared/pcontrolRules.js';
 import { docAccessFor } from './projdocs.js';
 import { embedFor, stampName, stampInitials, watermarkTile } from '../src/shared/docViewRules.js';
 import { impliedFeatures, featureLabel, facingLabel, roadSidesLabel, kindWord } from '../src/shared/inventoryRules.js';
+import { costSheetPage, COST_CSS } from './costsheetPage.js';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
@@ -93,6 +94,7 @@ export function createShareRouter() {
       const title = l.kind === 'PROJECT' ? db.byId('builderProjects', l.refId)?.projectName
         : l.kind === 'UNITS' ? `${db.byId('builderProjects', l.refId)?.projectName || l.refId} · ${(l.unitIds || []).length} unit(s)`
         : l.kind === 'DOC' ? `${db.byId('builderProjects', l.refId)?.projectName || l.refId} · ${(db.byId('builderProjects', l.refId)?.collateral || []).find(c => c.id === l.docId)?.title || 'paper'}`
+        : l.kind === 'COSTSHEET' ? `Cost sheet · ${l.sheet?.unit.label || ''} · ${l.sheet?.projectName || db.byId('builderProjects', l.refId)?.projectName || l.refId}`
         : db.byId('properties', l.refId)?.title;
       return { token: l.token, kind: l.kind, refId: l.refId, title: title || l.refId, clientLabel: l.clientLabel, lang: l.lang, createdAt: l.createdAt, views: l.views, lastViewAt: l.lastViewAt, seconds: l.seconds, revoked: !!l.revoked };
     }).sort((a, b) => (b.lastViewAt || b.createdAt).localeCompare(a.lastViewAt || a.createdAt));
@@ -131,7 +133,7 @@ const T = {
   hi: { price: 'कीमत', config: 'विकल्प', amen: 'सुविधाएँ', loc: 'लोकेशन', plans: 'प्लान और कीमत', over: 'विवरण', call: 'कॉल', wa: 'व्हाट्सऐप', rera: 'रेरा', by: 'भेजने वाले', unavailable: 'यह लिंक अब सक्रिय नहीं है।', note: 'जानकारी संकेतात्मक है। बुकिंग से पहले रेरा पंजीयन और सभी अनुमतियाँ जाँच लें।', from: 'शुरुआती कीमत', stage: 'चरण', possession: 'पूर्णता लक्ष्य', area: 'क्षेत्रफल', type: 'प्रकार', units: 'अभी उपलब्ध', onReq: 'कीमत पूछें', gone: 'इस लिंक के बाद बिक गईं या होल्ड पर हैं', none: 'ये यूनिट अब उपलब्ध नहीं हैं। ताज़ा सूची माँगें।', size: 'साइज़', doc: 'दस्तावेज़', openDoc: 'दस्तावेज़ खोलें', notShowing: 'यहाँ नहीं दिख रहा? दस्तावेज़ खोलें', sentBy: 'आपको भेजने वाले', noFwd: 'कृपया आगे न भेजें' },
 } as const;
 
-function pageShell(title: string, desc: string, image: string | undefined, body: string, token?: string) {
+function pageShell(title: string, desc: string, image: string | undefined, body: string, token?: string, extra?: { css?: string; script?: string }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>${esc(title)}</title>
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
@@ -144,8 +146,23 @@ h2{font-size:15px;margin:0 0 8px;color:#14213d}.row{display:flex;justify-content
 .vw{position:relative;overflow:hidden;min-height:220px;border-radius:10px;border:1px solid #e3e3e3;background:#fff;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.vw img,.vw iframe{display:block;width:100%;border:0}.vw iframe{height:68vh;min-height:420px}
 .vw .wmo{position:absolute;inset:0;pointer-events:none;background-repeat:repeat}.vw .wmi{position:absolute;left:0;right:0;top:42%;text-align:center;font-size:84px;font-weight:800;color:#b91c1c;opacity:.12;transform:rotate(-24deg);pointer-events:none}
 .vw .wmb{position:absolute;left:0;right:0;bottom:0;padding:7px 10px;background:rgba(15,23,42,.88);color:#fff;font-size:11px;line-height:1.3;pointer-events:none}@media print{.vw{display:none}}
-.btns a{flex:1;text-align:center;padding:11px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px}.call{background:#14213d;color:#fff}.wa{background:#1fa855;color:#fff}.small{font-size:11px;color:#666;margin-top:12px}</style></head>
-<body><div class="w">${body}</div>${token ? `<script src="/s/track.js" data-token="${esc(token)}" defer></script>` : ''}</body></html>`;
+.btns a{flex:1;text-align:center;padding:11px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px}.call{background:#14213d;color:#fff}.wa{background:#1fa855;color:#fff}.small{font-size:11px;color:#666;margin-top:12px}${extra?.css || ''}</style></head>
+<body><div class="w">${body}</div>${token ? `<script src="/s/track.js" data-token="${esc(token)}" defer></script>` : ''}${extra?.script ? `<script src="${esc(extra.script)}" defer></script>` : ''}</body></html>`;
+}
+
+/** count a view (not for link-preview bots, and not twice within 20 s from the same device); true when this request was counted */
+function countView(l: ShareLink, req: Request): boolean {
+  const ua = String(req.headers['user-agent'] || '');
+  if (BOT.test(ua)) return false;
+  const key = crypto.createHash('sha256').update(`${l.token}|${req.ip}|${ua}`).digest('hex').slice(0, 20);
+  const prev = seen.get(key) || 0; let counted = false;
+  if (Date.now() - prev > 20_000) {
+    l.views += 1; l.lastViewAt = new Date().toISOString(); l.viewLog.unshift(l.lastViewAt); l.viewLog.length = Math.min(l.viewLog.length, 50);
+    db.save(); counted = true;
+  }
+  seen.set(key, Date.now());
+  if (seen.size > 5000) seen.clear();
+  return counted;
 }
 
 export function createPublicShareRouter() {
@@ -163,6 +180,11 @@ function flush(){tick();var out={};for(var k in acc){var v=Math.round(acc[k]);if
 var b=JSON.stringify({s:out});try{navigator.sendBeacon('/s/'+t+'/ping',new Blob([b],{type:'application/json'}))}catch(e){}}
 setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')flush()});window.addEventListener('pagehide',flush);
 })();`);
+  });
+
+  /** v106 — the cost sheet's Print / Save as PDF button (no inline handlers: the page's CSP allows only our own scripts) */
+  r.get('/print.js', (_req, res) => {
+    res.type('application/javascript').set('Cache-Control', 'public, max-age=3600').send(`(function(){var b=document.getElementById('pb');if(b)b.addEventListener('click',function(e){e.preventDefault();window.print()})})();`);
   });
 
   r.post('/:token/ping', rateLimit('share-ping', 120, 60_000), (req: Request, res: Response) => {
@@ -194,6 +216,22 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       const pol = policyOf(owner);
       if (!emp || emp.verificationStatus !== 'VERIFIED' || pol.invMode === 'OFF' || !pol.invShareOut || pol.onLeave) return gone();
       card = emp;
+    }
+
+    // v106 — a cost sheet has its own printable page, made from the figures kept the day it was made
+    if (l.kind === 'COSTSHEET') {
+      const sh = l.sheet; const unit = st.inventoryUnits.find(x => x.id === l.unitIds?.[0] && x.projectId === l.refId);
+      const a = actorFor(owner, l.refId);
+      // like a unit link, it dies with the partnership / the sender's right to see the price (the quote itself also has its own validity)
+      if (!sh || !unit || !a || a.project.status === 'ARCHIVED' || !seenBy(a.actor, a.project, unit).price) return gone();
+      if (countView(l, req) && l.views === 1 && l.leadId) {
+        const lead = db.byId('crmLeads', l.leadId);
+        if (lead) { const at = new Date().toISOString(); lead.activities.unshift({ id: `A-${Date.now().toString(36)}c`, type: 'SYSTEM', note: `Customer opened the cost sheet of ${sh.unit.label} (₹${sh.out.allIn.toLocaleString('en-IN')} all-in)`, byUserId: 'system', byName: 'GENZ', at }); lead.updatedAt = at; db.save(); }
+      }
+      const b = brandOf(card); const sender = owner.role === 'TEAM_MEMBER' ? owner.employerId : owner.id;
+      const mayBeGone = unit.status === 'BOOKED' || unit.status === 'RESERVED' || (unit.status === 'HOLD' && unit.hold?.brokerId !== sender);
+      const pg = costSheetPage(sh, { lang, clientLabel: l.clientLabel, brand: b, unitMayBeGone: mayBeGone });
+      return res.send(pageShell(`${pg.title} — ${b.displayName}`, pg.sub, undefined, pg.body + joinFooter(card), l.token, { css: COST_CSS, script: '/s/print.js' }));
     }
 
     // content
@@ -255,18 +293,7 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       location = `<div class="row"><span>${t.loc}</span><b>${esc(p.locality)}, ${esc(p.city)}</b></div><div class="tags">${(p.tags || []).map(c => `<span>${esc(c)}</span>`).join('')}</div><p class="small">Exact address is shared after a verified site-visit.</p>`;
     }
 
-    // count the view (not for link-preview bots, and not twice within 20 s from the same device)
-    const ua = String(req.headers['user-agent'] || '');
-    if (!BOT.test(ua)) {
-      const key = crypto.createHash('sha256').update(`${l.token}|${req.ip}|${ua}`).digest('hex').slice(0, 20);
-      const prev = seen.get(key) || 0;
-      if (Date.now() - prev > 20_000) {
-        l.views += 1; l.lastViewAt = new Date().toISOString(); l.viewLog.unshift(l.lastViewAt); l.viewLog.length = Math.min(l.viewLog.length, 50);
-        db.save();
-      }
-      seen.set(key, Date.now());
-      if (seen.size > 5000) seen.clear();
-    }
+    countView(l, req);
 
     const b = brandOf(card);
     const wa = `https://wa.me/91${b.phone}?text=${encodeURIComponent(`Hello ${b.displayName}, I saw ${title}. Please share details.`)}`;

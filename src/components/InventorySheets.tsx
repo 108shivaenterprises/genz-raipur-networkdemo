@@ -219,6 +219,7 @@ export const UnitEditSheet: React.FC<{ unit: any; onClose: () => void; onDone: (
     price: String(unit.price ?? ''), reason: '', config: unit.config || '', areaSqft: unit.areaSqft ? String(unit.areaSqft) : '',
     facing: unit.facing || '', roadSides: unit.roadSides ? String(unit.roadSides) : '', roadWidthFt: unit.roadWidthFt ? String(unit.roadWidthFt) : '',
     dimensions: unit.dimensions || '', note: unit.note || '', kind: unitKindOf(unit) as UnitKind, code: unit.code || '',
+    plc: unit.plcPerSqft !== undefined && unit.plcPerSqft !== null ? String(unit.plcPerSqft) : '',
   });
   const [feats, setFeats] = useState<string[]>(unit.features || []);
   const { busy, err, go } = useBusy();
@@ -229,6 +230,7 @@ export const UnitEditSheet: React.FC<{ unit: any; onClose: () => void; onDone: (
     if (f.kind !== unitKindOf(unit)) b.kind = f.kind;
     if (f.code.trim() !== (unit.code || '')) b.code = f.code.trim() || null;
     if (f.areaSqft && Number(f.areaSqft) !== unit.areaSqft) b.areaSqft = Number(f.areaSqft);
+    if (f.plc !== (unit.plcPerSqft !== undefined && unit.plcPerSqft !== null ? String(unit.plcPerSqft) : '')) b.plcPerSqft = f.plc === '' ? null : Number(f.plc);
     if (f.facing !== (unit.facing || '')) b.facing = f.facing || null;
     if (f.roadSides !== (unit.roadSides ? String(unit.roadSides) : '')) b.roadSides = f.roadSides ? Number(f.roadSides) : null;
     if (f.roadWidthFt !== (unit.roadWidthFt ? String(unit.roadWidthFt) : '')) b.roadWidthFt = f.roadWidthFt ? Number(f.roadWidthFt) : null;
@@ -251,6 +253,7 @@ export const UnitEditSheet: React.FC<{ unit: any; onClose: () => void; onDone: (
           <label>{tx('Code', 'कोड')}<input value={f.code} onChange={e => setF({ ...f, code: e.target.value.slice(0, CODE_MAX) })} placeholder="GR-0001" className={`${inp} mt-1`} data-testid="edit-code" /></label>
           <label className="col-span-2">{tx('Type (2 BHK, 3 BHK, 30x50…)', 'प्रकार (2 BHK, 3 BHK, 30x50…)')}<input value={f.config} onChange={e => setF({ ...f, config: e.target.value })} className={`${inp} mt-1`} /></label>
           <label>{tx('Area (sq ft)', 'क्षेत्रफ़ल (वर्ग फ़ुट)')}<input value={f.areaSqft} onChange={e => setF({ ...f, areaSqft: e.target.value.replace(/[^\d.]/g, '') })} inputMode="decimal" className={`${inp} mt-1`} /></label>
+          <label className="col-span-2">{tx('PLC ₹ per sq ft — this unit only (empty = the project’s PLC)', 'PLC ₹ प्रति वर्ग फ़ुट — सिर्फ़ इस यूनिट का (खाली = प्रोजेक्ट का PLC)')}<input value={f.plc} onChange={e => setF({ ...f, plc: e.target.value.replace(/[^\d.]/g, '').slice(0, 8) })} inputMode="decimal" placeholder="0" className={`${inp} mt-1`} data-testid="edit-plc" /></label>
           <label>{tx('Road sides', 'कितनी तरफ़ सड़क')}<select value={f.roadSides} onChange={e => setF({ ...f, roadSides: e.target.value })} className={`${inp} mt-1`}><option value="">—</option>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{roadSidesLabel(n, hi)}</option>)}</select></label>
           <label>{tx('Facing', 'दिशा')}<select value={f.facing} onChange={e => setF({ ...f, facing: e.target.value })} className={`${inp} mt-1`}><option value="">—</option>{FACINGS.map(x => <option key={x.id} value={x.id}>{hi ? x.hi : x.en}</option>)}</select></label>
           <label>{tx('Road width (ft)', 'सड़क चौड़ाई (फ़ुट)')}<input value={f.roadWidthFt} onChange={e => setF({ ...f, roadWidthFt: e.target.value.replace(/[^\d.]/g, '') })} inputMode="decimal" className={`${inp} mt-1`} /></label>

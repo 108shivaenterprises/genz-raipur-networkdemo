@@ -84,7 +84,7 @@ export interface ShapedUnit {
   facing?: string; roadSides?: number; roadWidthFt?: number; dimensions?: string; features?: string[]; note?: string;
   hold?: unknown; mine: boolean; bookingId?: string;
   /** owner / admin only */
-  vis?: UnitVis; priceHistory?: InventoryUnit['priceHistory'];
+  vis?: UnitVis; priceHistory?: InventoryUnit['priceHistory']; plcPerSqft?: number;
 }
 
 export function shapeUnit(unit: InventoryUnit, project: BuilderProject, actor: Actor, seen: Seen): ShapedUnit {
@@ -103,7 +103,7 @@ export function shapeUnit(unit: InventoryUnit, project: BuilderProject, actor: A
     out.facing = unit.facing; out.roadSides = unit.roadSides; out.roadWidthFt = unit.roadWidthFt;
     out.features = impliedFeatures(unit); out.note = unit.note;
   }
-  if (ownerLike) { out.vis = effectiveVis(unit.vis, project.invVis); out.priceHistory = unit.priceHistory; }
+  if (ownerLike) { out.vis = effectiveVis(unit.vis, project.invVis); out.priceHistory = unit.priceHistory; out.plcPerSqft = unit.plcPerSqft; }
   return out;
 }
 

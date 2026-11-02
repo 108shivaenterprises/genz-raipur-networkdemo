@@ -22,6 +22,7 @@ import type { BuilderProject, InventoryUnit, UserProfile } from './db.js';
 import { ctx, needs } from './auth.js';
 import { isAdmin } from './access.js';
 import { validateSlabs, slabProgress, leaderPoints, type CpSlab } from '../src/shared/slabs.js';
+import { cleanCharges, chargesError } from '../src/shared/costSheetRules.js';
 import { actorFor, unitsFor, seenBy, shapeUnit, type Actor } from './invaccess.js';
 import {
   cleanUnitDetail, cleanVis, effectiveVis, partnerMaySee, validateRule, parseFeature, parseFacing, previewRateChange, PRICE_HISTORY_KEEP, PRICE_MAX, DEFAULT_VIS, MAX_FEATURES, type UnitVis,
@@ -107,6 +108,8 @@ const patchSchema = z.object({
   price: z.number().positive().max(PRICE_MAX).optional(),
   config: z.string().trim().max(60).optional(),
   areaSqft: z.number().positive().max(1_000_000).optional(),
+  /** v106 — this unit's own PLC (₹ per sq ft); null = back to the project's PLC */
+  plcPerSqft: z.number().min(0).max(1_000_000).nullable().optional(),
   reason: z.string().trim().max(120).optional(),
 });
 
@@ -204,6 +207,8 @@ export function createInventoryRouter() {
         id: p.id, projectName: p.projectName, city: p.city, holdHours: p.holdHours ?? DEFAULT_HOLD_HOURS, minToken: p.minToken ?? DEFAULT_MIN_TOKEN,
         cpSlabs: actor.kind === 'MEMBER' ? [] : (p.cpSlabs || []), defaultCommissionPct: owner ? p.channelPartnerCommissionPct : undefined,
         vis: owner ? (p.invVis || DEFAULT_VIS) : undefined,
+        /** v106 — only the builder edits the charges; everyone else asks the server for a finished sheet */
+        charges: owner ? cleanCharges(p.charges) : undefined, chargesSet: !!p.charges,
       },
       units, summary: summarize(units),
       canManage: actor.kind === 'OWNER',
@@ -294,6 +299,7 @@ export function createInventoryRouter() {
     }
     if (p.data.config !== undefined) unit.config = p.data.config;
     if (p.data.areaSqft !== undefined) unit.areaSqft = p.data.areaSqft;
+    if (p.data.plcPerSqft !== undefined) { if (p.data.plcPerSqft === null) delete unit.plcPerSqft; else unit.plcPerSqft = p.data.plcPerSqft; }
     if (p.data.kind !== undefined) unit.kind = p.data.kind;
     if (code !== undefined) { if (code === null) delete unit.code; else unit.code = code; }
     applyDetail(unit, detail);
@@ -513,6 +519,20 @@ export function createInventoryRouter() {
     p.updatedAt = nowIso(); db.save();
     audit('COMMISSION', p.id, 'CP_SLABS_UPDATED', `${u.name} updated hold window / token / escalator slabs on ${p.projectName} (${(p.cpSlabs || []).length} slabs). Applies to bookings approved from now on.`);
     res.json({ success: true });
+  });
+
+  /** v106 — the builder sets what a cost sheet of this project's units is made of (extra charges, GST, stamp, registration, payment steps) */
+  r.put('/projects/:id/charges', needs('inventory:manage'), (req: Request, res: Response) => {
+    const u = me(); const p = ownerAccess(u, req.params.id);
+    if (!p) return res.status(404).json({ error: 'Project not found' });
+    const body = req.body || {};
+    if (!body || typeof body !== 'object' || !Array.isArray(body.lines) || !Array.isArray(body.schedule)) return res.status(400).json({ error: 'Send the charges and the payment steps' });
+    const next = cleanCharges(body);
+    const err = chargesError(next);
+    if (err) return res.status(400).json({ error: err });
+    p.charges = { ...next, updatedAt: nowIso() }; p.updatedAt = nowIso(); db.save();
+    audit('SYSTEM', p.id, 'COST_CHARGES_UPDATED', `${u.name} updated the cost-sheet charges of ${p.projectName} (GST ${next.gstPct}%, stamp ${next.stampPct}%, registration ${next.regPct}%, ${next.lines.filter(l => l.amount > 0).length} charge(s), ${next.schedule.length} payment step(s)). Sheets already sent keep their figures.`);
+    res.json({ success: true, charges: p.charges });
   });
 
   // ── broker: hold a unit for a lead ──

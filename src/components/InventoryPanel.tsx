@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTx, useI18n } from '../lib/i18n.js';
-import { Loader2, Trophy, Plus, Trash2, Timer, X, EyeOff, Eye, Send, Users, ListChecks, SlidersHorizontal, Pencil, Copy, Lock, Compass } from 'lucide-react';
+import { Loader2, Trophy, Plus, Trash2, Timer, X, EyeOff, Eye, Send, Users, ListChecks, SlidersHorizontal, Pencil, Copy, Lock, Compass, Receipt } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { btnDark, btnLine, inp } from './CrmPlus.js';
 import { ProjectDocsCard } from './ProjectDocsCard.js';
+import { ChargesSheet, UnitCostSheet, CostSheetsCard } from './CostSheetPanel.js';
 import {
   RateSheet, VisibilitySheet, FactsSheet, UnitEditSheet, KindSheet, ShareSheet, PostSheet, TeamBoardCard, MyLinksCard, ImportCard, FeaturePicker, Chip, copyText,
 } from './InventorySheets.js';
@@ -31,7 +32,7 @@ const audLabel = (v: any, tx: (a: string, b: string) => string) =>
 
 interface Props { role: string; leads: any[]; /** v78 — opened from inside one project (the builder's project room): that project is fixed and the project picker is hidden */ fixedProjectId?: string }
 
-type SheetState = null | { kind: 'rate' | 'vis' | 'facts' | 'share' | 'post' | 'edit' | 'projvis' | 'kind'; ids?: string[]; unit?: any };
+type SheetState = null | { kind: 'rate' | 'vis' | 'facts' | 'share' | 'post' | 'edit' | 'projvis' | 'kind' | 'charges' | 'cost'; ids?: string[]; unit?: any };
 
 export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId }) => {
   const tx = useTx();
@@ -224,6 +225,16 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
         </button>
       )}
 
+      {canManage && data && (
+        <button type="button" onClick={() => setSheet({ kind: 'charges' })} data-testid="open-charges" className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs hover:border-slate-900">
+          <span><b className="block text-slate-900">{tx('Cost sheet — PLC, parking, GST, stamp, payment plan', 'कॉस्ट शीट — PLC, पार्किंग, जीएसटी, स्टाम्प, भुगतान क्रम')}</b>
+            <span className={data.project.chargesSet ? 'text-slate-600' : 'font-semibold text-amber-700'}>{data.project.chargesSet
+              ? tx(`GST ${data.project.charges.gstPct}% · stamp ${data.project.charges.stampPct}% · registration ${data.project.charges.regPct}% · ${data.project.charges.schedule.length} payment steps`, `जीएसटी ${data.project.charges.gstPct}% · स्टाम्प ${data.project.charges.stampPct}% · रजिस्ट्रेशन ${data.project.charges.regPct}% · ${data.project.charges.schedule.length} भुगतान चरण`)
+              : tx('Not set — partners cannot send cost sheets yet. Tap to set once.', 'तय नहीं — पार्टनर अभी कॉस्ट शीट नहीं भेज सकते। एक बार तय करने के लिए दबाएँ।')}</span></span>
+          <Receipt className="h-4 w-4 shrink-0 text-slate-500" />
+        </button>
+      )}
+
       {showFilters && data && (
         <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 text-xs">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 [&>*]:min-w-0">
@@ -322,6 +333,9 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
 
             <div className="grid grid-cols-2 gap-2">
               {caps.canShare && sel.status === 'AVAILABLE' && <button type="button" onClick={() => setSheet({ kind: 'share', ids: [sel.id] })} className={btnDark}><Send className="h-4 w-4" />{tx('Send to customer', 'ग्राहक को भेजें')}</button>}
+              {caps.canShare && priceOf(sel) != null && (sel.status === 'AVAILABLE' || (sel.status === 'HOLD' && (sel.mine || canManage))) && (
+                <button type="button" data-testid="open-costsheet" onClick={() => { if (data.project.chargesSet) setSheet({ kind: 'cost', unit: sel }); else if (canManage) setSheet({ kind: 'charges' }); else flash(false, tx('The builder has not set this project’s charges yet — ask him to.', 'बिल्डर ने अभी इस प्रोजेक्ट के शुल्क तय नहीं किए — उनसे कहें।')); }} className={btnDark}><Receipt className="h-4 w-4" />{tx('Cost sheet', 'कॉस्ट शीट')}</button>
+              )}
               {caps.canPost && sel.status === 'AVAILABLE' && <button type="button" onClick={() => setSheet({ kind: 'post', ids: [sel.id] })} className={btnLine}><Users className="h-4 w-4" />{tx('Show to my team', 'टीम को दिखाएँ')}</button>}
               <button type="button" onClick={async () => { const ok = await copyText(unitShareLine({ kind: sel.kind, label: sel.label, config: sel.config, areaSqft: sel.areaSqft, price: priceOf(sel), facing: sel.facing, roadSides: sel.roadSides, roadWidthFt: sel.roadWidthFt, dimensions: sel.dimensions, features: sel.features, note: sel.note }, sellFlags, hi)); flash(ok, ok ? tx('Details copied', 'जानकारी कॉपी हुई') : tx('Copy failed', 'कॉपी नहीं हुआ')); setSel(null); }} className={btnLine}><Copy className="h-4 w-4" />{tx('Copy details', 'जानकारी कॉपी करें')}</button>
               {canManage && <button type="button" onClick={() => setSheet({ kind: 'edit', unit: sel })} className={btnLine}><Pencil className="h-4 w-4" />{tx('Edit unit', 'यूनिट बदलें')}</button>}
@@ -363,10 +377,13 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
       {sheet?.kind === 'edit' && <UnitEditSheet unit={sheet.unit} onClose={() => setSheet(null)} onDone={sheetDone} />}
       {sheet?.kind === 'share' && <ShareSheet pid={pid} projectName={projectName} units={units.filter(u => sheet.ids!.includes(u.id)).map(u => ({ ...u, price: priceOf(u) }))} caps={{ ...caps, seesPrice }} onClose={() => { setSheet(null); setRefresh(k => k + 1); }} />}
       {sheet?.kind === 'post' && <PostSheet pid={pid} units={units.filter(u => sheet.ids!.includes(u.id))} onClose={() => setSheet(null)} onDone={sheetDone} />}
+      {sheet?.kind === 'charges' && data?.project?.charges && <ChargesSheet pid={pid} charges={data.project.charges} isSet={!!data.project.chargesSet} sample={(() => { const s = units.find(u => u.price && u.areaSqft); return s ? { price: s.price, areaSqft: s.areaSqft } : undefined; })()} onClose={() => setSheet(null)} onDone={sheetDone} />}
+      {sheet?.kind === 'cost' && <UnitCostSheet unit={sheet.unit} projectName={projectName} leads={myLeads} onClose={() => { setSheet(null); setRefresh(k => k + 1); }} onMade={() => setRefresh(k => k + 1)} />}
 
       {showDocs && pid && <ProjectDocsCard role={role} projectId={pid} refreshKey={refresh} />}
       {data && (caps.canPost || (caps.kind === 'MEMBER' && caps.member?.mode === 'SHARED')) && <TeamBoardCard pid={pid} canPost={!!caps.canPost} refreshKey={refresh} onChanged={loadProject} />}
       {data && caps.canShare && <MyLinksCard refreshKey={refresh} />}
+      {data && caps.canShare && <CostSheetsCard refreshKey={refresh} />}
 
       {board && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">

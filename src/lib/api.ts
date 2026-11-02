@@ -666,6 +666,12 @@ export const api = {
   invShares: () => request<{ success: boolean; links: any[] }>('/api/invdesk/shares'),
   invShareCreate: (payload: any) => request<{ success: boolean; token: string; path: string; showPrice: boolean; showFeatures: boolean; capped: boolean }>('/api/invdesk/shares', { method: 'POST', body: JSON.stringify(payload) }),
   invShareRevoke: (token: string) => request<{ success: boolean }>(`/api/invdesk/shares/${token}/revoke`, { method: 'POST', body: '{}' }),
+  // v106 — cost sheet of one unit
+  invCharges: (id: string, payload: any) => request<{ success: boolean; charges: any }>(`/api/inventory/projects/${id}/charges`, { method: 'PUT', body: JSON.stringify(payload) }),
+  costPreview: (payload: { unitId: string; qty: Record<string, number> }) => request<{ success: boolean; out: any; options: { id: string; label: string; maxQty: number; amount: number; mode: string }[]; validDays: number; note: string; blocked: string }>('/api/invdesk/cost-sheets/preview', { method: 'POST', body: JSON.stringify(payload) }),
+  costCreate: (payload: any) => request<{ success: boolean; token: string; path: string; validUntil: string; out: any }>('/api/invdesk/cost-sheets', { method: 'POST', body: JSON.stringify(payload) }),
+  costSheets: () => request<{ success: boolean; sheets: any[] }>('/api/invdesk/cost-sheets'),
+  costRevoke: (token: string) => request<{ success: boolean }>(`/api/invdesk/cost-sheets/${token}/revoke`, { method: 'POST', body: '{}' }),
   launchAdminProjects: () => request<{ success: boolean; projects: any[] }>('/api/launch/admin/projects'),
   launchAdminSegments: () => request<{ success: boolean; counts: Record<string, number>; members: any[] }>('/api/launch/admin/segments'),
   launchSetSegment: (id: string, segment: 'BIG_FIRM' | 'INDEPENDENT' | null) => request<{ success: boolean }>(`/api/launch/admin/partners/${id}/segment`, { method: 'PUT', body: JSON.stringify({ segment }) }),

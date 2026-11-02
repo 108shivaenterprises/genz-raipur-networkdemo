@@ -14,9 +14,11 @@ import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { db } from './db.js';
-import type { ShareLink, UserProfile } from './db.js';
+import type { BuilderProject, InventoryUnit, ShareLink, UserProfile } from './db.js';
 import { ctx, needs, rateLimit } from './auth.js';
 import { actorFor, postsFor, seenBy, type Actor } from './invaccess.js';
+import { sweepHolds } from './inventory.js';
+import { cleanCharges, computeCostSheet, skippedCharges, sheetExpired, COST_LIMITS, type ProjectCharges } from '../src/shared/costSheetRules.js';
 import { policyOf } from '../src/shared/pcontrolRules.js';
 import { MAX_POST_UNITS, MAX_ACTIVE_POSTS, MAX_SHARE_UNITS, capShareFlags, postIsLive, type TeamPost } from '../src/shared/inventoryRules.js';
 
@@ -173,6 +175,113 @@ export function createInventoryDeskRouter() {
     const l = db.getState().shareLinks.find(x => x.token === req.params.token && x.kind === 'UNITS' && (x.ownerId === u.id || x.employerId === u.id));
     if (!l) return bad(res, 'Link not found', 404);
     l.revoked = true; db.save();
+    res.json({ success: true });
+  });
+
+  // ═════════════════ v106 — cost sheet of one unit ═════════════════
+  /**
+   * The unit a caller may make a cost sheet for. Same wall as a unit link — the unit must be open to him, his rate must not be hidden (a hidden rate can never be shown through
+   * a sheet), it must still be free (or held by his own customer) — plus the builder must have set the project's charges: nobody sends out figures the builder never approved.
+   */
+  const resolveCost = (u: UserProfile, unitId: string):
+    { error: string; code?: number } | { project: BuilderProject; actor: Actor; unit: InventoryUnit; charges: ProjectCharges } => {
+    sweepHolds();
+    const unit = db.byId('inventoryUnits', unitId);
+    const a = unit && actorFor(u, unit.projectId);
+    if (!unit || !a) return { error: 'Unit not found', code: 404 };
+    const { actor, project } = a;
+    if (actor.kind === 'ADMIN') return { error: 'Admins do not send cost sheets to customers', code: 403 };
+    if (actor.kind === 'MEMBER' && !actor.policy.invShareOut) return { error: 'Your employer has not allowed you to send customers links', code: 403 };
+    const s = seenBy(actor, project, unit, actor.kind === 'MEMBER' ? postsFor(actor.employer.id, project.id) : undefined);
+    if (!s.visible) return { error: 'Unit not found', code: 404 };
+    if (!s.price) return { error: 'The rate of this unit is hidden for you, so its cost sheet cannot be made', code: 403 };
+    const senderId = actor.kind === 'MEMBER' ? actor.employer.id : u.id;
+    if (!(unit.status === 'AVAILABLE' || (unit.status === 'HOLD' && (actor.kind === 'OWNER' || unit.hold?.brokerId === senderId)))) return { error: `Unit ${unit.label} is not available any more`, code: 409 };
+    if (!(unit.price > 0)) return { error: 'This unit has no rate yet', code: 409 };
+    if (!project.charges) return { error: actor.kind === 'OWNER' ? 'Set this project’s charges first (the Charges button)' : 'The builder has not set the charges of this project yet — ask him to', code: 409 };
+    return { project, actor, unit, charges: cleanCharges(project.charges) };
+  };
+  const costLead = (u: UserProfile, project: BuilderProject, leadId: string | undefined) => {
+    if (!leadId) return undefined;
+    const lead = db.byId('crmLeads', leadId); const acct = u.role === 'TEAM_MEMBER' ? u.employerId : u.id;
+    return lead && lead.projectId === project.id && (lead.associateId === acct || lead.builderId === acct || lead.assignedMemberId === u.id) ? lead : undefined;
+  };
+  const optionsOf = (c: ProjectCharges) => c.lines.filter(l => l.optional && l.amount > 0).map(l => ({ id: l.id, label: l.label, maxQty: l.maxQty || 1, amount: l.amount, mode: l.mode }));
+
+  const costPreviewSchema = z.object({
+    unitId: z.string().min(1).max(120),
+    qty: z.record(z.string().max(20), z.number().int().min(0).max(COST_LIMITS.maxQty)).default({}),
+  });
+  const costSchema = costPreviewSchema.extend({
+    clientLabel: z.string().trim().max(60).default(''),
+    lang: z.enum(['en', 'hi']).default('en'),
+    leadId: z.string().min(1).max(60).optional(),
+    note: z.string().trim().max(COST_LIMITS.noteMax).optional(),
+  });
+
+  /** the figures, live, while the person ticks parking etc. — nothing is saved */
+  r.post('/cost-sheets/preview', needShare, rateLimit('costsheet-preview', 600, 3600_000), (req: Request, res: Response) => {
+    const u = me(); const parsed = costPreviewSchema.safeParse(req.body);
+    if (!parsed.success) return bad(res, parsed.error.issues[0]?.message || 'Invalid request');
+    const rs = resolveCost(u, parsed.data.unitId);
+    if ('error' in rs) return bad(res, rs.error, rs.code || 400);
+    const missing = skippedCharges(rs.unit, rs.charges, parsed.data.qty);
+    res.json({
+      success: true, out: computeCostSheet(rs.unit, rs.charges, parsed.data.qty), options: optionsOf(rs.charges), validDays: rs.charges.validDays, note: rs.charges.note || '',
+      unit: { id: rs.unit.id, label: rs.unit.label, group: rs.unit.group, config: rs.unit.config }, blocked: missing.length ? `This unit has no area on record, so ${missing.join(', ')} cannot be worked out. Ask the builder to add the area.` : '',
+    });
+  });
+
+  r.post('/cost-sheets', needShare, rateLimit('costsheet-create', 80, 24 * 3600_000), (req: Request, res: Response) => {
+    const u = me(); const st = db.getState();
+    const parsed = costSchema.safeParse(req.body);
+    if (!parsed.success) return bad(res, parsed.error.issues[0]?.message || 'Invalid request');
+    const d = parsed.data;
+    const rs = resolveCost(u, d.unitId);
+    if ('error' in rs) return bad(res, rs.error, rs.code || 400);
+    const { project, unit, charges } = rs;
+    const missing = skippedCharges(unit, charges, d.qty);
+    if (missing.length) return bad(res, `This unit has no area on record, so ${missing.join(', ')} cannot be worked out. Ask the builder to add the area.`, 409);
+    if (d.leadId && !costLead(u, project, d.leadId)) return bad(res, 'Pick your own customer on this project', 400);
+    if (st.shareLinks.filter(l => l.ownerId === u.id).length >= 500) return bad(res, 'Too many links — revoke old ones first', 409);
+    const lead = costLead(u, project, d.leadId);
+    const out = computeCostSheet(unit, charges, d.qty);
+    const note = [charges.note, d.note].filter(Boolean).join('\n') || undefined;
+    const at = nowIso();
+    const link: ShareLink = {
+      token: crypto.randomBytes(8).toString('base64url'), ownerId: u.id, kind: 'COSTSHEET', refId: project.id, unitIds: [unit.id], leadId: lead?.id,
+      employerId: u.role === 'TEAM_MEMBER' ? u.employerId : undefined, clientLabel: d.clientLabel || (lead ? lead.name : ''), lang: d.lang, createdAt: at, views: 0, seconds: {}, viewLog: [],
+      sheet: {
+        projectName: project.projectName, builderName: project.builderName, reraNumber: project.reraNumber || undefined, city: project.city, locality: project.locality,
+        unit: { label: unit.label, group: unit.group, config: unit.config, kind: unit.kind, floor: unit.floor, facing: unit.facing },
+        out, validUntil: new Date(Date.now() + charges.validDays * 86_400_000).toISOString(), note,
+      },
+    };
+    st.shareLinks.unshift(link);
+    if (lead) { lead.activities.unshift({ id: `A-${Date.now().toString(36)}s`, type: 'SYSTEM', note: `Cost sheet of ${unit.label} made for ${link.clientLabel || 'the customer'} — ₹${out.allIn.toLocaleString('en-IN')} all-in, valid till ${link.sheet!.validUntil.slice(0, 10)}`, byUserId: u.id, byName: u.name, at }); lead.updatedAt = at; }
+    db.save();
+    audit(link.token, 'COSTSHEET_MADE', `${u.name} made a cost sheet of ${unit.label} (${project.projectName}) — all-in ₹${out.allIn.toLocaleString('en-IN')}, valid ${charges.validDays} day(s)`);
+    res.json({ success: true, token: link.token, path: `/s/${link.token}`, validUntil: link.sheet!.validUntil, out });
+  });
+
+  /** Own sheets; an employer also sees what his staff made (who, how many opens) — never a customer's identity beyond the label the sender typed. */
+  r.get('/cost-sheets', needShare, (_req, res) => {
+    const u = me(); const st = db.getState();
+    const mine = st.shareLinks.filter(l => l.kind === 'COSTSHEET' && (u.role === 'TEAM_MEMBER' ? l.ownerId === u.id : (l.ownerId === u.id || l.employerId === u.id)));
+    const rows = mine.map(l => ({
+      token: l.token, projectId: l.refId, projectName: l.sheet?.projectName || l.refId, unitLabel: l.sheet?.unit.label || '', clientLabel: l.clientLabel, leadId: l.leadId,
+      allIn: l.sheet?.out.allIn || 0, createdAt: l.createdAt, validUntil: l.sheet?.validUntil || l.createdAt, expired: l.sheet ? sheetExpired(l.sheet) : true,
+      views: l.views, lastViewAt: l.lastViewAt, revoked: !!l.revoked, by: l.ownerId === u.id ? undefined : db.byId('users', l.ownerId)?.name,
+    })).sort((a, b) => (b.lastViewAt || b.createdAt).localeCompare(a.lastViewAt || a.createdAt)).slice(0, 200);
+    res.json({ success: true, sheets: rows });
+  });
+
+  r.post('/cost-sheets/:token/revoke', needShare, (req: Request, res: Response) => {
+    const u = me();
+    const l = db.getState().shareLinks.find(x => x.token === req.params.token && x.kind === 'COSTSHEET' && (x.ownerId === u.id || x.employerId === u.id));
+    if (!l) return bad(res, 'Cost sheet not found', 404);
+    l.revoked = true; db.save();
+    audit(l.token, 'COSTSHEET_REVOKED', `${u.name} withdrew the cost sheet of ${l.sheet?.unit.label || l.refId}`);
     res.json({ success: true });
   });
 
