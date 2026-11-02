@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { btnDark, btnLine, inp } from './CrmPlus.js';
 import { ProjectDocsCard } from './ProjectDocsCard.js';
 import { COLORS, useNow, useGridView, ViewToggle, UnitCell, GroupBlock, BlockStrip, HoldClock, BlockSheet } from './UnitBlockGrid.js';
+import { InventoryCopilot } from './InventoryCopilot.js';
 import { ChargesSheet, UnitCostSheet, CostSheetsCard } from './CostSheetPanel.js';
 import {
   RateSheet, VisibilitySheet, FactsSheet, UnitEditSheet, KindSheet, ShareSheet, PostSheet, TeamBoardCard, MyLinksCard, ImportCard, FeaturePicker, Chip, copyText,
@@ -208,6 +209,8 @@ export const InventoryPanel: React.FC<Props> = ({ role, leads, fixedProjectId })
           {' '}{caps.member?.price ? '' : tx('Rates are hidden for your account.', 'आपके अकाउंट के लिए रेट छुपे हैं।')}
         </p>
       )}
+
+      {data && units.length > 0 && <InventoryCopilot units={units} canManage={canManage} seesPrice={seesPrice} onChanged={loadProject} />}
 
       {canManage && data && (
         <button type="button" onClick={() => setSheet({ kind: 'projvis' })} className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs hover:border-slate-900">
