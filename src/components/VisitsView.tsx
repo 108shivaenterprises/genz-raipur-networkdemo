@@ -226,7 +226,17 @@ const BrokerVisits: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) =
         {scanMsg && <p role="alert" className={`rounded-lg p-2 text-xs font-semibold ${scanMsg.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`} data-testid="broker-scan-msg">{scanMsg.text}</p>}
       </div>
       {pending.length === 0 && <p className="text-xs text-slate-500">{tx('No visit waiting. Schedule one from a Deal Room.', 'कोई विज़िट बाकी नहीं। डील रूम से तय करें।')}</p>}
-      {pending.map(row)}
+      {(() => {   // v115 — an agenda like a CRM visit calendar: missed / today / tomorrow / later (IST days)
+        const day = (iso: string) => new Date(Date.parse(iso) + 5.5 * 3600_000).toISOString().slice(0, 10);
+        const today = day(new Date().toISOString()); const tomorrow = day(new Date(Date.now() + 86400_000).toISOString());
+        const groups: [string, string, SiteVisit[], string][] = [
+          ['Missed — reschedule or verify', 'छूटी — दोबारा तय करें या वेरिफाई करें', pending.filter(v => day(v.scheduledTime) < today), 'text-red-700'],
+          ['Today', 'आज', pending.filter(v => day(v.scheduledTime) === today), 'text-slate-900'],
+          ['Tomorrow', 'कल', pending.filter(v => day(v.scheduledTime) === tomorrow), 'text-slate-700'],
+          ['Later', 'बाद में', pending.filter(v => day(v.scheduledTime) > tomorrow), 'text-slate-500'],
+        ];
+        return groups.filter(g => g[2].length).map(([en, hi, list, tone]) => <div key={en} className="space-y-2" data-testid="visit-day"><h4 className={`pt-1 text-xs font-bold ${tone}`}>{tx(en, hi)} ({list.length})</h4>{list.map(row)}</div>);
+      })()}
       {done.length > 0 && <><h4 className="pt-1 text-xs font-bold text-slate-600">{tx('Recently verified', 'हाल में वेरिफाई')}</h4>{done.map(row)}</>}
       {open && <SiteVisitQrPassModal isOpen visit={open} dealId={open.dealRoomId} currentUser={currentUser} onClose={() => setOpen(null)} onSuccess={() => { setOpen(null); load(); }} />}
     </section>

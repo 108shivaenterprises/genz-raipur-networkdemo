@@ -12,7 +12,9 @@
  * Privacy: a broadcast carries only the need (type, sale/rent, city, localities, budget, BHK) — never the client's name or
  * phone. An answer shows the answering broker and his listing; the two brokers then talk through the normal offer flow.
  */
-import { inferCity } from '../src/shared/places.js';
+import { inferCity, canonPlace } from '../src/shared/places.js';
+import { sameCity } from '../src/shared/india.js';
+import { alert } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
@@ -72,6 +74,47 @@ export function networkRange(r: BuyerRequirement, brokerId: string): { count: nu
   const prices = fits(r, brokerId).map(f => Number(f.p.askingPrice) || 0).filter(x => x > 0 && (!r.budgetMax || x <= r.budgetMax * 1.1));
   return { count: prices.length, min: prices.length ? Math.min(...prices) : 0, max: prices.length ? Math.max(...prices) : 0 };
 }
+/**
+ * v115 — the other way round (Propi: "5 agents have a matching requirement"): the open client needs of OTHER verified brokers that this
+ * listing fits. Never the client's name or number — only the need and the broker who holds it.
+ */
+export function needsForListing(p: Property, brokerId: string) {
+  const out: { q: BuyerRequirement; score: number }[] = [];
+  for (const q of st().requirements) {
+    if (!q.assignedBrokerId || q.assignedBrokerId === brokerId || !['active', 'matching'].includes(q.status) || q.transactionType !== p.transactionType) continue;
+    const qc = q.city || inferCity(q.preferredLocalities);
+    if (qc && ck(p.city) !== ck(qc)) continue;
+    if (q.budgetMax > 0 && p.askingPrice > q.budgetMax * 1.1) continue;   // far above his budget is not "a home for him"
+    if (!verifiedBroker(db.byId('users', q.assignedBrokerId) as UserProfile | undefined)) continue;
+    const m = calculatePropertyMatch(p, q);
+    if (m.score >= MATCH_MIN) out.push({ q, score: m.score });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+const COMMERCIAL = /Commercial|Shop|Office|Showroom|Warehouse|Godown|Industrial|Co-working|Hotel|Banquet|Parking|Factory|School/i;
+/** v115 — Propi's "demand vs supply": per area of a city, open client needs (last 120 days) against live listings. Counts only. */
+export function demandSupply(city: string, deal: 'Sale' | 'Rent' | 'ALL', seg: 'RES' | 'COM' | 'ALL') {
+  const s = st(); const since = Date.now() - 120 * 86400_000;
+  const dealOk = (t: string) => deal === 'ALL' || (deal === 'Sale' ? t === 'Sale' : t === 'Rent' || t === 'Lease');
+  const segOk = (t: string) => seg === 'ALL' || (seg === 'COM') === COMMERCIAL.test(t);
+  const rows = new Map<string, { area: string; demand: number; supply: number }>();
+  const row = (raw: string) => { const area = canonPlace(city, raw); if (!area) return null; const k = area.toLowerCase(); if (!rows.has(k)) rows.set(k, { area, demand: 0, supply: 0 }); return rows.get(k)!; };
+  let demand = 0; let supply = 0;
+  for (const q of s.requirements) {
+    if (!['active', 'matching'].includes(q.status) || Date.parse(q.createdAt) < since || !dealOk(q.transactionType) || !segOk(q.propertyType)) continue;
+    if (!sameCity(q.city || inferCity(q.preferredLocalities) || '', city)) continue;
+    demand++;
+    for (const k of new Set((q.preferredLocalities || []).map(l => row(l)).filter(Boolean) as { demand: number }[])) k.demand++;
+  }
+  for (const p of s.properties) {
+    if (!live(p) || !dealOk(p.transactionType) || !segOk(p.propertyType) || !sameCity(p.city, city)) continue;
+    supply++; const r = row(p.locality); if (r) r.supply++;
+  }
+  const tip = (r: { demand: number; supply: number }) => r.demand >= 2 && r.demand >= r.supply * 1.5 ? 'LIST' : r.supply >= 2 && r.supply >= r.demand * 1.5 ? 'POST' : 'EVEN';
+  const list = [...rows.values()].filter(r => r.demand + r.supply > 0).sort((a, b) => b.demand + b.supply - (a.demand + a.supply) || a.area.localeCompare(b.area)).slice(0, 40).map(r => ({ ...r, tip: tip(r) }));
+  return { city, deal, seg, demand, supply, areas: rows.size, rows: list };
+}
+
 /** one push telling the broker what the network holds for a client need that just arrived (never names the client) */
 export function alertNeedNetwork(r: BuyerRequirement) {
   try {
@@ -94,6 +137,44 @@ export function createBroadcastRouter() {
     const u = me(); const rq = st().requirements.find(x => x.id === req.params.reqId);
     if (!rq || rq.assignedBrokerId !== u.id) return bad(res, 'Requirement not found', 404);
     res.json({ success: true, ...networkMatchesFor(rq, u.id) });
+  });
+
+  // v115 — my listing → the other brokers who have a client for it (count, the needs without any client detail, and one "tell them" a day)
+  r.get('/listing/:pid', needs('requirement:create'), (req: Request, res: Response) => {
+    const u = me(); const p = st().properties.find(x => x.id === req.params.pid);
+    if (!p || p.listingBrokerId !== u.id) return bad(res, 'Listing not found', 404);
+    const all = live(p) ? needsForListing(p, u.id) : [];
+    const day = 86400_000;
+    res.json({
+      success: true, count: all.length, brokers: new Set(all.map(x => x.q.assignedBrokerId)).size, toldAt: p.toldNeedsAt || null,
+      canTell: all.length > 0 && (!p.toldNeedsAt || Date.now() - Date.parse(p.toldNeedsAt) >= day),
+      top: all.slice(0, 6).map(({ q, score }) => {
+        const b = db.byId('users', q.assignedBrokerId!) as UserProfile | undefined;
+        return { id: q.id, type: q.propertyType, deal: q.transactionType, localities: (q.preferredLocalities || []).slice(0, 3), budgetMin: q.budgetMin, budgetMax: q.budgetMax, score, days: Math.max(0, Math.floor((Date.now() - Date.parse(q.createdAt)) / day)), broker: b ? { name: b.name, company: b.companyName || '' } : null };
+      }),
+    });
+  });
+  r.post('/listing/:pid/tell', needs('requirement:create'), rateLimit('listing-tell', 20, 3600_000), (req: Request, res: Response) => {
+    const u = me(); const p = st().properties.find(x => x.id === req.params.pid);
+    if (!p || p.listingBrokerId !== u.id) return bad(res, 'Listing not found', 404);
+    if (!live(p)) return bad(res, 'Only a live, verified listing can be sent', 409);
+    if (p.toldNeedsAt && Date.now() - Date.parse(p.toldNeedsAt) < 86400_000) return bad(res, 'You told these brokers about this listing less than a day ago.', 409, { code: 'TOLD_RECENTLY' });
+    const to = [...new Set(needsForListing(p, u.id).map(x => x.q.assignedBrokerId!))].slice(0, BROADCAST_MAX_RECIPIENTS);
+    if (!to.length) return bad(res, 'No other broker has a matching client need right now', 409, { code: 'NO_NEEDS' });
+    p.toldNeedsAt = nowIso(); db.save();
+    const line = `${p.title} · ${inr(p.askingPrice)}${p.transactionType === 'Sale' ? '' : ' / month'} · ${p.locality}`;
+    alert(to, 'matches', `A listing fits your client need`, `${u.name}: ${line}. Open it and make an offer.`, `/?tab=properties&propertyId=${encodeURIComponent(p.id)}`,
+      { not: u.id, tag: `listing-tell-${p.id}`, hi: ['आपके क्लाइंट की ज़रूरत से मिलती लिस्टिंग', `${u.name}: ${line}। खोलें और ऑफ़र दें।`] });
+    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'LISTING_TOLD_NEEDS', `${u.name} told ${to.length} broker(s) with matching client needs about ${p.id}`);
+    res.json({ success: true, sentTo: to.length });
+  });
+  r.get('/demand-supply', needs('requirement:create'), (req: Request, res: Response) => {
+    const u = me(); const q = req.query;
+    const city = String(q.city || u.city || '').trim().slice(0, 60);
+    if (!city) return bad(res, 'Pick a city');
+    const deal = q.deal === 'Sale' || q.deal === 'Rent' ? q.deal : 'ALL';
+    const seg = q.seg === 'RES' || q.seg === 'COM' ? q.seg : 'ALL';
+    res.json({ success: true, ...demandSupply(city, deal, seg) });
   });
 
   r.post('/', needs('requirement:create'), rateLimit('broadcast', 20, 3600_000), (req: Request, res: Response) => {

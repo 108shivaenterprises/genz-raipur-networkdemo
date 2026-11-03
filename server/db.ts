@@ -810,6 +810,8 @@ export interface Property {
   soldPrice?: number;
   soldNote?: string;
   soldOfferId?: string;
+  /** v115 — when the listing broker last told the brokers whose client needs this listing fits (once a day) */
+  toldNeedsAt?: string;
   /** status before the last sold/rented/withdrawn change, so it can be undone within 24 h */
   prevStatus?: Property['listingStatus'];
   /** public site-poster code (/p/<code>) and scan counter */

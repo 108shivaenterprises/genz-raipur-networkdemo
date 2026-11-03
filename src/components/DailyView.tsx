@@ -7,6 +7,7 @@ import { formatINR } from '../lib/utils.js';
 import { ClientsView } from './ClientsView.js';
 import { CopilotPanel } from './CopilotPanel.js';
 import { EditPropertyModal } from './EditPropertyModal.js';
+import { ListingBuyers } from './ListingBuyers.js';
 // Leaflet is ~150 KB: only downloaded when a broker opens the Map tab (keeps first load light on slow networks)
 const MapView = lazy(() => import('./MapView.js').then(m => ({ default: m.MapView })));
 import { ReportButton } from './ReportButton.js';
@@ -144,6 +145,7 @@ const Listings: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => {
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATE[x.state][2]}`}>{tx(STATE[x.state][0], STATE[x.state][1])}</span>
               {x.state !== 'HELD' && <button onClick={() => confirm(x.id)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"><CheckCircle2 className="h-4 w-4" aria-hidden />{tx('Still available', 'अभी भी उपलब्ध')}</button>}
               <button type="button" onClick={() => open(x.id)} data-testid="listing-close" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">{x.transactionType === 'Sale' ? tx('Sold / remove', 'बिक गई / हटाएँ') : tx('Rented / remove', 'किराए पर गई / हटाएँ')}</button>
+              {x.state !== 'HELD' && <ListingBuyers propertyId={x.id} />}
             </li>))}</ul>
         )}
       </section>

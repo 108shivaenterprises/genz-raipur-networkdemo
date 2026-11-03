@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
 import type { TabType } from './NavigationTabs.js';
+import { DemandSupply } from './DemandSupply.js';
 
 const Who: React.FC<{ b: any }> = ({ b }) => {
   const tx = useTx();
@@ -36,6 +37,10 @@ export const FeedView: React.FC<{ onNavigate: (t: TabType) => void }> = ({ onNav
           ))}
         </div>
       </div>
+      <details className="rounded-xl" data-testid="feed-ds">
+        <summary className="cursor-pointer list-none rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">📊 {tx('Where is the demand? Needs vs listings, area by area', 'माँग कहाँ है? इलाके-वार ज़रूरत बनाम लिस्टिंग')}</summary>
+        <div className="mt-2"><DemandSupply /></div>
+      </details>
       <p className="text-[11px] text-slate-500">{tx('New homes and buyer needs from verified brokers (last 14 days). Clients are never named.', 'वेरिफ़ाइड ब्रोकरों के नए घर और ख़रीदार की ज़रूरतें (14 दिन)। क्लाइंट का नाम कभी नहीं दिखता।')}</p>
       {!items && <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" />}
       {err && <p className="text-xs text-red-700">{err}</p>}

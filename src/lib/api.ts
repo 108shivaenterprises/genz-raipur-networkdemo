@@ -1154,6 +1154,10 @@ export const api = {
   inboxRemove: (id: string) => request<{ success: boolean; unread: number }>(`/api/inbox/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   inboxClear: () => request<{ success: boolean; cleared: number }>('/api/inbox', { method: 'DELETE' }),
   broadcastSend: (requirementId: string) => request<any>('/api/broadcast', { method: 'POST', body: JSON.stringify({ requirementId }) }),
+  /** v115 — my listing → other brokers' client needs it fits; tell them once a day; area-wise demand vs supply */
+  listingNeeds: (pid: string) => request<any>(`/api/broadcast/listing/${encodeURIComponent(pid)}`),
+  listingTell: (pid: string) => request<any>(`/api/broadcast/listing/${encodeURIComponent(pid)}/tell`, { method: 'POST', body: '{}' }),
+  demandSupply: (q: { deal?: string; seg?: string; city?: string } = {}) => request<any>(`/api/broadcast/demand-supply?${new URLSearchParams(Object.entries(q).filter(([, v]) => !!v) as [string, string][]).toString()}`),
   networkHas: (reqId: string) => request<{ success: boolean; count: number; top: any[] }>(`/api/broadcast/network/${encodeURIComponent(reqId)}`),
   feed: (kind = 'all') => request<any>(`/api/feed?kind=${encodeURIComponent(kind)}`),
   broadcastInbox: () => request<any>('/api/broadcast/inbox'),
