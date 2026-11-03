@@ -45,7 +45,8 @@ describe('showing a paper on the client page', () => {
 describe('who is who', () => {
   it('every role that can be reviewed has a group and a set of tags with both kinds', () => {
     expect(groupOfRole('BROKER')).toBe('BROKER'); expect(groupOfRole('BUYER_TENANT')).toBe('CUSTOMER'); expect(groupOfRole('DEVELOPER_BUILDER')).toBe('BUILDER');
-    for (const r of ['ADMIN', 'SUPERADMIN', 'GENZ_CONNECTOR', 'NOPE', undefined]) expect(groupOfRole(r as string), String(r)).toBeNull();
+    for (const r of ['ADMIN', 'SUPERADMIN', 'NOPE', undefined]) expect(groupOfRole(r as string), String(r)).toBeNull();
+    expect(groupOfRole('GENZ_CONNECTOR')).toBe('CONNECTOR');   // v117 — the shopkeeper connector has a profile too
     for (const g of Object.keys(GROUPS) as TargetGroup[]) {
       const t = tagsFor(g); expect(t.length, g).toBeGreaterThanOrEqual(6);
       expect(t.some(x => x.tone === 'POS') && t.some(x => x.tone === 'NEG'), g).toBe(true);
@@ -125,10 +126,11 @@ describe('who may be found and opened', () => {
     for (const viewer of ['BUYER_TENANT', 'PROPERTY_OWNER', 'CONTRACTOR']) { expect(mayOpenProfile(v(viewer), t('BUYER_TENANT')), viewer).toBe(false); expect(canLookupPrivate(viewer)).toBe(false); }
     expect(mayOpenProfile(v('PROPERTY_OWNER'), t('BUYER_TENANT'), true)).toBe(true);
   });
-  it('yourself and GENZ staff always; a shop partner has no profile at all', () => {
+  it('yourself and GENZ staff always; a connector (v117) is a professional profile; a shop-QR partner (no login) has none', () => {
     expect(mayOpenProfile({ id: 'X', role: 'BUYER_TENANT' }, { id: 'X', role: 'BUYER_TENANT' })).toBe(true);
     expect(mayOpenProfile(v('ADMIN'), t('BUYER_TENANT'))).toBe(true); expect(mayOpenProfile(v('SUPERADMIN'), t('PROPERTY_OWNER', { visible: false }))).toBe(true);
-    expect(mayOpenProfile(v('BROKER'), t('GENZ_CONNECTOR'))).toBe(false);
+    expect(mayOpenProfile(v('BROKER'), t('GENZ_CONNECTOR'))).toBe(true);
+    expect(mayOpenProfile(v('BROKER'), t('SHOP_PARTNER'))).toBe(false);
   });
 });
 

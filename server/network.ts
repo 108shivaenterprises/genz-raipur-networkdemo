@@ -26,6 +26,7 @@ import { sponsorOf } from './tiers.js';
 import { storeKyc, readKycBody, kycFlags, vaultOn } from './kycvault.js';
 import { normAadhaar, isValidAadhaar, aadhaarLast4, maskAadhaar, isSponsorEligible, panProblem, aadhaarProblem, isLast4 } from '../src/shared/idRules.js';
 import { openIdTask, recordIdTick, purgeApplicationDocs, docsOfApplication } from './idreview.js';
+import { alert } from './alerts.js';
 import {
   tierOf, inProbation, sameParty, monthKey, splitOk, tieupDays, TIER_LABEL, SCOPE_KINDS,
   VOUCHES_NEEDED, VOUCHES_PER_MONTH, CAPTAIN_VOUCHES_PER_MONTH, VOUCH_STRIKE_LIMIT, APPLICATION_DAYS, MAX_OPEN_APPLICATIONS,
@@ -348,12 +349,62 @@ export function createNetworkRouter() {
     const tier = req.body?.tier;
     if (tier !== 'TIER1' && tier !== 'TIER2') return bad(res, 'tier must be TIER1 or TIER2');
     if (tier === 'TIER1') {
-      const rera = normRera(req.body?.reraNumber || t.reraNumber);
+      const rera = normRera(req.body?.reraNumber || (t.reraClaim?.status === 'PENDING' ? t.reraClaim.number : '') || t.reraNumber);
       if (!rera || !isPlausibleRera(rera)) return bad(res, 'A valid RERA registration number is required for Tier 1');
       t.reraNumber = rera; t.tier = 'TIER1'; t.probationUntil = undefined;
+      if (t.reraClaim?.status === 'PENDING') t.reraClaim = { ...t.reraClaim, status: 'APPROVED', decidedAt: nowIso(), decidedBy: me().id };
     } else { t.tier = 'TIER2'; }
     db.save(); audit('VERIFICATION', t.id, 'TIER_SET', `${me().name} set ${t.name} to ${tier}${tier === 'TIER1' ? ` (RERA ${t.reraNumber})` : ''}`);
     res.json({ success: true, tier });
+  });
+
+  // ── v117 — "my RERA came": a local associate adds his RERA registration himself; GENZ checks it on the RERA portal and moves him to Tier 1 ──
+  r.get('/my-rera', needs('self:read'), (_req: Request, res: Response) => {
+    const u = me(); if (u.role !== 'BROKER') return bad(res, 'Only brokers have a RERA tier', 403);
+    res.json({ success: true, tier: tierOf(u), rera: u.reraNumber || '', claim: u.reraClaim || null });
+  });
+  r.post('/my-rera', needs('self:update'), rateLimit('my-rera', 10, 3600_000), (req: Request, res: Response) => {
+    const u = me(); const s = st();
+    if (u.role !== 'BROKER') return bad(res, 'Only brokers have a RERA tier', 403);
+    if (!['PENDING', 'VERIFIED'].includes(u.verificationStatus)) return bad(res, 'Your account cannot change this right now', 403);
+    const rera = normRera(req.body?.reraNumber);
+    if (!rera || !isPlausibleRera(rera)) return bad(res, 'Write your RERA registration number exactly as it is on the certificate');
+    if (tierOf(u) === 'TIER1' && normRera(u.reraNumber) === rera) return bad(res, 'This RERA number is already on your profile', 409);
+    const taken = s.users.some(x => x.id !== u.id && x.role === 'BROKER' && ((x.reraNumber && normRera(x.reraNumber) === rera) || (x.reraClaim?.status === 'PENDING' && x.reraClaim.number === rera)));
+    if (taken) return bad(res, 'This RERA number is already linked to another GENZ account', 409);
+    u.reraClaim = { number: rera, at: nowIso(), status: 'PENDING' };
+    db.save();
+    audit('VERIFICATION', u.id, 'RERA_CLAIMED', `${u.name} added RERA ${rera} for Tier 1 — to be checked on the RERA portal`);
+    alert(s.users.filter(x => (x.role === 'ADMIN' || x.role === 'SUPERADMIN') && x.verificationStatus === 'VERIFIED').map(x => x.id), 'system', 'A broker added his RERA — check it',
+      `${u.name}${u.city ? ` (${u.city})` : ''}: RERA ${rera}. Check it on the RERA portal, then approve or say why not.`, '/?tab=idreview',
+      { not: u.id, tag: `rera-${u.id}`, hi: ['एक ब्रोकर ने अपना RERA जोड़ा — जाँचें', `${u.name}: RERA ${rera}। RERA पोर्टल पर जाँचें, फिर मंज़ूर करें या कारण बताएँ।`] });
+    res.json({ success: true, tier: tierOf(u), claim: u.reraClaim });
+  });
+  r.get('/rera-claims', needs('users:review'), (_req: Request, res: Response) => {
+    const claims = st().users.filter(x => x.role === 'BROKER' && x.reraClaim?.status === 'PENDING')
+      .map(x => ({ userId: x.id, name: x.name, company: x.companyName || '', city: x.city || '', tier: tierOf(x), number: x.reraClaim!.number, at: x.reraClaim!.at, idChecked: !!x.idCheckedAt }))
+      .sort((a, b) => a.at.localeCompare(b.at));
+    res.json({ success: true, claims });
+  });
+  r.post('/rera-claims/:userId', needs('users:review'), (req: Request, res: Response) => {
+    const a = me(); const t = st().users.find(x => x.id === req.params.userId);
+    if (!t || t.role !== 'BROKER' || t.reraClaim?.status !== 'PENDING') return bad(res, 'No RERA waiting for a check', 404);
+    if (t.id === a.id) return bad(res, 'You cannot check your own RERA', 403);
+    const at = nowIso();
+    if (req.body?.approve === true) {
+      t.reraNumber = t.reraClaim.number; t.tier = 'TIER1'; t.probationUntil = undefined;
+      t.reraClaim = { ...t.reraClaim, status: 'APPROVED', decidedAt: at, decidedBy: a.id };
+      db.save(); audit('VERIFICATION', t.id, 'RERA_APPROVED', `${a.name} checked RERA ${t.reraNumber} of ${t.name} — now Tier 1`);
+      alert(t.id, 'system', 'Your RERA is verified — you are Tier 1 now', 'Builder (RERA) projects are open for you: partner on a project, block units and book.', '/?tab=pcontrol',
+        { not: a.id, tag: `rera-${t.id}`, hi: ['आपका RERA वेरिफ़ाई हो गया — अब आप Tier 1 हैं', 'बिल्डर (RERA) प्रोजेक्ट अब आपके लिए खुले हैं: पार्टनर बनें, यूनिट ब्लॉक और बुक करें।'] });
+    } else {
+      const note = String(req.body?.note || '').trim().slice(0, 200);
+      if (note.length < 5) return bad(res, 'Tell the broker why (e.g. "number not found on the RERA portal")');
+      t.reraClaim = { ...t.reraClaim, status: 'REJECTED', note, decidedAt: at, decidedBy: a.id };
+      db.save(); audit('VERIFICATION', t.id, 'RERA_REJECTED', `${a.name} could not confirm RERA ${t.reraClaim.number} of ${t.name}: ${note}`);
+      alert(t.id, 'system', 'Your RERA could not be confirmed', note, '/?tab=people', { not: a.id, tag: `rera-${t.id}`, hi: ['आपका RERA पक्का नहीं हो सका', note] });
+    }
+    res.json({ success: true, tier: tierOf(t), claim: t.reraClaim });
   });
 
   // ── growth: invite tree, captain board, admin overview ──

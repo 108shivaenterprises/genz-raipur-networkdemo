@@ -11,8 +11,8 @@
  *   ONE PERSON, ONE VOTE  the same reviewer counts once for the same person, however many deals they did (his latest review).
  *   FAIRNESS              the reviewed person can reply once, can report a review, and GENZ staff can hide one that breaks the rules.
  */
-export type TargetGroup = 'BROKER' | 'BUILDER' | 'OWNER' | 'CUSTOMER' | 'CONTRACTOR' | 'LEGAL' | 'TEAM';
-export type EvidenceKind = 'DEAL' | 'PARTNERSHIP' | 'OWNER_MANDATE' | 'CONSTRUCTION' | 'LEGAL';
+export type TargetGroup = 'BROKER' | 'BUILDER' | 'OWNER' | 'CUSTOMER' | 'CONTRACTOR' | 'LEGAL' | 'TEAM' | 'CONNECTOR';
+export type EvidenceKind = 'DEAL' | 'PARTNERSHIP' | 'OWNER_MANDATE' | 'CONSTRUCTION' | 'LEGAL' | 'REFERRAL';
 
 export const REVIEW_EDIT_DAYS = 14;
 export const REMARK_MAX = 280;
@@ -27,6 +27,7 @@ export const ABOUT_MAX = 240;
 
 export const groupOfRole = (role?: string): TargetGroup | null => ({
   BROKER: 'BROKER', DEVELOPER_BUILDER: 'BUILDER', PROPERTY_OWNER: 'OWNER', BUYER_TENANT: 'CUSTOMER', CONTRACTOR: 'CONTRACTOR', LEGAL_COUNSEL: 'LEGAL', TEAM_MEMBER: 'TEAM',
+  GENZ_CONNECTOR: 'CONNECTOR',   // v117 — the shopkeeper who sends leads has a profile too
 } as Record<string, TargetGroup>)[String(role)] || null;
 
 export const GROUPS: Record<TargetGroup, { en: string; hi: string; private: boolean }> = {
@@ -35,6 +36,7 @@ export const GROUPS: Record<TargetGroup, { en: string; hi: string; private: bool
   CONTRACTOR: { en: 'Contractor', hi: 'ठेकेदार', private: false },
   LEGAL: { en: 'Legal counsel', hi: 'वकील', private: false },
   TEAM: { en: 'Team member', hi: 'टीम सदस्य', private: false },
+  CONNECTOR: { en: 'GENZ Connector (shop)', hi: 'GENZ कनेक्टर (दुकान)', private: false },
   OWNER: { en: 'Property owner', hi: 'प्रॉपर्टी ओनर', private: true },
   CUSTOMER: { en: 'Customer', hi: 'ग्राहक', private: true },
 };
@@ -84,7 +86,19 @@ export const TAGS: Record<TargetGroup, TagDef[]> = {
     t('RUDE', 'NEG', 'Rude', 'बदतमीज़'), t('NO_SHOW', 'NEG', 'Did not turn up', 'आए नहीं'),
     t('WRONG_INFO', 'NEG', 'Gave wrong information', 'गलत जानकारी दी'), t('UNRESPONSIVE', 'NEG', 'Does not reply', 'जवाब नहीं देता'),
   ],
+  CONNECTOR: [
+    t('GENUINE_LEADS', 'POS', 'Sends genuine leads', 'असली लीड भेजता है'), t('KNOWS_AREA', 'POS', 'Knows the area', 'इलाके की जानकारी'),
+    t('RESPONSIVE', 'POS', 'Replies quickly', 'जल्दी जवाब देता है'), t('TRUSTED_LOCALLY', 'POS', 'Trusted in his area', 'इलाके में भरोसेमंद'),
+    t('FAKE_LEADS', 'NEG', 'Fake / wrong numbers', 'नकली / गलत नंबर'), t('DUPLICATES', 'NEG', 'Same lead to many', 'एक लीड कई को'),
+    t('BYPASS', 'NEG', 'Went around the broker', 'ब्रोकर को बाइपास किया'), t('UNRESPONSIVE', 'NEG', 'Does not reply', 'जवाब नहीं देता'),
+  ],
 };
+/** v117 — what a professional mostly works on (chips on the profile; max 4) */
+export const SPECIALTIES: { id: string; en: string; hi: string }[] = [
+  { id: 'RESALE', en: 'Resale homes', hi: 'रीसेल घर' }, { id: 'RENTAL', en: 'Rentals', hi: 'किराया' }, { id: 'NEW_PROJECTS', en: 'New projects', hi: 'नए प्रोजेक्ट' },
+  { id: 'PLOTS', en: 'Plots & land', hi: 'प्लॉट और ज़मीन' }, { id: 'COMMERCIAL', en: 'Shops & offices', hi: 'दुकान और ऑफ़िस' }, { id: 'LUXURY', en: 'Luxury', hi: 'लग्ज़री' },
+  { id: 'NRI', en: 'NRI clients', hi: 'NRI क्लाइंट' }, { id: 'LOANS', en: 'Home loans', hi: 'होम लोन' }, { id: 'LEGAL_PAPERS', en: 'Papers & registry', hi: 'कागज़ और रजिस्ट्री' },
+];
 export const tagsFor = (g: TargetGroup) => TAGS[g];
 export const tagLabel = (g: TargetGroup, id: string, hi: boolean) => { const x = TAGS[g].find(y => y.id === id); return x ? (hi ? x.hi : x.en) : id; };
 
@@ -94,6 +108,7 @@ export const EVIDENCE: Record<EvidenceKind, { en: string; hi: string }> = {
   OWNER_MANDATE: { en: 'an owner mandate', hi: 'ओनर मैंडेट' },
   CONSTRUCTION: { en: 'a building job', hi: 'निर्माण का काम' },
   LEGAL: { en: 'a legal case', hi: 'क़ानूनी केस' },
+  REFERRAL: { en: 'a referred lead', hi: 'भेजी हुई लीड' },
 };
 
 // ───────── what a reviewer may write ─────────
@@ -194,8 +209,9 @@ export const isReportReason = (v: unknown): v is string => REPORT_REASONS.some(x
 
 export const editableUntil = (at: string) => new Date(Date.parse(at) + REVIEW_EDIT_DAYS * 86_400_000).toISOString();
 
-export interface ProfileInput { visible?: unknown; showPhoto?: unknown; about?: unknown; areas?: unknown; languages?: unknown; years?: unknown }
+export interface ProfileInput { visible?: unknown; showPhoto?: unknown; about?: unknown; areas?: unknown; languages?: unknown; years?: unknown; specialties?: unknown }
 export function profileProblem(b: ProfileInput): string | null {
+  if (b.specialties != null && (!Array.isArray(b.specialties) || b.specialties.length > 4 || new Set(b.specialties).size !== b.specialties.length || b.specialties.some(x => !SPECIALTIES.some(s => s.id === x)))) return 'Choose up to 4 of the listed specialities';
   if (b.visible != null && typeof b.visible !== 'boolean') return 'Visible must be on or off';
   if (b.showPhoto != null && typeof b.showPhoto !== 'boolean') return 'Photo must be on or off';
   if (b.about != null) {

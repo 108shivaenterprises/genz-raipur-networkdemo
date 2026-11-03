@@ -694,7 +694,7 @@ export interface UserProfile {
   /** v78 — what this person shows on his profile (found only by search). Everything is optional; `visible` false hides a professional from name search. */
   /** v90 — the area of the city where the office / home is (tidied spelling), set at sign-up */
   homeLocality?: string;
-  profile?: { visible?: boolean; showPhoto?: boolean; about?: string; areas?: string[]; languages?: string[]; years?: number; updatedAt?: string };
+  profile?: { visible?: boolean; showPhoto?: boolean; about?: string; areas?: string[]; languages?: string[]; years?: number; specialties?: string[]; updatedAt?: string };
   createdAt: string;
 
   // ── Authentication (never serialised to clients) ──
@@ -717,6 +717,8 @@ export interface UserProfile {
   boostUntil?: string;
   /** v15 broker tier: TIER1 = RERA badge, TIER2 = local associate (vouched). Absent = derived from reraNumber. */
   tier?: 'TIER1' | 'TIER2';
+  /** v117 — a local associate who got his RERA registration later asks to move up; GENZ checks it on the RERA portal and approves (→ TIER1) or says why not */
+  reraClaim?: { number: string; at: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string; decidedAt?: string; decidedBy?: string };
   /** v16.8 — the GENZ desk can mark a RERA firm as BIG_FIRM / INDEPENDENT for network launches (absent = by team size) */
   firmSegment?: 'BIG_FIRM' | 'INDEPENDENT';
   /** Tier 2: smaller caps until this date */
@@ -3467,9 +3469,11 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
       ['Naya Vakeel', 'LEGAL_COUNSEL', 'Naya Chambers (demo)', {}],
       ['Naya Dukaan', 'GENZ_CONNECTOR', 'Naya Kirana (demo)', { connector: { shopType: 'KIRANA_STORE', shopName: 'Naya Kirana', locality: 'Telibandha', whatsapp: '+91 90000 60009' } } as any],
       ['Naya Staff', 'TEAM_MEMBER', 'Naya Realty (demo)', { employerId: 'USR-NEW-BROKER', employerRole: 'BROKER', teamTitle: 'Telecaller' } as any],
+      // v117 — a local associate (Tier 2, no RERA yet) to try "my RERA came → Tier 1"
+      ['Naya Associate', 'BROKER', 'Naya Associates (demo)', { tier: 'TIER2', sponsorId: 'USR-NEW-BROKER', brokerId: 'GZ-BRK-NAYA02', idCheckedAt: t } as any],
     ];
     fresh.forEach(([name, role, company, extra], i) => {
-      const id = `USR-NEW-${role === 'DEVELOPER_BUILDER' ? 'BUILDER' : role === 'PROPERTY_OWNER' ? 'OWNER' : role === 'BUYER_TENANT' ? 'BUYER' : role === 'LEGAL_COUNSEL' ? 'LEGAL' : role === 'GENZ_CONNECTOR' ? 'CONNECTOR' : role === 'TEAM_MEMBER' ? 'TEAM' : role}`;
+      const id = name === 'Naya Associate' ? 'USR-NEW-ASSOCIATE' : `USR-NEW-${role === 'DEVELOPER_BUILDER' ? 'BUILDER' : role === 'PROPERTY_OWNER' ? 'OWNER' : role === 'BUYER_TENANT' ? 'BUYER' : role === 'LEGAL_COUNSEL' ? 'LEGAL' : role === 'GENZ_CONNECTOR' ? 'CONNECTOR' : role === 'TEAM_MEMBER' ? 'TEAM' : role}`;
       if (parsed.users.some(u => u.id === id)) return;
       const phone = `+91 90000 6${String(i + 1).padStart(4, '0')}`;
       parsed.users.push({

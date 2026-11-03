@@ -347,6 +347,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   GENZ_CONNECTOR: [
     'self:read', 'self:update',
     'connector:self', 'connector:refer',
+    'profile:use',   // v117 — only his OWN profile and his reviews; the profiles search refuses a connector (still no directory)
   ],
 
   // Employee of a broker / builder (telecaller, site executive, assistant). Works ONLY on what the employer

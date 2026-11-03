@@ -5,6 +5,7 @@ import { useTx, useI18n } from '../lib/i18n.js';
 import { ID_DOC_LABEL, type IdDocKind } from '../shared/idRules.js';
 import type { UserProfile } from '../types/index.js';
 import { KycRevealModal, KycVaultPanel, KycHoldsPanel } from './KycReveal.js';
+import { ReraClaimsPanel } from './ReraTier.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-40';
@@ -67,6 +68,7 @@ export const IdReviewView: React.FC<{ currentUser: UserProfile }> = ({ currentUs
 
       {currentUser.role === 'SUPERADMIN' && <KycVaultPanel />}
       {currentUser.role === 'SUPERADMIN' && <KycHoldsPanel />}
+      <ReraClaimsPanel onDone={after} />
 
       {/* the switch + the default reviewer */}
       <section className={`space-y-3 rounded-xl border p-3 ${set.autoVerify ? 'border-violet-300 bg-violet-50/60' : 'border-slate-200 bg-white'}`} aria-label={tx('Auto-verify settings', 'ऑटो-वेरिफ़ाई सेटिंग')}>

@@ -23,6 +23,7 @@ import type { ProfileReview, UserProfile, DatabaseState } from './db.js';
 import { ctx, needs, hit, digits, secret, safeEqual } from './auth.js';
 import { alert, firstName } from './alerts.js';
 import { reputationOf } from './reputation.js';
+import { tierOf } from '../src/shared/networkRules.js';
 import {
   groupOfRole, GROUPS, tagsFor, EVIDENCE, summarize, reviewProblem, cleanTags, remarkProblem, mayOpenProfile, canLookupPrivate, isStaffRole,
   searchKind, norm, shortName, REPORT_REASONS, isReportReason, REVIEW_EDIT_DAYS, REPLY_MAX, SEARCH_LIMIT, profileProblem, editableUntil, type TargetGroup, type EvidenceKind,
@@ -61,6 +62,8 @@ export function proofBetween(a: string, b: string, s: DatabaseState = st()): Pro
   for (const m of s.ownerMandates) if ((m.status === 'ACTIVE' || m.confirmedAt) && pair(m.ownerId, m.brokerId)) out.push({ kind: 'OWNER_MANDATE', id: m.id, at: m.confirmedAt || m.createdAt });
   for (const l of s.constructionLeads) if (['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(l.status) && pair(l.referringBrokerId, l.assignedContractorId)) out.push({ kind: 'CONSTRUCTION', id: l.id, at: l.createdAt });
   for (const r of s.legalRequests || []) if (r.acceptedAt && pair(r.requestedById, r.counsellorId)) out.push({ kind: 'LEGAL', id: r.id, at: r.acceptedAt });
+  // v117 — a shopkeeper connector and the broker his referral went to (once the broker took it up)
+  for (const r of s.connectorReferrals || []) if (['CONTACTED', 'QUALIFIED', 'IN_PROGRESS', 'CLOSED_WON', 'CLOSED_LOST'].includes(r.status) && pair(r.connectorId, r.assignedToId)) out.push({ kind: 'REFERRAL', id: r.id, at: (r as any).updatedAt || r.createdAt });
   return out.sort((x, y) => y.at.localeCompare(x.at));
 }
 
@@ -91,7 +94,9 @@ function cardOf(u: UserProfile, full = false) {
     photoUrl: active && u.avatarUrl && p.showPhoto !== false ? u.avatarUrl : '',
     memberSince: u.createdAt?.slice(0, 7) || '',
     rating: active ? summaryOf(u.id) : { avg: 0, count: 0, early: true, stars: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, tags: [] },
-    ...(full && active ? { about: p.about || '', areas: p.areas || [], languages: p.languages || [], years: p.years ?? null, dealsClosed: rep.closed, confirmedBy: rep.confirmers } : {}),
+    // v117 — RERA-verified broker (Tier 1) or local associate (Tier 2): what he may work on is part of who he is
+    tier: u.role === 'BROKER' ? tierOf(u) : null,
+    ...(full && active ? { about: p.about || '', areas: p.areas || [], languages: p.languages || [], years: p.years ?? null, specialties: p.specialties || [], dealsClosed: rep.closed, confirmedBy: rep.confirmers } : {}),
   };
 }
 
@@ -227,6 +232,8 @@ export function createProfilesRouter() {
   // ── search ──
   r.get('/search', (req: Request, res: Response) => {
     const u = me(); const s = st();
+    // v117 — a shop connector keeps his own profile but gets no people directory (his leads go through GENZ)
+    if (u.role === 'GENZ_CONNECTOR') return bad(res, 'Shop partners keep their own profile here. Searching people is for brokers and builders.', 403, { hi: 'दुकान पार्टनर यहाँ अपनी प्रोफ़ाइल रखते हैं। लोगों को खोजना ब्रोकर और बिल्डर के लिए है।' });
     if (slow('prof-search-h', 40, 3600_000, res) || slow('prof-search-d', 200, 86_400_000, res)) return;
     const { kind, q } = searchKind(req.query.q);
     if (kind === 'TOO_SHORT') return res.json({ success: true, kind, results: [], hint: 'Type at least 3 letters, a GZ code, or a full 10-digit mobile number.', hi: 'कम से कम 3 अक्षर, GZ कोड या पूरा 10 अंकों का मोबाइल नंबर लिखें।' });
@@ -258,7 +265,7 @@ export function createProfilesRouter() {
     if (!groupOfRole(u.role)) return res.json({ success: true, staff: true, card: null, profile: null, group: null, canSearchPrivate: true, reviewsAboutMe: [], reviewsIWrote: [], isPrivate: false });
     const about = s.reviews.filter(x => x.targetId === u.id).sort((a, b) => b.at.localeCompare(a.at)).map(x => reviewView(x, u));
     const wrote = s.reviews.filter(x => x.reviewerId === u.id).sort((a, b) => b.at.localeCompare(a.at)).map(x => ({ ...reviewView(x, u), target: cardOf(userOf(x.targetId) || u) }));
-    res.json({ success: true, card: cardOf(u, true), profile: { visible: u.profile?.visible !== false, showPhoto: u.profile?.showPhoto !== false, about: u.profile?.about || '', areas: u.profile?.areas || [], languages: u.profile?.languages || [], years: u.profile?.years ?? null },
+    res.json({ success: true, card: cardOf(u, true), profile: { visible: u.profile?.visible !== false, showPhoto: u.profile?.showPhoto !== false, about: u.profile?.about || '', areas: u.profile?.areas || [], languages: u.profile?.languages || [], years: u.profile?.years ?? null, specialties: u.profile?.specialties || [] },
       group: groupOfRole(u.role), canSearchPrivate: canLookupPrivate(u.role), reviewsAboutMe: about, reviewsIWrote: wrote, isPrivate: !!GROUPS[groupOfRole(u.role) as TargetGroup]?.private });
   });
   r.put('/mine', (req: Request, res: Response) => {
@@ -274,6 +281,7 @@ export function createProfilesRouter() {
     if (Array.isArray(b.areas)) p.areas = b.areas.map((x: string) => x.trim()).filter(Boolean);
     if (Array.isArray(b.languages)) p.languages = b.languages.map((x: string) => x.trim()).filter(Boolean);
     if (b.years != null) p.years = Number(b.years);
+    if (Array.isArray(b.specialties)) p.specialties = b.specialties;
     // a private person (customer / owner) is always findable by his exact mobile or code — that is how brokers and builders check he is genuine; he controls the text and the photo
     if (GROUPS[g].private) delete p.visible;
     p.updatedAt = nowIso();

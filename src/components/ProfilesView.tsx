@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Search, Star, ShieldCheck, ArrowLeft, Flag, MessageSquareReply, Pencil, Trash2, BadgeCheck, Camera, Lock } from 'lucide-react';
+import { Loader2, Search, Star, ShieldCheck, ArrowLeft, Flag, MessageSquareReply, Pencil, Trash2, BadgeCheck, Camera, Lock, MapPin, Briefcase, Languages, Share2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
-import { TAGS, REPORT_REASONS, REMARK_MAX, REPLY_MAX, ABOUT_MAX, tagLabel, type TargetGroup } from '../shared/reviewRules.js';
+import { TAGS, REPORT_REASONS, REMARK_MAX, REPLY_MAX, ABOUT_MAX, SPECIALTIES, EVIDENCE, tagLabel, type TargetGroup } from '../shared/reviewRules.js';
+import { MyReraCard } from './ReraTier.js';
 
 /**
  * v78 — Profiles & Reviews. One tab for everyone:
@@ -29,10 +30,10 @@ const Chip: React.FC<{ tone?: 'green' | 'red' | 'slate' | 'amber' | 'blue'; chil
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 const day = (iso: string, hi: boolean) => new Date(iso).toLocaleDateString(hi ? 'hi-IN' : 'en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-const Avatar: React.FC<{ card: any; size?: string }> = ({ card, size = 'h-12 w-12' }) => (
+const Avatar: React.FC<{ card: any; size?: string; big?: boolean }> = ({ card, size = 'h-12 w-12', big }) => (
   card.photoUrl
     ? <img src={card.photoUrl} alt="" className={`${size} shrink-0 rounded-full object-cover`} />
-    : <span className={`${size} inline-flex shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-bold text-amber-300`} aria-hidden>{initials(card.name)}</span>
+    : <span className={`${size} inline-flex shrink-0 items-center justify-center rounded-full bg-slate-800 ${big ? 'text-2xl' : 'text-sm'} font-bold text-amber-300`} aria-hidden>{initials(card.name)}</span>
 );
 
 const RatingLine: React.FC<{ r: any }> = ({ r }) => {
@@ -206,7 +207,7 @@ const ReviewForm: React.FC<{ targetId: string; group: TargetGroup; state: any; e
   };
   return (
     <div className="space-y-3 rounded-xl border border-slate-300 bg-white p-3" data-testid="review-form">
-      <p className="text-xs text-slate-500">{state?.proof ? tx('You can review because you worked together on', 'आप इसलिए रिव्यू दे सकते हैं क्योंकि आपने साथ काम किया:') : ''} {state?.proof ? <b className="text-slate-700">{hi ? ({ DEAL: 'डील रूम', PARTNERSHIP: 'प्रोजेक्ट पार्टनरशिप', OWNER_MANDATE: 'ओनर मैंडेट', CONSTRUCTION: 'निर्माण का काम', LEGAL: 'क़ानूनी केस' } as any)[state.proof.kind] : ({ DEAL: 'a deal room', PARTNERSHIP: 'a project partnership', OWNER_MANDATE: 'an owner mandate', CONSTRUCTION: 'a building job', LEGAL: 'a legal case' } as any)[state.proof.kind]}</b> : null}</p>
+      <p className="text-xs text-slate-500">{state?.proof ? tx('You can review because you worked together on', 'आप इसलिए रिव्यू दे सकते हैं क्योंकि आपने साथ काम किया:') : ''} {state?.proof ? <b className="text-slate-700">{(EVIDENCE as any)[state.proof.kind]?.[hi ? 'hi' : 'en'] || ''}</b> : null}</p>
       <StarPick value={rating} onChange={setRating} />
       <div>
         <p className="mb-1 text-xs font-semibold text-slate-700">{tx('What stood out? (up to 4)', 'क्या ख़ास रहा? (4 तक)')}</p>
@@ -229,6 +230,74 @@ const ReviewForm: React.FC<{ targetId: string; group: TargetGroup; state: any; e
   );
 };
 
+// ───────── v117 — the profile header and details, shared by "one profile" and "my profile" ─────────
+const SPEC_GROUPS: TargetGroup[] = ['BROKER', 'TEAM', 'CONNECTOR', 'BUILDER'];
+const specLabel = (id: string, hi: boolean) => { const s = SPECIALTIES.find(x => x.id === id); return s ? (hi ? s.hi : s.en) : id; };
+
+const Hero: React.FC<{ c: any; self?: boolean; action?: React.ReactNode }> = ({ c, self, action }) => {
+  const tx = useTx(); const { lang } = useI18n(); const hi = lang === 'hi';
+  const active = c.status === 'ACTIVE';
+  const stats: [string, string][] = active ? [
+    [c.rating.count ? c.rating.avg.toFixed(1) : '—', tx('Rating', 'रेटिंग')],
+    [String(c.rating.count), tx('Reviews', 'रिव्यू')],
+    [String(c.dealsClosed ?? 0), tx('Deals done', 'सौदे पूरे')],
+    [c.years != null ? String(c.years) : '—', tx('Years', 'साल')],
+  ] : [];
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" data-testid="profile-hero">
+      <div className="h-20 bg-gradient-to-br from-slate-900 via-slate-800 to-amber-700" aria-hidden />
+      <div className="px-4 pb-4">
+        <div className="-mt-10 flex items-end justify-between gap-3">
+          <span className="rounded-full bg-white p-1"><Avatar card={c} size="h-20 w-20" big /></span>
+          {action}
+        </div>
+        <h2 className="mt-2 break-words text-xl font-bold leading-tight text-slate-900" data-testid="profile-name">{c.name}</h2>
+        <p className="mt-0.5 text-xs text-slate-500">{hi ? c.groupLabel.hi : c.groupLabel.en}{c.title ? ` · ${c.title}` : ''}{c.firm ? ` · ${c.firm}` : ''}{c.city ? ` · ${c.city}` : ''}</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {!active && (self ? <Chip tone="amber">{tx('Others see your profile after GENZ approves you', 'GENZ की मंज़ूरी के बाद दूसरों को आपकी प्रोफ़ाइल दिखेगी')}</Chip> : <Chip tone="red">{tx('Not an active GENZ member', 'GENZ का सक्रिय सदस्य नहीं')}</Chip>)}
+          {c.checks.idChecked && <Chip tone="green"><ShieldCheck className="mr-0.5 inline h-3 w-3" />{tx('ID checked by GENZ', 'GENZ ने ID जाँची')}</Chip>}
+          {c.checks.photo && <Chip tone="green"><Camera className="mr-0.5 inline h-3 w-3" />{tx('Photo checked', 'फ़ोटो जाँची')}</Chip>}
+          {c.tier === 'TIER1' && <Chip tone="blue">{tx('Tier 1 · RERA', 'Tier 1 · RERA वेरिफ़ाइड')}{c.rera ? ` ${c.rera}` : ''}</Chip>}
+          {c.tier === 'TIER2' && <Chip tone="amber">{tx('Tier 2 · Local associate', 'Tier 2 · लोकल एसोसिएट')}</Chip>}
+          {!c.tier && c.rera && <Chip tone="blue">RERA {c.rera}</Chip>}
+          {c.code && <Chip>{c.code}</Chip>}
+          {c.memberSince && <Chip>{tx('On GENZ since', 'GENZ पर')} {c.memberSince}</Chip>}
+        </div>
+        {stats.length > 0 && (
+          <dl className="mt-3 grid grid-cols-4 divide-x divide-slate-200 rounded-xl bg-slate-50 py-2 text-center" data-testid="profile-stats">
+            {stats.map(([v, l]) => <div key={l} className="min-w-0 px-1"><dt className="sr-only">{l}</dt><dd className="text-lg font-extrabold text-slate-900">{v}</dd><p className="truncate text-xs text-slate-500" aria-hidden>{l}</p></div>)}
+          </dl>
+        )}
+        {active && c.confirmedBy > 0 && <p className="mt-2 flex items-center gap-1 text-xs text-slate-500"><BadgeCheck className="h-3.5 w-3.5 text-emerald-600" />{tx(`Deals confirmed by ${c.confirmedBy} broker(s)`, `${c.confirmedBy} ब्रोकरों ने सौदों की पुष्टि की`)}</p>}
+      </div>
+    </div>
+  );
+};
+
+const Details: React.FC<{ p: { about?: string; areas?: string[]; languages?: string[]; specialties?: string[] }; empty?: React.ReactNode }> = ({ p, empty }) => {
+  const tx = useTx(); const { lang } = useI18n(); const hi = lang === 'hi';
+  const rows: [React.ReactNode, string, string[]][] = [
+    [<Briefcase key="b" className="h-4 w-4" />, tx('Works on', 'किस पर काम'), (p.specialties || []).map(s => specLabel(s, hi))],
+    [<MapPin key="m" className="h-4 w-4" />, tx('Areas', 'इलाके'), p.areas || []],
+    [<Languages key="l" className="h-4 w-4" />, tx('Speaks', 'भाषाएँ'), p.languages || []],
+  ];
+  const has = !!p.about || rows.some(r => r[2].length);
+  if (!has) return <>{empty || null}</>;
+  return (
+    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4" data-testid="profile-details">
+      {p.about && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800">{p.about}</p>}
+      {rows.filter(r => r[2].length).map(([icon, label, items]) => (
+        <div key={label} className="flex items-start gap-2">
+          <span className="mt-1 text-slate-400" aria-hidden>{icon}</span>
+          <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-slate-500">{label}</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">{items.map(x => <span key={x} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">{x}</span>)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // ───────── one profile ─────────
 const ProfilePage: React.FC<{ id: string; ticket?: string; onBack: () => void }> = ({ id, ticket, onBack }) => {
   const tx = useTx(); const { lang } = useI18n(); const hi = lang === 'hi';
@@ -243,46 +312,20 @@ const ProfilePage: React.FC<{ id: string; ticket?: string; onBack: () => void }>
   return (
     <div className="space-y-4" data-testid="profile-page">
       <button type="button" onClick={onBack} className={ghost}><ArrowLeft className="h-4 w-4" />{tx('Back to search', 'सर्च पर वापस')}</button>
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex items-start gap-3">
-          <Avatar card={c} size="h-16 w-16" />
-          <div className="min-w-0 flex-1">
-            <h2 className="break-words text-lg font-bold text-slate-900" data-testid="profile-name">{c.name}</h2>
-            <p className="text-xs text-slate-500">{hi ? c.groupLabel.hi : c.groupLabel.en}{c.title ? ` · ${c.title}` : ''}{c.firm ? ` · ${c.firm}` : ''}{c.city ? ` · ${c.city}` : ''}</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {c.status !== 'ACTIVE' && <Chip tone="red">{tx('Not an active GENZ member', 'GENZ का सक्रिय सदस्य नहीं')}</Chip>}
-              {c.checks.idChecked && <Chip tone="green"><ShieldCheck className="mr-0.5 inline h-3 w-3" />{tx('ID checked by GENZ', 'GENZ ने ID जाँची')}</Chip>}
-              {c.checks.photo && <Chip tone="green"><Camera className="mr-0.5 inline h-3 w-3" />{tx('Photo checked', 'फ़ोटो जाँची')}</Chip>}
-              {c.rera && <Chip tone="blue">RERA {c.rera}</Chip>}
-              {c.code && <Chip>{c.code}</Chip>}
-              {c.memberSince && <Chip>{tx('On GENZ since', 'GENZ पर')} {c.memberSince}</Chip>}
+      <Hero c={c} />
+      {c.status === 'ACTIVE' && <Details p={c} />}
+      {c.status === 'ACTIVE' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          {r.count ? (
+            <div className="flex items-center gap-4">
+              <div className="text-center"><div className="text-3xl font-extrabold text-slate-900" data-testid="profile-avg">{r.avg.toFixed(1)}</div><Stars value={r.avg} /><div className="text-xs text-slate-500">{r.count} {r.count === 1 ? tx('reviewer', 'रिव्यूअर') : tx('reviewers', 'रिव्यूअर')}</div></div>
+              <div className="min-w-0 flex-1 space-y-1">{[5, 4, 3, 2, 1].map(s => <div key={s} className="flex items-center gap-1.5 text-xs text-slate-500"><span className="w-3">{s}</span><div className="h-2 flex-1 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-amber-400" style={{ width: `${(r.stars[s] / total) * 100}%` }} /></div><span className="w-4 text-right">{r.stars[s]}</span></div>)}</div>
             </div>
-          </div>
+          ) : <p className="text-sm text-slate-500">{tx('No reviews yet.', 'अभी कोई रिव्यू नहीं।')}</p>}
+          {r.early && r.count > 0 && <p className="mt-1.5 text-xs text-amber-700">{tx('Early rating — fewer than 3 people have reviewed.', 'शुरुआती रेटिंग — 3 से कम लोगों ने रिव्यू दिया है।')}</p>}
+          {r.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{r.tags.map((t: any) => <Chip key={t.id} tone={TAGS[g].find(x => x.id === t.id)?.tone === 'NEG' ? 'red' : 'green'}>{tagLabel(g, t.id, hi)} · {t.n}</Chip>)}</div>}
         </div>
-        {c.status === 'ACTIVE' && (
-          <>
-            {(c.about || c.areas?.length || c.languages?.length || c.years != null) && (
-              <div className="mt-3 space-y-1 text-sm text-slate-700">
-                {c.about && <p className="whitespace-pre-wrap break-words">{c.about}</p>}
-                <p className="text-xs text-slate-500">
-                  {c.years != null ? `${c.years} ${tx('yrs experience', 'साल का अनुभव')}` : ''}{c.areas?.length ? ` ${c.years != null ? '· ' : ''}${c.areas.join(', ')}` : ''}{c.languages?.length ? ` · ${c.languages.join(', ')}` : ''}
-                </p>
-                {c.dealsClosed > 0 && <p className="text-xs text-slate-500">{tx(`${c.dealsClosed} deal(s) closed on GENZ`, `GENZ पर ${c.dealsClosed} सौदे पूरे`)}{c.confirmedBy ? tx(` · confirmed by ${c.confirmedBy} broker(s)`, ` · ${c.confirmedBy} ब्रोकरों ने पुष्टि की`) : ''}</p>}
-              </div>
-            )}
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              {r.count ? (
-                <div className="flex items-center gap-4">
-                  <div className="text-center"><div className="text-3xl font-extrabold text-slate-900" data-testid="profile-avg">{r.avg.toFixed(1)}</div><Stars value={r.avg} /><div className="text-[11px] text-slate-500">{r.count} {r.count === 1 ? tx('reviewer', 'रिव्यूअर') : tx('reviewers', 'रिव्यूअर')}</div></div>
-                  <div className="min-w-0 flex-1 space-y-0.5">{[5, 4, 3, 2, 1].map(s => <div key={s} className="flex items-center gap-1.5 text-[11px] text-slate-500"><span className="w-3">{s}</span><div className="h-1.5 flex-1 rounded bg-slate-100"><div className="h-1.5 rounded bg-amber-400" style={{ width: `${(r.stars[s] / total) * 100}%` }} /></div><span className="w-4 text-right">{r.stars[s]}</span></div>)}</div>
-                </div>
-              ) : <p className="text-sm text-slate-500">{tx('No reviews yet.', 'अभी कोई रिव्यू नहीं।')}</p>}
-              {r.early && r.count > 0 && <p className="mt-1.5 text-[11px] text-amber-700">{tx('Early rating — fewer than 3 people have reviewed.', 'शुरुआती रेटिंग — 3 से कम लोगों ने रिव्यू दिया है।')}</p>}
-              {r.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{r.tags.map((t: any) => <Chip key={t.id} tone={TAGS[g].find(x => x.id === t.id)?.tone === 'NEG' ? 'red' : 'green'}>{tagLabel(g, t.id, hi)} · {t.n}</Chip>)}</div>}
-            </div>
-          </>
-        )}
-      </div>
+      )}
 
       {c.status === 'ACTIVE' && d.review && (
         <div data-testid="review-box">
@@ -309,54 +352,113 @@ const ProfilePage: React.FC<{ id: string; ticket?: string; onBack: () => void }>
 const MineTab: React.FC<{ onOpen: (id: string) => void }> = ({ onOpen }) => {
   const tx = useTx(); const { lang } = useI18n(); const hi = lang === 'hi';
   const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false);
-  const [f, setF] = useState({ visible: true, showPhoto: true, about: '', areas: '', languages: '', years: '' });
-  const load = useCallback(() => api.profMine().then(x => { setD(x); setF({ visible: x.profile.visible, showPhoto: x.profile.showPhoto, about: x.profile.about, areas: x.profile.areas.join(', '), languages: x.profile.languages.join(', '), years: x.profile.years == null ? '' : String(x.profile.years) }); }).catch(e => setErr(e.message)), []);
+  const [editing, setEditing] = useState<boolean | null>(null); const [rtab, setRtab] = useState<'about' | 'wrote'>('about');
+  const [f, setF] = useState({ visible: true, showPhoto: true, about: '', areas: '', languages: '', years: '', specialties: [] as string[] });
+  const fill = (x: any) => setF({ visible: x.profile.visible, showPhoto: x.profile.showPhoto, about: x.profile.about, areas: x.profile.areas.join(', '), languages: x.profile.languages.join(', '), years: x.profile.years == null ? '' : String(x.profile.years), specialties: x.profile.specialties || [] });
+  const load = useCallback(() => api.profMine().then(x => { setD(x); fill(x); }).catch(e => setErr(e.message)), []);
   useEffect(() => { load(); }, [load]);
   if (err && !d) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{err}</p>;
   if (!d) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>;
   const list = (s: string) => s.split(',').map(x => x.trim()).filter(Boolean);
+  const c = d.card; const g: TargetGroup = c.group; const p = d.profile;
+  const spec = SPEC_GROUPS.includes(g);
   const save = async () => {
     setBusy(true); setErr(''); setSaved(false);
-    try { await api.profSave({ visible: f.visible, showPhoto: f.showPhoto, about: f.about, areas: list(f.areas), languages: list(f.languages), years: f.years === '' ? null : Number(f.years) }); setSaved(true); load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    try { await api.profSave({ visible: f.visible, showPhoto: f.showPhoto, about: f.about, areas: list(f.areas), languages: list(f.languages), years: f.years === '' ? null : Number(f.years), ...(spec ? { specialties: f.specialties } : {}) }); setSaved(true); setEditing(false); load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
-  const c = d.card; const g: TargetGroup = c.group;
+  const toggleSpec = (id: string) => setF(x => ({ ...x, specialties: x.specialties.includes(id) ? x.specialties.filter(s => s !== id) : x.specialties.length >= 4 ? x.specialties : [...x.specialties, id] }));
+  // what makes a profile trusted — only things this screen can fix
+  const steps: { ok: boolean; en: string; hi: string }[] = [
+    { ok: !!p.about, en: 'A line about you', hi: 'अपने बारे में एक पंक्ति' },
+    ...(spec ? [{ ok: p.specialties.length > 0, en: 'What you work on', hi: 'आप किस पर काम करते हैं' }] : []),
+    { ok: p.areas.length > 0, en: 'Your areas', hi: 'आपके इलाके' },
+    { ok: p.languages.length > 0, en: 'Languages', hi: 'भाषाएँ' },
+    ...(d.isPrivate ? [] : [{ ok: p.years != null, en: 'Years of work', hi: 'काम के साल' }]),
+  ];
+  const done = steps.filter(s => s.ok).length; const pct = Math.round((done / steps.length) * 100);
+  const open = editing ?? !p.about;   // a fresh profile opens straight in edit
+  const share = c.code ? `https://wa.me/?text=${encodeURIComponent(hi ? `${c.name} — GENZ ब्रोकर नेटवर्क। मेरे रिव्यू देखने के लिए GENZ ऐप में मेरा GZ कोड ${c.code} खोजें।` : `${c.name} on GENZ Broker Network — search my GZ code ${c.code} in the GENZ app to see my reviews.`)}` : '';
+  const reviews = rtab === 'about' ? d.reviewsAboutMe : d.reviewsIWrote;
   return (
     <div className="space-y-4" data-testid="mine-tab">
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center gap-3"><Avatar card={c} /><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{c.name}</p><RatingLine r={c.rating} /></div></div>
-        <p className="mt-2 text-xs text-slate-500">{d.isPrivate
-          ? tx('Brokers and builders can check you only by your exact mobile number or GZ code. Names are never listed. This is how GENZ protects the network from fake enquiries — you control the photo and the lines below.', 'ब्रोकर और बिल्डर आपको सिर्फ़ आपके सटीक मोबाइल नंबर या GZ कोड से जाँच सकते हैं। नाम कभी लिस्ट में नहीं दिखते। इसी तरह GENZ नेटवर्क को नकली पूछताछ से बचाती है — फ़ोटो और नीचे की पंक्तियाँ आपके हाथ में हैं।')
-          : tx('People find you by searching your name, firm or area. Nothing is listed or browsable. Even if you switch the name search off, your exact mobile number or GZ code — and people who worked with you — still reach this page, so a rating cannot be dodged.', 'लोग आपको नाम, फ़र्म या इलाका खोजकर पाते हैं। कुछ भी लिस्ट या ब्राउज़ नहीं होता। नाम से सर्च बंद करने पर भी आपका सटीक मोबाइल नंबर या GZ कोड — और जिन्होंने आपके साथ काम किया — इस पेज तक पहुँचते हैं, ताकि रेटिंग से बचा न जा सके।')}</p>
-        <div className="mt-3 space-y-3">
-          {!d.isPrivate && (
-            <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-800"><input type="checkbox" checked={f.visible} onChange={e => setF({ ...f, visible: e.target.checked })} className="h-5 w-5" data-testid="prof-visible" />{tx('Show me when people search by name', 'नाम से सर्च करने पर मुझे दिखाएँ')}</label>
+      <Hero c={c} self action={!open ? (
+        <div className="flex gap-2">
+          {share && <a href={share} target="_blank" rel="noopener noreferrer" className={ghost} data-testid="prof-share" aria-label={tx('Share my GZ code on WhatsApp', 'मेरा GZ कोड WhatsApp पर भेजें')}><Share2 className="h-4 w-4" /></a>}
+          <button type="button" onClick={() => { fill(d); setEditing(true); setSaved(false); }} className={dark} data-testid="prof-edit"><Pencil className="h-4 w-4" />{tx('Edit', 'बदलें')}</button>
+        </div>
+      ) : undefined} />
+
+      {c.role === 'BROKER' && <MyReraCard />}
+
+      {pct < 100 && !open && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="prof-strength">
+          <div className="flex items-center justify-between gap-2"><p className="text-sm font-bold text-slate-900">{tx('Profile strength', 'प्रोफ़ाइल कितनी पूरी')}</p><span className="text-sm font-extrabold text-slate-900">{pct}%</span></div>
+          <div className="mt-2 h-2 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${pct < 50 ? 'bg-amber-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} /></div>
+          <p className="mt-2 text-xs text-slate-500">{tx('People trust a full profile more. Add:', 'पूरी प्रोफ़ाइल पर लोग ज़्यादा भरोसा करते हैं। जोड़ें:')}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">{steps.filter(s => !s.ok).map(s => <button key={s.en} type="button" onClick={() => { fill(d); setEditing(true); }} className="min-h-9 rounded-full border border-dashed border-slate-400 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">+ {hi ? s.hi : s.en}</button>)}</div>
+        </div>
+      )}
+
+      {saved && !open && <p className="rounded-lg bg-emerald-50 p-2 text-xs font-semibold text-emerald-800" role="status">{tx('Saved.', 'सेव हो गया।')}</p>}
+
+      {open ? (
+        <div className="space-y-4 rounded-2xl border border-slate-300 bg-white p-4" data-testid="prof-form">
+          <h3 className="text-base font-bold text-slate-900">{tx('Edit my profile', 'मेरी प्रोफ़ाइल बदलें')}</h3>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700" htmlFor="prof-about">{tx('About you', 'आपके बारे में')}</label>
+            <textarea id="prof-about" value={f.about} onChange={e => setF({ ...f, about: e.target.value })} maxLength={ABOUT_MAX} rows={3} className={inp} data-testid="prof-about" placeholder={tx('A line about you — what you do, what you are good at (no links or phone numbers)', 'अपने बारे में एक पंक्ति — आप क्या करते हैं (लिंक या फ़ोन नंबर नहीं)')} />
+            <p className="text-right text-xs text-slate-400">{f.about.length}/{ABOUT_MAX}</p>
+          </div>
+          {spec && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-slate-700">{tx('What you mostly work on (up to 4)', 'आप ज़्यादातर किस पर काम करते हैं (4 तक)')}</p>
+              <div className="flex flex-wrap gap-1.5">{SPECIALTIES.map(s => (
+                <button key={s.id} type="button" aria-pressed={f.specialties.includes(s.id)} onClick={() => toggleSpec(s.id)} data-testid={`spec-${s.id}`}
+                  className={`min-h-9 rounded-full border px-3 text-xs font-semibold ${f.specialties.includes(s.id) ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? s.hi : s.en}</button>
+              ))}</div>
+            </div>
           )}
-          <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-800"><input type="checkbox" checked={f.showPhoto} onChange={e => setF({ ...f, showPhoto: e.target.checked })} className="h-5 w-5" data-testid="prof-photo" />{tx('Show my checked photo (if I have one)', 'मेरी जाँची हुई फ़ोटो दिखाएँ (अगर है)')}</label>
-          <textarea value={f.about} onChange={e => setF({ ...f, about: e.target.value })} maxLength={ABOUT_MAX} rows={3} className={inp} data-testid="prof-about" placeholder={tx('A line about you — what you do, what you are good at (no links or phone numbers)', 'अपने बारे में एक पंक्ति — आप क्या करते हैं (लिंक या फ़ोन नंबर नहीं)')} />
-          <input value={f.areas} onChange={e => setF({ ...f, areas: e.target.value })} className={inp} data-testid="prof-areas" placeholder={tx('Areas you work in, separated by commas', 'आप किन इलाकों में काम करते हैं (कॉमा से अलग)')} />
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-700" htmlFor="prof-areas">{tx('Areas', 'इलाके')}</label>
+            <input id="prof-areas" value={f.areas} onChange={e => setF({ ...f, areas: e.target.value })} className={inp} data-testid="prof-areas" placeholder={tx('Areas you work in, separated by commas', 'आप किन इलाकों में काम करते हैं (कॉमा से अलग)')} />
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <input value={f.languages} onChange={e => setF({ ...f, languages: e.target.value })} className={inp} placeholder={tx('Languages', 'भाषाएँ')} />
-            <input value={f.years} onChange={e => setF({ ...f, years: e.target.value.replace(/\D/g, '').slice(0, 2) })} inputMode="numeric" className={inp} placeholder={tx('Years of work', 'काम के साल')} />
+            <div className="space-y-1"><label className="text-xs font-semibold text-slate-700" htmlFor="prof-lang">{tx('Languages', 'भाषाएँ')}</label><input id="prof-lang" value={f.languages} onChange={e => setF({ ...f, languages: e.target.value })} className={inp} placeholder={tx('Hindi, English', 'हिंदी, अंग्रेज़ी')} /></div>
+            <div className="space-y-1"><label className="text-xs font-semibold text-slate-700" htmlFor="prof-years">{tx('Years of work', 'काम के साल')}</label><input id="prof-years" value={f.years} onChange={e => setF({ ...f, years: e.target.value.replace(/\D/g, '').slice(0, 2) })} inputMode="numeric" className={inp} placeholder="5" /></div>
+          </div>
+          <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><Lock className="h-3.5 w-3.5" />{tx('Who can see this', 'इसे कौन देख सकता है')}</p>
+            <p className="text-xs text-slate-500">{d.isPrivate
+              ? tx('Brokers and builders can check you only by your exact mobile number or GZ code. Names are never listed. This is how GENZ protects the network from fake enquiries — you control the photo and the lines below.', 'ब्रोकर और बिल्डर आपको सिर्फ़ आपके सटीक मोबाइल नंबर या GZ कोड से जाँच सकते हैं। नाम कभी लिस्ट में नहीं दिखते। इसी तरह GENZ नेटवर्क को नकली पूछताछ से बचाती है — फ़ोटो और नीचे की पंक्तियाँ आपके हाथ में हैं।')
+              : tx('People find you by searching your name, firm or area. Nothing is listed or browsable. Even if you switch the name search off, your exact mobile number or GZ code — and people who worked with you — still reach this page, so a rating cannot be dodged.', 'लोग आपको नाम, फ़र्म या इलाका खोजकर पाते हैं। कुछ भी लिस्ट या ब्राउज़ नहीं होता। नाम से सर्च बंद करने पर भी आपका सटीक मोबाइल नंबर या GZ कोड — और जिन्होंने आपके साथ काम किया — इस पेज तक पहुँचते हैं, ताकि रेटिंग से बचा न जा सके।')}</p>
+            {!d.isPrivate && (
+              <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-800"><input type="checkbox" checked={f.visible} onChange={e => setF({ ...f, visible: e.target.checked })} className="h-5 w-5" data-testid="prof-visible" />{tx('Show me when people search by name', 'नाम से सर्च करने पर मुझे दिखाएँ')}</label>
+            )}
+            <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-800"><input type="checkbox" checked={f.showPhoto} onChange={e => setF({ ...f, showPhoto: e.target.checked })} className="h-5 w-5" data-testid="prof-photo" />{tx('Show my checked photo (if I have one)', 'मेरी जाँची हुई फ़ोटो दिखाएँ (अगर है)')}</label>
           </div>
           {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
-          {saved && <p className="text-xs text-emerald-700">{tx('Saved.', 'सेव हो गया।')}</p>}
-          <button type="button" disabled={busy} onClick={save} className={dark} data-testid="prof-save">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Save my profile', 'मेरी प्रोफ़ाइल सेव करें')}</button>
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={save} className={dark} data-testid="prof-save">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Save my profile', 'मेरी प्रोफ़ाइल सेव करें')}</button>
+            {p.about && <button type="button" className={ghost} onClick={() => { setEditing(false); setErr(''); }}>{tx('Cancel', 'रद्द')}</button>}
+          </div>
         </div>
-      </div>
+      ) : <Details p={p} />}
 
       <div className="space-y-2">
-        <h3 className="text-sm font-bold text-slate-900">{tx('What people said about you', 'लोगों ने आपके बारे में क्या कहा')} ({d.reviewsAboutMe.length})</h3>
-        {d.reviewsAboutMe.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500">{tx('No reviews yet. They come after you work with someone on GENZ.', 'अभी कोई रिव्यू नहीं। GENZ पर किसी के साथ काम करने के बाद आते हैं।')}</p>}
-        {d.reviewsAboutMe.map((rv: any) => <ReviewCard key={rv.id} rv={rv} group={g} onChanged={load} canReply />)}
-      </div>
-      <div className="space-y-2">
-        <h3 className="text-sm font-bold text-slate-900">{tx('Reviews you wrote', 'आपके लिखे रिव्यू')} ({d.reviewsIWrote.length})</h3>
-        {d.reviewsIWrote.map((rv: any) => (
-          <div key={rv.id} className="space-y-1">
-            <ReviewCard rv={rv} group={rv.target.group} target={rv.target} onChanged={load} />
-            <button type="button" className="min-h-11 px-2 text-xs font-semibold text-slate-700 underline" onClick={() => onOpen(rv.target.id)}>{tx('Open his profile to edit', 'बदलने के लिए उनकी प्रोफ़ाइल खोलें')}</button>
-          </div>
-        ))}
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label={tx('Reviews', 'रिव्यू')}>
+          {([['about', tx('About me', 'मेरे बारे में'), d.reviewsAboutMe.length], ['wrote', tx('I wrote', 'मैंने लिखे'), d.reviewsIWrote.length]] as const).map(([k, l, n]) => (
+            <button key={k} type="button" role="tab" aria-selected={rtab === k} onClick={() => setRtab(k)} data-testid={`mine-reviews-${k}`}
+              className={`min-h-11 rounded-lg text-xs font-semibold ${rtab === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}>{l} ({n})</button>
+          ))}
+        </div>
+        {reviews.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500">{rtab === 'about' ? tx('No reviews yet. They come after you work with someone on GENZ.', 'अभी कोई रिव्यू नहीं। GENZ पर किसी के साथ काम करने के बाद आते हैं।') : tx('You have not reviewed anyone yet.', 'आपने अभी किसी को रिव्यू नहीं दिया।')}</p>}
+        {rtab === 'about' ? d.reviewsAboutMe.map((rv: any) => <ReviewCard key={rv.id} rv={rv} group={g} onChanged={load} canReply />)
+          : d.reviewsIWrote.map((rv: any) => (
+            <div key={rv.id} className="space-y-1">
+              <ReviewCard rv={rv} group={rv.target.group} target={rv.target} onChanged={load} />
+              <button type="button" className="min-h-11 px-2 text-xs font-semibold text-slate-700 underline" onClick={() => onOpen(rv.target.id)}>{tx('Open his profile to edit', 'बदलने के लिए उनकी प्रोफ़ाइल खोलें')}</button>
+            </div>
+          ))}
       </div>
     </div>
   );
@@ -402,11 +504,12 @@ const AdminTab: React.FC = () => {
 type Sub = 'find' | 'mine' | 'admin';
 export const ProfilesView: React.FC<{ role: string; permissions: string[]; startOn?: 'find' | 'mine' }> = ({ role, permissions, startOn }) => {
   const tx = useTx();
-  const [sub, setSub] = useState<Sub>(startOn === 'mine' && role !== 'ADMIN' && role !== 'SUPERADMIN' ? 'mine' : 'find');
+  const shop = role === 'GENZ_CONNECTOR';   // v117 — a shop connector keeps his own profile; no people search for him (the server refuses it too)
+  const [sub, setSub] = useState<Sub>(shop || (startOn === 'mine' && role !== 'ADMIN' && role !== 'SUPERADMIN') ? 'mine' : 'find');
   const [open, setOpen] = useState<{ id: string; ticket?: string } | null>(null);
   const admin = permissions.includes('review:moderate');
   const staff = role === 'ADMIN' || role === 'SUPERADMIN';   // staff have no profile of their own
-  const tabs: [Sub, string, string][] = [['find', 'Find', 'ढूँढें'], ...(staff ? [] : [['mine', 'My profile', 'मेरी प्रोफ़ाइल'] as [Sub, string, string]]), ...(admin ? [['admin', 'Reports', 'रिपोर्ट'] as [Sub, string, string]] : [])];
+  const tabs: [Sub, string, string][] = [...(shop ? [] : [['find', 'Find', 'ढूँढें'] as [Sub, string, string]]), ...(staff ? [] : [['mine', 'My profile', 'मेरी प्रोफ़ाइल'] as [Sub, string, string]]), ...(admin ? [['admin', 'Reports', 'रिपोर्ट'] as [Sub, string, string]] : [])];
   return (
     <div className="space-y-4">
       <div>

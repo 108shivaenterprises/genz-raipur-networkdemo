@@ -1234,6 +1234,11 @@ export const api = {
   idSettingsSave: (b: { autoVerify?: boolean; defaultAssigneeId?: string | null }) => request<any>('/api/id-review/settings', { method: 'PUT', body: JSON.stringify(b) }),
   netProfile: (id: string) => request<any>(`/api/network/profile/${encodeURIComponent(id)}`),
   netSetTier: (id: string, b: any) => request<any>(`/api/network/tier/${id}`, { method: 'POST', body: JSON.stringify(b) }),
+  // v117 — a broker adds his RERA himself; GENZ checks it and moves him to Tier 1
+  netMyRera: () => request<{ tier: 'TIER1' | 'TIER2'; rera: string; claim: { number: string; at: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string } | null }>('/api/network/my-rera'),
+  netMyReraSave: (reraNumber: string) => request<any>('/api/network/my-rera', { method: 'POST', body: JSON.stringify({ reraNumber }) }),
+  netReraClaims: () => request<{ claims: { userId: string; name: string; company: string; city: string; tier: string; number: string; at: string; idChecked: boolean }[] }>('/api/network/rera-claims'),
+  netReraDecide: (userId: string, approve: boolean, note?: string) => request<any>(`/api/network/rera-claims/${encodeURIComponent(userId)}`, { method: 'POST', body: JSON.stringify({ approve, note }) }),
   netChannel: () => request<any>('/api/network/channel/projects'),
   netDesk: () => request<any>('/api/network/desk'),
   netDeskNew: (b: any) => request<any>('/api/network/desk', { method: 'POST', body: JSON.stringify(b) }),
