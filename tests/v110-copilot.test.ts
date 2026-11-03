@@ -34,6 +34,10 @@ describe('v110 copilot planner', () => {
     expect(r.kind).toBe('ADD_CLIENT');
     expect(r.body).toMatchObject({ name: 'Ramdulri', phone: '7000458838', budgetMax: 5_000_000, propertyType: 'Residential Plot', areas: ['sejbahar'] });
   });
+  it('area before me/mein is caught too', () => {
+    expect((p('new client Amit 9826012345 budget 5 cr shankar nagar me independent house') as any).body.areas).toEqual(['shankar nagar']);
+    expect((p('Amit 9826012345 5 cr budget Shankar Nagar mein house chahiye new client') as any).body.areas).toEqual(['Shankar Nagar']);
+  });
   it('a sold listing is pointed to the screen that asks how it closed', () => {
     expect(p('sejbahar wali listing bik gayi').kind).toBe('INFO');
   });

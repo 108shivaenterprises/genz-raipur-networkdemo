@@ -93,7 +93,10 @@ function parseAdd(raw: string, now: Date): CpPlan {
   const rent = /(rent|kiraya|kiraye)/.test(t);
   const b = lead.budgetMax ? { min: lead.budgetMin, max: lead.budgetMax } : parseBudget(t.replace(/\b\d{10}\b/g, ' '));
   const areaM = /(?:\bin\b|\bme\b|\bmein\b|\bmai\b|area|location|ilaka|इलाके?\s*(?:में)?)\s+([a-zऀ-ॿ][a-zऀ-ॿ ]{2,24}?)(?=\s+(?:budget|bajet|\d|rent|sale|follow|kal|aaj|ke|ka)\b|[,.]|$)/i.exec(raw);
-  const area = (lead.area || (areaM ? areaM[1] : '')).trim();
+  const areaIn = areaM && !/house|flat|plot|shop|office|godown|villa|bhk|land|makan|dukan|kothi/i.test(areaM[1]) ? areaM[1] : '';
+  // “shankar nagar me house chahiye” — the place comes BEFORE me/mein/mai (and after the client's name)
+  const preM = !areaIn ? /(?:^|[,.]|\bchahiye\b|\bke liye\b|\b\d+\s*(?:cr|crore|lakh|lac|l)\b)\s*([a-zऀ-ॿ]{3,}(?:\s+[a-zऀ-ॿ]{3,}){0,2}?)\s+(?:me|mein|mai|में)\b/i.exec(raw.replace(/\b(?:naya|nayi|new|add)\b|\b(?:client|customer|lead|grahak)\b/gi, ',')) : null;
+  const area = (lead.area || areaIn || (preM && !NAME_STOP.test(preM[1]) ? preM[1].replace(/^(?:budget|bajet)\s+/i, '') : '')).trim();
   if (!name) return { kind: 'ASK', hi: 'क्लाइंट का नाम क्या है? जैसे “नया क्लाइंट Ramesh 98260 12345 budget 60 lakh”।', en: 'What is the client’s name? e.g. “new client Ramesh 98260 12345 budget 60 lakh”.' };
   if (!/^[6-9]\d{9}$/.test(phone)) return { kind: 'ASK', hi: `${name} का 10 अंकों का मोबाइल नंबर बताइए।`, en: `Please give ${name}’s 10-digit mobile number.` };
   const w = readWhen(raw, now);
