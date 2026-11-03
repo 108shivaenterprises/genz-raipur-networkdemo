@@ -52,7 +52,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   useEffect(() => { if (prefill) { try { sessionStorage.removeItem('genz.newroom'); } catch { /* blocked */ } } }, [prefill]);
   const [seed, setSeed] = useState<any>(prefill);
   const [cl, setCl] = useState<any[]>([]);
-  useEffect(() => { api.clients().then(r => setCl(r.clients || [])).catch(() => undefined); }, [tick, d?.rooms?.length]);   // v113 — clients with no room yet
+  useEffect(() => { const g = () => api.clients().then(r => setCl(r.clients || [])).catch(() => undefined); g(); window.addEventListener('genz:clients-changed', g); return () => window.removeEventListener('genz:clients-changed', g); }, [tick, d?.rooms?.length]);   // v113 — clients with no room yet
   const [creating, setCreating] = useState(!!prefill); const [creatingOwner, setCreatingOwner] = useState(false);
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string } | null>(null);
   const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all'); const [who, setWho] = useState('ALL'); // v63 — broker: whose rooms (his own / one team member's)

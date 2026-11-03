@@ -204,6 +204,9 @@ export default function App() {
   const [matchSelectedReqId, setMatchSelectedReqId] = useState<string | undefined>(undefined);
   const [matchSelectedPropId, setMatchSelectedPropId] = useState<string | undefined>(undefined);
 
+  // v113 — a client added / changed anywhere (Copilot, Clients, a lead) also creates / updates his Buyers need: reload so Buyers, Match and Chat show him at once
+  const reloadRef = useRef<() => void>(() => undefined);
+  useEffect(() => { let t: ReturnType<typeof setTimeout>; const h = () => { clearTimeout(t); t = setTimeout(() => reloadRef.current(), 400); }; window.addEventListener('genz:clients-changed', h); return () => { clearTimeout(t); window.removeEventListener('genz:clients-changed', h); }; }, []);
   // Fetch everything the signed-in role is allowed to see (each call is permission-gated server-side too).
   const loadData = async () => {
     try {
@@ -269,6 +272,7 @@ export default function App() {
       setLoading(false);
     }
   };
+  reloadRef.current = () => { void loadData(); };
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
