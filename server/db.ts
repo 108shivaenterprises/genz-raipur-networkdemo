@@ -837,6 +837,8 @@ export interface BuyerRequirement {
   id: string; // e.g. REQ-RAI-201
   /** v101 — made from a shop-QR lead the moment he confirmed his need; the number stays hidden ('') until the chat opens it */
   leadId?: string;
+  /** v113 — the broker's client card this need belongs to (clientlink.ts keeps budget / area / stage in step) */
+  clientCardId?: string;
   customerId: string; // Persistent customer entity ID
   customerName: string;
   customerPhone: string; // Masked for unauthorized brokers
@@ -1158,6 +1160,8 @@ export interface ClientCard {
   consent: boolean;
   /** client sync id so an offline retry never creates a duplicate */
   clientRef?: string;
+  /** v113 — the buyer need (Buyers / Match) made from this card; the two are kept in step (clientlink.ts) */
+  requirementId?: string;
   timeline: { at: string; kind: 'CREATED' | 'STAGE' | 'NOTE' | 'CONTACT' | 'FOLLOWUP' | 'SHARE'; text: string }[];
   createdAt: string;
   updatedAt: string;

@@ -184,6 +184,7 @@ import { normPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera
 import compression from 'compression';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureCardForNeed } from './server/clientlink.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1751,6 +1752,7 @@ app.post('/api/requirements', needs('requirement:create'), newAccountCap('requir
   };
 
   state.requirements.unshift(newReq);
+  ensureCardForNeed(newReq);   // v113 — a need given to a broker also appears in his Clients
   db.save();
 
   db.appendAuditEvent(

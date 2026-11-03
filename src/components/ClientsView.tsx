@@ -116,6 +116,10 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
                   </button>
                   <span title={(c.lead?.reasons || []).map((r: any) => tx(r.en, r.hi)).join(' • ')} className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${LEAD_STYLE[c.lead?.label || 'COLD']}`}>{tx(...LEAD_LABEL[c.lead?.label || 'COLD'])} {c.lead?.score ?? 0}</span>
                 </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-semibold" data-testid="client-links">
+                  <span className={c.needId ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800' : 'rounded-full bg-slate-100 px-2 py-0.5 text-slate-500'}>{c.needId ? tx('In Buyers ✓', 'Buyers में ✓') : tx('Add a budget to list in Buyers', 'Buyers में आने के लिए बजट डालें')}</span>
+                  <span className={c.roomId ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800' : 'rounded-full bg-slate-100 px-2 py-0.5 text-slate-500'}>{c.roomId ? tx('Chat room open ✓', 'चैट रूम खुला ✓') : tx('No chat room yet', 'चैट रूम नहीं')}</span>
+                </div>
                 {c.followUpAt && <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${new Date(c.followUpAt) <= new Date() ? 'font-bold text-red-700' : 'text-slate-500'}`}><Clock className="h-3 w-3" aria-hidden />{tx('Follow-up', 'फॉलो-अप')}: {new Date(c.followUpAt).toLocaleDateString('en-IN')}</div>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {c.phoneHidden ? <span className="text-xs text-slate-500" data-testid="client-phone-hidden">{c.phone} · {tx('number hidden by your broker', 'नंबर आपके ब्रोकर ने छुपाया है')}</span> : <>

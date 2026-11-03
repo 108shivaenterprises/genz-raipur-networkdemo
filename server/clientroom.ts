@@ -44,6 +44,8 @@ const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
 const hmac = (tag: string, v: string) => crypto.createHmac('sha256', secret()).update(`${tag}|${v}`).digest('hex');
 const phone10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
 const PHONE_RE = /^[6-9]\d{9}$/;
+/** v113 — the broker's open room for this mobile (the client list shows a Chat button when there is one) */
+export const openRoomIdOf = (brokerId: string, phone: unknown): string | undefined => { const k = hmac('cr-phone', phone10(phone)); return st().clientRooms.find(x => x.brokerId === brokerId && x.status === 'ACTIVE' && x.phoneKey === k && x.kind !== 'OWNER')?.id; };
 const newToken = () => crypto.randomBytes(18).toString('base64url');
 const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
 /** audit F2 — only a local DEMO shows the customer's / shop's code to the broker; a real server needs SMS (the broker never sees it) */

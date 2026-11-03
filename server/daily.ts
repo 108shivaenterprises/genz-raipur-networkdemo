@@ -26,6 +26,8 @@ import { normCity } from '../src/shared/cities.js';
 import { leadScore, digestScore, rateCard, parseLeadText, RATE_MIN_SAMPLE } from '../src/shared/dailyRules.js';
 import { sameCity } from '../src/shared/india.js';
 import { policyOf, maskPhone } from '../src/shared/pcontrolRules.js';
+import { linkNeedForCard, syncBroker, needOfCard } from './clientlink.js';
+import { openRoomIdOf } from './clientroom.js';
 
 const nowIso = () => new Date().toISOString();
 const DAY = 86_400_000;
@@ -257,7 +259,8 @@ export function createDailyRouter() {
   // ── F3 clients ──
   r.get('/clients', needs('daily:use'), (_req, res) => {
     const viewer = me(); const u = cardOwner(viewer); const st = db.getState(); const props = browsable(st, u);
-    const list = st.clientCards.filter(c => c.brokerId === u.id).map(c => forViewer(viewer, view(st, u, c, props)));
+    syncBroker(u.id);   // v113 — Clients ↔ Buyers ↔ Chat: whatever was added in one place shows in the others
+    const list = st.clientCards.filter(c => c.brokerId === u.id).map(c => ({ ...forViewer(viewer, view(st, u, c, props)), needId: needOfCard(c)?.id, roomId: openRoomIdOf(u.id, c.phone) }));
     res.json({ success: true, clients: list, stages: CLIENT_STAGES, staff: isStaff(viewer) ? { employer: u.name, phones: showPhone(viewer) } : undefined });
   });
   r.get('/clients/due', needs('daily:use'), (_req, res) => {
@@ -280,7 +283,7 @@ export function createDailyRouter() {
       city: normCity(d.city || u.city), areas: d.areas, propertyType: d.propertyType, transactionType: d.transactionType, tags: d.tags, notes: d.notes,
       stage: 'NEW', followUpAt: d.followUpAt, consent: true, clientRef: d.clientRef, timeline: [{ at: now, kind: 'CREATED', text: isStaff(viewer) ? `Client added by ${viewer.name} (office team)` : 'Client added' }], createdAt: now, updatedAt: now,
     };
-    st.clientCards.unshift(card); db.save();
+    st.clientCards.unshift(card); linkNeedForCard(card); db.save();
     audit('CLIENT_CARD_CREATED', card.id, `Client card created (consent recorded)${isStaff(viewer) ? ` by ${viewer.name} for ${u.name}` : ''}`);
     res.json({ success: true, client: forViewer(viewer, view(st, u, card, browsable(st, u))) });
   });
@@ -291,7 +294,7 @@ export function createDailyRouter() {
     const d = p.data as any; delete d.consent; delete d.clientRef;
     if (!showPhone(me())) delete d.phone; // a masked number cannot be edited by someone who cannot see it
     Object.assign(c, d); if (d.city) c.city = normCity(d.city); c.updatedAt = nowIso();
-    db.save(); res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
+    linkNeedForCard(c); db.save(); res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
   });
   r.post('/clients/:id/stage', needs('daily:use'), (req: Request, res: Response) => {
     const c = findCard(req.params.id); if (!c) return res.status(404).json({ error: 'Client not found' });
@@ -305,7 +308,7 @@ export function createDailyRouter() {
     if (b.data.followUpAt) c.followUpAt = b.data.followUpAt;
     if (c.stage === 'DEAL' || c.stage === 'LOST') c.followUpAt = undefined;
     c.timeline = c.timeline.slice(0, 80);
-    db.save(); res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
+    linkNeedForCard(c); db.save(); res.json({ success: true, client: forViewer(me(), view(db.getState(), cardOwner(me()), c, browsable(db.getState(), cardOwner(me())))) });
   });
   r.post('/clients/:id/note', needs('daily:use'), (req: Request, res: Response) => {
     const c = findCard(req.params.id); if (!c) return res.status(404).json({ error: 'Client not found' });
