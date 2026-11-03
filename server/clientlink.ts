@@ -24,6 +24,10 @@ export function needOfCard(c: ClientCard): BuyerRequirement | undefined {
   const byId = c.requirementId ? s.requirements.find(q => q.id === c.requirementId) : undefined;
   if (byId) return byId;
   const ph = phone10(c.phone); if (!OK_PHONE.test(ph)) return undefined;
+  // a shop-QR / bot lead: its need was made with the number still empty, so it is found by the lead, not the phone
+  const lead = s.partnerLeads.find(l => l.clientCardId === c.id);
+  const byLead = lead ? s.requirements.find(q => (q as any).leadId === lead.id && live(q)) : undefined;
+  if (byLead) return byLead;
   return s.requirements.find(q => q.assignedBrokerId === c.brokerId && phone10(q.customerPhone) === ph && live(q));
 }
 
@@ -44,6 +48,7 @@ export function linkNeedForCard(c: ClientCard): boolean {
   }
   if (q.clientCardId !== c.id) { q.clientCardId = c.id; changed = true; }
   if (c.requirementId !== q.id) { c.requirementId = q.id; changed = true; }
+  if (!q.customerPhone) { q.customerPhone = ph; changed = true; }   // the card exists, so the number is open to this broker
   const set = <K extends keyof BuyerRequirement>(k: K, v: BuyerRequirement[K]) => { if (JSON.stringify(q![k]) !== JSON.stringify(v)) { q![k] = v; changed = true; } };
   if (c.budgetMax > 0) { set('budgetMin', c.budgetMin); set('budgetMax', c.budgetMax); }
   set('customerName', c.name); if (c.areas.length) set('preferredLocalities', [...c.areas]); if (c.city) set('city', normCity(c.city));

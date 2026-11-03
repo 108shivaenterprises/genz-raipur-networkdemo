@@ -11,6 +11,7 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import { linkNeedForCard } from './clientlink.js';
 import { sealLink, linkOf, openLink } from './linkSeal.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -248,6 +249,7 @@ function revealNumber(l: PartnerLead, how: { homeId?: string; title?: string }) 
       };
       s.clientCards.unshift(card); l.clientCardId = card.id;
     }
+    { const cc = s.clientCards.find(c => c.id === l.clientCardId); if (cc) linkNeedForCard(cc); }   // v113 — the card and the need are one client (also when the lead gave no budget)
   }
   hist(l, 'SYSTEM', `Number shown to the broker${how.title ? ` after he shared “${how.title}”` : ' after the owner confirmed the property details'}`);
   addMsg(l, { by: 'SYSTEM', kind: 'INFO', text: how.title ? 'आपका नंबर अब ब्रोकर को दिख गया है — आपकी ज़रूरत से मेल खाता घर शेयर हुआ। / The broker can now see your number — a home matching your need was shared.' : 'आपका नंबर अब ब्रोकर को दिख गया है। / The broker can now see your number.' });
