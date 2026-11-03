@@ -191,12 +191,15 @@ export const BlockSheet: React.FC<{
   const [token, setToken] = useState(String(project.minToken));
   const [ref, setRef] = useState('');
   const [made, setMade] = useState<any>(null);
+  // v114 — the broker's own clients (Today & Clients) can be blocked for directly; their project lead is made by the server
+  const [cards, setCards] = useState<any[]>([]);
+  useEffect(() => { api.clients().then(r => { const names = new Set(leads.map(l => String(l.name).trim().toLowerCase())); setCards((r.clients || []).filter((c: any) => !['DEAL', 'LOST'].includes(c.stage) && !c.phoneHidden && !names.has(String(c.name).trim().toLowerCase()))); }).catch(() => setCards([])); }, [leads]);
   const [now, setNow] = useState(Date.now());
   useEffect(() => { if (!made) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [made]);
-  const chk = canBlock({ status: unit.status, canHold: true, used: holds?.used ?? 0, max: holds?.max ?? 3, leads: leads.length });
+  const chk = canBlock({ status: unit.status, canHold: true, used: holds?.used ?? 0, max: holds?.max ?? 3, leads: leads.length + cards.length });
   const amount = Number(token.replace(/[^\d]/g, ''));
   const problem = !leadId ? tx('Pick the customer', 'ग्राहक चुनें') : !(amount >= project.minToken) ? tx(`Token must be at least ${inr(project.minToken)}`, `टोकन कम से कम ${inr(project.minToken)} हो`) : ref.trim().length < 4 ? tx('Enter the receipt / UTR number the builder gave', 'बिल्डर की दी रसीद / UTR नंबर लिखें') : '';
-  const lead = leads.find(l => l.id === leadId);
+  const lead = leads.find(l => l.id === leadId) || cards.map(c => ({ id: `card:${c.id}`, name: c.name })).find(l => l.id === leadId);
 
   if (made) {
     const exp = made.hold?.expiresAt as string | undefined;
@@ -225,6 +228,8 @@ export const BlockSheet: React.FC<{
                   return <button key={l.id} type="button" disabled={off} onClick={() => setLeadId(l.id)} aria-pressed={leadId === l.id} data-testid="block-lead"
                     className={`rounded-full border px-3 py-1.5 font-semibold ${leadId === l.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-800'} disabled:opacity-40`}>{l.name}{off ? ` · ${tx('has a block', 'का ब्लॉक है')}` : ''}</button>;
                 })}
+                {cards.map(c => <button key={c.id} type="button" onClick={() => setLeadId(`card:${c.id}`)} aria-pressed={leadId === `card:${c.id}`} data-testid="block-card"
+                  className={`rounded-full border border-dashed px-3 py-1.5 font-semibold ${leadId === `card:${c.id}` ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-800'}`}>{c.name} · {tx('my client', 'मेरा क्लाइंट')}</button>)}
               </div>
             </div>
             <div>
@@ -241,7 +246,7 @@ export const BlockSheet: React.FC<{
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">{tx(`Money does not go through GENZ — pay the builder directly and record the receipt here. The unit is blocked for ${project.holdHours} h; no other broker can take it meanwhile. You use ${holds ? holds.used + 1 : 1} of ${holds?.max ?? 3} blocks.`, `पैसा GENZ से नहीं जाता — बिल्डर को सीधे दें और रसीद यहाँ दर्ज करें। यूनिट ${project.holdHours} घंटे ब्लॉक रहती है; इस दौरान कोई दूसरा ब्रोकर नहीं ले सकता। आप ${holds?.max ?? 3} में से ${holds ? holds.used + 1 : 1} ब्लॉक इस्तेमाल करेंगे।`)}</p>
             <Err msg={err} />
             <button type="button" disabled={busy || !!problem} data-testid="block-go" className={`${btnDark} w-full`}
-              onClick={() => go(async () => { const r: any = await api.invHold(unit.id, { leadId, tokenAmount: amount, tokenRef: ref.trim() }); setMade(r.unit || { hold: { expiresAt: new Date(Date.now() + project.holdHours * 3600_000).toISOString() } }); }, () => { /* shown above */ })}>
+              onClick={() => go(async () => { const r: any = await api.invHold(unit.id, { ...(leadId.startsWith('card:') ? { clientCardId: leadId.slice(5) } : { leadId }), tokenAmount: amount, tokenRef: ref.trim() }); setMade(r.unit || { hold: { expiresAt: new Date(Date.now() + project.holdHours * 3600_000).toISOString() } }); }, () => { /* shown above */ })}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Timer className="h-4 w-4" />}{tx(`Block for ${project.holdHours} h`, `${project.holdHours} घंटे के लिए ब्लॉक करें`)}
             </button>
             {problem && <p className="text-center text-[11px] text-slate-500">{problem}</p>}

@@ -184,7 +184,7 @@ import { normPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera
 import compression from 'compression';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureCardForNeed } from './server/clientlink.js';
+import { ensureCardForNeed, advanceClient } from './server/clientlink.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2743,6 +2743,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   }
 
   if (deal) ensureVisitCards(state, deal.id);
+  advanceClient(currentUser.id, customerName, String(customerPhone || ''), 'SITE_VISIT', `visit booked on ${prop.title}`);   // v114 — his client card follows the visit
   db.save();
   leadVisitEvent(newVisit, 'BOOKED'); // v91: the shop lead and the shop are told by themselves
 

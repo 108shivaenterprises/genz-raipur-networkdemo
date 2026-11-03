@@ -15,6 +15,7 @@
  *     agreement value actually collected from the customer.
  *  5. Scope — a builder sees only own projects; an associate sees only own leads/bookings; admins see all (phones masked).
  */
+import { advanceClient } from './clientlink.js';
 import { alert, builderVerifiers, firstName, inr } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -669,6 +670,7 @@ export function createCrmRouter() {
       note: `Stage ${prev} → ${stage}${note ? `: ${String(note).slice(0, 300)}` : ''}${stage === 'LOST' ? ` (${lead.lostReason})` : ''}`,
     });
     autoFollowUp(lead, stage, user);
+    if (lead.associateId && ['SITE_VISITED', 'NEGOTIATION'].includes(stage)) advanceClient(lead.associateId, lead.name, lead.phone, stage === 'SITE_VISITED' ? 'SITE_VISIT' : 'NEGOTIATION', `${stage === 'SITE_VISITED' ? 'site visited' : 'negotiating'} at ${db.byId('builderProjects', lead.projectId)?.projectName || 'a project'}`);   // v114 — his client card follows the project lead
     db.save();
     audit('CRM_LEAD_STAGE', lead.id, `${lead.name}: ${prev} → ${stage}`);
     res.json({ success: true, lead: viewLead(lead, user) });
@@ -909,6 +911,7 @@ export function createCrmRouter() {
     booking.updatedAt = ts;
     lead.updatedAt = ts;
     lead.activities.unshift({ id: `A-${Date.now().toString(36)}`, type: 'SYSTEM', note: `Booking ${booking.status.toLowerCase()} by ${user.name}${note ? `: ${String(note).slice(0, 200)}` : ''}`, byUserId: user.id, byName: user.name, at: ts });
+    if (decision === 'APPROVE' && booking.associateId) advanceClient(booking.associateId, lead.name, lead.phone, 'DEAL', `booked unit ${booking.unitNo} at ${booking.projectName}`);   // v114
     db.save();
     if (booking.associateId) alert([booking.associateId, lead.assignedMemberId], 'deals', decision === 'APPROVE' ? `Booking approved ✔ · ${booking.projectName}` : `Booking not approved · ${booking.projectName}`, `Unit ${booking.unitNo} for ${firstName(booking.customerName)}${note ? ` — ${String(note).slice(0, 80)}` : ''}`, '/?tab=crm', { not: user.id, tag: `bk-${booking.id}`, hi: [decision === 'APPROVE' ? `बुकिंग मंज़ूर ✔ · ${booking.projectName}` : `बुकिंग मंज़ूर नहीं · ${booking.projectName}`, `${firstName(booking.customerName)} के लिए यूनिट ${booking.unitNo}${note ? ` — ${String(note).slice(0, 80)}` : ''}`] });
     audit(decision === 'APPROVE' ? 'CRM_BOOKING_APPROVED' : 'CRM_BOOKING_REJECTED', booking.id, `Booking ${booking.id} (${booking.customerName}, unit ${booking.unitNo}) ${booking.status} by ${user.name}`, 'COMMISSION');

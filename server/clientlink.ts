@@ -79,14 +79,32 @@ export function ensureCardForNeed(q: BuyerRequirement): boolean {
 }
 
 
-export function ensureCardForRoom(brokerId: string, name: string, phone: string): boolean {
-  const s = st(); const ph = phone10(phone);
-  if (!OK_PHONE.test(ph) || s.clientCards.some(x => x.brokerId === brokerId && phone10(x.phone) === ph && x.stage !== 'LOST')) return false;
-  const t = now(); const u = s.users.find(x => x.id === brokerId);
-  s.clientCards.unshift({
-    id: cardId(s.clientCards), brokerId, name, phone: ph, budgetMin: 0, budgetMax: 0, city: normCity(u?.city || ''), areas: [], propertyType: 'Any', transactionType: 'Sale', tags: ['From chat'], notes: '', stage: 'NEW', consent: true,
-    timeline: [{ at: t, kind: 'CREATED', text: 'Added when the client room was opened' }], createdAt: t, updatedAt: t,
-  } as ClientCard);
+const LADDER = ['NEW', 'CONTACTED', 'SITE_VISIT', 'NEGOTIATION', 'DEAL'] as const;
+/**
+ * v114 — a deal step for a broker's buyer moves his client card forward by itself: visit booked → SITE_VISIT, offer made → NEGOTIATION,
+ * sold / rented through GENZ on his offer → DEAL (and the need follows). Never backwards, never out of DEAL or LOST (a lost client is the broker's call).
+ * `seed` (an offer — the buyer gave consent for it) also makes the card when the broker had none; a bare visit never does.
+ */
+export function advanceClient(brokerId: string, name: string, phone: string, stage: 'SITE_VISIT' | 'NEGOTIATION' | 'DEAL', why: string,
+  seed?: { city?: string; areas?: string[]; propertyType?: string; transactionType?: ClientCard['transactionType']; budgetMax?: number }): boolean {
+  const s = st(); const ph = phone10(phone); if (!OK_PHONE.test(ph)) return false;
+  const u = s.users.find(x => x.id === brokerId);
+  const owner = u?.role === 'TEAM_MEMBER' && u.employerId ? u.employerId : brokerId;   // office staff work on the broker's book
+  let c = s.clientCards.find(x => x.brokerId === owner && phone10(x.phone) === ph && x.stage !== 'LOST') || s.clientCards.find(x => x.brokerId === owner && phone10(x.phone) === ph);
+  const t = now();
+  if (!c) {
+    if (!seed) return false;
+    c = {
+      id: cardId(s.clientCards), brokerId: owner, name: String(name || 'Client').slice(0, 80), phone: ph, budgetMin: 0, budgetMax: Math.round(seed.budgetMax || 0), city: normCity(seed.city || u?.city || ''),
+      areas: (seed.areas || []).filter(Boolean).slice(0, 8), propertyType: seed.propertyType || 'Any', transactionType: seed.transactionType || 'Sale', tags: ['From offer'], notes: '', stage: 'NEW', consent: true,
+      timeline: [{ at: t, kind: 'CREATED', text: `Added from ${why}` }], createdAt: t, updatedAt: t,
+    } as ClientCard;
+    s.clientCards.unshift(c);
+  }
+  if (c.stage === 'LOST' || LADDER.indexOf(c.stage as any) >= LADDER.indexOf(stage)) { linkNeedForCard(c); return true; }
+  c.timeline.unshift({ at: t, kind: 'STAGE', text: `${c.stage} → ${stage} (${why})` }); c.timeline = c.timeline.slice(0, 80);
+  c.stage = stage; c.updatedAt = t; if (stage === 'DEAL') c.followUpAt = undefined;
+  linkNeedForCard(c);
   return true;
 }
 

@@ -144,10 +144,20 @@ describe('J3 · channel partner → block a builder unit with a token', { timeou
     expect(g.caps.holds.max).toBe(3); unit = (g.units as any[]).find(u => u.status === 'AVAILABLE'); expect(unit).toBeTruthy();
     expect((await j(await call(jar.BUILDER, 'GET', `/api/inventory/projects/${PLOTS}`))).caps.holds).toBeUndefined();
   });
-  it('2 · THE GAP, written down: a client card is not a block customer — a block needs a CRM lead of that project', async () => {
+  it('2 · v114: a client card IS a block customer — the partner blocks straight from the card; his project lead is made once and reused', async () => {
     await call(jar.BRK1, 'POST', '/api/daily/clients', { ...base, name: 'Card Only Client', phone: '9123466633', budgetMax: 3_000_000 });
-    const blockWithCardId = await call(jar.BRK1, 'POST', `/api/inventory/units/${unit.id}/hold`, { leadId: (await clientsOf('BRK1')).find(c => c.name === 'Card Only Client').id, tokenAmount: 25000, tokenRef: 'UTR-J3-X' });
-    expect(blockWithCardId.status).toBeGreaterThanOrEqual(400);                              // today a client-card id is refused: the CP must also make a CRM lead
+    const card = (await clientsOf('BRK1')).find(c => c.name === 'Card Only Client');
+    expect((await call(jar.BRK1, 'POST', `/api/inventory/units/${unit.id}/hold`, { leadId: card.id, tokenAmount: 25000, tokenRef: 'UTR-J3-X' })).status).toBe(400);   // a card id is not a lead id
+    expect((await call(jar.BRK2, 'POST', `/api/inventory/units/${unit.id}/hold`, { clientCardId: card.id, tokenAmount: 25000, tokenRef: 'UTR-J3-X' })).status).toBeGreaterThanOrEqual(400);   // not his client
+    const r = await call(jar.BRK1, 'POST', `/api/inventory/units/${unit.id}/hold`, { clientCardId: card.id, tokenAmount: 25000, tokenRef: 'UTR-J3-X' });
+    expect(r.status, await r.clone().text()).toBe(200); expect((await j(r)).unit.hold.customerName).toBe('Card Only Client');
+    const leads = ((await j(await call(jar.BRK1, 'GET', '/api/crm/leads'))).leads as any[]).filter(l => l.name === 'Card Only Client' && l.projectId === PLOTS);
+    expect(leads).toHaveLength(1);
+    expect((await call(jar.BRK1, 'POST', `/api/inventory/units/${unit.id}/release`)).status).toBe(200);
+    const again = (await j(await call(jar.BRK1, 'GET', `/api/inventory/projects/${PLOTS}`))).units.find((u: any) => u.status === 'AVAILABLE' && u.id !== unit.id);
+    expect((await call(jar.BRK1, 'POST', `/api/inventory/units/${again.id}/hold`, { clientCardId: card.id, tokenAmount: 25000, tokenRef: 'UTR-J3-Y' })).status).toBe(200);
+    expect(((await j(await call(jar.BRK1, 'GET', '/api/crm/leads'))).leads as any[]).filter(l => l.name === 'Card Only Client' && l.projectId === PLOTS)).toHaveLength(1);   // reused, not a second lead
+    expect((await call(jar.BRK1, 'POST', `/api/inventory/units/${again.id}/release`)).status).toBe(200);
   });
   it('3 · with a CRM lead the block works: token + UTR recorded, the customer is the lead, a second partner is refused, release frees the unit', async () => {
     const lr = await call(jar.BRK1, 'POST', '/api/crm/leads', { consent: true, projectId: PLOTS, name: 'Block Buyer', phone: '9123466644', source: 'WALK_IN' });

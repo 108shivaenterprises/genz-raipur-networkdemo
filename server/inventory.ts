@@ -15,6 +15,7 @@
  *     builder did not open to him. Rules for who sees what live in `invaccess.ts`.
  */
 import { tier1Gate } from './tiers.js';
+import { registerLead, leadCreateSchema } from './crm.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { db } from './db.js';
@@ -145,10 +146,12 @@ const settingsSchema = z.object({
 });
 
 const holdSchema = z.object({
-  leadId: z.string().min(1),
+  leadId: z.string().min(1).optional(),
+  /** v114 — block straight from a client card: his lead on this project is found, or registered with the consent already on the card */
+  clientCardId: z.string().min(1).optional(),
   tokenAmount: z.number().positive().max(100_000_000),
   tokenRef: z.string().trim().min(4, 'Enter the receipt / UTR number the builder gave').max(40),
-});
+}).refine(d => d.leadId || d.clientCardId, 'Pick the customer');
 
 /** Copy cleaned property facts onto a unit; `null` removes a field. */
 export function applyDetail<T extends Partial<InventoryUnit>>(unit: T, detail: Record<string, unknown>): T {
@@ -570,7 +573,20 @@ export function createInventoryRouter() {
     const parsed = holdSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid hold request' });
     const d = parsed.data;
-    const lead = db.byId('crmLeads', d.leadId);
+    let lead = d.leadId ? db.byId('crmLeads', d.leadId) : undefined;
+    if (!lead && d.clientCardId) {
+      const card = st.clientCards.find(c => c.id === d.clientCardId && c.brokerId === u.id);
+      if (!card) return res.status(400).json({ error: 'Pick your own client' });
+      const ph = String(card.phone).replace(/\D/g, '').slice(-10);
+      lead = st.crmLeads.find(l => l.projectId === p.id && l.associateId === u.id && String(l.phone).replace(/\D/g, '').slice(-10) === ph && !(l as any).erasedAt);
+      if (!lead) {
+        const pd = leadCreateSchema.safeParse({ projectId: p.id, name: card.name, phone: ph, source: 'ASSOCIATE_REFERRAL', consent: true, note: `From client card ${card.id}` });
+        if (!pd.success) return res.status(400).json({ error: pd.error.issues[0]?.message || 'This client cannot be registered on the project' });
+        const out = registerLead(u, pd.data);
+        if (out.status !== 200) return res.status(out.status).json(out.body);
+        lead = db.byId('crmLeads', out.body.lead.id);
+      }
+    }
     if (!lead || lead.associateId !== u.id || lead.projectId !== p.id) return res.status(400).json({ error: 'Pick your own registered lead on this project' });
     const minToken = p.minToken ?? DEFAULT_MIN_TOKEN;
     if (d.tokenAmount < minToken) return res.status(400).json({ error: `Minimum token to hold a unit is ₹${minToken.toLocaleString('en-IN')}` });

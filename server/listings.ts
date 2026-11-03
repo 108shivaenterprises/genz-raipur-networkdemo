@@ -8,6 +8,7 @@
  *    deal timeline stay (8-year compliance retention applies to audit / commission / deal records).
  *  • A resale never reopens the old record — it creates a NEW listing linked by resaleOf, which must be verified again.
  */
+import { advanceClient } from './clientlink.js';
 import { onPropertyClosed } from './buyerbond.js';
 import { eraseOwnerMediaOf } from './ownermedia.js';
 import { Router, type Request, type Response } from 'express';
@@ -153,6 +154,7 @@ export function createListingsRouter() {
       else { o.status = 'CLOSED'; o.reason = 'Property sold'; o.history.push({ at: ts, byId: u.id, byName: u.name, text: 'Closed — property was sold' }); }
       o.updatedAt = ts;
     }
+    if (winner) advanceClient(winner.brokerId, winner.buyerName, winner.buyerPhoneKey, 'DEAL', `${d.status} through GENZ: ${p.title}`);   // v114 — the winning buyer's card and need close as a deal
     p.resaleKey = p.resaleKey || resaleKeyOf(p);
     p.prevStatus = p.listingStatus; p.listingStatus = d.status; p.soldAt = ts; p.soldVia = d.soldVia; p.soldPrice = d.soldPrice ?? winner?.amount; p.soldNote = d.soldNote; p.soldOfferId = winner?.id; p.updatedAt = ts;
     { // v29 — buyer bonds of OTHER brokers on this property: alert them (the closing side is not alerted about itself)

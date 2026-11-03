@@ -9,6 +9,7 @@
  *                       (amount + reference + validity). The buyer side acknowledges. The listing is locked (under negotiation)
  *                       until the token is completed, refunded, forfeited after expiry, or auto-released after a grace period.
  */
+import { advanceClient } from './clientlink.js';
 import { liveOfferCap } from './tiers.js';
 import { tieupSplitFor } from './network.js';
 import { PROBATION_LIVE_OFFERS } from '../src/shared/networkRules.js';
@@ -232,6 +233,7 @@ export function createOffersRouter() {
     log(o, u, `Offer ₹${d.amount.toLocaleString('en-IN')} (token ₹${d.tokenProposed.toLocaleString('en-IN')}) submitted`);
     st().propertyOffers.unshift(o);
     makeBuyerBond({ brokerId: u.id, propertyId: p.id, buyerPhone: d.buyerPhone, buyerName: d.buyerName, source: 'OFFER', sourceId: o.id }); // v29 — the buyer agreed to this offer
+    advanceClient(u.id, d.buyerName, d.buyerPhone, 'NEGOTIATION', `offer ₹${d.amount.toLocaleString('en-IN')} on ${p.title}`, { city: p.city, areas: [p.locality], propertyType: p.propertyType, transactionType: p.transactionType, budgetMax: d.amount });   // v114 — the buyer is in his Clients and Buyers too
     db.save();
     audit(u, o, 'OFFER_SUBMITTED', `${u.name} offered ₹${d.amount} (token ₹${d.tokenProposed}) for a buyer on ${p.id}`);
     res.json({ success: true, offer: view(o, u), watch: partyCaution(d.buyerPhone) || undefined });
