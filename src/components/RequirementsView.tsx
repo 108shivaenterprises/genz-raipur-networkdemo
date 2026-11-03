@@ -21,7 +21,7 @@ interface RequirementsViewProps {
 const AddToClients: React.FC<{ req: BuyerRequirement }> = ({ req }) => {
   const tx = useTx();
   const [open, setOpen] = useState(false); const [ok, setOk] = useState(false); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ good: boolean; text: string } | null>(null);
-  if (!(req as any).customerName || !(req as any).customerPhone) return null;
+  if (!(req as any).customerName || !(req as any).customerPhone || (req as any).clientCardId) return null;   // v113 — already in Clients
   const add = async () => {
     setBusy(true); setMsg(null);
     try {

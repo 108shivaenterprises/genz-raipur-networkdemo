@@ -45,7 +45,9 @@ describe('v113 clients ↔ buyers ↔ chat', () => {
     await call('POST', '/api/daily/clients', { name: 'No Budget', phone: '9988776655', budgetMin: 0, budgetMax: 0, city: 'Raipur', areas: [], propertyType: '2 BHK Flat', transactionType: 'Sale', tags: [], notes: '', consent: true });
     expect((await needs()).filter((q: any) => q.customerName === 'No Budget')).toHaveLength(1);
     const nb = (await needs()).find((q: any) => q.customerName === 'No Budget');
-    expect((await call('GET', `/api/matching/requirement/${nb.id}`)).status).toBeLessThan(500);
+    const mt = await call('GET', `/api/matching/requirement/${nb.id}`); expect(mt.status).toBe(200);
+    expect((mt.j.matches || []).length, 'a client with no budget still gets matches').toBeGreaterThan(0);
+    expect(nb.clientCardId).toBeTruthy();
 
     // 4) listing again changes nothing (idempotent)
     const l2 = await clients(); expect((await clients()).length).toBe(l2.length); expect(l2.filter(x => x.name === "No Budget")).toHaveLength(1);

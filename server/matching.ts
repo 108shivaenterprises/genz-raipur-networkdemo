@@ -77,7 +77,12 @@ export function calculatePropertyMatch(property: Property, requirement: BuyerReq
   // 4. Budget Compatibility
   let budgetMatch = false;
   const price = property.askingPrice;
-  if (price >= requirement.budgetMin && price <= requirement.budgetMax) {
+  if (!(requirement.budgetMax > 0)) {
+    // v113 — the client's budget is not known yet: show homes at any price instead of dropping every one of them
+    score += 10;
+    budgetMatch = true;
+    reasons.push('Budget not set yet — shown at any price');
+  } else if (price >= requirement.budgetMin && price <= requirement.budgetMax) {
     score += 20;
     budgetMatch = true;
     reasons.push(`Asking price ₹${(price / 100000).toFixed(1)}L sits inside target budget (₹${(requirement.budgetMin / 100000).toFixed(1)}L - ₹${(requirement.budgetMax / 100000).toFixed(1)}L)`);
