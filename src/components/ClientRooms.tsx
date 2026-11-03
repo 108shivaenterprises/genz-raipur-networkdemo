@@ -50,6 +50,9 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   // v57 — read here, removed only after the screen is really shown: a render React throws away and redoes must still find it
   const [prefill] = useState<any>(() => { try { const v = sessionStorage.getItem('genz.newroom'); if (v) return JSON.parse(v); } catch { /* blocked */ } return null; });
   useEffect(() => { if (prefill) { try { sessionStorage.removeItem('genz.newroom'); } catch { /* blocked */ } } }, [prefill]);
+  const [seed, setSeed] = useState<any>(prefill);
+  const [cl, setCl] = useState<any[]>([]);
+  useEffect(() => { api.clients().then(r => setCl(r.clients || [])).catch(() => undefined); }, [tick, d?.rooms?.length]);   // v113 — clients with no room yet
   const [creating, setCreating] = useState(!!prefill); const [creatingOwner, setCreatingOwner] = useState(false);
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string } | null>(null);
   const [q, setQ] = useState(''); const [kind, setKind] = useState('ALL'); const [f, setF] = useState<RoomFilter>('all'); const [who, setWho] = useState('ALL'); // v63 — broker: whose rooms (his own / one team member's)
@@ -134,7 +137,12 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
         </div>
       </div>
       {creatingOwner && <NewOwnerRoom onDone={(link, name, phone, id) => { setCreatingOwner(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
-      {creating && <NewRoom defaults={prefill || undefined} onDone={(link, name, phone, id) => { setCreating(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
+      {(() => { const w = cl.filter(c => !c.roomId && !c.phoneHidden && !['DEAL', 'LOST'].includes(c.stage)).slice(0, 12); return w.length > 0 && !openRoom && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3" data-testid="rooms-clients-wait">
+          <p className="text-xs font-semibold text-slate-600">{tx('Your clients with no chat room yet — tap to open one', 'आपके क्लाइंट जिनका चैट रूम अभी नहीं — रूम खोलने के लिए दबाएँ')}</p>
+          <div className="mt-2 flex flex-wrap gap-2">{w.map(c => <button key={c.id} type="button" className={light} onClick={() => { setSeed({ clientName: c.name, phone: String(c.phone).replace(/\D/g, '').slice(-10) }); setCreating(true); setCreatingOwner(false); }}><Plus className="h-4 w-4" />{c.name}</button>)}</div>
+        </div>); })()}
+      {creating && <NewRoom key={seed?.phone || 'n'} defaults={seed || undefined} onDone={(link, name, phone, id) => { setCreating(false); setFresh({ link, name, phone }); setOpen(id); load(); }} />}
 
       {active.length === 0 && !creating ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">{tx('No client room yet. Tap “New room” and add your client\'s name and mobile.', 'अभी कोई क्लाइंट रूम नहीं। “नया रूम” दबाएँ और अपने क्लाइंट का नाम और मोबाइल डालें।')}</p>

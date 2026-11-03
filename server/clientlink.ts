@@ -33,7 +33,7 @@ export function linkNeedForCard(c: ClientCard): boolean {
   if (!OK_PHONE.test(ph)) return false;
   let q = needOfCard(c); let changed = false;
   if (!q) {
-    if (!(c.budgetMax > 0) || c.stage === 'DEAL' || c.stage === 'LOST') return false;   // nothing to match on yet — it joins Buyers when a budget is added
+    if (c.stage === 'DEAL' || c.stage === 'LOST') return false;   // shortcut: a client with no budget is listed with ₹0 so he is visible in Match, upgrade: ask for a budget
     const prior = s.requirements.find(x => phone10(x.customerPhone) === ph);
     q = {
       id: reqId(s.requirements), customerId: prior?.customerId || `CUST-${Date.now().toString(36).toUpperCase()}`, customerName: c.name, customerPhone: ph, assignedBrokerId: c.brokerId,

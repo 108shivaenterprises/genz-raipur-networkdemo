@@ -41,7 +41,13 @@ describe('v113 clients ↔ buyers ↔ chat', () => {
     expect(rm.status, JSON.stringify(rm.j)).toBe(200);
     const list = await clients(); expect(list.find(x => x.name === 'Link Test').roomId).toBeTruthy();
 
+    // 3b) a client with no budget yet is still in Buyers (so the name shows in Match)
+    await call('POST', '/api/daily/clients', { name: 'No Budget', phone: '9988776655', budgetMin: 0, budgetMax: 0, city: 'Raipur', areas: [], propertyType: '2 BHK Flat', transactionType: 'Sale', tags: [], notes: '', consent: true });
+    expect((await needs()).filter((q: any) => q.customerName === 'No Budget')).toHaveLength(1);
+    const nb = (await needs()).find((q: any) => q.customerName === 'No Budget');
+    expect((await call('GET', `/api/matching/requirement/${nb.id}`)).status).toBeLessThan(500);
+
     // 4) listing again changes nothing (idempotent)
-    expect((await clients()).length).toBe(list.length);
+    const l2 = await clients(); expect((await clients()).length).toBe(l2.length); expect(l2.filter(x => x.name === "No Budget")).toHaveLength(1);
   }, 60_000);
 });
