@@ -932,10 +932,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 <div className="flex items-start gap-3 sm:items-center sm:justify-between">
                   <PropertyThumb src={activeProperty?.images?.[0]} type={activeProperty?.propertyType} seed={activeProperty?.title || activeDeal.id} className="h-16 w-16 shrink-0 rounded-lg sm:hidden" />
                   <div className="min-w-0 flex-1">
-                    <DealIds dealId={activeDeal.id} propertyId={activeDeal.propertyId} requirementId={activeDeal.requirementId} />
-                    <h3 className="text-base font-bold leading-snug text-slate-900 mt-1">
+                    {/* v116 — the home first (what a broker recognises), the deal code under it */}
+                    <h3 className="text-base font-bold leading-snug text-slate-900">
                       {activeProperty?.title || tx('Property transaction', 'प्रॉपर्टी लेन-देन')}
                     </h3>
+                    <DealIds dealId={activeDeal.id} propertyId={activeDeal.propertyId} requirementId={activeDeal.requirementId} />
                     {[activeProperty?.locality, activeProperty?.city].filter(Boolean).length > 0 && <p className="text-xs text-slate-500 sm:hidden" data-testid="deal-place">{[activeProperty?.locality, activeProperty?.city].filter(Boolean).join(', ')}</p>}
                     {currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) && (
                       <DealTeamAccess dealId={activeDeal.id} allotted={activeDeal.teamMemberIds || []} onChanged={onRefreshDeals} />

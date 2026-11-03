@@ -10,7 +10,7 @@ import { PropertyThumb } from './PropertyThumb.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, LayoutGrid, List as ListIcon, AlertTriangle, Clock, Wallet, Briefcase, Scale, CheckCircle2, ChevronRight, CalendarCheck,
-  FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle, ChevronDown,
+  FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle, ChevronDown, SlidersHorizontal,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
@@ -94,12 +94,12 @@ export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string)
   const [top, ...rest] = list;
   return (
     <div className="space-y-1.5" data-testid="next-steps">
-      <div className="hidden text-xs font-bold uppercase tracking-wider text-slate-500 sm:block">{tx('Your next step', 'आपका अगला कदम')}</div>
+      <div className="text-xs font-bold uppercase tracking-wider text-slate-500">👉 {tx('Your next step', 'आपका अगला कदम')}</div>
       {row(top, true)}
       {rest.length > 0 && (
         <>
           <button type="button" onClick={() => setMore((o) => !o)} aria-expanded={more} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-slate-100" data-testid="next-more">
-            {more ? tx('Show less', 'कम दिखाएँ') : tx(`+${rest.length} more`, `+${rest.length} और`)}
+            {more ? tx('Show less', 'कम दिखाएँ') : tx(`+${rest.length} more to do`, `+${rest.length} और काम`)}
             <ChevronRight className={`h-3.5 w-3.5 transition-transform ${more ? '-rotate-90' : 'rotate-90'}`} />
           </button>
           {more && <div className="space-y-1.5" data-testid="next-rest">{rest.map((n) => row(n, false))}</div>}
@@ -132,17 +132,18 @@ export const SubTabBar: React.FC<{
           const Icon = tab.icon; const on = active === tab.id;
           return (
             <button key={tab.id} type="button" onClick={() => onPick(tab.id)} aria-current={on ? 'page' : undefined} data-testid={`deal-tab-${tab.id}`}
-              className={`relative flex min-h-11 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-lg px-1.5 font-medium transition-colors sm:flex-none sm:px-3 ${on ? 'bg-slate-900 font-semibold text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-              <Icon className="hidden h-3.5 w-3.5 shrink-0 sm:block" />
-              <span className="truncate">{tab.label}{tab.count !== undefined && <span className="hidden sm:inline"> ({tab.count})</span>}</span>
+              className={`relative flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 font-medium transition-colors sm:min-h-11 sm:flex-none sm:flex-row sm:gap-1.5 sm:px-3 sm:py-0 ${on ? 'bg-slate-900 font-semibold text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+              {/* v116 — on a phone: icon over the full name (like the bottom bar), never “Ove… C… T…” */}
+              <Icon className="h-4 w-4 shrink-0 sm:h-3.5 sm:w-3.5" />
+              <span className="line-clamp-2 text-center text-xs leading-tight sm:truncate sm:text-left sm:text-[13px] sm:leading-normal">{tab.label}{tab.count !== undefined && <span className="hidden sm:inline"> ({tab.count})</span>}</span>
               {!on && tab.dot && <span className="absolute right-1 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}
             </button>
           );
         })}
         {rest.length > 0 && (
           <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid="deal-tab-more"
-            className={`relative flex min-h-11 min-w-0 flex-auto items-center justify-center gap-1 rounded-lg px-1.5 font-medium transition-colors sm:flex-none sm:px-3 ${inRest ? 'bg-slate-900 font-semibold text-white' : open ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-            <span className="truncate">{inRest ? inRest.label : tx('More', 'और')}</span>
+            className={`relative flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 font-medium transition-colors sm:min-h-11 sm:flex-none sm:flex-row sm:gap-1 sm:px-3 sm:py-0 ${inRest ? 'bg-slate-900 font-semibold text-white' : open ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+            <span className="line-clamp-2 text-center text-xs leading-tight sm:truncate sm:text-[13px] sm:leading-normal">{inRest ? inRest.label : tx('More', 'और')}</span>
             <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
             {restDot && <span className="absolute right-1 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}
           </button>
@@ -290,6 +291,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
   const [filter, setFilter] = useState<Filter>('live');
   const [role, setRole] = useState<'ALL' | 'INTRODUCING' | 'CLOSING'>('ALL');
   const [q, setQ] = useState('');
+  const [tools, setTools] = useState(false);
   const items: any[] = hub?.deals || [];
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -339,12 +341,18 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, locality, deal ID, broker', 'प्रॉपर्टी, इलाका, डील ID, ब्रोकर खोजें')} data-testid="hub-search" />
-          {q && <button type="button" onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" aria-label={tx('Clear', 'साफ़ करें')}><X className="h-4 w-4" /></button>}
+        <div className="flex w-full items-center gap-2 sm:max-w-sm">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, area, broker', 'प्रॉपर्टी, इलाका, ब्रोकर खोजें')} data-testid="hub-search" />
+            {q && <button type="button" onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" aria-label={tx('Clear', 'साफ़ करें')}><X className="h-4 w-4" /></button>}
+          </div>
+          {/* v116 — on a phone the rarely-used "which deals / board or list" sit behind one button, so the first deal shows sooner */}
+          <button type="button" onClick={() => setTools(o => !o)} aria-expanded={tools} className={`inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold sm:hidden ${tools || role !== 'ALL' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="hub-tools">
+            <SlidersHorizontal className="h-4 w-4" />{tx('Filter', 'फ़िल्टर')}
+          </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className={`${tools ? 'flex' : 'hidden'} items-center gap-2 sm:flex`}>
           {showRoles && (
             <select value={role} onChange={e => setRole(e.target.value as typeof role)} aria-label={tx('Which deals', 'कौन सी डील')} className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 sm:flex-none" data-testid="hub-role">
               <option value="ALL">{tx('All deals', 'सभी डील')}</option>

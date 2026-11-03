@@ -3456,6 +3456,29 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   if (SEED_DEMO && SEED_DEMO_BULK && parsed.users.some(u => u.id === 'USR-BRK-005')) {
     seedDemoCities(parsed, DEMO_MODE ? hashPassword(DEMO_PASSWORD) : unusablePasswordHash());
   }
+  // v116 — public demo only: one EMPTY "Naya …" account per role (no clients, listings or deals) to try the app from zero; added once, never touched again
+  if (SEED_DEMO && SEED_DEMO_BULK && DEMO_MODE) {
+    const t = new Date().toISOString(); const hash = hashPassword(DEMO_PASSWORD);
+    const fresh: [string, UserRole, string, Partial<UserProfile>][] = [
+      ['Naya Superadmin', 'SUPERADMIN', 'GENZ (demo)', {}], ['Naya Admin', 'ADMIN', 'GENZ Operations (demo)', {}],
+      ['Naya Broker', 'BROKER', 'Naya Realty (demo)', { reraNumber: 'PCGRERA251103-0901', brokerId: 'GZ-BRK-NAYA01', referralCode: 'GZ-NAYA-0901' } as any],
+      ['Naya Owner', 'PROPERTY_OWNER', 'Individual', {}], ['Naya Buyer', 'BUYER_TENANT', 'Individual', {}],
+      ['Naya Contractor', 'CONTRACTOR', 'Naya Constructions (demo)', {}], ['Naya Builder', 'DEVELOPER_BUILDER', 'Naya Developers (demo)', { reraNumber: 'PCGRERAP251103-0902' }],
+      ['Naya Vakeel', 'LEGAL_COUNSEL', 'Naya Chambers (demo)', {}],
+      ['Naya Dukaan', 'GENZ_CONNECTOR', 'Naya Kirana (demo)', { connector: { shopType: 'KIRANA_STORE', shopName: 'Naya Kirana', locality: 'Telibandha', whatsapp: '+91 90000 60009' } } as any],
+      ['Naya Staff', 'TEAM_MEMBER', 'Naya Realty (demo)', { employerId: 'USR-NEW-BROKER', employerRole: 'BROKER', teamTitle: 'Telecaller' } as any],
+    ];
+    fresh.forEach(([name, role, company, extra], i) => {
+      const id = `USR-NEW-${role === 'DEVELOPER_BUILDER' ? 'BUILDER' : role === 'PROPERTY_OWNER' ? 'OWNER' : role === 'BUYER_TENANT' ? 'BUYER' : role === 'LEGAL_COUNSEL' ? 'LEGAL' : role === 'GENZ_CONNECTOR' ? 'CONNECTOR' : role === 'TEAM_MEMBER' ? 'TEAM' : role}`;
+      if (parsed.users.some(u => u.id === id)) return;
+      const phone = `+91 90000 6${String(i + 1).padStart(4, '0')}`;
+      parsed.users.push({
+        id, name, role, phone, email: `${name.toLowerCase().replace(/\s+/g, '.')}@demo.genz.example`, city: 'Raipur', state: 'Chhattisgarh', companyName: company,
+        verificationStatus: 'VERIFIED', verificationNotes: 'Empty demo account — start from zero (fake)', createdAt: t, sessionVersion: 1, passwordHash: hash,
+        consent: { policyVersion: '2026-10-01', acceptedAt: t, ip: 'demo-seed' }, ...extra,
+      } as UserProfile);
+    });
+  }
 }
 
 class Database {
