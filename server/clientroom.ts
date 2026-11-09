@@ -124,7 +124,7 @@ export function linkVisitToRoom(room: ClientRoom, item: ClientRoom['items'][numb
 export const roomOwnerOf = (u: UserProfile) => (u.role === 'TEAM_MEMBER' && u.employerId ? u.employerId : u.id);
 const isStaff = (u: UserProfile) => u.role === 'TEAM_MEMBER';
 const actingAs = () => ({ id: roomOwnerOf(me()) });
-const mine = (req: Request) => st().clientRooms.find(r => r.id === req.params.id && r.brokerId === roomOwnerOf(me()));
+const mine = (req: Request) => st().clientRooms.find(r => r.id === req.params.id && r.brokerId === roomOwnerOf(me()) && !r.held);   // v119 — a held room is not the broker's yet
 /** the employer's staff who may read his rooms (the client is told the office team can read the chat) */
 export const roomTeam = (brokerId: string) => st().users.filter(m => m.role === 'TEAM_MEMBER' && m.employerId === brokerId && m.verificationStatus === 'VERIFIED' && !!m.teamPolicy?.rooms);
 const unread = (r: ClientRoom) => r.messages.filter(m => m.from === 'CLIENT' && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
@@ -137,7 +137,7 @@ const phoneAad = (r: ClientRoom) => `clientroom:${r.id}:phone`;
  * confirmed and a matching home shared), the tap is his consent, and the homes the assistant already showed him go in. He still signs in with his
  * mobile + a code, like any client. `EXISTS` = this broker already has an open room for that number (the link of that one is not ours to show).
  */
-export function openRoomAuto(brokerId: string, a: { name: string; phone: string; kind: 'BUYER' | 'RENTER'; note: string; propertyIds: string[] }):
+export function openRoomAuto(brokerId: string, a: { name: string; phone: string; kind: 'BUYER' | 'RENTER'; note: string; propertyIds: string[]; held?: boolean }):
   { ok: true; room: ClientRoom; token: string } | { ok: false; code: 'PHONE' | 'FULL' | 'BLOCKED' | 'EXISTS'; roomId?: string; error: string } {
   const phone = phone10(a.phone); if (!PHONE_RE.test(phone)) return { ok: false, code: 'PHONE', error: 'The mobile number is not valid' };
   if (st().clientRooms.filter(x => x.brokerId === brokerId && x.status === 'ACTIVE').length >= L.activeRooms) return { ok: false, code: 'FULL', error: 'The broker has too many open rooms' };
@@ -149,7 +149,7 @@ export function openRoomAuto(brokerId: string, a: { name: string; phone: string;
   const room: ClientRoom = {
     id: rid('CRM'), brokerId, clientName: String(a.name || '').trim().slice(0, 80) || 'Customer', kind: a.kind, note: a.note.slice(0, 300) || undefined,
     phoneKey, phoneLast4: phone.slice(-4), tokenHash: sha(token), sessVersion: 1, status: 'ACTIVE', createdAt: now, updatedAt: now, linkAt: now,
-    expiresAt: new Date(Date.now() + L.linkDays * 86400_000).toISOString(), items: [], messages: [], events: [],
+    expiresAt: new Date(Date.now() + L.linkDays * 86400_000).toISOString(), items: [], messages: [], events: [], ...(a.held ? { held: true } : {}),
   };
   sealPhone(room, phone);
   ev(room, 'Room opened by the GENZ assistant — the customer asked for it in his QR chat');
@@ -162,6 +162,8 @@ export function openRoomAuto(brokerId: string, a: { name: string; phone: string;
   st().clientRooms.push(room);
   return { ok: true, room, token };
 }
+/** v119 — the customer's number is open now: the room he already has becomes the broker's too */
+export function releaseRoom(brokerId: string, roomId: string): void { const r = st().clientRooms.find(x => x.id === roomId && x.brokerId === brokerId); if (r?.held) { r.held = undefined; r.updatedAt = nowIso(); } }
 /**
  * v105 — a home shown in the customer's QR chat AFTER his room was opened (more homes, a new listing, one the broker sent) goes into the room by itself, with the
  * same PUBLIC photos / video. Returns the ids that are in the room now (added or already there) — a closed / missing room returns none, a full room returns the rest unplaced.
@@ -351,7 +353,7 @@ export function createClientRoomRouter() {
     res.json({ success: true, homes });
   });
   r.get('/', (_req, res) => {
-    const list = st().clientRooms.filter(x => x.brokerId === roomOwnerOf(me())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const list = st().clientRooms.filter(x => x.brokerId === roomOwnerOf(me()) && !x.held).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const u = me(); healAll(list);
     for (const rm of list) {
       if (rm.messages.length === 0) seedRoomFromLeadOrRequirement(rm);

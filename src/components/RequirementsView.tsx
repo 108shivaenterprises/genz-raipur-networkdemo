@@ -8,6 +8,7 @@ import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { useUI } from '../lib/ui.js';
 import { goto } from '../lib/goto.js';
+import { GenzRadar } from './GenzRadar.js';
 import { BroadcastButton, BroadcastInbox, MyBroadcasts, NetworkHas } from './BroadcastPanels.js';
 
 interface RequirementsViewProps {
@@ -150,6 +151,8 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
           </button>
         </div>
       </div>
+
+      {!isBuyer && <GenzRadar currentUser={currentUser} onMatch={onSelectRequirementForMatching} />}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         {!isBuyer && (

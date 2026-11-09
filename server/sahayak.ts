@@ -16,7 +16,7 @@ import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot
 import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, BOT_WATCH, GONE_WORDS, goneKind, type GoneKind, type NeedChange, type When } from '../src/shared/sahayak.js';
 import { nextAsk, applyAnswer, progress, composeListing, summaryLine, SKIP_CHIP, type AskId } from '../src/shared/listingAsk.js';
 import { containsContact } from '../src/shared/clientRoomRules.js';
-import { openRoomAuto, addRoomHomes, syncRoomMessagesFromLead } from './clientroom.js';
+import { openRoomAuto, addRoomHomes, syncRoomMessagesFromLead, releaseRoom } from './clientroom.js';
 import { sealLink, openLink } from './linkSeal.js';
 
 type Chip = { id: string; hi: string; en: string };
@@ -226,6 +226,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     }
     networkNote(l);   // v101 — his need goes to the network search + the broker's Buyers list now, whether or not a home of the broker's own fits
     botOf(l).followedAt ||= nowIso();   // v103 — from here the chat follows the homes by itself
+    openRoom(l, true);   // v119 — his client room is there from the moment he confirms (held: the broker gets it when the number opens)
     showHomes(l, 'BOT', 'first');
   }
 
@@ -418,11 +419,13 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   }
 
   /** v101 — silently, once, right after his number opened; a failure (a room of that number already exists, a limit) is left to the broker and his tap */
-  function autoRoom(l: PartnerLead) { const b = botOf(l); if (!buyerSide(l) || !l.chat?.revealedAt) return; if (b.roomId || b.roomLinked) return syncRoom(l); openRoom(l, true); }
+  function autoRoom(l: PartnerLead) { const b = botOf(l); if (!buyerSide(l)) return; if (b.roomId || b.roomLinked) return syncRoom(l); if (!l.chat?.revealedAt) return; openRoom(l, true); }
   /** v105 — every home in his chat is in his client room: a home shown after the room opened (more homes, a new listing, one the broker sent) is added by itself.
    *  A home is offered to the room once — one the broker took out is not put back. Works for the room we opened and for the broker's own open room for his number. */
   function syncRoom(l: PartnerLead): void {
     const b = botOf(l); const rid = b.roomId || b.roomLinked; if (!rid || !buyerSide(l) || l.status === 'LOST') return;
+    if (l.chat?.revealedAt && b.roomId) releaseRoom(l.brokerId, b.roomId);   // v119 — his number is open: the room he already has is the broker's now
+    if (!l.chat?.revealedAt) return;   // a held room gets homes only once the number is open
     syncRoomMessagesFromLead(l.brokerId, rid, l);
     const offered = new Set(b.roomHomes || []);
     const fresh = liveSent(l).map(h => h.id).filter(id => !offered.has(id)); if (!fresh.length) return;
@@ -433,9 +436,10 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   function openRoom(l: PartnerLead, auto = false) {
     const b = botOf(l);
     if (!buyerSide(l)) return;
-    if (!l.chat!.revealedAt) { say(l, 'क्लाइंट रूम तब बनता है जब आपकी ज़रूरत पक्की हो और आपको कोई घर भेजा जा चुका हो।', 'A client room opens once your need is confirmed and a home has been sent to you.'); return; }
+    if (!l.chat!.reqConfirmedAt) { say(l, 'क्लाइंट रूम तब बनता है जब आपकी ज़रूरत पक्की हो जाए — पहले ऊपर “हाँ, सही है” दबाएँ।', 'Your client room opens once your need is confirmed — tap “yes, correct” above first.'); return; }
+    const held = !l.chat!.revealedAt;   // v119 — before his number is open the room is his alone
     if (b.roomSealed) { say(l, 'आपका क्लाइंट रूम तैयार है — नीचे के कार्ड से खोलें।', 'Your client room is ready — open it from the card below.'); return; }
-    const r = openRoomAuto(l.brokerId, { name: l.name, phone: l.phone, kind: l.kind === 'RENT_IN' ? 'RENTER' : 'BUYER', note: `Shop QR lead ${l.id} · opened by the GENZ assistant on his tap`, propertyIds: sentIds(l) });
+    const r = openRoomAuto(l.brokerId, { name: l.name, phone: l.phone, kind: l.kind === 'RENT_IN' ? 'RENTER' : 'BUYER', note: `Shop QR lead ${l.id} · opened by the GENZ assistant on his tap`, propertyIds: held ? [] : sentIds(l), held });
     if (!r.ok) {
       if (r.code === 'EXISTS' && r.roomId) { b.roomLinked = r.roomId; syncRoom(l); }   // v105 — the broker's own room for his number gets his homes too (its link is still the broker's to send)
       if (auto) return;
@@ -444,6 +448,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       return;
     }
     b.roomId = r.room.id; b.roomSealed = sealLink(r.token, `lr|${l.id}`); b.roomAt = nowIso(); b.roomHomes = r.room.items.map(i => i.propertyId);
+    if (held) { d.audit(l, 'SHOP_LEAD_ROOM_HELD', `Client room ${r.room.id} opened for the customer when he confirmed his need — hidden from the broker until his number is open`); say(l, '🏠 आपका क्लाइंट रूम तैयार है — आपकी सारी बातचीत और घर यहीं रहेंगे। नीचे के कार्ड से खोलें (अपना मोबाइल नंबर + कोड से)।', '🏠 Your client room is ready — your chat and your homes will be here. Open it from the card below (with your mobile number + a code).', menu(l)); return; }
     d.audit(l, 'SHOP_LEAD_ROOM_OPENED', `Client room ${r.room.id} opened by the GENZ assistant after the customer tapped for it (${r.room.items.length} home(s) put in)`);
     d.hist(l, `Client room opened by the assistant on his tap (${r.room.items.length} homes)`);
     say(l, '🏠 आपका क्लाइंट रूम तैयार है — इसमें अभी तक भेजे गए सारे घर हैं, फ़ोटो-वीडियो आने पर वहीं मिलेंगे। नीचे के कार्ड से खोलें (अपना मोबाइल नंबर + कोड से)।', '🏠 Your client room is ready — all the homes sent so far are in it, and photos / videos will come there. Open it from the card below (with your mobile number + a code).', menu(l));

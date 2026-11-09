@@ -355,7 +355,7 @@ export function linksFor(l: PartnerLead): LeadLink[] {
   const out: LeadLink[] = [];
   for (const v of s.siteVisits) if (v.brokerId === b && phone10(v.customerPhone) === ph && inWin(v.createdAt)) out.push({ kind: 'VISIT', id: v.id, at: v.createdAt, done: v.isVerified, en: v.isVerified ? 'Site visit verified' : 'Site visit booked', hi: v.isVerified ? 'साइट विज़िट हुई' : 'साइट विज़िट तय हुई' });
   const roomKey = hmac('cr-phone', ph);
-  for (const r of s.clientRooms) if (r.brokerId === b && r.phoneKey === roomKey && inWin(r.createdAt)) out.push({ kind: 'ROOM', id: r.id, at: r.createdAt, en: 'Client room opened', hi: 'क्लाइंट रूम खुला' });
+  for (const r of s.clientRooms) if (r.brokerId === b && r.phoneKey === roomKey && !r.held && inWin(r.createdAt)) out.push({ kind: 'ROOM', id: r.id, at: r.createdAt, en: 'Client room opened', hi: 'क्लाइंट रूम खुला' });
   const reqIds = new Set<string>();
   for (const q of s.requirements) if (q.assignedBrokerId === b && phone10(q.customerPhone) === ph && inWin(q.createdAt)) { reqIds.add(q.id); out.push({ kind: 'NEED', id: q.id, at: q.createdAt, en: 'Buyer need added', hi: 'खरीदार की ज़रूरत दर्ज' }); }
   const propIds = new Set<string>();

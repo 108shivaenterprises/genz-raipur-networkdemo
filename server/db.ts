@@ -1388,6 +1388,8 @@ export interface ClientRoom {
   /** v70 — the broker asked this client for his FULL Aadhaar to have a paper made (only while the server switch is on); erased 7 days after it comes */
   fullAadhaarAsk?: boolean;
   note?: string;                   // the broker's own note, never shown to the client
+  /** v119 — opened by the QR chat the moment the customer confirmed his need: the CLIENT has it at once, the broker sees nothing (no list, no reveal) until his number is open */
+  held?: boolean;
   /** client's mobile: HMAC + last 4 only (the client types it on the link to get the code) */
   phoneKey: string; phoneLast4: string;
   /** v63 — the full mobile, AES-sealed (vault key), so the broker who opened the room can call / WhatsApp him; erased when the room closes. Never in lists, audit or GENZ screens. */
