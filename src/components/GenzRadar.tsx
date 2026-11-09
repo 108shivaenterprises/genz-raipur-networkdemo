@@ -33,6 +33,10 @@ export const GenzRadar: React.FC<{ currentUser: UserProfile; onMatch: (r: BuyerR
   }, [city, area, type, again]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const live = (rows || []).filter(r => (r.status === 'active' || r.status === 'matching') && (!txn || r.transactionType === txn) && r.assignedBrokerId !== currentUser.id);
+  // v120 — the needs in the broker's OWN areas (profile) come first; the rest of his city after them
+  const myAreas = [...(((currentUser as any).profile?.areas as string[]) || []), (currentUser as any).homeLocality || ''].map(x => String(x).trim().toLowerCase()).filter(Boolean);
+  const near = (r: BuyerRequirement) => (r.preferredLocalities || []).some(l => myAreas.includes(String(l).trim().toLowerCase()));
+  if (myAreas.length) live.sort((x, y) => Number(near(y)) - Number(near(x)));
   const where = city.trim() || tx('all India', 'पूरा भारत');
 
   return (
@@ -72,6 +76,7 @@ export const GenzRadar: React.FC<{ currentUser: UserProfile; onMatch: (r: BuyerR
       <ul className="mt-2 flex gap-2 overflow-x-auto pb-1">
         {live.slice(0, 20).map(r => (
           <li key={r.id} className="w-60 shrink-0 rounded-xl border border-white/15 bg-white/10 p-2.5 text-xs">
+            {near(r) && <p className="mb-0.5 text-[10px] font-bold uppercase text-emerald-300">📍 {tx('Your area', 'आपका इलाका')}</p>}
             <p className="font-semibold">{r.propertyType} · {r.transactionType === 'Sale' ? tx('Buy', 'खरीद') : r.transactionType === 'Rent' ? tx('Rent', 'किराया') : tx('Lease', 'लीज़')}</p>
             <p className="mt-0.5 text-slate-300">{[...(r.preferredLocalities || []).slice(0, 2), r.city].filter(Boolean).join(', ') || '—'}</p>
             <p className="mt-0.5 font-mono text-emerald-300">{formatINR(r.budgetMin)} – {formatINR(r.budgetMax)}</p>

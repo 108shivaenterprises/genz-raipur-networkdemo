@@ -11,6 +11,7 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import { leadBrief } from '../src/shared/leadBrief.js';
 import { linkNeedForCard } from './clientlink.js';
 import { sealLink, linkOf, openLink } from './linkSeal.js';
 import fs from 'node:fs';
@@ -594,6 +595,14 @@ function partnerView(p: ShopPartner) {
     history: p.history.slice(-30),
   };
 }
+/** v120 — the deal brief of a buyer / renter lead, from what is already on the lead (no extra search) */
+function briefFor(l: PartnerLead) {
+  const c = l.chat!; const b = c.bot || {}; const mine = c.msgs.filter(m => m.by === 'CUSTOMER'); const last = mine[mine.length - 1]?.at;
+  return leadBrief({ confirmed: !!c.reqConfirmedAt, revealed: !!c.revealedAt, hasBudget: !!l.budget, hasType: !!l.propertyType, timeline: b.timeline,
+    homesSent: new Set(c.msgs.filter(m => m.kind === 'HOME' && m.homeId).map(m => m.homeId)).size, networkCount: b.network?.count || 0, viewed: (b.viewed || []).length,
+    visitAsked: (b.visits || []).filter(v => v.status === 'ASKED').length, visitOk: (b.visits || []).filter(v => v.status === 'OK').length,
+    customerMsgs: mine.length, lastCustomerHrs: last ? (Date.now() - Date.parse(last)) / 3600_000 : null, needsBroker: b.needsBroker, closed: l.status === 'LOST' || !!l.won });
+}
 function leadView(l: PartnerLead) {
   const links = linksFor(l); const p = partnerOf(l.partnerId); const { ask, chat, phone, ...rest } = l; const a = autoShare(l, links); const rev = revealed(l);
   return {
@@ -602,6 +611,7 @@ function leadView(l: PartnerLead) {
     chat: chat ? { msgs: chat.msgs.slice(-80).map(m => m.kind === 'HOME' && m.homeId ? { ...m, gone: homeGone(m.homeId) || undefined } : m), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
     alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0, bot: chat ? sahayak.view(l) : null,
     matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [], needLine: needLine(l),
+    brief: chat && !ownerSide(l) ? briefFor(l) : null,   // v120
     shopName: p?.shopName || '', partnerPersonName: p?.personName || '', partnerPhoneLast4: p?.phoneLast4 || '',
     partnerPageUrl: p ? (() => { const t = linkOf(p, `sp|${p.id}`); return t ? `/sp/${t}` : ''; })() : '',
     city: cityOfLead(l), links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),

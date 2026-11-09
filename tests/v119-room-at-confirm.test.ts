@@ -108,4 +108,11 @@ describe('the room opens at confirm, the broker gets it with the number (v119)',
     const got = await until(rooms, v => v.some(x => x.clientName === 'Hira Held'), 6000);
     expect(got.some(x => x.clientName === 'Hira Held')).toBe(true);
   });
+
+  it('v120 — he taps “this month” → the broker\'s lead carries the timeline and a deal brief with a next step', async () => {
+    expect((await tap(tok, 'TL:NOW')).status).toBe(303);
+    const l = await lead('1901'); expect(l.bot.timeline).toBe('NOW');
+    expect(l.brief.reasons.some((r: any) => /this month/i.test(r.en))).toBe(true); expect(l.brief.next.en.length).toBeGreaterThan(10);
+    expect((await tap(tok, 'TL:JUNK')).status).toBe(303); expect((await lead('1901')).bot.timeline).toBe('NOW');
+  });
 });

@@ -242,6 +242,15 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         <p className="mt-1 text-xs text-amber-900" data-testid="sp-masked">🔒 {tx(`Number hidden — ••${l.phoneLast4}. ${owner ? 'It shows once the owner confirms the property details here.' : 'It shows once he confirms his need here and you share a home that matches it.'}`, `नंबर छुपा है — ••${l.phoneLast4}। ${owner ? 'मालिक के यहाँ प्रॉपर्टी की जानकारी पक्की करते ही दिखेगा।' : 'जब वह यहाँ अपनी ज़रूरत पक्की करे और आप उससे मेल खाता घर शेयर करें, तब दिखेगा।'}`)}</p>
       ) : <p className="mt-1 text-xs text-emerald-900" data-testid="sp-unmasked">✔ {tx('Number is now visible (need confirmed + home shared).', 'नंबर अब दिख रहा है (ज़रूरत पक्की + घर शेयर)।')}</p>}
       <p className="text-xs text-slate-600" data-testid="sp-chat-alerts">{(l.alerts || 0) > 0 ? `🔔 ${tx('His phone gets alerts when you write', 'उनके फ़ोन पर आपके संदेश का अलर्ट जाएगा')}` : `🔕 ${tx('No alerts on his phone yet — he sees your reply when he opens his chat link', 'उनके फ़ोन पर अलर्ट अभी चालू नहीं — वे चैट लिंक खोलने पर ही जवाब देखेंगे')}`}</p>
+      {l.brief && (
+        <details className="mt-1 rounded-lg border border-slate-200 bg-white p-2 text-xs" data-testid="sp-brief">
+          <summary className="cursor-pointer">
+            <span className={`mr-1.5 rounded-full px-2 py-0.5 font-bold ${l.brief.label === 'HOT' ? 'bg-red-100 text-red-800' : l.brief.label === 'WARM' ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{l.brief.label === 'HOT' ? tx('🔥 Hot', '🔥 गरम') : l.brief.label === 'WARM' ? tx('Warm', 'ठीक-ठाक') : tx('Cold', 'ठंडा')} · {l.brief.score}</span>
+            <b>{tx('Next', 'अगला कदम')}:</b> {tx(l.brief.next.en, l.brief.next.hi)}
+          </summary>
+          <ul className="mt-1 space-y-0.5 text-slate-600">{l.brief.reasons.map((r: any, i: number) => <li key={i}>{r.pts > 0 ? '+' : ''}{r.pts} · {tx(r.en, r.hi)}</li>)}</ul>
+        </details>
+      )}
       <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]" data-testid="sp-bot-bar">
         <span className={l.bot?.on ? 'font-semibold text-indigo-800' : 'text-slate-500'} data-testid="sp-bot-state">🤖 {l.bot?.on ? (l.bot?.quiet ? tx('Assistant is quiet — you are talking', 'सहायक शांत है — आप बात कर रहे हैं') : tx('Assistant is answering', 'सहायक जवाब दे रहा है')) : (l.bot?.offByBroker ? tx('Assistant is off for all chats', 'सहायक सभी चैट के लिए बंद है') : tx('Assistant is off for this chat', 'इस चैट के लिए सहायक बंद है'))}</span>
         {!l.bot?.offByBroker && <button type="button" className="rounded-full border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700" disabled={busy} onClick={() => run(() => api.spBotLead(l.id, !!l.bot?.on))} data-testid="sp-bot-toggle">{l.bot?.on ? tx('I will talk myself', 'मैं खुद बात करूँगा') : tx('Switch assistant on', 'सहायक चालू करें')}</button>}

@@ -1564,6 +1564,8 @@ export interface LeadBot {
   viewed?: string[];
   /** v105 — the broker's own open room for his number that the assistant feeds (no link of ours to show), and the homes already offered to his room (a home the broker removed is not put back) */
   roomLinked?: string; roomHomes?: string[];
+  /** v120 — by when he wants it (one question after he confirms) */
+  timeline?: 'NOW' | 'SOON' | 'LOOK'; askedTimeline?: boolean;
 }
 export interface PartnerLead {
   id: string;                      // PLD-xxxxxxxxxx

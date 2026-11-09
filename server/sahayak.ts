@@ -60,6 +60,9 @@ const M = {
   room: { id: 'ROOM', hi: '🏠 मेरा क्लाइंट रूम', en: 'My client room' } as Chip,
   avail: { id: 'AVAIL', hi: '✅ अभी उपलब्ध है?', en: 'Still available?' } as Chip,
   info: { id: 'ASKGO', hi: '📝 जानकारी पूरी करें', en: 'Finish the details' } as Chip,
+  tlNow: { id: 'TL:NOW', hi: '🔥 इसी महीने', en: 'This month' } as Chip,
+  tlSoon: { id: 'TL:SOON', hi: '🗓 1–3 महीने में', en: 'In 1–3 months' } as Chip,
+  tlLook: { id: 'TL:LOOK', hi: '👀 अभी देख रहे हैं', en: 'Just looking' } as Chip,
   status: { id: 'STATUS', hi: '📋 मेरी लिस्टिंग कहाँ तक पहुँची?', en: 'Where is my listing?' } as Chip,
 };
 
@@ -227,7 +230,9 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     networkNote(l);   // v101 — his need goes to the network search + the broker's Buyers list now, whether or not a home of the broker's own fits
     botOf(l).followedAt ||= nowIso();   // v103 — from here the chat follows the homes by itself
     openRoom(l, true);   // v119 — his client room is there from the moment he confirms (held: the broker gets it when the number opens)
-    showHomes(l, 'BOT', 'first');
+    const shown = showHomes(l, 'BOT', 'first');
+    const b = botOf(l);   // v120 — one qualifying question, asked once, only after homes were shown (a “nothing fits” reply stays the last word); the usual buttons stay under it
+    if (shown > 0 && !b.timeline && !b.askedTimeline) { b.askedTimeline = true; say(l, '⏱ एक छोटा सवाल — आपको कब तक लेना है? इससे ब्रोकर सही घर पहले दिखा पाएँगे।', '⏱ One short question — by when do you want it? It helps the broker show the right homes first.', [M.tlNow, M.tlSoon, M.tlLook, ...menu(l)]); }
   }
 
   /** he tapped ✏️ and wrote a change: apply what can be read, ask him to confirm again */
@@ -552,6 +557,10 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     switch (head) {
       case 'VISIT': echo(label(M.visit)); return startVisit(l);
       case 'MORE': echo(label(M.more)); if (!confirmed(l)) return remindConfirm(l); if (d.ownerSide(l)) return handoff(l, 'other'); showHomes(l); return;
+      case 'TL': { const c = ({ NOW: M.tlNow, SOON: M.tlSoon, LOOK: M.tlLook } as Record<string, Chip>)[arg]; if (!c || d.ownerSide(l)) return; echo(c.hi); b.timeline = arg as any;
+        say(l, 'धन्यवाद 🙏 ब्रोकर को बता दिया है।', 'Thank you 🙏 I have told the broker.', menu(l));
+        if (arg === 'NOW') d.tellBroker(l, `🔥 ${l.name}: इसी महीने लेना है`, 'ग्राहक ने बताया कि उसे इसी महीने चाहिए — आज ही बात करें।');
+        d.hist(l, `He said by when he wants it: ${c.en}`); return; }
       case 'AVAIL': echo(label(M.avail)); return availReport(l);
       case 'MEDIA': { if (!sentIds(l).includes(arg)) return; const h = propOf(arg); echo(`📷 ${h?.title || arg}`); viewed(l, arg); return; }   // v104 — normally the page opens straight from the button; this only counts when a chip arrives without it
       case 'MEDIAREQ': { if (!sentIds(l).includes(arg)) return; const h = propOf(arg); echo(`🙋 ${h?.title || arg}`); return photoHandoff(l, h); }
@@ -646,7 +655,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   }
 
   const roomLink = (l: PartnerLead) => { const s = l.chat?.bot?.roomSealed; if (!s) return ''; try { return openLink(s, `lr|${l.id}`); } catch { return ''; } };
-  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), following: !off(l) && !!b.followedAt && followed(l, Date.now()), watchPushes: b.watch?.pushes || 0, viewed: [...(b.viewed || [])], offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
+  const view = (l: PartnerLead) => { const b = l.chat?.bot || {}; const iv = b.interview; return { on: !off(l), timeline: b.timeline || null, following: !off(l) && !!b.followedAt && followed(l, Date.now()), watchPushes: b.watch?.pushes || 0, viewed: [...(b.viewed || [])], offByLead: !!b.off, offByBroker: !!d.broker(l)?.sahayakOff, quiet: quiet(l), needsBroker: b.needsBroker || null, visits: (b.visits || []).slice(-6), room: !!b.roomId,
     interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
     network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
