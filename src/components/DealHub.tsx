@@ -7,7 +7,7 @@
  * Data: GET /api/deal-hub (same visibility / money rules as /api/deals) and GET /api/owner-mandates.
  */
 import { PropertyThumb } from './PropertyThumb.js';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, LayoutGrid, List as ListIcon, AlertTriangle, Clock, Wallet, Briefcase, Scale, CheckCircle2, ChevronRight, CalendarCheck,
   FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle, ChevronDown, SlidersHorizontal,
@@ -444,7 +444,25 @@ const mState = (m: OwnerMandate): MFilter => {
 export const MandatesBoard: React.FC<{ currentUser: UserProfile; deals?: any[]; onOpenDeal?: (id: string) => void }> = ({ currentUser, deals = [], onOpenDeal }) => {
   const tx = useTx(); const label = useLabel();
   const [list, setList] = useState<OwnerMandate[] | null>(null); const [err, setErr] = useState('');
-  const [f, setF] = useState<MFilter>('active'); const [q, setQ] = useState('');
+  const [f, setF] = useState<MFilter>('active');
+  const [q, setQ] = useState('');
+  const [debouncedQ, setDebouncedQ] = useState('');
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearchChange = (val: string) => {
+    setQ(val);
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedQ(val);
+    }, 300);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, []);
+
   const [openProp, setOpenProp] = useState<Property | null>(null); const [opening, setOpening] = useState('');
   const load = () => api.getOwnerMandates().then(r => setList(r.mandates)).catch(e => setErr(e.message));
   useEffect(() => { load(); }, []);
@@ -457,7 +475,7 @@ export const MandatesBoard: React.FC<{ currentUser: UserProfile; deals?: any[]; 
   const iAmBroker = (m: OwnerMandate) => m.brokerId === currentUser.id;
   const count = (x: MFilter) => list.filter(m => (x === 'active' ? ['active', 'ending'].includes(mState(m)) : mState(m) === x)).length;
   const expected = list.filter(m => ['active', 'ending'].includes(mState(m)) && iAmBroker(m)).reduce((n, m) => n + (m.brokerRemunerationAtAsking || 0), 0);
-  const s = q.trim().toLowerCase();
+  const s = debouncedQ.trim().toLowerCase();
   const shown = list.filter(m => (f === 'all' ? true : f === 'active' ? ['active', 'ending'].includes(mState(m)) : mState(m) === f))
     .filter(m => !s || [m.id, m.propertyId, m.propertyTitle, m.ownerName, m.offPlatformOwner?.name, m.brokerName].filter(Boolean).some(x => String(x).toLowerCase().includes(s)))
     .sort((a, b) => (mState(a) === 'waiting' ? -1 : 0) - (mState(b) === 'waiting' ? -1 : 0) || endOf(a) - endOf(b));
@@ -491,14 +509,14 @@ export const MandatesBoard: React.FC<{ currentUser: UserProfile; deals?: any[]; 
       </div>
       <div className="relative sm:max-w-sm">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, owner, mandate ID', 'प्रॉपर्टी, मालिक, मैंडेट ID खोजें')} data-testid="mandate-search" />
+        <input className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 text-sm" value={q} onChange={e => handleSearchChange(e.target.value)} placeholder={tx('Search property, owner, mandate ID', 'प्रॉपर्टी, मालिक, मैंडेट ID खोजें')} data-testid="mandate-search" />
       </div>
       {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
       {shown.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
           <ShieldCheck className="mx-auto mb-2 h-8 w-8 text-slate-300" />
           {list.length === 0 ? tx('No mandate yet. A mandate is made when the owner signs the brokerage terms (consent link or Property → Mandate).', 'अभी कोई मैंडेट नहीं। मालिक ब्रोकरेज शर्तों पर साइन करे (सहमति लिंक या प्रॉपर्टी → मैंडेट), तब मैंडेट बनता है।')
-            : <>{tx('Nothing in this filter.', 'इस फ़िल्टर में कुछ नहीं।')} <button type="button" className="font-semibold underline" onClick={() => { setF('all'); setQ(''); }}>{tx('Show all', 'सभी दिखाएँ')}</button></>}
+            : <>{tx('Nothing in this filter.', 'इस फ़िल्टर में कुछ नहीं।')} <button type="button" className="font-semibold underline" onClick={() => { setF('all'); setQ(''); setDebouncedQ(''); }}>{tx('Show all', 'सभी दिखाएँ')}</button></>}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">

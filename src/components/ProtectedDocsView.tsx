@@ -3,6 +3,7 @@ import { Loader2, FileLock2, Upload, Eye, Share2, Trash2, X, ShieldCheck, Camera
 import { WatermarkViewer } from './WatermarkViewer.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
 
 const field = 'w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base focus:border-slate-900 focus:outline-none';
 
@@ -20,6 +21,7 @@ async function toPage(file: File): Promise<string> {
 
 export const ProtectedDocsView: React.FC = () => {
   const tx = useTx();
+  const { confirm } = useUI();
   const [docs, setDocs] = useState<any[] | null>(null);
   const [err, setErr] = useState('');
   const [upload, setUpload] = useState(false);
@@ -27,7 +29,7 @@ export const ProtectedDocsView: React.FC = () => {
   const [view, setView] = useState<any>(null);
   const load = useCallback(() => api.pdocs().then(r => setDocs(r.docs)).catch(e => setErr(e.message)), []);
   useEffect(() => { load(); }, [load]);
-  const remove = async (d: any) => { if (!window.confirm(tx('Delete this document for everyone?', 'यह दस्तावेज़ सबके लिए हटाएँ?'))) return; await api.pdocDelete(d.id); load(); };
+  const remove = async (d: any) => { if (!await confirm(tx('Delete Document', 'दस्तावेज़ हटाएँ'), tx('Delete this document for everyone?', 'यह दस्तावेज़ सबके लिए हटाएँ?'), { danger: true })) return; await api.pdocDelete(d.id); load(); };
   const closeView = useCallback(() => setView(null), []);
   const open = async (d: any) => { try { setView(await api.pdocOpen(d.id).then(r => ({ ...r, id: d.id }))); load(); } catch (e: any) { setErr(e.message); } };
   if (!docs) return <div className="flex justify-center py-16">{err ? <p className="text-sm text-red-700">{err}</p> : <Loader2 className="h-6 w-6 animate-spin text-slate-500" />}</div>;

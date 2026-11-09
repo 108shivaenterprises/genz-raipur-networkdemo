@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, Download, Upload, MessageCircle, Trash2, Pencil, Clock3, Check, Tag, Phone, ShieldOff, ShieldCheck, Star } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
 import { useLabel } from '../lib/labels.js';
 import { LOST_CODES, WA_TEMPLATES, fillTemplate, MAX_TAGS, MAX_BULK, MAX_IMPORT_ROWS, STALE_DAYS } from '../shared/crmRules.js';
 import { LEAD_SOURCES } from '../shared/crmSales.js';
@@ -296,7 +297,7 @@ export const BulkBar: React.FC<{ ids: string[]; onClear: () => void; onDone: (ms
 
 // ───────────────────────── import / export ─────────────────────────
 export const ImportSheet: React.FC<{ projects: { id: string; projectName: string }[]; onClose: () => void; onDone: (n: number) => void }> = ({ projects, onClose, onDone }) => {
-  const tx = useTx(); const { busy, err, go } = useBusy(); const file = useRef<HTMLInputElement>(null);
+  const tx = useTx(); const { toast } = useUI(); const { busy, err, go } = useBusy(); const file = useRef<HTMLInputElement>(null);
   const [projectId, setProjectId] = useState(projects[0]?.id || ''); const [csv, setCsv] = useState(''); const [consent, setConsent] = useState(false);
   const [res, setRes] = useState<{ imported: number; failed: number; results: any[] } | null>(null);
   const rows = Math.max(0, csv.split(/\r?\n/).filter(l => l.trim()).length - 1);
@@ -313,7 +314,7 @@ export const ImportSheet: React.FC<{ projects: { id: string; projectName: string
           <p className="text-xs text-slate-600">{tx(`First row must be: name, phone (optional: email, interest, budget, note). Up to ${MAX_IMPORT_ROWS} rows. Duplicates and protected numbers are skipped with a reason.`, `पहली पंक्ति: name, phone (वैकल्पिक: email, interest, budget, note)। अधिकतम ${MAX_IMPORT_ROWS} पंक्तियाँ। डुप्लीकेट और सुरक्षित नंबर कारण के साथ छोड़ दिए जाते हैं।`)}</p>
           <select value={projectId} onChange={e => setProjectId(e.target.value)} className={inp}>{projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}</select>
           <textarea value={csv} onChange={e => setCsv(e.target.value)} rows={6} placeholder={'name,phone,interest\nRavi Sharma,9876543210,3 BHK'} className={`${inp} font-mono text-xs`} />
-          <div className="flex items-center gap-2"><input ref={file} type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) { if (f.size > 400_000) { setCsv(''); return; } setCsv(await f.text()); } }} /><button type="button" className={btnLine} onClick={() => file.current?.click()}><Upload className="h-3.5 w-3.5" /> {tx('Choose file', 'फ़ाइल चुनें')}</button>{rows > 0 && <span className="text-[11px] text-slate-500">{rows} {tx('rows', 'पंक्तियाँ')}</span>}</div>
+          <div className="flex items-center gap-2"><input ref={file} type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={async e => { const f = e.target.files?.[0]; if (f) { if (f.size > 400_000) { setCsv(''); if (file.current) file.current.value = ''; toast(tx('File too large (maximum 400KB allowed)', 'फ़ाइल बहुत बड़ी है (अधिकतम 400KB की अनुमति है)'), 'error'); return; } setCsv(await f.text()); } }} /><button type="button" className={btnLine} onClick={() => file.current?.click()}><Upload className="h-3.5 w-3.5" /> {tx('Choose file', 'फ़ाइल चुनें')}</button>{rows > 0 && <span className="text-[11px] text-slate-500">{rows} {tx('rows', 'पंक्तियाँ')}</span>}</div>
           <label className="flex items-start gap-2 text-xs text-slate-800"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4" /><span>{tx('I confirm every customer in this file agreed to be contacted about this project.', 'मैं पुष्टि करता/करती हूँ कि इस फ़ाइल के हर ग्राहक ने इस प्रोजेक्ट के बारे में संपर्क की सहमति दी है।')}</span></label>
           <Err msg={err} />
           <button disabled={busy || !consent || !projectId || rows < 1 || rows > MAX_IMPORT_ROWS} className={`${btnDark} w-full`} onClick={() => go(async () => setRes(await api.crmImport({ projectId, csv, consent: true })), () => undefined)}>{tx('Import', 'इम्पोर्ट')}</button>

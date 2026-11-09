@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Trash2, Loader2, Circle } from 'lucide-react';
 import { useTx } from '../../lib/i18n.js';
 import { api } from '../../lib/api.js';
+import { useUI } from '../../lib/ui.js';
 
 type Row = { id: string; context: string; with: string; staff: boolean; direction: 'in' | 'out' | 'staff'; status: string; at: string; durationSec: number; recorded: boolean; audio: boolean; deleted: boolean; expired: boolean };
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -13,6 +14,7 @@ const CTX: Record<string, [string, string]> = { TEAM: ['Team', 'टीम'], DEA
 
 export const CallsPanel: React.FC = () => {
   const tx = useTx();
+  const { confirm } = useUI();
   const [rows, setRows] = useState<Row[] | null>(null); const [keep, setKeep] = useState(30);
   const [cfg, setCfg] = useState<{ canManage: boolean; settings: { enabled: boolean; record: 'OFF' | 'ASK' | 'ALWAYS' }; relay: boolean } | null>(null);
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(''); const [play, setPlay] = useState<{ id: string; url: string } | null>(null);
@@ -30,7 +32,7 @@ export const CallsPanel: React.FC = () => {
     try { if (play) URL.revokeObjectURL(play.url); setPlay({ id, url: await api.callAudio(id) }); } catch (e: any) { setErr(e.message); } finally { setBusy(''); }
   };
   const del = async (id: string) => {
-    if (!window.confirm(tx('Delete this recording for good?', 'यह रिकॉर्डिंग हमेशा के लिए मिटाएँ?'))) return;
+    if (!await confirm(tx('Delete Recording', 'रिकॉर्डिंग मिटाएँ'), tx('Delete this recording for good?', 'यह रिकॉर्डिंग हमेशा के लिए मिटाएँ?'), { danger: true })) return;
     setBusy(id); setErr('');
     try { await api.callAudioDelete(id); if (play?.id === id) { URL.revokeObjectURL(play.url); setPlay(null); } load(); } catch (e: any) { setErr(e.message); } finally { setBusy(''); }
   };

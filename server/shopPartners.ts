@@ -602,7 +602,9 @@ function leadView(l: PartnerLead) {
     chat: chat ? { msgs: chat.msgs.slice(-80).map(m => m.kind === 'HOME' && m.homeId ? { ...m, gone: homeGone(m.homeId) || undefined } : m), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
     alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0, bot: chat ? sahayak.view(l) : null,
     matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [], needLine: needLine(l),
-    shopName: p?.shopName || '', city: cityOfLead(l), links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),
+    shopName: p?.shopName || '', partnerPersonName: p?.personName || '', partnerPhoneLast4: p?.phoneLast4 || '',
+    partnerPageUrl: p ? (() => { const t = linkOf(p, `sp|${p.id}`); return t ? `/sp/${t}` : ''; })() : '',
+    city: cityOfLead(l), links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),
     // v82 — what the app itself works out from the deal (shown fixed to the broker), the changes the shop was told about, how long it has been unpaid, and the customer's answer
     auto: a ? { amount: a.amount, brokerage: a.brokerage, basis: a.basis } : null, shareChanges: (l.shareChanges || []).slice(-5), unpaidDays: unpaidDays(l),
     askState: ask ? { at: ask.at, n: ask.n, ...(ask.answer ? { answer: ask.answer, answeredAt: ask.answeredAt } : {}) } : null,

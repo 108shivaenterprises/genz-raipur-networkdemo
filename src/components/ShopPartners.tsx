@@ -11,6 +11,7 @@ import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangl
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
+import { useUI } from '../lib/ui.js';
 import { LEAD_KINDS, LEAD_STATUSES, PAYOUT_LABEL, DEFAULT_TERMS, PARTNER_LIMITS, PAY_MODES, OVERDUE, SHARE_CHANGE_LABEL, partnerAmount, sideOfKind, termsText, cutText, checkTerms, refOk, payRecordText, type PartnerTerms, type Cut, type PartnerPayMode } from '../shared/shopPartner.js';
 import { GONE_WORDS, type GoneKind } from '../shared/sahayak.js';
 import type { UserProfile } from '../types/index.js';
@@ -91,6 +92,7 @@ const waText = (p: any, link: string, hi = true) => (hi
 
 const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const { confirm } = useUI();
   const [edit, setEdit] = useState(false); const [terms, setTerms] = useState<PartnerTerms>(p.pending?.terms || p.terms); const [note, setNote] = useState('');
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
@@ -104,6 +106,39 @@ const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }
           {p.proof?.photo && <p className="text-[11px] text-emerald-700" data-testid="sp-proof-ok">📍 {tx('Location + photo recorded at the shop', 'दुकान पर लोकेशन + फ़ोटो दर्ज')}</p>}</div>
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${tone}`}>{statusText}</span>
       </div>
+
+      {p.pageUrl && p.status !== 'ENDED' && (
+        <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
+          <span className="font-semibold text-slate-700">🔗 {tx('Shop Live Tracker Portal:', 'दुकानदार लाइव ट्रैकर पोर्टल:')}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="text-[11px] font-semibold text-indigo-700 hover:underline"
+              onClick={() => {
+                try {
+                  void navigator.clipboard.writeText(abs(p.pageUrl));
+                } catch {}
+              }}
+            >
+              {tx('Copy /sp link', 'लिंक कॉपी करें')}
+            </button>
+            <a
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:underline"
+              href={`https://wa.me/?text=${encodeURIComponent(
+                hi
+                  ? `नमस्ते ${p.personName} जी, यह आपका सुरक्षित GENZ पार्टनर पोर्टल ट्रैकर लिंक है: ${abs(p.pageUrl)}\nयहाँ आप अपनी हर लीड, साइट विज़िट और कमीशन पेआउट को लाइव ट्रैक कर सकते हैं। इसे बुकमार्क कर लें!`
+                  : `Namaste ${p.personName} ji, here is your transparent GENZ shop partner tracking portal: ${abs(p.pageUrl)}\nYou can see every customer you sent, his stage, visits and your share.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              {tx('Send Portal on WhatsApp', 'व्हाट्सएप पर भेजें')}
+            </a>
+          </div>
+        </div>
+      )}
+
       {p.codeForPartner && (
         <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-2 text-center" data-testid="sp-code">
           <p className="text-[11px] font-semibold text-amber-900">{tx('He is opening his page — read him this code', 'वे अपना पेज खोल रहे हैं — यह कोड बताएँ')}</p>
@@ -133,8 +168,8 @@ const PartnerCard: React.FC<{ p: any; onChange: () => void }> = ({ p, onChange }
         {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs'} onClick={() => setEdit(!edit)} data-testid="sp-edit-terms">{tx('Change share', 'हिस्सा बदलें')}</button>}
         {p.status === 'ACTIVE' && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => run(() => api.spAction(p.id, 'pause'))}><Pause className="h-3.5 w-3.5" />{tx('Pause', 'रोकें')}</button>}
         {p.status === 'PAUSED' && <button className={light + ' !min-h-9 !text-xs'} disabled={busy || (p.pausedBy === 'SYSTEM' && p.overdue > 0)} onClick={() => run(() => api.spAction(p.id, 'resume'))}><Play className="h-3.5 w-3.5" />{tx('Resume', 'फिर चालू')}</button>}
-        {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={() => { if (window.confirm(tx('Make a new page link? The old link stops and he signs in again.', 'नया पेज लिंक बनाएँ? पुराना बंद होगा, उन्हें दोबारा कोड डालना होगा।'))) run(() => api.spAction(p.id, 'link')); }}><Link2 className="h-3.5 w-3.5" />{tx('New link', 'नया लिंक')}</button>}
-        {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs !text-red-700'} disabled={busy} onClick={() => { if (window.confirm(tx('End this partnership? The QR stops. Leads already in keep their share.', 'साझेदारी ख़त्म करें? QR बंद होगा। पहले आई लीड का हिस्सा वैसा ही रहेगा।'))) run(() => api.spAction(p.id, 'end')); }}><XCircle className="h-3.5 w-3.5" />{tx('End', 'ख़त्म')}</button>}
+        {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs'} disabled={busy} onClick={async () => { if (await confirm(tx('New Link', 'नया लिंक'), tx('Make a new page link? The old link stops and he signs in again.', 'नया पेज लिंक बनाएँ? पुराना बंद होगा, उन्हें दोबारा कोड डालना होगा।'))) run(() => api.spAction(p.id, 'link')); }}><Link2 className="h-3.5 w-3.5" />{tx('New link', 'नया लिंक')}</button>}
+        {p.status !== 'ENDED' && <button className={light + ' !min-h-9 !text-xs !text-red-700'} disabled={busy} onClick={async () => { if (await confirm(tx('End Partnership', 'साझेदारी ख़त्म करें'), tx('End this partnership? The QR stops. Leads already in keep their share.', 'साझेदारी ख़त्म करें? QR बंद होगा। पहले आई लीड का हिस्सा वैसा ही रहेगा।'), { danger: true })) run(() => api.spAction(p.id, 'end')); }}><XCircle className="h-3.5 w-3.5" />{tx('End', 'ख़त्म')}</button>}
       </div>
       {edit && (
         <div className="space-y-2 rounded-lg bg-slate-50 p-2">
@@ -307,6 +342,21 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
         <LeadVisit l={l} onChange={onChange} />
         <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
         <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
+        <a
+          className={light + ' !min-h-10 !text-xs !bg-emerald-50 !border-emerald-200 !text-emerald-900'}
+          href={`https://wa.me/?text=${encodeURIComponent(
+            hi
+              ? `नमस्ते ${l.partnerPersonName || 'पार्टनर'} जी (${l.shopName}),\nआपके QR से आए ग्राहक ${l.name} की लीड में ताज़ा अपडेट:\n📌 स्थिति: ${LEAD_STATUSES.find((s) => s.id === l.status)?.hi || l.status}\n🏠 रुचि: ${l.homeTitle || 'क्वालिफाइड आवश्यकता'}\n🔒 आपका हिस्सा तय शर्तों के अनुसार दर्ज है।\nलाइव ट्रैकर: ${abs(l.partnerPageUrl || '')}`
+              : `Namaste ${l.partnerPersonName || 'Partner'} ji (${l.shopName}),\nUpdate on your referred client ${l.name}:\n📌 Stage: ${LEAD_STATUSES.find((s) => s.id === l.status)?.en || l.status}\n🏠 Property: ${l.homeTitle || 'Qualified Requirement'}\n🔒 Your share is recorded as per our agreed terms.\nLive tracker: ${abs(l.partnerPageUrl || '')}`
+          )}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={tx('Notify shopkeeper about lead progress so they know they are not bypassed', 'दुकानदार को लीड प्रगति बताएं ताकि उन्हें भरोसा रहे कि उन्हें बाईपास नहीं किया गया')}
+          data-testid={`sp-notify-${l.id}`}
+        >
+          <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
+          {tx('Notify Shopkeeper', 'दुकानदार को अपडेट')}
+        </a>
       </div>
       </>)}
       {l.links.length > 0 && <div className="flex flex-wrap gap-1">{l.links.map((x: any, i: number) => <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{hi ? x.hi : x.en} · {when(x.at)}</span>)}</div>}
@@ -550,7 +600,11 @@ const Desk: React.FC = () => {
   );
 };
 
-export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: boolean; canOversee: boolean }> = ({ currentUser, canManage, canOversee }) => {
+export const ShopPartnersView: React.FC<{
+  currentUser: UserProfile;
+  canManage: boolean;
+  canOversee: boolean;
+}> = ({ currentUser, canManage, canOversee }) => {
   const tx = useTx();
   const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
   const [tab, setTab] = useState<'leads' | 'partners' | 'desk'>(canManage ? 'leads' : 'desk');
@@ -601,7 +655,7 @@ export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: b
 
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist">
         {canManage && ([['leads', tx('Leads', 'लीड'), d?.leads.length], ['partners', tx('Partners', 'पार्टनर'), d?.partners.length]] as const).map(([id, label, n]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${tab === id ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid={`sp-tab-${id}`}>{label}{n !== undefined && <span className="rounded-full bg-white/20 px-1.5 text-[10px]">{n}</span>}</button>
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id as any)} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${tab === id ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid={`sp-tab-${id}`}>{label}{n !== undefined && <span className="rounded-full bg-white/20 px-1.5 text-[10px]">{n}</span>}</button>
         ))}
         {canOversee && <button role="tab" aria-selected={tab === 'desk'} onClick={() => setTab('desk')} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${tab === 'desk' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{tx('GENZ desk', 'GENZ डेस्क')}</button>}
       </div>
@@ -614,7 +668,13 @@ export const ShopPartnersView: React.FC<{ currentUser: UserProfile; canManage: b
       {canManage && d && tab === 'partners' && (
         <div className="grid gap-3 md:grid-cols-2">
           {d.partners.length === 0 && <p className="text-sm text-slate-500">{tx('No partners yet.', 'अभी कोई पार्टनर नहीं।')}</p>}
-          {d.partners.map((p: any) => <PartnerCard key={p.id + p.termsVersion + p.status + (p.pending ? 1 : 0)} p={p} onChange={load} />)}
+          {d.partners.map((p: any) => (
+            <PartnerCard
+              key={p.id + p.termsVersion + p.status + (p.pending ? 1 : 0)}
+              p={p}
+              onChange={load}
+            />
+          ))}
         </div>
       )}
       {canManage && d && tab === 'leads' && (

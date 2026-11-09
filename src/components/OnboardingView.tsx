@@ -6,6 +6,8 @@ import { useLabel } from '../lib/labels.js';
 import { UserProfile, Invitation } from '../types/index.js';
 import { api } from '../lib/api.js';
 import { formatDate } from '../lib/utils.js';
+import { useUI } from '../lib/ui.js';
+import { isValidIndianPhone, sanitizePhone, isValidPAN, isValidGSTIN } from '../lib/validate.js';
 import {
   KeyRound,
   UserCheck,
@@ -37,6 +39,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
   const { t, lang } = useI18n();
   const tx = useTx();
   const label = useLabel();
+  const { toast, confirm, prompt } = useUI();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [invitedEmail, setInvitedEmail] = useState<string>('');
   const [invitedPhone, setInvitedPhone] = useState<string>('');
@@ -80,19 +83,24 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
   const handleIssueInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invitedPhone || (targetRole !== 'GENZ_CONNECTOR' && !invitedEmail)) return;
+    if (!isValidIndianPhone(invitedPhone)) {
+      toast(tx('Please enter a valid 10-digit Indian phone number', 'कृपया 10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें'), 'error');
+      return;
+    }
     setIsIssuingInvite(true);
     try {
       const res = await api.createInvitation({
         invitedEmail: invitedEmail || undefined,
-        invitedPhone,
+        invitedPhone: sanitizePhone(invitedPhone),
         targetRole,
       });
       setLastInvite(res.invitation);
       setInvitedEmail('');
       setInvitedPhone('');
+      toast(tx('Invitation sent successfully', 'निमंत्रण सफलतापूर्वक भेजा गया'), 'success');
       fetchInvitations();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message || tx('Failed to send invitation', 'निमंत्रण भेजने में विफल'), 'error');
     } finally {
       setIsIssuingInvite(false);
     }
@@ -100,6 +108,18 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
 
   const handleRedeemInvite = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (applicantPhone && !isValidIndianPhone(applicantPhone)) {
+      toast(tx('Please enter a valid 10-digit Indian mobile number', 'कृपया 10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें'), 'error');
+      return;
+    }
+    if (panNumber && !isValidPAN(panNumber)) {
+      toast(tx('Please enter a valid PAN number (e.g. ABCDE1234F)', 'कृपया मान्य पैन नंबर दर्ज करें (उदा. ABCDE1234F)'), 'error');
+      return;
+    }
+    if (gstin && !isValidGSTIN(gstin)) {
+      toast(tx('Please enter a valid GSTIN (e.g. 22AAAAA0000A1Z5)', 'कृपया मान्य GSTIN दर्ज करें (उदा. 22AAAAA0000A1Z5)'), 'error');
+      return;
+    }
     setIsRedeeming(true);
     setRedemptionSuccess('');
     try {
@@ -107,19 +127,20 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
         code: redeemCode,
         name: applicantName,
         email: applicantEmail,
-        phone: applicantPhone,
+        phone: sanitizePhone(applicantPhone),
         companyName,
         reraNumber,
         state: loc.state || undefined,
         city: loc.city || undefined,
         password: applicantPassword,
-        panNumber: panNumber || undefined,
-        gstin: gstin || undefined,
+        panNumber: panNumber ? panNumber.toUpperCase().trim() : undefined,
+        gstin: gstin ? gstin.toUpperCase().trim() : undefined,
         consent: true,
       });
       setRedemptionSuccess(
         `Application submitted successfully! Your account ID is ${res.user.id}. Awaiting admin document verification.`
       );
+      toast(tx('Application submitted successfully! Awaiting verification.', 'आवेदन सफलतापूर्वक सबमिट हो गया! सत्यापन की प्रतीक्षा है।'), 'success');
       setRedeemCode('');
       setApplicantName('');
       setApplicantEmail('');
@@ -130,7 +151,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
       setPanNumber(''); setGstin(''); setConsent(false);
       onRefreshUsers();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message || tx('Application submission failed', 'आवेदन सबमिट करने में विफल'), 'error');
     } finally {
       setIsRedeeming(false);
     }
@@ -147,14 +168,17 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
   });
 
   const handleReviewUser = async (userId: string, action: string) => {
-    const reason = prompt(tx(`Enter notes for ${action}:`, `${action} के लिए नोट लिखें:`));
+    const reason = await prompt(tx(`Enter notes for ${action}:`, `${action} के लिए नोट लिखें:`), {
+      confirmLabel: tx('Submit', 'सबमिट'),
+      cancelLabel: tx('Cancel', 'रद्द करें'),
+    });
     if (reason === null) return;
     try {
       const res = await api.reviewVerification(userId, action, reason);
-      alert(tx(`User status updated to ${res.user.verificationStatus}. Broker ID: ${res.user.brokerId || 'N/A'}`, `यूज़र का स्टेटस ${res.user.verificationStatus} हो गया। ब्रोकर ID: ${res.user.brokerId || 'लागू नहीं'}`));
+      toast(tx(`User status updated to ${res.user.verificationStatus}. Broker ID: ${res.user.brokerId || 'N/A'}`, `यूज़र का स्टेटस ${res.user.verificationStatus} हो गया। ब्रोकर ID: ${res.user.brokerId || 'लागू नहीं'}`), 'success');
       onRefreshUsers();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message || tx('Failed to update status', 'स्टेटस अपडेट करने में विफल'), 'error');
     }
   };
 
@@ -162,11 +186,20 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
   const handleIdSeen = async (u: UserProfile) => {
     let note = '';
     if (!u.idCheckedAt) {
-      const n = prompt(tx('What did you see? (e.g. PAN card + masked Aadhaar on video call). Please do not write the numbers.', 'क्या देखा? (जैसे वीडियो कॉल पर PAN कार्ड + मास्क्ड आधार)। नंबर न लिखें।'));
+      const n = await prompt(tx('What did you see? (e.g. PAN card + masked Aadhaar on video call). Please do not write the numbers.', 'क्या देखा? (जैसे वीडियो कॉल पर PAN कार्ड + मास्क्ड आधार)। नंबर न लिखें।'), {
+        confirmLabel: tx('Submit', 'सबमिट'),
+        cancelLabel: tx('Cancel', 'रद्द करें'),
+      });
       if (n === null) return;
       note = n;
     }
-    try { await api.netIdCheck(u.id, !u.idCheckedAt, note); onRefreshUsers(); } catch (err: any) { alert(err.message); }
+    try {
+      await api.netIdCheck(u.id, !u.idCheckedAt, note);
+      toast(tx(u.idCheckedAt ? 'ID check removed' : 'ID check verified', u.idCheckedAt ? 'ID जाँच हटाई गई' : 'ID जाँच सत्यापित की गई'), 'info');
+      onRefreshUsers();
+    } catch (err: any) {
+      toast(err.message || tx('Failed to update ID check', 'ID जाँच अपडेट करने में विफल'), 'error');
+    }
   };
 
   return (
@@ -308,7 +341,19 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                       {inv.status === 'PENDING' && (
                         <button
                           onClick={async () => {
-                            try { await api.revokeInvitation(inv.id); fetchInvitations(); } catch (err: any) { alert(err.message); }
+                            const ok = await confirm(
+                              tx('Revoke Invitation', 'निमंत्रण रद्द करें'),
+                              tx('Are you sure you want to revoke this invitation?', 'क्या आप वाकई इस निमंत्रण को रद्द करना चाहते हैं?'),
+                              { danger: true, confirmLabel: tx('Revoke', 'रद्द करें'), cancelLabel: tx('Cancel', 'रद्द करें') }
+                            );
+                            if (!ok) return;
+                            try {
+                              await api.revokeInvitation(inv.id);
+                              toast(tx('Invitation revoked', 'निमंत्रण रद्द किया गया'), 'info');
+                              fetchInvitations();
+                            } catch (err: any) {
+                              toast(err.message || tx('Failed to revoke invitation', 'निमंत्रण रद्द करने में विफल'), 'error');
+                            }
                           }}
                           className="ml-2 text-red-600 hover:underline"
                         >

@@ -7,6 +7,7 @@ import { formatINR } from '../lib/utils.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { ShareTerms } from './ShareTerms.js';
+import { isPositiveNumber } from '../lib/validate.js';
 import type { TabType } from './NavigationTabs.js';
 
 const STATUS_STYLE: Record<string, string> = {
@@ -253,7 +254,13 @@ const ReferralRow: React.FC<{ r: any; manage: boolean; full: boolean; canPay: bo
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input value={note} onChange={e => setNote(e.target.value)} placeholder={tx('Note (required to close as lost)', 'नोट (खोया बंद करने के लिए ज़रूरी)')} className={small + ' w-56'} />
           {moves.map(s => (
-            <button key={s} onClick={() => act(() => api.connectorSetStatus(r.id, s, note || undefined), tx(`Moved to ${s}`, `${label('referralStatus', s)} में बदला`))} className={small + ' font-semibold hover:border-slate-900'}>→ {label('referralStatus', s) || s.replace('_', ' ')}</button>
+            <button key={s} onClick={() => {
+              if (['REJECTED', 'CLOSED_LOST'].includes(s) && !note.trim()) {
+                act(async () => { throw new Error(tx('Please enter a note explaining why this referral is lost/rejected', 'कृपया नोट दर्ज करें कि यह रेफ़रल क्यों खोया/अस्वीकृत हुआ')); }, '');
+                return;
+              }
+              act(() => api.connectorSetStatus(r.id, s, note.trim() || undefined), tx(`Moved to ${s}`, `${label('referralStatus', s)} में बदला`));
+            }} className={small + ' font-semibold hover:border-slate-900'}>→ {label('referralStatus', s) || s.replace('_', ' ')}</button>
           ))}
         </div>
       )}
@@ -264,7 +271,13 @@ const ReferralRow: React.FC<{ r: any; manage: boolean; full: boolean; canPay: bo
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 p-2.5">
           <span className="text-xs font-semibold text-emerald-900">{tx('Approve reward', 'रिवॉर्ड मंज़ूर करें')}{mine ? tx(' (you pay your partner)', ' (पार्टनर को आप चुकाएँगे)') : ''}</span>
           <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="numeric" placeholder={tx('default amount', 'डिफ़ॉल्ट राशि')} className={small + ' w-32'} />
-          <button onClick={() => act(() => api.connectorApproveReward(r.id, amount ? Number(amount) : undefined), tx('Reward approved', 'रिवॉर्ड मंज़ूर'))} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">{tx('Approve', 'मंज़ूर करें')}</button>
+          <button onClick={() => {
+            if (amount && !isPositiveNumber(amount)) {
+              act(async () => { throw new Error(tx('Please enter a valid positive reward amount', 'कृपया मान्य धनात्मक रिवॉर्ड राशि दर्ज करें')); }, '');
+              return;
+            }
+            act(() => api.connectorApproveReward(r.id, amount ? Number(amount) : undefined), tx('Reward approved', 'रिवॉर्ड मंज़ूर'));
+          }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">{tx('Approve', 'मंज़ूर करें')}</button>
         </div>
       )}
       {rewardAdmin && r.rewardStatus === 'APPROVED' && (

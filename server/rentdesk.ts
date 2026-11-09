@@ -305,7 +305,11 @@ ${t.escalationPct ? row('Yearly increase', 'सालाना बढ़ोत�
 ${row('Notice to leave', 'ख़ाली करने का नोटिस', `${notice} days · दिन`)}
 ${t.keysOn ? row('Keys handed over', 'चाबी सौंपी', humanDay(t.keysOn)) : ''}
 ${t.meterNote ? row('Meter readings / fittings', 'मीटर रीडिंग / फ़िटिंग', t.meterNote) : ''}
-${row('Tenant police verification', 'किरायेदार का पुलिस वेरिफ़िकेशन', POLICE_STEPS.find(x => x.id === t.police.status)!.en + ' · ' + POLICE_STEPS.find(x => x.id === t.police.status)!.hi + (t.police.ref ? ` (ack. ${t.police.ref})` : ''))}
+${(() => {
+  const pStep = POLICE_STEPS.find(x => x.id === t.police?.status);
+  const pText = pStep ? `${pStep.en} · ${pStep.hi}` : 'Pending · लंबित';
+  return row('Tenant police verification', 'किरायेदार का पुलिस वेरिफ़िकेशन', pText + (t.police?.ref ? ` (ack. ${t.police.ref})` : ''));
+})()}
 </table>
 <p class="note">${esc(SHEET_NOTE.en)}</p><p class="note hi">${esc(SHEET_NOTE.hi)}</p>
 <h2>Police verification — carry <span class="hi">· पुलिस वेरिफ़िकेशन — साथ ले जाएँ</span></h2>

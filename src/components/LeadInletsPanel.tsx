@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Building2, CheckCircle2, ChevronDown, Code2, Copy, FlaskConical, Globe, Link2, Loader2, Megaphone, Pause, Play, Plug, Plus, RotateCw, ShieldCheck, Trash2, Webhook, XCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
 import { Sheet, Err, useBusy, inp, btnDark, btnLine } from './CrmPlus.js';
 import { copyText, siteUrl } from './InventorySheets.js';
 
@@ -91,6 +92,7 @@ const Guide: React.FC<{ inlet: any; url: string }> = ({ inlet, url }) => {
 
 const InletCard: React.FC<{ inlet: any; open: boolean; onToggle: () => void; onChanged: () => void }> = ({ inlet, open, onToggle, onChanged }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
+  const { confirm } = useUI();
   const { busy, err, go } = useBusy();
   const [test, setTest] = useState<{ ok: boolean; why: string; hi: string } | null>(null);
   const [flash, setFlash] = useState('');
@@ -127,8 +129,8 @@ const InletCard: React.FC<{ inlet: any; open: boolean; onToggle: () => void; onC
         {inlet.kind === 'FORM' && <button type="button" className={btnLine} onClick={async () => { setFlash((await copyText(url)) ? tx('Link copied', 'लिंक कॉपी हुआ') : tx('Copy failed', 'कॉपी नहीं हुआ')); setTimeout(() => setFlash(''), 1800); }}><Link2 className="h-3.5 w-3.5" />{tx('Copy form link', 'फ़ॉर्म लिंक')}</button>}
         <button type="button" disabled={busy} className={btnLine} data-testid="inlet-test" onClick={() => go(async () => { const r = await api.inletTest(inlet.id); setTest({ ok: r.ok, why: r.why, hi: r.hi }); }, () => { /* shown below */ })}><FlaskConical className="h-3.5 w-3.5" />{tx('Test', 'टेस्ट')}</button>
         <button type="button" disabled={busy} className={btnLine} onClick={() => go(() => api.inletUpdate(inlet.id, { active: !inlet.active }), onChanged)}>{inlet.active ? <><Pause className="h-3.5 w-3.5" />{tx('Pause', 'रोकें')}</> : <><Play className="h-3.5 w-3.5" />{tx('Switch on', 'चालू करें')}</>}</button>
-        <button type="button" disabled={busy} className={btnLine} onClick={() => { if (window.confirm(tx('Make a new secret address? The old link stops working at once — update it wherever you pasted it.', 'नया गुप्त पता बनाएँ? पुराना लिंक तुरंत बंद हो जाएगा — जहाँ लगाया है वहाँ बदलें।'))) go(() => api.inletRotate(inlet.id), onChanged); }}><RotateCw className="h-3.5 w-3.5" />{tx('New secret', 'नया गुप्त पता')}</button>
-        <button type="button" disabled={busy} className={btnLine} onClick={() => { if (window.confirm(tx('Delete this address? Its link stops working. Leads already made stay in your CRM.', 'यह पता हटाएँ? इसका लिंक बंद हो जाएगा। बन चुकी लीड CRM में रहेंगी।'))) go(() => api.inletDelete(inlet.id), onChanged); }}><Trash2 className="h-3.5 w-3.5" />{tx('Delete', 'हटाएँ')}</button>
+        <button type="button" disabled={busy} className={btnLine} onClick={async () => { if (await confirm(tx('Rotate Secret Address', 'नया गुप्त पता बनाएँ'), tx('Make a new secret address? The old link stops working at once — update it wherever you pasted it.', 'नया गुप्त पता बनाएँ? पुराना लिंक तुरंत बंद हो जाएगा — जहाँ लगाया है वहाँ बदलें।'))) go(() => api.inletRotate(inlet.id), onChanged); }}><RotateCw className="h-3.5 w-3.5" />{tx('New secret', 'नया गुप्त पता')}</button>
+        <button type="button" disabled={busy} className={btnLine} onClick={async () => { if (await confirm(tx('Delete Address', 'पता हटाएँ'), tx('Delete this address? Its link stops working. Leads already made stay in your CRM.', 'यह पता हटाएँ? इसका लिंक बंद हो जाएगा। बन चुकी लीड CRM में रहेंगी।'), { danger: true })) go(() => api.inletDelete(inlet.id), onChanged); }}><Trash2 className="h-3.5 w-3.5" />{tx('Delete', 'हटाएँ')}</button>
       </div>
       <Err msg={err} />
       {flash && <div className="rounded-lg bg-slate-900 px-3 py-1.5 text-center text-xs font-semibold text-white">{flash}</div>}

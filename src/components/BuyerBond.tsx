@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { ShieldCheck, Send, AlertTriangle, Loader2, Phone, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
 
 const d0 = (iso?: string) => iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 const daysLeft = (iso: string) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86400_000));
@@ -41,12 +42,13 @@ export const BondBlockedNotice: React.FC<{ info: any; onClose?: () => void }> = 
 /** Deal Desk → Buyer protection: my buyer bonds, co-broke requests on them, alerts when the property was sold */
 export const BuyerBondsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   const tx = useTx();
+  const { confirm } = useUI();
   const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState('');
   const load = () => api.bbMine().then(setD).catch(e => setErr(e.message));
   useEffect(() => { load(); }, [tick]);
   if (err) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
   if (!d) return <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />;
-  const release = async (id: string) => { if (!window.confirm(tx('Let this buyer bond go? Other brokers can then bring this buyer to this property.', 'यह खरीदार सुरक्षा छोड़ें? फिर दूसरे ब्रोकर इस खरीदार को इस प्रॉपर्टी पर ला सकेंगे।'))) return; setBusy(id); try { await api.bbRelease(id); await load(); } finally { setBusy(''); } };
+  const release = async (id: string) => { if (!await confirm(tx('Release Buyer Bond', 'खरीदार सुरक्षा छोड़ें'), tx('Let this buyer bond go? Other brokers can then bring this buyer to this property.', 'यह खरीदार सुरक्षा छोड़ें? फिर दूसरे ब्रोकर इस खरीदार को इस प्रॉपर्टी पर ला सकेंगे।')) ) return; setBusy(id); try { await api.bbRelease(id); await load(); } finally { setBusy(''); } };
   const active = d.bonds.filter((b: any) => b.active); const past = d.bonds.filter((b: any) => !b.active);
   return (
     <div className="space-y-3" data-testid="bonds-tab">

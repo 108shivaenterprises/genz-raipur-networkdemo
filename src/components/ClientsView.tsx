@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Phone, MessageCircle, ChevronRight, Trash2, X, Clock, WifiOff, RefreshCw, Sparkles } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
+import { isValidIndianPhone, sanitizePhone } from '../lib/validate.js';
 import { PROPERTY_TYPES } from '../shared/india.js';
 import { formatINR } from '../lib/utils.js';
 import { enqueue, flushQueue, isNetworkError, pendingCount, type PendingOp } from '../lib/offline.js';
@@ -24,6 +26,7 @@ const lakh = (v: string) => Math.round((parseFloat(v) || 0) * 100000);
 
 export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => {
   const tx = useTx();
+  const { confirm, prompt } = useUI();
   const { lang } = useI18n();
   const [list, setList] = useState<any[] | null>(null);
   const [err, setErr] = useState('');
@@ -34,6 +37,7 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [tpl, setTpl] = useState(() => { try { return { ...DEFAULT_TPL, ...JSON.parse(localStorage.getItem(TPL_KEY) || '{}') }; } catch { return DEFAULT_TPL; } });
   const [editTpl, setEditTpl] = useState(false);
+  const [openingRoom, setOpeningRoom] = useState<string | null>(null);
   const link = currentUser.referralCode ? `${location.origin}/c/${currentUser.referralCode}` : '';
   // v58 — the broker's office staff work his client list: no deleting, and the number only when the broker lets them see numbers
   const staff = currentUser.role === 'TEAM_MEMBER';
@@ -51,7 +55,15 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
   const due = (list || []).filter(c => c.followUpAt && !['DEAL', 'LOST'].includes(c.stage) && new Date(c.followUpAt).getTime() <= Date.now());
 
   const move = async (c: any, to: string, lostReason?: string) => {
-    if (to === 'LOST' && !lostReason) { const r = window.prompt(tx('Why was the lead lost? (one line)', 'लीड क्यों खत्म हुई? (एक लाइन)')); if (!r) return; lostReason = r; }
+    if (to === 'LOST' && !lostReason) {
+      const r = await prompt(tx('Lead Lost', 'लीड खत्म'), {
+        message: tx('Why was the lead lost? (one line)', 'लीड क्यों खत्म हुई? (एक लाइन)'),
+        placeholder: tx('Reason...', 'कारण...'),
+        required: true,
+      });
+      if (!r) return;
+      lostReason = r;
+    }
     const body = { stage: to, lostReason };
     setList(prev => (prev || []).map(x => (x.id === c.id ? { ...x, stage: to } : x)));
     try { const r = await api.clientStage(c.id, body); setList(prev => (prev || []).map(x => (x.id === c.id ? r.client : x))); setOpen((o: any) => (o?.id === c.id ? r.client : o)); }
@@ -61,6 +73,24 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
     const text = fill(tpl[kind][lang], { client_name: c.name.split(' ')[0], property_title: tx('the property', 'प्रॉपर्टी'), link });
     api.clientNote(c.id, { text: `WhatsApp: ${kind === 'follow' ? tx('follow-up sent', 'फॉलो-अप भेजा') : tx('visit invite sent', 'विज़िट का न्योता भेजा')}`, kind: 'CONTACT' }).catch(() => undefined);
     window.open(`https://wa.me/91${digits10(c.phone)}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
+
+  const handleOpenRoom = async (c: any) => {
+    setOpeningRoom(c.id);
+    try {
+      await api.crCreate({
+        clientName: c.name,
+        phone: c.phone,
+        kind: c.transactionType === 'Rent' ? 'RENTER' : 'BUYER',
+        consent: true,
+        note: `Direct Client Room · ${c.areas?.join(', ') || c.city || ''}`,
+      });
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || 'Failed to create room');
+    } finally {
+      setOpeningRoom(null);
+    }
   };
 
   if (!list) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>;
@@ -116,9 +146,35 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
                   </button>
                   <span title={(c.lead?.reasons || []).map((r: any) => tx(r.en, r.hi)).join(' • ')} className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${LEAD_STYLE[c.lead?.label || 'COLD']}`}>{tx(...LEAD_LABEL[c.lead?.label || 'COLD'])} {c.lead?.score ?? 0}</span>
                 </div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-semibold" data-testid="client-links">
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold" data-testid="client-links">
                   <span className={c.needId ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800' : 'rounded-full bg-slate-100 px-2 py-0.5 text-slate-500'}>{c.needId ? tx('In Buyers ✓', 'Buyers में ✓') : tx('Add a budget to list in Buyers', 'Buyers में आने के लिए बजट डालें')}</span>
-                  <span className={c.roomId ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800' : 'rounded-full bg-slate-100 px-2 py-0.5 text-slate-500'}>{c.roomId ? tx('Chat room open ✓', 'चैट रूम खुला ✓') : tx('No chat room yet', 'चैट रूम नहीं')}</span>
+                  {c.roomId ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'chats' }));
+                      }}
+                      className="rounded-full bg-emerald-50 hover:bg-emerald-100 px-2.5 py-0.5 text-emerald-800 inline-flex items-center gap-1 font-bold transition cursor-pointer"
+                      title={tx('Open Client Room Chat', 'क्लाइंट रूम खोलें')}
+                    >
+                      <span>💬 {tx('Chat room open ✓', 'चैट रूम खुला ✓')}</span>
+                    </button>
+                  ) : (
+                    <div className="inline-flex items-center gap-1">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">{tx('No chat room yet', 'चैट रूम नहीं')}</span>
+                      {!staff && (
+                        <button
+                          type="button"
+                          disabled={openingRoom === c.id}
+                          onClick={() => handleOpenRoom(c)}
+                          className="rounded-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 text-indigo-700 inline-flex items-center gap-1 font-bold transition cursor-pointer text-[10px]"
+                          title={tx('Open direct client room', 'डायरेक्ट क्लाइंट रूम खोलें')}
+                        >
+                          {openingRoom === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>🏠 {tx('+ Open Room', '+ रूम खोलें')}</span>}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {c.followUpAt && <div className={`mt-1.5 flex items-center gap-1 text-[11px] ${new Date(c.followUpAt) <= new Date() ? 'font-bold text-red-700' : 'text-slate-500'}`}><Clock className="h-3 w-3" aria-hidden />{tx('Follow-up', 'फॉलो-अप')}: {new Date(c.followUpAt).toLocaleDateString('en-IN')}</div>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -134,7 +190,7 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
       )}
 
       {adding && <AddClient currentUser={currentUser} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load(); setPending(pendingCount()); }} />}
-      {open && <ClientDetail c={open} onClose={() => setOpen(null)} onMove={move} onChanged={(c2: any) => { setOpen(c2); setList(prev => (prev || []).map(x => (x.id === c2.id ? c2 : x))); }} onDelete={staff ? undefined : async () => { if (!window.confirm(tx('Delete this client permanently?', 'इस क्लाइंट को हमेशा के लिए हटाएँ?'))) return; await api.clientDelete(open.id); setOpen(null); load(); }} wa={wa} />}
+      {open && <ClientDetail c={open} onClose={() => setOpen(null)} onMove={move} onChanged={(c2: any) => { setOpen(c2); setList(prev => (prev || []).map(x => (x.id === c2.id ? c2 : x))); }} onDelete={staff ? undefined : async () => { if (!await confirm(tx('Delete Client', 'क्लाइंट हटाएँ'), tx('Delete this client permanently?', 'इस क्लाइंट को हमेशा के लिए हटाएँ?'), { danger: true })) return; await api.clientDelete(open.id); setOpen(null); load(); }} wa={wa} />}
       {editTpl && (
         <Sheet title={tx('WhatsApp templates', 'WhatsApp टेम्पलेट')} onClose={() => setEditTpl(false)}>
           <p className="text-xs text-slate-500">{tx('Use {client_name}, {property_title}, {link}. Saved on this phone.', '{client_name}, {property_title}, {link} इस्तेमाल करें। इसी फ़ोन में सेव होगा।')}</p>
@@ -175,8 +231,14 @@ const AddClient: React.FC<{ currentUser: UserProfile; onClose: () => void; onSav
   };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
+    if (!isValidIndianPhone(f.phone)) {
+      setErr(tx('Enter a valid 10-digit Indian mobile number', '10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें'));
+      setBusy(false);
+      return;
+    }
+    const cleanPhone = sanitizePhone(f.phone);
     const body = {
-      name: f.name, phone: f.phone, budgetMin: lakh(f.minL), budgetMax: lakh(f.maxL), city: f.city, areas: f.areas.split(',').map((x: string) => x.trim()).filter(Boolean),
+      name: f.name, phone: cleanPhone, budgetMin: lakh(f.minL), budgetMax: lakh(f.maxL), city: f.city, areas: f.areas.split(',').map((x: string) => x.trim()).filter(Boolean),
       propertyType: f.propertyType, transactionType: f.transactionType, consent: f.consent === true,
       followUpAt: f.followDays ? new Date(Date.now() + Number(f.followDays) * 86400000).toISOString() : undefined, clientRef: `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`,
     };
@@ -230,7 +292,35 @@ const ClientDetail: React.FC<{ c: any; onClose: () => void; onMove: (c: any, to:
         <div className="flex flex-wrap gap-1.5">{STAGES.map(s => <button key={s} onClick={() => onMove(c, s)} className={`min-h-10 rounded-full px-3 text-xs font-semibold ${c.stage === s ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-300'}`}>{tx(...STAGE_LABEL[s])}</button>)}</div>
         {c.lostReason && <p className="text-xs text-slate-500">{tx('Lost because', 'खत्म होने का कारण')}: {c.lostReason}</p>}
         <div className="flex flex-wrap gap-2">
-          {!c.phoneHidden && <button onClick={() => wa(c, 'visit')} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"><MessageCircle className="h-4 w-4" aria-hidden />{tx('Invite to site visit', 'साइट विज़िट बुलाएँ')}</button>}
+          {!c.phoneHidden && (
+            <>
+              <button onClick={() => wa(c, 'visit')} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"><MessageCircle className="h-4 w-4" aria-hidden />{tx('Invite to site visit', 'साइट विज़िट बुलाएँ')}</button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    if (!c.roomId) {
+                      const res = await api.crCreate({
+                        clientName: c.name,
+                        phone: c.phone,
+                        kind: c.transactionType === 'Rent' ? 'RENTER' : 'BUYER',
+                        consent: true,
+                        note: `Direct Client Room · ${c.areas?.join(', ') || c.city || ''}`,
+                      });
+                      onChanged({ ...c, roomId: res.room?.id });
+                    }
+                    window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'chats' }));
+                    onClose();
+                  } catch (e: any) {
+                    setErr(e.message || 'Error opening room');
+                  }
+                }}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-indigo-600 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                <span>🏠 {c.roomId ? tx('Open Client Room', 'क्लाइंट रूम खोलें') : tx('Create Client Room', 'क्लाइंट रूम बनाएँ')}</span>
+              </button>
+            </>
+          )}
           {[1, 3, 7].map(d => <button key={d} onClick={() => setFollow(d)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs font-semibold">{tx(`Remind in ${d}d`, `${d} दिन में याद दिलाएँ`)}</button>)}
         </div>
         <div className="flex gap-2"><input value={note} onChange={e => setNote(e.target.value)} placeholder={tx('Add a note', 'नोट जोड़ें')} maxLength={500} className={field} /><button onClick={addNote} className="min-h-12 shrink-0 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">{tx('Add', 'जोड़ें')}</button></div>

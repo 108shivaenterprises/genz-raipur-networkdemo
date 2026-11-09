@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types/index.js';
-import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, MessageCircle, LogOut, ShieldCheck, ChevronDown, Star } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, MessageCircle, LogOut, ShieldCheck, ChevronDown, Star, Search } from 'lucide-react';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -24,6 +24,7 @@ interface NavbarProps {
   /** v50: the chat icon (only for people who have chats) and the number of unread messages on it */
   onOpenChats?: () => void;
   chatCount?: number;
+  onOpenSearch?: () => void;
 }
 
 const initialsOf = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
@@ -44,6 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenScan,
   onOpenChats,
   chatCount = 0,
+  onOpenSearch,
 }) => {
   const { t } = useI18n();
   const tx = useTx();
@@ -63,7 +65,35 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
+        {/* Smart Search / Command Bar on Desktop */}
+        {onOpenSearch && (
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            aria-label={tx('Search screens and actions (Cmd+K)', 'स्क्रीन और काम खोजें (Cmd+K)')}
+            className="hidden md:flex flex-1 max-w-sm mx-3 items-center justify-between rounded-full border border-slate-200/90 bg-slate-50/80 px-3.5 py-1.5 text-xs text-slate-500 hover:border-slate-300 hover:bg-white hover:text-slate-700 transition-all shadow-2xs"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span className="truncate">{tx('Search 40+ tools, screens, actions…', '40+ टूल्स, स्क्रीन और काम खोजें…')}</span>
+            </div>
+            <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-400 shadow-2xs">⌘K</kbd>
+          </button>
+        )}
+
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Mobile search trigger */}
+          {onOpenSearch && (
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              aria-label={tx('Search screens & tools', 'स्क्रीन और टूल्स खोजें')}
+              title={tx('Search screens & tools', 'स्क्रीन और टूल्स खोजें')}
+              className={`md:hidden ${iconBtn} border-slate-200 bg-white hover:border-slate-900`}
+            >
+              <Search className="h-5 w-5" />
+            </button>
+          )}
           {/* v77 — the notification bell: every role, every alert in one list, with Clear all */}
           <NotificationBell />
           {onOpenChats && (

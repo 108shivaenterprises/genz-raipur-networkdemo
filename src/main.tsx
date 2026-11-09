@@ -7,6 +7,7 @@ import { lazyView } from './lib/lazyView.js';
 const StrengthPage = lazyView(() => import('./components/StrengthPage.js'), 'StrengthPage');
 import './index.css';
 import { installGlobalErrorReporting } from './lib/clientErrors.js';
+import { UIProvider } from './lib/ui.js';
 
 installGlobalErrorReporting();
 
@@ -26,7 +27,9 @@ function Root() {
 
 createRoot(document.getElementById('root')!).render(
   <LangProvider>
-    <Root />
+    <UIProvider>
+      <Root />
+    </UIProvider>
   </LangProvider>
 );
 

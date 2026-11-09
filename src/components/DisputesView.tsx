@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { formatDate } from '../lib/utils.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { useUI } from '../lib/ui.js';
 import {
   Scale,
   ShieldAlert,
@@ -31,6 +32,7 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
 }) => {
   const tx = useTx();
   const label = useLabel();
+  const { toast } = useUI();
   const reasonText = (r: string) => { const l = label('disputeReason', r); return l === r ? r.replace(/_/g, ' ') : l; };
   const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(disputes[0] || null);
   const [resolutionStatus, setResolutionStatus] = useState<string>('RESOLVED');
@@ -51,11 +53,11 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
         liftHold,
         blacklistParty: blacklistCounterparty,
       });
-      alert(tx('Your decision was saved to the audit trail.', 'आपका फ़ैसला ऑडिट ट्रेल में दर्ज हो गया।'));
+      toast(tx('Your decision was saved to the audit trail.', 'आपका फ़ैसला ऑडिट ट्रेल में दर्ज हो गया।'), 'success');
       onRefreshDisputes();
       setSelectedDispute(null);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setIsSubmitting(false);
     }

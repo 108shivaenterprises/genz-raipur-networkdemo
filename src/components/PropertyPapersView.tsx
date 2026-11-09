@@ -8,6 +8,7 @@ import { ScanToPdf } from './ScanToPdf.js';
 import { PROP_DOC_MAX_BYTES } from '../shared/propDocs.js';
 import { WatermarkViewer, type ViewSession } from './WatermarkViewer.js';
 import { ProtectedDocsView } from './ProtectedDocsView.js';
+import { useUI } from '../lib/ui.js';
 
 const paperPage = (t: string) => `/api/property-docs/view/${t}`;
 /** the server's Hindi line when it sent one */
@@ -30,6 +31,7 @@ const VisBadge: React.FC<{ v: Vis }> = ({ v }) => {
 /** v49 — `withProtected`: the person also has Protected Docs; they now live here as a second section (the old tab opens this one). */
 export const PropertyPapersView: React.FC<{ withProtected?: boolean }> = ({ withProtected = false }) => {
   const tx = useTx();
+  const { confirm } = useUI();
   const { lang } = useI18n();
   const hi = lang === 'hi';
   const [section, setSection] = useState<'papers' | 'protected'>(() => {
@@ -73,7 +75,7 @@ export const PropertyPapersView: React.FC<{ withProtected?: boolean }> = ({ with
     } catch { /* old browser */ }
   }, [openViewer]);
   const setProtect = async (d: any, on: boolean) => {
-    if (!on && !window.confirm(tx('Remove protection? Everyone this paper is shared with can then open the original file and download it.', 'सुरक्षा हटाएँ? फिर जिनके साथ यह कागज़ शेयर है वे असली फ़ाइल खोल और डाउनलोड कर सकेंगे।'))) return;
+    if (!on && !await confirm(tx('Remove Protection', 'सुरक्षा हटाएँ'), tx('Remove protection? Everyone this paper is shared with can then open the original file and download it.', 'सुरक्षा हटाएँ? फिर जिनके साथ यह कागज़ शेयर है वे असली फ़ाइल खोल और डाउनलोड कर सकेंगे।'), { danger: true })) return;
     setBusyId(d.id); setErr('');
     try { await api.propDocEdit(d.id, { protect: on }); flash(on ? tx('Protected — others can only view it, with their name stamped on it', 'सुरक्षित — बाकी लोग सिर्फ़ देख सकेंगे, उन पर उनका नाम छपेगा') : tx('Protection removed', 'सुरक्षा हटा दी')); load(); }
     catch (e: any) { setErr(errText(e, hi)); }
@@ -90,7 +92,7 @@ export const PropertyPapersView: React.FC<{ withProtected?: boolean }> = ({ with
 
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(''), 3500); };
   const remove = async (d: any) => {
-    if (!window.confirm(tx(`Delete “${d.title}” permanently? The file is removed from the server for everyone.`, `“${d.title}” हमेशा के लिए हटाएँ? फ़ाइल सर्वर से सबके लिए मिट जाएगी।`))) return;
+    if (!await confirm(tx('Delete Paper', 'कागज़ हटाएँ'), tx(`Delete “${d.title}” permanently? The file is removed from the server for everyone.`, `“${d.title}” हमेशा के लिए हटाएँ? फ़ाइल सर्वर से सबके लिए मिट जाएगी।`), { danger: true })) return;
     try { await api.propDocDelete(d.id); flash(tx('Deleted', 'हटा दिया')); load(); api.propDocsMeta().then(setMeta).catch(() => undefined); }
     catch (e: any) { setErr(e.message); }
   };

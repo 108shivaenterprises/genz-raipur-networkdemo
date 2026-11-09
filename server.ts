@@ -257,7 +257,7 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
         return res.status(403).json({ error: 'Invalid Origin header' });
       }
     }
-    const hasBody = Number(req.headers['content-length'] || 0) > 0;
+    const hasBody = Number(req.headers['content-length'] || 0) > 0 || req.headers['transfer-encoding'] === 'chunked';
     // v81 — the one non-JSON body: a piece of a call recording (audio/webm, audio/mp4, audio/ogg), still behind the same Origin check and cookie
     const audioPiece = req.method === 'POST' && /^\/calls\/[A-Za-z0-9_-]+\/chunk$/.test(req.path) && /^audio\/(webm|mp4|ogg)\b/i.test(String(req.headers['content-type'] || ''));
     // v104 — the other one: a video the broker uploads is the raw file (mp4 / webm / mov) — same Origin check and cookie, and the route itself checks the first bytes and the size
@@ -1422,7 +1422,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
     if ('draft' in r2) ownerApproval = { draftId: r2.draft.id };
   }
   db.save();
-  setImmediate(() => alertNewListing(newProperty));
+  setImmediate(() => { try { alertNewListing(newProperty); } catch (e) { console.error('alertNewListing error:', e); } });
 
   db.appendAuditEvent(
     currentUser.id,
@@ -1637,14 +1637,14 @@ app.post('/api/properties/:id/moderate', needs('property:moderate'), (req: Reque
   if (action !== 'APPROVE' && action !== 'RESTORE' && (!reason || String(reason).trim().length < 5)) {
     return res.status(400).json({ error: 'A reason (min 5 chars) is required' });
   }
-  if (action === 'APPROVE') prop.verificationStatus = 'VERIFIED';
+  if (action === 'APPROVE') { prop.verificationStatus = 'VERIFIED'; if (prop.listingStatus === 'suspended') prop.listingStatus = 'active'; }
   if (action === 'REJECT') { prop.verificationStatus = 'REJECTED'; prop.listingStatus = 'suspended'; }
   if (action === 'SUSPEND') prop.listingStatus = 'suspended';
   if (action === 'RESTORE') { prop.listingStatus = 'active'; prop.verificationStatus = 'VERIFIED'; }
   prop.updatedAt = new Date().toISOString();
   db.save();
   db.appendAuditEvent(currentUser.id, currentUser.role, 'PROPERTY', prop.id, `LISTING_${action}`, `Listing ${prop.id} ${action} by ${currentUser.name}. ${reason || ''}`.trim());
-  if (action === 'APPROVE' || action === 'RESTORE') setImmediate(() => alertNewListing(prop));
+  if (action === 'APPROVE' || action === 'RESTORE') setImmediate(() => { try { alertNewListing(prop); } catch (e) { console.error('alertNewListing error:', e); } });
   res.json({ success: true, property: sanitizeProperty(prop, currentUser) });
 });
 
@@ -1841,7 +1841,7 @@ app.get('/api/matching/property/:propId', needs('matching:run'), (req: Request, 
       requirement: {
         id: reqItem.id,
         // other brokers' customers are shown by initials only (client identity = broker's asset)
-        customerName: mine ? reqItem.customerName : reqItem.customerName.split(' ').map(w => w[0] + '.').join(' '),
+        customerName: mine ? reqItem.customerName : (reqItem.customerName || '').split(' ').filter(Boolean).map(w => (w[0] || '') + '.').join(' '),
         preferredLocalities: reqItem.preferredLocalities,
         budgetMin: reqItem.budgetMin,
         budgetMax: reqItem.budgetMax,
@@ -5938,15 +5938,24 @@ async function startServer() {
   });
 
   // Vercel (public demo): the platform calls the exported handler; no listener, no timers, no signals.
-  if (process.env.VERCEL) { sweepListings(); ensureIdTasks(); return; }
+  if (process.env.VERCEL) { sweepListings(); ensureIdTasks(); sweepShopPartners(); return; }
 
   const server = app.listen(port, HOST, () => {
     console.log(`[GENZ BROKER NETWORK] Server active on http://${HOST}:${port} (${IS_PROD ? 'production' : 'development'}, demo=${DEMO_MODE})`);
   });
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
-  sweepListings();
-  sweepControl(); sweepVisitPasses(); sweepOffers(); sweepSoldPurge(); sweepNetwork(); sweepCrm(); sweepIdDocs(); sweepKycVault(); sweepKycHolds(); sweepConsents(); sweepClientRooms(); sweepPageEnquiries(); sweepRent(); sweepVisitAcks(); sweepPartyWatch(); sweepTargetBonus(); sweepDealClosures(); sweepHr(); sweepCalls(); ensureOwnerPlans(); sweepOwnerListings(); ensureIdTasks(); sweepShopPartners(); sweepSahayak();
+  for (const [name, fn] of [
+    ['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers],
+    ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs],
+    ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms],
+    ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch],
+    ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls],
+    ['ownerPlans', ensureOwnerPlans], ['ownerListings', sweepOwnerListings], ['idTasks', ensureIdTasks],
+    ['shopPartners', sweepShopPartners], ['sahayak', sweepSahayak],
+  ] as [string, () => unknown][]) {
+    try { fn(); } catch (e: any) { console.error(`[BOOT SWEEP] ${name} failed:`, e?.message || e); }
+  }
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
     for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['sahayak', sweepSahayak], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {

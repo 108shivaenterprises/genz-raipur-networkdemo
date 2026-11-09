@@ -32,9 +32,11 @@ export function verifyPassword(password: string, stored?: string): boolean {
   const [scheme, n, saltB64, hashB64] = stored.split('$');
   if (scheme !== 'scrypt' || !saltB64 || !hashB64) return false;
   try {
+    const nNum = Number(n);
+    if (isNaN(nNum) || nNum < 16 || nNum > 32768 || (nNum & (nNum - 1)) !== 0) return false;
     const expected = Buffer.from(hashB64, 'base64');
     const actual = crypto.scryptSync(password, Buffer.from(saltB64, 'base64'), expected.length, {
-      N: Number(n), r: 8, p: 1,
+      N: nNum, r: 8, p: 1,
     });
     return crypto.timingSafeEqual(actual, expected);
   } catch {

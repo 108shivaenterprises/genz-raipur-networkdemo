@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { formatINR } from '../lib/utils.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { useUI } from '../lib/ui.js';
 import {
   HardHat,
   ShieldCheck,
@@ -35,6 +36,7 @@ export const ConstructionView: React.FC<ConstructionViewProps> = ({
 }) => {
   const tx = useTx();
   const label = useLabel();
+  const { toast, confirm } = useUI();
   const [selectedLead, setSelectedLead] = useState<ConstructionLead | null>(leads[0] || null);
   const [isRequestingAccess, setIsRequestingAccess] = useState<boolean>(false);
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
@@ -47,18 +49,18 @@ export const ConstructionView: React.FC<ConstructionViewProps> = ({
   const handleRequestAccess = async () => {
     if (!selectedLead) return;
     if (!termsAccepted) {
-      alert(tx('Please check the box to agree to the referral commission terms.', 'रेफ़रल कमीशन की शर्तें मानने के लिए बॉक्स पर टिक करें।'));
+      toast(tx('Please check the box to agree to the referral commission terms.', 'रेफ़रल कमीशन की शर्तें मानने के लिए बॉक्स पर टिक करें।'), 'warning');
       return;
     }
     setSubmittingAccess(true);
     try {
       const res = await api.requestLeadAccess(selectedLead.id, true);
-      alert(tx(`Access granted! Customer contact details disclosed. Referral obligation locked at ${res.lead.referralCommissionPct}%.`, `एक्सेस मिल गया! ग्राहक का संपर्क दिख रहा है। रेफ़रल ज़िम्मेदारी ${res.lead.referralCommissionPct}% पर पक्की।`));
+      toast(tx(`Access granted! Customer contact details disclosed. Referral obligation locked at ${res.lead.referralCommissionPct}%.`, `एक्सेस मिल गया! ग्राहक का संपर्क दिख रहा है। रेफ़रल ज़िम्मेदारी ${res.lead.referralCommissionPct}% पर पक्की।`), 'success');
       setIsRequestingAccess(false);
       onRefreshLeads();
       setSelectedLead(res.lead);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setSubmittingAccess(false);
     }
@@ -69,12 +71,12 @@ export const ConstructionView: React.FC<ConstructionViewProps> = ({
     if (!selectedLead) return;
     try {
       const res = await api.settleConstructionReferral(selectedLead.id, body);
-      alert(tx('Referral settlement record updated successfully.', 'रेफ़रल निपटान रिकॉर्ड अपडेट हो गया।'));
+      toast(tx('Referral settlement record updated successfully.', 'रेफ़रल निपटान रिकॉर्ड अपडेट हो गया।'), 'success');
       setIsSettling(false);
       onRefreshLeads();
       setSelectedLead(res.lead);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -388,7 +390,7 @@ export const ConstructionView: React.FC<ConstructionViewProps> = ({
                         ))}
                         {canConfirm && (
                           <button
-                            onClick={() => { if (window.confirm(tx('Confirm that you have actually received this referral fee?', 'क्या आपको यह रेफ़रल फ़ीस सच में मिल गई है?'))) handleSettleReferral({ paid: true }); }}
+                            onClick={async () => { if (await confirm(tx('Confirm Receipt', 'प्राप्ति की पुष्टि करें'), tx('Confirm that you have actually received this referral fee?', 'क्या आपको यह रेफ़रल फ़ीस सच में मिल गई है?'))) handleSettleReferral({ paid: true }); }}
                             className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800"
                           >
                             {tx('I have received the referral fee', 'मुझे रेफ़रल फ़ीस मिल गई')}

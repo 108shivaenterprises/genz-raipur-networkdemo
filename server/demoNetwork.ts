@@ -57,7 +57,7 @@ export function makeHelpers(s: DatabaseState, r: () => number, phOffset = 0): He
   const tok = (n = 12) => sha(String(r())).slice(0, n);
   const pad = (n: number, w = 3) => String(n).padStart(w, '0');
   const lakh = (n: number) => Math.round(n / 10_000) * 10_000;
-  const user = (id: string) => s.users.find(u => u.id === id)!;
+  const user = (id: string) => s.users.find(u => u.id === id) || (s.users.find(u => u.role === 'BROKER') as UserProfile);
   const digits = (p: string) => p.replace(/\D/g, '').slice(-10);
   const ph = (block: number, i: number) => `+91 9${block + phOffset} ${String(10000 + i).slice(-5)}`; // +91 91xxx yyyyy — not real numbers
   return { r, int, pick, now, ago, ahead, sha, tok, pad, lakh, user, digits, ph };
@@ -170,13 +170,14 @@ export function seedNetwork(s: DatabaseState, ctx: NetCtx) {
     const req = reqs[i];
     const base = props[baseIx(i)];
     // the demo log-ins should see deals: put USR-BRK-001..004 on one side of most rooms
-    let closing = user(base.listingBrokerId);
-    let intro = user(req.assignedBrokerId);
+    let closing = user(base.listingBrokerId) || brokers[0];
+    let intro = user(req.assignedBrokerId) || brokers[1] || brokers[0];
     if (i < Math.round(STAGES.length * 0.75)) {
-      const f = user(featured[i % featured.length]);
-      if (i % 2 === 0 && f.id !== intro.id) { closing = f; base.listingBrokerId = f.id; } else if (f.id !== closing.id) { intro = f; req.assignedBrokerId = f.id; }
+      const f = user(featured[i % featured.length]) || brokers[0];
+      if (f && intro && i % 2 === 0 && f.id !== intro.id) { closing = f; base.listingBrokerId = f.id; }
+      else if (f && closing && f.id !== closing.id) { intro = f; req.assignedBrokerId = f.id; }
     }
-    if (intro.id === closing.id) intro = brokers.find(b => b.id !== closing.id)!;
+    if (intro && closing && intro.id === closing.id) intro = brokers.find(b => b.id !== closing.id) || intro;
     req.status = stage === 'Settled' ? 'fulfilled' : 'in_deal_room';
     const id = `DEAL-${cfg.tag}-${pad(i + 1)}`;
     const stalled = i === 5 || i === 8;

@@ -37,6 +37,7 @@ import {
   Globe,
   DoorOpen,
   Rss,
+  Search,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 
@@ -98,6 +99,7 @@ interface NavigationTabsProps {
   };
   /** v50: unread chat messages (client rooms + deal rooms) */
   chatBadge?: number;
+  onTabsResolved?: (tabs: any[]) => void;
 }
 
 export const NavigationTabs: React.FC<NavigationTabsProps> = ({
@@ -107,6 +109,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   permissions = [],
   unreadCount = {},
   chatBadge = 0,
+  onTabsResolved,
 }) => {
   const { t } = useI18n();
   const has = (...p: string[]) => p.some((x) => permissions.includes(x));
@@ -234,6 +237,10 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const PERSONAL_TABS = ['daily', 'clientroom', 'visits', 'mypage', 'rentdesk', 'share', 'desk'];
   const tabs = currentUser?.role === 'SUPERADMIN' ? allTabs.filter(x => !PERSONAL_TABS.includes(x.id)) : allTabs;
 
+  useEffect(() => {
+    onTabsResolved?.(tabs);
+  }, [tabs.length, currentUser?.role]);
+
   // A remembered or linked tab this user may not open (permissions changed, someone else's link) → dashboard, never an empty page.
   const allowed = allTabs.some(x => x.id === activeTab);
   useEffect(() => {
@@ -248,6 +255,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const role = currentUser?.role || '';
   const simple = role === 'BROKER' || tabs.length > 6;
   const [more, setMore] = useState(false);
+  const [moreFilter, setMoreFilter] = useState('');
   // v44: the first id that exists wins (so “Deals” opens the deal pipeline; Deal Desk stays one tap away in More)
   const pick = (ids: string[]) => ids.map(id => tabs.find(x => x.id === id)).find(Boolean);
   const HOME = { ids: ['dashboard'], key: 'nav.home', en: 'Home' };
@@ -330,21 +338,49 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
             </button>
           </nav>
           {more && (
-            <div className="fixed inset-0 z-30 bg-slate-900/30 md:hidden" onClick={() => setMore(false)}>
-              <div className="absolute inset-x-0 bottom-14 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-white p-3 pb-6 shadow-xl" onClick={e => e.stopPropagation()} data-testid="more-sheet">
-                {groups.map(g => { const rest = g.tabs.filter(x => !bottom.some(b => b.tab!.id === x.id)); if (!rest.length) return null; return (
-                  <div key={g.id} className="mb-3" data-testid={`more-group-${g.id}`}>
-                    <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">{g.label}</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {rest.map(tab => { const Icon = tab.icon; return (
-                        <button key={tab.id} onClick={() => { setMore(false); onChangeTab(tab.id as TabType); }} className={`relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center text-[11px] font-semibold ${activeTab === tab.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-                          <Icon className="h-5 w-5" /><span className="leading-tight">{tab.label}</span>
-                          {Boolean(tab.badge && tab.badge > 0) && <span className="absolute right-1.5 top-1.5 rounded-full bg-red-500 px-1 text-[9px] text-white">{tab.badge}</span>}
-                        </button>
-                      ); })}
-                    </div>
+            <div className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-2xs md:hidden" onClick={() => { setMore(false); setMoreFilter(''); }}>
+              <div className="absolute inset-x-0 bottom-14 max-h-[75vh] overflow-y-auto rounded-t-3xl bg-white p-3 pb-6 shadow-2xl transition-all" onClick={e => e.stopPropagation()} data-testid="more-sheet">
+                {/* Search & Header */}
+                <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-3 bg-white/95 px-4 pt-3 pb-2.5 backdrop-blur-sm border-b border-slate-100">
+                  <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-300" />
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-800 tracking-tight">{t('nav.more', 'All Features & Tools')}</span>
+                    <button onClick={() => { setMore(false); setMoreFilter(''); }} className="rounded-full px-2 py-0.5 text-xs font-bold text-slate-400 hover:bg-slate-100">✕</button>
                   </div>
-                ); })}
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={moreFilter}
+                      onChange={e => setMoreFilter(e.target.value)}
+                      placeholder={t('common.search', 'Filter 40+ tools…')}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 focus:bg-white transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {groups.map(g => {
+                  const rest = g.tabs.filter(x => !bottom.some(b => b.tab!.id === x.id)).filter(x => !moreFilter.trim() || x.label.toLowerCase().includes(moreFilter.toLowerCase()) || x.id.toLowerCase().includes(moreFilter.toLowerCase()));
+                  if (!rest.length) return null;
+                  return (
+                    <div key={g.id} className="mb-3" data-testid={`more-group-${g.id}`}>
+                      <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{g.label}</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {rest.map(tab => {
+                          const Icon = tab.icon;
+                          const isAct = activeTab === tab.id;
+                          return (
+                            <button key={tab.id} onClick={() => { setMore(false); setMoreFilter(''); onChangeTab(tab.id as TabType); }} className={`relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-center text-[11px] font-semibold transition-all ${isAct ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border-slate-200/90 bg-slate-50/70 text-slate-700 hover:bg-slate-100/80 active:scale-95'}`}>
+                              <Icon className={`h-5 w-5 ${isAct ? 'text-amber-400' : 'text-slate-600'}`} />
+                              <span className="leading-tight line-clamp-2">{tab.label}</span>
+                              {Boolean(tab.badge && tab.badge > 0) && <span className="absolute right-1.5 top-1.5 rounded-full bg-red-500 px-1 text-[9px] text-white font-bold">{tab.badge}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -352,20 +388,20 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
       )}
       <div className={`mx-auto max-w-7xl px-4 sm:px-6 ${simple ? 'hidden md:block' : ''}`}>
         {simple && groups.length > 1 && (
-          <nav className="flex gap-1.5 overflow-x-auto pt-2 scrollbar-none" aria-label="Groups" data-testid="nav-groups">
+          <nav className="flex items-center gap-1.5 overflow-x-auto pt-2.5 pb-1 scrollbar-none" aria-label="Groups" data-testid="nav-groups">
             {groups.map(g => {
               const on = activeGroup?.id === g.id; const b = gBadge(g);
               return (
                 <button key={g.id} data-testid={`group-${g.id}`} aria-pressed={on}
                   onClick={() => { if (!on) onChangeTab(g.tabs[0].id as TabType); }}
-                  className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-bold transition-colors ${on ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-500'}`}>
-                  {g.label}{b > 0 && <span className={`ml-1.5 rounded-full px-1.5 text-[10px] ${on ? 'bg-amber-400 text-slate-950' : 'bg-red-500 text-white'}`}>{b}</span>}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${on ? 'border-slate-900 bg-slate-900 text-white shadow-xs' : 'border border-slate-200 bg-white/90 text-slate-600 hover:border-slate-400 hover:text-slate-900'}`}>
+                  {g.label}{b > 0 && <span className={`ml-1.5 rounded-full px-1.5 text-[10px] ${on ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-red-500 text-white'}`}>{b}</span>}
                 </button>
               );
             })}
           </nav>
         )}
-        <nav className="flex space-x-1 overflow-x-auto py-2 scrollbar-none" aria-label="Tabs">
+        <nav className="flex space-x-1.5 overflow-x-auto py-2 scrollbar-none" aria-label="Tabs">
           {(simple && groups.length > 1 && activeGroup ? activeGroup.tabs : tabs).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -373,24 +409,24 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               <button
                 key={tab.id}
                 onClick={() => onChangeTab(tab.id as TabType)}
-                className={`group flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-all md:min-h-0 md:text-xs ${
+                className={`group flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-[13px] font-semibold transition-all md:min-h-0 md:text-xs ${
                   isActive
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+                    ? 'bg-amber-400/20 text-slate-950 border border-amber-400/60 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
                 }`}
               >
                 <Icon
                   className={`h-4 w-4 ${
-                    isActive ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-700'
+                    isActive ? 'text-amber-600' : 'text-slate-400 group-hover:text-slate-700'
                   }`}
                 />
                 <span>{tab.label}</span>
                 {Boolean(tab.badge && tab.badge > 0) && (
                   <span
-                    className={`ml-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
+                    className={`ml-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
                       isActive
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'bg-slate-200 text-slate-700 group-hover:bg-slate-300'
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-red-500 text-white'
                     }`}
                   >
                     {tab.badge}

@@ -6,6 +6,8 @@ import { formatINR, formatArea, getRequirementWhatsAppShareUrl } from '../lib/ut
 import { UserCheck, Sparkles, Phone, ShieldCheck, Share2, Search, MessageCircle } from 'lucide-react';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { useUI } from '../lib/ui.js';
+import { goto } from '../lib/goto.js';
 import { BroadcastButton, BroadcastInbox, MyBroadcasts, NetworkHas } from './BroadcastPanels.js';
 
 interface RequirementsViewProps {
@@ -57,6 +59,7 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
 }) => {
   const tx = useTx();
   const label = useLabel();
+  const { toast, confirm, prompt } = useUI();
   // A buyer sees only their own needs: the broker tools (WhatsApp share of a client need) are not theirs.
   const isBuyer = currentUser?.role === 'BUYER_TENANT';
   const [searchReqId, setSearchReqId] = React.useState<string>(() => {
@@ -130,7 +133,7 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
           )}
           {!isBuyer && currentUser.role === 'BROKER' && (
             <button
-              onClick={() => { try { window.location.href = '/?tab=properties&drafts=1'; } catch { /* */ } }}
+              onClick={() => { goto('properties', { drafts: '1' }, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t }))); }}
               className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700"
               data-testid="req-from-whatsapp"
             >

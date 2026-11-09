@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, MessageCircle, Rocket } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
 import { STAGE_LABEL, type CityStage } from '../shared/cities.js';
 
 const STAGE_STYLE: Record<CityStage, string> = { WAITLIST: 'bg-slate-100 text-slate-600', SEEDING: 'bg-amber-100 text-amber-800', LIVE: 'bg-emerald-100 text-emerald-800', HUB: 'bg-indigo-100 text-indigo-800' };
@@ -10,6 +11,7 @@ const small = 'rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs
 /** Ops view: where the network is strong, where demand is waiting, which city to open next. */
 export const CityLaunch: React.FC<{ canReset: boolean }> = ({ canReset }) => {
   const tx = useTx();
+  const { prompt } = useUI();
   const { lang } = useI18n();
   const hi = lang === 'hi';
   const [board, setBoard] = useState<any>(null);
@@ -74,7 +76,7 @@ export const CityLaunch: React.FC<{ canReset: boolean }> = ({ canReset }) => {
                 <div><b className="text-slate-900">{l.name}</b> · {l.role.replace('_', ' ')} · {l.city} · {l.phone}<div className="text-slate-500">{l.source === 'NOMINATION' && l.nominatorName ? tx(`Nominated by ${l.nominatorName}`, `${l.nominatorName} द्वारा नामांकित`) : tx('Public request', 'पब्लिक रिक्वेस्ट')}{l.note ? ` — “${l.note}”` : ''}</div></div>
                 <div className="flex gap-2">
                   <button onClick={() => act(() => api.growthApprove(l.id), tx('Invitation issued', 'इनवाइट जारी हुआ'), r => setOut({ title: tx(`Invitation for ${l.name} — send it on WhatsApp`, `${l.name} का इनवाइट — WhatsApp पर भेजें`), text: r.whatsappText, phone: l.phone }))} className={small + ' font-semibold text-emerald-700'}>{tx('Approve & invite', 'मंज़ूर करें')}</button>
-                  <button onClick={() => { const reason = window.prompt(tx('Reason (optional)', 'कारण (वैकल्पिक)')) ?? undefined; if (reason !== undefined) act(() => api.growthReject(l.id, reason), tx('Rejected', 'अस्वीकृत')); }} className={small}>{tx('Reject', 'अस्वीकार')}</button>
+                  <button onClick={async () => { const reason = await prompt(tx('Reject Request', 'रिक्वेस्ट अस्वीकार करें'), { message: tx('Reason (optional)', 'कारण (वैकल्पिक)'), placeholder: tx('Enter reason', 'कारण दर्ज करें') }); if (reason !== null) act(() => api.growthReject(l.id, reason || undefined), tx('Rejected', 'अस्वीकृत')); }} className={small}>{tx('Reject', 'अस्वीकार')}</button>
                 </div>
               </div>
             ))}

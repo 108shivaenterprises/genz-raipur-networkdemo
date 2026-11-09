@@ -8,6 +8,7 @@ import {
   DueDiligenceCategory,
 } from '../types/index.js';
 import { api } from '../lib/api.js';
+import { useUI } from '../lib/ui.js';
 import { formatINR, formatDateTime } from '../lib/utils.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -81,6 +82,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
   allBrokers = [],
   permissions,
 }) => {
+  const { toast, confirm, prompt } = useUI();
   const tx = useTx();
   const th = useTemplateHi();
   const { lang } = useI18n();
@@ -206,7 +208,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
       setIssueResolutionPlan('');
       loadDueDiligence(selectedPropertyId);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setIsSavingIssue(false);
     }
@@ -217,14 +219,18 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
     const nextApplicable = !item.isApplicable;
     let reason = '';
     if (!nextApplicable) {
-      reason = window.prompt(tx('Provide the justification for waiving this check:', 'इस जाँच को छोड़ने का कारण लिखें:')) || '';
+      reason = (await prompt(tx('Waive Check', 'जाँच छोड़ें'), {
+        message: tx('Provide the justification for waiving this check:', 'इस जाँच को छोड़ने का कारण लिखें:'),
+        placeholder: tx('Reason for waiving...', 'छोड़ने का कारण...'),
+        required: true,
+      })) || '';
       if (!reason.trim()) return;
     }
     try {
       await api.setDueDiligenceApplicability(item.id, nextApplicable, reason);
       loadDueDiligence(selectedPropertyId);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -851,13 +857,17 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
                     <>
                       <button
                         onClick={async () => {
-                          const note = window.prompt(tx('Enter resolution response / evidence details:', 'हल का जवाब / सबूत का ब्योरा लिखें:'));
+                          const note = await prompt(tx('Submit Response', 'जवाब भेजें'), {
+                            message: tx('Enter resolution response / evidence details:', 'हल का जवाब / सबूत का ब्योरा लिखें:'),
+                            placeholder: tx('Resolution response / evidence details...', 'हल का जवाब / सबूत का ब्योरा...'),
+                            required: true,
+                          });
                           if (note && note.trim()) {
                             try {
                               await api.respondDueDiligenceIssue(iss.id, { responseNotes: note.trim() });
                               loadDueDiligence(selectedPropertyId);
                             } catch (err: any) {
-                              alert(err.message);
+                              toast(err.message, 'error');
                             }
                           }
                         }}
@@ -868,13 +878,17 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
 
                       <button
                         onClick={async () => {
-                          const decisionNotes = window.prompt(tx('Enter reviewer resolution notes (required):', 'समीक्षक के हल-नोट्स लिखें (ज़रूरी):'));
+                          const decisionNotes = await prompt(tx('Approve & Mark Resolved', 'मंज़ूर करें और सुलझा हुआ दर्ज करें'), {
+                            message: tx('Enter reviewer resolution notes (required):', 'समीक्षक के हल-नोट्स लिखें (ज़रूरी):'),
+                            placeholder: tx('Resolution notes...', 'हल के नोट्स...'),
+                            required: true,
+                          });
                           if (decisionNotes && decisionNotes.trim()) {
                             try {
                               await api.decideDueDiligenceIssue(iss.id, { decision: 'RESOLVED', notes: decisionNotes.trim() });
                               loadDueDiligence(selectedPropertyId);
                             } catch (err: any) {
-                              alert(err.message);
+                              toast(err.message, 'error');
                             }
                           }
                         }}

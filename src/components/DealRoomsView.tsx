@@ -19,6 +19,7 @@ import { LegalHelpPanel } from './LegalHelp.js';
 import { api } from '../lib/api.js';
 import { formatINR, formatDateTime, formatDate, printTarget } from '../lib/utils.js';
 import { useI18n, useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
 import { useLabel } from '../lib/labels.js';
 import { useTemplateHi } from '../lib/templateHi.js';
 import { DueDiligenceView } from './DueDiligenceView.js';
@@ -165,6 +166,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   permissions,
 }) => {
   const tx = useTx();
+  const { toast, confirm, prompt } = useUI();
   const label = useLabel();
   const th = useTemplateHi();
   const { lang } = useI18n();
@@ -243,9 +245,9 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     setIsSubmittingCounter(true);
     try {
       const res = await api.respondOffer(ownCounter.offer.id, { decision: 'COUNTER', counterFeeMode: 'OWN_SIDE', mySide: ownCounter.side });
-      if (res.success) { alert(tx('Counter-proposal sent.', 'काउंटर-प्रस्ताव भेज दिया गया।')); setOwnCounter(null); onRefreshOffers?.(); }
+      if (res.success) { toast(tx('Counter-proposal sent.', 'काउंटर-प्रस्ताव भेज दिया गया।'), 'success'); setOwnCounter(null); onRefreshOffers?.(); }
     } catch (err: any) {
-      alert(err.message || tx('Could not send the counter offer', 'काउंटर ऑफ़र भेजा नहीं जा सका'));
+      toast(err.message || tx('Could not send the counter offer', 'काउंटर ऑफ़र भेजा नहीं जा सका'), 'error');
     } finally { setIsSubmittingCounter(false); }
   };
 
@@ -407,7 +409,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       setRespondingOfferId(offerId);
       const res = await api.respondOffer(offerId, { decision: 'ACCEPT' });
       if (res.success) {
-        alert(tx('Collaboration offer accepted! A new Deal Room has been created. The anti-bypass rule applies.', 'कोलैबोरेशन ऑफ़र मंज़ूर! नया डील रूम बन गया है। एंटी-बायपास नियम लागू है।'));
+        toast(tx('Collaboration offer accepted! A new Deal Room has been created. The anti-bypass rule applies.', 'कोलैबोरेशन ऑफ़र मंज़ूर! नया डील रूम बन गया है। एंटी-बायपास नियम लागू है।'), 'success');
         onRefreshDeals();
         onRefreshOffers?.();
         if (res.dealRoom?.id) {
@@ -416,23 +418,23 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
         }
       }
     } catch (err: any) {
-      alert(err.message || tx('Could not accept the proposal', 'प्रस्ताव मंज़ूर नहीं हो पाया'));
+      toast(err.message || tx('Could not accept the proposal', 'प्रस्ताव मंज़ूर नहीं हो पाया'), 'error');
     } finally {
       setRespondingOfferId(null);
     }
   };
 
   const handleRejectOffer = async (offerId: string) => {
-    if (!confirm(tx('Decline this collaboration proposal?', 'यह कोलैबोरेशन प्रस्ताव ठुकराएँ?'))) return;
+    if (!await confirm(tx('Decline Proposal', 'प्रस्ताव ठुकराएँ'), tx('Decline this collaboration proposal?', 'यह कोलैबोरेशन प्रस्ताव ठुकराएँ?'), { danger: true })) return;
     try {
       setRespondingOfferId(offerId);
       const res = await api.respondOffer(offerId, { decision: 'REJECT' });
       if (res.success) {
-        alert(tx('Collaboration proposal declined.', 'प्रस्ताव ठुकरा दिया गया।'));
+        toast(tx('Collaboration proposal declined.', 'प्रस्ताव ठुकरा दिया गया।'), 'info');
         onRefreshOffers?.();
       }
     } catch (err: any) {
-      alert(err.message || tx('Could not decline the proposal', 'प्रस्ताव ठुकराया नहीं जा सका'));
+      toast(err.message || tx('Could not decline the proposal', 'प्रस्ताव ठुकराया नहीं जा सका'), 'error');
     } finally {
       setRespondingOfferId(null);
     }
@@ -442,7 +444,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     e.preventDefault();
     if (!counterModal) return;
     if (counterModal.introShare + counterModal.closeShare !== 100) {
-      alert(tx('Shares must total exactly 100%', 'दोनों हिस्से मिलकर ठीक 100% होने चाहिए'));
+      toast(tx('Shares must total exactly 100%', 'दोनों हिस्से मिलकर ठीक 100% होने चाहिए'), 'warning');
       return;
     }
     setIsSubmittingCounter(true);
@@ -454,12 +456,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
         notes: counterModal.notes,
       });
       if (res.success) {
-        alert(tx('Counter-proposal sent.', 'काउंटर-प्रस्ताव भेज दिया गया।'));
+        toast(tx('Counter-proposal sent.', 'काउंटर-प्रस्ताव भेज दिया गया।'), 'success');
         setCounterModal(null);
         onRefreshOffers?.();
       }
     } catch (err: any) {
-      alert(err.message || tx('Could not send the counter offer', 'काउंटर ऑफ़र भेजा नहीं जा सका'));
+      toast(err.message || tx('Could not send the counter offer', 'काउंटर ऑफ़र भेजा नहीं जा सका'), 'error');
     } finally {
       setIsSubmittingCounter(false);
     }
@@ -635,7 +637,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       loadDetail(dealDetail.deal.id);
       onRefreshDeals();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -646,7 +648,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       loadTasks(selectedDealId);
       loadReadinessReport(selectedDealId);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -669,7 +671,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       loadTasks(selectedDealId);
       loadReadinessReport(selectedDealId);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setIsSubmittingTask(false);
     }
@@ -689,7 +691,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       loadTasks(selectedDealId);
       loadReadinessReport(selectedDealId);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setIsVerifyingTask(false);
     }
@@ -714,7 +716,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       loadTasks(selectedDealId);
       loadReadinessReport(selectedDealId);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setIsReassigningTask(false);
     }
@@ -791,7 +793,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       setESignNotes('');
       loadAgreements(selectedDealId);
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setIsSubmittingESign(false);
     }
@@ -801,9 +803,9 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     try {
       const res = await api.generateReadinessReport(selectedDealId);
       setReadinessReport(res.report);
-      alert(tx('Readiness report compiled and saved with a SHA-256 integrity hash.', 'तैयारी रिपोर्ट बन गई और SHA-256 हैश के साथ सेव हो गई।'));
+      toast(tx('Readiness report compiled and saved with a SHA-256 integrity hash.', 'तैयारी रिपोर्ट बन गई और SHA-256 हैश के साथ सेव हो गई।'), 'success');
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     }
   };
 
@@ -1726,12 +1728,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               {!grant.isRevoked && (
                                 <button
                                   onClick={async () => {
-                                    if (confirm(tx('Revoke access for this recipient now?', 'इस व्यक्ति का एक्सेस अभी रद्द करें?'))) {
+                                    if (await confirm(tx('Revoke Grant', 'एक्सेस रद्द करें'), tx('Revoke access for this recipient now?', 'इस व्यक्ति का एक्सेस अभी रद्द करें?'), { danger: true })) {
                                       try {
                                         await api.revokeVaultGrant(activeDeal.propertyId, grant.id, 'Manually revoked by broker');
                                         loadVault(activeDeal.propertyId);
                                       } catch (err: any) {
-                                        alert(err.message);
+                                        toast(err.message, 'error');
                                       }
                                     }
                                   }}
@@ -3309,14 +3311,14 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     description: uploadDescription,
                     sensitivity: uploadSensitivity,
                   });
-                  alert(tx('File added to the vault.', 'फ़ाइल वॉल्ट में जुड़ गई।'));
+                  toast(tx('File added to the vault.', 'फ़ाइल वॉल्ट में जुड़ गई।'), 'success');
                   setShowUploadModal(false);
                   setUploadFileName('');
                   setUploadFileUrl('');
                   setUploadDescription('');
                   loadVault(activeDeal.propertyId);
                 } catch (err: any) {
-                  alert(err.message);
+                  toast(err.message, 'error');
                 } finally {
                   setIsSubmittingUpload(false);
                 }
@@ -3431,7 +3433,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (grantAssetIds.length === 0) {
-                  alert(tx('Select at least one file.', 'कम से कम एक फ़ाइल चुनें।'));
+                  toast(tx('Select at least one file.', 'कम से कम एक फ़ाइल चुनें।'), 'warning');
                   return;
                 }
                 setIsSubmittingGrant(true);
@@ -3447,11 +3449,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     locationPrecisionPermitted: grantLocationPrecision,
                     expiresInDays: grantExpiresDays,
                   });
-                  alert(tx('Access granted.', 'एक्सेस दे दिया गया।'));
+                  toast(tx('Access granted.', 'एक्सेस दे दिया गया।'), 'success');
                   setShowGrantModal(false);
                   loadVault(activeDeal.propertyId);
                 } catch (err: any) {
-                  alert(err.message);
+                  toast(err.message, 'error');
                 } finally {
                   setIsSubmittingGrant(false);
                 }
@@ -3591,11 +3593,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     googleMapsUrl: locMapsUrl,
                     locationPrecision: locPrecision,
                   });
-                  alert(tx('Location saved.', 'लोकेशन सेव हो गई।'));
+                  toast(tx('Location saved.', 'लोकेशन सेव हो गई।'), 'success');
                   setShowLocationModal(false);
                   loadDetail(activeDeal.id);
                 } catch (err: any) {
-                  alert(err.message);
+                  toast(err.message, 'error');
                 } finally {
                   setIsSavingLocation(false);
                 }
@@ -3698,11 +3700,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             setLocMapsUrl(`https://maps.google.com/?q=${lat},${lng}`);
                           },
                           () => {
-                            alert(tx('Could not detect the location. Please paste a Google Maps link.', 'लोकेशन नहीं मिली। कृपया Google Maps का लिंक चिपकाएँ।'));
+                            toast(tx('Could not detect the location. Please paste a Google Maps link.', 'लोकेशन नहीं मिली। कृपया Google Maps का लिंक चिपकाएँ।'), 'warning');
                           }
                         );
                       } else {
-                        alert(tx('Location is not available on this device. Please paste a Google Maps link.', 'इस डिवाइस पर लोकेशन उपलब्ध नहीं। कृपया Google Maps का लिंक चिपकाएँ।'));
+                        toast(tx('Location is not available on this device. Please paste a Google Maps link.', 'इस डिवाइस पर लोकेशन उपलब्ध नहीं। कृपया Google Maps का लिंक चिपकाएँ।'), 'warning');
                       }
                     }}
                     className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg shrink-0"

@@ -24,6 +24,7 @@ const T_META = NS ? `${NS}.genz_meta` : 'genz_meta';
 const T_FILES = NS ? `${NS}.genz_files` : 'genz_files';
 const T_SIG = NS ? `${NS}.genz_call_signals` : 'genz_call_signals';
 const SCHEMA = `
+${NS ? `CREATE SCHEMA IF NOT EXISTS ${NS};` : ''}
 CREATE TABLE IF NOT EXISTS ${T_DOCS} (
   collection  text        NOT NULL,
   id          text        NOT NULL,

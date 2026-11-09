@@ -9,6 +9,7 @@ import { PROPERTY_TYPES, INDIA_STATES, ALL_TAGS } from '../shared/india.js';
 import { MandateModal } from './MandateModal.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { useUI } from '../lib/ui.js';
 import { hasPerm } from '../lib/permissions.js';
 import { openPapersFor } from '../lib/paperFile.js';
 import type { OwnerMandate } from '../types/index.js';
@@ -73,6 +74,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   const hi = lang === 'hi';
   const tx = useTx();
   const label = useLabel();
+  const { toast, confirm, prompt } = useUI();
   const may = (...p: string[]) => !permissions || hasPerm(permissions, ...p);
   const isBuyer = currentUser.role === 'BUYER_TENANT';
   const isOwner = currentUser.role === 'PROPERTY_OWNER';
@@ -81,14 +83,14 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   const [saved, setSaved] = useState<Set<string>>(new Set());
   useEffect(() => { if (isBuyer) api.savedList().then(r => setSaved(new Set(r.ids || []))).catch(() => undefined); }, [isBuyer]);
   const toggleSave = async (id: string) => {
-    try { const r = await api.savedToggle(id); setSaved(x => { const n = new Set(x); if (r.saved) n.add(id); else n.delete(id); return n; }); } catch (e: any) { alert(e.message); }
+    try { const r = await api.savedToggle(id); setSaved(x => { const n = new Set(x); if (r.saved) n.add(id); else n.delete(id); return n; }); } catch (e: any) { toast(e.message || tx('Could not save property', 'प्रॉपर्टी सेव नहीं हो सकी'), 'error'); }
   };
   const [approvalBusy, setApprovalBusy] = useState('');
   /** v28 — a listing without the owner's approval: make / open its owner-approval draft (WhatsApp link + optional brokerage) */
   const openOwnerApproval = async (propertyId: string) => {
     setApprovalBusy(propertyId);
     try { const r = await api.consentFromProperty(propertyId); setDraftOpenId(r.draft.id); setShowDrafts(true); }
-    catch (e: any) { alert(e?.message || 'Error'); } finally { setApprovalBusy(''); }
+    catch (e: any) { toast(e?.message || tx('Error opening owner approval', 'मालिक की स्वीकृति खोलने में त्रुटि'), 'error'); } finally { setApprovalBusy(''); }
   };
   const [draftOpenId, setDraftOpenId] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('draft') || ''; } catch { return ''; } });
   const [showDrafts, setShowDrafts] = useState<boolean>(() => { try { const q = new URLSearchParams(window.location.search); return q.get('drafts') === '1' || !!q.get('stext') || !!q.get('stitle'); } catch { return false; } });
@@ -633,6 +635,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
           }}
         />
       )}
+
     </div>
   );
 };

@@ -16,6 +16,7 @@ import { api, setUnauthorizedHandler, type PropertyFacets } from './lib/api.js';
 import { hasPerm } from './lib/permissions.js';
 import { CallHost } from './components/calls/CallHost.js';
 import { useTx, useI18n } from './lib/i18n.js';
+import { useUI } from './lib/ui.js';
 import { LoginView, ChangePasswordView, PendingApprovalView } from './components/LoginView.js';
 import { PrivacyCenter, PrivacyQueue } from './components/PrivacyCenter.js';
 import { AlertsNudge } from './components/AlertsCard.js';
@@ -28,6 +29,8 @@ import { GrowthNudge } from './components/GrowthNudge.js';
 import { Loader2, ShieldCheck, MapPin, Building2, Eye } from 'lucide-react';
 import { lazyView, prefetch } from './lib/lazyView.js';
 import { TabErrorBoundary, TabLoading } from './components/TabErrorBoundary.js';
+import { CommandPaletteModal } from './components/CommandPaletteModal.js';
+import { CommandDock } from './components/CommandDock.js';
 
 // v20: screens load on demand (see lib/lazyView.ts)
 const CrmView = lazyView(() => import('./components/CrmView.js'), 'CrmView');
@@ -96,6 +99,7 @@ const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements
 
 export default function App() {
   const tx = useTx();
+  const { toast, confirm, prompt } = useUI();
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [authState, setAuthState] = useState<'checking' | 'anon' | 'ready'>('checking');
@@ -160,6 +164,8 @@ export default function App() {
   const [showQrMenu, setShowQrMenu] = useState(false);
   const [showQuickScan, setShowQuickScan] = useState(false);
   const [showBrokerSafetyModal, setShowBrokerSafetyModal] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [availableTabs, setAvailableTabs] = useState<any[]>([]);
   const [showFileDispute, setShowFileDispute] = useState<{ open: boolean; dealId?: string }>({ open: false });
   const [collaborationTarget, setCollaborationTarget] = useState<{
     open: boolean;
@@ -198,6 +204,17 @@ export default function App() {
     const h = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (d.dealId && d.propertyId) openScheduleVisitRef.current(d.dealId, d.propertyId); };
     window.addEventListener('genz:schedule-visit', h);
     return () => window.removeEventListener('genz:schedule-visit', h);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Matching Selection State
@@ -316,6 +333,12 @@ export default function App() {
   }, [currentUser?.id, impersonatedBy?.id, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
+    const ok = await confirm(
+      tx('Sign Out', 'साइन आउट'),
+      tx('Are you sure you want to sign out?', 'क्या आप वाकई साइन आउट करना चाहते हैं?'),
+      { confirmLabel: tx('Sign Out', 'साइन आउट'), cancelLabel: tx('Cancel', 'रद्द करें') }
+    );
+    if (!ok) return;
     // v59 — signing out also stops this person's alerts on this phone (a shared office phone carries nobody's alerts after it)
     if (!impersonatedBy) { try { await disablePush(); } catch { /* the browser refused: the server copy goes after failed sends */ } }
     try { await api.logout(); } catch { /* ignore */ }
@@ -351,6 +374,12 @@ export default function App() {
   };
 
   const handleStopViewAs = async () => {
+    const ok = await confirm(
+      tx('Stop Viewing As', 'इम्पर्सनेशन बंद करें'),
+      tx('Return to your own account?', 'क्या आप अपने अकाउंट पर वापस जाना चाहते हैं?'),
+      { confirmLabel: tx('Return', 'वापस जाएँ'), cancelLabel: tx('Cancel', 'रद्द करें') }
+    );
+    if (!ok) return;
     setLoading(true);
     try {
       await api.stopImpersonating();
@@ -370,7 +399,7 @@ export default function App() {
   }
 
   if (authState === 'ready' && currentUser && currentUser.verificationStatus !== 'VERIFIED') {
-    return <PendingApprovalView status={currentUser.verificationStatus} name={currentUser.name} role={currentUser.role} onLogout={handleLogout} />;
+    return <PendingApprovalView status={currentUser.verificationStatus} name={currentUser.name} role={currentUser.role} onLogout={handleLogout} onRefresh={loadData} />;
   }
 
   if (loading || !currentUser) {
@@ -411,6 +440,7 @@ export default function App() {
         onOpenBrokerSafetyModal={() => setShowBrokerSafetyModal(true)}
         onOpenChats={hasPerm(permissions, 'deal:chat', 'clientroom:use', 'pchat:use') && currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERADMIN' ? () => setActiveTab('chats') : undefined}
         chatCount={chatBadge}
+        onOpenSearch={() => setShowCommandPalette(true)}
       />
 
       {/* Segmented Navigation Tabs */}
@@ -420,12 +450,14 @@ export default function App() {
         currentUser={currentUser}
         permissions={permissions}
         chatBadge={chatBadge}
+        onTabsResolved={setAvailableTabs}
         unreadCount={{
           deals: pendingIncomingOffers.length > 0 ? pendingIncomingOffers.length : deals.length,
           leads: constructionLeads.filter((l) => l.status === 'OPEN').length,
           disputes: disputes.filter((d) => d.status === 'OPEN').length,
         }}
       />
+
 
       {/* Main Content Area */}
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6 md:pb-6">
@@ -841,6 +873,32 @@ export default function App() {
           properties={properties}
           onClose={() => setShowBrokerSafetyModal(false)}
           onOpenDispute={() => setActiveTab('disputes')}
+        />
+      )}
+
+      {/* Smart Command Palette / Spotlight Search */}
+      <CommandPaletteModal
+        open={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        onNavigate={setActiveTab}
+        allTabs={availableTabs}
+        currentUser={currentUser || undefined}
+        onOpenAddProperty={hasPerm(permissions, 'property:create') ? () => setShowAddProperty(true) : undefined}
+        onOpenAddRequirement={hasPerm(permissions, 'requirement:create') ? () => setShowAddRequirement(true) : undefined}
+        onOpenAddLead={hasPerm(permissions, 'crm:create') ? () => setShowAddLead(true) : undefined}
+        onOpenBrokerQrModal={currentUser?.role === 'BROKER' ? () => setShowBrokerQrModal(true) : undefined}
+      />
+
+      {/* Floating Speed-Dial Command Dock (PROPi / Clixence Style Quick Launcher) */}
+      {currentUser && (
+        <CommandDock
+          currentUser={currentUser}
+          onNavigate={setActiveTab}
+          onOpenCommandPalette={() => setShowCommandPalette(true)}
+          onOpenAddProperty={hasPerm(permissions, 'property:create') ? () => setShowAddProperty(true) : undefined}
+          onOpenAddRequirement={hasPerm(permissions, 'requirement:create') ? () => setShowAddRequirement(true) : undefined}
+          onOpenAddLead={hasPerm(permissions, 'crm:create') ? () => setShowAddLead(true) : undefined}
+          onOpenQuickScan={hasPerm(permissions, 'visit:scan') ? () => setShowQuickScan(true) : undefined}
         />
       )}
       </Suspense>

@@ -158,6 +158,7 @@ export function openRoomAuto(brokerId: string, a: { name: string; phone: string;
     if (p && live(p) && !room.items.some(i => i.propertyId === p.id)) { const m = allMedia({ id: '-' }, p); room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: now, note: undefined, visitRequests: [], ...(m.photos.length || m.videos.length ? { media: m } : {}) }); }   // v104 — the room opens with the same PUBLIC photos / video he already saw in the chat (never the broker's private vault)
   }
   if (room.items.length) ev(room, `Shared ${room.items.map(i => i.propertyId).join(', ')} (the homes already shown in his chat)`);
+  seedRoomFromLeadOrRequirement(room, phone);
   st().clientRooms.push(room);
   return { ok: true, room, token };
 }
@@ -204,6 +205,105 @@ function healPhone(r: ClientRoom): boolean {
 }
 const healAll = (rooms: ClientRoom[]) => { let n = 0; for (const x of rooms) if (healPhone(x)) n++; if (n) db.save(); };
 const phoneAccess = (u: UserProfile): 'FULL' | 'REVEAL' | 'HIDDEN' => !isStaff(u) ? 'FULL' : policyOf(db.byId('users', u.id) as UserProfile).phoneMode;
+
+export function seedRoomFromLeadOrRequirement(room: ClientRoom, phone?: string): boolean {
+  if (room.messages.length > 0) return false;
+  const ph = phone10(phone || openPhone(room) || '');
+  const s = st();
+  const lead = ph ? s.partnerLeads.find(l => l.brokerId === room.brokerId && phone10(l.phone) === ph) : undefined;
+  const req = ph ? s.requirements.find(q => q.assignedBrokerId === room.brokerId && phone10(q.customerPhone) === ph)
+    : s.requirements.find(q => q.assignedBrokerId === room.brokerId && q.customerName.toLowerCase() === room.clientName.toLowerCase());
+  const card = ph ? s.clientCards.find(c => c.brokerId === room.brokerId && phone10(c.phone) === ph) : undefined;
+  const shop = lead ? s.shopPartners.find(sp => sp.id === lead.partnerId) : undefined;
+
+  if (!lead && !req && !card) return false;
+
+  const lines: string[] = ['📋 【 ग्राहक की प्रारंभिक ज़रूरत / Client Requirement Intake 】'];
+  const loc = lead?.locality || (req?.preferredLocalities && req.preferredLocalities.length > 0 ? req.preferredLocalities.join(', ') : card?.areas?.join(', '));
+  const city = lead?.wantCity || req?.city || card?.city;
+  if (loc || city) lines.push(`📍 इलाका (Locality): ${loc || ''}${city ? ` · ${city}` : ''}`);
+
+  const bud = lead?.budget || (req && (req.budgetMax || req.budgetMin) ? `₹${(req.budgetMin / 1e5).toFixed(1)}L – ₹${(req.budgetMax / 1e5).toFixed(1)}L` : card?.budgetMax ? `₹${(card.budgetMin / 1e5).toFixed(1)}L – ₹${(card.budgetMax / 1e5).toFixed(1)}L` : '');
+  if (bud) lines.push(`💰 बजट (Budget): ${bud}`);
+
+  const pType = lead?.propertyType || req?.propertyType || card?.propertyType;
+  if (pType && pType !== 'Any') lines.push(`🏠 प्रकार (Property Type): ${pType}`);
+
+  const tType = lead?.kind === 'RENT_IN' || req?.transactionType === 'Rent' || card?.transactionType === 'Rent' ? 'किराया (Rent)' : 'खरीदना (Buy/Sale)';
+  lines.push(`🔄 सौदा (Transaction): ${tType}`);
+
+  // only the customer's own QR note — the broker's card notes are private and this message is shown to the client
+  if (lead?.note) lines.push(`📝 ग्राहक का नोट / Notes: "${lead.note}"`);
+  if (shop) lines.push(`🏪 स्रोत (Source): ${shop.shopName} (Shop Partner QR)`);
+  if (lead?.promise) lines.push(`🔒 180-दिन गैर-बाईपास वचन: सत्यापित (Signed: ${lead.promise.signName})`);
+
+  const initAt = lead?.createdAt || req?.createdAt || card?.createdAt || room.createdAt;
+  room.messages.push({
+    id: `RMSG-INTAKE-${room.id}`,
+    from: 'BROKER',
+    byName: 'GENZ सहायक 🤖',
+    text: lines.join('\n'),
+    at: initAt,
+  });
+
+  // Seed bot conversation history if available
+  if (lead?.chat?.msgs && lead.chat.msgs.length > 0) {
+    for (const [idx, m] of lead.chat.msgs.entries()) {
+      if (m.kind === 'INFO' && !m.text.includes('ज़रूरत')) continue;
+      if (m.by === 'CUSTOMER') {
+        room.messages.push({
+          id: `RMSG-${room.id}-CUST-${idx}`,
+          from: 'CLIENT',
+          text: m.text,
+          at: m.at,
+        });
+      } else if (m.by === 'BOT') {
+        room.messages.push({
+          id: `RMSG-${room.id}-BOT-${idx}`,
+          from: 'BROKER',
+          byName: 'GENZ सहायक 🤖',
+          text: m.text + (m.en ? `\n\n${m.en}` : ''),
+          at: m.at,
+        });
+      } else if (m.by === 'BROKER') {
+        room.messages.push({
+          id: `RMSG-${room.id}-BRK-${idx}`,
+          from: 'BROKER',
+          text: m.text,
+          at: m.at,
+        });
+      }
+    }
+  }
+  return true;
+}
+
+export function syncRoomMessagesFromLead(brokerId: string, roomId: string, lead: any): number {
+  const room = st().clientRooms.find(r => r.id === roomId && r.brokerId === brokerId);
+  if (!room || room.status !== 'ACTIVE' || !lead?.chat?.msgs) return 0;
+  let added = 0;
+  const existingTexts = new Set(room.messages.map(m => `${m.from}:${m.text.trim()}`));
+
+  for (const [idx, m] of lead.chat.msgs.entries()) {
+    if (m.kind === 'INFO' && !m.text.includes('ज़रूरत')) continue;
+    const from = m.by === 'CUSTOMER' ? 'CLIENT' : 'BROKER';
+    const text = m.by === 'BOT' ? (m.text + (m.en ? `\n\n${m.en}` : '')) : m.text;
+    const key = `${from}:${text.trim()}`;
+    if (!existingTexts.has(key)) {
+      existingTexts.add(key);
+      room.messages.push({
+        id: `RMSG-${room.id}-SYNC-${idx}-${Date.now().toString(36)}`,
+        from,
+        ...(m.by === 'BOT' ? { byName: 'GENZ सहायक 🤖' } : {}),
+        text,
+        at: m.at || nowIso(),
+      });
+      added++;
+    }
+  }
+  if (added > 0) room.updatedAt = nowIso();
+  return added;
+}
 
 function summary(r: ClientRoom) {
   const last = r.messages[r.messages.length - 1];
@@ -253,6 +353,9 @@ export function createClientRoomRouter() {
   r.get('/', (_req, res) => {
     const list = st().clientRooms.filter(x => x.brokerId === roomOwnerOf(me())).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const u = me(); healAll(list);
+    for (const rm of list) {
+      if (rm.messages.length === 0) seedRoomFromLeadOrRequirement(rm);
+    }
     res.json({ success: true, rooms: list.map(summary), counts: { active: list.filter(x => x.status === 'ACTIVE').length, unread: list.reduce((n, x) => n + unread(x), 0), visits: list.reduce((n, x) => n + openVisits(x), 0) },
       ...(isStaff(u) ? { staffOf: (db.byId('users', roomOwnerOf(u)) as UserProfile | undefined)?.name || '' } : {}) });
   });
@@ -280,6 +383,7 @@ export function createClientRoomRouter() {
     };
     sealPhone(room, phone);
     ev(room, isStaff(u) ? `Room opened by ${u.name} (office team)` : 'Room opened');
+    seedRoomFromLeadOrRequirement(room, phone);
     st().clientRooms.push(room);
     db.save();
     db.appendAuditEvent(u.id, u.role, 'LEAD', room.id, 'CLIENT_ROOM_OPENED', `Client room opened (${kind}), mobile ending ${room.phoneLast4}`);
@@ -289,6 +393,9 @@ export function createClientRoomRouter() {
   r.get('/:id', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     healAll([room]);   // v80 — an older room finds its saved number in the broker's own records
+    if (room.messages.length === 0) {
+      if (seedRoomFromLeadOrRequirement(room)) db.save();
+    }
     res.json({ success: true, room: detail(room) });
   });
 
@@ -1043,7 +1150,10 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
       const left = Math.max(0, x.cs.maxViews - x.cs.views);
       return `<div class="row" style="margin-top:6px"><a class="btn g" href="/r/${tok}/paper/${esc(pp.shareId)}">📄 खोलें / Open</a></div><small>${left} बार और · ${esc(dayHi(x.cs.expiresAt))} तक / ${left} more open(s) · till ${esc(dayHi(x.cs.expiresAt))}</small>`;
     };
-    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text)}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)` : esc(b?.name || 'Broker')} · ${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
+    if (room.messages.length === 0) {
+      if (seedRoomFromLeadOrRequirement(room)) db.save();
+    }
+    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text).replace(/\n/g, '<br>')}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? (m.byName.startsWith('GENZ') ? esc(m.byName) : `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)`) : esc(b?.name || 'Broker')} ·${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
     db.save();
     const sibs = st().clientRooms.filter(c => c.id !== room.id && c.status === 'ACTIVE' && c.phoneKey === room.phoneKey && sessionFor(req, c));
     const sibsHtml = sibs.length ? `<div class="card"><p class="small">मेरे दूसरे रूम / My other rooms</p><div class="row">${sibs.map(c => `<a class="btn l" href="/r/go-${esc(c.id)}">${c.kind === 'OWNER' ? `🏠 मेरी प्रॉपर्टी / My property${props.find(x => x.id === c.propertyId) ? ' — ' + esc(props.find(x => x.id === c.propertyId)!.title.slice(0, 28)) : ''}` : `🔍 ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')} के साथ मेरी तलाश / My search with ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')}`}</a>`).join('')}</div></div>` : '';

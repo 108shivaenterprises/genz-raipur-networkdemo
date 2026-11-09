@@ -83,7 +83,7 @@ export function seedDemoBulk(s: DatabaseState, sharedPasswordHash: string) {
   const contractors = byRole('CONTRACTOR');
   const builders = byRole('DEVELOPER_BUILDER');
   const legals = byRole('LEGAL_COUNSEL');
-  const user = (id: string) => s.users.find(u => u.id === id)!;
+  const user = (id: string) => s.users.find(u => u.id === id) || brokers[0];
   const digits = (p: string) => p.replace(/\D/g, '').slice(-10);
 
   // ───────────── the network itself: listings → needs → deal rooms → proposals → mandates → leads → projects → client rooms → legal cases ─────────────

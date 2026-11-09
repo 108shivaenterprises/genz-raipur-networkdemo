@@ -13,7 +13,8 @@ import { formatINR } from '../lib/utils.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel, useReason } from '../lib/labels.js';
 import { matchAction, mineFirst } from '../shared/matchOfferRules.js';
-import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart, MessagesSquare } from 'lucide-react';
+import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart, MessagesSquare, AlertCircle, RefreshCw } from 'lucide-react';
+import { useUI } from '../lib/ui.js';
 
 interface MatchCenterViewProps {
   properties: Property[];
@@ -45,6 +46,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   const tx = useTx();
   const label = useLabel();
   const reasonOf = useReason();
+  const { toast } = useUI();
   // v80 — the screen starts on MY buyer / MY home (not on somebody else's), and lists mine first
   const myReqs = mineFirst(requirements, (r) => !!meId && r.assignedBrokerId === meId);
   const myProps = mineFirst(properties, (p) => !!meId && p.listingBrokerId === meId);
@@ -57,22 +59,57 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
 
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState(PAGE);
   const [why, setWhy] = useState('');
   // v56 — a buyer (no co-broking) saves homes instead
   const [saved, setSaved] = useState<Set<string>>(new Set());
   useEffect(() => { if (!canPropose) api.savedList().then(r => setSaved(new Set(r.ids || []))).catch(() => undefined); }, [canPropose]);
-  const toggleSave = async (id: string) => { try { const r = await api.savedToggle(id); setSaved(x => { const n = new Set(x); if (r.saved) n.add(id); else n.delete(id); return n; }); } catch { /* not available any more */ } };
+  const toggleSave = async (id: string) => {
+    try {
+      const r = await api.savedToggle(id);
+      setSaved((x) => {
+        const n = new Set(x);
+        if (r.saved) n.add(id);
+        else n.delete(id);
+        return n;
+      });
+    } catch (e: any) {
+      toast(e?.message || tx('Could not save property. Please try again.', 'प्रॉपर्टी सेव नहीं हो सकी। कृपया पुनः प्रयास करें।'), 'error');
+    }
+  };
 
-  useEffect(() => {
-    setShown(PAGE); setWhy('');
+  const fetchMatches = () => {
+    setShown(PAGE);
+    setWhy('');
+    setError(null);
     if (mode === 'by_requirement' && activeReqId) {
       setLoading(true);
-      api.getMatchesForRequirement(activeReqId).then((res) => { setMatches(res.matches || []); setLoading(false); }).catch(() => setLoading(false));
+      api.getMatchesForRequirement(activeReqId)
+        .then((res) => {
+          setMatches(res.matches || []);
+          setLoading(false);
+        })
+        .catch((err: any) => {
+          setError(err?.message || tx('Failed to load matches. Please try again.', 'मैच लोड करने में विफल। कृपया पुनः प्रयास करें।'));
+          setLoading(false);
+        });
     } else if (mode === 'by_property' && activePropId) {
       setLoading(true);
-      api.getMatchesForProperty(activePropId).then((res) => { setMatches(res.matches || []); setLoading(false); }).catch(() => setLoading(false));
+      api.getMatchesForProperty(activePropId)
+        .then((res) => {
+          setMatches(res.matches || []);
+          setLoading(false);
+        })
+        .catch((err: any) => {
+          setError(err?.message || tx('Failed to load matches. Please try again.', 'मैच लोड करने में विफल। कृपया पुनः प्रयास करें।'));
+          setLoading(false);
+        });
     }
+  };
+
+  useEffect(() => {
+    fetchMatches();
   }, [mode, activeReqId, activePropId]);
 
   const currentReq = requirements.find((r) => r.id === activeReqId);
@@ -87,7 +124,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
         <PageTitle
           testId="magic-title"
           title={<span className="inline-flex items-center gap-1.5"><Sparkles className="h-5 w-5 text-amber-500" aria-hidden />{tx('Magic Match', 'मैजिक मैच')}</span>}
-          meta={!loading && list.length ? (canMatchByProperty ? tx(`${list.length} matches`, `${list.length} मैच`) : tx(`${list.length} homes for you`, `आपके लिए ${list.length} घर`)) : undefined}
+          meta={!loading && !error && list.length ? (canMatchByProperty ? tx(`${list.length} matches`, `${list.length} मैच`) : tx(`${list.length} homes for you`, `आपके लिए ${list.length} घर`)) : undefined}
           help={<>{canMatchByProperty
             ? tx('Your buyer’s need is checked against every live listing (and a listing against every buyer need): city and locality, budget, type of property and area.', 'आपके खरीदार की ज़रूरत हर लाइव लिस्टिंग से मिलाई जाती है (और लिस्टिंग हर खरीदार की ज़रूरत से): शहर और इलाका, बजट, प्रॉपर्टी का प्रकार और क्षेत्रफल।')
             : tx('Homes that fit your need: city and locality, budget, type of property and area.', 'आपकी ज़रूरत से मेल खाते घर: शहर और इलाका, बजट, प्रॉपर्टी का प्रकार और क्षेत्रफल।')}{' '}{tx('The same fixed rules every time — no guessing.', 'हर बार वही तय नियम — कोई अंदाज़ा नहीं।')}</>}
@@ -142,7 +179,23 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
         </div>
       )}
 
-      {!loading && list.length === 0 && (
+      {error && !loading && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center" data-testid="magic-error" role="alert">
+          <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
+          <h3 className="mt-2 text-sm font-semibold text-red-900">{tx('Unable to find matches', 'मैच ढूँढने में असमर्थ')}</h3>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-red-700">{error}</p>
+          <button
+            type="button"
+            onClick={fetchMatches}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition-colors"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {tx('Retry', 'पुनः प्रयास करें')}
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && list.length === 0 && (
         <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center" data-testid="magic-empty">
           <Sparkles className="mx-auto h-8 w-8 text-slate-300" />
           <h3 className="mt-2 text-sm font-semibold text-slate-900">{tx('No match yet', 'अभी कोई मैच नहीं')}</h3>

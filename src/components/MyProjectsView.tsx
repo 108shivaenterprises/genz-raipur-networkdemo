@@ -8,6 +8,8 @@ import { formatINR } from '../lib/utils.js';
 import { facingLabel, featureLabel, roadSidesLabel, kindWord, kindLabel } from '../shared/inventoryRules.js';
 import { SEGMENT_LABEL, type Segment } from '../shared/launchRules.js';
 import { useI18n } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
+import { isValidIndianPhone, sanitizePhone } from '../lib/validate.js';
 import type { UserProfile } from '../types/index.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
@@ -172,6 +174,7 @@ const ShortlistBoard: React.FC<{ rows: any[]; onOpen: (id: string) => void }> = 
 const ProjectPage: React.FC<{ id: string; onBack: () => void; onNavigate: (t: any) => void }> = ({ id, onBack, onNavigate }) => {
   const tx = useTx();
   const label = useLabel();
+  const { confirm } = useUI();
   const [d, setD] = useState<any>(null);
   const [clients, setClients] = useState<any[]>([]);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -185,7 +188,7 @@ const ProjectPage: React.FC<{ id: string; onBack: () => void; onNavigate: (t: an
   useEffect(() => { load(); api.ppClients().then(r => setClients(r.clients)).catch(() => undefined); }, [load]);
   const run = async (fn: () => Promise<any>, ok: string) => { try { await fn(); flash(true, ok); await load(); return true; } catch (e: any) { flash(false, e.message); return false; } };
   // DPDP: the associate attests that the customer agreed to be contacted before a lead is registered
-  const consentOk = () => window.confirm(tx('I confirm this customer agreed to be contacted about this project (call / WhatsApp).', 'मैं पुष्टि करता/करती हूँ कि ग्राहक ने इस प्रोजेक्ट के बारे में संपर्क (कॉल / WhatsApp) की सहमति दी है।'));
+  const consentOk = async () => await confirm(tx('Customer Consent', 'ग्राहक सहमति'), tx('I confirm this customer agreed to be contacted about this project (call / WhatsApp).', 'मैं पुष्टि करता/करती हूँ कि ग्राहक ने इस प्रोजेक्ट के बारे में संपर्क (कॉल / WhatsApp) की सहमति दी है।'));
   if (!d) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>;
   const p = d.project; const live = ['ACTIVE', 'PAUSED'].includes(d.relation);
   const addUnit = (u: string) => setF(x => ({ ...x, units: x.units.split(',').map(s => s.trim()).filter(Boolean).includes(u) ? x.units : [x.units.trim().replace(/,$/, ''), u].filter(Boolean).join(', ') }));
@@ -297,11 +300,11 @@ const ProjectPage: React.FC<{ id: string; onBack: () => void; onNavigate: (t: an
                 <div className="flex items-center gap-1.5">
                   {s.status === 'LEAD_REGISTERED'
                     ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">{tx('Lead registered', 'लीड रजिस्टर')}</span>
-                    : <button disabled={!live || p.leadIntake === 'PAUSED'} className={`${btn} bg-emerald-600 text-white`} onClick={() => (s.clientId ? (consentOk() && run(() => api.ppShortlistRegister(s.id, { consent: true }), tx('Registered as protected lead', 'सुरक्षित लीड रजिस्टर हुई'))) : setPhoneFor({ id: s.id, v: '' }))}>{tx('Register as lead', 'लीड रजिस्टर करें')}</button>}
+                    : <button disabled={!live || p.leadIntake === 'PAUSED'} className={`${btn} bg-emerald-600 text-white`} onClick={async () => { if (s.clientId) { if (await consentOk()) run(() => api.ppShortlistRegister(s.id, { consent: true }), tx('Registered as protected lead', 'सुरक्षित लीड रजिस्टर हुई')); } else { setPhoneFor({ id: s.id, v: '' }); } }}>{tx('Register as lead', 'लीड रजिस्टर करें')}</button>}
                   {s.status !== 'LEAD_REGISTERED' && <button aria-label={tx('Remove', 'हटाएँ')} className="min-h-11 min-w-11 text-slate-400 hover:text-red-600" onClick={() => run(() => api.ppShortlistDrop(s.id), tx('Removed', 'हटाया'))}><Trash2 className="mx-auto h-4 w-4" /></button>}
                 </div>
               </div>
-              {phoneFor && phoneFor.id === s.id && <div className="mt-2 flex gap-2"><input autoFocus inputMode="numeric" value={phoneFor.v} onChange={e => setPhoneFor({ id: s.id, v: e.target.value })} placeholder={tx('Client mobile (10 digits)', 'क्लाइंट का मोबाइल (10 अंक)')} className={inp} /><button className={dark} onClick={async () => { if (consentOk() && await run(() => api.ppShortlistRegister(s.id, { phone: phoneFor.v, consent: true }), tx('Registered as protected lead', 'सुरक्षित लीड रजिस्टर हुई'))) setPhoneFor(null); }}>OK</button></div>}
+              {phoneFor && phoneFor.id === s.id && <div className="mt-2 flex gap-2"><input autoFocus inputMode="numeric" value={phoneFor.v} onChange={e => setPhoneFor({ id: s.id, v: e.target.value })} placeholder={tx('Client mobile (10 digits)', 'क्लाइंट का मोबाइल (10 अंक)')} className={inp} /><button className={dark} onClick={async () => { if (!isValidIndianPhone(phoneFor.v)) { flash(false, tx('Enter a valid 10-digit Indian mobile number', '10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें')); return; } if (await consentOk() && await run(() => api.ppShortlistRegister(s.id, { phone: sanitizePhone(phoneFor.v), consent: true }), tx('Registered as protected lead', 'सुरक्षित लीड रजिस्टर हुई'))) setPhoneFor(null); }}>OK</button></div>}
             </li>
           ))}
           {d.shortlist.length === 0 && <li className="py-3 text-center text-xs text-slate-400">{tx('Nobody shortlisted yet.', 'अभी कोई शॉर्टलिस्ट नहीं।')}</li>}

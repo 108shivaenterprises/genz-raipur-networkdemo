@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, ShieldCheck, LogIn, KeyRound } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
 import { JoinView } from './JoinView.js';
 import { AccessRequest } from './AccessRequest.js';
 import { OwnerSignIn } from './OwnerListings.js';
@@ -46,7 +47,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
     setError('');
     try {
       const res = await api.login(em, pw);
-      rememberedLoginPassword = pw; // kept in memory only, so a forced password change does not ask for it again
+      setRememberedPassword(pw); // kept in memory only, so a forced password change does not ask for it again
       if (res.twoFactorRequired && res.ticket) { setTicket(res.ticket); setCode(''); return; }
       onLoggedIn(res);
     } catch (e: any) {
@@ -164,12 +165,15 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
   );
 };
 
-// In-memory only (never stored): the password just used to sign in.
+// In-memory session storage only (never persisted to disk): temporary password just used to sign in.
+// a plain variable on purpose: sessionStorage would leave the password readable by any script in the tab
 let rememberedLoginPassword = '';
+const getRememberedPassword = () => rememberedLoginPassword;
+const setRememberedPassword = (pw: string) => { rememberedLoginPassword = pw; };
 
 export const ChangePasswordView: React.FC<{ onDone: () => void; onLogout: () => void }> = ({ onDone, onLogout }) => {
   const tx = useTx();
-  const known = rememberedLoginPassword;           // present right after signing in on this page
+  const known = getRememberedPassword();           // present right after signing in on this page
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
@@ -188,7 +192,7 @@ export const ChangePasswordView: React.FC<{ onDone: () => void; onLogout: () => 
           setBusy(true);
           try {
             await api.changePassword(known || cur, next);
-            rememberedLoginPassword = '';
+            setRememberedPassword('');
             onDone();
           } catch (err: any) {
             const msg = String(err.message || '');
@@ -212,7 +216,7 @@ export const ChangePasswordView: React.FC<{ onDone: () => void; onLogout: () => 
         <label className="mt-3 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> {tx('Show passwords', 'पासवर्ड दिखाएँ')}</label>
         {error && <p className="mt-3 text-xs font-medium text-red-700">{error}</p>}
         <button disabled={busy} className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{tx('Update password', 'पासवर्ड बदलें')}</button>
-        <button type="button" onClick={onLogout} className="mt-2 w-full text-xs text-slate-500 hover:text-slate-900">{tx('Sign out', 'साइन आउट')}</button>
+        <button type="button" onClick={() => { setRememberedPassword(''); onLogout(); }} className="mt-2 w-full text-xs text-slate-500 hover:text-slate-900">{tx('Sign out', 'साइन आउट')}</button>
       </form>
     </div>
   );
@@ -223,9 +227,11 @@ export const ChangePasswordView: React.FC<{ onDone: () => void; onLogout: () => 
  * Now a broker sees the state of his ID check (and what GENZ asked him to change), can add / replace the photo of his PAN and masked
  * Aadhaar here (the same upload as in My ID — allowed while pending), and knows what happens next. Nothing about the review rules changed.
  */
-export const PendingApprovalView: React.FC<{ status: string; name: string; role?: string; onLogout: () => void }> = ({ status, name, role, onLogout }) => {
+export const PendingApprovalView: React.FC<{ status: string; name: string; role?: string; onLogout: () => void; onRefresh?: () => void | Promise<void> }> = ({ status, name, role, onLogout, onRefresh }) => {
   const { t, lang } = useI18n();
   const tx = useTx();
+  const { toast } = useUI();
+  const [checking, setChecking] = useState(false);
   const [mine, setMine] = useState<any>(null);
   const [msg, setMsg] = useState('');
   const isBroker = role === 'BROKER';
@@ -237,6 +243,25 @@ export const PendingApprovalView: React.FC<{ status: string; name: string; role?
     <li className="flex items-start gap-2 text-left text-sm"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${done ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>{done ? '✓' : n}</span><span className={done ? 'text-slate-500' : 'text-slate-800'}>{tx(en, hi)}</span></li>
   );
   const both = !!docOf('PAN') && !!docOf('AADHAAR');
+
+  const handleCheckAgain = async () => {
+    setChecking(true);
+    try {
+      if (onRefresh) {
+        await onRefresh();
+      } else {
+        await api.getMe();
+      }
+      if (isBroker && status === 'PENDING') {
+        await load();
+      }
+      toast(tx('Status refreshed', 'स्थिति की जाँच की गई'), 'info');
+    } catch (err: any) {
+      toast(err.message || tx('Could not refresh status', 'स्थिति अपडेट नहीं की जा सकी'), 'error');
+    } finally {
+      setChecking(false);
+    }
+  };
   return (
   <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-8">
     <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm" data-testid="pending-view">
@@ -271,7 +296,7 @@ export const PendingApprovalView: React.FC<{ status: string; name: string; role?
         </div>
       )}
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        <button onClick={() => window.location.reload()} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700" data-testid="pending-refresh">{tx('Check again', 'फिर देखें')}</button>
+        <button disabled={checking} onClick={handleCheckAgain} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50" data-testid="pending-refresh">{checking ? tx('Checking...', 'जाँच हो रही है...') : tx('Check again', 'फिर देखें')}</button>
         <button onClick={onLogout} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{t('common.signOut', 'Sign out')}</button>
       </div>
     </div>

@@ -17,6 +17,7 @@ import {
   BarChart3,
   PieChart as PieChartIcon,
   Layers,
+  RefreshCw,
 } from 'lucide-react';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { ActivityFeed } from './ActivityFeed.js';
@@ -83,17 +84,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const [activities, setActivities] = useState<PlatformActivityEvent[]>(initialActivities || []);
   const [loadingActivities, setLoadingActivities] = useState<boolean>(!initialActivities);
+  const [activityError, setActivityError] = useState<string | null>(null);
 
   // Fetch live activity feed
   const fetchActivities = async () => {
     setLoadingActivities(true);
+    setActivityError(null);
     try {
       const res = await api.getActivityFeed();
       if (res.success && res.activities) {
         setActivities(res.activities);
+      } else {
+        setActivityError((res as any).message || tx('Failed to load activity feed', 'गतिविधि फ़ीड लोड करने में विफल'));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch activity feed:', err);
+      setActivityError(err?.message || tx('Failed to load activity feed. Please try again.', 'गतिविधि फ़ीड लोड करने में विफल। कृपया पुनः प्रयास करें।'));
     } finally {
       setLoadingActivities(false);
     }
@@ -421,7 +427,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-xs font-semibold text-slate-500 group-open:hidden">{tx('Show', 'दिखाएँ')} ▾</span>
             <span className="hidden text-xs font-semibold text-slate-500 group-open:inline">{tx('Hide', 'छुपाएँ')} ▴</span>
           </summary>
-          {feedOpen && <div className="border-t border-slate-100 p-2"><ActivityFeed activities={activities} currentUser={currentUser} isLoading={loadingActivities} onRefresh={fetchActivities} onNavigate={onNavigate} maxItems={5} /></div>}
+          {feedOpen && (
+            <div className="border-t border-slate-100 p-2 space-y-2">
+              {activityError && (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-800" role="alert">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+                    <span className="truncate">{activityError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchActivities}
+                    className="inline-flex shrink-0 items-center gap-1 rounded bg-red-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-red-700"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    {tx('Retry', 'पुनः प्रयास करें')}
+                  </button>
+                </div>
+              )}
+              <ActivityFeed activities={activities} currentUser={currentUser} isLoading={loadingActivities} onRefresh={fetchActivities} onNavigate={onNavigate} maxItems={5} />
+            </div>
+          )}
         </details>
 
         <details className="group rounded-xl border border-slate-200 bg-white" onToggle={(e) => setChartsOpen((e.target as HTMLDetailsElement).open)} data-testid="lite-charts">
@@ -712,6 +738,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Left 2 Cols: Real-Time Activity Feed & High-Priority Deals */}
         <div className="space-y-6 lg:col-span-2">
           {/* Real-Time Platform Activity Feed */}
+          {activityError && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-800" role="alert">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+                <span>{activityError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={fetchActivities}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition-colors"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                {tx('Retry', 'पुनः प्रयास करें')}
+              </button>
+            </div>
+          )}
           <ActivityFeed
             activities={activities}
             currentUser={currentUser}

@@ -7,6 +7,8 @@ import { Loader2, Plus, Check, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
+import { useUI } from '../lib/ui.js';
+import { sanitizeDecimal } from '../lib/validate.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50';
@@ -31,7 +33,7 @@ const CutEditor: React.FC<{ title: string; hint: string; value: any; price: numb
       <div className="text-xs font-bold text-slate-800">{title}</div>
       <div className="flex gap-2">
         <select className={inp + ' !w-28'} value={mode} onChange={e => setMode(e.target.value as any)} data-testid={`${id}-mode`}><option value="PCT">% {tx('of price', 'कीमत का')}</option><option value="FIXED">₹ {tx('fixed', 'तय')}</option></select>
-        <input className={inp} inputMode="decimal" placeholder={mode === 'PCT' ? '1' : '40000'} value={v} onChange={e => setV(e.target.value.replace(/[^\d.]/g, ''))} data-testid={`${id}-value`} />
+        <input className={inp} inputMode="decimal" placeholder={mode === 'PCT' ? '1' : '40000'} value={v} onChange={e => setV(sanitizeDecimal(e.target.value))} data-testid={`${id}-value`} />
         <button type="button" disabled={busy || !v} className="min-h-11 shrink-0 rounded-lg bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-50" data-testid={`${id}-save`} onClick={() => onSave({ mode, value: n })}>{tx('Save', 'सेव')}</button>
       </div>
       <div className="text-xs text-slate-600">{amt > 0 ? <b data-testid={`${id}-amt`}>{mode === 'PCT' ? `${n}% × ${formatINR(price)} = ${formatINR(amt)}` : formatINR(amt)}</b> : hint}{value && <button type="button" disabled={busy} className="ml-2 font-semibold underline" onClick={() => onSave(null)}>{tx('Remove', 'हटाएँ')}</button>}</div>
@@ -41,6 +43,7 @@ const CutEditor: React.FC<{ title: string; hint: string; value: any; price: numb
 
 export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: boolean; extra?: React.ReactNode; refreshKey?: string | number }> = ({ dealId, fold, extra, refreshKey }) => {
   const tx = useTx(); const hi = tx('en', 'hi') === 'hi';
+  const { prompt } = useUI();
   const [h, setH] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<'' | 'pay' | 'book'>('');
   const [pf, setPf] = useState({ kind: 'PART', amount: '', mode: 'UPI', ref: '', paidOn: today(), note: '', toBrokerId: '' });
@@ -112,7 +115,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 {e.ack ? <span className="font-semibold text-emerald-700">✔ {tx('Confirmed by', 'माना')} {e.ack.byName}</span> : <span className="text-amber-700">⏳ {tx('Not confirmed yet', 'पुष्टि बाक़ी')}</span>}
                 {!e.ack && h.canAck && e.byId !== h.me && <button type="button" disabled={busy} className="min-h-9 rounded-lg border border-emerald-300 px-3 font-semibold text-emerald-800" data-testid={`hisaab-ack-${e.id}`} onClick={() => run(() => api.hisaabAck(dealId, e.id))}><Check className="inline h-3.5 w-3.5" /> {tx('Yes, received', 'हाँ, मिल गया')}</button>}
-                {!e.ack && h.canRecord && e.byId === h.me && <button type="button" disabled={busy} className="min-h-9 rounded-lg border border-slate-300 px-3" onClick={() => { const r = window.prompt(tx('Why cancel this entry?', 'यह एंट्री क्यों रद्द कर रहे हैं?')); if (r) void run(() => api.hisaabVoid(dealId, e.id, r)); }}>{tx('Cancel', 'रद्द')}</button>}
+                {!e.ack && h.canRecord && e.byId === h.me && <button type="button" disabled={busy} className="min-h-9 rounded-lg border border-slate-300 px-3" onClick={async () => { const r = await prompt(tx('Cancel Entry', 'एंट्री रद्द करें'), { message: tx('Why cancel this entry?', 'यह एंट्री क्यों रद्द कर रहे हैं?'), placeholder: tx('Reason...', 'कारण...'), required: true }); if (r) void run(() => api.hisaabVoid(dealId, e.id, r)); }}>{tx('Cancel', 'रद्द')}</button>}
               </div>
             )}
             {e.void && <div className="text-xs">{tx('Cancelled', 'रद्द')}: {e.void.reason}</div>}
@@ -182,7 +185,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
             <div key={e.id} className={`rounded-lg border p-2 text-xs ${e.void ? 'border-slate-200 text-slate-400 line-through' : 'border-slate-200'}`} data-testid={`hisaab-book-${e.id}`}>
               <div className="flex justify-between gap-2"><span className="font-semibold">{e.dir === 'IN' ? tx('Received from', 'मिला —') : tx('Paid to', 'दिया —')} {label(PARTY, e.party)}{e.auto ? ` · ${String(e.id).startsWith('direct:') ? tx('directly', 'सीधे') : tx('bill', 'बिल')}` : ''}</span><span className={`font-extrabold ${e.dir === 'IN' ? 'text-emerald-700' : 'text-red-700'}`}>{e.dir === 'IN' ? '+' : '−'}{formatINR(e.amount)}</span></div>
               <div className="text-xs text-slate-500">{e.paidOn}{e.mode ? ` · ${label(MODE, e.mode)}` : ''}{e.ref ? ` · ${e.ref}` : ''}{e.note ? ` · ${e.note}` : ''}</div>
-              {!e.void && !e.auto && <button type="button" disabled={busy} className="mt-1 min-h-9 rounded-lg border border-slate-300 px-3" onClick={() => { const r = window.prompt(tx('Why cancel this entry?', 'यह एंट्री क्यों रद्द कर रहे हैं?')); if (r) void run(() => api.hisaabBookVoid(dealId, e.id, r)); }}>{tx('Cancel', 'रद्द')}</button>}
+              {!e.void && !e.auto && <button type="button" disabled={busy} className="mt-1 min-h-9 rounded-lg border border-slate-300 px-3" onClick={async () => { const r = await prompt(tx('Cancel Entry', 'एंट्री रद्द करें'), { message: tx('Why cancel this entry?', 'यह एंट्री क्यों रद्द कर रहे हैं?'), placeholder: tx('Reason...', 'कारण...'), required: true }); if (r) void run(() => api.hisaabBookVoid(dealId, e.id, r)); }}>{tx('Cancel', 'रद्द')}</button>}
               {e.void && <div className="text-xs">{tx('Cancelled', 'रद्द')}: {e.void.reason}</div>}
             </div>
           ))}

@@ -9,6 +9,8 @@ import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { hasPerm } from '../lib/permissions.js';
+import { useUI } from '../lib/ui.js';
+import { isPositiveNumber, isValidIndianPhone, sanitizePhone } from '../lib/validate.js';
 import { SitePoster } from './SitePoster.js';
 import { SOLD_PURGE_DAYS } from '../shared/dealRules.js';
 import type { UserProfile } from '../types/index.js';
@@ -18,6 +20,7 @@ const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg
 const dark = `${btn} bg-slate-900 text-white`; const ghost = `${btn} border border-slate-300 bg-white text-slate-700`; const green = `${btn} bg-emerald-600 text-white`; const red = `${btn} border border-red-300 bg-white text-red-700`;
 const dt = (iso?: string) => iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
 const d0 = (iso?: string) => iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const toIso = (v?: string): string | undefined => { if (!v) return undefined; try { const d = new Date(v); return isNaN(d.getTime()) ? undefined : d.toISOString(); } catch { return undefined; } };
 const TONE: Record<string, string> = { SUBMITTED: 'bg-blue-100 text-blue-800', COUNTERED: 'bg-amber-100 text-amber-800', ACCEPTED: 'bg-emerald-100 text-emerald-800', TOKEN_HELD: 'bg-violet-100 text-violet-800', BACKUP: 'bg-slate-200 text-slate-700', REJECTED: 'bg-red-100 text-red-700', WITHDRAWN: 'bg-slate-200 text-slate-600', EXPIRED: 'bg-slate-200 text-slate-600', RELEASED: 'bg-slate-200 text-slate-600', CLOSED: 'bg-slate-200 text-slate-600' };
 const Chip: React.FC<{ s: string; extra?: string }> = ({ s, extra }) => { const label = useLabel(); return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${TONE[s] || 'bg-slate-100'}`}>{label('status', s)}{extra}</span>; };
 
@@ -109,8 +112,20 @@ const NewOffer: React.FC<{ act: Act; onDone: () => void }> = ({ act, onDone }) =
   const set = (k: string, v: any) => setF(x => ({ ...x, [k]: v }));
   const [blocked, setBlocked] = useState<any>(null);
   const send = () => act(async () => {
+    if (!f.buyerName.trim()) {
+      throw new Error(tx('Please enter buyer name', 'कृपया खरीदार का नाम दर्ज करें'));
+    }
+    if (!isValidIndianPhone(f.buyerPhone)) {
+      throw new Error(tx('Please enter a valid 10-digit mobile number', 'कृपया 10 अंकों का मान्य मोबाइल नंबर दर्ज करें'));
+    }
+    if (!isPositiveNumber(f.amount)) {
+      throw new Error(tx('Please enter a valid positive offer amount', 'कृपया मान्य धनात्मक ऑफ़र राशि दर्ज करें'));
+    }
+    if (f.tokenProposed && !isPositiveNumber(f.tokenProposed)) {
+      throw new Error(tx('Token amount must be a positive number', 'टोकन राशि एक धनात्मक संख्या होनी चाहिए'));
+    }
     setBlocked(null);
-    try { await api.ofMake({ propertyId: f.propertyId, buyerName: f.buyerName, buyerPhone: f.buyerPhone, amount: Number(f.amount), tokenProposed: Number(f.tokenProposed || 0), validityHours: Number(f.validityHours), note: f.note || undefined, consent: true }); onDone(); }
+    try { await api.ofMake({ propertyId: f.propertyId, buyerName: f.buyerName.trim(), buyerPhone: sanitizePhone(f.buyerPhone), amount: Number(f.amount), tokenProposed: Number(f.tokenProposed || 0), validityHours: Number(f.validityHours), note: f.note || undefined, consent: true }); onDone(); }
     catch (e: any) { if (e?.code === 'BUYER_BONDED') { setBlocked(e.body); throw new Error(tx('Stopped: another broker brought this buyer to this property first.', 'रुका: इस प्रॉपर्टी पर यह खरीदार पहले दूसरा ब्रोकर लाया था।')); } throw e; }
   }, tx('Offer sent', 'ऑफ़र भेजा'));
   return (
@@ -213,6 +228,7 @@ const STATUS_LABEL: Record<string, [string, string, string]> = { active: ['Activ
 
 const ListingCard: React.FC<{ l: any; act: Act }> = ({ l, act }) => {
   const tx = useTx();
+  const { confirm } = useUI();
   const [mode, setMode] = useState<'' | 'sold' | 'relist' | 'poster'>('');
   const [poster, setPoster] = useState<any>(null);
   const [via, setVia] = useState<'NETWORK' | 'OUTSIDE'>('OUTSIDE'); const [pick, setPick] = useState(''); const [cands, setCands] = useState<any[]>([]);
@@ -251,7 +267,7 @@ const ListingCard: React.FC<{ l: any; act: Act }> = ({ l, act }) => {
           {l.listingStatus === 'under_negotiation' && !l.tokenHeld && <button className={ghost} onClick={() => act(() => api.lsStatus(l.id, { status: 'active' }), tx('Active again', 'फिर चालू'))}>{tx('Make active', 'चालू करें')}</button>}
           {l.listingStatus === 'active' && <button className={ghost} onClick={() => act(() => api.lsStatus(l.id, { status: 'under_negotiation' }), tx('On hold', 'होल्ड'))}>{tx('Put on hold', 'होल्ड')}</button>}
           <button className={dark} onClick={() => setMode(mode === 'sold' ? '' : 'sold')}>{l.transactionType === 'Sale' ? tx('Mark sold', 'बिकी') : tx('Mark rented', 'किराए पर गई')}</button>
-          <button className={red} onClick={() => { if (window.confirm(tx('Withdraw this listing?', 'यह लिस्टिंग हटाएँ?'))) act(() => api.lsStatus(l.id, { status: 'withdrawn' }), tx('Withdrawn', 'हटाई')); }}>{tx('Withdraw', 'हटाएँ')}</button>
+          <button className={red} onClick={async () => { if (await confirm(tx('Withdraw Listing', 'लिस्टिंग हटाएँ'), tx('Withdraw this listing?', 'यह लिस्टिंग हटाएँ?'), { danger: true })) act(() => api.lsStatus(l.id, { status: 'withdrawn' }), tx('Withdrawn', 'हटाई')); }}>{tx('Withdraw', 'हटाएँ')}</button>
           {l.isListingBroker && l.verificationStatus === 'VERIFIED' && <button className={ghost} onClick={async () => { try { setPoster(await api.lsPoster(l.id)); setMode('poster'); } catch (e: any) { act(() => Promise.reject(e), ''); } }}><QrCode className="h-4 w-4" />{tx('Site poster', 'साइट पोस्टर')}</button>}
         </>}
         {l.canUndo && <button className={ghost} onClick={() => act(() => api.lsUndo(l.id), tx('Restored', 'वापस चालू'))}>{tx('Undo (24 h)', 'पूर्ववत (24 घंटे)')}</button>}
@@ -282,6 +298,7 @@ const MS_KINDS: Array<[string, string, string]> = [['AGREEMENT', 'Agreement', '�
 const TimelineTab: React.FC<{ act: Act; tick: number }> = ({ act, tick }) => {
   const tx = useTx();
   const label = useLabel();
+  const { prompt } = useUI();
   const [deals, setDeals] = useState<any[] | null>(null); const [sel, setSel] = useState(''); const [t, setT] = useState<any>(null); const [err, setErr] = useState('');
   const [ms, setMs] = useState({ kind: 'PAYMENT', title: '', plannedAt: '', amount: '' }); const [note, setNote] = useState({ text: '', remindAt: '' });
   useEffect(() => { api.getDeals().then(r => { setDeals(r.deals); if (!sel && r.deals[0]) setSel(r.deals[0].id); }).catch(e => setErr(e.message)); }, []);  // eslint-disable-line
@@ -319,7 +336,17 @@ const TimelineTab: React.FC<{ act: Act; tick: number }> = ({ act, tick }) => {
               <div className="min-w-0"><b>{m.title}</b> <span className="text-slate-500">· {m.kind.toLowerCase()}{m.amount ? ` · ${formatINR(m.amount)}` : ''}{m.plannedAt ? ` · ${d0(m.plannedAt)}` : ''}{m.ref ? ` · ref ${m.ref}` : ''}</span>
                 <div className="text-[10px] text-slate-500">{m.status === 'PLANNED' ? tx('planned', 'योजना') : m.confirmedAt ? `✔ ${tx('confirmed by', 'पुष्टि')} ${m.confirmedByName}` : tx('done — awaiting the other side', 'पूरा — दूसरे पक्ष की पुष्टि बाकी')}</div></div>
               <div className="flex gap-2">
-                {m.status === 'PLANNED' && <button className={ghost} onClick={() => act(() => api.tlMs(sel, m.id, 'done', m.kind === 'PAYMENT' || m.kind === 'COMMISSION' ? { ref: window.prompt(tx('Payment reference (UTR / receipt) — optional', 'पेमेंट रेफ़रेंस (UTR / रसीद) — वैकल्पिक')) || undefined } : {}), tx('Marked done', 'पूरा'))}>{tx('Done', 'पूरा')}</button>}
+                {m.status === 'PLANNED' && <button className={ghost} onClick={async () => {
+                  let refVal: string | undefined = undefined;
+                  if (m.kind === 'PAYMENT' || m.kind === 'COMMISSION') {
+                    const entered = await prompt(tx('Payment Reference', 'पेमेंट रेफ़रेंस'), {
+                      message: tx('Payment reference (UTR / receipt) — optional', 'पेमेंट रेफ़रेंस (UTR / रसीद) — वैकल्पिक'),
+                      placeholder: tx('UTR / Receipt number', 'UTR / रसीद नंबर'),
+                    });
+                    refVal = entered || undefined;
+                  }
+                  act(() => api.tlMs(sel, m.id, 'done', refVal ? { ref: refVal } : {}), tx('Marked done', 'पूरा'));
+                }}>{tx('Done', 'पूरा')}</button>}
                 {m.canConfirm && <button className={green} onClick={() => act(() => api.tlMs(sel, m.id, 'confirm'), tx('Confirmed', 'पुष्टि'))}>{tx('Confirm', 'पुष्टि')}</button>}
                 {!m.confirmedAt && <button aria-label={tx('Cancel', 'रद्द करें')} className="min-h-11 min-w-11 text-slate-400 hover:text-red-600" onClick={() => act(() => api.tlMs(sel, m.id, 'cancel'), tx('Cancelled', 'रद्द'))}><Trash2 className="mx-auto h-4 w-4" /></button>}
               </div></div>
@@ -334,7 +361,7 @@ const TimelineTab: React.FC<{ act: Act; tick: number }> = ({ act, tick }) => {
           {t.notes.map((n: any) => <div key={n.id} className="flex items-start justify-between gap-2 rounded-lg bg-amber-50/60 p-2 text-xs"><div>{n.text}{n.remindAt && <div className="text-[10px] text-amber-800">⏰ {dt(n.remindAt)}</div>}</div><button aria-label={tx('Delete', 'हटाएँ')} className="min-h-11 min-w-11 text-slate-400 hover:text-red-600" onClick={() => act(() => api.tlNoteDel(sel, n.id), tx('Deleted', 'हटाया'))}><Trash2 className="mx-auto h-4 w-4" /></button></div>)}
           <textarea className={`${inp} min-h-20`} maxLength={500} placeholder={tx('e.g. Registry on 20th — remind buyer about stamp duty', 'जैसे: 20 को रजिस्ट्री — खरीदार को स्टांप ड्यूटी याद दिलाएँ')} value={note.text} onChange={e => setNote({ ...note, text: e.target.value })} />
           <input type="datetime-local" className={inp} value={note.remindAt} onChange={e => setNote({ ...note, remindAt: e.target.value })} />
-          <button disabled={note.text.trim().length < 2} className={`${dark} w-full`} onClick={() => act(() => api.tlNote(sel, { text: note.text, remindAt: note.remindAt ? new Date(note.remindAt).toISOString() : undefined }).then(() => setNote({ text: '', remindAt: '' })), tx('Note saved', 'नोट सेव'))}>{tx('Save note', 'नोट सेव करें')}</button>
+          <button disabled={note.text.trim().length < 2} className={`${dark} w-full`} onClick={() => act(() => api.tlNote(sel, { text: note.text, remindAt: toIso(note.remindAt) }).then(() => setNote({ text: '', remindAt: '' })), tx('Note saved', 'नोट सेव'))}>{tx('Save note', 'नोट सेव करें')}</button>
         </section>
       </>}
     </div>

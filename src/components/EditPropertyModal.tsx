@@ -7,6 +7,9 @@ import { TagPicker } from './TagPicker.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { useUI } from '../lib/ui.js';
+import { shrinkImage, readAsDataUrl } from '../lib/imgShrink.js';
+import { isValidIndianPhone, sanitizePhone } from '../lib/validate.js';
 import {
   Building2,
   X,
@@ -42,6 +45,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
 }) => {
   const tx = useTx();
   const label = useLabel();
+  const { toast, confirm, prompt } = useUI();
   if (!isOpen || !property) return null;
 
   const [title, setTitle] = useState(property.title || '');
@@ -131,19 +135,28 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
   }, [property]);
 
   // Gallery Photo Upload Handler
-  const handlePhotoFiles = (files: FileList | null) => {
+  const [photoCompressing, setPhotoCompressing] = useState(false);
+  const handlePhotoFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        if (dataUrl) {
+    setPhotoCompressing(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) continue;
+        try {
+          const dataUrl = await shrinkImage(file);
           setImages((prev) => [...prev, dataUrl]);
+        } catch {
+          try {
+            const dataUrl = await readAsDataUrl(file);
+            setImages((prev) => [...prev, dataUrl]);
+          } catch {
+            toast(tx('Could not process photo', 'फ़ोटो प्रोसेस नहीं हो सकी'), 'error');
+          }
         }
-      };
-      reader.readAsDataURL(file);
-    });
+      }
+    } finally {
+      setPhotoCompressing(false);
+    }
   };
 
   // Gallery Video Upload Handler — v104: the file goes to the server as it is (about 80 MB) and the listing keeps only its link
@@ -210,6 +223,9 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
       if (!numAsking || numAsking <= 0) {
         throw new Error(tx('Please enter a valid asking price', 'कृपया सही माँगी गई क़ीमत डालें'));
       }
+      if (ownerPhone.trim() && !isValidIndianPhone(ownerPhone.trim())) {
+        throw new Error(tx('Please enter a valid 10-digit Indian phone number for owner (starts with 6-9)', 'कृपया मालिक का 10 अंकों का मान्य भारतीय फोन नंबर डालें (6-9 से शुरू)'));
+      }
 
       const payload = {
         title: title.trim(),
@@ -232,7 +248,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
         builtUpAreaSqFt: builtUpAreaSqFt ? Number(builtUpAreaSqFt) : undefined,
         plotAreaSqFt: plotAreaSqFt ? Number(plotAreaSqFt) : undefined,
         ownerName: ownerName.trim(),
-        ownerPhone: ownerPhone.trim(),
+        ownerPhone: ownerPhone.trim() ? sanitizePhone(ownerPhone.trim()) : '',
         images: images.length > 0 ? images : undefined,
         videoUrl: videoUrl.trim() || undefined,
       };
@@ -240,6 +256,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
       const res = await api.updateProperty(property.id, payload);
       if (res.success && res.property) {
         setSuccessMsg(tx('Property listing updated successfully!', 'प्रॉपर्टी लिस्टिंग सफलतापूर्वक अपडेट हो गई!'));
+        toast(tx('Property listing updated successfully!', 'प्रॉपर्टी लिस्टिंग सफलतापूर्वक अपडेट हो गई!'), 'success');
         setTimeout(() => {
           onSuccess(res.property);
           onClose();
@@ -256,9 +273,24 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
 
   const isPriceChanged = Number(askingPrice) > 0 && Number(askingPrice) !== property.askingPrice;
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-property-modal-title"
+        className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Sticky Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-white rounded-t-xl shrink-0">
           <div className="flex items-center gap-2.5">
@@ -267,7 +299,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">{tx('Edit Property Listing', 'प्रॉपर्टी लिस्टिंग एडिट करें')}</h3>
+                <h3 id="edit-property-modal-title" className="text-base font-bold text-slate-900">{tx('Edit Property Listing', 'प्रॉपर्टी लिस्टिंग एडिट करें')}</h3>
                 <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
                   {property.id}
                 </span>
@@ -280,6 +312,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
           <button
             onClick={onClose}
             type="button"
+            aria-label={tx('Close', 'बंद करें')}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
           >
             <X className="h-5 w-5" />
@@ -611,7 +644,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                   <div className="mx-auto w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
                     <Upload className="h-4 w-4" />
                   </div>
-                  <p className="text-xs font-semibold text-slate-800">{tx('Upload Photos from Gallery', 'गैलरी से फ़ोटो अपलोड करें')}</p>
+                  <p className="text-xs font-semibold text-slate-800">{photoCompressing ? tx('Compressing photos...', 'फ़ोटो कम्प्रेस हो रही हैं...') : tx('Upload Photos from Gallery', 'गैलरी से फ़ोटो अपलोड करें')}</p>
                   <p className="text-[11px] text-slate-500">{tx('Pick multiple images from your device', 'अपने डिवाइस से कई फ़ोटो चुनें')}</p>
                 </label>
               </div>

@@ -166,6 +166,7 @@ export function createOwnerAuthRouter() {
     }
     const s = st(); const now = nowIso();
     let u = s.users.find(x => phone10(x.phone) === phone && x.role === 'PROPERTY_OWNER');
+    const isNew = !u;
     if (u && !u.selfSignup) return bad(res, 'This number already has a GENZ owner account with a password — sign in with it.', 409, 'USE_PASSWORD');
     if (u && ['BLACKLISTED', 'REJECTED', 'SUSPENDED'].includes(u.verificationStatus)) return bad(res, `This account is ${u.verificationStatus.toLowerCase()}. Contact GENZ.`, 403);
     if (!u) {
@@ -185,7 +186,7 @@ export function createOwnerAuthRouter() {
     if (usedNonce) { const b = otpBook(); (b[usedNonce] ||= { exp: Date.now() + OTP_MS, tries: 0 }).used = true; }
     u.lastLoginAt = now; db.save();
     setSessionCookie(req, res, signSession(u.id, u.sessionVersion || 1));
-    res.json({ success: true, created: !s.users.some(x => x !== u && x.id === u!.id), user: { id: u.id, name: u.name, role: u.role, phone: u.phone, city: u.city, verificationStatus: u.verificationStatus }, permissions: effectivePermissions(u) });
+    res.json({ success: true, created: isNew, user: { id: u.id, name: u.name, role: u.role, phone: u.phone, city: u.city, verificationStatus: u.verificationStatus }, permissions: effectivePermissions(u) });
   });
   /** an owner without a password asks for the one-time code that stands in for it when he signs a mandate */
   r.post('/sign-code', rateLimit('owner-sign-code', 10, 3600_000), async (_req: Request, res: Response) => {

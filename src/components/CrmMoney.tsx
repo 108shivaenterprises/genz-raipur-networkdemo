@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
+import { useUI } from '../lib/ui.js';
+import { isValidPercent, sanitizeDecimal } from '../lib/validate.js';
 import type { CrmBooking, CrmPaymentMilestone, CrmReceipt } from '../types/crm.js';
 import { Sheet, Err, useBusy, inp, btnDark, btnLine, inr, type Flash } from './CrmPlus.js';
 
@@ -109,6 +111,7 @@ type Sh = null | { k: 'receipt'; m: CrmPaymentMilestone } | { k: 'claim'; m: Crm
 
 export const BookingMoney: React.FC<{ b: CrmBooking; role: string; meId: string; can: (...p: string[]) => boolean; onChanged: () => void; flash: Flash }> = ({ b, role, meId, can, onChanged, flash }) => {
   const tx = useTx();
+  const { confirm } = useUI();
   const [lg, setLg] = useState<any>(null); const [sh, setSh] = useState<Sh>(null);
   const load = useCallback(() => { api.crmLedger(b.id).then(setLg).catch(() => setLg(null)); }, [b.id]);
   useEffect(() => { load(); }, [load, b.updatedAt]);
@@ -116,7 +119,10 @@ export const BookingMoney: React.FC<{ b: CrmBooking; role: string; meId: string;
   const isBuilder = can('crm:booking_decide'); const isAssoc = role === 'BROKER' && b.associateId === meId;
   const s = lg?.summary; const ms: (CrmPaymentMilestone & { receivedAmount?: number; pending?: number })[] = lg?.milestones || b.paymentSchedule;
   const payouts = lg?.payouts || b.payouts || [];
-  const ack = async (pid: string) => { try { await api.crmPayoutAck(b.id, pid, 'CONFIRM'); flash(true, tx('Payment confirmed — thank you', 'भुगतान कन्फ़र्म — धन्यवाद')); done(); } catch (e: any) { flash(false, e.message); } };
+  const ack = async (pid: string) => {
+    if (!await confirm(tx('Confirm Payment Received', 'भुगतान प्राप्ति की पुष्टि करें'), tx('Confirm that you have received this payout into your account?', 'क्या आप पुष्टि करते हैं कि यह भुगतान आपके खाते में प्राप्त हो गया है?'))) return;
+    try { await api.crmPayoutAck(b.id, pid, 'CONFIRM'); flash(true, tx('Payment confirmed — thank you', 'भुगतान कन्फ़र्म — धन्यवाद')); done(); } catch (e: any) { flash(false, e.message); }
+  };
   const cancelled = b.status === 'CANCELLED';
   const badge = (st: string) => st === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-800' : st === 'DISPUTED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800';
   const stLabel = (st: string) => st === 'CONFIRMED' ? tx('Confirmed by associate', 'एसोसिएट ने कन्फ़र्म किया') : st === 'DISPUTED' ? tx('Disputed', 'विवादित') : tx('Awaiting confirmation', 'कन्फ़र्मेशन बाकी');
@@ -248,8 +254,14 @@ export const TdsPanel: React.FC<{ flash: Flash }> = ({ flash }) => {
       <p className="mt-0.5 text-[11px] text-slate-500">{tx('Applies to new payouts of the project. If an associate has no PAN, the higher no-PAN rate (20%) is used automatically. Indicative — your CA decides the rate.', 'प्रोजेक्ट के नए पेआउट पर लागू। अगर एसोसिएट का PAN नहीं है तो ऊँची दर (20%) अपने-आप लगती है। सांकेतिक — दर आपका CA तय करे।')}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <select value={pid} onChange={e => { setPid(e.target.value); setPct(String(projects.find(p => p.id === e.target.value)?.tdsPct ?? 5)); }} className="min-h-9 rounded-lg border border-slate-300 px-2 text-xs">{projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}</select>
-        <input inputMode="decimal" value={pct} onChange={e => setPct(e.target.value.replace(/[^\d.]/g, ''))} className="min-h-9 w-20 rounded-lg border border-slate-300 px-2 text-xs" aria-label={tx('TDS %', 'TDS %')} /><span className="text-xs text-slate-600">%</span>
-        <button className={btnDark} onClick={async () => { try { await api.crmSetTds(pid, Number(pct)); setProjects(ps => ps.map(p => (p.id === pid ? { ...p, tdsPct: Number(pct) } : p))); flash(true, tx('TDS rate saved (logged)', 'TDS दर सेव (लॉग)')); } catch (e: any) { flash(false, e.message); } }}>{tx('Save', 'सेव')}</button>
+        <input inputMode="decimal" value={pct} onChange={e => setPct(sanitizeDecimal(e.target.value))} className="min-h-9 w-20 rounded-lg border border-slate-300 px-2 text-xs" aria-label={tx('TDS %', 'TDS %')} /><span className="text-xs text-slate-600">%</span>
+        <button className={btnDark} onClick={async () => {
+          if (!isValidPercent(pct)) {
+            flash(false, tx('TDS rate must be between 0 and 100%', 'TDS दर 0 से 100% के बीच होनी चाहिए'));
+            return;
+          }
+          try { await api.crmSetTds(pid, Number(pct)); setProjects(ps => ps.map(p => (p.id === pid ? { ...p, tdsPct: Number(pct) } : p))); flash(true, tx('TDS rate saved (logged)', 'TDS दर सेव (लॉग)')); } catch (e: any) { flash(false, e.message); }
+        }}>{tx('Save', 'सेव')}</button>
       </div>
     </div>
   );

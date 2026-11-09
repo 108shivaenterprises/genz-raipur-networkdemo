@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Phone, CalendarClock, X, IndianRupee, AlertTriangle, Upload, CheckSquare, ArrowRightLeft } from 'lucide-react';
+import { Loader2, Plus, Phone, CalendarClock, X, IndianRupee, AlertTriangle, Upload, CheckSquare, ArrowRightLeft, MessageCircle, Sparkles } from 'lucide-react';
+import { SmartLeadParserModal } from './SmartLeadParserModal.js';
+import { QuickCallLoggerModal } from './QuickCallLoggerModal.js';
 import { api } from '../lib/api.js';
 import { hasPerm } from '../lib/permissions.js';
 import { useI18n, useTx } from '../lib/i18n.js';
@@ -31,6 +33,14 @@ const STAGE_COLOR: Record<string, string> = {
   NEW: 'bg-slate-100 text-slate-700', CONTACTED: 'bg-sky-100 text-sky-800', SITE_VISIT_SCHEDULED: 'bg-indigo-100 text-indigo-800',
   SITE_VISITED: 'bg-violet-100 text-violet-800', NEGOTIATION: 'bg-amber-100 text-amber-800', BOOKING_REQUESTED: 'bg-orange-100 text-orange-800',
   BOOKED: 'bg-emerald-100 text-emerald-800', LOST: 'bg-red-100 text-red-700',
+};
+
+const NEXT_STAGE_MAP: Record<string, { next: string; labelEn: string; labelHi: string }> = {
+  NEW: { next: 'CONTACTED', labelEn: '→ Contacted', labelHi: '→ संपर्क हुआ' },
+  CONTACTED: { next: 'SITE_VISIT_SCHEDULED', labelEn: '→ Schedule Visit', labelHi: '→ विज़िट तय' },
+  SITE_VISIT_SCHEDULED: { next: 'SITE_VISITED', labelEn: '→ Visited', labelHi: '→ विज़िट पूरी' },
+  SITE_VISITED: { next: 'NEGOTIATION', labelEn: '→ Negotiate', labelHi: '→ बातचीत' },
+  NEGOTIATION: { next: 'BOOKING_REQUESTED', labelEn: '→ Request Booking', labelHi: '→ बुकिंग अनुरोध' },
 };
 
 const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: string }> = ({ label, value, tone }) => (
@@ -66,6 +76,8 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
   const [payFor, setPayFor] = useState<CrmBooking | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showSmartParser, setShowSmartParser] = useState(false);
+  const [callLead, setCallLead] = useState<CrmLead | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const can = (...p: string[]) => hasPerm(permissions, ...p);
@@ -102,6 +114,19 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
     try { await fn(); flash(true, ok); await load(); } catch (e: any) { flash(false, e.message); }
   };
 
+  const advanceLeadStage = async (e: React.MouseEvent, leadId: string, nextStage: string) => {
+    e.stopPropagation();
+    try {
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage: nextStage as any } : l));
+      await api.crmSetStage(leadId, { stage: nextStage });
+      flash(true, tx(`Moved to ${STAGE_LABEL[nextStage] || nextStage}`, `${t(`stage.${nextStage}`, STAGE_LABEL[nextStage] || nextStage)} में बदला`));
+      await load();
+    } catch (err: any) {
+      flash(false, err.message || tx('Could not change stage', 'स्टेज बदला नहीं जा सका'));
+      await load();
+    }
+  };
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>;
   const o = overview || {};
   const isBroker = currentUser.role === 'BROKER';
@@ -129,6 +154,16 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
           {!isMember && <ExportButtons canFull={isBroker || isBuilder} flash={flash} />}
               </div>
             </details>
+          )}
+          {can('crm:lead_create') && (
+            <button
+              onClick={() => setShowSmartParser(true)}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-900 px-3 py-2 text-xs font-semibold hover:bg-purple-100 transition-colors shadow-sm"
+              title={tx('Extract lead details automatically from pasted WhatsApp or portal chats', 'पेस्ट किए गए व्हाट्सएप या पोर्टल मैसेज से अपने आप लीड बनाएं')}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+              <span>{tx('Vastu AI Smart Paste', 'वास्तु AI स्मार्ट पेस्ट')}</span>
+            </button>
           )}
           {can('crm:lead_create') && (
             <button onClick={() => setShowAdd(true)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
@@ -188,24 +223,65 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
                       const overdue = l.followUps.some(fu => !fu.done && Date.parse(fu.dueAt) < Date.now()) && !['BOOKED', 'LOST'].includes(l.stage);
                       const on = sel.has(l.id);
                       return (
-                        <button key={l.id} onClick={() => (selectMode ? toggleSel(l.id) : setSelected(l.id))} className={`w-full rounded-lg border bg-white p-2.5 text-left hover:border-slate-900 ${on ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-200'}`}>
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="flex min-w-0 items-center gap-1 truncate text-xs font-bold text-slate-900">{selectMode && <input type="checkbox" readOnly checked={on} className="h-3.5 w-3.5 shrink-0" tabIndex={-1} />}{l.temperature && <span title={TEMP_LABEL[l.temperature][1]}>{TEMP_LABEL[l.temperature][0]}</span>}<span className="truncate">{l.name}</span></span>
-                            {overdue && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
+                        <div key={l.id} className={`w-full rounded-xl border bg-white p-3 text-left shadow-sm hover:shadow-md transition-all ${on ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-200'}`}>
+                          <div className="cursor-pointer" onClick={() => (selectMode ? toggleSel(l.id) : setSelected(l.id))}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="flex min-w-0 items-center gap-1 truncate text-xs font-bold text-slate-900">{selectMode && <input type="checkbox" readOnly checked={on} className="h-3.5 w-3.5 shrink-0" tabIndex={-1} />}{l.temperature && <span title={TEMP_LABEL[l.temperature][1]}>{TEMP_LABEL[l.temperature][0]}</span>}<span className="truncate">{l.name}</span></span>
+                              {overdue && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
+                            </div>
+                            <div className="truncate text-[11px] text-slate-500 font-medium">{l.projectName}</div>
+                            <div className="mt-1 text-[11px] text-slate-700">{l.unitInterest || '—'}</div>
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {(() => { const st = slaState(l, SLA_DEFAULT_MIN, Date.now()); const m = slaLeftMin(l, SLA_DEFAULT_MIN, Date.now()); return (st === 'BREACHED' || st === 'DUE_SOON') && m !== null ? <span data-testid="sla-chip" className={`rounded px-1.5 text-[9px] font-bold ${st === 'BREACHED' ? 'bg-red-600 text-white' : 'bg-amber-200 text-amber-900'}`}>{st === 'BREACHED' ? tx(`Call now · ${-m}m late`, `अभी कॉल करें · ${-m} मि देर`) : tx(`Reply in ${m}m`, `${m} मि में जवाब दें`)}</span> : null; })()}
+                              {l.optedOutAt && <span className="rounded bg-red-100 px-1.5 text-[9px] font-bold text-red-700">{tx('OPTED OUT', 'ऑप्ट-आउट')}</span>}
+                              {l.stale && <span className="rounded bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800">{tx('STALE', 'निष्क्रिय')}</span>}
+                              {l.forwardUnseen && <span className="rounded bg-violet-100 px-1.5 text-[9px] font-bold text-violet-800">{tx('FORWARDED', 'फ़ॉरवर्ड')}</span>}
+                              {!!l.callAttempts && <span className="rounded bg-sky-50 px-1.5 text-[9px] font-bold text-sky-800">📞 {l.callAttempts}</span>}
+                              {!['BOOKED', 'LOST'].includes(l.stage) && (l.protectionDaysLeft ?? 99) <= 7 && <span className="rounded bg-red-50 px-1.5 text-[9px] font-bold text-red-700">{Math.max(0, l.protectionDaysLeft ?? 0)}{tx('d protection', 'दिन सुरक्षा')}</span>}
+                              {(l.tags || []).slice(0, 2).map(tg => <span key={tg} className="rounded bg-slate-100 px-1.5 text-[9px] font-semibold text-slate-600">{tg}</span>)}
+                            </div>
+                            {!isBroker && <div className="mt-1 truncate text-[10px] text-slate-400">{tx('via', 'द्वारा')} {l.associateName || tx('Builder direct', 'बिल्डर सीधे')}</div>}
                           </div>
-                          <div className="truncate text-[11px] text-slate-500">{l.projectName}</div>
-                          <div className="mt-1 text-[11px] text-slate-600">{l.unitInterest || '—'}</div>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {(() => { const st = slaState(l, SLA_DEFAULT_MIN, Date.now()); const m = slaLeftMin(l, SLA_DEFAULT_MIN, Date.now()); return (st === 'BREACHED' || st === 'DUE_SOON') && m !== null ? <span data-testid="sla-chip" className={`rounded px-1.5 text-[9px] font-bold ${st === 'BREACHED' ? 'bg-red-600 text-white' : 'bg-amber-200 text-amber-900'}`}>{st === 'BREACHED' ? tx(`Call now · ${-m}m late`, `अभी कॉल करें · ${-m} मि देर`) : tx(`Reply in ${m}m`, `${m} मि में जवाब दें`)}</span> : null; })()}
-                            {l.optedOutAt && <span className="rounded bg-red-100 px-1.5 text-[9px] font-bold text-red-700">{tx('OPTED OUT', 'ऑप्ट-आउट')}</span>}
-                            {l.stale && <span className="rounded bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800">{tx('STALE', 'निष्क्रिय')}</span>}
-                            {l.forwardUnseen && <span className="rounded bg-violet-100 px-1.5 text-[9px] font-bold text-violet-800">{tx('FORWARDED', 'फ़ॉरवर्ड')}</span>}
-                            {!!l.callAttempts && <span className="rounded bg-sky-50 px-1.5 text-[9px] font-bold text-sky-800">📞 {l.callAttempts}</span>}
-                            {!['BOOKED', 'LOST'].includes(l.stage) && (l.protectionDaysLeft ?? 99) <= 7 && <span className="rounded bg-red-50 px-1.5 text-[9px] font-bold text-red-700">{Math.max(0, l.protectionDaysLeft ?? 0)}{tx('d protection', 'दिन सुरक्षा')}</span>}
-                            {(l.tags || []).slice(0, 2).map(tg => <span key={tg} className="rounded bg-slate-100 px-1.5 text-[9px] font-semibold text-slate-600">{tg}</span>)}
+
+                          {/* Quick Actions (PROPi & Clixence style fast pipeline operations) */}
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1">
+                              {l.phone && !l.phoneMasked && (
+                                <a
+                                  href={`https://wa.me/91${l.phone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hi ${l.name}, sharing details of ${l.projectName || 'property'} on GENZ Network.`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition-colors"
+                                  title={tx('WhatsApp Follow-up', 'व्हाट्सएप फॉलो-अप')}
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              {l.phone && !l.phoneMasked && (
+                                <a
+                                  href={`tel:${l.phone}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1 rounded hover:bg-sky-50 text-sky-600 transition-colors"
+                                  title={tx('Direct Call', 'सीधा कॉल')}
+                                >
+                                  <Phone className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+
+                            {/* 1-Click Fast Stage Advance */}
+                            {NEXT_STAGE_MAP[l.stage] && can('crm:lead_manage') && (
+                              <button
+                                type="button"
+                                onClick={(e) => advanceLeadStage(e, l.id, NEXT_STAGE_MAP[l.stage].next)}
+                                className="px-2 py-0.5 rounded-full bg-slate-900 hover:bg-indigo-600 text-white font-semibold text-[10px] transition-colors"
+                              >
+                                {tx(NEXT_STAGE_MAP[l.stage].labelEn, NEXT_STAGE_MAP[l.stage].labelHi)}
+                              </button>
+                            )}
                           </div>
-                          {!isBroker && <div className="mt-0.5 truncate text-[10px] text-slate-400">{tx('via', 'द्वारा')} {l.associateName || tx('Builder direct', 'बिल्डर सीधे')}</div>}
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -279,6 +355,28 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
 
       {selected && <LeadDrawer id={selected} can={can} currentUser={currentUser} onClose={() => setSelected(null)} onChanged={load} flash={flash} />}
       {showAdd && <AddLeadModal onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); load(); flash(true, 'Lead registered with 60-day protection'); }} isBuilder={isBuilder} />}
+      {showSmartParser && (
+        <SmartLeadParserModal
+          isOpen={showSmartParser}
+          onClose={() => setShowSmartParser(false)}
+          onLeadCreated={() => {
+            load();
+            flash(true, tx('Lead created via Vastu AI Smart Ingest', 'वास्तु AI द्वारा लीड बनाई गई'));
+          }}
+          projects={projects}
+        />
+      )}
+      {callLead && (
+        <QuickCallLoggerModal
+          isOpen={Boolean(callLead)}
+          onClose={() => setCallLead(null)}
+          lead={callLead}
+          onLogged={() => {
+            load();
+            flash(true, tx('Call disposition saved', 'कॉल परिणाम सहेजा गया'));
+          }}
+        />
+      )}
       {showImport && <ImportSheet projects={projects} onClose={() => setShowImport(false)} onDone={n => { load(); flash(true, tx(`${n} leads imported`, `${n} लीड इम्पोर्ट हुईं`)); }} />}
       {payFor && <PayoutSheet b={payFor} onClose={() => setPayFor(null)} onDone={() => { flash(true, tx('Payout recorded — the associate will confirm', 'पेआउट दर्ज — एसोसिएट कन्फ़र्म करेगा')); load(); }} />}
       {selectMode && <BulkBar ids={[...sel]} onClear={() => { setSel(new Set()); setSelectMode(false); }} onDone={msg => { flash(true, msg); setSel(new Set()); load(); }} />}

@@ -85,7 +85,19 @@ export const AuditTrailView: React.FC = () => {
           {['PROPERTY', 'DEAL', 'VISIT', 'COMMISSION', 'DISPUTE', 'LEAD', 'VERIFICATION', 'SYSTEM'].map(k => <option key={k} value={k}>{k}</option>)}
         </select>
       </div>
-      {err && <p role="alert" className="rounded-lg bg-red-50 p-2 text-xs text-red-800">{err}</p>}
+      {err && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          <span>{err}</span>
+          <button
+            type="button"
+            onClick={() => fetchAuditLogs()}
+            className="inline-flex shrink-0 items-center gap-1 rounded bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 transition-colors"
+          >
+            <RefreshCw className="h-3 w-3" />
+            <span>{tx('Retry', 'पुनः प्रयास करें')}</span>
+          </button>
+        </div>
+      )}
 
       {/* Events List */}
       <div className="rounded-xl border border-slate-200/90 bg-white shadow-xs overflow-hidden">
@@ -134,8 +146,8 @@ export const AuditTrailView: React.FC = () => {
                     <div className="truncate" title={`Hash: ${ev.hash}`}>
                       <span className="text-slate-400">hash:</span> {ev.hash}
                     </div>
-                    <div className="truncate text-slate-400" title={`Prev: ${ev.previousHash}`}>
-                      <span className="text-slate-400">prev:</span> {ev.previousHash.substring(0, 16)}...
+                    <div className="truncate text-slate-400" title={`Prev: ${ev.previousHash || '—'}`}>
+                      <span className="text-slate-400">prev:</span> {ev.previousHash?.substring(0, 16) || '—'}
                     </div>
                   </td>
                 </tr>

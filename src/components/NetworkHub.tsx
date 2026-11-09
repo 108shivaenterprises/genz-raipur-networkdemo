@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { formatINR } from '../lib/utils.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
+import { useUI } from '../lib/ui.js';
 import { hasPerm } from '../lib/permissions.js';
 import { SCOPE_KINDS, SHARE_MIN, SHARE_MAX } from '../shared/networkRules.js';
 import { normPan, normAadhaar, panProblem, aadhaarProblem, isLast4, AADHAAR_NOTE, ID_DOC_NOTE } from '../shared/idRules.js';
@@ -67,6 +68,7 @@ const SCOPE_HI: Record<string, string> = { RESALE: 'रीसेल', RENTAL: '�
 const TieupsTab: React.FC<{ act: Act; tick: number; currentUser: UserProfile; permissions: string[] }> = ({ act, tick, permissions }) => {
   const tx = useTx();
   const label = useLabel();
+  const { prompt } = useUI();
   const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
   const [dir, setDir] = useState<any[] | null>(null); const [q, setQ] = useState(''); const [tier, setTier] = useState('');
   const [pick, setPick] = useState<any>(null);
@@ -116,7 +118,7 @@ const TieupsTab: React.FC<{ act: Act; tick: number; currentUser: UserProfile; pe
             <div className="flex flex-wrap gap-2">
               {t.status === 'PROPOSED' && t.direction === 'IN' && <><button className={green} onClick={() => act(() => api.tuAct(t.id, 'accept'), tx('Tie-up is active', 'टाई-अप चालू'))}><Check className="h-4 w-4" />{tx('Accept', 'स्वीकार')}</button><button className={red} onClick={() => act(() => api.tuAct(t.id, 'decline'), tx('Declined', 'अस्वीकार'))}>{tx('Decline', 'अस्वीकार')}</button></>}
               {t.status === 'PROPOSED' && t.direction === 'OUT' && <button className={ghost} onClick={() => act(() => api.tuAct(t.id, 'withdraw'), tx('Withdrawn', 'वापस लिया'))}>{tx('Withdraw', 'वापस लें')}</button>}
-              {t.status === 'ACTIVE' && <button className={red} onClick={() => { const r = window.prompt(tx('Reason for ending this tie-up?', 'टाई-अप खत्म करने का कारण?')); if (r) act(() => api.tuAct(t.id, 'end', { reason: r }), tx('Tie-up ended', 'टाई-अप खत्म')); }}>{tx('End', 'खत्म करें')}</button>}
+              {t.status === 'ACTIVE' && <button className={red} onClick={async () => { const r = await prompt(tx('End Tie-up', 'टाई-अप खत्म करें'), { message: tx('Reason for ending this tie-up?', 'टाई-अप खत्म करने का कारण?'), placeholder: tx('Reason...', 'कारण...'), required: true }); if (r) act(() => api.tuAct(t.id, 'end', { reason: r }), tx('Tie-up ended', 'टाई-अप खत्म')); }}>{tx('End', 'खत्म करें')}</button>}
             </div>
           </div>))}
       </section>}
@@ -132,6 +134,7 @@ const TieupsTab: React.FC<{ act: Act; tick: number; currentUser: UserProfile; pe
 const EntryTab: React.FC<{ act: Act; tick: number }> = ({ act, tick }) => {
   const tx = useTx();
   const label = useLabel();
+  const { prompt } = useUI();
   const [me, setMe] = useState<any>(null); const [apps, setApps] = useState<any[]>([]); const [cap, setCap] = useState<any>(null); const [err, setErr] = useState('');
   const [f, setF] = useState({ name: '', phone: '', city: '', reference: '', consent: false, companyName: '', panNumber: '', aadhaarLast4: '' });
   const [files, setFiles] = useState<{ PAN?: PreparedIdFile; AADHAAR?: PreparedIdFile }>({});
@@ -205,7 +208,7 @@ const EntryTab: React.FC<{ act: Act; tick: number }> = ({ act, tick }) => {
             <div className="flex flex-wrap gap-2">
               {a.status === 'OPEN' && !a.iVouched && me.canVouch && <button className={green} onClick={() => act(() => api.netVouch(a.id), tx('Added as co-sponsor', 'सह-स्पॉन्सर जुड़ा'))}><ShieldCheck className="h-4 w-4" />{tx('Co-sponsor', 'सह-स्पॉन्सर')}</button>}
               {a.status === 'INVITED' && a.mine && <button className={ghost} onClick={() => api.netInvite(a.id).then(r => setInvite({ code: r.invitation.code, text: r.invitation.whatsappText })).catch(e => act(async () => { throw e; }, ''))}>{tx('Show invitation', 'इन्विटेशन दिखाएँ')}</button>}
-              {['OPEN', 'INVITED'].includes(a.status) && (a.mine || cap?.isCaptain) && <button className={red} onClick={() => { const n = a.mine ? '' : window.prompt(tx('Reason?', 'कारण?')); if (a.mine || n) act(() => api.netClose(a.id, n || ''), tx('Closed', 'बंद')); }}><X className="h-4 w-4" />{a.mine ? tx('Withdraw', 'वापस लें') : tx('Reject', 'अस्वीकार')}</button>}
+              {['OPEN', 'INVITED'].includes(a.status) && (a.mine || cap?.isCaptain) && <button className={red} onClick={async () => { const n = a.mine ? '' : await prompt(tx('Reject Request', 'अनुरोध अस्वीकार करें'), { message: tx('Reason?', 'कारण?'), placeholder: tx('Reason...', 'कारण...'), required: true }); if (a.mine || n) act(() => api.netClose(a.id, n || ''), tx('Closed', 'बंद')); }}><X className="h-4 w-4" />{a.mine ? tx('Withdraw', 'वापस लें') : tx('Reject', 'अस्वीकार')}</button>}
             </div>
           </div>))}
       </section>
@@ -237,6 +240,7 @@ const AppIdDocs: React.FC<{ appId: string; act: Act }> = ({ appId, act }) => {
 import { VerifiedPhotoCard } from './VerifiedPhoto.js';
 const MyIdCard: React.FC<{ act: Act; tick: number }> = ({ act, tick }) => {
   const tx = useTx();
+  const { confirm } = useUI();
   const hi = useI18n().lang === 'hi';
   const [d, setD] = useState<any>(null);
   const [mine, setMine] = useState<any>(null);
@@ -305,7 +309,7 @@ const MyIdCard: React.FC<{ act: Act; tick: number }> = ({ act, tick }) => {
               : <div className="text-[11px] text-emerald-900">{tx('Nobody has opened it.', 'अभी तक किसी ने नहीं खोला।')}</div>}
           </div>
           <button type="button" className={red} disabled={delBusy} data-testid="kyc-delete" onClick={async () => {
-            if (!window.confirm(tx('Delete my full Aadhaar number and address from GENZ? Your PAN and the last 4 Aadhaar digits stay for the ID check.', 'GENZ से मेरा पूरा आधार नंबर और पता हटा दें? ID जाँच के लिए PAN और आधार के आख़िरी 4 अंक रहेंगे।'))) return;
+            if (!await confirm(tx('Delete Full Aadhaar & Address', 'पूरा आधार और पता हटाएँ'), tx('Delete my full Aadhaar number and address from GENZ? Your PAN and the last 4 Aadhaar digits stay for the ID check.', 'GENZ से मेरा पूरा आधार नंबर और पता हटा दें? ID जाँच के लिए PAN और आधार के आख़िरी 4 अंक रहेंगे।'), { danger: true })) return;
             setDelBusy(true);
             try { await api.kycDeleteMine(); await act(async () => {}, tx('Deleted', 'हटा दिया')); api.kycMine().then(setKv).catch(() => {}); }
             catch (e: any) { setErr(e.message || tx('Could not delete', 'हटाया नहीं जा सका')); }
@@ -468,6 +472,7 @@ const PROBLEM = ['SUSPENDED', 'BLACKLISTED', 'REJECTED'];
 const SponsorChain: React.FC<{ act: Act; tick: number; canCheck: boolean; ids?: any }> = ({ act, tick, canCheck, ids }) => {
   const tx = useTx();
   const label = useLabel();
+  const { prompt } = useUI();
   const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
   const [flt, setFlt] = useState<ChainFilter>('all'); const [open, setOpen] = useState<Record<string, boolean>>({});
   useEffect(() => { api.netAdminSponsors().then(setD).catch(e => setErr(e.message)); }, [tick]);
@@ -482,9 +487,12 @@ const SponsorChain: React.FC<{ act: Act; tick: number; canCheck: boolean; ids?: 
     ['idMissing', 'ID not on file', 'ID दर्ज नहीं', t.idMissing, t.idMissing ? 'text-amber-700' : 'text-slate-900'], ['idNotSeen', 'ID not yet seen', 'ID देखी नहीं', t.idNotSeen, t.idNotSeen ? 'text-amber-700' : 'text-slate-900'],
     ['inactive', 'Sponsor not active', 'स्पॉन्सर निष्क्रिय', t.inactiveSponsors, t.inactiveSponsors ? 'text-red-700' : 'text-slate-900'], ['unsponsored', 'No sponsor on record', 'स्पॉन्सर रिकॉर्ड नहीं', t.unsponsored, t.unsponsored ? 'text-amber-700' : 'text-slate-900'],
   ];
-  const seeId = (m: any) => {
+  const seeId = async (m: any) => {
     if (m.idChecked) return act(() => api.netIdCheck(m.id, false), tx('"ID seen" tick removed', '"ID देखी" टिक हटाया'));
-    const note = window.prompt(tx('What did you see? (e.g. PAN card + masked Aadhaar on video call). No numbers please.', 'क्या देखा? (जैसे वीडियो कॉल पर PAN कार्ड + मास्क्ड आधार)। नंबर न लिखें।'));
+    const note = await prompt(tx('ID Verification Note', 'ID जाँच नोट'), {
+      message: tx('What did you see? (e.g. PAN card + masked Aadhaar on video call). No numbers please.', 'क्या देखा? (जैसे वीडियो कॉल पर PAN कार्ड + मास्क्ड आधार)। नंबर न लिखें।'),
+      placeholder: tx('Note...', 'नोट...'),
+    });
     if (note === null) return Promise.resolve();
     return act(() => api.netIdCheck(m.id, true, note), tx('Marked: ID seen', 'ID देखी — दर्ज'));
   };
@@ -544,6 +552,7 @@ const SponsorChain: React.FC<{ act: Act; tick: number; canCheck: boolean; ids?: 
 const AdminTab: React.FC<{ act: Act; tick: number; permissions: string[] }> = ({ act, tick, permissions }) => {
   const tx = useTx();
   const label = useLabel();
+  const { prompt } = useUI();
   const [d, setD] = useState<any>(null); const [desk, setDesk] = useState<any>(null); const [err, setErr] = useState('');
   useEffect(() => { Promise.all([api.netAdmin(), api.netDesk()]).then(([a, b]) => { setD(a); setDesk(b); }).catch(e => setErr(e.message)); }, [tick]);
   if (!d) return <Load d={d} err={err} />;
@@ -572,7 +581,7 @@ const AdminTab: React.FC<{ act: Act; tick: number; permissions: string[] }> = ({
         {(desk?.requests || []).length === 0 && <p className="text-xs text-slate-500">{tx('No requests.', 'कोई अनुरोध नहीं।')}</p>}
         {(desk?.requests || []).map((r: any) => (
           <div key={r.id} className="space-y-1 rounded-lg border border-slate-200 bg-white p-2 text-xs"><div><b>{r.projectName}</b> · {r.builderName} · {label('status', r.kind)} · <b>{label('status', r.status)}</b></div><div className="text-slate-600">{r.note}</div>
-            {['OPEN', 'ACK'].includes(r.status) && <div className="flex flex-wrap gap-2">{r.status === 'OPEN' && <button className={ghost} onClick={() => act(() => api.netDeskStatus(r.id, { status: 'ACK' }), tx('Acknowledged', 'देख लिया'))}>{tx('Acknowledge', 'देखा')}</button>}<button className={green} onClick={() => act(() => api.netDeskStatus(r.id, { status: 'DONE', response: window.prompt(tx('Note for the builder', 'बिल्डर के लिए नोट')) || '' }), tx('Marked done', 'पूरा'))}>{tx('Done', 'पूरा')}</button><button className={red} onClick={() => act(() => api.netDeskStatus(r.id, { status: 'DECLINED', response: window.prompt(tx('Reason', 'कारण')) || '' }), tx('Declined', 'अस्वीकार'))}>{tx('Decline', 'अस्वीकार')}</button></div>}
+            {['OPEN', 'ACK'].includes(r.status) && <div className="flex flex-wrap gap-2">{r.status === 'OPEN' && <button className={ghost} onClick={() => act(() => api.netDeskStatus(r.id, { status: 'ACK' }), tx('Acknowledged', 'देख लिया'))}>{tx('Acknowledge', 'देखा')}</button>}<button className={green} onClick={async () => { const resp = await prompt(tx('Complete Request', 'अनुरोध पूरा करें'), { message: tx('Note for the builder', 'बिल्डर के लिए नोट'), placeholder: tx('Note...', 'नोट...') }); if (resp !== null) act(() => api.netDeskStatus(r.id, { status: 'DONE', response: resp || '' }), tx('Marked done', 'पूरा')); }}>{tx('Done', 'पूरा')}</button><button className={red} onClick={async () => { const resp = await prompt(tx('Decline Request', 'अनुरोध अस्वीकार करें'), { message: tx('Reason', 'कारण'), placeholder: tx('Reason...', 'कारण...'), required: true }); if (resp !== null) act(() => api.netDeskStatus(r.id, { status: 'DECLINED', response: resp || '' }), tx('Declined', 'अस्वीकार')); }}>{tx('Decline', 'अस्वीकार')}</button></div>}
           </div>))}
       </section>
     </div>

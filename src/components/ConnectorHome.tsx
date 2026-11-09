@@ -7,6 +7,7 @@ import { LocationFields, LocationValue } from './LocationFields.js';
 import { SHOP_TYPES, REFERRAL_TYPES, shopLabel, referralLabel } from '../shared/connector.js';
 import { formatINR } from '../lib/utils.js';
 import { ShareTerms } from './ShareTerms.js';
+import { isValidIndianPhone, sanitizePhone, isValidUPI } from '../lib/validate.js';
 
 const STATUS_STYLE: Record<string, string> = {
   SUBMITTED: 'bg-slate-100 text-slate-700', CONTACTED: 'bg-blue-100 text-blue-800', QUALIFIED: 'bg-indigo-100 text-indigo-800',
@@ -198,8 +199,15 @@ const ReferralForm: React.FC<{ user: UserProfile; meta: any; hi: boolean; onDone
   const [error, setError] = useState('');
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError('');
+    if (!intro) {
+      if (!isValidIndianPhone(phone)) {
+        setError(tx('Enter a valid 10-digit Indian mobile number', '10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें'));
+        setBusy(false);
+        return;
+      }
+    }
     try {
-      const r = await api.connectorRefer({ type, customerName: name, contactMode: intro ? 'CONNECTOR_INTRODUCES' : 'SHARE_NUMBER', customerPhone: intro ? undefined : phone, customerConsent: consent, state: loc.state || undefined, city: loc.city, locality: loc.locality, budgetNote: budget || undefined, details: details || undefined });
+      const r = await api.connectorRefer({ type, customerName: name.trim(), contactMode: intro ? 'CONNECTOR_INTRODUCES' : 'SHARE_NUMBER', customerPhone: intro ? undefined : sanitizePhone(phone), customerConsent: consent, state: loc.state || undefined, city: loc.city, locality: loc.locality, budgetNote: budget || undefined, details: details || undefined });
       onDone(r.referral);
     } catch (err: any) { setError(err.message); } finally { setBusy(false); }
   };
@@ -253,7 +261,12 @@ const ProfileCard: React.FC<{ user: UserProfile; hi: boolean; onSaved: () => voi
   const [busy, setBusy] = useState(false);
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError('');
-    try { await api.connectorSaveProfile({ shopType, shopName, locality: locality || undefined, payoutUpi: upi || '' }); onSaved(); }
+    if (upi.trim() && !isValidUPI(upi.trim())) {
+      setError(tx('Enter a valid UPI ID (e.g. name@bank)', 'मान्य UPI ID दर्ज करें (जैसे name@bank)'));
+      setBusy(false);
+      return;
+    }
+    try { await api.connectorSaveProfile({ shopType, shopName, locality: locality || undefined, payoutUpi: upi.trim() || '' }); onSaved(); }
     catch (err: any) { setError(err.message); } finally { setBusy(false); }
   };
   return (
@@ -276,8 +289,12 @@ const AddNumber: React.FC<{ r: any; tx: (en: string, h: string) => string; onDon
   const [err, setErr] = useState('');
   const go = async () => {
     setErr('');
+    if (!isValidIndianPhone(num)) {
+      setErr(tx('Enter a valid 10-digit Indian mobile number', '10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें'));
+      return;
+    }
     try {
-      const res = await api.connectorAttachContact(r.id, num);
+      const res = await api.connectorAttachContact(r.id, sanitizePhone(num));
       onDone(res.duplicate ? tx('This person was already registered earlier by someone else.', 'यह व्यक्ति पहले ही किसी और के द्वारा दर्ज है।') : tx('Number added.', 'नंबर जोड़ दिया गया।'));
     } catch (e: any) { setErr(e.message); }
   };

@@ -24,8 +24,8 @@ describe('wiring', () => {
   it('the server mounts the router and runs the sweep at start and every hour', () => {
     const s = read('server.ts');
     expect(s).toContain("app.use('/api/hr', createHrRouter())");
-    expect(s).toMatch(/sweepHr\(\); sweepCalls\(\); ensureOwnerPlans/);
-    expect(s).toContain("['hr', sweepHr]");
+    // v118 — boot and hourly sweeps are both tables run one by one in try/catch: once at start, once every hour
+    expect(s.split("['hr', sweepHr]").length - 1).toBe(2);
   });
 });
 

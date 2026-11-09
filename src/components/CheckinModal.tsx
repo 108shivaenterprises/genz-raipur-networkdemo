@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTx } from '../lib/i18n.js';
 import { Loader2, MapPin, Camera, X } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -45,10 +45,27 @@ export const CheckinModal: React.FC<{ leadId?: string; defaultLabel?: string; on
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-3 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-4 text-xs" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between"><div className="text-sm font-bold">{tx('Site check-in', 'साइट चेक-इन')}</div><button onClick={onClose}><X className="h-4 w-4" /></button></div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="checkin-modal-title"
+        className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-4 text-xs"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <div id="checkin-modal-title" className="text-sm font-bold">{tx('Site check-in', 'साइट चेक-इन')}</div>
+          <button onClick={onClose} aria-label={tx('Close', 'बंद करें')}><X className="h-4 w-4" /></button>
+        </div>
         {done ? <div className="rounded-lg bg-emerald-50 p-3 font-medium text-emerald-800">{tx('Checked in. Your employer will see the location and selfie.','चेक-इन हो गया। आपके नियोक्ता को लोकेशन और सेल्फ़ी दिखेगी।')}</div> : (<>
           <input value={label} onChange={e => setLabel(e.target.value)} placeholder={tx("Site / project name","साइट / प्रोजेक्ट का नाम")} className="w-full rounded border border-slate-300 px-2 py-2" />
           <button onClick={locate} className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 py-2 font-semibold"><MapPin className="h-4 w-4" /> {pos ? tx(`Location captured (±${Math.round(pos.accuracy)} m) — retake`, `लोकेशन मिल गई (±${Math.round(pos.accuracy)} m) — दोबारा लें`) : tx('Get my location', 'मेरी लोकेशन लें')}</button>

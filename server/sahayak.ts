@@ -16,7 +16,7 @@ import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot
 import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, BOT_WATCH, GONE_WORDS, goneKind, type GoneKind, type NeedChange, type When } from '../src/shared/sahayak.js';
 import { nextAsk, applyAnswer, progress, composeListing, summaryLine, SKIP_CHIP, type AskId } from '../src/shared/listingAsk.js';
 import { containsContact } from '../src/shared/clientRoomRules.js';
-import { openRoomAuto, addRoomHomes } from './clientroom.js';
+import { openRoomAuto, addRoomHomes, syncRoomMessagesFromLead } from './clientroom.js';
 import { sealLink, openLink } from './linkSeal.js';
 
 type Chip = { id: string; hi: string; en: string };
@@ -423,6 +423,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
    *  A home is offered to the room once — one the broker took out is not put back. Works for the room we opened and for the broker's own open room for his number. */
   function syncRoom(l: PartnerLead): void {
     const b = botOf(l); const rid = b.roomId || b.roomLinked; if (!rid || !buyerSide(l) || l.status === 'LOST') return;
+    syncRoomMessagesFromLead(l.brokerId, rid, l);
     const offered = new Set(b.roomHomes || []);
     const fresh = liveSent(l).map(h => h.id).filter(id => !offered.has(id)); if (!fresh.length) return;
     const done = addRoomHomes(l.brokerId, rid, fresh); if (!done.length) return;

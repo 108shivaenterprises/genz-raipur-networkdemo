@@ -6,6 +6,7 @@ import { ID_DOC_LABEL, type IdDocKind } from '../shared/idRules.js';
 import type { UserProfile } from '../types/index.js';
 import { KycRevealModal, KycVaultPanel, KycHoldsPanel } from './KycReveal.js';
 import { ReraClaimsPanel } from './ReraTier.js';
+import { useUI } from '../lib/ui.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-40';
@@ -24,6 +25,7 @@ const FILTERS: [string, string, string, string, string][] = [
 
 export const IdReviewView: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => {
   const tx = useTx();
+  const { confirm } = useUI();
   const [filter, setFilter] = useState('todo'); const [q, setQ] = useState(''); const [tier, setTier] = useState('');
   const [data, setData] = useState<any>(null); const [set, setSet] = useState<any>(null); const [err, setErr] = useState('');
   const [open, setOpen] = useState(''); const [busy, setBusy] = useState(false);
@@ -50,9 +52,9 @@ export const IdReviewView: React.FC<{ currentUser: UserProfile }> = ({ currentUs
   const reviewers: { id: string; name: string; role: string }[] = set.reviewers || [];
   const tileCount = (id: string) => ({ todo: c.todo, auto: c.auto, mine: c.mine, unassigned: c.unassigned, asked: c.asked, done: c.done } as Record<string, number>)[id] ?? 0;
 
-  const toggleAuto = () => {
+  const toggleAuto = async () => {
     const on = !set.autoVerify;
-    if (on && !window.confirm(tx(
+    if (on && !await confirm(tx('Turn ON Auto-Verify?', 'ऑटो-वेरिफ़ाई चालू करें?'), tx(
       'Turn ON auto-verify?\n\nFrom now, a person registered by a RERA-registered broker who is verified and has no strikes is VERIFIED AT SIGN-UP (no waiting for admin). Their PAN / Aadhaar check then stays as an open task here and the team is notified until it is done. If the check finds a problem, suspend the person — the sponsor gets a strike.\n\nYou can turn it OFF at any time; people already verified stay verified.',
       'ऑटो-वेरिफ़ाई चालू करें?\n\nअब से जिस व्यक्ति को कोई RERA-रजिस्टर्ड, वेरिफ़ाइड और बिना स्ट्राइक वाला ब्रोकर रजिस्टर कराएगा वह साइन-अप पर ही वेरिफ़ाइड हो जाएगा (एडमिन का इंतज़ार नहीं)। उसके PAN / आधार की जाँच यहाँ खुले टास्क के रूप में रहेगी और पूरी होने तक टीम को सूचना मिलती रहेगी। जाँच में गड़बड़ मिले तो व्यक्ति को सस्पेंड करें — स्पॉन्सर को स्ट्राइक मिलेगा।\n\nकभी भी बंद कर सकते हैं; जो वेरिफ़ाइड हो चुके वे वेरिफ़ाइड ही रहेंगे।'))) return;
     run(() => api.idSettingsSave({ autoVerify: on }), on ? tx('Auto-verify is ON', 'ऑटो-वेरिफ़ाई चालू') : tx('Auto-verify is OFF', 'ऑटो-वेरिफ़ाई बंद'));
@@ -185,6 +187,7 @@ const TaskCard: React.FC<{ t: any; reviewers: { id: string; name: string; role: 
 
 const TaskDetail: React.FC<{ t: any; active: boolean; run: (fn: () => Promise<any>, ok: string) => Promise<void>; say: (ok: boolean, m: string) => void }> = ({ t, active, run, say }) => {
   const tx = useTx();
+  const { confirm } = useUI();
   const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
   const [shown, setShown] = useState<string[]>([]);
   const [ck, setCk] = useState({ pan: false, aad: false, face: false });
@@ -252,7 +255,7 @@ const TaskDetail: React.FC<{ t: any; active: boolean; run: (fn: () => Promise<an
           <button className={green} disabled={!allChecked || !canSeen} onClick={() => run(() => api.idDecide(t.id, 'SEEN', note), tx('ID marked as seen', 'ID देखी — दर्ज'))}><BadgeCheck className="h-4 w-4" />{tx('ID is fine — mark seen', 'ID ठीक है — देखी मार्क करें')}</button>
           {u.status === 'PENDING' && <button className={dark} disabled={!allChecked || !canSeen} onClick={() => run(async () => { await api.idDecide(t.id, 'SEEN', note); await api.reviewVerification(u.id, 'APPROVE', note || 'ID seen — approved from ID Review'); }, tx('ID seen and member approved', 'ID देखी और सदस्य मंज़ूर'))}>{tx('ID fine + Approve', 'ID ठीक + मंज़ूर करें')}</button>}
           <button className={ghost} disabled={!noteOk} onClick={() => run(() => api.idDecide(t.id, 'ASK_AGAIN', note), tx('Asked the member for a clearer copy', 'सदस्य से साफ़ कॉपी माँगी'))}>{tx('Ask for a clearer copy', 'साफ़ कॉपी माँगें')}</button>
-          <button className={red} disabled={!noteOk} onClick={() => { const pending = u.status === 'PENDING'; if (window.confirm(pending ? tx('Reject this member? Their sponsor gets a strike only for a suspension, not a rejection.', 'इस सदस्य को अस्वीकार करें?') : tx('Suspend this member? Their sponsor gets a strike.', 'इस सदस्य को सस्पेंड करें? उनके स्पॉन्सर को स्ट्राइक मिलेगा।'))) run(() => api.reviewVerification(u.id, pending ? 'REJECT' : 'SUSPEND', note), pending ? tx('Rejected', 'अस्वीकार') : tx('Suspended — sponsor got a strike', 'सस्पेंड — स्पॉन्सर को स्ट्राइक')); }}>
+          <button className={red} disabled={!noteOk} onClick={async () => { const pending = u.status === 'PENDING'; if (await confirm(pending ? tx('Reject Member', 'सदस्य अस्वीकार करें') : tx('Suspend Member', 'सदस्य सस्पेंड करें'), pending ? tx('Reject this member? Their sponsor gets a strike only for a suspension, not a rejection.', 'इस सदस्य को अस्वीकार करें?') : tx('Suspend this member? Their sponsor gets a strike.', 'इस सदस्य को सस्पेंड करें? उनके स्पॉन्सर को स्ट्राइक मिलेगा।'), { danger: true })) run(() => api.reviewVerification(u.id, pending ? 'REJECT' : 'SUSPEND', note), pending ? tx('Rejected', 'अस्वीकार') : tx('Suspended — sponsor got a strike', 'सस्पेंड — स्पॉन्सर को स्ट्राइक')); }}>
             <ShieldAlert className="h-4 w-4" />{u.status === 'PENDING' ? tx('Problem — reject', 'समस्या — अस्वीकार') : tx('Problem — suspend', 'समस्या — सस्पेंड')}
           </button>
         </div>

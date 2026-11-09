@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../lib/api.js';
+import { useUI } from '../lib/ui.js';
+import { isValidIndianPhone } from '../lib/validate.js';
 import { BondBlockedNotice } from './BuyerBond.js';
 import { VisitAckPanel } from './VisitAckPanel.js';
 import { ScanPointSelect, ScanLineNote } from './ScanPoint.js';
@@ -51,6 +53,7 @@ export const AddPropertyModal: React.FC<{
   /** verified brokers on the network (an owner may appoint one as listing broker while listing) */
   brokers?: UserProfile[];
 }> = ({ isOpen, onClose, onSuccess, currentUser, brokers = [] }) => {
+  const { toast, confirm, prompt } = useUI();
   const { lang } = useI18n();
   const hi = lang === 'hi';
   const tx = (en: string, h: string) => (hi ? h : en);
@@ -138,6 +141,10 @@ export const AddPropertyModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (ownerPhone.trim() && !isValidIndianPhone(ownerPhone.trim())) {
+      setError(hi ? 'कृपया 10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें (6-9 से शुरू)' : 'Please enter a valid 10-digit Indian phone number starting with 6-9');
+      return;
+    }
     if (isOwnerUser && route === 'FREE' && !freeBroker) { setError(hi ? 'मुफ़्त रूट के लिए अपने शहर के बोर्ड से एक ब्रोकर चुनें — या GENZ प्लान वाला रूट चुनें।' : 'For the free route, choose one broker from your city’s board — or switch to the GENZ plan.'); return; }
     setLoading(true);
     setError('');
@@ -181,8 +188,8 @@ export const AddPropertyModal: React.FC<{
       });
       const rn = created?.resaleNotice;
       const approval = created?.ownerApproval?.draftId as string | undefined;
-      alert((isOwnerUser && created?.property?.ownerListing?.feeStatus === 'WAIVED_BROKER' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में आपका ब्रोकर अपनी ब्रोकरेज बताएगा; आप दोनों के मानने पर आप मंडेट साइन करेंगे और लिस्टिंग लाइव होगी।' : 'Listing saved. In “My Property” your broker will tell his brokerage; when you both agree you sign the mandate and the listing goes live.') : isOwnerUser && created?.property?.ownerListing?.feeStatus === 'PENDING' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में लिस्टिंग फ़ीस UPI से दें और UTR लिखें — GENZ पक्का करेगा, फिर लिस्टिंग लाइव होगी।' : 'Listing saved. Now pay the listing fee by UPI in “My Property” and write the UTR — GENZ confirms it and the listing goes live.') : (hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.')) + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
-        + (approval ? (hi ? '\n\nअब मालिक को WhatsApp पर अप्रूवल भेजें — मालिक की हाँ से बायपास सुरक्षा शुरू होती है।' : '\n\nNow send the owner the approval on WhatsApp — his yes starts your bypass protection.') : ''));
+      toast((isOwnerUser && created?.property?.ownerListing?.feeStatus === 'WAIVED_BROKER' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में आपका ब्रोकर अपनी ब्रोकरेज बताएगा; आप दोनों के मानने पर आप मंडेट साइन करेंगे और लिस्टिंग लाइव होगी।' : 'Listing saved. In “My Property” your broker will tell his brokerage; when you both agree you sign the mandate and the listing goes live.') : isOwnerUser && created?.property?.ownerListing?.feeStatus === 'PENDING' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में लिस्टिंग फ़ीस UPI से दें और UTR लिखें — GENZ पक्का करेगा, फिर लिस्टिंग लाइव होगी।' : 'Listing saved. Now pay the listing fee by UPI in “My Property” and write the UTR — GENZ confirms it and the listing goes live.') : (hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.')) + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
+        + (approval ? (hi ? '\n\nअब मालिक को WhatsApp पर अप्रूवल भेजें — मालिक की हाँ से बायपास सुरक्षा शुरू होती है।' : '\n\nNow send the owner the approval on WhatsApp — his yes starts your bypass protection.') : ''), 'success');
       onSuccess();
       onClose();
       if (approval) openDraft(approval);
@@ -190,7 +197,7 @@ export const AddPropertyModal: React.FC<{
       if (err?.code === 'CONSENT_REQUIRED' && sent) {
         try {
           const r = await api.draftFromForm(sent);
-          alert(hi ? 'GENZ पर लिस्टिंग मालिक की सहमति के बाद ही लाइव होती है। आपकी डिटेल ड्राफ़्ट में सेव हो गई — अब मालिक को WhatsApp पर अप्रूवल भेजें।' : 'On GENZ a listing goes live only after the owner agrees. Your details are saved as a draft — now send the owner the approval on WhatsApp.');
+          toast(hi ? 'GENZ पर लिस्टिंग मालिक की सहमति के बाद ही लाइव होती है। आपकी डिटेल ड्राफ़्ट में सेव हो गई — अब मालिक को WhatsApp पर अप्रूवल भेजें।' : 'On GENZ a listing goes live only after the owner agrees. Your details are saved as a draft — now send the owner the approval on WhatsApp.', 'info');
           onClose(); openDraft(r.draft.id); return;
         } catch (e2: any) { setError(e2.message); return; }
       }
@@ -335,11 +342,11 @@ export const AddPropertyModal: React.FC<{
                         setGoogleMapsUrl(`https://maps.google.com/?q=${lat},${lng}`);
                       },
                       () => {
-                        alert(hi ? 'आपकी लोकेशन नहीं मिल सकी। गूगल मैप्स का लिंक चिपकाएँ।' : 'Could not read your location. Paste the Google Maps link instead.');
+                        toast(hi ? 'आपकी लोकेशन नहीं मिल सकी। गूगल मैप्स का लिंक चिपकाएँ।' : 'Could not read your location. Paste the Google Maps link instead.', 'error');
                       }
                     );
                   } else {
-                    alert(hi ? 'इस डिवाइस पर लोकेशन उपलब्ध नहीं है। गूगल मैप्स का लिंक चिपकाएँ।' : 'Location is not available on this device. Paste the Google Maps link instead.');
+                    toast(hi ? 'इस डिवाइस पर लोकेशन उपलब्ध नहीं है। गूगल मैप्स का लिंक चिपकाएँ।' : 'Location is not available on this device. Paste the Google Maps link instead.', 'error');
                   }
                 }}
                 className="text-[10px] text-emerald-700 hover:underline font-semibold"
@@ -763,6 +770,7 @@ export const AddRequirementModal: React.FC<{
   onSuccess: () => void;
   currentUser?: UserProfile | null;
 }> = ({ isOpen, onClose, onSuccess, currentUser }) => {
+  const { toast, confirm, prompt } = useUI();
   const { lang } = useI18n();
   const hi = lang === 'hi';
   const label = useLabel();
@@ -794,6 +802,10 @@ export const AddRequirementModal: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (customerPhone.trim() && !isValidIndianPhone(customerPhone.trim())) {
+      setError(hi ? 'कृपया 10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें (6-9 से शुरू)' : 'Please enter a valid 10-digit Indian phone number starting with 6-9');
+      return;
+    }
     if (selectedLocalities.length === 0) {
       setError(hi ? 'कम से कम एक पसंदीदा इलाका चुनें' : 'Please select at least one preferred locality');
       return;
@@ -817,9 +829,9 @@ export const AddRequirementModal: React.FC<{
         urgency,
       });
       const nn = made?.network?.count;
-      alert(nn !== undefined
+      toast(nn !== undefined
         ? (nn > 0 ? (hi ? `ज़रूरत दर्ज हो गई! नेटवर्क में ${nn} मैच होते घर मिले — ज़रूरत के कार्ड पर देखें।` : `Requirement saved! The network already has ${nn} matching home${nn > 1 ? 's' : ''} — see them on the need's card.`) : (hi ? 'ज़रूरत दर्ज हो गई! नेटवर्क में अभी कुछ मैच नहीं — मैच होते ही बताएँगे।' : 'Requirement saved! Nothing in the network matches yet — we will tell you the moment a listing fits.'))
-        : (hi ? 'ज़रूरत दर्ज हो गई! मैचिंग शुरू है।' : 'Buyer requirement registered! Magic Match is looking for homes.'));
+        : (hi ? 'ज़रूरत दर्ज हो गई! मैचिंग शुरू है।' : 'Buyer requirement registered! Magic Match is looking for homes.'), 'success');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -1021,6 +1033,7 @@ export const CollaborationModal: React.FC<{
   onClose: () => void;
   onSuccess: () => void;
 }> = ({ isOpen, data, onClose, onSuccess }) => {
+  const { toast, confirm, prompt } = useUI();
   const [introducingShare, setIntroducingShare] = useState(50);
   const [closingShare, setClosingShare] = useState(50);
   const [terms, setTerms] = useState('');
@@ -1051,7 +1064,7 @@ export const CollaborationModal: React.FC<{
           : { proposedIntroducingShare: Number(introducingShare), proposedClosingShare: Number(closingShare) }),
         terms,
       });
-      alert(tx('Collaboration offer sent! The partner broker can now accept it and open a Deal Room instantly.', 'सहयोग प्रस्ताव भेज दिया गया! पार्टनर ब्रोकर इसे स्वीकार करके तुरंत डील रूम खोल सकता है।'));
+      toast(tx('Collaboration offer sent! The partner broker can now accept it and open a Deal Room instantly.', 'सहयोग प्रस्ताव भेज दिया गया! पार्टनर ब्रोकर इसे स्वीकार करके तुरंत डील रूम खोल सकता है।'), 'success');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -1244,6 +1257,7 @@ export const ScheduleVisitModal: React.FC<{
   defaults,
   clientRoom,
 }) => {
+  const { toast, confirm, prompt } = useUI();
   const getInitialVisitTime = () => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -1283,6 +1297,10 @@ export const ScheduleVisitModal: React.FC<{
     }
     if (!scheduledTime) {
       setError(tx('Please select a visit date and time.', 'कृपया विज़िट की तारीख़ और समय चुनें।'));
+      return;
+    }
+    if (customerPhone.trim() && !isValidIndianPhone(customerPhone.trim())) {
+      setError(tx('Please enter a valid 10-digit Indian phone number (starting 6-9).', 'कृपया 10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें (6-9 से शुरू)।'));
       return;
     }
     if (clientRoom && !customerPhone.replace(/\D/g, '').endsWith(clientRoom.phoneLast4)) {
@@ -1655,6 +1673,7 @@ export const VerifyVisitOtpModal: React.FC<{
   onClose: () => void;
   onSuccess: () => void;
 }> = ({ isOpen, visit, onClose, onSuccess }) => {
+  const { toast, confirm, prompt } = useUI();
   const [otpCode, setOtpCode] = useState('');
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1819,6 +1838,7 @@ export const FileDisputeModal: React.FC<{
   onClose: () => void;
   onSuccess: () => void;
 }> = ({ isOpen, dealId, currentUserId, directory = [], onClose, onSuccess }) => {
+  const { toast, confirm, prompt } = useUI();
   const tx = useTx();
   const label = useLabel();
   const [reason, setReason] = useState<string>('BYPASS_ATTEMPT');
@@ -1865,9 +1885,9 @@ export const FileDisputeModal: React.FC<{
         description: description.trim(),
         evidenceLinks: evidence.trim() ? [evidence.trim()] : [],
       });
-      alert(dealId
+      toast(dealId
         ? tx('Dispute logged. The commission settlement on this deal room is on hold until the GENZ admin team reviews it.', 'विवाद दर्ज हो गया। GENZ एडमिन टीम की समीक्षा तक इस डील रूम का कमीशन निपटान रोका गया है।')
-        : tx('Dispute logged. The GENZ admin team will review it.', 'विवाद दर्ज हो गया। GENZ एडमिन टीम इसकी समीक्षा करेगी।'));
+        : tx('Dispute logged. The GENZ admin team will review it.', 'विवाद दर्ज हो गया। GENZ एडमिन टीम इसकी समीक्षा करेगी।'), 'info');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -1961,6 +1981,7 @@ export const AddConstructionLeadModal: React.FC<{
   onClose: () => void;
   onSuccess: () => void;
 }> = ({ isOpen, onClose, onSuccess }) => {
+  const { toast, confirm, prompt } = useUI();
   const [title, setTitle] = useState('');
   const [projectType, setProjectType] = useState('Turnkey Residential');
   const [approximateLocation, setApproximateLocation] = useState('');
@@ -1981,7 +2002,11 @@ export const AddConstructionLeadModal: React.FC<{
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerConsent) {
-      alert(tx('Please confirm that the customer has agreed to share these details.', 'कृपया पुष्टि करें कि ग्राहक ने ये जानकारी साझा करने की सहमति दी है।'));
+      toast(tx('Please confirm that the customer has agreed to share these details.', 'कृपया पुष्टि करें कि ग्राहक ने ये जानकारी साझा करने की सहमति दी है।'), 'warning');
+      return;
+    }
+    if (customerPhoneHidden.trim() && !isValidIndianPhone(customerPhoneHidden.trim())) {
+      toast(tx('Please enter a valid 10-digit Indian phone number (starting 6-9).', 'कृपया 10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें (6-9 से शुरू)।'), 'error');
       return;
     }
     setLoading(true);
@@ -1999,11 +2024,11 @@ export const AddConstructionLeadModal: React.FC<{
         customerPhoneHidden,
         customerConsent: true,
       });
-      alert(tx(`Construction lead submitted with ${referralCommissionPct}% referral commission terms!`, `कंस्ट्रक्शन लीड ${referralCommissionPct}% रेफ़रल कमीशन की शर्तों के साथ जमा हो गई!`));
+      toast(tx(`Construction lead submitted with ${referralCommissionPct}% referral commission terms!`, `कंस्ट्रक्शन लीड ${referralCommissionPct}% रेफ़रल कमीशन की शर्तों के साथ जमा हो गई!`), 'success');
       onSuccess();
       onClose();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, 'error');
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,5 @@
 import { reraAuthorityOf } from '../shared/india.js';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, Property } from '../types/index.js';
 import { formatINR, printText } from '../lib/utils.js';
 import { useProtectionConfig } from './ProtectionDays.js';
@@ -169,11 +169,26 @@ STATUS: DRAFT - effective only after both brokers sign`;
     }
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="broker-safety-title"
+        className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Sticky Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-slate-900 text-white rounded-t-2xl shrink-0">
           <div className="flex items-center gap-2.5">
@@ -182,7 +197,7 @@ STATUS: DRAFT - effective only after both brokers sign`;
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold tracking-tight text-white">
+                <h3 id="broker-safety-title" className="text-sm font-bold tracking-tight text-white">
                   {tx('Broker Safety & Anti-Bypass Protocols', 'ब्रोकर सुरक्षा और एंटी-बायपास नियम')}
                 </h3>
                 <span className="rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] font-bold px-2 py-0.5">
