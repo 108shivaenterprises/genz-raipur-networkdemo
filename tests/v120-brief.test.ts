@@ -25,7 +25,7 @@ describe('lead brief', () => {
   });
   it('wiring: the bot asks once after confirm, the lead view carries the brief, the broker card shows it, Radar puts own areas first', () => {
     const s = read('server/sahayak.ts'); expect(s).toContain('b.askedTimeline = true'); expect(s).toContain("case 'TL':");
-    expect(read('server/shopPartners.ts')).toContain('brief: chat && !ownerSide(l) ? briefFor(l) : null');
+    expect(read('server/shopPartners.ts')).toContain("brief: chat && !ownerSide(l) && !l.won && l.status !== 'LOST' ? briefFor(l) : null");
     expect(read('src/components/ShopPartners.tsx')).toContain('data-testid="sp-brief"');
     expect(read('src/components/GenzRadar.tsx')).toContain('profile?.areas');
   });

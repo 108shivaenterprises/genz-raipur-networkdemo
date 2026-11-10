@@ -611,7 +611,7 @@ function leadView(l: PartnerLead) {
     chat: chat ? { msgs: chat.msgs.slice(-80).map(m => m.kind === 'HOME' && m.homeId ? { ...m, gone: homeGone(m.homeId) || undefined } : m), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
     alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0, bot: chat ? sahayak.view(l) : null,
     matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [], needLine: needLine(l),
-    brief: chat && !ownerSide(l) ? briefFor(l) : null,   // v120
+    brief: chat && !ownerSide(l) && !l.won && l.status !== 'LOST' ? briefFor(l) : null,   // v120; v124 — none on a finished lead (it said “Cold · nothing to do” over a deal whose share was still to pay)
     shopName: p?.shopName || '', partnerPersonName: p?.personName || '', partnerPhoneLast4: p?.phoneLast4 || '',
     partnerPageUrl: p ? (() => { const t = linkOf(p, `sp|${p.id}`); return t ? `/sp/${t}` : ''; })() : '',
     city: cityOfLead(l), links, flags: flagsFor(l, links), locked: locked(l), history: l.history.slice(-30),
