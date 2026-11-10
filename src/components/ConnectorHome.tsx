@@ -5,7 +5,7 @@ import { useI18n } from '../lib/i18n.js';
 import { UserProfile } from '../types/index.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
 import { SHOP_TYPES, REFERRAL_TYPES, shopLabel, referralLabel } from '../shared/connector.js';
-import { formatINR } from '../lib/utils.js';
+import { formatINR, greetName } from '../lib/utils.js';
 import { ShareTerms } from './ShareTerms.js';
 import { isValidIndianPhone, sanitizePhone, isValidUPI } from '../lib/validate.js';
 
@@ -55,7 +55,7 @@ export const ConnectorHome: React.FC<{ currentUser: UserProfile; onProfileChange
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs text-slate-500">{shopLabel(currentUser.connector?.shopType, hi)} · {currentUser.connector?.shopName}</p>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">{tx(`Namaste, ${currentUser.name.split(' ')[0]} 🙏`, `नमस्ते, ${currentUser.name.split(' ')[0]} 🙏`)}</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">{tx(`Namaste, ${greetName(currentUser.name)} 🙏`, `नमस्ते, ${greetName(currentUser.name)} 🙏`)}</h2>
           <p className="text-xs text-slate-500">{tx('Refer people who want to buy, sell, rent or build — earn a reward when the deal closes.', 'जो लोग प्रॉपर्टी खरीदना, बेचना, किराए पर लेना-देना या निर्माण कराना चाहते हैं उन्हें जोड़ें — सौदा पक्का होने पर इनाम पाएँ।')}</p>
         </div>
         <div className="flex gap-2">

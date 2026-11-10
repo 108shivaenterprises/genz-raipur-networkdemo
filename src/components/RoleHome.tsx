@@ -156,7 +156,7 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
         <Tile {...tp} testId="tile-buyer-browse" tab="properties" label={tx('Browse properties', 'प्रॉपर्टी देखें')} value={String(properties.length)} sub={tx('Verified listings (owner contact stays private)', 'वेरिफ़ाइड लिस्टिंग (मालिक का संपर्क निजी)')} icon={<Search className="h-4 w-4 text-slate-500" />} />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs lg:col-span-2" data-testid="buyer-visits">
+        <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs lg:col-span-3" data-testid="buyer-visits">
           <h2 className="text-base font-bold text-slate-900">{tx('My site visits', 'मेरी साइट विज़िट')}</h2>
           <p className="text-xs text-slate-500">{tx('Give the code below to the broker only when you are at the property — it proves the visit really happened.', 'कोड ब्रोकर को तभी दें जब आप प्रॉपर्टी पर हों — इससे विज़िट सच में हुई यह साबित होता है।')}</p>
           {nextVisits.length === 0 ? (
@@ -173,12 +173,6 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
             </ul>
           )}
         </div>
-        <LinkCard onNavigate={onNavigate} title={tx('What next?', 'आगे क्या?')} links={[
-          { tab: 'requirements', label: tx('Tell us what you need', 'अपनी ज़रूरत बताएँ'), icon: <UserCheck className="h-3.5 w-3.5" />, show: true },
-          { tab: 'matches', label: tx('Magic Match', 'मैजिक मैच'), icon: <Sparkles className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'matching:run') },
-          { tab: 'properties', label: tx('Browse properties', 'प्रॉपर्टी देखें'), icon: <Search className="h-3.5 w-3.5" />, show: true },
-          { tab: 'audit', label: tx('My activity log', 'मेरा एक्टिविटी लॉग'), icon: <ShieldCheck className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'audit:read_own') },
-        ]} />
       </div>
       {hasPerm(permissions, 'requirement:create') && (
         <button type="button" onClick={onOpenAddRequirement} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800">{tx('+ Post a requirement', '+ ज़रूरत जोड़ें')}</button>

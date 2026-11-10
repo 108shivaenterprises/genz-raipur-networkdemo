@@ -64,7 +64,7 @@ export function SmartLeadParserModal({
         budgetMax: parsed.budgetMax,
         note: parsed.note,
         source: 'WHATSAPP_INBOUND',
-        sourceDetail: 'Vastu AI Ingested',
+        sourceDetail: 'Smart Paste',
         consent: true,
       });
 
@@ -95,7 +95,7 @@ export function SmartLeadParserModal({
           </div>
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              {t('Vastu AI Smart Lead Ingestion', 'वास्तु AI स्मार्ट लीड पार्सर')}
+              {t('Smart Paste — lead from a message', 'स्मार्ट पेस्ट — लीड पार्सर')}
               <span className="text-[10px] bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 font-bold px-2 py-0.5 rounded-full">
                 Auto-Extract
               </span>

@@ -30,7 +30,6 @@ import { Loader2, ShieldCheck, MapPin, Building2, Eye } from 'lucide-react';
 import { lazyView, prefetch } from './lib/lazyView.js';
 import { TabErrorBoundary, TabLoading } from './components/TabErrorBoundary.js';
 import { CommandPaletteModal } from './components/CommandPaletteModal.js';
-import { CommandDock } from './components/CommandDock.js';
 
 // v20: screens load on demand (see lib/lazyView.ts)
 const CrmView = lazyView(() => import('./components/CrmView.js'), 'CrmView');
@@ -889,18 +888,6 @@ export default function App() {
         onOpenBrokerQrModal={currentUser?.role === 'BROKER' ? () => setShowBrokerQrModal(true) : undefined}
       />
 
-      {/* Floating Speed-Dial Command Dock (PROPi / Clixence Style Quick Launcher) */}
-      {currentUser && (
-        <CommandDock
-          currentUser={currentUser}
-          onNavigate={setActiveTab}
-          onOpenCommandPalette={() => setShowCommandPalette(true)}
-          onOpenAddProperty={hasPerm(permissions, 'property:create') ? () => setShowAddProperty(true) : undefined}
-          onOpenAddRequirement={hasPerm(permissions, 'requirement:create') ? () => setShowAddRequirement(true) : undefined}
-          onOpenAddLead={hasPerm(permissions, 'crm:create') ? () => setShowAddLead(true) : undefined}
-          onOpenQuickScan={hasPerm(permissions, 'visit:scan') ? () => setShowQuickScan(true) : undefined}
-        />
-      )}
       </Suspense>
       </TabErrorBoundary>
     </div>

@@ -13,7 +13,7 @@ import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { hasPerm } from '../lib/permissions.js';
-import { formatINR } from '../lib/utils.js';
+import { formatINR, greetName } from '../lib/utils.js';
 import type { BuilderProject, ConstructionLead, SalesAssociateMandate, UserProfile } from '../types/index.js';
 import type { TabType } from './NavigationTabs.js';
 import { GrowthNudge } from './GrowthNudge.js';
@@ -66,7 +66,7 @@ export const ProHome: React.FC<Props> = ({ currentUser, permissions, projects = 
   const [dd, ddDone] = useOnce(role === 'LEGAL_COUNSEL' && may('dd:read'), () => api.getDueDiligenceIssues());
   const loading = !(crmDone && pcDone && insDone && ddDone);
 
-  const first = String(currentUser.name || '').split(' ')[0];
+  const first = greetName(currentUser.name);
   let todos: Todo[] = []; let bigs: Big[] = []; let nums: Num[] = []; let line = '';
 
   if (role === 'DEVELOPER_BUILDER') {

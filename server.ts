@@ -1666,7 +1666,8 @@ app.get('/api/requirements', needs('requirement:read'), (req: Request, res: Resp
   const qType = String(req.query.propertyType || '').trim();
   const mineOnly = req.query.mine === '1';
   if (mineOnly) visible = visible.filter(r => r.assignedBrokerId === currentUser.id || r.buyerId === currentUser.id);
-  if (qCity) visible = visible.filter(r => sameCity(r.city, qCity));
+  // v122 — a need saved without a city counts as its broker's city (older needs have none), so GENZ Radar does not miss it
+  if (qCity) visible = visible.filter(r => sameCity(r.city || db.getState().users.find(u => u.id === r.assignedBrokerId)?.city, qCity));
   if (qType) visible = visible.filter(r => r.propertyType === qType);
   if (q) visible = visible.filter(r => r.id.toLowerCase().includes(q) || r.propertyType.toLowerCase().includes(q) || (r.city || '').toLowerCase().includes(q) || r.preferredLocalities.some(l => l.toLowerCase().includes(q)));
   // v20 — same pattern as listings: start with MY clients + what my deals / offers use + the newest needs (my city first);

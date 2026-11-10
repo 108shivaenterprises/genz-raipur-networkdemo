@@ -11,7 +11,7 @@ import React, { useEffect, useState } from 'react';
 import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, Clock, Loader2, Plus, HardHat, Globe } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
-import { formatINR } from '../lib/utils.js';
+import { formatINR, greetName } from '../lib/utils.js';
 import type { TabType } from './NavigationTabs.js';
 import { AlertsCard } from './AlertsCard.js';
 import { pushState } from '../lib/push.js';
@@ -99,7 +99,7 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
   return (
     <section className="mb-6 space-y-3" data-testid="broker-home">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-bold text-slate-900">{tx(`Namaste, ${name.split(' ')[0]} 👋`, `नमस्ते, ${name.split(' ')[0]} 👋`)}</h2>
+        <h2 className="text-lg font-bold text-slate-900">{tx(`Namaste, ${greetName(name)} 👋`, `नमस्ते, ${greetName(name)} 👋`)}</h2>
         {user && <span className="md:hidden"><TrustScoreBadge user={user} variant="pill" /></span>}
       </div>
 

@@ -164,3 +164,6 @@ export function printTarget() {
   const done = () => { document.body.classList.remove('printing-target'); window.removeEventListener('afterprint', done); };
   document.body.classList.add('printing-target'); window.addEventListener('afterprint', done); window.print();
 }
+
+/** v122 — the name to greet by: “Er. Ankit Sharma” → “Ankit”, not “Er.” */
+export const greetName = (n: unknown): string => { const w = String(n || '').trim().split(/\s+/); return (/^(er|adv|dr|mr|mrs|ms|shri|smt|ca|ar)\.?$/i.test(w[0]) && w[1]) ? w[1] : (w[0] || ''); };

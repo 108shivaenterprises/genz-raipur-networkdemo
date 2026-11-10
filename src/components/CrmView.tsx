@@ -162,7 +162,7 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
               title={tx('Extract lead details automatically from pasted WhatsApp or portal chats', 'पेस्ट किए गए व्हाट्सएप या पोर्टल मैसेज से अपने आप लीड बनाएं')}
             >
               <Sparkles className="h-3.5 w-3.5 text-purple-600" />
-              <span>{tx('Vastu AI Smart Paste', 'वास्तु AI स्मार्ट पेस्ट')}</span>
+              <span>{tx('Smart Paste', 'स्मार्ट पेस्ट')}</span>
             </button>
           )}
           {can('crm:lead_create') && (
@@ -361,7 +361,7 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
           onClose={() => setShowSmartParser(false)}
           onLeadCreated={() => {
             load();
-            flash(true, tx('Lead created via Vastu AI Smart Ingest', 'वास्तु AI द्वारा लीड बनाई गई'));
+            flash(true, tx('Lead created from the pasted message', 'पेस्ट किए संदेश से लीड बनाई गई'));
           }}
           projects={projects}
         />

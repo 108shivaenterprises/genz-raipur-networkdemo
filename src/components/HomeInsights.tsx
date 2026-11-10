@@ -91,8 +91,10 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
           )}
         </section>
         <section className={card}>
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900"><Calculator className="h-4 w-4 text-slate-500" />{tx('Total cost & EMI', 'कुल ख़र्च और EMI')}</h3>
-          <CostSheet />
+          <details data-testid="home-cost-fold">
+            <summary className="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-bold text-slate-900"><Calculator className="h-4 w-4 text-slate-500" />{tx('Total cost & EMI calculator', 'कुल ख़र्च और EMI कैलकुलेटर')}</summary>
+            <div className="mt-2"><CostSheet /></div>
+          </details>
         </section>
       </div>
     );
