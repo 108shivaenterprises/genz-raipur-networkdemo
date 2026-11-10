@@ -123,7 +123,7 @@ import { createBillingRouter, chargeEvent } from './server/billing.js';
 import { createRevenueRouter, createPublicStrengthRouter, sweepRevenue } from './server/revenue.js';
 import { createProtectionRouter, checkDays, daysFor } from './server/protection.js';
 import { verifySigningPassword } from './server/signing.js';
-import { createProfilePhotoRouter } from './server/profilephoto.js';
+import { createProfilePhotoRouter, healPhotoChecks } from './server/profilephoto.js';
 import { createOwnerMediaRouter, createPublicMediaRouter } from './server/ownermedia.js';
 import { createLeadBoardRouter } from './server/leadboard.js';
 import { createKycRetainRouter, sweepKycHolds } from './server/kycretain.js';
@@ -600,7 +600,7 @@ app.post('/api/auth/change-password', requireAuth, (req: Request, res: Response)
  * code or last-login), built once per data change and shared by every caller, and sent with an ETag so a reload that
  * changed nothing costs a few bytes ("304"). At 10k members the old list was ~6 MB and was rebuilt for every request.
  */
-const DIR_FIELDS = ['id', 'name', 'role', 'city', 'state', 'brokerId', 'companyName', 'reraNumber', 'verificationStatus', 'avatarUrl', 'createdAt', 'tier', 'firmSegment', 'trustScore', 'trustTier', 'completedDealsCount', 'verifiedSiteVisitsCount'] as const;
+const DIR_FIELDS = ['id', 'name', 'role', 'city', 'state', 'brokerId', 'companyName', 'reraNumber', 'verificationStatus', 'avatarUrl', 'photoCheckedAt', 'createdAt', 'tier', 'firmSegment', 'trustScore', 'trustTier', 'completedDealsCount', 'verifiedSiteVisitsCount'] as const;
 function slimCard(u: UserProfile, state: DatabaseState) {
   const e = enrichRaw(u, state) as any; const out: any = {};
   for (const k of DIR_FIELDS) if (e[k] !== undefined && e[k] !== '') out[k] = e[k];
@@ -5948,7 +5948,7 @@ async function startServer() {
   for (const [name, fn] of [
     ['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers],
     ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs],
-    ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms],
+    ['photoChecks', healPhotoChecks], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms],
     ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch],
     ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls],
     ['ownerPlans', ensureOwnerPlans], ['ownerListings', sweepOwnerListings], ['idTasks', ensureIdTasks],

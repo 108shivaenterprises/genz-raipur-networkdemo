@@ -200,7 +200,7 @@ export const PublicBrokerQrModal: React.FC<PublicBrokerQrModalProps> = ({
                     <span>{selectedBroker.name.slice(0, 2).toUpperCase()}</span>
                   )}
                 </div>
-                {selectedBroker.avatarUrl && <span className="absolute -top-2 left-0 whitespace-nowrap rounded-full bg-emerald-600 px-1.5 py-0.5 text-[8px] font-bold text-white" data-testid="photo-verified-mark">{tx('Photo checked by GENZ', 'फ़ोटो GENZ ने जाँची')}</span>}
+                {selectedBroker.avatarUrl && selectedBroker.photoCheckedAt && <span className="absolute -top-2 left-0 whitespace-nowrap rounded-full bg-emerald-600 px-1.5 py-0.5 text-[8px] font-bold text-white" data-testid="photo-verified-mark">{tx('Photo checked by GENZ', 'फ़ोटो GENZ ने जाँची')}</span>}
                 <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-xs">
                   <CheckCircle2 className="h-3.5 w-3.5" />
                 </div>

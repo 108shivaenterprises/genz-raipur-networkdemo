@@ -42,12 +42,13 @@ describe('verified photo', () => {
     expect((await call(undefined, 'POST', '/api/profile-photo/mine', { data: JPG, consent: true })).status).toBe(401);
   });
 
-  it('a new photo is PENDING and is NOT the avatar yet; others cannot see it', async () => {
+  it('v121 — a new photo is live at once for members (not yet “checked by GENZ”), never public', async () => {
     const r = await call(jar.BRK1, 'POST', '/api/profile-photo/mine', { data: JPG, consent: true });
     expect(r.status, await r.clone().text()).toBe(200);
     const m = await j(await call(jar.BRK1, 'GET', '/api/profile-photo/mine'));
-    expect(m.pending.status).toBe('PENDING'); expect(m.url).toBeFalsy();
-    expect((await call(jar.BRK2, 'GET', '/api/profile-photo/u/USR-BRK-001')).status).toBe(404);
+    expect(m.pending.status).toBe('PENDING'); expect(m.url).toContain('/api/profile-photo/u/USR-BRK-001');
+    expect((await call(jar.BRK2, 'GET', '/api/profile-photo/u/USR-BRK-001')).status).toBe(200);
+    const card = await j(await call(jar.BRK2, 'GET', '/api/profiles/USR-BRK-001')); if (card.card) expect(card.card.checks.photo).toBe(false);   // live, but the mark waits for GENZ
     expect((await call(jar.BRK1, 'GET', '/api/profile-photo/u/USR-BRK-001')).status).toBe(200);   // his own pending
     expect((await call(undefined, 'GET', '/api/profile-photo/u/USR-BRK-001')).status).toBe(401);   // never public
     expect((await call(jar.BRK1, 'GET', '/api/profile-photo/admin')).status).toBe(403);
@@ -63,7 +64,7 @@ describe('verified photo', () => {
     expect(readdirSync(path.join(dir, 'data', 'profilephotos')).filter(f => f.endsWith('.bin')).length).toBe(0);
   });
 
-  it('after approval it becomes the avatar, any member can open it, and a later upload waits for its own approval', async () => {
+  it('after approval it is “checked”; a later upload replaces it at once and is unchecked again', async () => {
     expect((await call(jar.BRK1, 'POST', '/api/profile-photo/mine', { data: JPG, consent: true })).status).toBe(200);
     const id = (await j(await call(jar.ADMIN, 'GET', '/api/profile-photo/admin'))).photos.find((p: any) => p.userId === 'USR-BRK-001').id;
     expect((await call(jar.ADMIN, 'POST', `/api/profile-photo/admin/${id}`, { verdict: 'APPROVE' })).status).toBe(200);
@@ -76,6 +77,6 @@ describe('verified photo', () => {
     void dir2;
     expect((await call(jar.BRK1, 'POST', '/api/profile-photo/mine', { data: JPG, consent: true })).status).toBe(200);
     const m2 = await j(await call(jar.BRK1, 'GET', '/api/profile-photo/mine'));
-    expect(m2.approved).toBeTruthy(); expect(m2.pending).toBeTruthy(); expect(m2.url).toBeTruthy();   // old stays until the new one is approved
+    expect(m2.approved).toBeFalsy(); expect(m2.pending).toBeTruthy(); expect(m2.url).toBeTruthy();   // v121 — the new one is live, the old one is gone
   });
 });

@@ -691,6 +691,8 @@ export interface UserProfile {
   /** GENZ_CONNECTOR only: shop / community-partner details */
   connector?: ConnectorProfile;
   avatarUrl?: string;
+  /** v121 — when GENZ staff checked the live photo against the ID (the “checked by GENZ” marks need this) */
+  photoCheckedAt?: string;
   /** v78 — what this person shows on his profile (found only by search). Everything is optional; `visible` false hides a professional from name search. */
   /** v90 — the area of the city where the office / home is (tidied spelling), set at sign-up */
   homeLocality?: string;

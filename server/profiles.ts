@@ -90,7 +90,7 @@ function cardOf(u: UserProfile, full = false) {
     // only what a public register already says, plus the checks GENZ did
     code: u.role === 'BROKER' ? (u.brokerId || '') : '',
     rera: (u.role === 'BROKER' || u.role === 'DEVELOPER_BUILDER') && active ? (u.brand?.reraId || u.reraNumber || '') : '',
-    checks: active ? { idChecked: !!u.idCheckedAt, photo: !!u.avatarUrl && p.showPhoto !== false, rera: !!(u.reraNumber || u.brand?.reraId) } : { idChecked: false, photo: false, rera: false },
+    checks: active ? { idChecked: !!u.idCheckedAt, photo: !!u.avatarUrl && !!u.photoCheckedAt && p.showPhoto !== false, rera: !!(u.reraNumber || u.brand?.reraId) } : { idChecked: false, photo: false, rera: false },
     photoUrl: active && u.avatarUrl && p.showPhoto !== false ? u.avatarUrl : '',
     memberSince: u.createdAt?.slice(0, 7) || '',
     rating: active ? summaryOf(u.id) : { avg: 0, count: 0, early: true, stars: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, tags: [] },

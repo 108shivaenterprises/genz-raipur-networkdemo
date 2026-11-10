@@ -124,6 +124,7 @@ export interface UserProfile {
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | 'BLACKLISTED';
   verificationNotes?: string;
   avatarUrl?: string;
+  photoCheckedAt?: string;
   createdAt: string;
 
   // Deterministic Trust Score based on completed deals & verified physical site visits

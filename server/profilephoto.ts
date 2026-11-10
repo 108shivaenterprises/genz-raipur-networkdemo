@@ -27,6 +27,12 @@ const erase = (id: string) => { try { fs.unlinkSync(fileOf(id)); } catch { /* al
 export const photoUrl = (userId: string) => `/api/profile-photo/u/${encodeURIComponent(userId)}`;
 const view = (p: ProfilePhoto) => ({ id: p.id, status: p.status, createdAt: p.createdAt, review: p.review ? { at: p.review.at, note: p.review.note } : undefined });
 
+/** v121 — photos approved before this version carry no `photoCheckedAt`: give it to them once (boot) */
+export function healPhotoChecks(): number {
+  let n = 0; const s = st();
+  for (const p of s.profilePhotos) if (p.status === 'APPROVED') { const u = s.users.find(x => x.id === p.userId); if (u && u.avatarUrl && !u.photoCheckedAt) { u.photoCheckedAt = p.review?.at || p.createdAt; n++; } }
+  if (n) db.save(); return n;
+}
 /** DPDP erasure */
 export function purgeUserPhotos(s: DatabaseState, userId: string): number {
   const doomed = s.profilePhotos.filter(p => p.userId === userId);
@@ -61,12 +67,14 @@ export function createProfilePhotoRouter() {
     const mime = sniffMime(buf);
     if (mime !== 'image/jpeg' && mime !== 'image/png' && mime !== 'image/webp') return bad(res, 'Only a JPEG, PNG or WebP photo is accepted.', 415);
     const s = st();
-    for (const old of s.profilePhotos.filter(p => p.userId === u.id && p.status !== 'APPROVED')) erase(old.id); // a pending / rejected one is replaced
-    s.profilePhotos = s.profilePhotos.filter(p => p.userId !== u.id || p.status === 'APPROVED');
+    // v121 — the photo is live at once (the owner's rule); GENZ checks it afterwards and only then does the “checked by GENZ” mark show
+    for (const old of s.profilePhotos.filter(p => p.userId === u.id)) erase(old.id);
+    s.profilePhotos = s.profilePhotos.filter(p => p.userId !== u.id);
     const id = `PHO-${crypto.randomBytes(5).toString('hex')}`;
     try { fs.mkdirSync(DIR(), { recursive: true }); const tmp = fileOf(id) + '.tmp'; fs.writeFileSync(tmp, buf); fs.renameSync(tmp, fileOf(id)); }
     catch { return bad(res, 'The photo could not be saved. Please try again.', 500); }
     s.profilePhotos.push({ id, userId: u.id, status: 'PENDING', mime, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), consentAt: nowIso(), createdAt: nowIso() });
+    u.avatarUrl = photoUrl(u.id); u.photoCheckedAt = undefined;
     db.save();
     db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'PROFILE_PHOTO_UPLOADED', `${u.name} uploaded a profile photo ${id} for GENZ to check`);
     for (const a of s.users.filter(x => x.role === 'ADMIN' || x.role === 'SUPERADMIN').slice(0, 20)) void pushTo(a.id, { kind: 'deals', title: 'A broker photo needs checking', body: `${u.name} — open Disputes → Photo check.`, url: '/?tab=disputes' });
@@ -78,7 +86,8 @@ export function createProfilePhotoRouter() {
     const viewer = me();
     const list = st().profilePhotos.filter(p => p.userId === req.params.userId);
     const staff = viewer.role === 'ADMIN' || viewer.role === 'SUPERADMIN';
-    const p = list.find(x => x.status === 'APPROVED') || ((viewer.id === req.params.userId || staff) ? list.find(x => x.status === 'PENDING') : undefined);
+    void viewer; void staff;
+    const p = list.find(x => x.status === 'APPROVED') || list.find(x => x.status === 'PENDING');   // v121 — live before the GENZ check
     if (!p) return bad(res, 'Photo not found', 404);
     send(res, p);
   });
@@ -107,8 +116,8 @@ export function createProfilePhotoRouter() {
     if (approve) {
       for (const old of st().profilePhotos.filter(x => x.userId === p.userId && x.status === 'APPROVED')) erase(old.id);
       st().profilePhotos = st().profilePhotos.filter(x => x.userId !== p.userId || x.status !== 'APPROVED');
-      p.status = 'APPROVED'; u.avatarUrl = photoUrl(u.id);
-    } else { p.status = 'REJECTED'; erase(p.id); }
+      p.status = 'APPROVED'; u.avatarUrl = photoUrl(u.id); u.photoCheckedAt = nowIso();
+    } else { p.status = 'REJECTED'; erase(p.id); u.avatarUrl = undefined; u.photoCheckedAt = undefined; }
     db.save();
     db.appendAuditEvent(a.id, a.role, 'VERIFICATION', u.id, approve ? 'PROFILE_PHOTO_APPROVED' : 'PROFILE_PHOTO_REJECTED', `${a.name} ${approve ? 'approved' : 'rejected'} ${u.name}'s photo ${p.id}${reason ? `: ${reason}` : ''}`);
     void pushTo(u.id, { kind: 'deals', title: approve ? 'Your photo is verified' : 'Your photo was not accepted', body: approve ? 'It now shows on your ID card.' : reason, url: '/?tab=network' });

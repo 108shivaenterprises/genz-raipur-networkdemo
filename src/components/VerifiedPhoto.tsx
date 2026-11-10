@@ -30,7 +30,7 @@ export const VerifiedPhotoCard: React.FC = () => {
   const pick = async (f?: File) => { setErr(''); setOk(''); if (!f) return; try { setPrev(await shrink(f)); } catch { setErr(tx('Could not read this photo — try another.', 'यह फ़ोटो पढ़ी नहीं गई — दूसरी चुनें।')); } };
   const send = async () => {
     setBusy(true); setErr('');
-    try { await api.photoUpload(prev, consent); setPrev(''); setConsent(false); setOk(tx('Sent. GENZ will compare it with your ID and tell you.', 'भेज दी। GENZ इसे आपकी ID से मिलाकर बताएगा।')); load(); }
+    try { await api.photoUpload(prev, consent); setPrev(''); setConsent(false); setOk(tx('Your photo is live now. The “checked by GENZ” mark comes after GENZ matches it with your ID.', 'आपकी फ़ोटो अभी से दिख रही है। “GENZ ने जाँची” का निशान ID से मिलान के बाद आएगा।')); load(); }
     catch (e: any) { setErr(e?.body?.hi && document.documentElement.lang === 'hi' ? e.body.hi : e.message); } finally { setBusy(false); }
   };
   const rejected = d.latest?.status === 'REJECTED';
@@ -39,7 +39,7 @@ export const VerifiedPhotoCard: React.FC = () => {
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-bold">{tx('My photo for the ID card', 'ID कार्ड के लिए मेरी फ़ोटो')}</h3>
         {d.approved ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800"><BadgeCheck className="h-3 w-3" />{tx('Checked by GENZ', 'GENZ ने जाँची')}</span>
-          : d.pending ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{tx('GENZ is checking', 'GENZ जाँच रहा है')}</span>
+          : d.pending ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{tx('Live · GENZ check pending', 'दिख रही है · GENZ जाँच बाकी')}</span>
           : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{tx('No photo yet', 'अभी फ़ोटो नहीं')}</span>}
       </div>
       <div className="flex items-center gap-3">
@@ -47,7 +47,7 @@ export const VerifiedPhotoCard: React.FC = () => {
           {prev ? <img src={prev} alt="" className="h-full w-full object-cover" /> : d.url ? <img src={d.url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-slate-400"><Camera className="h-6 w-6" /></div>}
         </div>
         <div className="space-y-1 text-xs text-slate-600">
-          <p>{tx('A clear photo of your face, no cap or sunglasses. It shows on your ID card only after GENZ matches it with your ID.', 'चेहरा साफ़ दिखे, टोपी या चश्मा नहीं। GENZ आपकी ID से मिला ले, तभी यह आपके ID कार्ड पर दिखेगी।')}</p>
+          <p>{tx('A clear photo of your face, no cap or sunglasses. It shows at once; the “checked by GENZ” mark comes after GENZ matches it with your ID.', 'चेहरा साफ़ दिखे, टोपी या चश्मा नहीं। फ़ोटो तुरंत दिखेगी; “GENZ ने जाँची” का निशान ID से मिलान के बाद आएगा।')}</p>
           {rejected && <p role="alert" className="font-semibold text-red-700">{tx('Not accepted', 'स्वीकार नहीं')}: {d.latest.review?.note}</p>}
           <input ref={fileRef} type="file" accept="image/*" capture="user" className="hidden" onChange={e => pick(e.target.files?.[0])} data-testid="photo-file" />
           <button type="button" onClick={() => fileRef.current?.click()} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 font-semibold text-slate-800"><Camera className="h-4 w-4" />{d.url || d.pending ? tx('Change photo', 'फ़ोटो बदलें') : tx('Take / choose photo', 'फ़ोटो लें / चुनें')}</button>
@@ -56,7 +56,7 @@ export const VerifiedPhotoCard: React.FC = () => {
       {prev && (
         <div className="space-y-2">
           <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={consent} onChange={e => setConsent(e.target.checked)} data-testid="photo-consent" />{tx('I agree that GENZ keeps this photo to check my identity and show it on my ID card to other members. I can ask to erase it.', 'मैं सहमत हूँ कि GENZ मेरी पहचान जाँचने और दूसरे सदस्यों को मेरे ID कार्ड पर दिखाने के लिए यह फ़ोटो रखे। मैं इसे मिटाने को कह सकता हूँ।')}</label>
-          <button type="button" disabled={!consent || busy} onClick={send} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-50" data-testid="photo-send">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{tx('Send for checking', 'जाँच के लिए भेजें')}</button>
+          <button type="button" disabled={!consent || busy} onClick={send} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-50" data-testid="photo-send">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{tx('Use this photo', 'यही फ़ोटो लगाएँ')}</button>
         </div>)}
       {ok && <p className="rounded bg-emerald-50 p-2 text-xs font-medium text-emerald-800" role="status">{ok}</p>}
       {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
