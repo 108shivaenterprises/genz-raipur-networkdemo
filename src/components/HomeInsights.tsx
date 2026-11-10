@@ -44,7 +44,8 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
     if (!L.length) return null;
     return (
       <section className={`${card} mt-6`} data-testid="insight-owner">
-        <h3 className="text-sm font-bold text-slate-900">{tx('How my listings are doing', 'मेरी लिस्टिंग का हाल')}</h3>
+        <details open={L.length <= 1}>
+          <summary className="flex min-h-10 cursor-pointer items-center text-sm font-bold text-slate-900">{tx(`How my listings are doing (${L.length})`, `मेरी लिस्टिंग का हाल (${L.length})`)}</summary>
         <div className="mt-3 space-y-2">
           {L.map(p => (
             <div key={p.id} className="rounded-lg border border-slate-100 p-3">
@@ -62,6 +63,7 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
             </div>
           ))}
         </div>
+        </details>
       </section>
     );
   }

@@ -344,9 +344,10 @@ const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={dark + ' !min-h-10'} data-testid="sp-lead-room" onClick={() => {
           const kindOfRoom = l.kind === 'BUY' ? 'BUYER' : l.kind === 'RENT_IN' ? 'RENTER' : 'OTHER';
-          try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}${l.homeTitle ? ` · ${l.homeTitle}` : ''}`.slice(0, 190), homeId: l.homeId || '', homeTitle: l.homeTitle || '' })); } catch { /* storage blocked: the form opens empty */ }
+          // v123 — the room is already there (the assistant opened it): go to it, do not offer a second one
+          if (!l.links.some((x: any) => x.kind === 'ROOM')) try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}${l.homeTitle ? ` · ${l.homeTitle}` : ''}`.slice(0, 190), homeId: l.homeId || '', homeTitle: l.homeTitle || '' })); } catch { /* storage blocked: the form opens empty */ }
           window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
-        }}><MessagesSquare className="h-4 w-4" />{tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
+        }}><MessagesSquare className="h-4 w-4" />{l.links.some((x: any) => x.kind === 'ROOM') ? tx('Go to his client room', 'उनका क्लाइंट रूम देखें') : tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
         {(l.kind === 'BUY' || l.kind === 'RENT_IN') && !l.links.some((x: any) => x.kind === 'NEED') && <button type="button" className={light + ' !min-h-10 !text-xs'} data-testid="sp-lead-need" onClick={() => setMode(mode === 'need' ? '' : 'need')}><Sparkles className="h-3.5 w-3.5" />{tx('No home yet? Find in network', 'घर नहीं है? नेटवर्क में ढूँढें')}</button>}
         <LeadVisit l={l} onChange={onChange} />
         <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>

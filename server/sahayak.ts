@@ -10,6 +10,7 @@
  *   • opens the customer's client room when he taps for it, and lets him "explore" every live home that fits his need.
  * The broker can switch it off (all chats or one chat), and it keeps quiet for 30 minutes after the broker writes. Money, rates and papers are never its job.
  */
+import { visitNudge } from '../src/shared/leadBrief.js';
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot } from './db.js';
@@ -351,6 +352,24 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     return now - Math.max(Date.parse(l.chat?.reqConfirmedAt || '') || 0, wrote) < BOT_WATCH.days * 86400_000;
   };
   /** v105 — whenever the chat is looked after (a listing changed, he opened the chat, the hourly sweep) his room is brought level with the chat too — even when the assistant is off or quiet */
+  /** v123 — visit reminder (customer + broker) and one follow-up after the visit time; called by the hourly sweep */
+  function remindVisits(l: PartnerLead, now = Date.now()): number {
+    if (off(l) || l.status === 'LOST' || l.won) return 0; let n = 0;
+    for (const v of botOf(l).visits || []) {
+      const k = visitNudge(v, now); if (!k) continue; n++;
+      const when = v.counter || v.preferred;
+      if (k === 'REMIND') {
+        v.remindedAt = nowIso();
+        say(l, `⏰ याद दिला दूँ — “${v.title}” की विज़िट ${when} पर तय है। समय बदलना हो तो यहीं लिख दें।`, `⏰ A reminder — your visit to “${v.title}” is fixed for ${v.counter || v.preferredEn || v.preferred}. Write here if the time must change.`, menu(l));
+        d.tellBroker(l, `⏰ ${l.name}: विज़िट ${when}`, `“${v.title}” की विज़िट पास है — ग्राहक को याद दिला दिया गया है।`);
+      } else {
+        v.askedAfterAt = nowIso();
+        say(l, `🙏 “${v.title}” की विज़िट कैसी रही? पसंद आया तो “ब्रोकर से बात” दबाएँ, नहीं तो “और घर दिखाओ”।`, `🙏 How was the visit to “${v.title}”? If you liked it tap “Talk to the broker”, otherwise “Show more homes”.`, menu(l));
+        d.tellBroker(l, `${l.name}: विज़िट का समय निकल गया`, 'विज़िट हुई हो तो लीड पर “Visit done” दबाएँ; नहीं हुई तो नया समय तय करें।');
+      }
+    }
+    return n;
+  }
   function follow(l: PartnerLead, now = Date.now()): number {
     let n = 0;
     try { n = followChat(l, now); } finally { try { syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); } }
@@ -659,6 +678,6 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
     network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
-  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed, syncRoom };
+  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed, syncRoom, remindVisits };
 }
 export type Sahayak = ReturnType<typeof makeSahayak>;

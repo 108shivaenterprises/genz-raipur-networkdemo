@@ -35,3 +35,10 @@ export function leadBrief(i: BriefIn): Brief {
     : { en: 'Offer a visit for the home he opened, or send one more home.', hi: 'जो घर उन्होंने खोला उसकी विज़िट ऑफ़र करें, या एक और घर भेजें।' };
   return { label: score >= 60 ? 'HOT' : score >= 35 ? 'WARM' : 'COLD', score, reasons, next };
 }
+
+/** v123 — an agreed visit with a known time: remind once in the 24 hours before it, ask “how was it?” once 3 hours after it. */
+export function visitNudge(v: { status: string; whenIso?: string; remindedAt?: string; askedAfterAt?: string }, now = Date.now()): 'REMIND' | 'AFTER' | null {
+  const t = v.whenIso ? Date.parse(v.whenIso) : NaN; if (v.status !== 'OK' || !Number.isFinite(t)) return null;
+  if (now < t) return !v.remindedAt && t - now <= 24 * 3600_000 ? 'REMIND' : null;
+  return !v.askedAfterAt && now - t >= 3 * 3600_000 && now - t <= 72 * 3600_000 ? 'AFTER' : null;   // older than 3 days: too late to ask
+}

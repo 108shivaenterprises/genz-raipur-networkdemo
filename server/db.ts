@@ -1548,7 +1548,7 @@ export interface LeadMsg { at: string; by: 'BROKER' | 'CUSTOMER' | 'SYSTEM' | 'B
   /** v97 — the GENZ assistant's English line (the Hindi is `text`), the one-tap answers under its last message, and the visit request a card belongs to */
   en?: string; chips?: { id: string; hi: string; en: string }[]; vid?: string }
 /** v97 — a visit the customer asked for in the chat (his preferred time); the broker answers yes / another time / no */
-export interface LeadVisitReq { id: string; at: string; homeId: string; title: string; preferred: string; preferredEn?: string; whenIso?: string; status: 'ASKED' | 'OK' | 'COUNTER' | 'NO' | 'DONE'; counter?: string; answeredAt?: string }
+export interface LeadVisitReq { id: string; at: string; homeId: string; title: string; preferred: string; preferredEn?: string; whenIso?: string; status: 'ASKED' | 'OK' | 'COUNTER' | 'NO' | 'DONE'; counter?: string; answeredAt?: string; /** v123 — the day-before reminder and the “how was it?” after the visit, each sent once */ remindedAt?: string; askedAfterAt?: string }
 /** v97 — the GENZ assistant's memory of one chat (what it is waiting for, what it already sent, the room it opened) */
 export interface LeadBot {
   off?: boolean; quietUntil?: string; handoffAt?: string;

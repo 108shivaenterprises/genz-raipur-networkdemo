@@ -121,13 +121,6 @@ const OwnerHome: React.FC<Props> = ({ currentUser, permissions, properties, deal
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <AttentionList items={items} onNavigate={onNavigate} heading={tx('Needs your attention', 'आपके ध्यान की ज़रूरत')} sub={tx('Offers, tokens, visits and listings waiting on you', 'आप पर रुके ऑफ़र, टोकन, विज़िट और लिस्टिंग')} empty={tx('Nothing is waiting on you right now.', 'अभी आप पर कुछ भी रुका नहीं है।')} />
-        <LinkCard onNavigate={onNavigate} title={tx('Quick links', 'क्विक लिंक')} links={[
-          { tab: 'properties', label: tx('My properties & vault', 'मेरी प्रॉपर्टी और वॉल्ट'), icon: <Building2 className="h-3.5 w-3.5" />, show: true },
-          { tab: 'desk', label: tx('Deal Desk (offers & tokens)', 'डील डेस्क (ऑफ़र और टोकन)'), icon: <Handshake className="h-3.5 w-3.5" />, show: canDesk },
-          { tab: 'propdocs', label: tx('Property papers (upload & search)', 'प्रॉपर्टी पेपर्स (अपलोड और खोज)'), icon: <FolderOpen className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'propdoc:use') },
-          { tab: 'pdocs', label: tx('Protected documents', 'सुरक्षित दस्तावेज़'), icon: <FileLock2 className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'pdoc:use') },
-          { tab: 'disputes', label: tx('Disputes', 'विवाद'), icon: <Scale className="h-3.5 w-3.5" />, show: hasPerm(permissions, 'dispute:read') },
-        ]} />
       </div>
       <button type="button" onClick={onOpenAddProperty} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800"><Building2 className="h-3.5 w-3.5 text-amber-400" />{tx('+ List a property', '+ प्रॉपर्टी लिस्ट करें')}</button>
     </div>

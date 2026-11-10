@@ -340,7 +340,7 @@ export function followHomes(): number {
 /** the hourly safety net (and the baseline): every confirmed chat looks at the homes once */
 export function sweepSahayak(): number {
   let n = 0;
-  for (const l of st().partnerLeads) { if (!l.chat?.reqConfirmedAt || ownerSide(l)) continue; try { n += sahayak.follow(l); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); } }
+  for (const l of st().partnerLeads) { if (!l.chat?.reqConfirmedAt || ownerSide(l)) continue; try { n += sahayak.follow(l); n += sahayak.remindVisits(l); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); } }
   liveSeen = liveNow();
   if (n) db.save();
   return n;
@@ -1022,7 +1022,7 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
 <label>बजट / किराया (अंदाज़न) / Budget or rent</label><input type="text" name="budget" maxlength="60" value="${esc(keep.budget || '')}" placeholder="जैसे 40 लाख / 12,000 महीना">
 <label>प्रॉपर्टी / Property type</label><select name="ptype"><option value="">— कोई भी / Any —</option>${typeGroups.map(([g, list]) => `<optgroup label="${g}">${list.map(x => `<option value="${x}" ${keep.ptype === x ? 'selected' : ''}>${x}</option>`).join('')}</optgroup>`).join('')}<option value="Other" ${keep.ptype === 'Other' ? 'selected' : ''}>कुछ और / Other</option></select>
 <label>कुछ और / Anything else</label><textarea name="note" rows="2" maxlength="300">${esc(keep.note || '')}</textarea>
-<div class="card warn" style="margin-top:12px" id="promise"><p class="t"><b>ख़रीदने या किराये पर लेने वालों के लिए · For buyers and renters</b></p><p class="t">${esc(ack.hi)}</p><p class="t"><small>${esc(ack.en)}</small></p>
+<div class="card warn" style="margin-top:12px" id="promise"><p class="t"><b>ख़रीदने या किराये पर लेने वालों के लिए · For buyers and renters</b></p><p class="t">${esc(who)} जो प्रॉपर्टी दिखाएँगे, उसका सौदा मैं या मेरा परिवार उन्हें बीच में रखकर ही करेंगे। <small>I or my family will deal on a property ${esc(who)} shows only through him.</small></p><details data-testid="qr-promise-full"><summary class="small" style="cursor:pointer;min-height:36px">पूरी शर्त पढ़ें / Read the full words</summary><p class="t">${esc(ack.hi)}</p><p class="t"><small>${esc(ack.en)}</small></p></details>
 <label class="ck"><input type="checkbox" name="direct" value="1" ${keep.direct === '1' ? 'checked' : ''}><span>मैं यह मानता/मानती हूँ। <small>I agree to this.</small></span></label>
 <label>अपना नाम लिखकर हस्ताक्षर करें / Sign by typing your name</label><input type="text" name="sign" maxlength="80" value="${esc(keep.sign || '')}" autocomplete="off"><p class="small">यह आपकी सहमति का रिकॉर्ड है — GENZ आपसे कोई पैसा नहीं लेता। / This is a record of your agreement — GENZ takes no money from you.</p></div>
 <label class="ck"><input type="checkbox" name="consent" value="1" required><span>मैं सहमत हूँ कि ${esc(who)} मुझसे इस ऐप की चैट में बात करें। मेरा नंबर ब्रोकर को तभी दिखेगा जब मैं अपनी ज़रूरत पक्की कर दूँ और मेरी ज़रूरत से मेल खाता घर शेयर हो; दुकान वाले को पूरा नंबर कभी नहीं दिखेगा। <small>I agree that this broker may talk to me in this app’s chat. My number is shown to him only after I confirm my need and a home matching it is shared; the shop never sees my full number.</small></span></label>

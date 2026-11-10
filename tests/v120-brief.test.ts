@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { leadBrief, type BriefIn } from '../src/shared/leadBrief';
+import { leadBrief, visitNudge, type BriefIn } from '../src/shared/leadBrief';
 
 /** v120 — the deal brief: transparent points, one next step; the bot asks "by when" once. */
 const base: BriefIn = { confirmed: false, revealed: false, hasBudget: false, hasType: false, homesSent: 0, networkCount: 0, viewed: 0, visitAsked: 0, visitOk: 0, customerMsgs: 0, lastCustomerHrs: null };
@@ -28,5 +28,12 @@ describe('lead brief', () => {
     expect(read('server/shopPartners.ts')).toContain('brief: chat && !ownerSide(l) ? briefFor(l) : null');
     expect(read('src/components/ShopPartners.tsx')).toContain('data-testid="sp-brief"');
     expect(read('src/components/GenzRadar.tsx')).toContain('profile?.areas');
+  });
+  it('v123 — an agreed visit is reminded once in the 24 h before, asked about once 3 h after; never without a time or twice', () => {
+    const t = Date.parse('2026-11-12T11:00:00+05:30'); const v = { status: 'OK', whenIso: new Date(t).toISOString() };
+    expect(visitNudge(v, t - 30 * 3600_000)).toBe(null); expect(visitNudge(v, t - 20 * 3600_000)).toBe('REMIND'); expect(visitNudge({ ...v, remindedAt: 'x' }, t - 2 * 3600_000)).toBe(null);
+    expect(visitNudge(v, t + 3600_000)).toBe(null); expect(visitNudge(v, t + 4 * 3600_000)).toBe('AFTER'); expect(visitNudge({ ...v, askedAfterAt: 'x' }, t + 4 * 3600_000)).toBe(null);
+    expect(visitNudge(v, t + 100 * 3600_000)).toBe(null); expect(visitNudge({ status: 'ASKED', whenIso: v.whenIso }, t - 3600_000)).toBe(null); expect(visitNudge({ status: 'OK' }, t)).toBe(null);
+    expect(read('server/shopPartners.ts')).toContain('n += sahayak.remindVisits(l)');
   });
 });
