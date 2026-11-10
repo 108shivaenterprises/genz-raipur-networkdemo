@@ -19,3 +19,14 @@ describe('v122 UI pass', () => {
     expect(read('server.ts')).toContain('sameCity(r.city || db.getState().users.find(u => u.id === r.assignedBrokerId)?.city, qCity)');
   });
 });
+
+describe('v125 — nothing reads as a demand for papers on an enquiry', () => {
+  it('the room\'s paper / ID sender is folded, marked optional, and lists a photo before any ID', () => {
+    const s = read('server/clientroom.ts'); expect(s).toContain('<details id="docs" data-testid="room-docs"'); expect(s).toContain('Nothing is needed just to enquire'); expect(s).toContain('[...DOC_KINDS].sort((x, y) => Number(x.kyc) - Number(y.kyc))');
+  });
+  it('the QR form asks five things up front; city, type and “anything else” are behind “tell more”', () => {
+    const s = read('server/shopPartners.ts'); const more = s.indexOf('data-testid="qr-more"'); expect(more).toBeGreaterThan(0);
+    for (const up of ['name="name"', 'name="phone"', 'name="locality"', 'name="budget"']) expect(s.indexOf(up), up).toBeLessThan(more);
+    for (const folded of ['name="city"', 'name="ptype"', 'name="note"']) expect(s.indexOf(folded), folded).toBeGreaterThan(more);
+  });
+});
