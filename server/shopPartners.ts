@@ -994,7 +994,6 @@ export function createPartnerQrRouter() {
     const picked = homes.find(h => h.id === (keep.home || str(wantQuery.home, 40)));
     const want = str(wantQuery.want, 6);
     const preKind = keep.kind || (picked ? (picked.transactionType === 'Sale' ? 'BUY' : 'RENT_IN') : want === 'buy' ? 'BUY' : want === 'sell' ? 'SELL' : '');
-    const sellerSide = preKind === 'SELL' || preKind === 'RENT_OUT';   // v89 — the big buttons above the form follow what was chosen (they used to stay "I need a home" green even for a seller)
     const kinds = LEAD_KINDS.map(k => `<label><input type="radio" name="kind" value="${k.id}" ${preKind === k.id ? 'checked' : ''} required> ${k.hi}<br><small>${k.en}</small></label>`).join('');
     const typeGroups: [string, string[]][] = [['🏠 घर / Homes', ['Residential Flat', 'Independent House', 'Residential Villa', 'Builder Floor', 'Penthouse', 'Farm House']], ['🌱 प्लॉट · ज़मीन / Plots & land', ['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land']], ['🏪 दुकान · ऑफ़िस / Commercial', ['Commercial Shop', 'Showroom', 'Commercial Office']], ['🏭 गोदाम · उद्योग / Industry', ['Warehouse / Godown', 'Factory / Industrial Shed']], ['🏨 और / More', ['PG / Hostel', 'Co-working Space', 'Hotel / Guest House', 'Banquet / Marriage Hall', 'Parking / Garage', 'School / Hospital Building']]];
     const who = b?.name || 'ब्रोकर';
@@ -1008,7 +1007,7 @@ export function createPartnerQrRouter() {
     res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट · फ़ार्म · गोदाम</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <div class="card"><p class="t">${esc(who)}${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} आपसे संपर्क करेंगे। <small>A GENZ-verified broker will call you.</small></p>
-<div class="big2"><a class="btn ${sellerSide ? 'l' : 'g'}" href="/q/${esc(p.qrCode)}?want=buy#form" data-testid="qr-want-home" ${sellerSide ? '' : 'aria-current="true"'}>🏠 मुझे प्रॉपर्टी चाहिए<br><small${sellerSide ? '' : ' style="color:#e9ffe9"'}>I need a property (home · plot · shop · godown)</small></a><a class="btn ${sellerSide ? 'g' : 'l'}" href="/q/${esc(p.qrCode)}?want=sell#form" data-testid="qr-want-list" ${sellerSide ? 'aria-current="true"' : ''}>📋 मुझे अपनी प्रॉपर्टी देनी है<br><small${sellerSide ? ' style="color:#e9ffe9"' : ''}>I want to list my property</small></a></div></div>
+</div>
 ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
 <style>#form form:has(input[name=kind][value=SELL]:checked) #promise,#form form:has(input[name=kind][value=RENT_OUT]:checked) #promise{display:none}#sellnote{display:none}#form form:has(input[name=kind][value=SELL]:checked) #sellnote,#form form:has(input[name=kind][value=RENT_OUT]:checked) #sellnote{display:block}.kinds label{min-width:0}.w{padding-bottom:96px}</style>
 <div class="card${picked ? ' pick' : ''}" id="form">${picked && b ? pickedCard(b, p, picked) : ''}
@@ -1533,7 +1532,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   /** one change of the shop's share: old → new, why, and the shop's answer (OK / not right → GENZ desk) */
   const chgCard = (l: PartnerLead, c: ShareChange, tok: string) => {
     const kind = LEAD_KINDS.find(k => k.id === l.kind)!; const by = SHARE_CHANGE_LABEL[c.by];
-    return `<div class="card chg" data-testid="share-change"><p class="t"><b>⚠ आपका हिस्सा बदला है / Your share changed</b><br><small>${kind.hi} · ${esc(l.locality)} · ••${esc(l.phoneLast4)}</small></p>
+    return `<div class="card chg" data-testid="share-change"><p class="t"><b>${c.from > 0 ? '⚠ आपका हिस्सा बदला है / Your share changed' : '💰 आपका हिस्सा तय हुआ / Your share is fixed'}</b><br><small>${kind.hi} · ${esc(l.locality)} · ••${esc(l.phoneLast4)}</small></p>
 <p class="t">${c.from > 0 ? `<span class="old">${inr(c.from)}</span> → ` : ''}<b class="fig">${inr(c.to)}</b></p>
 <p class="small"><span>${esc(by.hi)} / ${esc(by.en)}</span>${c.reason ? ` — “${esc(c.reason)}”` : ''} · ${when(c.at)}</p>
 ${c.brokerNote ? `<p class="small"><span>ब्रोकर का जवाब / Broker’s reply:</span> ${esc(c.brokerNote)}</p>` : ''}

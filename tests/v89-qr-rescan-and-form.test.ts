@@ -62,14 +62,14 @@ describe('the QR form follows the chosen side; the same mobile scanning again is
     expect(r.status).toBe(200); const j = await r.json(); partner = j.partner; qr = j.partner.qrCode; const token = j.link.split('/sp/')[1];
     const ck = await partnerSignIn(token); expect((await form(ck, `/sp/${token}/accept`, { ok: '1' })).status).toBe(303);
   });
-  it('a seller’s form: the big buttons follow the choice (list-my-property is the green one), the seller note exists, and the buyer promise is hidden for a seller', async () => {
+  it('a seller’s form: ?want= ticks the choice (v126: the two big buttons that repeated the four choices are gone), the seller note exists, and the buyer promise is hidden for a seller', async () => {
     const sell = await (await fetch(`${B}/q/${qr}?want=sell#form`)).text();
-    expect(sell).toMatch(/class="btn g"[^>]*data-testid="qr-want-list"/); expect(sell).toMatch(/class="btn l"[^>]*data-testid="qr-want-home"/);
+    expect(sell).not.toContain('qr-want-list'); expect(sell).not.toContain('qr-want-home');
     expect(sell).toContain('value="SELL" checked'); expect(sell).toContain('data-testid="qr-seller-note"');
     expect(sell).toContain('input[name=kind][value=SELL]:checked) #promise,');
     const buy = await (await fetch(`${B}/q/${qr}?want=buy#form`)).text();
-    expect(buy).toMatch(/class="btn g"[^>]*data-testid="qr-want-home"/); expect(buy).toMatch(/class="btn l"[^>]*data-testid="qr-want-list"/); expect(buy).toContain('value="BUY" checked');
-    const none = await (await fetch(`${B}/q/${qr}`)).text(); expect(none).toMatch(/class="btn g"[^>]*data-testid="qr-want-home"/);
+    expect(buy).toContain('value="BUY" checked');
+    const none = await (await fetch(`${B}/q/${qr}`)).text(); expect(none).not.toMatch(/name="kind"[^>]* checked/);
   });
   it('a seller needs no “no direct deal” promise (the server still asks it of a buyer)', async () => {
     const r = await scan('9123455601', 'SELL', { direct: '', sign: '', budget: '1.2 cr' }); expect(r.status).toBe(303); expect(r.headers.get('location')).toContain('/q/chat/');

@@ -30,3 +30,9 @@ describe('v125 — nothing reads as a demand for papers on an enquiry', () => {
     for (const folded of ['name="city"', 'name="ptype"', 'name="note"']) expect(s.indexOf(folded), folded).toBeGreaterThan(more);
   });
 });
+
+describe('v126', () => {
+  it('the QR form asks “what do you need” once (four choices), and a first share is “fixed”, not “changed”', () => {
+    const s = read('server/shopPartners.ts'); expect(s).not.toContain('qr-want-home'); expect(s).toContain("c.from > 0 ? '⚠ आपका हिस्सा बदला है / Your share changed' : '💰 आपका हिस्सा तय हुआ / Your share is fixed'");
+  });
+});
