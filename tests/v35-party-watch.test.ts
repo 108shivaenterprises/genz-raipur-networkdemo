@@ -42,12 +42,15 @@ afterAll(async () => { proc?.kill('SIGTERM'); await new Promise(r => setTimeout(
 let PA: any; const X = rnd(); const Y = [rnd(), rnd(), rnd(), rnd()];
 const rep = (who: string, phone: string, extra: Record<string, unknown> = {}) => call(jar[who], 'POST', '/api/party-watch/report', { phone, partyName: 'Rakesh Gupta', partyKind: 'BUYER', category: 'COMMISSION_REFUSED', note: 'Visited twice, then said no commission and went to the owner directly.', ...extra });
 const level = async (who: string, phone: string) => (await j(await call(jar[who], 'POST', '/api/party-watch/check', { phone }))).level;
-const book = (who: string, phone: string) => call(jar[who], 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Rakesh', customerPhone: phone, scheduledTime: slot(2) });
+// v127 — the first broker to book holds the buyer on that home, so each broker books his visit on a different home of broker 1
+let PS: any[] = []; const homeOf = (who: string) => PS[Math.max(0, ['BRK2', 'BRK3', 'BRK4', 'BRK1'].indexOf(who)) % PS.length] || PA;
+const book = (who: string, phone: string) => call(jar[who], 'POST', '/api/site-visits', { propertyId: homeOf(who).id, customerName: 'Rakesh', customerPhone: phone, scheduledTime: slot(2) });
 
 describe('Network Watch', () => {
   it('setup + a clean mobile checks clear', async () => {
     const all = (await j(await call(jar.ADMIN, 'GET', '/api/properties'))).properties as any[];
     PA = all.find(p => p.listingBrokerId === 'USR-BRK-001' && p.ownerId === 'USR-OWNER-001' && p.transactionType === 'Sale' && p.listingStatus === 'active' && p.verificationStatus === 'VERIFIED');
+    PS = all.filter(p => p.listingBrokerId === 'USR-BRK-001' && p.listingStatus === 'active' && p.verificationStatus === 'VERIFIED'); PS = [PA, ...PS.filter(p => p.id !== PA.id)];
     expect(PA).toBeTruthy();
     expect(await level('BRK1', X)).toBe('NONE');
     expect((await call(jar.BRK1, 'POST', '/api/party-watch/check', { phone: '123' })).status).toBe(400);

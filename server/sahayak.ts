@@ -25,6 +25,7 @@ export interface BotDeps {
   addMsg(l: PartnerLead, m: Omit<LeadMsg, 'at'>): void;
   hist(l: PartnerLead, text: string): void;
   matchesFor(l: PartnerLead): Property[];
+  heldElsewhere(l: PartnerLead): number;
   needLine(l: PartnerLead): string;
   /** show the home in the chat (the number opens to the broker on the first one) */
   shareHome(l: PartnerLead, h: Property, by: 'BOT' | 'CUSTOMER'): void;
@@ -121,6 +122,8 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     const all = d.matchesFor(l); botOf(l).seen = all.map(h => h.id);   // v103 — every home that fits NOW is known to the assistant; only a home that is not in this list counts as "new" later
     const sent = sentIds(l); const pick = all.filter(h => !sent.includes(h.id)).slice(0, BOT_LIMITS.autoHomes);
     if (!pick.length) {
+      // v127 — the home he came for is one he already sees with another GENZ broker: say so plainly (never who)
+      if (d.heldElsewhere(l) > 0) say(l, 'ℹ️ आपकी ज़रूरत का एक घर आप पहले से GENZ के एक दूसरे ब्रोकर के साथ देख रहे हैं। उस घर की विज़िट और आगे की बात उन्हीं के साथ होगी — यहाँ मैं आपको दूसरे घर दिखाऊँगा।', 'ℹ️ One home that fits you is one you are already seeing with another GENZ broker. Its visit and the next steps stay with that broker — here I will show you other homes.');
       if (!sent.length) {
         const b = botOf(l); const nw = b.network?.count || 0; const who = d.broker(l)?.name || 'ब्रोकर';
         if (nw > 0) say(l, `${who} के अपने घरों में अभी सीधा मेल नहीं है — पर ऊपर बताए नेटवर्क के घरों पर वे काम कर रहे हैं। नया घर आते ही यहीं दिखा दूँगा। आप चाहें तो ज़रूरत बदलकर भी लिख सकते हैं (जैसे “बजट 60 लाख”)।`,

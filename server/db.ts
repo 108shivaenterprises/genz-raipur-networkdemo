@@ -1368,7 +1368,8 @@ export interface PartyAlert {
 export interface BuyerBond {
   id: string; propertyId: string; brokerId: string;
   buyerKey: string; buyerPhoneLast4: string; buyerName: string;
-  source: 'VISIT' | 'OFFER'; sourceId: string; dealRoomId?: string;
+  /** v127 — SHOWN (a home sent to him in a QR chat) and BOOKED (a visit booked) start the bond too: the broker who showed first holds it */
+  source: 'VISIT' | 'OFFER' | 'SHOWN' | 'BOOKED'; sourceId: string; dealRoomId?: string;
   status: 'ACTIVE' | 'RELEASED' | 'VOID';
   createdAt: string; expiresAt: string; days: number;
   asks: { id: string; fromId: string; fromName: string; fromCompany?: string; fromPhone?: string; note: string; at: string }[];

@@ -28,7 +28,7 @@ export function leadBrief(i: BriefIn): Brief {
     i.visitAsked ? { en: 'Answer his visit request now — a waiting visit goes cold fastest.', hi: 'उनकी विज़िट रिक्वेस्ट का जवाब अभी दें — रुकी विज़िट सबसे जल्दी ठंडी पड़ती है।' }
     : i.needsBroker && i.needsBroker !== 'no-match' ? { en: 'He asked for you — reply in the chat.', hi: 'उन्होंने आपको बुलाया है — चैट में जवाब दें।' }
     : !i.confirmed ? { en: 'He has not confirmed his need yet — ask him in the chat.', hi: 'ज़रूरत अभी पक्की नहीं हुई — चैट में पूछें।' }
-    : !i.homesSent && i.networkCount > 0 ? { en: `No home of yours fits, but the network has ${i.networkCount} — ask the network from Buyers.`, hi: `आपका कोई घर मेल नहीं खाता, पर नेटवर्क में ${i.networkCount} हैं — Buyers से नेटवर्क से पूछें।` }
+    : !i.homesSent && i.networkCount > 0 ? { en: `No home of yours fits, but the network has ${i.networkCount} — tap “Ask these brokers to co-broke” below; a home they answer with can be shared with him.`, hi: `आपका कोई घर मेल नहीं खाता, पर नेटवर्क में ${i.networkCount} हैं — नीचे “इन ब्रोकरों से को-ब्रोक माँगें” दबाएँ; जो घर वे जवाब में दें, वह उन्हें भेज सकते हैं।` }
     : !i.homesSent ? { en: 'Nothing fits yet — his need is on GENZ Radar; add a listing or widen his area / budget with him.', hi: 'अभी कुछ मेल नहीं खाता — उनकी ज़रूरत GENZ Radar पर है; लिस्टिंग जोड़ें या उनसे इलाका / बजट बढ़वाएँ।' }
     : i.visitOk ? { en: 'Visit is fixed — remind him a day before and be there.', hi: 'विज़िट तय है — एक दिन पहले याद दिलाएँ और पहुँचें।' }
     : i.timeline === 'NOW' && i.revealed ? { en: 'He wants it this month — call him today and fix a visit.', hi: 'इसी महीने लेना है — आज ही कॉल करके विज़िट तय करें।' }

@@ -2734,6 +2734,8 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   };
 
   state.siteVisits.unshift(newVisit);
+  // v127 — the broker who books first holds this buyer on this home (it used to need the verified visit; a second broker could book in between)
+  if (customerPhone) makeBuyerBond({ brokerId: currentUser.id, propertyId, buyerPhone: customerPhone, buyerName: customerName, source: 'BOOKED', sourceId: visitId, dealRoomId: deal?.id });
   if (roomLink) linkVisitToRoom(roomLink.room, roomLink.item, clientRoomRequestId, newVisit);
   // v33 — “no direct deal” acknowledgement from the buyer (tick + mobile code) before his QR / code is shown
   const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title, alsoBrokerId: prop.listingBrokerId });

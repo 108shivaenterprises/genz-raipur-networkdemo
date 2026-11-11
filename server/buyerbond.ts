@@ -67,7 +67,7 @@ export function makeBuyerBond(a: { brokerId: string; propertyId: string; buyerPh
   if (phone10(a.buyerPhone).length !== 10) return null;
   const existing = activeBuyerBond(a.propertyId, a.buyerPhone);
   if (existing) {
-    if (existing.brokerId === a.brokerId) { note(existing, `${a.source === 'VISIT' ? 'Another verified visit' : 'Another offer'} (${a.sourceId})`); }
+    if (existing.brokerId === a.brokerId && a.source !== 'SHOWN') { note(existing, `${({ VISIT: 'Verified visit', OFFER: 'Offer', BOOKED: 'Visit booked', SHOWN: 'Shown' })[a.source]} (${a.sourceId})`); }
     return existing.brokerId === a.brokerId ? existing : null; // someone else's bond: never a second one
   }
   const days = daysFor();
@@ -78,7 +78,7 @@ export function makeBuyerBond(a: { brokerId: string; propertyId: string; buyerPh
     source: a.source, sourceId: a.sourceId, dealRoomId: a.dealRoomId || undefined, status: 'ACTIVE',
     createdAt: new Date(now).toISOString(), expiresAt: new Date(now + days * 86400_000).toISOString(), days, asks: [], events: [],
   };
-  note(b, a.source === 'VISIT' ? `Site visit ${a.sourceId} verified with the buyer — buyer bond for ${days} days` : `Offer ${a.sourceId} sent with the buyer's consent — buyer bond for ${days} days`);
+  note(b, `${({ VISIT: `Site visit ${a.sourceId} verified with the buyer`, OFFER: `Offer ${a.sourceId} sent with the buyer's consent`, BOOKED: `Site visit ${a.sourceId} booked for the buyer`, SHOWN: `Home shown to the buyer in his QR chat (lead ${a.sourceId})` })[a.source]} — buyer bond for ${days} days`);
   st().buyerBonds.unshift(b);
   const u = db.byId('users', a.brokerId) as UserProfile | undefined;
   db.appendAuditEvent(a.brokerId, u?.role || 'BROKER', 'PROPERTY', a.propertyId, 'BUYER_BOND_CREATED', `Buyer bond ${b.id}: ${u?.name || a.brokerId} brought buyer …${b.buyerPhoneLast4} to ${a.propertyId} (${a.source} ${a.sourceId}), protected until ${b.expiresAt.slice(0, 10)}`);

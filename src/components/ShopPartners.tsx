@@ -284,6 +284,7 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
           )}
           {l.masked && c.reqConfirmedAt && !owner && (l.matches || []).length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it (area, rent/sale, budget). Add or switch on a matching listing — until you share one, his number stays hidden.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर उससे मेल नहीं खाता (इलाका, किराया/बिक्री, बजट)। मेल खाती लिस्टिंग जोड़ें या चालू करें — जब तक शेयर नहीं, नंबर छुपा रहेगा।')}</p>}
           {l.bot?.network && l.bot.network.count > 0 && !owner && <p className="rounded-lg bg-indigo-50 p-2 text-xs text-indigo-900" data-testid="sp-network">🌐 {tx(`The network holds ${l.bot.network.count} home${l.bot.network.count > 1 ? 's' : ''} for his need (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''}). He was told the count and range. His need is in your Buyers list — open Buyers → Magic Match to talk to those brokers.`, `नेटवर्क में उनकी ज़रूरत के ${l.bot.network.count} घर हैं (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''})। उन्हें गिनती और दाम की सीमा बता दी गई है। उनकी ज़रूरत आपकी Buyers लिस्ट में है — Buyers → Magic Match से उन ब्रोकरों से बात करें।`)}</p>}
+          {l.bot?.network?.reqId && l.bot.network.count > 0 && !owner && <AskNetwork reqId={l.bot.network.reqId} />}
           {err && <p className="text-xs font-semibold text-red-700" role="alert">{err}</p>}
         </div>
       )}
@@ -323,6 +324,17 @@ const LeadVisit: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) 
   );
 };
 
+/** v127 — one tap from the lead: his need (never his name or number) goes to the brokers who hold a matching home; a home they answer with can then be shared with him here */
+const AskNetwork: React.FC<{ reqId: string }> = ({ reqId }) => {
+  const tx = useTx(); const { toast } = useUI(); const [busy, setBusy] = useState(false); const [sent, setSent] = useState('');
+  const go = async () => {
+    setBusy(true);
+    try { const r = await api.broadcastSend(reqId); setSent(tx(`Sent to ${r.broadcast.sentTo} brokers. A home they answer with shows here to share with him.`, `${r.broadcast.sentTo} ब्रोकरों को भेजा। जो घर वे जवाब में देंगे, वह यहीं उन्हें भेजने के लिए दिखेगा।`)); }
+    catch (e: any) { toast(e.message, 'error'); } finally { setBusy(false); }
+  };
+  return sent ? <p className="text-xs text-emerald-800" data-testid="sp-asked">{sent}</p>
+    : <button type="button" disabled={busy} onClick={go} data-testid="sp-ask-network" className="inline-flex min-h-10 items-center rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-50">🤝 {tx('Ask these brokers to co-broke', 'इन ब्रोकरों से को-ब्रोक माँगें')}</button>;
+};
 const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid' | 'need' | 'share'>(''); const [val, setVal] = useState(''); const [reason, setReason] = useState(''); const [pm, setPm] = useState<PartnerPayMode>('UPI'); const [reply, setReply] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);

@@ -36,6 +36,7 @@ import { DEMO_CITY_PARTNERS, type PartnerDemo } from './demoCities.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, DEMO_MODE } from './auth.js';
 import { sendSms } from './notify.js';
 import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
+import { buyerBondBlock, makeBuyerBond } from './buyerbond.js';
 import { partyBlock } from './partywatch.js';
 import { alertNeedNetwork, networkRange } from './broadcast.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
@@ -158,11 +159,20 @@ function matchesFor(l: PartnerLead): Property[] {
   const pool = new Map<string, Property>();
   for (const p of st().properties) if (p.listingBrokerId === b.id && pageLive(p)) pool.set(p.id, p);
   for (const h of shownHomes(b)) pool.set(h.id, h);
+  // v127 — co-broking: when he sent THIS customer's need to the network and a listing broker answered “I have it” with a home, that answer lets him show that home to this customer
+  const reqId = l.chat?.bot?.network?.reqId;
+  if (reqId) for (const bc of st().broadcasts) if (bc.brokerId === b.id && bc.requirementId === reqId) for (const x of bc.responses) {
+    const h = x.propertyId ? st().properties.find(p => p.id === x.propertyId) : undefined;
+    if (h && h.listingBrokerId === x.brokerId && pageLive(h)) pool.set(h.id, h);
+  }
   // v100 — a customer who wants ANOTHER city than the shop's: the homes of that city that their brokers opened to pages (the same rule a broker's own page follows)
   if (l.wantCity && !sameCity(l.wantCity, shopCityOf(l))) for (const h of st().properties) if (sameCity(h.city, l.wantCity) && canShow(b, h)) pool.set(h.id, h);
   // v103 — the 48-hour wait (audit F3) only guards the moment the NUMBER opens; once it is open a new home can be shown at once
-  return [...pool.values()].filter(h => homeFits(l, h) && (!tooFreshFor(l, h) || !!l.chat?.revealedAt)).slice(0, 12);
+  // v127 — a home this customer was already shown / booked on by ANOTHER broker is not his to show (first broker to show holds the buyer on that home)
+  return [...pool.values()].filter(h => homeFits(l, h) && (!tooFreshFor(l, h) || !!l.chat?.revealedAt) && !buyerBondBlock({ id: b.id }, h.id, l.phone)).slice(0, 12);
 }
+/** v127 — homes that fit him but that he is already seeing with another GENZ broker (count only; never which broker) */
+const heldElsewhere = (l: PartnerLead): number => st().properties.filter(h => pageLive(h) && homeFits(l, h) && !!buyerBondBlock({ id: l.brokerId }, h.id, l.phone)).length;
 const homeBrief = (h: Property) => ({ id: h.id, title: h.title, price: priceShort(h.askingPrice), place: `${h.locality}, ${h.city}`, rent: h.transactionType !== 'Sale' });
 /** the customer's need, as one readable line (what the broker asks him to confirm) */
 const needLine = (l: PartnerLead) => `${LEAD_KINDS.find(k => k.id === l.kind)?.hi || ''} · ${l.locality}${l.wantCity && !sameCity(l.locality, l.wantCity) ? `, ${l.wantCity}` : ''}${l.budget ? ` · ${l.budget}` : ''}${l.propertyType ? ` · ${l.propertyType}` : ''}${l.note ? ` · “${l.note}”` : ''}`;
@@ -262,6 +272,7 @@ function shareHomeAuto(l: PartnerLead, h: Property, by: 'BOT' | 'CUSTOMER') {
   if (!l.chat) return;
   const b = homeBrief(h);
   addMsg(l, { by: 'BOT', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
+  makeBuyerBond({ brokerId: l.brokerId, propertyId: h.id, buyerPhone: l.phone, buyerName: l.name, source: 'SHOWN', sourceId: l.id });   // v127
   const first = !l.chat.revealedAt;
   revealNumber(l, { homeId: h.id, title: h.title });
   hist(l, 'SYSTEM', `GENZ assistant showed “${h.title}” in the chat${by === 'CUSTOMER' ? ' (he picked it on Explore)' : ''}`);
@@ -305,7 +316,7 @@ export const previewMedia = (h?: Property): { photos: string[]; videos: string[]
   return { photos: m.photos.slice(0, 10), videos: m.videos.slice(0, 2) };
 };
 export const sahayak = makeSahayak({
-  addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
+  addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, heldElsewhere, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
   audit: (l, action, text) => db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, action, text),
   isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead, networkScan,
   media: h => { const m = previewMedia(h); return { photos: m.photos.length, videos: m.videos.length }; },
@@ -828,11 +839,13 @@ export function createShopPartnerRouter() {
     const h = matchesFor(l).find(x => x.id === str(req.body?.homeId, 40));
     if (!h) {
       const asked = st().properties.find(x => x.id === str(req.body?.homeId, 40));
+      { const blocked = asked ? buyerBondBlock({ id: l.brokerId }, asked.id, l.phone) : null; if (blocked) return res.status(409).json(blocked); }   // v127 — another broker showed him this home first
       if (asked && homeFits(l, asked) && tooFreshFor(l, asked)) return bad(res, `A listing added after this customer scanned counts as his matching home only after ${Math.round(REVEAL_FRESH_LISTING_MS / 3600_000)} hours. Share it in the chat later, or pick an older home.`, 409, { code: 'LISTING_TOO_NEW' });
       return bad(res, 'That home does not match what he asked for (or is not on your page). Pick one from the list.', 400);
     }
     const b = homeBrief(h);
     addMsg(l, { by: 'BROKER', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
+    makeBuyerBond({ brokerId: l.brokerId, propertyId: h.id, buyerPhone: l.phone, buyerName: l.name, source: 'SHOWN', sourceId: l.id });   // v127
     l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l);
     const first = !l.chat.revealedAt;
     revealNumber(l, { homeId: h.id, title: h.title });
