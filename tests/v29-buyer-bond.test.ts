@@ -64,14 +64,14 @@ describe('buyer bond', () => {
   it('v127: a booked visit starts the bond at once (the first broker to book holds the buyer); a second broker is stopped; the verified visit is noted on the same bond', async () => {
     const r = await call(jar.BRK2, 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Sunil Buyer', customerPhone: X, scheduledTime: slot(2) });
     expect(r.status).toBe(200);
-    expect((await j(await call(jar.BRK2, 'GET', '/api/buyer-bonds/mine'))).active).toBe(1);
+    { const m0 = await j(await call(jar.BRK2, 'GET', '/api/buyer-bonds/mine')); expect(m0.active).toBe(1); expect(m0.bonds[0]).toMatchObject({ source: 'BOOKED', days: 7 }); expect(Date.parse(m0.bonds[0].expiresAt)).toBeLessThan(Date.now() + 7.1 * 86400_000); }
     const blocked = await call(jar.BRK3, 'POST', '/api/site-visits', { propertyId: PA.id, customerName: 'Sunil', customerPhone: X, scheduledTime: slot(3) }); expect(blocked.status).toBe(409); expect((await j(blocked)).code).toBe('BUYER_BONDED');
     await verifiedVisit('BRK2', X);
     const mine = await j(await call(jar.BRK2, 'GET', '/api/buyer-bonds/mine'));
     expect(mine.active).toBe(1);
     const b = mine.bonds[0];
-    expect(b).toMatchObject({ propertyId: PA.id, source: 'BOOKED', buyerPhoneLast4: X.slice(-4), active: true, status: 'ACTIVE' });
-    expect(Date.parse(b.expiresAt)).toBeGreaterThan(Date.now() + 6 * 86400_000);
+    expect(b).toMatchObject({ propertyId: PA.id, source: 'VISIT', buyerPhoneLast4: X.slice(-4), active: true, status: 'ACTIVE' });   // v128 — the verified visit moved it from the 7-day booking clock to the full days
+    expect(Date.parse(b.expiresAt)).toBeGreaterThan(Date.now() + 8 * 86400_000);
     BOND = b.id;
     const home = await j(await call(jar.BRK2, 'GET', '/api/home/broker'));
     expect(home.counts.buyerBonds).toBe(1);

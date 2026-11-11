@@ -34,6 +34,7 @@ const isActive = (b: BuyerBond, now = Date.now()) => b.status === 'ACTIVE' && Da
 const note = (b: BuyerBond, text: string) => { b.events.push({ at: nowIso(), text }); if (b.events.length > 40) b.events.splice(0, b.events.length - 40); };
 const dIN = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 
+export const BOOKED_DAYS = 7;
 export const BUYER_BONDED_MSG = {
   en: 'Another GENZ broker brought this buyer to this property first, and that protection is still running. You cannot book a visit or make an offer for this buyer here until it ends — but you can ask that broker to co-broke.',
   hi: 'इस प्रॉपर्टी पर यह खरीदार पहले GENZ का दूसरा ब्रोकर लाया था, और उसकी सुरक्षा अभी चल रही है। सुरक्षा ख़त्म होने तक आप इस खरीदार के लिए यहाँ विज़िट या ऑफ़र नहीं कर सकते — पर उस ब्रोकर से को-ब्रोकिंग के लिए कह सकते हैं।',
@@ -67,10 +68,16 @@ export function makeBuyerBond(a: { brokerId: string; propertyId: string; buyerPh
   if (phone10(a.buyerPhone).length !== 10) return null;
   const existing = activeBuyerBond(a.propertyId, a.buyerPhone);
   if (existing) {
+    // v128 — a bond that came from a booking alone ran on the short clock; the buyer's own step (verified visit, offer he agreed to, a home in his own QR chat) puts it on the full days
+    if (existing.brokerId === a.brokerId && existing.source === 'BOOKED' && a.source !== 'BOOKED') {
+      const full = daysFor(); existing.source = a.source; existing.days = full; existing.expiresAt = new Date(Date.now() + full * 86400_000).toISOString();
+      note(existing, `The buyer confirmed (${a.source} ${a.sourceId}) — protection now runs the full ${full} days`); return existing;
+    }
     if (existing.brokerId === a.brokerId && a.source !== 'SHOWN') { note(existing, `${({ VISIT: 'Verified visit', OFFER: 'Offer', BOOKED: 'Visit booked', SHOWN: 'Shown' })[a.source]} (${a.sourceId})`); }
     return existing.brokerId === a.brokerId ? existing : null; // someone else's bond: never a second one
   }
-  const days = daysFor();
+  // v128 — a visit that is only BOOKED has no word from the buyer yet: it holds him for 7 days, not the full period (so a number typed into a visit cannot lock a buyer for months)
+  const days = a.source === 'BOOKED' ? Math.min(BOOKED_DAYS, daysFor()) : daysFor();
   const now = Date.now();
   const b: BuyerBond = {
     id: `BB-${now.toString(36).toUpperCase()}${crypto.randomInt(100, 999)}`, propertyId: a.propertyId, brokerId: a.brokerId,
