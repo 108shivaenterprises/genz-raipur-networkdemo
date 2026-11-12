@@ -342,7 +342,7 @@ export function createCrmPlusRouter() {
         confirmed: pays.filter(p => p.status === 'CONFIRMED').reduce((a, p) => a + p.amount, 0), unconfirmed: pays.filter(p => p.status === 'RECORDED').reduce((a, p) => a + p.amount, 0), disputed: pays.filter(p => p.status === 'DISPUTED').reduce((a, p) => a + p.amount, 0),
         tdsPct, noPan: !assoc?.panNumber,
       },
-      invoice: { indicative: true, note: 'Indicative figures for the associate\'s brokerage invoice. GST applies only if the associate is GST-registered. Rates (GST, TDS) must be confirmed with your CA.', associateGstin: assoc?.gstin || null, ...brokerageBreakup(paidTotal, tdsPct, !!assoc?.gstin) },
+      invoice: { indicative: true, note: 'Indicative figures for the associate\'s brokerage invoice. GST applies only if the associate is GST-registered.', associateGstin: assoc?.gstin || null, ...brokerageBreakup(paidTotal, tdsPct, !!assoc?.gstin) },
       settlement: b.settlement || null, cancelRequest: b.cancelRequest || null, viewer: u.role,
     });
   });
@@ -383,7 +383,7 @@ export function createCrmPlusRouter() {
     if (!p || !isBuilderOf(u, p)) return bad(res, 'Project not found', 404);
     const t = Number(req.body?.tdsPct); if (!Number.isFinite(t) || t < 0 || t > 30) return bad(res, 'TDS % must be between 0 and 30');
     const was = p.tdsPct; p.tdsPct = t; p.updatedAt = nowIso(); db.save();
-    auditCrm('CRM_TDS_RATE_SET', p.id, `${u.name}: TDS on brokerage for ${p.projectName} ${was ?? 'default'} → ${t}% (applies to NEW payouts; confirm with your CA)`, 'COMMISSION');
+    auditCrm('CRM_TDS_RATE_SET', p.id, `${u.name}: TDS on brokerage for ${p.projectName} ${was ?? 'default'} → ${t}% (applies to NEW payouts)`, 'COMMISSION');
     res.json({ success: true, tdsPct: t });
   });
 

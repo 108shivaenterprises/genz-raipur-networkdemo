@@ -27,7 +27,7 @@ export const CostSheet: React.FC = () => {
     <div className="space-y-3" data-testid="cost-sheet">
       <div className="rounded-xl border border-slate-200 bg-white p-3">
         <h3 className="text-sm font-bold text-slate-900">{tx('All-in cost sheet', 'कुल ख़र्च शीट')}</h3>
-        <p className="text-xs text-slate-500">{tx('Show the buyer the real number before the site visit — no surprise at registry. Rates differ by state, buyer and year: type the rate you have confirmed with the sub-registrar / your CA. The numbers below are only a starting point, not an official rate.', 'साइट विज़िट से पहले खरीदार को असली रकम दिखाएँ — रजिस्ट्री पर झटका नहीं। दर राज्य, खरीदार और साल से बदलती है: सब-रजिस्ट्रार / CA से पक्की की हुई दर डालें। नीचे की संख्याएँ सिर्फ़ शुरुआती अंदाज़ हैं, सरकारी दर नहीं।')}</p>
+        <p className="text-xs text-slate-500">{tx('Show the buyer the real number before the site visit — no surprise at registry. Rates differ by state, buyer and year: type the rate that applies to this buyer. The numbers below are a starting point.', 'साइट विज़िट से पहले खरीदार को असली रकम दिखाएँ — रजिस्ट्री पर झटका नहीं। दर राज्य, खरीदार और साल से बदलती है: इस खरीदार पर लागू दर डालें। नीचे की संख्याएँ सिर्फ़ शुरुआती अंदाज़ हैं, सरकारी दर नहीं।')}</p>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <Num label={tx('Price ₹', 'क़ीमत ₹')} v={f.price} set={set('price')} testId="cost-price" />
           <Num label={tx('Guideline / circle value ₹ (optional)', 'गाइडलाइन / सर्किल वैल्यू ₹ (वैकल्पिक)')} v={f.guide} set={set('guide')} hint={tx('Duty is charged on the higher of the two', 'ड्यूटी दोनों में से ज़्यादा पर लगती है')} />
@@ -35,8 +35,7 @@ export const CostSheet: React.FC = () => {
           <Num label={tx('Registration %', 'रजिस्ट्रेशन %')} v={f.reg} set={set('reg')} />
           <Num label={tx('Registration cap ₹ (if any)', 'रजिस्ट्रेशन की सीमा ₹ (अगर हो)')} v={f.regCap} set={set('regCap')} />
           <label className="block text-xs font-semibold text-slate-600">{tx('GST %', 'GST %')}
-            <select className={`${inp} mt-1`} value={f.gst} onChange={e => set('gst')(e.target.value)}><option value="0">{tx('0 — ready / resale', '0 — तैयार / पुनर्विक्रय')}</option><option value="1">{tx('1 — affordable, under construction', '1 — किफ़ायती, निर्माणाधीन')}</option><option value="5">{tx('5 — under construction', '5 — निर्माणाधीन')}</option></select>
-            <span className="mt-0.5 block text-xs font-normal text-slate-500">{tx('Confirm with a CA', 'CA से पक्का करें')}</span></label>
+            <select className={`${inp} mt-1`} value={f.gst} onChange={e => set('gst')(e.target.value)}><option value="0">{tx('0 — ready / resale', '0 — तैयार / पुनर्विक्रय')}</option><option value="1">{tx('1 — affordable, under construction', '1 — किफ़ायती, निर्माणाधीन')}</option><option value="5">{tx('5 — under construction', '5 — निर्माणाधीन')}</option></select></label>
           <Num label={tx('Extras ₹', 'अतिरिक्त ₹')} v={f.extras} set={set('extras')} />
           <Num label={tx('Legal ₹', 'वकील ₹')} v={f.legal} set={set('legal')} />
           <Num label={tx('Broker’s fee %', 'ब्रोकर फ़ीस %')} v={f.brokerage} set={set('brokerage')} />

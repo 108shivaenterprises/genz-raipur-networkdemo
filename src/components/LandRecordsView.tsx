@@ -57,7 +57,7 @@ export const LandRecordsView: React.FC<{ currentUser: UserProfile }> = ({ curren
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-900">{tx('Land Records & Red Flags', 'भूमि रिकॉर्ड और रेड फ़्लैग')}</h2>
-          <p className="max-w-2xl text-xs text-slate-500">{tx('You enter the khasra / land record here after checking your state land-record portal or tehsil. GENZ does not pull data from the portal — red flags are only as accurate as what you enter. Get a lawyer for the final call.','खसरा / भूमि रिकॉर्ड आप राज्य के भू-अभिलेख पोर्टल या तहसील से देखकर यहाँ भरते हैं। GENZ पोर्टल से डेटा नहीं उठाता — रेड फ़्लैग उतने ही सही हैं जितना आपने भरा। अंतिम निर्णय वकील से करवाएँ।')}</p>
+          <p className="max-w-2xl text-xs text-slate-500">{tx('You enter the khasra / land record here after checking your state land-record portal or tehsil. GENZ does not pull data from the portal — red flags are only as accurate as what you enter.','खसरा / भूमि रिकॉर्ड आप राज्य के भू-अभिलेख पोर्टल या तहसील से देखकर यहाँ भरते हैं। GENZ पोर्टल से डेटा नहीं उठाता — रेड फ़्लैग उतने ही सही हैं जितना आपने भरा।')}</p>
         </div>
         <button onClick={() => { setForm(blank()); setEditId(null); }} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"><Plus className="h-4 w-4" /> {tx('New record', 'नया रिकॉर्ड')}</button>
       </div>

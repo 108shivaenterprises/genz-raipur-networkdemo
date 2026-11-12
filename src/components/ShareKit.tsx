@@ -208,7 +208,6 @@ export const ShareKit: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => navigator.clipboard?.writeText(shareText)} className="inline-flex items-center gap-1 rounded border border-slate-300 px-2.5 py-1.5 font-semibold"><Copy className="h-3.5 w-3.5" /> {tx('Copy', 'कॉपी')}</button>
           <a href={waLink(f.phone, shareText)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1.5 font-semibold text-white"><MessageCircle className="h-3.5 w-3.5" /> {tx('Send on WhatsApp', 'WhatsApp पर भेजें')}</a>
-          <span className="text-[10px] text-slate-500">{tx('These are drafts — have offer / payment messages checked by a lawyer.','ये ड्राफ़्ट हैं — ऑफ़र / भुगतान वाले संदेश किसी वकील से जँचवा लें।')}</span>
         </div>
       </div>
 

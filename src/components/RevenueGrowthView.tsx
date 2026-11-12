@@ -166,7 +166,7 @@ const BookTab: React.FC<{ say: (ok: boolean, m: string) => void }> = ({ say }) =
           </table>
         </div>
       </section>
-      <p className="text-[11px] text-slate-500">{tx('Rates, TDS and invoices: confirm with your CA. GENZ issues its own invoice to the builder outside the app; record the invoice number and the bank reference here.', 'दरें, TDS और बिल: अपने CA से पक्का करें। GENZ अपना बिल ऐप के बाहर बिल्डर को देता है; यहाँ बिल नंबर और बैंक रेफ़रेंस दर्ज करें।')}</p>
+      <p className="text-[11px] text-slate-500">{tx('GENZ issues its own invoice to the builder outside the app; record the invoice number and the bank reference here.', 'GENZ अपना बिल ऐप के बाहर बिल्डर को देता है; यहाँ बिल नंबर और बैंक रेफ़रेंस दर्ज करें।')}</p>
     </div>
   );
 };

@@ -2212,7 +2212,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               </div>
 
                               <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-                                <span>{tx('TDS rate on this share', 'इस हिस्से पर TDS दर')}: {alloc.taxDeductionTdsPct}% {tx('(as set for the project — confirm with your CA)', '(प्रोजेक्ट में तय — अपने CA से पुष्टि करें)')}</span>
+                                <span>{tx('TDS rate on this share', 'इस हिस्से पर TDS दर')}: {alloc.taxDeductionTdsPct}% {tx('(as set for the project)', '(प्रोजेक्ट में तय)')}</span>
                                 <span>{tx('GST invoice', 'GST इनवॉइस')}: {alloc.invoiceRequired ? tx('Required', 'ज़रूरी') : tx('Optional', 'वैकल्पिक')}</span>
                               </div>
 
@@ -3246,8 +3246,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 text-xs">
                 <strong>{tx('Please confirm:', 'कृपया पुष्टि करें:')}</strong>{' '}
                 {tx(
-                  'By approving, you confirm you have read the commission split, the TDS / GST terms, the cancellation terms and the anti-bypass rule, and you agree to them. This is a platform approval record — it is not an Aadhaar e-Sign. For a formal agreement, have an advocate review it.',
-                  'मंज़ूरी देकर आप मानते हैं कि आपने कमीशन स्प्लिट, TDS / GST की शर्तें, रद्द होने की शर्तें और एंटी-बायपास नियम पढ़ लिया है और इनसे सहमत हैं। यह प्लेटफ़ॉर्म का मंज़ूरी रिकॉर्ड है — आधार e-Sign नहीं। औपचारिक समझौते के लिए किसी वकील से जँचवाएँ।',
+                  'By approving, you confirm you have read the commission split, the TDS / GST terms, the cancellation terms and the anti-bypass rule, and you agree to them. This is a platform approval record — it is not an Aadhaar e-Sign.',
+                  'मंज़ूरी देकर आप मानते हैं कि आपने कमीशन स्प्लिट, TDS / GST की शर्तें, रद्द होने की शर्तें और एंटी-बायपास नियम पढ़ लिया है और इनसे सहमत हैं। यह प्लेटफ़ॉर्म का मंज़ूरी रिकॉर्ड है — आधार e-Sign नहीं।',
                 )}
               </div>
 

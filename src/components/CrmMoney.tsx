@@ -68,7 +68,7 @@ export const PayoutSheet: React.FC<{ b: CrmBooking; onClose: () => void; onDone:
           <div className="rounded-lg bg-slate-50 p-2.5 text-[11px] text-slate-700">
             {tx(`TDS ${s.tdsPct}% = ${inr(tds)} · net to associate ${inr(amt - tds)}`, `TDS ${s.tdsPct}% = ${inr(tds)} · एसोसिएट को नेट ${inr(amt - tds)}`)}
             {s.noPan && <div className="mt-1 font-semibold text-amber-800">{tx('The associate has no PAN on file, so the higher no-PAN rate applies.', 'एसोसिएट का PAN फ़ाइल में नहीं है, इसलिए बिना-PAN की ऊँची दर लागू है।')}</div>}
-            <div className="mt-1 text-slate-500">{tx('Indicative — confirm the rate with your CA.', 'सांकेतिक — दर अपने CA से पक्की करें।')}</div>
+            <div className="mt-1 text-slate-500">{tx('Indicative.', 'सांकेतिक।')}</div>
           </div>
           <Err msg={err} />
           <button disabled={busy || ref.trim().length < 3 || amt <= 0 || amt > s.payable} onClick={() => go(() => api.crmPayout(b.id, { amount: amt, ref: ref.trim(), mode, paidOn: new Date(paidOn + 'T12:00:00').toISOString() }), () => { onDone(); onClose(); })} className={`${btnDark} w-full !bg-emerald-600`}>{tx('Record payout', 'पेआउट दर्ज करें')}</button>
@@ -251,7 +251,7 @@ export const TdsPanel: React.FC<{ flash: Flash }> = ({ flash }) => {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="text-xs font-bold text-slate-900">{tx('TDS on brokerage', 'ब्रोकरेज पर TDS')}</div>
-      <p className="mt-0.5 text-[11px] text-slate-500">{tx('Applies to new payouts of the project. If an associate has no PAN, the higher no-PAN rate (20%) is used automatically. Indicative — your CA decides the rate.', 'प्रोजेक्ट के नए पेआउट पर लागू। अगर एसोसिएट का PAN नहीं है तो ऊँची दर (20%) अपने-आप लगती है। सांकेतिक — दर आपका CA तय करे।')}</p>
+      <p className="mt-0.5 text-[11px] text-slate-500">{tx('Applies to new payouts of the project. If an associate has no PAN, the higher no-PAN rate (20%) is used automatically.', 'प्रोजेक्ट के नए पेआउट पर लागू। अगर एसोसिएट का PAN नहीं है तो ऊँची दर (20%) अपने-आप लगती है।')}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <select value={pid} onChange={e => { setPid(e.target.value); setPct(String(projects.find(p => p.id === e.target.value)?.tdsPct ?? 5)); }} className="min-h-9 rounded-lg border border-slate-300 px-2 text-xs">{projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}</select>
         <input inputMode="decimal" value={pct} onChange={e => setPct(sanitizeDecimal(e.target.value))} className="min-h-9 w-20 rounded-lg border border-slate-300 px-2 text-xs" aria-label={tx('TDS %', 'TDS %')} /><span className="text-xs text-slate-600">%</span>

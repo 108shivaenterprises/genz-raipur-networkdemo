@@ -177,7 +177,7 @@ export const TargetBonusPanel: React.FC<Props> = ({ role, canPay }) => {
                     {!p.rows.length && <tr><td colSpan={8} className="py-3 text-slate-400">{tx('No appointed partners yet.', 'अभी कोई नियुक्त पार्टनर नहीं।')}</td></tr>}
                   </tbody>
                 </table>
-                <p className="mt-1 text-[10px] text-slate-400">{tx('Empty deadline = partner start + the period. TDS is shown at payout; deduct and deposit it per your CA. GENZ does not hold or move this money.', 'खाली डेडलाइन = पार्टनर शुरू होने की तारीख + अवधि। पेआउट पर TDS दिखता है; CA की सलाह से काटें। GENZ यह पैसा न रखता है न भेजता है।')}</p>
+                <p className="mt-1 text-[10px] text-slate-400">{tx('Empty deadline = partner start + the period. TDS is shown at payout. GENZ does not hold or move this money.', 'खाली डेडलाइन = पार्टनर शुरू होने की तारीख + अवधि। पेआउट पर TDS दिखता है। GENZ यह पैसा न रखता है न भेजता है।')}</p>
               </div>
             )}
 

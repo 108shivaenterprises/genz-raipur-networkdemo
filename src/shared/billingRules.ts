@@ -185,8 +185,8 @@ export function describeBenefit(event: FeeEvent, b: PlanBenefit, lang: 'en' | 'h
 export type BillingWarning = 'BAR_COUNCIL' | 'BROKER_FREE_PROMISE' | 'DEAL_PRIVACY';
 export const WARNINGS: Record<BillingWarning, { en: string; hi: string }> = {
   BAR_COUNCIL: {
-    en: 'A percentage of an advocate’s fee can count as fee-sharing with a non-advocate under Bar Council of India rules. Have an advocate confirm before switching this on.',
-    hi: 'वकील की फ़ीस का प्रतिशत लेना बार काउंसिल ऑफ़ इंडिया के नियमों में ग़ैर-वकील के साथ फ़ीस बाँटना माना जा सकता है। चालू करने से पहले किसी वकील से पुष्टि कराइए।',
+    en: 'A percentage of an advocate’s fee can count as fee-sharing with a non-advocate under Bar Council of India rules.',
+    hi: 'वकील की फ़ीस का प्रतिशत लेना बार काउंसिल ऑफ़ इंडिया के नियमों में ग़ैर-वकील के साथ फ़ीस बाँटना माना जा सकता है।',
   },
   BROKER_FREE_PROMISE: {
     en: 'Brokers were told GENZ is free for them. Tell them before this starts — the rule applies only from its start date and they see it on their Plans & Fees screen.',

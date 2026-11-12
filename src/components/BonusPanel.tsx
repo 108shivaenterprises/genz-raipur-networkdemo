@@ -104,7 +104,7 @@ export const BonusPanel: React.FC<Props> = ({ role, canPay }) => {
                     {!p.rows.length && <tr><td colSpan={8} className="py-3 text-slate-400">{tx('No associates yet.', 'अभी कोई एसोसिएट नहीं।')}</td></tr>}
                   </tbody>
                 </table>
-                <p className="mt-1 text-[10px] text-slate-400">{tx("TDS (5% default) is shown at payout; deduct and deposit it per your CA's advice.", 'पेआउट पर TDS (डिफ़ॉल्ट 5%) दिखता है; अपने CA की सलाह से काटें और जमा करें।')}</p>
+                <p className="mt-1 text-[10px] text-slate-400">{tx("TDS (5% default) is shown at payout.", 'पेआउट पर TDS (डिफ़ॉल्ट 5%) दिखता है।')}</p>
               </div>
             )}
 

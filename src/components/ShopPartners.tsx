@@ -74,7 +74,7 @@ const AddPartner: React.FC<{ city: string; onDone: (x: { partner: any; link: str
       </div>
       <ShopProofCamera value={proof} onChange={setProof} />
       <TermsEditor value={terms} onChange={setTerms} />
-      <p className="text-[11px] text-slate-500">{termsText(terms)} · {tx('You pay the shop yourself; GENZ only records it. Call it a “referral fee” — check with your CA / lawyer once.', 'हिस्सा आप ख़ुद दुकान को देंगे; GENZ सिर्फ़ रिकॉर्ड रखता है। इसे “रेफ़रल फ़ीस” कहें — एक बार CA / वकील से पूछ लें।')}</p>
+      <p className="text-[11px] text-slate-500">{termsText(terms)} · {tx('You pay the shop yourself; GENZ only records it.', 'हिस्सा आप ख़ुद दुकान को देंगे; GENZ सिर्फ़ रिकॉर्ड रखता है।')}</p>
       <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={f.consent} onChange={(e) => setF({ ...f, consent: e.target.checked })} data-testid="sp-consent" />
         <span>{tx('The shopkeeper agreed to keep my QR and to be contacted on this mobile. He will accept these terms on his own phone before the QR starts.', 'दुकानदार मेरा QR रखने और इस मोबाइल पर संपर्क के लिए सहमत है। QR चालू होने से पहले वह अपने फ़ोन पर ये शर्तें मंज़ूर करेगा।')}</span></label>
       {(err || (tErr && f.shopName)) && <p className="text-xs font-semibold text-red-700" role="alert">{err || tErr}</p>}

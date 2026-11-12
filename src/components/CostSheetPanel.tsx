@@ -89,7 +89,7 @@ export const ChargesSheet: React.FC<{ pid: string; charges: ProjectCharges; isSe
   return (
     <Sheet title={tx('Cost sheet — charges of this project', 'कॉस्ट शीट — इस प्रोजेक्ट के शुल्क')} onClose={onClose}>
       <div className="space-y-4 text-xs">
-        <p className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600">{tx('Set once. Every partner then sends the same, correct sheet — you stay in control of the figures. Type the GST, stamp duty and registration your CA / sub-registrar has confirmed; GENZ does not decide rates. A line left at ₹0 is not printed. Sheets already sent keep their figures.', 'एक बार तय करें। फिर हर पार्टनर वही सही शीट भेजता है — आँकड़े आपके हाथ में रहते हैं। जीएसटी, स्टाम्प ड्यूटी और रजिस्ट्रेशन वही भरें जो आपके CA / सब-रजिस्ट्रार ने बताया है; दरें GENZ तय नहीं करता। ₹0 वाली लाइन छपती नहीं। पहले भेजी शीट के आँकड़े नहीं बदलते।')}</p>
+        <p className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600">{tx('Set once. Every partner then sends the same, correct sheet — you stay in control of the figures. Type the GST, stamp duty and registration that apply to this project. A line left at ₹0 is not printed. Sheets already sent keep their figures.', 'एक बार तय करें। फिर हर पार्टनर वही सही शीट भेजता है — आँकड़े आपके हाथ में रहते हैं। इस प्रोजेक्ट पर लागू जीएसटी, स्टाम्प ड्यूटी और रजिस्ट्रेशन भरें। ₹0 वाली लाइन छपती नहीं। पहले भेजी शीट के आँकड़े नहीं बदलते।')}</p>
         {!isSet && <p className="rounded-lg bg-amber-50 p-2 text-[11px] font-semibold text-amber-800">{tx('Not saved yet — partners cannot make cost sheets of this project until you save.', 'अभी सेव नहीं हुआ — सेव करने तक पार्टनर इस प्रोजेक्ट की कॉस्ट शीट नहीं बना सकते।')}</p>}
 
         <div className="grid grid-cols-3 gap-2">

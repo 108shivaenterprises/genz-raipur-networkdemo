@@ -84,8 +84,7 @@ export const BrokerSafetyModal: React.FC<BrokerSafetyModalProps> = ({
 GENZ BROKER NETWORK - ${introSplitPct}/${100 - introSplitPct} को-ब्रोकरेज कमीशन बँटवारा समझौता (मसौदा)
 क्षेत्राधिकार: ${jurisdiction}
 ========================================================================
-नोट: यह एक नमूना मसौदा है। GENZ इस समझौते का पक्षकार नहीं है और कोई कानूनी
-सलाह नहीं देता। हस्ताक्षर से पहले अपने अधिवक्ता से जँचवा लें।
+नोट: यह एक नमूना मसौदा है। हस्ताक्षर से पहले इसे अपने सौदे के हिसाब से बदल लें।
 
 तारीख़: ${dateStr}
 समझौता संदर्भ: ${refCode}
@@ -123,8 +122,7 @@ GENZ BROKER NETWORK - ${introSplitPct}/${100 - introSplitPct} को-ब्र�
 GENZ BROKER NETWORK - ${introSplitPct}/${100 - introSplitPct} CO-BROKERAGE COMMISSION SPLIT AGREEMENT (DRAFT)
 Jurisdiction: ${jurisdiction}
 ========================================================================
-NOTE: This is a sample draft. GENZ is not a party to this agreement and gives no
-legal advice. Have your advocate review it before signing.
+NOTE: This is a sample draft. Change it to fit your deal before signing.
 
 DATE: ${dateStr}
 AGREEMENT REF CODE: ${refCode}
@@ -512,7 +510,7 @@ STATUS: DRAFT - effective only after both brokers sign`;
               <div className="relative">
                 <div className="flex items-center justify-between pb-1.5">
                   <span className="font-mono text-[11px] text-slate-500 font-bold uppercase">
-                    {tx('Sample Agreement Draft (get it reviewed by your advocate)', 'समझौते का नमूना मसौदा (अपने अधिवक्ता से जँचवाएँ)')}
+                    {tx('Sample Agreement Draft', 'समझौते का नमूना मसौदा')}
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -607,7 +605,7 @@ STATUS: DRAFT - effective only after both brokers sign`;
         {/* Sticky Footer */}
         <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 bg-slate-50 rounded-b-2xl shrink-0">
           <span className="text-[11px] text-slate-500 font-medium">
-            {tx('General guidance only — not legal advice', 'केवल सामान्य जानकारी — कानूनी सलाह नहीं')}
+            {tx('General guidance for brokers', 'ब्रोकरों के लिए सामान्य जानकारी')}
           </span>
           <button
             onClick={onClose}

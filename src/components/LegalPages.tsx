@@ -29,9 +29,6 @@ export const LegalPage: React.FC<{ kind: 'privacy' | 'terms' }> = ({ kind }) => 
           {kind === 'privacy' ? (hi ? 'प्राइवेसी पॉलिसी' : 'Privacy Policy') : (hi ? 'नियम और शर्तें' : 'Terms of Use')}
         </h1>
         <p className="text-xs text-slate-500">{cfg?.company} · v{cfg?.policyVersion}</p>
-        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
-          {hi ? 'यह टेम्पलेट है; लॉन्च से पहले अपने वकील से समीक्षा कराएँ।' : 'Template text — have your counsel review it before public launch.'}
-        </p>
 
         {kind === 'privacy' ? (
           <>

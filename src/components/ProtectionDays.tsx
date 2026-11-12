@@ -55,7 +55,7 @@ export const ProtectionAdmin: React.FC = () => {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid="protection-admin">
       <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"><ShieldCheck className="h-4 w-4 text-indigo-600" /> {tx('Bypass protection — legal limit', 'बायपास सुरक्षा — क़ानूनी सीमा')}</h3>
-      <p className="mt-1 text-xs text-slate-600">{tx('Brokers choose 30 / 60 / 90 / 180 days or their own number for each owner consent and mandate — never above your maximum. Set the maximum from your advocate’s advice.', 'ब्रोकर हर मालिक-सहमति और मैंडेट के लिए 30 / 60 / 90 / 180 दिन या अपने दिन चुनते हैं — आपकी अधिकतम सीमा से ऊपर कभी नहीं। अधिकतम सीमा अपने वकील की सलाह से रखें।')}</p>
+      <p className="mt-1 text-xs text-slate-600">{tx('Brokers choose 30 / 60 / 90 / 180 days or their own number for each owner consent and mandate — never above your maximum.', 'ब्रोकर हर मालिक-सहमति और मैंडेट के लिए 30 / 60 / 90 / 180 दिन या अपने दिन चुनते हैं — आपकी अधिकतम सीमा से ऊपर कभी नहीं।')}</p>
       <label className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-700"><span>{tx(`Maximum days (${PROTECTION_MIN}–${PROTECTION_CEILING})`, `अधिकतम दिन (${PROTECTION_MIN}–${PROTECTION_CEILING})`)}</span>
         <input type="number" min={PROTECTION_MIN} max={PROTECTION_CEILING} value={max} onChange={e => setMax(Math.round(Number(e.target.value) || 0))} className="w-24 rounded border border-slate-300 px-2 py-1" data-testid="protection-max" /></label>
       <label className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-700"><span>{tx('Default when the broker does not choose', 'ब्रोकर न चुने तो डिफ़ॉल्ट')}</span>
