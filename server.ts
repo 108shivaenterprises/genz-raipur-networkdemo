@@ -864,8 +864,9 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
 
   const t2app = invite.tier2AppId ? db.byId('tier2Applications', invite.tier2AppId) : undefined;
   if (invite.tier2AppId && (!t2app || invite.targetRole !== 'BROKER')) return res.status(400).json({ error: 'Valid invitation code is mandatory' });
-  if (!t2app && targetRoleNeedsRera(invite.targetRole) && (!reraNumber || !panNumber)) {
-    return res.status(400).json({ error: 'Brokers and builders must provide a RERA registration number and PAN' });
+  // v131 — the owner's rule (10 Nov): a broker may join WITHOUT a RERA number (he is then Tier 2 / "Non-RERA" and cannot work builder projects until he adds it); a builder still needs one
+  if (!t2app && targetRoleNeedsRera(invite.targetRole) && (!panNumber || (invite.targetRole === 'DEVELOPER_BUILDER' && !reraNumber))) {
+    return res.status(400).json({ error: invite.targetRole === 'BROKER' ? 'Brokers must provide a PAN' : 'Builders must provide a RERA registration number and PAN' });
   }
 
   // v18 — every new broker gives PAN + Aadhaar (last 4 kept) with consent; a local associate (no RERA) also needs a RERA-registered sponsor who is still active.

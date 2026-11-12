@@ -98,7 +98,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         code: code.trim(), name, phone, email: phoneOnly ? undefined : email, password, consent: true,
         state: loc.state || undefined, city: loc.city || undefined, locality: role !== 'GENZ_CONNECTOR' ? (loc.locality || undefined) : undefined, areas: areas.length ? areas : undefined,
         ...(brokerId ? { aadhaarNumber: aadhaarDigits, idConsent: true, kycConsent: true, address: address ? normAddress(address) : undefined, pincode: pincode ? normPin(pincode) : undefined, kycSource: fromPhoto ? 'PHOTO' : 'TYPED' } : {}),
-        ...(needsRera ? { companyName: company, reraNumber: rera, panNumber: normPan(pan) || undefined, gstin: gstin || undefined } : {}),
+        ...(needsRera ? { companyName: company || undefined, reraNumber: rera || undefined, panNumber: normPan(pan) || undefined, gstin: gstin || undefined } : {}),
         ...(role === 'GENZ_CONNECTOR' ? { shopType, shopName, locality: loc.locality || undefined, payoutUpi: upi || undefined } : {}),
         ...(tier2 ? { companyName: company || undefined, reraNumber: rera || undefined, panNumber: normPan(pan) || undefined } : {}),
         ...(role !== 'GENZ_CONNECTOR' && !needsRera && !tier2 ? { companyName: company || undefined, panNumber: pan || undefined } : {}),
@@ -179,9 +179,10 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             )}
             {needsRera && (
               <>
-                <div><label className="text-xs font-semibold text-slate-700">Company / firm *</label><input required value={company} onChange={(e) => setCompany(e.target.value)} className={input} /></div>
+                <div><label className="text-xs font-semibold text-slate-700">Company / firm {role === 'BROKER' ? (hi ? '(हो तो)' : '(if you have one)') : '*'}</label><input required={role !== 'BROKER'} value={company} onChange={(e) => setCompany(e.target.value)} className={input} /></div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div><label className="text-xs font-semibold text-slate-700">RERA no. *</label><input required value={rera} onChange={(e) => setRera(e.target.value)} className={input + ' font-mono'} /></div>
+                  <div><label className="text-xs font-semibold text-slate-700">RERA no. {role === 'BROKER' ? (hi ? '(हो तो)' : '(if you have one)') : '*'}</label><input required={role !== 'BROKER'} value={rera} onChange={(e) => setRera(e.target.value)} className={input + ' font-mono'} data-testid="join-rera" />
+                    {role === 'BROKER' && <p className="mt-1 text-[11px] text-slate-500">{hi ? 'RERA के बिना भी जुड़ सकते हैं — “Non-RERA” बैज मिलेगा। बिल्डर / RERA प्रोजेक्ट में काम RERA नंबर जोड़ने के बाद खुलेगा।' : 'You can join without RERA — you get a “Non-RERA” badge. Builder / RERA projects open once you add your RERA number.'}</p>}</div>
                   <div><label className="text-xs font-semibold text-slate-700">PAN *</label><input required maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().replace(/\s/g, ''))} className={input + ' font-mono'} aria-invalid={!!panIssue} />{panIssue && <p role="alert" className="mt-1 text-[11px] font-medium text-red-700">{hi ? panIssue.hi : panIssue.en}</p>}</div>
                   <div><label className="text-xs font-semibold text-slate-700">GSTIN</label><input maxLength={15} value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} className={input + ' font-mono'} /></div>
                 </div>

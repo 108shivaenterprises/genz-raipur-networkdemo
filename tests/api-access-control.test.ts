@@ -141,13 +141,13 @@ describe('DPDP & India KYC', () => {
   // 234567890124 passes the Aadhaar (Verhoeff) check digit; v18: brokers must give PAN + Aadhaar + consent
   const regBody = (code: string, extra: any = {}) => ({ code, name: 'Test Broker', email: 'kyc.test@example.in', phone: '9826100011', password: 'Strong#Pass2026', consent: true, city: 'Raipur', reraNumber: 'PCGRERA250518-0001', panNumber: 'ABCPE1234F', aadhaarNumber: '234567890124', idConsent: true, ...extra });
 
-  it('registration enforces consent, PAN, GSTIN and RERA for brokers', async () => {
+  it('registration enforces consent, PAN and GSTIN for brokers (RERA is optional for a broker since v131)', async () => {
     const inv = await (await call(jar.SUPERADMIN, 'POST', '/api/invitations', { invitedEmail: 'kyc.test@example.in', invitedPhone: '9826100011', targetRole: 'BROKER' })).json();
     const code = inv.invitation.code;
     expect((await call(undefined, 'POST', '/api/auth/register-invite', regBody(code, { consent: false }))).status).toBe(400);
     expect((await call(undefined, 'POST', '/api/auth/register-invite', regBody(code, { panNumber: 'BAD' }))).status).toBe(400);
     expect((await call(undefined, 'POST', '/api/auth/register-invite', regBody(code, { gstin: '27AAPFU0939F1ZW' }))).status).toBe(400);
-    expect((await call(undefined, 'POST', '/api/auth/register-invite', regBody(code, { reraNumber: '' }))).status).toBe(400);
+    // v131 — a broker may join without a RERA number (Tier 2 / Non-RERA); see tests/v131-broker-no-rera.test.ts
     expect((await call(undefined, 'POST', '/api/auth/register-invite', regBody(code, { aadhaarNumber: undefined }))).status).toBe(400); // v18: Aadhaar is required for brokers
     expect((await call(undefined, 'POST', '/api/auth/register-invite', regBody(code, { aadhaarNumber: '234567890123' }))).status).toBe(400); // wrong check digit
     expect((await call(undefined, 'POST', '/api/auth/register-invite', regBody(code, { idConsent: false }))).status).toBe(400);
