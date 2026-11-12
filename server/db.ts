@@ -678,7 +678,7 @@ export interface UserProfile {
   invitedById?: string;
   /** opt-in public "digital visiting card" at /c/<referralCode>; v57 — for a broker it is his public page: the homes he shows
    *  (ids, in his order), the areas he works in, and when he promised that the owners of his own homes agreed (OWNER_OK_TEXT) */
-  publicCard?: { enabled: boolean; showPhone: boolean; headline?: string; views?: number; homes?: string[]; areas?: string[]; ownerOkAt?: string };
+  publicCard?: { enabled: boolean; showPhone: boolean; headline?: string; views?: number; homes?: string[]; /** v129 — his own listings he took OFF his pages; every other live listing of his shows by itself */ hidden?: string[]; areas?: string[]; ownerOkAt?: string };
   /** TEAM_MEMBER only: share (%) of brokerage on their closed leads paid to them as incentive */
   incentivePct?: number;
   /** v76b — TEAM_MEMBER: 'PCT' (incentivePct; absent = PCT) or 'FIXED' (incentiveFixed ₹ for every approved booking) */

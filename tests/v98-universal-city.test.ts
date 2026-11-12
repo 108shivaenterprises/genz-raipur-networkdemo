@@ -115,7 +115,8 @@ describe('v98 — a shop in Pune, end to end (the broker’s home city is Raipur
   it('the QR page suggests areas of PUNE (not Raipur)', async () => {
     const page = await (await fetch(`${B}/q/${qr}`)).text();
     expect(page).toContain('Hinjewadi'); expect(page).not.toContain('Telibandha');
-    expect(page).not.toContain('class="hm"');        // the broker's Raipur homes are not shown at a Pune shop
+    expect(page).not.toContain('Shankar Nagar');     // the broker's Raipur homes are not shown at a Pune shop
+    if (page.includes('class="hm"')) expect(page).toContain('Baner');   // v129 — his own PUNE listing comes on by itself
   });
   it('the scan → lead says Pune; ✅ → the Baner flat is shown, and the client card AND the buyer need say Pune', async () => {
     const page = await (await fetch(`${B}/q/${qr}`)).text();

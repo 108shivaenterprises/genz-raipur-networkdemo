@@ -63,6 +63,14 @@ export function shownHomes(u: UserProfile): Property[] {
     if (!out.some(x => x.id === p!.id)) out.push(p!);
     if (out.length >= L.homes) break;
   }
+  // v129 — a new listing of his is on his QR pages by itself (after the one-time owner promise); only the ones he took off stay off
+  if (u.publicCard?.ownerOkAt && out.length < L.homes) {
+    const hidden = new Set(u.publicCard.hidden || []);
+    for (const p of st().properties.filter(x => x.listingBrokerId === u.id && !hidden.has(x.id) && pageLive(x)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
+      if (!out.some(x => x.id === p.id)) out.push(p);
+      if (out.length >= L.homes) break;
+    }
+  }
   return out;
 }
 /** the listing's own photos and the vault's PUBLIC photos — never a private vault photo, never a document */
@@ -375,6 +383,7 @@ export function createPublicPageRouter() {
       audit(u, 'SYSTEM', u.id, 'PUBLIC_PAGE_OWNER_OK', `Confirmed: "${OWNER_OK_TEXT.en}"`);
     }
     card.homes = ids;
+    card.hidden = st().properties.filter(x => x.listingBrokerId === u.id && pageLive(x) && !ids.includes(x.id)).map(x => x.id);   // v129 — what he left unticked stays off; listings made later come on by themselves
     db.save();
     audit(u, 'SYSTEM', u.id, 'PUBLIC_PAGE_HOMES', `Public page shows ${ids.length} home(s): ${own} own, ${net} of other brokers`);
     res.json({ success: true, ...pageOverview(u) });
