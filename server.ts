@@ -172,6 +172,7 @@ import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onM
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
+import { createPhoneOtpRouter } from './server/phoneOtp.js';
 import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, watchShares, sweepShopPartners, leadVisitEvent, primeHomes, followHomes, sweepSahayak } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
@@ -5734,6 +5735,7 @@ app.use('/api/rent', createRentRouter());
 // v61 — builder ↔ channel partner chat (text, lead / booking / unit cards, photos)
 app.use('/api/partner-chats', createPartnerChatRouter());
 app.use('/r', createClientRoomPageRouter());
+app.use('/otp', jsonParser, createPhoneOtpRouter());   // v133 — Firebase phone OTP page + claim
 // v46 — shop QR partners: broker API, the customer's scan form + poster, the shopkeeper's own page
 app.use('/api/shop-partners', createShopPartnerRouter());
 app.use('/q', createPartnerQrRouter());

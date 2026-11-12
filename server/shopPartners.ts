@@ -11,6 +11,7 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import { firebaseOn, otpUrl } from './phoneOtp.js';
 import { leadBrief } from '../src/shared/leadBrief.js';
 import { linkNeedForCard } from './clientlink.js';
 import { sealLink, linkOf, openLink } from './linkSeal.js';
@@ -90,7 +91,7 @@ const newToken = () => crypto.randomBytes(18).toString('base64url');
 const QR_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newQrCode = () => Array.from(crypto.randomBytes(8), b => QR_ALPHA[b % QR_ALPHA.length]).join('');
 const rid = (p: string) => `${p}-${crypto.randomBytes(5).toString('hex')}`;
-const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+const smsOn = () => !!process.env.SMS_WEBHOOK_URL || firebaseOn();   // v133 — Firebase phone OTP counts as a way to reach the phone
 /** v101 — this phone remembers its chat per shop QR (an HttpOnly cookie holding the private link): scanning the same QR again opens the chat instead of a blank form */
 const CHAT_CK = 'gq_';
 function chatCookie(req: Request, res: Response, qr: string, token: string) {
@@ -1347,6 +1348,7 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
       const otp = secureOtp(); l.chat.resume = { hash: hmac('lc-resume', `${l.id}|${otp}`), expires: new Date(Date.now() + 10 * 60_000).toISOString(), tries: 0 }; db.save();
       if (smsOn()) await sendSms(`+91${phone}`, `GENZ: your code to reopen your chat is ${otp}. Valid 10 minutes. Do not share it.`); else if (DEMO_MODE) demoCode = otp;
     }
+    if (firebaseOn()) return res.redirect(303, otpUrl(phone, `/q/${p.qrCode}/resume/verify`));   // v133 — Google texts him its code; the page hands ours to this route
     resumePage(res, p, 'code', '', { phone, demoCode });   // the same page whether or not a chat exists — the page never tells a stranger which numbers have chats
   });
   r.post('/:code/resume/verify', rateLimit('sp-resume-ip', 12, 3600_000), form, (req: Request, res: Response) => {
@@ -1652,6 +1654,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     if (smsOn()) await sendSms(`+91${phone}`, `GENZ: your code to open your QR partner page is ${otp}. Valid ${L.otpMinutes} minutes.`);
     db.save();
     if (brokerReads()) ping(p, 'Your shop partner wants his code', `${p.shopName} is opening his page — read the code out from Shop QR partners.`);
+    if (firebaseOn()) return res.redirect(303, otpUrl(phone, `/sp/${req.params.token}/verify`));   // v133
     gate(res, p, req.params.token, '', 'code');
   });
   r.post('/:token/verify', rateLimit('sp-verify', 40, 3600_000), form, (req: Request, res: Response) => {

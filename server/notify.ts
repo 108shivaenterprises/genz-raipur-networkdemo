@@ -5,6 +5,7 @@
  * The OTP value is never logged in production unless SMS_WEBHOOK_URL is absent *and* DEMO_MODE is on.
  */
 import { DEMO_MODE } from './auth.js';
+import { firebaseOn, stashOtp } from './phoneOtp.js';
 
 export async function sendSms(to: string, message: string): Promise<void> {
   const url = process.env.SMS_WEBHOOK_URL;
@@ -23,6 +24,7 @@ export async function sendSms(to: string, message: string): Promise<void> {
     }
     return;
   }
+  if (firebaseOn()) { if (!stashOtp(to, message)) console.warn('[NOTIFY] Firebase OTP is on: only codes can reach a phone; this message was not delivered.'); return; }   // v133
   if (DEMO_MODE) console.log(`[NOTIFY:sms-simulated] → ${to}: ${message}`);
   else console.warn(`[NOTIFY] SMS gateway not configured (SMS_WEBHOOK_URL); message to ${to} not delivered.`);
 }

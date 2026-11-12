@@ -12,6 +12,7 @@
  * Phone numbers cannot be typed in the chat (the owner's number is only passed through a verified visit).
  * Messages are kept while the room is open; a closed room's chat is erased after 90 days.
  */
+import { firebaseOn, otpUrl } from './phoneOtp.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'crypto';
@@ -47,7 +48,7 @@ const PHONE_RE = /^[6-9]\d{9}$/;
 /** v113 — the broker's open room for this mobile (the client list shows a Chat button when there is one) */
 export const openRoomIdOf = (brokerId: string, phone: unknown): string | undefined => { const k = hmac('cr-phone', phone10(phone)); return st().clientRooms.find(x => x.brokerId === brokerId && x.status === 'ACTIVE' && x.phoneKey === k && x.kind !== 'OWNER')?.id; };
 const newToken = () => crypto.randomBytes(18).toString('base64url');
-const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+const smsOn = () => !!process.env.SMS_WEBHOOK_URL || firebaseOn();   // v133 — Firebase phone OTP counts as a way to reach the phone
 /** audit F2 — only a local DEMO shows the customer's / shop's code to the broker; a real server needs SMS (the broker never sees it) */
 const brokerReads = () => !smsOn() && DEMO_MODE;
 const NO_SMS = 'कोड अभी नहीं भेजा जा सकता — SMS चालू नहीं है। GENZ सहायता से संपर्क करें। / A code cannot be sent right now — SMS is not set up. Please contact GENZ support.';
@@ -853,6 +854,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     ev(room, smsOn() ? 'Code sent to the client by SMS' : 'Client asked for a code — the broker reads it out');
     db.save();
     if (brokerReads()) pingBroker(room, 'Your client is opening the room', `${room.clientName} asked for the code. Open Client Rooms and read it out.`);
+    if (firebaseOn()) return res.redirect(303, otpUrl(phone, `/r/${req.params.token}/verify`));   // v133
     gate(res, room, req.params.token, '', 'code');
   });
 
