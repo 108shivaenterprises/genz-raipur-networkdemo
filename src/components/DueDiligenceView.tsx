@@ -909,7 +909,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
       <div className="bg-slate-100 border border-slate-300 rounded-xl p-4 flex items-start gap-3 text-xs text-slate-600">
         <Info className="h-5 w-5 text-slate-500 shrink-0 mt-0.5" />
         <div>
-          <strong className="text-slate-800">{tx('Legal Notice & Platform Disclaimer:', 'कानूनी सूचना और प्लेटफ़ॉर्म अस्वीकरण:')}</strong> {tx('Platform due diligence is an internal workflow and risk-management check carried out by brokers and participating advocates. It is not a government title guarantee or a judicial certificate, and it does not replace deed vetting by an independent advocate acting for the buyer.', 'प्लेटफ़ॉर्म का ड्यू डिलिजेंस ब्रोकर और भाग लेने वाले अधिवक्ताओं द्वारा की गई आंतरिक कार्य-प्रक्रिया और जोखिम-जाँच है। यह सरकारी टाइटल गारंटी या न्यायिक प्रमाणपत्र नहीं है, और खरीदार के अपने स्वतंत्र अधिवक्ता द्वारा डीड की जाँच का विकल्प नहीं है।')}
+          <strong className="text-slate-800">{tx('Who checks what:', 'कौन क्या जाँचता है:')}</strong> {tx('This is a record of the papers and checks entered by the broker and the advocate. GENZ keeps the record; it does not check or certify the title.', 'यह ब्रोकर और वकील द्वारा दर्ज काग़ज़ों और जाँच का रिकॉर्ड है। GENZ सिर्फ़ रिकॉर्ड रखता है; टाइटल की जाँच या प्रमाणन नहीं करता।')}
         </div>
       </div>
 

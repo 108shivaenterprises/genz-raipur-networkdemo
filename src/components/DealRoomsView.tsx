@@ -136,8 +136,8 @@ const blockerHi = (b: string): string => {
   if (b === 'Pending acceptance of task responsibilities by one or more participants in the Deal Room.') return 'डील रूम में एक या अधिक सदस्यों ने अपनी ज़िम्मेदारियाँ अभी स्वीकार नहीं कीं।';
   return b;
 };
-const DISCLAIMER_EN = 'CONFIDENTIAL WORKFLOW REPORT: Platform verification is an internal risk assessment mechanism and does not constitute a statutory government title guarantee, judicial certification, or substitute for registered deed vetting by an independent advocate.';
-const DISCLAIMER_HI = 'गोपनीय वर्कफ़्लो रिपोर्ट: प्लेटफ़ॉर्म की जाँच एक अंदरूनी जोखिम-आकलन है। यह सरकारी टाइटल गारंटी, न्यायिक प्रमाणन या किसी स्वतंत्र वकील द्वारा रजिस्टर्ड डीड की जाँच का विकल्प नहीं है।';
+const DISCLAIMER_EN = 'This is a record of the papers and checks entered by the broker and the advocate. GENZ keeps the record; it does not check or certify the title.';
+const DISCLAIMER_HI = 'यह ब्रोकर और वकील द्वारा दर्ज काग़ज़ों और जाँच का रिकॉर्ड है। GENZ सिर्फ़ रिकॉर्ड रखता है; टाइटल की जाँच या प्रमाणन नहीं करता।';
 
 export type DealSubTab =
   | 'overview'

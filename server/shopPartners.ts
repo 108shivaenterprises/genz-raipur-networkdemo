@@ -1014,7 +1014,7 @@ export function createPartnerQrRouter() {
     const city0 = p.city || b?.city || '';
     const nwN = city0 ? st().properties.filter(x => x.verificationStatus === 'VERIFIED' && x.listingStatus === 'active' && !(x as any).heldAt && !(x as any).expiredAt && sameCity(x.city, city0)).length : 0;
     const nwShow = nwN >= 20 ? `${Math.floor(nwN / 10) * 10}+` : String(nwN);
-    const nwLine = nwN >= 5 ? `<p class="small" data-testid="qr-network" style="margin:8px 4px">🌐 GENZ नेटवर्क में ${esc(city0)} के <b>${nwShow}</b> वेरिफ़ाइड घर — ${esc(who)} आपकी ज़रूरत के हिसाब से इन सबमें खोजते हैं। <small>The GENZ network holds ${nwShow} verified homes in ${esc(city0)} — ${esc(who)} searches all of them for your need.</small></p>` : '';
+    const nwLine = nwN >= 5 ? `<p class="small" data-testid="qr-network" style="margin:8px 4px">🌐 GENZ नेटवर्क में ${esc(city0)} के <b>${nwShow}</b> घर — ${esc(who)} आपकी ज़रूरत के हिसाब से इन सबमें खोजते हैं। <small>The GENZ network holds ${nwShow} homes in ${esc(city0)} — ${esc(who)} searches all of them for your need.</small></p>` : '';
     const stepsLine = `<p class="small" data-testid="qr-steps" style="margin:8px 4px">① फ़ॉर्म भरें → ② आपकी निजी चैट खुलेगी (GENZ सहायक पहले जवाब देगा) → ③ मेल खाते घर और ब्रोकर का जवाब वहीं मिलेगा। <small>Fill the form → your private chat opens (the GENZ assistant answers first) → matching homes and the broker's replies come there.</small></p>`;
     const ack = ackText(who, picked ? picked.title : 'ब्रोकर द्वारा दिखाई जाने वाली प्रॉपर्टी / the properties shown by the broker');
     res.send(shell('मकान / दुकान / प्लॉट — GENZ', `<div class="top"><h1>मकान · दुकान · प्लॉट · फ़ार्म · गोदाम</h1><p>किराया या ख़रीद-बिक्री — अपनी ज़रूरत लिखें · ${esc(p.shopName)}</p></div>

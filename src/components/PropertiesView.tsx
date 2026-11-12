@@ -209,7 +209,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               : isBroker && ownershipFilter === 'my'
               ? tx('My listings', 'मेरी लिस्टिंग')
               : isBuyer
-              ? tx('Verified Properties', 'वेरिफ़ाइड प्रॉपर्टी')
+              ? tx('Properties', 'प्रॉपर्टी')
               : tx('Properties on the network', 'नेटवर्क की प्रॉपर्टी')} meta={remote ? tx(`${remote.list.length} of ${remote.total}`, `${remote.total} में से ${remote.list.length}`) : shownList.length} help={<>{tx('Total asking value of the properties shown', 'दिख रही प्रॉपर्टी का कुल मूल्य')}: {formatINR(shownList.reduce((s, p) => s + (p.askingPrice || 0), 0))}</>} /></div>
 
         {may('property:create') && !isOwner && (

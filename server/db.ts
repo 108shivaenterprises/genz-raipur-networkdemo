@@ -3272,7 +3272,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
     const by: Record<string, string> = { 'USR-BRK-002': 'USR-BRK-001', 'USR-BRK-003': 'USR-BRK-001', 'USR-BRK-004': 'USR-BRK-002', 'USR-BUILDER-002': 'USR-BUILDER-001', 'USR-CONTRACTOR-002': 'USR-CONTRACTOR-001' };
     for (const [uid, inv] of Object.entries(by)) { const x = parsed.users.find(u => u.id === uid); if (x && !x.invitedById) x.invitedById = inv; }
     const v = parsed.users.find(u => u.id === 'USR-BRK-001');
-    if (v) { v.referralCode ||= 'GZ-VIKR-1001'; v.publicCard ||= { enabled: true, showPhone: true, headline: 'Plots & flats across Raipur — verified listings only', views: 0 }; }
+    if (v) { v.referralCode ||= 'GZ-VIKR-1001'; v.publicCard ||= { enabled: true, showPhone: true, headline: 'Plots & flats across Raipur', views: 0 }; }
   }
   // employees carry their employer's role (drives their permissions)
   for (const m of parsed.users) {

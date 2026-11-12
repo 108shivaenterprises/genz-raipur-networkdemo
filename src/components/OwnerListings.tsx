@@ -212,7 +212,7 @@ const VerifySection: React.FC<{ listings: any[] }> = ({ listings }) => {
         <div className="text-xs font-bold">3. {tx('Property papers — bill, tax receipt, title / registry', 'प्रॉपर्टी के काग़ज़ — बिल, टैक्स रसीद, टाइटल / रजिस्ट्री')}</div>
         <p className="text-[11px] text-slate-600">{tx('Upload each paper ONCE, property by property, in Property Papers. Then, when you talk to a broker, share it with him for the days and the number of views you choose — and you can see who opened it.', 'हर काग़ज़ प्रॉपर्टी के हिसाब से सिर्फ़ एक बार “Property Papers” में अपलोड करें। फिर ब्रोकर से बात होने पर उसे उतने दिन और उतनी बार देखने के लिए शेयर करें जितना आप तय करें — और देखें कि किसने खोला।')}</p>
         <button type="button" className={ghost + ' w-full'} onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'propdocs' }))} data-testid="owner-open-papers"><ExternalLink className="h-4 w-4" />{tx('Open Property Papers', 'Property Papers खोलें')}</button>
-        <p className="text-[11px] text-slate-500">{tx('The “GENZ verified property” tick comes only after the title is checked (by a broker or an advocate).', '“GENZ वेरिफ़ाइड प्रॉपर्टी” का टिक तभी आता है जब टाइटल जाँचा जाए (ब्रोकर या वकील से)।')}</p>
+        <p className="text-[11px] text-slate-500">{tx('The “papers checked” tick comes only after a broker or an advocate checks the title. GENZ keeps the record; it does not check titles.', '“काग़ज़ जाँचे गए” का टिक तभी आता है जब ब्रोकर या वकील टाइटल जाँचें। GENZ सिर्फ़ रिकॉर्ड रखता है; टाइटल नहीं जाँचता।')}</p>
       </div>
     </section>
   );

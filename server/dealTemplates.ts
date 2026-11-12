@@ -719,6 +719,6 @@ export function calculateTransactionReadiness(
     isReadyForRegistry: isReady,
     blockers,
     statutoryDisclaimer:
-      'CONFIDENTIAL WORKFLOW REPORT: Platform verification is an internal risk assessment mechanism and does not constitute a statutory government title guarantee, judicial certification, or substitute for registered deed vetting by an independent advocate.',
+      'This is a record of the papers and checks entered by the broker and the advocate. GENZ keeps the record; it does not check or certify the title.',
   };
 }

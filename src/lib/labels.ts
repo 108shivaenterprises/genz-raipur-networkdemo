@@ -148,7 +148,7 @@ const REASONS_HI: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^Area \((.+) sq\.ft\) close to requested specifications$/, m => `क्षेत्रफल (${m[1]} वर्ग फ़ुट) माँग के करीब है`],
   [/^Area \((.+) sq\.ft\) deviates from requested bounds$/, m => `क्षेत्रफल (${m[1]} वर्ग फ़ुट) माँगी सीमा से हटकर है`],
   [/^Matches (\d+)\/(\d+) requested tags$/, m => `माँगे गए ${m[2]} टैग में से ${m[1]} मेल खाते हैं`],
-  [/^Verified property documents & RERA compliance checked$/, () => 'प्रॉपर्टी दस्तावेज़ और RERA अनुपालन जाँचे गए'],
+  [/^Papers and RERA details are on record$/, () => 'काग़ज़ और RERA की जानकारी रिकॉर्ड में है'],
 ];
 
 export function useReason() {

@@ -16,7 +16,7 @@ export const LANG_LABELS: Record<TemplateLang, string> = { en: 'English', hi: '�
 
 const T: Record<TemplateKind, Record<TemplateLang, string>> = {
   INTRO: {
-    en: 'Hello {customer}, this is {broker} ({company}). {rera}I help with verified properties in {city}. May I share a few options that match your need for {project}? Reply YES and I will send details.',
+    en: 'Hello {customer}, this is {broker} ({company}). {rera}I help with properties in {city}. May I share a few options that match your need for {project}? Reply YES and I will send details.',
     hi: 'नमस्ते {customer} जी, मैं {broker} ({company}) बोल रहा/रही हूँ। {rera}मैं {city} में वेरिफ़ाइड प्रॉपर्टी में मदद करता/करती हूँ। क्या मैं {project} से जुड़े कुछ विकल्प भेज सकता/सकती हूँ? "हाँ" लिखें, मैं डिटेल भेजता/भेजती हूँ।',
   },
   INSPECTION: {

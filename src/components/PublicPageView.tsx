@@ -93,7 +93,7 @@ export const PublicPageView: React.FC = () => {
   if (err) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
   if (!d) return <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;
 
-  const shareText = tx(`See my verified homes on GENZ and send me an enquiry: ${link}`, `GENZ पर मेरे वेरिफ़ाइड घर देखें और पूछताछ भेजें: ${link}`);
+  const shareText = tx(`See my homes on GENZ and send me an enquiry: ${link}`, `GENZ पर मेरे घर देखें और पूछताछ भेजें: ${link}`);
   const enqNew = d.enquiries.filter((e: any) => e.status === 'NEW').length;
   const stLabel = (id: string) => { const x = ENQ_STATUSES.find(s => s.id === id); return x ? (hi ? x.hi : x.en) : id; };
   const tabs: Array<[Sec, string, number]> = [['enq', tx('Enquiries', 'पूछताछ'), enqNew], ['homes', tx('Homes', 'घर'), 0], ['about', tx('Page details', 'पेज की जानकारी'), 0]];
@@ -206,7 +206,7 @@ export const PublicPageView: React.FC = () => {
           <p className="text-sm text-slate-700"><b>{chosen.length}</b> / {d.homes.max} {tx('homes on your page', 'घर आपके पेज पर')}{busy === 'homes' && <Loader2 className="ml-2 inline h-4 w-4 animate-spin" />}</p>
           <div className="space-y-2">
             <h3 className="text-sm font-bold text-slate-900">{tx('My live listings', 'मेरी लाइव लिस्टिंग')} ({d.own.length})</h3>
-            {d.own.length === 0 && <p className="rounded-lg border border-dashed border-slate-300 bg-white p-3 text-sm text-slate-600">{tx('No live, verified listing yet. Once a listing is verified it can go on your page.', 'अभी कोई लाइव, वेरिफ़ाइड लिस्टिंग नहीं। लिस्टिंग वेरिफ़ाई होते ही पेज पर लग सकती है।')}</p>}
+            {d.own.length === 0 && <p className="rounded-lg border border-dashed border-slate-300 bg-white p-3 text-sm text-slate-600">{tx('No live listing yet. Once a listing is live it can go on your page.', 'अभी कोई लाइव लिस्टिंग नहीं। लिस्टिंग लाइव होते ही पेज पर लग सकती है।')}</p>}
             {d.own.map((p: any) => (
               <div key={p.id} className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid={`pp-own-row-${p.id}`}>
                 <div className="flex gap-3">

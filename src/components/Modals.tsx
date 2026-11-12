@@ -213,7 +213,7 @@ export const AddPropertyModal: React.FC<{
         {/* Sticky Modal Header */}
         <div className="flex shrink-0 items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80">
           <div>
-            <h3 className="text-base font-bold text-slate-900">{hi ? 'प्रॉपर्टी लिस्ट करें' : 'List Verified Property Inventory'}</h3>
+            <h3 className="text-base font-bold text-slate-900">{hi ? 'प्रॉपर्टी लिस्ट करें' : 'List a property'}</h3>
             <p className="text-xs text-slate-500">{hi ? 'पूरे भारत में कहीं भी' : 'Anywhere in India'}</p>
           </div>
           <button

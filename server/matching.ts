@@ -136,7 +136,7 @@ export function calculatePropertyMatch(property: Property, requirement: BuyerReq
 
   // Verification bonus
   if (property.verificationStatus === 'VERIFIED') {
-    reasons.push(`Verified property documents & RERA compliance checked`);
+    reasons.push(`Papers and RERA details are on record`);
   }
 
   return {

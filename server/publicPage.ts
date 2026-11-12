@@ -168,7 +168,7 @@ export function renderBrokerPage(req: Request, res: Response, u: UserProfile, o:
   const city = u.city || '';
   const firstPhoto = all.map(p => pagePhotos(p)[0]).find(x => x && /^https:\/\//.test(x));
   const title = `${b.displayName} — GENZ Verified Broker${city ? ` · ${city}` : ''}`;
-  const desc = card.headline || (all.length ? `${all.length} homes for sale & rent${city ? ` in ${city}` : ''} — verified listings on GENZ Broker Network` : `Verified broker${city ? ` in ${city}` : ''} on GENZ Broker Network`);
+  const desc = card.headline || (all.length ? `${all.length} homes for sale & rent${city ? ` in ${city}` : ''} — listings on GENZ Broker Network` : `Verified broker${city ? ` in ${city}` : ''} on GENZ Broker Network`);
   const since = new Date(u.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
   const wa = (text: string) => `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`;
 
@@ -450,7 +450,7 @@ export function sweepPageEnquiries(now = Date.now()) {
 }
 
 /** demo only (SEED_DEMO_DATA + SEED_DEMO_BULK): the first demo broker's page of EVERY demo city is on, with his homes, two homes of a colleague and a few enquiries */
-const RAIPUR_PAGE: PageDemo = { brokerId: 'USR-BRK-001', colleagueId: 'USR-BRK-002', headline: 'Raipur ke verified ghar, plot aur dukaan — sahi daam, saaf kaagaz', areas: ['Shankar Nagar', 'Telibandha', 'Naya Raipur'], enquiries: [
+const RAIPUR_PAGE: PageDemo = { brokerId: 'USR-BRK-001', colleagueId: 'USR-BRK-002', headline: 'Raipur ke ghar, plot aur dukaan — sahi daam', areas: ['Shankar Nagar', 'Telibandha', 'Naya Raipur'], enquiries: [
   { name: 'Neha Gupta', phone: '9131100011', about: 'OWN', message: 'Is it still available? We can visit on Sunday.', hours: 2 },
   { name: 'Rahul Tiwari', phone: '9131100012', about: 'THEIRS', hours: 20 },
   { name: 'Sunita Yadav', phone: '9131100013', about: 'NONE', message: '2BHK on rent near Telibandha, up to 15,000.', hours: 50, status: 'CONTACTED' } ] };
