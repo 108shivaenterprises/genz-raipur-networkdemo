@@ -35,7 +35,7 @@ import { db } from './db.js';
 import type { ShopPartner, PartnerLead, UserProfile, ClientCard, ShareChange, LeadMsg, Property, DatabaseState } from './db.js';
 import { DEMO_CITY_PARTNERS, type PartnerDemo } from './demoCities.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, DEMO_MODE } from './auth.js';
-import { sendSms } from './notify.js';
+import { sendSms, smsGateway } from './notify.js';
 import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
 import { buyerBondBlock, makeBuyerBond } from './buyerbond.js';
 import { partyBlock } from './partywatch.js';
@@ -91,7 +91,7 @@ const newToken = () => crypto.randomBytes(18).toString('base64url');
 const QR_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newQrCode = () => Array.from(crypto.randomBytes(8), b => QR_ALPHA[b % QR_ALPHA.length]).join('');
 const rid = (p: string) => `${p}-${crypto.randomBytes(5).toString('hex')}`;
-const smsOn = () => !!process.env.SMS_WEBHOOK_URL || firebaseOn();   // v133 — Firebase phone OTP counts as a way to reach the phone
+const smsOn = () => smsGateway() || firebaseOn();   // v133 — Firebase phone OTP counts as a way to reach the phone
 /** v101 — this phone remembers its chat per shop QR (an HttpOnly cookie holding the private link): scanning the same QR again opens the chat instead of a blank form */
 const CHAT_CK = 'gq_';
 function chatCookie(req: Request, res: Response, qr: string, token: string) {

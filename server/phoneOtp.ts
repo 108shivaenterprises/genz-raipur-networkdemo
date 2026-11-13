@@ -14,7 +14,7 @@ import { rateLimit } from './auth.js';
 
 const env = (k: string) => (process.env[k] || '').trim();
 export const firebaseConfig = () => ({ apiKey: env('FIREBASE_API_KEY'), authDomain: env('FIREBASE_AUTH_DOMAIN') || (env('FIREBASE_PROJECT_ID') ? `${env('FIREBASE_PROJECT_ID')}.firebaseapp.com` : ''), projectId: env('FIREBASE_PROJECT_ID'), appId: env('FIREBASE_APP_ID') });
-export const firebaseOn = () => !!(env('FIREBASE_API_KEY') && env('FIREBASE_PROJECT_ID'));
+export const firebaseOn = () => !!(env('FIREBASE_API_KEY') && env('FIREBASE_PROJECT_ID')) && !env('SMS_WEBHOOK_URL') && !env('FAST2SMS_API_KEY');   // v134 — a direct SMS gateway wins, else the phone gets two codes
 
 const TTL = 10 * 60_000;
 const p10 = (s: string) => String(s || '').replace(/\D/g, '').slice(-10);

@@ -18,7 +18,7 @@ import { db } from './db.js';
 import type { UserProfile, VisitAck } from './db.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, DEMO_MODE } from './auth.js';
 import { can } from './permissions.js';
-import { sendSms } from './notify.js';
+import { sendSms, smsGateway } from './notify.js';
 import { pushTo } from './webpush.js';
 import { ACK_VERSION, ACK_LIMITS, ACK_NOTE, ackTextFor, type AckKind } from '../src/shared/visitAckRules.js';
 import { qrPayload, scanLine } from '../src/shared/visitRules.js';
@@ -29,7 +29,7 @@ const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&a
 const hmac = (tag: string, v: string) => crypto.createHmac('sha256', secret()).update(`${tag}|${v}`).digest('hex');
 const phone10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
 const PHONE_RE = /^[6-9]\d{9}$/;
-const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+const smsOn = () => smsGateway();
 /** audit F2 — only a local DEMO shows the customer's / shop's code to the broker; a real server needs SMS (the broker never sees it) */
 const brokerReads = () => !smsOn() && DEMO_MODE;
 const NO_SMS = 'कोड अभी नहीं भेजा जा सकता — SMS चालू नहीं है। GENZ सहायता से संपर्क करें। / A code cannot be sent right now — SMS is not set up. Please contact GENZ support.';

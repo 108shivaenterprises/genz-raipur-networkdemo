@@ -30,7 +30,7 @@ import { z } from 'zod';
 import { db } from './db.js';
 import type { ListingDraft, OwnerConsent, UserProfile, Property } from './db.js';
 import { ctx, needs, rateLimit, secret, verifySession, parseCookies, COOKIE_NAME, hit, secureOtp, safeEqual } from './auth.js';
-import { sendSms } from './notify.js';
+import { sendSms, smsGateway } from './notify.js';
 import { generateMandateHash } from './validation.js';
 import { can } from './permissions.js';
 import { awardPoints } from './community.js';
@@ -72,7 +72,7 @@ const ipOf = (req: Request) => hmac('oc-ip', String(req.ip || req.socket.remoteA
 const uaOf = (req: Request) => hmac('oc-ua', String(req.headers['user-agent'] || ''));
 const bondActive = (c: OwnerConsent, now = Date.now()) => c.status === 'ACCEPTED' && !!c.expiresAt && Date.parse(c.expiresAt) > now;
 const note = (c: OwnerConsent, text: string) => { c.events.push({ at: nowIso(), text }); if (c.events.length > 40) c.events.splice(0, c.events.length - 40); c.updatedAt = nowIso(); };
-const smsOn = () => !!process.env.SMS_WEBHOOK_URL;
+const smsOn = () => smsGateway();
 /** 15 Jan 2027 — the owner reads Indian dates, not ISO */
 const dIN = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '');
 const publicBase = (req: Request) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');

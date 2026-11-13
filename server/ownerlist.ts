@@ -19,7 +19,7 @@ import crypto from 'crypto';
 import { db } from './db.js';
 import type { UserProfile, Property } from './db.js';
 import { ctx, needs, rateLimit, hit, resetHits, secureOtp, safeEqual, secret, signSession, setSessionCookie, DEMO_MODE } from './auth.js';
-import { sendSms } from './notify.js';
+import { sendSms, smsGateway } from './notify.js';
 import { alert } from './alerts.js';
 import { issueSignCode } from './signing.js';
 import { effectivePermissions } from './permissions.js';
@@ -136,7 +136,7 @@ export function createOwnerAuthRouter() {
     const phone = phone10(req.body?.phone);
     if (!PHONE_RE.test(phone)) return bad(res, 'Enter your 10-digit mobile number');
     if (hit(`owner-otp:${phone}`, 5, 3600_000, 3600_000) > 0) return bad(res, 'Too many codes for this number — try again in an hour.', 429);
-    const smsOn = !!process.env.SMS_WEBHOOK_URL;
+    const smsOn = smsGateway();
     if (!smsOn && !DEMO_MODE) return bad(res, 'SMS is not set up on this server, so a code cannot be sent.', 503, 'NO_SMS');
     const ex = st().users.find(u => phone10(u.phone) === phone && u.role === 'PROPERTY_OWNER');
     if (ex && !ex.selfSignup) return bad(res, 'This number already has a GENZ owner account with a password — sign in with it.', 409, 'USE_PASSWORD');
@@ -193,7 +193,7 @@ export function createOwnerAuthRouter() {
     const u = ctx().user as UserProfile | null;
     if (!u) return bad(res, 'Authentication required', 401);
     if (!u.selfSignup) return bad(res, 'You sign with your password', 409);
-    const code = issueSignCode(u.id); const smsOn = !!process.env.SMS_WEBHOOK_URL;
+    const code = issueSignCode(u.id); const smsOn = smsGateway();
     if (!smsOn && !DEMO_MODE) return bad(res, 'SMS is not set up on this server, so a code cannot be sent.', 503, 'NO_SMS');
     await sendSms(phone10(u.phone), `GENZ: your signing code is ${code} (valid 10 minutes). Share it with nobody.`);
     res.json({ success: true, ...(!smsOn && DEMO_MODE ? { devCode: code } : {}) });
