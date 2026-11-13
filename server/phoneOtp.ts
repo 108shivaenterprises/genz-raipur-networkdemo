@@ -9,10 +9,11 @@
 import { Router, Request, Response } from 'express';
 import { createVerify, createPublicKey } from 'node:crypto';
 import { db } from './db.js';
+import { apiKey } from './apiKeys.js';
 import { seal, unseal } from './vaultCrypto.js';
 import { rateLimit } from './auth.js';
 
-const env = (k: string) => (process.env[k] || '').trim();
+const env = apiKey;   // v135 — Control Center key first, then the server env
 export const firebaseConfig = () => ({ apiKey: env('FIREBASE_API_KEY'), authDomain: env('FIREBASE_AUTH_DOMAIN') || (env('FIREBASE_PROJECT_ID') ? `${env('FIREBASE_PROJECT_ID')}.firebaseapp.com` : ''), projectId: env('FIREBASE_PROJECT_ID'), appId: env('FIREBASE_APP_ID') });
 export const firebaseOn = () => !!(env('FIREBASE_API_KEY') && env('FIREBASE_PROJECT_ID')) && !env('SMS_WEBHOOK_URL') && !env('FAST2SMS_API_KEY');   // v134 — a direct SMS gateway wins, else the phone gets two codes
 

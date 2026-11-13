@@ -37,6 +37,7 @@ const ConnectorHome = lazyView(() => import('./components/ConnectorHome.js'), 'C
 const BrokerHome = lazyView(() => import('./components/BrokerHome.js'), 'BrokerHome');
 const ConnectorDesk = lazyView(() => import('./components/ConnectorDesk.js'), 'ConnectorDesk');
 const ControlCenter = lazyView(() => import('./components/ControlCenter.js'), 'ControlCenter');
+const ApiKeysView = lazyView(() => import('./components/ApiKeysView.js'), 'ApiKeysView');
 const LaunchDesk = lazyView(() => import('./components/LaunchDesk.js'), 'LaunchDesk');
 const NetworkHub = lazyView(() => import('./components/NetworkHub.js'), 'NetworkHub');
 const IdReviewView = lazyView(() => import('./components/IdReviewView.js'), 'IdReviewView');
@@ -94,7 +95,7 @@ const FileDisputeModal = lazyView(() => import('./components/Modals.js'), 'FileD
 const AddConstructionLeadModal = lazyView(() => import('./components/Modals.js'), 'AddConstructionLeadModal');
 
 const TAB_KEY = 'genz.tab';
-const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'feed', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats', 'ownerlist', 'people'];
+const ALL_TABS: TabType[] = ['dashboard', 'builder', 'properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'disputes', 'audit', 'onboarding', 'crm', 'connector', 'control', 'team', 'share', 'landrecords', 'grow', 'citylaunch', 'daily', 'feed', 'pdocs', 'propdocs', 'community', 'pcontrol', 'visits', 'clientroom', 'desk', 'network', 'launchdesk', 'idreview', 'revenue', 'legal', 'plans', 'partners', 'mypage', 'rentdesk', 'chats', 'ownerlist', 'people', 'apikeys'];
 
 export default function App() {
   const tx = useTx();
@@ -690,6 +691,7 @@ export default function App() {
         {activeTab === 'team' && hasPerm(permissions, 'team:manage') && <TeamView isBuilder={currentUser.role === 'DEVELOPER_BUILDER'} canControl={['BROKER', 'DEVELOPER_BUILDER'].includes(currentUser.role)} hr={['BROKER', 'DEVELOPER_BUILDER', 'CONTRACTOR'].includes(currentUser.role)} />}
 
         {activeTab === 'control' && hasPerm(permissions, 'admin:control_center') && <ControlCenter onNavigate={setActiveTab} />}
+        {activeTab === 'apikeys' && currentUser.role === 'SUPERADMIN' && <ApiKeysView />}
         {activeTab === 'launchdesk' && hasPerm(permissions, 'launch:manage') && <LaunchDesk />}
 
         {activeTab === 'people' && hasPerm(permissions, 'profile:use') && <ProfilesView role={currentUser.role} permissions={permissions} startOn={peopleStart} />}

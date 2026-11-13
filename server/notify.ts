@@ -8,15 +8,16 @@
  */
 import { DEMO_MODE } from './auth.js';
 import { firebaseOn, stashOtp } from './phoneOtp.js';
+import { apiKey } from './apiKeys.js';
 
 /** v134 — one answer to "can we text this phone?" for every flow (Firebase is counted separately where it fits) */
-export const smsGateway = () => !!(process.env.SMS_WEBHOOK_URL || process.env.FAST2SMS_API_KEY);
+export const smsGateway = () => !!(apiKey('SMS_WEBHOOK_URL') || apiKey('FAST2SMS_API_KEY'));
 
 const F2S = 'https://www.fast2sms.com/dev';
 async function fast2sms(key: string, to: string, message: string): Promise<void> {
   const mobile = to.replace(/\D/g, '').slice(-10);
   if (!/^[6-9]\d{9}$/.test(mobile)) { console.warn('[NOTIFY] Fast2SMS: not an Indian mobile, not sent.'); return; }
-  const code = /\b(\d{6})\b/.exec(message)?.[1]; const otpId = process.env.FAST2SMS_OTP_ID;
+  const code = /\b(\d{6})\b/.exec(message)?.[1]; const otpId = apiKey('FAST2SMS_OTP_ID');
   const [path, body] = code && otpId
     ? ['/otp/send', { mobile, otp_id: otpId, otp: code, otp_expiry: 10 }]
     : ['/bulkV2', { route: 'q', message, numbers: mobile }];
@@ -28,14 +29,14 @@ async function fast2sms(key: string, to: string, message: string): Promise<void>
 }
 
 export async function sendSms(to: string, message: string): Promise<void> {
-  const url = process.env.SMS_WEBHOOK_URL;
+  const url = apiKey('SMS_WEBHOOK_URL'); const token = apiKey('SMS_WEBHOOK_TOKEN');
   if (url) {
     try {
       await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(process.env.SMS_WEBHOOK_TOKEN ? { Authorization: `Bearer ${process.env.SMS_WEBHOOK_TOKEN}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ to, message }),
       });
@@ -44,7 +45,7 @@ export async function sendSms(to: string, message: string): Promise<void> {
     }
     return;
   }
-  const f2s = process.env.FAST2SMS_API_KEY;
+  const f2s = apiKey('FAST2SMS_API_KEY');
   if (f2s) return fast2sms(f2s, to, message);
   if (firebaseOn()) { if (!stashOtp(to, message)) console.warn('[NOTIFY] Firebase OTP is on: only codes can reach a phone; this message was not delivered.'); return; }   // v133
   if (DEMO_MODE) console.log(`[NOTIFY:sms-simulated] → ${to}: ${message}`);

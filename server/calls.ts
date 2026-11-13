@@ -17,6 +17,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { db } from './db.js';
 import type { UserProfile, CallRecord, CallSettings } from './db.js';
 import { ctx, needs, hit } from './auth.js';
+import { apiKey } from './apiKeys.js';
 import { can } from './permissions.js';
 import { alert } from './alerts.js';
 import { isDealParticipant } from './access.js';
@@ -160,9 +161,10 @@ const perUser = (name: string, limit: number, windowMs: number) => (req: Request
 /** the relay servers for the phones: a public STUN always, a TURN relay when the owner has set one (mobile networks often need it) */
 export function iceServers() {
   const out: Array<{ urls: string | string[]; username?: string; credential?: string }> = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
-  const urls = String(process.env.TURN_URLS || '').split(',').map(x => x.trim()).filter(x => /^turns?:/i.test(x));
-  if (urls.length && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) out.push({ urls, username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
-  return { servers: out, relay: urls.length > 0 && !!process.env.TURN_USERNAME && !!process.env.TURN_CREDENTIAL };
+  const urls = apiKey('TURN_URLS').split(',').map(x => x.trim()).filter(x => /^turns?:/i.test(x));
+  const user = apiKey('TURN_USERNAME'), cred = apiKey('TURN_CREDENTIAL');   // v135 — Control Center or server env
+  if (urls.length && user && cred) out.push({ urls, username: user, credential: cred });
+  return { servers: out, relay: urls.length > 0 && !!user && !!cred };
 }
 
 export function createCallsRouter() {

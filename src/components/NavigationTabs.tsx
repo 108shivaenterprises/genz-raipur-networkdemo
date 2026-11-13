@@ -64,6 +64,7 @@ export type TabType =
   | 'crm'
   | 'connector'
   | 'control'
+  | 'apikeys'
   | 'team'
   | 'share'
   | 'landrecords'
@@ -231,6 +232,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('legal:manage') ? [{ id: 'legal', label: t('nav.legalAdmin', 'Legal Help'), icon: ScaleIcon, badge: legalBadge }] : []),
     ...(has('admin:control_center') ? [{ id: 'revenue', label: t('nav.revenue', 'Revenue & Growth'), icon: IndianRupee }] : []),
     ...(has('admin:control_center') ? [{ id: 'control', label: t('nav.control', 'Control Center'), icon: Settings2 }] : []),
+    ...(has('admin:control_center') && currentUser?.role === 'SUPERADMIN' ? [{ id: 'apikeys', label: t('nav.apikeys', 'API Keys'), icon: KeyRound }] : []),
   ];
   // v62 — the super admin holds every permission, but a broker's own workspace (his clients, rooms, page, rent desk, offers, passes) is empty
   // for him: those tabs are left out of his menu (he sees a member's screens with "view as"; the routes still work for a direct link)
@@ -263,7 +265,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     BROKER: [HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['requirements'], key: 'nav.buyersShort', en: 'Buyers' }, { ids: ['deals', 'desk'], key: 'nav.dealsShort', en: 'Deals' }],
     DEVELOPER_BUILDER: [HOME, { ids: ['crm'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['builder', 'pcontrol'], key: 'nav.projectsShort', en: 'Projects' }, { ids: ['chats'], key: 'nav.chats', en: 'Chats' }],
     ADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['plans'], key: 'nav.feesShort', en: 'Fees' }],
-    SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'plans'], key: 'nav.controlShort', en: 'Control' }],
+    SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'apikeys', 'plans'], key: 'nav.controlShort', en: 'Control' }],
     LEGAL_COUNSEL: [HOME, { ids: ['legal'], key: 'nav.casesShort', en: 'Cases' }, { ids: ['due_diligence'], key: 'nav.ddShort', en: 'Title' }, { ids: ['propdocs', 'pdocs'], key: 'nav.papersShort', en: 'Papers' }],
     PROPERTY_OWNER: [HOME, { ids: ['properties', 'propdocs'], key: 'nav.myPropShort', en: 'My Property' }, { ids: ['deals'], key: 'nav.dealsShort', en: 'Deals' }, { ids: ['chats', 'disputes'], key: 'nav.chats', en: 'Chats' }],
     BUYER_TENANT: [HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['requirements'], key: '', en: '' }, { ids: ['matches'], key: '', en: '' }],
@@ -288,7 +290,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     { id: 'money', key: 'nav.g.money', en: 'Money & Growth', ids: ['plans', 'ownerlist', 'revenue', 'citylaunch', 'launchdesk', 'grow', 'network', 'community'] },
     { id: 'market', key: 'nav.g.market', en: 'Listings & Deals', ids: ['properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'landrecords', 'propdocs', 'pdocs'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'partners', 'team'] },
-    { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'people', 'audit'] },
+    { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'apikeys', 'people', 'audit'] },
   ];
   // v75 — a builder, a lawyer and a contractor each get a few plain groups of their own (not the broker's "Property & Buyers / Deals / Sales & Team")
   const BUILDER_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [

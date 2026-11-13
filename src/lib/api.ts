@@ -791,6 +791,8 @@ export const api = {
   pulse: () => request<any>('/api/admin/pulse'),
   pulseDrill: (q: Record<string, string>) => request<any>(`/api/admin/pulse/drill?${new URLSearchParams(q).toString()}`),
   savePlatformSettings: (payload: any) => request<any>('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  apiKeys: () => request<{ success: boolean; vault: boolean; keys: { name: string; group: string; label: string; secret: boolean; hint?: string; source: 'panel' | 'server' | 'none'; shown: string; updatedAt: string | null; updatedBy: string | null }[] }>('/api/admin/api-keys'),
+  setApiKey: (name: string, value: string) => request<any>(`/api/admin/api-keys/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify({ value }) }),
   permissionMatrix: () => request<{ success: boolean; roles: string[]; matrix: { permission: string; description: string; roles: string[] }[] }>('/api/auth/permission-matrix'),
 
   // Builder ⇄ Associates CRM

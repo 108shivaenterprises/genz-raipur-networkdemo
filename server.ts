@@ -173,6 +173,7 @@ import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
+import { createApiKeysRouter } from './server/apiKeys.js';
 import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, watchShares, sweepShopPartners, leadVisitEvent, primeHomes, followHomes, sweepSahayak } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
@@ -5761,6 +5762,7 @@ app.use('/api/network', createNetworkRouter());
 app.use('/api/id-review', createIdReviewRouter());
 app.use('/api/kyc-vault', createKycVaultRouter());
 app.use('/api/protection', createProtectionRouter());
+app.use('/api/admin/api-keys', createApiKeysRouter());   // v135 — superadmin types API keys; every flow reads them
 app.use('/api/auth/2fa', createTwoFactorRouter());
 app.use('/api/owner', createOwnerAuthRouter());
 app.use('/api/owner-listing', createOwnerListingRouter());
