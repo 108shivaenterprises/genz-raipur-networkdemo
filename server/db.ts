@@ -2634,7 +2634,7 @@ function getInitialSeedData(): DatabaseState {
     poweredBy: 'GENZ BUILDCON INFRA PVT LTD',
     city: 'Raipur',
     state: 'Chhattisgarh',
-    defaultProtectionPeriodDays: 30,
+    defaultProtectionPeriodDays: 180,   // v137 — owner rule
     defaultConstructionCommissionPct: 1,
     requireReraForBrokerApproval: true,
     maintenanceMode: false,

@@ -838,7 +838,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <PageTitle title={mainMode === 'PIPELINE' ? tx('Deal pipeline', 'डील पाइपलाइन')
-              : mainMode === 'MANDATES' ? tx('Owners — brokerage terms', 'मालिक — ब्रोकरेज की शर्तें')
+              : mainMode === 'MANDATES' ? (currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms with brokers', 'ब्रोकरों से मेरी ब्रोकरेज शर्तें') : tx('Owners — brokerage terms', 'मालिक — ब्रोकरेज की शर्तें'))
               : mainMode === 'ROOMS' ? tx('Client rooms', 'क्लाइंट रूम')
               : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Co-broking offers', 'को-ब्रोकिंग ऑफ़र')
               : tx('Deal room', 'डील रूम')} meta={mainMode === 'PIPELINE' && deals.length > 0 ? tx(`${deals.length} deal rooms`, `${deals.length} डील रूम`) : undefined} help={<>{mainMode === 'PIPELINE' ? tx('Every deal by stage — what needs you first. Tap a card to open its deal room.', 'हर डील स्टेज के हिसाब से — पहले वो जिसमें आपका काम बाकी है। डील रूम खोलने के लिए कार्ड दबाएँ।')
@@ -854,7 +854,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           ['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false],   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Offers" half off the screen
           ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Offers', 'ऑफ़र'), (offers || []).length, pendingIncomingCount > 0]] : []),
           ...(canRooms ? [['ROOMS', MessagesSquare, tx('Client rooms', 'क्लाइंट रूम'), myRooms.length, roomsAlert]] : []),
-          ...(perm('mandate:read') ? [['MANDATES', FileSignature, tx('Owners', 'मालिक'), undefined, false]] : []),
+          ...(perm('mandate:read') ? [['MANDATES', FileSignature, currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms', 'मेरी ब्रोकरेज शर्तें') : tx('Owners', 'मालिक'), undefined, false]] : []),
         ] as [typeof mainMode, React.ElementType, string, number | undefined, boolean][]).map(([id, Icon, text, n, dot]) => (
           <button key={id} type="button" role="tab" aria-selected={mainMode === id}
             onClick={() => (id === 'DEAL_ROOMS' && !selectedDealId && deals[0] ? openDeal(deals[0].id) : id === 'ROOMS' ? openClientRoom() : setMainMode(id))}

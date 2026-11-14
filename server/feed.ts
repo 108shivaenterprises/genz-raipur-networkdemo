@@ -26,6 +26,7 @@ export function createFeedRouter() {
   const r = Router();
   r.get('/', needs('property:read'), (req: Request, res: Response) => {
     const me = ctx().user as UserProfile; const s = db.getState(); const since = Date.now() - DAYS * 86400_000;
+    if (me.role === 'BUYER_TENANT' || me.role === 'PROPERTY_OWNER') return res.status(403).json({ error: 'The network feed is for GENZ members' });   // v137
     const kind = String(req.query.kind || 'all');
     const myNeeds = s.requirements.filter(q => q.assignedBrokerId === me.id && ['active', 'matching'].includes(q.status));
     const items: any[] = [];

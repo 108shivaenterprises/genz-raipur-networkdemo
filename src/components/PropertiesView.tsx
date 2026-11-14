@@ -439,7 +439,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               return (
                 <div className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${tone}`}>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1 font-semibold"><FileSignature className="h-3.5 w-3.5" />{hi ? 'मालिक से ब्रोकरेज की शर्त' : 'Brokerage terms with owner'}</div>
+                    <div className="flex items-center gap-1 font-semibold"><FileSignature className="h-3.5 w-3.5" />{isOwner ? (hi ? 'आपके ब्रोकर से ब्रोकरेज की शर्त' : 'Brokerage terms with your broker') : (hi ? 'मालिक से ब्रोकरेज की शर्त' : 'Brokerage terms with owner')}</div>
                     <div className="truncate text-[11px] opacity-80">{mLabel}{m && m.status !== 'REJECTED' ? ` · ${m.remunerationBasis === 'PERCENTAGE' ? `${m.agreedCommissionPct}% ${hi ? 'कमीशन' : 'commission'}` : m.remunerationBasis === 'FIXED_FEE' ? `${formatINR(m.fixedFeeAmount || 0)} ${hi ? 'फिक्स्ड' : 'fixed fee'}` : `${formatINR(m.approvedNetPrice)} ${hi ? 'नेट' : 'net'}`}` : ''}</div>
                   </div>
                   <button type="button" onClick={() => setMandateFor(p)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold ${mandateNeedsMe ? 'bg-slate-900 text-white hover:bg-slate-800' : 'border border-current/30 bg-white/70 hover:bg-white'}`}>
@@ -450,7 +450,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
             })() : null;
             const statusChip = isClosed
               ? <span className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-extrabold tracking-wide text-white" data-testid="sold-badge">{closedWord}</span>
-              : <span className="flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800"><CheckCircle2 className="h-3 w-3 text-emerald-600" /><span>{tx('Verified', 'वेरिफ़ाइड')}</span></span>;
+              : <span className="flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800"><CheckCircle2 className="h-3 w-3 text-emerald-600" /><span>{tx('Live', 'लाइव')}</span></span>;
 
             return (
               <div

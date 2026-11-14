@@ -13,7 +13,7 @@ export const PROTECTION_MIN = 7;
 export const PROTECTION_CEILING = 730;
 /** the maximum until the superadmin changes it */
 export const PROTECTION_DEFAULT_MAX = 180;
-export const PROTECTION_DEFAULT_DAYS = 30;
+export const PROTECTION_DEFAULT_DAYS = 180;   // v137 — the owner rule: 180 days, family included
 export const PROTECTION_PRESETS = [30, 60, 90, 180] as const;
 
 export interface ProtectionConfig { max: number; defaultDays: number; presets: number[]; min: number }

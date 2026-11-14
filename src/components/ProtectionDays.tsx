@@ -12,7 +12,7 @@ import { daysLabel, protectionProblem, PROTECTION_CEILING, PROTECTION_MIN, PROTE
 let cache: ProtectionConfig | null = null;
 export function useProtectionConfig() {
   const [cfg, setCfg] = useState<ProtectionConfig | null>(cache);
-  useEffect(() => { if (!cache) api.protectionConfig().then(c => { cache = c; setCfg(c); }).catch(() => setCfg({ max: 180, defaultDays: 30, presets: [30, 60, 90, 180], min: 7 })); }, []);
+  useEffect(() => { if (!cache) api.protectionConfig().then(c => { cache = c; setCfg(c); }).catch(() => setCfg({ max: 180, defaultDays: 180, presets: [30, 60, 90, 180], min: 7 })); }, []);
   return cfg;
 }
 export const clearProtectionCache = () => { cache = null; };
@@ -42,7 +42,7 @@ export const ProtectionPicker: React.FC<{ value: number; onChange: (d: number) =
 export const ProtectionAdmin: React.FC = () => {
   const tx = useTx(); const { lang } = useI18n();
   const [cfg, setCfg] = useState<ProtectionConfig | null>(null);
-  const [max, setMax] = useState(180); const [def, setDef] = useState(30);
+  const [max, setMax] = useState(180); const [def, setDef] = useState(180);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => { api.protectionConfig().then(c => { setCfg(c); setMax(c.max); setDef(c.defaultDays); }).catch(() => {}); }, []);
   if (!cfg) return null;

@@ -86,6 +86,7 @@ const OffersTab: React.FC<{ act: Act; tick: number; permissions: string[] }> = (
       {d.incoming.length > 0 && <section className="space-y-2"><h3 className="text-sm font-bold">{tx('Offers on my properties', 'मेरी प्रॉपर्टी पर ऑफ़र')} ({d.incoming.length})</h3>
         <p className="text-[11px] text-slate-500">{tx('Buyer names show only the first name until you accept. One offer holds the property at a time; the rest wait in a backup queue and move up automatically.', 'स्वीकार करने तक खरीदार का सिर्फ़ पहला नाम दिखता है। एक समय में एक ही ऑफ़र प्रॉपर्टी रोकता है; बाकी बैकअप कतार में रहते हैं और अपने आप आगे आते हैं।')}</p>
         {d.incoming.map((o: any) => <OfferCard key={o.id} o={o} side="incoming" act={act} />)}</section>}
+      {!canMake && d.incoming.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600" data-testid="offers-empty">{tx('No offer on your properties yet. When a broker sends one for his buyer, it shows here for you to accept, counter or decline.', 'आपकी प्रॉपर्टी पर अभी कोई ऑफ़र नहीं। जब कोई ब्रोकर अपने खरीदार के लिए ऑफ़र भेजेगा, वह यहाँ दिखेगा — आप मानें, बदलें या मना करें।')}</p>}
       {canMake && <section className="space-y-2"><h3 className="text-sm font-bold">{tx('My offers', 'मेरे ऑफ़र')} ({d.made.length})</h3>
         {d.made.length === 0 && <p className="text-xs text-slate-500">{tx('You have not made any offers yet.', 'आपने अभी कोई ऑफ़र नहीं दिया।')}</p>}
         {d.made.map((o: any) => <OfferCard key={o.id} o={o} side="made" act={act} />)}</section>}

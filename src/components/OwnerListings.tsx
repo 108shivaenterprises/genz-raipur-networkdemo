@@ -231,10 +231,9 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = 
         <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Two ways: pay GENZ’s plan and go live for all brokers, or choose one broker free from your city’s Top 10 and go live after his mandate.', 'दो रास्ते: GENZ का प्लान देकर सभी ब्रोकरों के लिए लाइव, या अपने शहर के टॉप 10 में से एक ब्रोकर मुफ़्त चुनें और उसके मंडेट के बाद लाइव।')}</p></div>
         <button type="button" className={btn} onClick={onNew} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>
       </div>
-      <NetworkStrip />
       <PlanCards onNew={onNew} />
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
-      {d.listings.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No listing yet. Choose a plan above and tap “New listing”.', 'अभी कोई लिस्टिंग नहीं। ऊपर प्लान देखें और “नई लिस्टिंग” दबाएँ।')}</p>}
+      {d.listings.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No listing of your own yet — homes a broker listed for you are under “My properties” below. To list one yourself, pick a plan above and tap “New listing”.', 'अभी आपकी अपनी कोई लिस्टिंग नहीं — ब्रोकर ने आपके लिए जो घर डाले वे नीचे “मेरी प्रॉपर्टी” में हैं। ख़ुद डालने के लिए ऊपर प्लान चुनें और “नई लिस्टिंग” दबाएँ।')}</p>}
       {d.listings.map((l: any) => {
         const s = STATUS[l.feeStatus] || ['', '', ''];
         return (
@@ -259,7 +258,7 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = 
           </div>
         );
       })}
-      <VerifySection listings={d.listings} />
+      {d.listings.length > 0 && <VerifySection listings={d.listings} />}   {/* v137 — ID + papers are asked only once he lists a home himself */}
     </div>
   );
 };

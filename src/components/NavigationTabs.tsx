@@ -175,6 +175,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     return () => { live = false; window.clearInterval(timer); window.removeEventListener('genz:page-changed', pull); };
   }, [pageUser, activeTab]);
   const isOwner = currentUser?.role === 'PROPERTY_OWNER';
+  const role0 = currentUser?.role || '';
   const isConnector = currentUser?.role === 'GENZ_CONNECTOR';
   const isMember = currentUser?.role === 'TEAM_MEMBER';
   // v75 — a builder / lawyer / contractor sees plain names for his own screens (a broker or GENZ staff keep the old ones)
@@ -188,7 +189,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('legal:desk') && !has('legal:manage') ? [{ id: 'legal', label: isCounsel ? t('nav.legalCases', 'Legal Cases') : t('nav.legal', 'Legal Desk'), icon: ScaleIcon, badge: legalBadge }] : []),
     // v54.1 — GENZ admins are never part of a deal chat (they read a deal room only through a dispute), so their Chats list is always empty
     ...(has('deal:chat', 'clientroom:use', 'pchat:use') && currentUser?.role !== 'ADMIN' && currentUser?.role !== 'SUPERADMIN' ? [{ id: 'chats', label: t('nav.chats', 'Chats'), icon: MessageCircle, badge: chatBadge }] : []),
-    ...(has('requirement:create') ? [{ id: 'feed', label: t('nav.feed', 'Network Feed'), icon: Rss }] : []),
+    ...(has('requirement:create') && role0 !== 'BUYER_TENANT' ? [{ id: 'feed', label: t('nav.feed', 'Network Feed'), icon: Rss }] : []),
     ...(has('daily:use') ? [{ id: 'daily', label: t('nav.daily', 'Today & Clients'), icon: CalendarCheck }] : []),
     ...(has('pcontrol:manage', 'pcontrol:oversee') ? [{ id: 'pcontrol', label: isBuilderRole ? t('nav.pcontrolBuilder', 'Partners & Rules') : t('nav.pcontrol', 'Project Control'), icon: SlidersHorizontal }] : has('pcontrol:partner') ? [{ id: 'pcontrol', label: t('nav.myprojects', 'My Projects'), icon: Layers }] : []),
     ...(has('offer:make', 'offer:decide', 'listing:lifecycle') ? [{ id: 'desk', label: t('nav.desk', 'Deal Desk'), icon: Handshake }] : []),
@@ -216,7 +217,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('property:read')
       ? [{ id: 'properties', label: isOwner ? t('nav.myProperties', 'My Properties') : t('nav.properties', 'Properties'), icon: Building }]
       : []),
-    ...(has('requirement:read') ? [{ id: 'requirements', label: t('nav.requirements', 'Buyer Needs'), icon: UserCheck }] : []),
+    ...(has('requirement:read') ? [{ id: 'requirements', label: role0 === 'BUYER_TENANT' ? t('nav.myNeeds', 'My needs') : t('nav.requirements', 'Buyer Needs'), icon: UserCheck }] : []),
     ...(has('matching:run') ? [{ id: 'matches', label: t('nav.matches', 'Magic Match'), icon: Sparkles, badge: unreadCount.matches }] : []),
     ...(has('deal:read')
       ? [{ id: 'deals', label: isOwner ? t('nav.myDeals', 'My Property Deals') : t('nav.deals', 'My Deals'), icon: Briefcase, badge: unreadCount.deals }]
@@ -224,7 +225,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('dd:read') ? [{ id: 'due_diligence', label: t('nav.dd', 'Title Check'), icon: ShieldCheck }] : []),
     ...(has('lead:read') ? [{ id: 'construction', label: isContractorRole ? t('nav.constructionContractor', 'Leads & Jobs') : t('nav.construction', 'Construction Leads'), icon: HardHat, badge: unreadCount.leads }] : []),
     ...(has('dispute:read') ? [{ id: 'disputes', label: t('nav.disputes', 'Disputes'), icon: Scale, badge: unreadCount.disputes }] : []),
-    ...(has('audit:read_all', 'audit:read_own') ? [{ id: 'audit', label: t('nav.audit', 'Activity Record'), icon: History }] : []),
+    ...(has('audit:read_all', 'audit:read_own') && role0 !== 'BUYER_TENANT' && !isOwner ? [{ id: 'audit', label: t('nav.audit', 'Activity Record'), icon: History }] : []),
     ...(has('users:invite', 'users:review') ? [{ id: 'onboarding', label: t('nav.onboarding', 'Invite & KYC'), icon: KeyRound }] : []),
     ...(has('users:review') ? [{ id: 'idreview', label: t('nav.idreview', 'ID Review'), icon: FileSearch, badge: idBadge }] : []),
     ...(has('ownerlist:manage') ? [{ id: 'ownerlist', label: t('nav.ownerlistAdmin', 'Owner Listing Plans'), icon: BadgeIndianRupee }] : []),
@@ -255,7 +256,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   // v26 — on a phone a broker gets 5 big buttons at the bottom instead of ~20 tabs; “More” opens the full list.
   // v62 — every role with more than 6 tabs gets the same (admin 25, super admin 28, builder 14, legal 11…), with its own 4 buttons.
   const role = currentUser?.role || '';
-  const simple = role === 'BROKER' || tabs.length > 6;
+  const simple = role === 'BROKER' || role === 'BUYER_TENANT' || role === 'PROPERTY_OWNER' || tabs.length > 6;   // v137 — owner / buyer keep their own bottom bar even with few tabs
   const [more, setMore] = useState(false);
   const [moreFilter, setMoreFilter] = useState('');
   // v44: the first id that exists wins (so “Deals” opens the deal pipeline; Deal Desk stays one tap away in More)

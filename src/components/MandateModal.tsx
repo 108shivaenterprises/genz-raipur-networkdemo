@@ -1,4 +1,4 @@
-import { ProtectionPicker } from './ProtectionDays.js';
+import { ProtectionPicker, useProtectionConfig } from './ProtectionDays.js';
 import React, { useMemo, useState } from 'react';
 import { ShieldCheck, Lock, X, CheckCircle2, Clock, AlertTriangle, UserCheck } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -50,7 +50,8 @@ export const MandateModal: React.FC<Props> = ({ property, mandates, currentUser,
   const [basis, setBasis] = useState<OwnerMandate['remunerationBasis']>('SURPLUS_ABOVE_NET');
   const [pct, setPct] = useState<string>('2');
   const [fee, setFee] = useState<string>('');
-  const [days, setDays] = useState<string>(String(active?.protectionPeriodDays || 30));
+  const [days, setDays] = useState<string>(active?.protectionPeriodDays ? String(active.protectionPeriodDays) : '');
+  const defDays = useProtectionConfig()?.defaultDays || 180;
   const [password, setPassword] = useState('');
   const [declineNote, setDeclineNote] = useState('');
   const [showDecline, setShowDecline] = useState(false);
@@ -104,7 +105,7 @@ export const MandateModal: React.FC<Props> = ({ property, mandates, currentUser,
     void run(
       async () => {
         await api.createOwnerMandate({
-          propertyId: property.id, remunerationBasis: basis, advertisedPrice: adv, protectionPeriodDays: Number(days) || 30, password,
+          propertyId: property.id, remunerationBasis: basis, advertisedPrice: adv, protectionPeriodDays: Number(days) || defDays, password,
           ...(basis === 'SURPLUS_ABOVE_NET' ? { approvedNetPrice: netN } : basis === 'PERCENTAGE' ? { commissionPct: pctN } : { fixedFeeAmount: feeN }),
         });
         setShowForm(false);
@@ -344,7 +345,7 @@ export const MandateModal: React.FC<Props> = ({ property, mandates, currentUser,
             </div>
 
             <div>
-              <ProtectionPicker value={Number(days) || 30} onChange={(d) => setDays(String(d))} testId="mandate-days" />
+              <ProtectionPicker value={Number(days) || defDays} onChange={(d) => setDays(String(d))} testId="mandate-days" />
               <p className="mt-0.5 text-[10px] text-slate-500">{hi ? 'इस अवधि में ब्रोकर द्वारा लाए गए खरीदार से सीधे सौदा करने पर भी ब्रोकर का हिस्सा देय रहेगा।' : 'If a buyer introduced by the broker deals with you directly during this period, the broker\'s share stays payable.'}</p>
             </div>
             {pwField}

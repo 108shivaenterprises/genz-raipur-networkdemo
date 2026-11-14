@@ -141,7 +141,7 @@ const DraftRow: React.FC<{ d: Draft; open: boolean; onToggle: () => void; onChan
   const tx = useTx();
   const cfg = useProtectionConfig();
   const [f, setF] = useState<Record<string, any>>(d.fields);
-  const [days, setDays] = useState<number>(d.consent?.protectionDays || cfg?.defaultDays || 30);
+  const [days, setDays] = useState<number>(d.consent?.protectionDays || cfg?.defaultDays || 180);
   const [busy, setBusy] = useState(''); const [err, setErr] = useState(''); const [taken, setTaken] = useState<any>(null);
   const [link, setLink] = useState<{ url: string; wa: string } | null>(null);
   const [agree, setAgree] = useState(false);

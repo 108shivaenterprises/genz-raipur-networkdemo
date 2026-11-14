@@ -41,7 +41,7 @@ export const BrokerSafetyModal: React.FC<BrokerSafetyModalProps> = ({
 }) => {
   const tx = useTx();
   // v28 — the days come from the superadmin's rule (default days), not a fixed 30
-  const pDays = useProtectionConfig()?.defaultDays || 30;
+  const pDays = useProtectionConfig()?.defaultDays || 180;
   const { lang } = useI18n();
   const hi = lang === 'hi';
   const [activeTab, setActiveTab] = useState<'clause' | 'agreement_gen' | 'blacklist_protocol'>('clause');

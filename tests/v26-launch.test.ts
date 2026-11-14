@@ -75,7 +75,7 @@ describe('bypass protection days', () => {
     expect(protectionProblem(3, cfg)?.code).toBe('PROTECTION_SHORT');
     expect(protectionProblem(7.5, cfg)?.code).toBe('PROTECTION_WHOLE');
     expect(protectionProblem(91, cfg)?.hi).toMatch(/90 दिन/);
-    expect(safeDays(500, cfg)).toBe(90); expect(safeDays(undefined, cfg)).toBe(30);
+    expect(safeDays(500, cfg)).toBe(90); expect(safeDays(undefined, cfg)).toBe(90);   // v137 — default 180 follows the lower maximum
   });
 });
 
@@ -205,7 +205,7 @@ afterAll(async () => { proc?.kill('SIGTERM'); await new Promise(r => setTimeout(
 
 describe('protection limit (superadmin only)', () => {
   it('anyone signed in reads the rule; only the superadmin changes it; existing default follows a lower maximum', async () => {
-    expect(await j(await call(jar.BRK1, 'GET', '/api/protection/config'))).toMatchObject({ max: 180, defaultDays: 30, presets: [30, 60, 90, 180] });
+    expect(await j(await call(jar.BRK1, 'GET', '/api/protection/config'))).toMatchObject({ max: 180, defaultDays: 180, presets: [30, 60, 90, 180] });   // v137 — the owner rule: 180 days
     expect((await call(jar.BRK1, 'PUT', '/api/protection/settings', { maxDays: 365 })).status).toBe(403);
     expect((await call(jar.ADMIN, 'PUT', '/api/protection/settings', { maxDays: 365 })).status).toBe(403);
     expect((await call(jar.SUP, 'PUT', '/api/protection/settings', { maxDays: 90, defaultDays: 120 })).status).toBe(400);

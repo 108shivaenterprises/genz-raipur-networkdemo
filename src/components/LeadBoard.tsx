@@ -10,7 +10,7 @@ import { Loader2, Trophy } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
-import { ProtectionPicker } from './ProtectionDays.js';
+import { ProtectionPicker, useProtectionConfig } from './ProtectionDays.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50';
@@ -173,7 +173,7 @@ export const FreeRouteOffer: React.FC<{ l: any; onDone: () => void }> = ({ l, on
 export const OwnerBrokerRoute: React.FC<{ l: any; onDone: () => void }> = ({ l, onDone }) => {
   const tx = useTx(); const t = l.terms; const ms: string | null = l.mandateStatus; const locked = ms === 'PENDING_BROKER' || ms === 'ACTIVE';
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [change, setChange] = useState(false);
-  const [days, setDays] = useState(30); const [sent, setSent] = useState<{ devCode?: string } | null>(null); const [code, setCode] = useState('');
+  const defDays = useProtectionConfig()?.defaultDays || 180; const [pick, setDays] = useState(0); const days = pick || defDays; const [sent, setSent] = useState<{ devCode?: string } | null>(null); const [code, setCode] = useState('');
   const name = l.broker?.firstName || tx('your broker', 'आपका ब्रोकर');
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onDone(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   return (
