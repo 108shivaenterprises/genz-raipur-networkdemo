@@ -49,7 +49,7 @@ export const VerifiedPhotoCard: React.FC = () => {
         <div className="space-y-1 text-xs text-slate-600">
           <p>{tx('A clear photo of your face, no cap or sunglasses. It shows at once; the “checked by GENZ” mark comes after GENZ matches it with your ID.', 'चेहरा साफ़ दिखे, टोपी या चश्मा नहीं। फ़ोटो तुरंत दिखेगी; “GENZ ने जाँची” का निशान ID से मिलान के बाद आएगा।')}</p>
           {rejected && <p role="alert" className="font-semibold text-red-700">{tx('Not accepted', 'स्वीकार नहीं')}: {d.latest.review?.note}</p>}
-          <input ref={fileRef} type="file" accept="image/*" capture="user" className="hidden" onChange={e => pick(e.target.files?.[0])} data-testid="photo-file" />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => pick(e.target.files?.[0])} data-testid="photo-file" />
           <button type="button" onClick={() => fileRef.current?.click()} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 font-semibold text-slate-800"><Camera className="h-4 w-4" />{d.url || d.pending ? tx('Change photo', 'फ़ोटो बदलें') : tx('Take / choose photo', 'फ़ोटो लें / चुनें')}</button>
         </div>
       </div>

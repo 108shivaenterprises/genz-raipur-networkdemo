@@ -248,7 +248,7 @@ const DraftRow: React.FC<{ d: Draft; open: boolean; onToggle: () => void; onChan
                 <a href={api.consentFormUrl(d.id, days)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800"><FileSignature className="h-3.5 w-3.5" />{tx('Print paper form', 'पेपर फ़ॉर्म प्रिंट करें')}<ExternalLink className="h-3 w-3" /></a>
                 <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 ${missing.length || termsBlock ? 'pointer-events-none opacity-50' : ''}`}>
                   {busy === 'paper' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}{tx('Upload signed form', 'साइन किया फ़ॉर्म अपलोड')}
-                  <input type="file" accept="image/*,application/pdf" capture="environment" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) paper(file); }} data-testid="draft-paper" />
+                  <input type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) paper(file); }} data-testid="draft-paper" />
                 </label>
               </div>
               <p className="text-[11px] text-slate-500">{tx(PAPER_HELP.en, PAPER_HELP.hi)}{sms ? '' : ` ${tx('(SMS codes are off until an SMS service is connected; the link page checks it is not opened on your own phone.)', '(SMS सेवा जुड़ने तक SMS कोड बंद हैं; लिंक पेज जाँचता है कि वह आपके अपने फ़ोन पर तो नहीं खुला।)')}`}</p>

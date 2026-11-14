@@ -58,4 +58,8 @@ describe('v137 owner + client screens', () => {
   it('v138 — My profile has the photo card (it was only on the ID-card screen)', () => {
     expect(src('src/components/ProfilesView.tsx')).toContain("{c.role !== 'GENZ_CONNECTOR' && <VerifiedPhotoCard />}");
   });
+  it('v139 — profile photo and the signed form open the phone chooser (camera OR gallery / PDF), not the camera only', () => {
+    expect(src('src/components/VerifiedPhoto.tsx')).not.toContain('capture=');
+    expect(src('src/components/ListingDrafts.tsx')).not.toContain('capture=');
+  });
 });
