@@ -18,7 +18,7 @@ export function boardFor(city: string, now = Date.now()): BoardRow[] {
   const pts = new Map<string, number>();
   for (const e of s.pointEvents) if (e.points > 0 && Date.parse(e.at) >= since) pts.set(e.userId, (pts.get(e.userId) || 0) + e.points);
   return s.users
-    .filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' && !u.erasedAt && !!u.avatarUrl && !!u.photoCheckedAt && sameCity(u.city, city))
+    .filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' && !u.erasedAt && !!u.avatarUrl && sameCity(u.city, city))
     .map(u => ({ u, p: pts.get(u.id) || 0 }))
     .sort((a, b) => b.p - a.p || a.u.createdAt.localeCompare(b.u.createdAt) || a.u.id.localeCompare(b.u.id))
     .slice(0, BOARD_SIZE)

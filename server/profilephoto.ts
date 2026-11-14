@@ -30,7 +30,11 @@ const view = (p: ProfilePhoto) => ({ id: p.id, status: p.status, createdAt: p.cr
 /** v121 — photos approved before this version carry no `photoCheckedAt`: give it to them once (boot) */
 export function healPhotoChecks(): number {
   let n = 0; const s = st();
-  for (const p of s.profilePhotos) if (p.status === 'APPROVED') { const u = s.users.find(x => x.id === p.userId); if (u && u.avatarUrl && !u.photoCheckedAt) { u.photoCheckedAt = p.review?.at || p.createdAt; n++; } }
+  for (const p of s.profilePhotos) {
+    if (p.status === 'PENDING') { p.status = 'APPROVED'; n++; continue; }   // v140 — no GENZ check any more: a waiting photo is simply live
+    // the "checked by GENZ" mark only for a photo staff really reviewed (an auto-live photo has no review)
+    if (p.status === 'APPROVED' && p.review) { const u = s.users.find(x => x.id === p.userId); if (u && u.avatarUrl && !u.photoCheckedAt) { u.photoCheckedAt = p.review.at; n++; } }
+  }
   if (n) db.save(); return n;
 }
 /** DPDP erasure */
@@ -67,17 +71,16 @@ export function createProfilePhotoRouter() {
     const mime = sniffMime(buf);
     if (mime !== 'image/jpeg' && mime !== 'image/png' && mime !== 'image/webp') return bad(res, 'Only a JPEG, PNG or WebP photo is accepted.', 415);
     const s = st();
-    // v121 — the photo is live at once (the owner's rule); GENZ checks it afterwards and only then does the “checked by GENZ” mark show
+    // v140 — the photo is live at once and there is no GENZ check (the owner's rule); members can still report a wrong photo
     for (const old of s.profilePhotos.filter(p => p.userId === u.id)) erase(old.id);
     s.profilePhotos = s.profilePhotos.filter(p => p.userId !== u.id);
     const id = `PHO-${crypto.randomBytes(5).toString('hex')}`;
     try { fs.mkdirSync(DIR(), { recursive: true }); const tmp = fileOf(id) + '.tmp'; fs.writeFileSync(tmp, buf); fs.renameSync(tmp, fileOf(id)); }
     catch { return bad(res, 'The photo could not be saved. Please try again.', 500); }
-    s.profilePhotos.push({ id, userId: u.id, status: 'PENDING', mime, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), consentAt: nowIso(), createdAt: nowIso() });
+    s.profilePhotos.push({ id, userId: u.id, status: 'APPROVED', mime, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), consentAt: nowIso(), createdAt: nowIso() });
     u.avatarUrl = photoUrl(u.id); u.photoCheckedAt = undefined;
     db.save();
-    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'PROFILE_PHOTO_UPLOADED', `${u.name} uploaded a profile photo ${id} for GENZ to check`);
-    for (const a of s.users.filter(x => x.role === 'ADMIN' || x.role === 'SUPERADMIN').slice(0, 20)) void pushTo(a.id, { kind: 'deals', title: 'A broker photo needs checking', body: `${u.name} — open Disputes → Photo check.`, url: '/?tab=disputes' });
+    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'PROFILE_PHOTO_UPLOADED', `${u.name} put up a profile photo ${id} (live at once)`);
     res.json({ success: true });
   });
 

@@ -65,6 +65,12 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   // v56 — a buyer (no co-broking) saves homes instead
   const [saved, setSaved] = useState<Set<string>>(new Set());
   useEffect(() => { if (!canPropose) api.savedList().then(r => setSaved(new Set(r.ids || []))).catch(() => undefined); }, [canPropose]);
+  // v140 — the buyer asks his broker about a home (a visit / details); the broker gets it in the bell + phone alert
+  const [asked, setAsked] = useState<Set<string>>(new Set());
+  const askBroker = async (id: string) => {
+    try { const r = await api.askAboutHome(activeReqId, id); setAsked(x => new Set(x).add(id)); toast(r.toOwnBroker ? tx('Sent to your broker — he will call you to fix the visit.', 'आपके ब्रोकर को भेजा — वे विज़िट तय करने के लिए कॉल करेंगे।') : tx('Sent to the broker of this home — he will call you.', 'इस घर के ब्रोकर को भेजा — वे कॉल करेंगे।'), 'success'); }
+    catch (e: any) { toast(e?.message || tx('Could not send. Please try again.', 'भेजा नहीं जा सका। फिर कोशिश करें।'), 'error'); }
+  };
   const toggleSave = async (id: string) => {
     try {
       const r = await api.savedToggle(id);
@@ -250,6 +256,11 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                   {!canPropose && isPropMatch && (
                     <button type="button" onClick={() => void toggleSave(p.id)} aria-pressed={saved.has(p.id)} className={`ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3.5 text-sm font-semibold ${saved.has(p.id) ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="match-save">
                       <Heart className={`h-4 w-4 ${saved.has(p.id) ? 'fill-rose-500 text-rose-500' : ''}`} />{saved.has(p.id) ? tx('Saved', 'सेव है') : tx('Save', 'सेव करें')}
+                    </button>
+                  )}
+                  {!canPropose && isPropMatch && activeReqId && (
+                    <button type="button" onClick={() => void askBroker(p.id)} disabled={asked.has(p.id)} className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-900 px-3.5 text-sm font-semibold text-white disabled:bg-emerald-700" data-testid="match-ask">
+                      {asked.has(p.id) ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}{asked.has(p.id) ? tx('Sent', 'भेजा') : tx('Ask broker', 'ब्रोकर से पूछें')}
                     </button>
                   )}
                   {canPropose && own && (

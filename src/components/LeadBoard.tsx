@@ -119,7 +119,7 @@ export const BrokerBoardLine: React.FC<{ city?: string; userId: string }> = ({ c
       <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
       <span>{me
         ? tx(`You are #${me.rank} on the ${city} Leadership Board — owners on the free route choose from these 10 brokers.`, `आप ${city} के लीडरशिप बोर्ड पर #${me.rank} हैं — फ़्री रूट वाले मालिक इन्हीं 10 ब्रोकरों में से चुनते हैं।`)
-        : tx(`Owners on the free route choose from the Top 10 of ${city}. To appear: get your face photo checked by GENZ (Profile) and earn work points.`, `फ़्री रूट वाले मालिक ${city} के टॉप 10 में से चुनते हैं। आने के लिए: प्रोफ़ाइल में अपनी फ़ोटो GENZ से जँचवाएँ और काम के पॉइंट कमाएँ।`)}</span>
+        : tx(`Owners on the free route choose from the Top 10 of ${city}. To appear: add your face photo (My profile) and earn work points.`, `फ़्री रूट वाले मालिक ${city} के टॉप 10 में से चुनते हैं। आने के लिए: “मेरी प्रोफ़ाइल” में अपनी फ़ोटो डालें और काम के पॉइंट कमाएँ।`)}</span>
     </p>
   );
 };

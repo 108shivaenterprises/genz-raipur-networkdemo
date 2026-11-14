@@ -1,5 +1,5 @@
 import './server/bootstrap.js';
-import { alert, inr as rupees, once } from './server/alerts.js';
+import { alert, inr as rupees, once, firstName } from './server/alerts.js';
 import express, { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { db, UserRole, UserProfile, sha256, type DatabaseState, type DealRoom, type BuyerRequirement as BuyerRequirementT, type AuditEvent as AuditEventT } from './server/db.js';
@@ -1791,6 +1791,25 @@ app.post('/api/requirements/:id/claim', needs('requirement:create'), (req: Reque
 // ==========================================
 // 5. PROPERTY-REQUIREMENT MATCHING ENGINE
 // ==========================================
+
+/** v140 — a buyer likes a home he browsed: his own broker gets the query (no broker on the need → the listing broker).
+ *  Only an alert: no number, no bond — the broker books the visit / co-broke the usual way. */
+app.post('/api/requirements/:reqId/interest', needs('requirement:read'), rateLimit('buyer-interest', 30, 3600_000), (req: Request, res: Response) => {
+  const me = getCurrentUser();
+  const r = db.byId('requirements', req.params.reqId);
+  if (!r || me.role !== 'BUYER_TENANT' || r.buyerId !== me.id) return res.status(404).json({ error: 'Requirement not found' });
+  const p = db.byId('properties', String((req.body as any)?.propertyId || ''));
+  if (!p || p.listingStatus !== 'active') return res.status(404).json({ error: 'This home is not live' });
+  const to = r.assignedBrokerId || p.listingBrokerId;
+  if (!to) return res.status(409).json({ error: 'No broker on this requirement yet' });
+  const own = to === r.assignedBrokerId;
+  const who = firstName(me.name);
+  alert(to, 'matches', `${who} wants to see a home`, `${p.title} · ${p.locality} — ${own ? 'your client asked for a visit / details' : 'a buyer asked about your listing'}`, '/?tab=requirements', { tag: `interest-${r.id}-${p.id}`,
+    hi: [`${who} घर देखना चाहते हैं`, `${p.title} · ${p.locality} — ${own ? 'आपके क्लाइंट ने विज़िट / जानकारी माँगी' : 'एक खरीदार ने आपकी लिस्टिंग के बारे में पूछा'}`] });
+  db.appendAuditEvent(me.id, me.role, 'LEAD', r.id, 'BUYER_INTEREST', `Asked about ${p.id} → ${own ? 'own broker' : 'listing broker'}`);
+  db.save();
+  res.json({ success: true, toOwnBroker: own });
+});
 
 app.get('/api/matching/requirement/:reqId', needs('matching:run'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();

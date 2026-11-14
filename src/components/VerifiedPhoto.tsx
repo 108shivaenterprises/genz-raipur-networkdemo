@@ -1,6 +1,6 @@
 /**
  * v36 — Verified Photo screens.
- *  VerifiedPhotoCard:  the member uploads a photo; it is live at once (v121), the “checked by GENZ” mark comes after staff match it with his ID.
+ *  VerifiedPhotoCard:  the member uploads a photo; it is live at once, no GENZ check (v140).
  *  PhotoCheckAdmin:    GENZ staff queue — compare the photo with the member's ID, approve or send back with a reason.
  */
 import React, { useEffect, useRef, useState } from 'react';
@@ -30,7 +30,7 @@ export const VerifiedPhotoCard: React.FC = () => {
   const pick = async (f?: File) => { setErr(''); setOk(''); if (!f) return; try { setPrev(await shrink(f)); } catch { setErr(tx('Could not read this photo — try another.', 'यह फ़ोटो पढ़ी नहीं गई — दूसरी चुनें।')); } };
   const send = async () => {
     setBusy(true); setErr('');
-    try { await api.photoUpload(prev, consent); setPrev(''); setConsent(false); setOk(tx('Your photo is live now. The “checked by GENZ” mark comes after GENZ matches it with your ID.', 'आपकी फ़ोटो अभी से दिख रही है। “GENZ ने जाँची” का निशान ID से मिलान के बाद आएगा।')); load(); }
+    try { await api.photoUpload(prev, consent); setPrev(''); setConsent(false); setOk(tx('Your photo is live now.', 'आपकी फ़ोटो अब दिख रही है।')); load(); }
     catch (e: any) { setErr(e?.body?.hi && document.documentElement.lang === 'hi' ? e.body.hi : e.message); } finally { setBusy(false); }
   };
   const rejected = d.latest?.status === 'REJECTED';
@@ -38,8 +38,7 @@ export const VerifiedPhotoCard: React.FC = () => {
     <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-3" data-testid="verified-photo">
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-bold">{tx('My photo for the ID card', 'ID कार्ड के लिए मेरी फ़ोटो')}</h3>
-        {d.approved ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800"><BadgeCheck className="h-3 w-3" />{tx('Checked by GENZ', 'GENZ ने जाँची')}</span>
-          : d.pending ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{tx('Live · GENZ check pending', 'दिख रही है · GENZ जाँच बाकी')}</span>
+        {d.url ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800"><BadgeCheck className="h-3 w-3" />{tx('Live', 'लाइव')}</span>
           : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{tx('No photo yet', 'अभी फ़ोटो नहीं')}</span>}
       </div>
       <div className="flex items-center gap-3">
@@ -47,7 +46,7 @@ export const VerifiedPhotoCard: React.FC = () => {
           {prev ? <img src={prev} alt="" className="h-full w-full object-cover" /> : d.url ? <img src={d.url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-slate-400"><Camera className="h-6 w-6" /></div>}
         </div>
         <div className="space-y-1 text-xs text-slate-600">
-          <p>{tx('A clear photo of your face, no cap or sunglasses. It shows at once; the “checked by GENZ” mark comes after GENZ matches it with your ID.', 'चेहरा साफ़ दिखे, टोपी या चश्मा नहीं। फ़ोटो तुरंत दिखेगी; “GENZ ने जाँची” का निशान ID से मिलान के बाद आएगा।')}</p>
+          <p>{tx('A clear photo of your face, no cap or sunglasses. It shows at once.', 'चेहरा साफ़ दिखे, टोपी या चश्मा नहीं। फ़ोटो तुरंत दिखेगी।')}</p>
           {rejected && <p role="alert" className="font-semibold text-red-700">{tx('Not accepted', 'स्वीकार नहीं')}: {d.latest.review?.note}</p>}
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => pick(e.target.files?.[0])} data-testid="photo-file" />
           <button type="button" onClick={() => fileRef.current?.click()} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 font-semibold text-slate-800"><Camera className="h-4 w-4" />{d.url || d.pending ? tx('Change photo', 'फ़ोटो बदलें') : tx('Take / choose photo', 'फ़ोटो लें / चुनें')}</button>

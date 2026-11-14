@@ -62,4 +62,17 @@ describe('v137 owner + client screens', () => {
     expect(src('src/components/VerifiedPhoto.tsx')).not.toContain('capture=');
     expect(src('src/components/ListingDrafts.tsx')).not.toContain('capture=');
   });
+  it('v140 — a buyer can ask his broker about a home from Magic Match; only his own need, only a live home', async () => {
+    const post = (c: string, url: string, body: unknown) => fetch(B + url, { method: 'POST', headers: { cookie: c, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const reqs = await (await get(jar.BUYER_TENANT, '/api/requirements')).json();
+    const r = (reqs.requirements || reqs).find((x: any) => x.buyerId);
+    expect(r).toBeTruthy();
+    const props = await (await get(jar.BROKER, '/api/properties')).json();
+    const p = (props.properties || props).find((x: any) => x.listingStatus === 'active');
+    const ok = await post(jar.BUYER_TENANT, `/api/requirements/${r.id}/interest`, { propertyId: p.id });
+    expect(ok.status, await ok.clone().text()).toBe(200); expect((await ok.json()).success).toBe(true);
+    expect((await post(jar.BUYER_TENANT, `/api/requirements/${r.id}/interest`, { propertyId: 'PROP-NOPE' })).status).toBe(404);
+    expect((await post(jar.BROKER, `/api/requirements/${r.id}/interest`, { propertyId: p.id })).status).toBe(404);   // not his need
+    expect(src('src/components/MatchCenterView.tsx')).toContain('data-testid="match-ask"');
+  });
 });

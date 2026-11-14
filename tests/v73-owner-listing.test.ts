@@ -49,8 +49,7 @@ const JPGB = Buffer.concat([Buffer.from('ffd8ffe0', 'hex'), Buffer.alloc(300, 9)
 /** a broker gets a GENZ-approved face photo — the only way onto the Leadership Board */
 async function boardify(brokerJar: string, brokerId: string) {
   expect((await call(brokerJar, 'POST', '/api/profile-photo/mine', { data: `data:image/jpeg;base64,${JPGB}`, consent: true })).status).toBe(200);
-  const q = await j(await call(jar.SUP, 'GET', '/api/profile-photo/admin')); const ph = q.photos.find((x: any) => x.userId === brokerId); expect(ph).toBeTruthy();
-  expect((await call(jar.SUP, 'POST', `/api/profile-photo/admin/${ph.id}`, { verdict: 'APPROVE' })).status).toBe(200);
+  void brokerId;   // v140 — the photo is live at once; no GENZ approval step
 }
 
 const PH = '9876512345';
@@ -140,7 +139,7 @@ describe('fee, then the pool', () => {
 });
 
 describe('Leadership Board (the free route)', () => {
-  it('only VERIFIED brokers with a GENZ-approved face photo are on it; an owner sees rank + first name + photo and nothing else', async () => {
+  it('only VERIFIED brokers with a face photo are on it; an owner sees rank + first name + photo and nothing else', async () => {
     const before = await j(await ocall('GET', '/api/leadboard?city=Raipur')); expect(before.board.some((b: any) => b.brokerId === 'USR-BRK-001')).toBe(false);
     await boardify(jar.B1, 'USR-BRK-001');
     const r = await j(await ocall('GET', '/api/leadboard?city=Raipur')); const row = r.board.find((b: any) => b.brokerId === 'USR-BRK-001');

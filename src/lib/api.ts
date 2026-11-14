@@ -937,6 +937,7 @@ export const api = {
   propDocView: (id: string) => request<any>(`/api/property-docs/${id}/view`, { method: 'POST', body: '{}' }),
   // v56 — saved homes (buyer shortlist)
   savedList: () => request<any>('/api/saved'),
+  askAboutHome: (reqId: string, propertyId: string) => request<{ success: boolean; toOwnBroker: boolean }>(`/api/requirements/${encodeURIComponent(reqId)}/interest`, { method: 'POST', body: JSON.stringify({ propertyId }) }),
   savedToggle: (propertyId: string) => request<any>(`/api/saved/${encodeURIComponent(propertyId)}`, { method: 'POST', body: '{}' }),
   // v57 — My Public Page
   ppGet: () => request<any>('/api/public-page'),
