@@ -55,4 +55,7 @@ describe('v137 owner + client screens', () => {
     expect(pv).toContain("'Brokerage terms with your broker'");
     expect(src('src/components/RoleHome.tsx')).toContain('verified} live · ');
   });
+  it('v138 — My profile has the photo card (it was only on the ID-card screen)', () => {
+    expect(src('src/components/ProfilesView.tsx')).toContain("{c.role !== 'GENZ_CONNECTOR' && <VerifiedPhotoCard />}");
+  });
 });

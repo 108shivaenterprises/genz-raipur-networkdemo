@@ -1,6 +1,6 @@
 /**
  * v36 — Verified Photo screens.
- *  VerifiedPhotoCard:  the broker uploads a selfie / photo; it shows on his ID card only after GENZ staff approve it.
+ *  VerifiedPhotoCard:  the member uploads a photo; it is live at once (v121), the “checked by GENZ” mark comes after staff match it with his ID.
  *  PhotoCheckAdmin:    GENZ staff queue — compare the photo with the member's ID, approve or send back with a reason.
  */
 import React, { useEffect, useRef, useState } from 'react';

@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { TAGS, REPORT_REASONS, REMARK_MAX, REPLY_MAX, ABOUT_MAX, SPECIALTIES, EVIDENCE, tagLabel, type TargetGroup } from '../shared/reviewRules.js';
 import { MyReraCard } from './ReraTier.js';
+import { VerifiedPhotoCard } from './VerifiedPhoto.js';
 
 /**
  * v78 — Profiles & Reviews. One tab for everyone:
@@ -389,6 +390,7 @@ const MineTab: React.FC<{ onOpen: (id: string) => void }> = ({ onOpen }) => {
       ) : undefined} />
 
       {c.role === 'BROKER' && <MyReraCard />}
+      {c.role !== 'GENZ_CONNECTOR' && <VerifiedPhotoCard />}   {/* v138 — the photo is added where people look for it: My profile */}
 
       {pct < 100 && !open && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="prof-strength">
