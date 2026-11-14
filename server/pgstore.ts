@@ -23,8 +23,9 @@ const T_DOCS = NS ? `${NS}.genz_docs` : 'genz_docs';
 const T_META = NS ? `${NS}.genz_meta` : 'genz_meta';
 const T_FILES = NS ? `${NS}.genz_files` : 'genz_files';
 const T_SIG = NS ? `${NS}.genz_call_signals` : 'genz_call_signals';
+// v136: "CREATE SCHEMA IF NOT EXISTS" still needs CREATE on the database; the live role owns its schema but lacks that right
 const SCHEMA = `
-${NS ? `CREATE SCHEMA IF NOT EXISTS ${NS};` : ''}
+${NS ? `DO $$ BEGIN IF to_regnamespace('${NS}') IS NULL THEN CREATE SCHEMA ${NS}; END IF; END $$;` : ''}
 CREATE TABLE IF NOT EXISTS ${T_DOCS} (
   collection  text        NOT NULL,
   id          text        NOT NULL,
