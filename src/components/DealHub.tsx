@@ -13,6 +13,7 @@ import {
   FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle, ChevronDown, SlidersHorizontal,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { useTemplateHi } from '../lib/templateHi.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
@@ -48,7 +49,7 @@ const NEXT_TONE: Record<string, string> = {
   PAYMENTS_TO_CONFIRM: 'border-emerald-300 bg-emerald-50 text-emerald-900', NO_AGREEMENT: 'border-slate-300 bg-slate-50 text-slate-800', TASKS_TO_DO: 'border-slate-300 bg-slate-50 text-slate-800',
   STALLED: 'border-slate-300 bg-slate-50 text-slate-700',
 };
-export function nextText(n: { kind: string; n: number }, idleDays: number, tx: (a: string, b: string) => string) {
+export function nextText(n: { kind: string; n: number; title?: string }, idleDays: number, tx: (a: string, b: string) => string, th: (s: string) => string = (x) => x) {
   const k = n.n;
   switch (n.kind) {
     case 'CLIENT_PAYMENT': return tx(`${k} brokerage bill${k > 1 ? 's' : ''} past due / to confirm — remind or mark received`, `${k} ब्रोकरेज बिल की तारीख़ निकली / पुष्टि बाकी — रिमाइंडर भेजें या “मिल गया” करें`);
@@ -56,13 +57,13 @@ export function nextText(n: { kind: string; n: number }, idleDays: number, tx: (
     case 'OFFLINE_VISIT_TO_CONFIRM': return tx('Confirm a visit that happened outside the app', 'ऐप के बाहर हुई विज़िट की पुष्टि करें');
     case 'DISPUTE_OPEN': return tx('A dispute is open — see the holds', 'विवाद खुला है — होल्ड देखें');
     case 'AGREEMENT_TO_SIGN': return tx('Approve the commission agreement', 'कमीशन समझौता मंज़ूर करें');
-    case 'TASKS_TO_ACCEPT': return tx(`${k} dut${k > 1 ? 'ies wait' : 'y waits'} for your yes`, `${k} ज़िम्मेदारी आपकी हाँ का इंतज़ार कर रही`);
+    case 'TASKS_TO_ACCEPT': return tx(`${k} task${k > 1 ? 's wait' : ' waits'} for your yes`, `${k} काम आपकी हाँ के इंतज़ार में`);
     case 'VISITS_TO_VERIFY': return tx(`${k} site visit${k > 1 ? 's' : ''} to verify`, `${k} साइट विज़िट वेरिफ़ाई करनी है`);
-    case 'TASKS_OVERDUE': return tx(`${k} dut${k > 1 ? 'ies' : 'y'} past the due date`, `${k} ज़िम्मेदारी की तारीख़ निकल गई`);
-    case 'TASKS_TO_VERIFY': return tx(`${k} finished dut${k > 1 ? 'ies' : 'y'} to check`, `${k} पूरी हुई ज़िम्मेदारी जाँचनी है`);
+    case 'TASKS_OVERDUE': return tx(`${k} task${k > 1 ? 's' : ''} past the due date`, `${k} काम की तारीख़ निकल गई`);
+    case 'TASKS_TO_VERIFY': return tx(`${k} finished task${k > 1 ? 's' : ''} to check`, `${k} पूरे हुए काम जाँचने हैं`);
     case 'PAYMENTS_TO_CONFIRM': return tx(`${k} commission payment${k > 1 ? 's' : ''} to confirm`, `${k} कमीशन भुगतान पक्का करना है`);
     case 'NO_AGREEMENT': return tx('No commission agreement yet — propose one', 'अभी कमीशन समझौता नहीं — प्रस्ताव भेजें');
-    case 'TASKS_TO_DO': return tx(`${k} dut${k > 1 ? 'ies' : 'y'} to finish`, `${k} ज़िम्मेदारी पूरी करनी है`);
+    case 'TASKS_TO_DO': return n.title ? tx(`${th(n.title)}${k > 1 ? ` (+${k - 1} more)` : ''}`, `${th(n.title)}${k > 1 ? ` (+${k - 1} और)` : ''}`) : tx(`${k} task${k > 1 ? 's' : ''} to finish`, `${k} काम पूरे करने हैं`);
     case 'STALLED': return tx(`Nothing happened for ${idleDays} days — message the other side`, `${idleDays} दिन से कुछ नहीं हुआ — दूसरी तरफ़ को मैसेज करें`);
   }
   return n.kind;
@@ -73,7 +74,7 @@ export function nextText(n: { kind: string; n: number }, idleDays: number, tx: (
  * the rest sit behind "+N more", so the top of the deal room is calm. Every item still routes to the same deal-room tab with the same test-id.
  */
 export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string) => void }> = ({ item, onGo }) => {
-  const tx = useTx();
+  const tx = useTx(); const th = useTemplateHi();
   const [more, setMore] = useState(false);
   if (!item) return null;
   const list: any[] = item.next || [];
@@ -86,7 +87,7 @@ export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string)
     const Icon = NEXT_ICON[n.kind] || ChevronRight;
     return (
       <button key={n.kind} type="button" onClick={() => onGo(n.tab, n.kind)} className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 text-left font-semibold ${big ? 'min-h-12 py-2 text-sm' : 'min-h-11 text-xs'} ${NEXT_TONE[n.kind] || ''}`} data-testid={`next-${n.kind}`}>
-        <span className="flex items-center gap-2"><Icon className={`shrink-0 ${big ? 'h-5 w-5' : 'h-4 w-4'}`} />{nextText(n, item.idleDays, tx)}</span>
+        <span className="flex items-center gap-2"><Icon className={`shrink-0 ${big ? 'h-5 w-5' : 'h-4 w-4'}`} />{nextText(n, item.idleDays, tx, th)}</span>
         <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
       </button>
     );
@@ -246,11 +247,11 @@ const Progress: React.FC<{ i: number; dark?: boolean }> = ({ i, dark }) => (
 );
 
 export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kind?: string) => void; compact?: boolean; selected?: boolean }> = ({ d, onOpen, compact, selected }) => {
-  const tx = useTx(); const label = useLabel();
+  const tx = useTx(); const label = useLabel(); const th = useTemplateHi();
   const [rl, rc] = roleChip(d.myRole, tx);
   const first = (d.next || [])[0];
   return (
-    <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' ? first.tab : undefined, first?.kind)}
+    <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' && first.kind !== 'TASKS_TO_DO' ? first.tab : undefined, first?.kind)}
       className={`w-full rounded-xl border p-3 text-left transition-all ${selected ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:shadow-sm'}`} data-testid={`deal-card-${d.id}`}>
       <div className="flex items-start justify-between gap-2">
         <span className={`font-mono text-xs font-bold ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{d.id}</span>
@@ -274,7 +275,7 @@ export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kin
         {d.closed && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs font-bold text-slate-700">{tx('Closed — did not happen', 'बंद — डील नहीं हुई')}</span>}
         {!d.closed && d.closing && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-900">{tx('Close asked', 'बंद करने को कहा')}</span>}
         {d.openDispute && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-800">{tx('Dispute', 'विवाद')}</span>}
-        {first && first.kind !== 'STALLED' && <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-900'}`}>{nextText(first, d.idleDays, tx).slice(0, 48)}</span>}
+        {first && first.kind !== 'STALLED' && <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-900'}`}>{nextText(first, d.idleDays, tx, th).slice(0, 48)}</span>}
         {d.stalled && <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'}`}><Hourglass className="h-3 w-3" />{tx(`${d.idleDays}d idle`, `${d.idleDays} दिन रुका`)}</span>}
         {d.visits?.upcoming > 0 && <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-bold ${selected ? 'bg-white/15 text-white' : 'bg-sky-100 text-sky-800'}`}><CalendarCheck className="h-3 w-3" />{d.visits.upcoming}</span>}
       </div>
@@ -284,7 +285,7 @@ export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kin
 
 type Filter = 'live' | 'needs' | 'stalled' | 'disputes' | 'settled' | 'closed' | 'all';
 export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: string, kind?: string) => void; showRoles: boolean }> = ({ hub, onOpen, showRoles }) => {
-  const tx = useTx(); const label = useLabel();
+  const tx = useTx(); const label = useLabel(); const th = useTemplateHi();
   // a phone starts in the list (one column reads better); the choice is remembered once the broker picks one
   const [view, setViewRaw] = useState<'board' | 'list'>(() => { const v = store.get('genz-deal-view'); return v === 'list' || v === 'board' ? v : (typeof window !== 'undefined' && window.innerWidth < 640 ? 'list' : 'board'); });
   const setView = (v: 'board' | 'list') => { setViewRaw(v); store.set('genz-deal-view', v); };
@@ -399,7 +400,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
               const first = (d.next || [])[0];
               return (
                 <li key={d.id}>
-                  <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' ? first.tab : undefined, first?.kind)} className="grid w-full grid-cols-1 gap-2 px-3 py-3 text-left hover:bg-slate-50 sm:grid-cols-12 sm:items-center" data-testid={`hub-row-${d.id}`}>
+                  <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' && first.kind !== 'TASKS_TO_DO' ? first.tab : undefined, first?.kind)} className="grid w-full grid-cols-1 gap-2 px-3 py-3 text-left hover:bg-slate-50 sm:grid-cols-12 sm:items-center" data-testid={`hub-row-${d.id}`}>
                     <div className="flex items-center gap-2.5 sm:col-span-4">
                       <PropertyThumb src={d.cover} type={d.propertyType} seed={d.propertyTitle} className="h-11 w-11 rounded-lg" />
                       <div className="min-w-0">
@@ -412,7 +413,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
                       <Progress i={d.stageIndex} />
                     </div>
                     <div className="text-xs sm:col-span-3">
-                      {first ? <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${NEXT_TONE[first.kind] || ''}`}>{nextText(first, d.idleDays, tx)}</span> : <span className="text-emerald-700">{tx('Nothing pending', 'कुछ बाकी नहीं')}</span>}
+                      {first ? <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${NEXT_TONE[first.kind] || ''}`}>{nextText(first, d.idleDays, tx, th)}</span> : <span className="text-emerald-700">{tx('Nothing pending', 'कुछ बाकी नहीं')}</span>}
                     </div>
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-500 sm:col-span-2 sm:flex-col sm:items-end">
                       {d.money?.myShare ? <span className="font-bold text-emerald-700">{short(d.money.myShare)}</span> : <span />}

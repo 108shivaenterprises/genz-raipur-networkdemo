@@ -67,8 +67,8 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
   let tasks = { open: 0, overdue: 0, total: 0, done: 0 };
   let agreement: { version: number; status: string; signedByMe?: boolean; waitingOn: number } | null = null;
   let lastMessage: { at: string; from: string } | undefined;
-  const next: { kind: NextKind; n: number; tab: string }[] = [];
-  const add = (kind: NextKind, n: number) => { if (n > 0) next.push({ kind, n, tab: TAB_OF[kind] }); };
+  const next: { kind: NextKind; n: number; tab: string; title?: string }[] = [];
+  const add = (kind: NextKind, n: number, title?: string) => { if (n > 0) next.push({ kind, n, tab: TAB_OF[kind], ...(title ? { title } : {}) }); };
 
   if (dispute) add('DISPUTE_OPEN', 1);
   if (d.closure?.status === 'ASKED' && broker && d.closure.byId !== u.id) add('CLOSE_TO_ANSWER', 1);
@@ -112,7 +112,8 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
         }
       } else if (broker && stageIdx >= 2 && d.stage !== 'Settled') add('NO_AGREEMENT', 1);
     }
-    add('TASKS_TO_DO', mine.filter(t => t.assignmentAcceptance === 'ACCEPTED' && !isDone(t) && !(t.dueDate && Date.parse(t.dueDate) < now)).length);
+    const todo = mine.filter(t => t.assignmentAcceptance === 'ACCEPTED' && !isDone(t) && !(t.dueDate && Date.parse(t.dueDate) < now)).sort((a, b) => String(a.dueDate || '9').localeCompare(String(b.dueDate || '9')));
+    add('TASKS_TO_DO', todo.length, todo[0]?.title);   // v142 — the next step names the task, not just a count
 
     const ms = s.dealMessages.filter(m => m.dealRoomId === d.id && (broker || isAdmin(u) || m.audience !== 'BROKERS'));
     const lm = ms[ms.length - 1];

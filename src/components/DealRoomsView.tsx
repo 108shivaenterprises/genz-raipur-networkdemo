@@ -851,7 +851,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       <div className="-mt-2 flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" data-testid="deal-modes">
         {([
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
-          ['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false],   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Offers" half off the screen
+          ...(mainMode === 'DEAL_ROOMS' ? [['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false]] : []),   // v142 — shown only while a room is open; you enter a room by tapping a deal   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Offers" half off the screen
           ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Offers', 'ऑफ़र'), (offers || []).length, pendingIncomingCount > 0]] : []),
           ...(canRooms ? [['ROOMS', MessagesSquare, tx('Client rooms', 'क्लाइंट रूम'), myRooms.length, roomsAlert]] : []),
           ...(perm('mandate:read') ? [['MANDATES', FileSignature, currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms', 'मेरी ब्रोकरेज शर्तें') : tx('Owners', 'मालिक'), undefined, false]] : []),
@@ -1754,25 +1754,13 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               {/* TAB 2: RESPONSIBILITY MATRIX (MODULE A1) */}
               {activeSubTab === 'responsibilities' && (
                 <div className="space-y-4">
-                  {/* Matrix Progress Scorecard — v83: one slim row of four numbers (it was a 2×2 block of big tiles) */}
-                  <div className="grid grid-cols-4 gap-2 rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm" data-testid="task-scorecard">
-                    <div>
-                      <div className="text-base font-bold text-slate-900">{applicableTasks.length}<span className="text-xs font-medium text-slate-400"> / {tasks.length}</span></div>
-                      <div className="text-xs leading-tight text-slate-500">{tx('Applicable', 'लागू काम')}</div>
+                  {/* v142 — one plain line and a bar (it was four numbers: applicable / accepted / completed / verified) */}
+                  {(() => { const done = applicableTasks.filter((t) => t.taskStatus === 'COMPLETED' || t.verificationStatus === 'VERIFIED').length; const all = applicableTasks.length || 1; return (
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" data-testid="task-scorecard">
+                      <div className="flex items-baseline justify-between text-sm"><span className="font-bold text-slate-900">{tx(`${done} of ${applicableTasks.length} tasks done`, `${applicableTasks.length} में से ${done} काम पूरे`)}</span>{verifiedTasksCount > 0 && <span className="text-xs text-emerald-700">{tx(`${verifiedTasksCount} checked`, `${verifiedTasksCount} जाँचे गए`)}</span>}</div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.round((done / all) * 100)}%` }} /></div>
                     </div>
-                    <div>
-                      <div className="text-base font-bold text-blue-600">{acceptedTasksCount}</div>
-                      <div className="text-xs leading-tight text-slate-500">{tx('Accepted', 'स्वीकार किए')}</div>
-                    </div>
-                    <div>
-                      <div className="text-base font-bold text-purple-600">{completedTasksCount}</div>
-                      <div className="text-xs leading-tight text-slate-500">{tx('Completed', 'पूरे हुए')}</div>
-                    </div>
-                    <div>
-                      <div className="text-base font-bold text-emerald-600">{verifiedTasksCount}</div>
-                      <div className="text-xs leading-tight text-slate-500">{tx('Verified', 'जाँचे गए')}</div>
-                    </div>
-                  </div>
+                  ); })()}
 
                   {/* Task Matrix List */}
                   <div className="space-y-2.5">
@@ -1856,13 +1844,13 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             {!expanded && !isWaived && (
                               (isAssignedToCurrent && isPendingAcceptance) ? (
                                 <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-                                  <button onClick={() => handleAcceptTask(task.id, 'ACCEPTED')} className={`${rowBtn} bg-emerald-600 hover:bg-emerald-700`}>{tx('Accept Duty', 'काम स्वीकारें')}</button>
+                                  <button onClick={() => handleAcceptTask(task.id, 'ACCEPTED')} className={`${rowBtn} bg-emerald-600 hover:bg-emerald-700`}>{tx('Accept', 'काम स्वीकारें')}</button>
                                   <button onClick={() => handleAcceptTask(task.id, 'REJECTED')} className={`${rowBtn} bg-rose-600 hover:bg-rose-700`}>{tx('Decline', 'मना करें')}</button>
                                 </div>
                               ) : (isAssignedToCurrent && !isCompleted) ? (
                                 <div className="px-3 pb-3">
                                   <button onClick={() => { setCompleteTaskItem(task); setCompleteEvidenceName(''); setCompleteEvidenceUrl(''); setCompleteNote(''); }} className={`${rowBtn} bg-slate-900 hover:bg-slate-800`}>
-                                    <CheckCircle2 className="h-4 w-4" /><span>{tx('Complete Duty', 'काम पूरा करें')}</span>
+                                    <CheckCircle2 className="h-4 w-4" /><span>{tx('Mark done', 'काम पूरा करें')}</span>
                                   </button>
                                 </div>
                               ) : (isReviewer && isCompleted && !isVerified) ? (
@@ -2004,7 +1992,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                       onClick={() => handleAcceptTask(task.id, 'ACCEPTED')}
                                       className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded transition-colors"
                                     >
-                                      {tx('Accept Duty', 'काम स्वीकारें')}
+                                      {tx('Accept', 'काम स्वीकारें')}
                                     </button>
                                     <button
                                       onClick={() => handleAcceptTask(task.id, 'REJECTED')}
@@ -2027,7 +2015,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                     className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1"
                                   >
                                     <CheckCircle2 className="h-3.5 w-3.5" />
-                                    <span>{tx('Complete Duty', 'काम पूरा करें')}</span>
+                                    <span>{tx('Mark done', 'काम पूरा करें')}</span>
                                   </button>
                                 )}
 
