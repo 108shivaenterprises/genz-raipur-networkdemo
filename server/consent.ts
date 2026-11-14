@@ -406,29 +406,9 @@ export function createConsentRouter() {
     res.json({ success: true, draft: draftView(d), url, whatsapp: { hi: msgHi, en: msgEn, link: `https://wa.me/91${phone10(f.ownerPhone)}?text=${encodeURIComponent(`${msgHi}\n\n${msgEn}`)}` } });
   });
 
-  r.post('/drafts/:id/paper', needs('property:create'), rateLimit('oc-paper', 30, 3600_000), big, (req: Request, res: Response) => {
-    const u = me();
-    const d = myDraft(req, res); if (!d) return;
-    const raw = String(req.body?.data ?? '').replace(/^data:[^;]+;base64,/, '');
-    if (!raw || !/^[A-Za-z0-9+/=\r\n]+$/.test(raw)) return bad(res, 'Choose the photo of the signed form.');
-    const buf = Buffer.from(raw, 'base64');
-    if (!buf.length) return bad(res, 'The file is empty.');
-    if (buf.length > PAPER_MAX) return bad(res, 'The photo is larger than 4 MB. Take it again or send a smaller one.', 413);
-    const mime = sniffMime(buf);
-    if (!mime) return bad(res, 'Only a photo (JPEG, PNG, WebP) or a PDF is accepted.', 415);
-    const prep = prepare(req, res, d); if (!prep) return;
-    const { c, s } = prep;
-    c.method = 'PAPER'; c.status = 'PAPER_REVIEW';
-    try { fs.mkdirSync(PAPER_DIR(), { recursive: true }); fs.writeFileSync(path.join(PAPER_DIR(), `${c.id}.bin`), buf); }
-    catch { return bad(res, 'The photo could not be saved. Please try again.', 500); }
-    c.paper = { mime, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), uploadedAt: nowIso() };
-    note(c, `Signed form uploaded (${Math.round(buf.length / 1024)} KB) — waiting for a GENZ check`);
-    s.ownerConsents.unshift(c);
-    d.consentId = c.id; d.status = 'CONSENT_PENDING'; d.updatedAt = nowIso();
-    db.save();
-    db.appendAuditEvent(u.id, u.role, 'PROPERTY', c.id, 'OWNER_CONSENT_PAPER', `${u.name} uploaded owner ${c.ownerName}'s signed consent form for “${c.snapshot.title}” (${c.protectionDays} days), SHA-256 ${c.paper.sha256.slice(0, 16)}…`);
-    res.json({ success: true, draft: draftView(d) });
-  });
+  // v141 — no GENZ desk: the owner agrees only on his link with the SMS code (old paper forms already sent stay in the review queue)
+  r.post('/drafts/:id/paper', needs('property:create'), (_req: Request, res: Response) =>
+    bad(res, 'Paper forms are no longer taken. Send the owner the link — he agrees there with the SMS code.', 410, { code: 'PAPER_OFF' }));
 
   r.get('/drafts/:id/form', needs('property:create'), (req: Request, res: Response) => {
     const u = me();

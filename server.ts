@@ -168,7 +168,7 @@ import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createLeadInletRouter, createLeadInletPublicRouter } from './server/leadInlets.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
-import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans } from './server/ownerlist.js';
+import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, sendSignupOtp } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
@@ -807,6 +807,15 @@ app.get('/api/invitations/validate/:code', rateLimit('invite-validate', 20, 10 *
   });
 });
 
+app.post('/api/auth/register-otp', rateLimit('register-otp', 20, 60 * 60_000), async (req: Request, res: Response) => {
+  const code = String(req.body?.code || '');
+  const invite = db.getState().invitations.find(i => i.code.trim().toUpperCase() === code.trim().toUpperCase());
+  if (!invite || invite.status !== 'PENDING' || new Date(invite.expiresAt) < new Date()) return res.status(404).json({ error: 'Invitation not found or expired' });
+  const r = await sendSignupOtp(String(req.body?.phone || '').replace(/\D/g, '').slice(-10));
+  if ('error' in r) return res.status(r.status).json({ error: r.error, code: r.code });
+  res.json({ success: true, ...r });
+});
+
 app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (req: Request, res: Response) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid registration details' });
@@ -820,6 +829,13 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
 
   const problem = passwordPolicyError(password);
   if (problem) return res.status(400).json({ error: problem });
+  // v141 — mobile OTP (when given): a wrong code stops here; a right one + a valid unused PAN makes the account live at once
+  let otpOk = false;
+  if (parsed.data.otpToken) {
+    const e = checkOtpToken(parsed.data.otpToken, String(phone || '').replace(/\D/g, '').slice(-10), parsed.data.otpCode || '');
+    if (e) return res.status(400).json({ error: e, code: 'OTP' });
+    otpOk = true;
+  }
 
   // India KYC: format checks now, authenticity check by an admin on the official portals.
   const targetRoleNeedsRera = (r: string) => r === 'BROKER' || r === 'DEVELOPER_BUILDER';
@@ -935,6 +951,14 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
       newUser.verificationNotes = `Auto-verified at sign-up: registered by RERA-registered ${sponsor.name}. The GENZ ID check (PAN + Aadhaar) follows under ID Review.`;
       onVerified(newUser); assignBrokerId(newUser); autoVerified = true;
     }
+  }
+  // v141 — no GENZ desk at India scale: mobile OTP + a valid PAN that no other account has = live at once (Non-RERA unless his RERA is on file)
+  if (!autoVerified && otpOk && panNumber && isValidPan(panNumber) && newUser.role !== 'GENZ_CONNECTOR'
+    && !state.users.some(u => u.id !== userId && u.panNumber && normPan(u.panNumber) === panNumber)) {
+    newUser.verificationStatus = 'VERIFIED'; newUser.autoVerifiedAt = now; newUser.autoVerifiedBy = 'OTP_PAN';
+    newUser.verificationNotes = 'Live at sign-up: mobile OTP + a valid PAN no other account has (no staff check; 3 member reports suspend).';
+    onVerified(newUser); assignBrokerId(newUser); autoVerified = true;
+    db.appendAuditEvent(userId, newUser.role, 'VERIFICATION', userId, 'USER_AUTO_VERIFIED', `${name} is live at sign-up: mobile OTP + PAN …${panNumber.slice(-4)}`);
   }
   const gl = invite.growthLeadId ? db.byId('growthLeads', invite.growthLeadId) : undefined;
   if (gl) { gl.status = 'JOINED'; gl.userId = userId; gl.updatedAt = now; }

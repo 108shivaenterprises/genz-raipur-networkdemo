@@ -372,12 +372,12 @@ export function createNetworkRouter() {
     if (tierOf(u) === 'TIER1' && normRera(u.reraNumber) === rera) return bad(res, 'This RERA number is already on your profile', 409);
     const taken = s.users.some(x => x.id !== u.id && x.role === 'BROKER' && ((x.reraNumber && normRera(x.reraNumber) === rera) || (x.reraClaim?.status === 'PENDING' && x.reraClaim.number === rera)));
     if (taken) return bad(res, 'This RERA number is already linked to another GENZ account', 409);
-    u.reraClaim = { number: rera, at: nowIso(), status: 'PENDING' };
+    // v141 — no GENZ desk at India scale: a well-formed, unused RERA number gives Tier 1 at once; members' reports take it back (daily.ts)
+    const at = nowIso();
+    u.reraClaim = { number: rera, at, status: 'APPROVED', decidedAt: at, decidedBy: 'AUTO' };
+    u.reraNumber = rera; u.tier = 'TIER1'; u.probationUntil = undefined;
     db.save();
-    audit('VERIFICATION', u.id, 'RERA_CLAIMED', `${u.name} added RERA ${rera} for Tier 1 — to be checked on the RERA portal`);
-    alert(s.users.filter(x => (x.role === 'ADMIN' || x.role === 'SUPERADMIN') && x.verificationStatus === 'VERIFIED').map(x => x.id), 'system', 'A broker added his RERA — check it',
-      `${u.name}${u.city ? ` (${u.city})` : ''}: RERA ${rera}. Check it on the RERA portal, then approve or say why not.`, '/?tab=idreview',
-      { not: u.id, tag: `rera-${u.id}`, hi: ['एक ब्रोकर ने अपना RERA जोड़ा — जाँचें', `${u.name}: RERA ${rera}। RERA पोर्टल पर जाँचें, फिर मंज़ूर करें या कारण बताएँ।`] });
+    audit('VERIFICATION', u.id, 'RERA_SELF_ADDED', `${u.name} added RERA ${rera} — Tier 1 at once (no staff check; 3 member reports remove it)`);
     res.json({ success: true, tier: tierOf(u), claim: u.reraClaim });
   });
   r.get('/rera-claims', needs('users:review'), (_req: Request, res: Response) => {

@@ -46,7 +46,8 @@ describe('v137 owner + client screens', () => {
     expect(src('src/components/DealDesk.tsx')).toContain('data-testid="offers-empty"');
     const ol = src('src/components/OwnerListings.tsx');
     expect(ol.match(/<NetworkStrip \/>/g) || []).toHaveLength(0);
-    expect(ol).toContain('{d.listings.length > 0 && <VerifySection');
+    expect(ol).not.toContain('<VerifySection');   // v141 — no ID / papers form for GENZ staff; the owner's PAN card instead
+    expect(ol).toContain('data-testid="owner-pan"');
     expect(ol).toContain('homes a broker listed for you are under “My properties” below');
   });
   it('wording: a listing is "Live" (GENZ does not verify homes); the owner sees terms "with your broker"', () => {

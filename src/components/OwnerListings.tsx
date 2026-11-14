@@ -6,7 +6,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, ArrowLeft, Plus, Check, MapPin, Upload, Trash2, ExternalLink, ShieldCheck, Camera } from 'lucide-react';
 import { INDIA_STATES, matchState, stateOfCity, citiesOf } from '../shared/india.js';
-import { prepareDoc, shrinkImage } from '../lib/imgShrink.js';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -99,7 +98,7 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
 
 const STATUS: Record<string, [string, string, string]> = {
   PENDING: ['Pay the fee to go live', 'फ़ीस देकर लाइव करें', 'bg-amber-100 text-amber-900'],
-  WAITING_CONFIRM: ['GENZ is checking your payment', 'GENZ आपका भुगतान जाँच रहा है', 'bg-sky-100 text-sky-900'],
+  WAITING_CONFIRM: ['Payment written', 'भुगतान लिखा गया', 'bg-sky-100 text-sky-900'],
   REJECTED: ['Payment not found — write it again', 'भुगतान नहीं मिला — दोबारा लिखें', 'bg-red-100 text-red-800'],
   PAID: ['Live — all GENZ brokers can see it', 'लाइव — सभी GENZ ब्रोकर देख सकते हैं', 'bg-emerald-100 text-emerald-900'],
     WAIVED_BROKER: ['With your broker — live after the mandate', 'आपके ब्रोकर के पास — मंडेट के बाद लाइव', 'bg-indigo-100 text-indigo-900'],
@@ -147,7 +146,7 @@ const PlanCards: React.FC<{ onNew: () => void }> = ({ onNew }) => {
         ))}
       </div>
       <ul className="space-y-0.5 text-[11px] text-slate-600">
-        <li>• {tx('The plan is picked by your deal kind and property kind. You pay GENZ by UPI after you list, GENZ confirms, and it goes live.', 'प्लान आपकी डील और प्रॉपर्टी के प्रकार से अपने-आप चुनता है। लिस्ट करने के बाद GENZ को UPI से दें, GENZ पक्का करे, और लिस्टिंग लाइव।')}</li>
+        <li>• {tx('The plan is picked by your deal kind and property kind. Pay GENZ by UPI, write the UTR and it goes live at once (a free plan goes live straight away).', 'प्लान आपकी डील और प्रॉपर्टी के प्रकार से अपने-आप चुनता है। GENZ को UPI से दें, UTR लिखें और लिस्टिंग तुरंत लाइव (मुफ़्त प्लान सीधे लाइव)।')}</li>
         <li>• {tx('Brokers earn from the buyer only — never from you. You only promise not to deal directly with a buyer they bring.', 'ब्रोकर की कमाई सिर्फ़ ख़रीदार से — आपसे कभी नहीं। आप बस वादा करते हैं कि उनके लाए ख़रीदार से सीधी डील नहीं करेंगे।')}</li>
         <li>• {tx('Free route: choose one broker from the Leadership Board (Top 10) of your city, agree his brokerage, sign the mandate — then it goes live with him. Papers and brokers stay in your control.', 'मुफ़्त रूट: अपने शहर के लीडरशिप बोर्ड (टॉप 10) से एक ब्रोकर चुनें, उसकी ब्रोकरेज तय करें, मंडेट साइन करें — फिर उसके साथ लाइव। काग़ज़ और ब्रोकर आपके कंट्रोल में रहते हैं।')}</li>
       </ul>
@@ -159,62 +158,23 @@ const DOC_LABEL: Record<string, [string, string]> = {
   SELFIE: ['Your face photo (selfie)', 'आपकी चेहरे की फ़ोटो (सेल्फ़ी)'], ID_AADHAAR_MASKED: ['Aadhaar (masked)', 'आधार (मास्क्ड)'], ID_PAN: ['PAN card', 'पैन कार्ड'], ID_VOTER: ['Voter ID', 'वोटर आईडी'], ID_DL: ['Driving licence', 'ड्राइविंग लाइसेंस'],
   ELECTRICITY_BILL: ['Electricity bill', 'बिजली बिल'], TAX_RECEIPT: ['Property tax receipt', 'प्रॉपर्टी टैक्स रसीद'], TITLE_DEED: ['Title / registry', 'टाइटल / रजिस्ट्री'], OTHER: ['Other paper', 'अन्य काग़ज़'],
 };
-const ID_KINDS = ['ID_AADHAAR_MASKED', 'ID_PAN', 'ID_VOTER', 'ID_DL'];
 
-/** face + ID for me, papers for each property — photographed or picked from the phone; GENZ staff check them and the checker is named */
-const VerifySection: React.FC<{ listings: any[] }> = ({ listings }) => {
-  const tx = useTx(); const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [consent, setConsent] = useState(false);
-  const [idKind, setIdKind] = useState('ID_AADHAAR_MASKED');
-  const load = useCallback(() => api.odocList().then(setD).catch(e => setErr(e.message)), []);
-  useEffect(() => { void load(); }, [load]);
-  const send = async (kind: string, f: File | undefined, propertyId?: string) => {
-    if (!f) return; setBusy(true); setErr('');
-    try { const data = kind === 'SELFIE' ? await shrinkImage(f, 900, 350 * 1024) : await prepareDoc(f); await api.odocUpload({ kind, propertyId, data, name: f.name, consent }); await load(); }
-    catch (e: any) { setErr(e?.message === 'PDF too big' ? tx('This PDF is over 1.4 MB — scan smaller or send a photo.', 'यह PDF 1.4 MB से बड़ा है — छोटा स्कैन करें या फ़ोटो भेजें।') : e?.message === 'bad image' ? tx('This file could not be read as a photo.', 'यह फ़ाइल फ़ोटो की तरह नहीं पढ़ी जा सकी।') : e.message); }
-    finally { setBusy(false); }
-  };
-  const del = async (id: string) => { setBusy(true); setErr(''); try { await api.odocDelete(id); await load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
-  if (!d) return null;
-  const mine = (k: string[], propertyId?: string) => d.docs.filter((x: any) => k.includes(x.kind) && (propertyId === undefined || x.propertyId === propertyId));
-  const chip = (x: any) => x.status === 'APPROVED' ? <Chip tone="ok">✔ {tx('Checked by', 'जाँचा')} {x.review?.byName || 'GENZ'}</Chip> : x.status === 'REJECTED' ? <Chip tone="bad">{tx('Send again', 'दोबारा भेजें')}{x.review?.note ? `: ${x.review.note}` : ''}</Chip> : <Chip tone="wait">{tx('GENZ is checking', 'GENZ जाँच रहा है')}</Chip>;
-  const row = (x: any) => (
-    <div key={x.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs" data-testid={`odoc-${x.kind}`}>
-      <div className="min-w-0"><div className="truncate font-semibold">{tx(...(DOC_LABEL[x.kind] || [x.kind, x.kind]) as [string, string])}</div>{chip(x)}</div>
-      <div className="flex shrink-0 gap-1"><a className={ghost + ' !min-h-9 !px-2'} href={`/api/owner-media/doc/${x.id}/file`} target="_blank" rel="noreferrer" aria-label="open"><ExternalLink className="h-3.5 w-3.5" /></a>
-        {x.status !== 'APPROVED' && <button type="button" className={ghost + ' !min-h-9 !px-2'} disabled={busy} onClick={() => del(x.id)} aria-label="delete"><Trash2 className="h-3.5 w-3.5" /></button>}</div>
-    </div>
-  );
-  const pick = (label: React.ReactNode, onFile: (f?: File) => void, opts: { capture?: boolean; testId: string }) => (
-    <label className={`${consent && !busy ? 'cursor-pointer' : 'pointer-events-none opacity-50'} inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white`}>
-      {label}<input type="file" className="hidden" accept={opts.capture ? 'image/*' : 'image/*,application/pdf'} {...(opts.capture ? { capture: 'user' as const } : {})} onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} data-testid={opts.testId} />
-    </label>
-  );
+
+/** v141 — the owner's PAN, once: with it (and the fee, if any) his own listing goes live by itself. One PAN = one account. */
+const PanCard: React.FC<{ onDone: () => void }> = ({ onDone }) => {
+  const tx = useTx(); const [pan, setPan] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const ok = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
+  const save = async () => { setBusy(true); setErr(''); try { await api.olPan(pan); onDone(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="owner-verify">
-      <div className="flex items-start justify-between gap-2"><div><h3 className="flex items-center gap-1.5 text-sm font-bold"><ShieldCheck className="h-4 w-4 text-emerald-600" />{tx('Verification — who you are, and your papers', 'वेरिफ़िकेशन — आप कौन हैं और आपके काग़ज़')}</h3>
-        <p className="text-[11px] text-slate-500">{tx('Upload from the camera or the phone. GENZ staff check them and your name tick shows who checked. Only you and GENZ staff can open them.', 'कैमरे या फ़ोन से अपलोड करें। GENZ स्टाफ़ जाँचता है और टिक पर जाँचने वाले का नाम दिखता है। सिर्फ़ आप और GENZ स्टाफ़ इन्हें खोल सकते हैं।')}</p></div>
-        {d.idChecked && <Chip tone="ok">✔ {tx('Identity checked', 'पहचान जाँची गई')}</Chip>}</div>
-      {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
-      <label className="flex items-start gap-2 text-[11px]"><input type="checkbox" className="mt-0.5" checked={consent} onChange={e => setConsent(e.target.checked)} data-testid="odoc-consent" />{tx('I agree to GENZ keeping my face photo and ID to check me. Even if I later delete my account, GENZ may keep them sealed for 3 years for fraud / legal checks, then deletes them (privacy policy).', 'मैं सहमत हूँ कि GENZ मेरी जाँच के लिए मेरी चेहरे की फ़ोटो और ID रखे। बाद में मैं अकाउंट डिलीट भी कर दूँ तो भी GENZ धोखाधड़ी / क़ानूनी जाँच के लिए इन्हें 3 साल सील करके रख सकता है, फिर मिटा देता है (प्राइवेसी पॉलिसी)।')}</label>
-
-      <div className="space-y-2">
-        <div className="text-xs font-bold">1. {tx('Your face photo', 'आपकी चेहरे की फ़ोटो')}</div>
-        {mine(['SELFIE']).map(row)}
-        {pick(<><Camera className="h-4 w-4" />{tx('Take / choose selfie', 'सेल्फ़ी लें / चुनें')}</>, f => send('SELFIE', f), { capture: true, testId: 'odoc-selfie' })}
+    <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3" data-testid="owner-pan">
+      <div className="text-sm font-bold text-slate-900">{tx('Your PAN', 'आपका PAN')}</div>
+      <p className="text-[11px] text-slate-600">{tx('Needed once to list on your own. Your listing goes live by itself — no waiting for GENZ. One PAN, one account.', 'ख़ुद लिस्ट करने के लिए एक बार चाहिए। आपकी लिस्टिंग अपने आप लाइव होगी — GENZ का इंतज़ार नहीं। एक PAN, एक अकाउंट।')}</p>
+      <div className="flex gap-2">
+        <input className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 font-mono text-sm uppercase" placeholder="ABCDE1234F" maxLength={10} autoComplete="off" value={pan} onChange={e => setPan(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} aria-label={tx('PAN', 'पैन')} data-testid="owner-pan-input" />
+        <button type="button" disabled={!ok || busy} onClick={() => void save()} className="min-h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40" data-testid="owner-pan-save">{tx('Save', 'सेव')}</button>
       </div>
-      <div className="space-y-2">
-        <div className="text-xs font-bold">2. {tx('Your ID', 'आपकी ID')}</div>
-        {mine(ID_KINDS).map(row)}
-        <select className={inp} value={idKind} onChange={e => setIdKind(e.target.value)} data-testid="odoc-idkind">{ID_KINDS.map(k => <option key={k} value={k}>{tx(...DOC_LABEL[k] as [string, string])}</option>)}</select>
-        {pick(<><Upload className="h-4 w-4" />{tx('Upload ID (photo or PDF)', 'ID अपलोड करें (फ़ोटो या PDF)')}</>, f => send(idKind, f), { testId: 'odoc-id' })}
-      </div>
-      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5">
-        <div className="text-xs font-bold">3. {tx('Property papers — bill, tax receipt, title / registry', 'प्रॉपर्टी के काग़ज़ — बिल, टैक्स रसीद, टाइटल / रजिस्ट्री')}</div>
-        <p className="text-[11px] text-slate-600">{tx('Upload each paper ONCE, property by property, in Property Papers. Then, when you talk to a broker, share it with him for the days and the number of views you choose — and you can see who opened it.', 'हर काग़ज़ प्रॉपर्टी के हिसाब से सिर्फ़ एक बार “Property Papers” में अपलोड करें। फिर ब्रोकर से बात होने पर उसे उतने दिन और उतनी बार देखने के लिए शेयर करें जितना आप तय करें — और देखें कि किसने खोला।')}</p>
-        <button type="button" className={ghost + ' w-full'} onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'propdocs' }))} data-testid="owner-open-papers"><ExternalLink className="h-4 w-4" />{tx('Open Property Papers', 'Property Papers खोलें')}</button>
-        <p className="text-[11px] text-slate-500">{tx('The “papers checked” tick comes only after a broker or an advocate checks the title. GENZ keeps the record; it does not check titles.', '“काग़ज़ जाँचे गए” का टिक तभी आता है जब ब्रोकर या वकील टाइटल जाँचें। GENZ सिर्फ़ रिकॉर्ड रखता है; टाइटल नहीं जाँचता।')}</p>
-      </div>
-    </section>
+      {err && <p role="alert" className="text-xs text-red-700">{err}</p>}
+    </div>
   );
 };
 
@@ -231,6 +191,7 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = 
         <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Two ways: pay GENZ’s plan and go live for all brokers, or choose one broker free from your city’s Top 10 and go live after his mandate.', 'दो रास्ते: GENZ का प्लान देकर सभी ब्रोकरों के लिए लाइव, या अपने शहर के टॉप 10 में से एक ब्रोकर मुफ़्त चुनें और उसके मंडेट के बाद लाइव।')}</p></div>
         <button type="button" className={btn} onClick={onNew} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>
       </div>
+      {d && !d.panSet && <PanCard onDone={load} />}
       <PlanCards onNew={onNew} />
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
       {d.listings.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No listing of your own yet — homes a broker listed for you are under “My properties” below. To list one yourself, pick a plan above and tap “New listing”.', 'अभी आपकी अपनी कोई लिस्टिंग नहीं — ब्रोकर ने आपके लिए जो घर डाले वे नीचे “मेरी प्रॉपर्टी” में हैं। ख़ुद डालने के लिए ऊपर प्लान चुनें और “नई लिस्टिंग” दबाएँ।')}</p>}
@@ -258,7 +219,6 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = 
           </div>
         );
       })}
-      {d.listings.length > 0 && <VerifySection listings={d.listings} />}   {/* v137 — ID + papers are asked only once he lists a home himself */}
     </div>
   );
 };

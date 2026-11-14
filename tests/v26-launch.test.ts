@@ -314,20 +314,11 @@ describe('owner says no / link opened on the broker’s own phone / paper form',
     const q = await j(await call(jar.ADMIN, 'GET', '/api/consent/admin/queue'));
     expect(q.items.find((x: any) => x.id === body.draft.consent.id)?.sameDevice).toBe(true);
   });
-  it('a signed paper form → GENZ checks → accepted; a bad file type is refused', async () => {
+  it('v141 — no paper form any more: the owner agrees only on his link (410)', async () => {
     const d = await draftFor(jar.BRK1, { locality: LOCALITY(), ownerPhone: ownerPhone() });
-    expect((await call(jar.BRK1, 'POST', `/api/consent/drafts/${d}/paper`, { protectionDays: 60, data: Buffer.from('hello world, not an image').toString('base64') })).status).toBe(415);
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
-    const r = await j(await call(jar.BRK1, 'POST', `/api/consent/drafts/${d}/paper`, { protectionDays: 60, data: `data:image/png;base64,${png.toString('base64')}` }));
-    expect(r.draft.consent).toMatchObject({ method: 'PAPER', status: 'PAPER_REVIEW' });
-    const id = r.draft.consent.id;
-    const img = await call(jar.ADMIN, 'GET', `/api/consent/admin/${id}/paper`);
-    expect(img.status).toBe(200); expect(img.headers.get('content-type')).toBe('image/png');
-    expect((await call(jar.ADMIN, 'POST', `/api/consent/admin/${id}/decide`, { approve: false, note: '' })).status).toBe(400);
-    const ok = await j(await call(jar.ADMIN, 'POST', `/api/consent/admin/${id}/decide`, { approve: true, note: 'Signature and name match' }));
-    expect(ok.consent).toMatchObject({ status: 'ACCEPTED', bondActive: true, protectionDays: 60 });
-    const form = await call(jar.BRK1, 'GET', `/api/consent/drafts/${d}/form?days=60`);
-    expect(await form.text()).toMatch(/60 days.*bypass protection/s);
+    const r = await call(jar.BRK1, 'POST', `/api/consent/drafts/${d}/paper`, { protectionDays: 60, data: `data:image/png;base64,${png.toString('base64')}` });
+    expect(r.status).toBe(410); expect((await r.json()).code).toBe('PAPER_OFF');
   });
   it('when the superadmin requires consent, a broker listing without it is stopped (428); switching off restores the old flow', async () => {
     expect((await call(jar.SUP, 'PUT', '/api/admin/settings', { ownerConsentRequired: true })).status).toBe(200);

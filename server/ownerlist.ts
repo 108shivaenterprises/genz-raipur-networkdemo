@@ -27,6 +27,7 @@ import { boardFor } from './leadboard.js';
 import { findState } from '../src/shared/india.js';
 import { networkStrength } from './revenue.js';
 import { termsProblem } from '../src/shared/ownerListRules.js';
+import { normPan, isValidPan } from './kyc.js';
 import { pickOwnerPlan, planProblem, inPool, expiryStep, type OwnerListPlan, type OwnerListingState } from '../src/shared/ownerListRules.js';
 
 const st = () => db.getState();
@@ -41,6 +42,13 @@ const hm = (k: string, v: string) => crypto.createHmac('sha256', secret()).updat
 const rid = (p: string) => `${p}-${crypto.randomBytes(5).toString('hex')}`;
 const safeRef = (v: unknown) => { const r = str(v, 60); return /^[A-Za-z0-9][A-Za-z0-9 \-\/_.,#:]{2,59}$/.test(r) ? r : ''; };
 const OPEN = ['draft', 'pending_verification', 'active', 'under_negotiation'];
+/** v141 — no GENZ desk: an owner listing goes live by itself once the owner (mobile OTP sign-in) has a PAN on file and the fee, if any, is written */
+const hasPan = (u: UserProfile) => !!u.panNumber && isValidPan(normPan(u.panNumber));
+function goLive(p: Property, by: string) {
+  const o = p.ownerListing!; const now = nowIso();
+  o.feeStatus = 'PAID'; o.confirmedById = by; o.confirmedAt = now; o.liveFrom = now; o.liveUntil = new Date(Date.now() + o.durationDays * DAY).toISOString(); o.expWarn = undefined;
+  p.listingStatus = 'active'; p.verificationStatus = 'VERIFIED'; p.updatedAt = now;
+}
 
 export { inPool };
 /** v76b — the starting plan: ₹49 for each listing, 15 days in the pool, every kind of property. The superadmin edits it and adds bigger plans in Owner Listing Plans. */
@@ -76,7 +84,11 @@ export function applyOwnerListing(owner: UserProfile, data: { transactionType: s
   const live = s.properties.filter(p => p.ownerId === owner.id && p.ownerListing && OPEN.includes(p.listingStatus)).length;
   if (live >= plan.maxActivePerOwner) return { error: `You can keep ${plan.maxActivePerOwner} listing(s) open at a time on this plan. Close or withdraw one first.`, status: 429, code: 'PLAN_LIMIT' };
   if ((data.images || []).length > plan.maxPhotos) return { error: `This plan allows ${plan.maxPhotos} photos per listing.`, status: 400, code: 'PHOTO_LIMIT' };
-  if (!(plan.fee > 0)) return { error: 'मुफ़्त लिस्टिंग सिर्फ़ GENZ ब्रोकर या शॉप-QR / रेफ़रल के ज़रिए, ब्रोकर से मंडेट के बाद होती है। अपनी लिस्टिंग के लिए फ़ीस वाला प्लान चाहिए। / A free listing comes only through a GENZ broker or a shop-QR / referral, after a mandate with the broker. Listing on your own needs a paid plan.', status: 409, code: 'VIA_BROKER_ONLY' };
+  if (!hasPan(owner)) return { error: 'Add your PAN first (My Property → Your PAN). One PAN, one account.', status: 409, code: 'NEED_PAN' };
+  if (!(plan.fee > 0)) {   // v141 — the superadmin made this plan free: live at once
+    const now2 = nowIso();
+    return { patch: { listingStatus: 'active', verificationStatus: 'VERIFIED', ownerListing: { planId: plan.id, planName: plan.name, fee: 0, durationDays: plan.durationDays, refundable: plan.refundable, feeStatus: 'PAID', confirmedById: 'AUTO', confirmedAt: now2, liveFrom: now2, liveUntil: new Date(Date.now() + plan.durationDays * DAY).toISOString(), requests: [], createdAt: now } } };
+  }
   const ol: OwnerListingState = { planId: plan.id, planName: plan.name, fee: plan.fee, durationDays: plan.durationDays, refundable: plan.refundable, feeStatus: 'PENDING', requests: [], createdAt: now };
   return { patch: { listingStatus: 'draft', verificationStatus: 'PENDING', ownerListing: ol } };
 }
@@ -129,6 +141,26 @@ export function readOtpToken(tok: unknown, phone: string): { body: string; sig: 
     if (j?.p !== phone || !Number.isFinite(j?.e) || typeof j?.n !== 'string' || !/^[0-9a-f]{12}$/.test(j.n)) return null;
     return { body, sig, n: j.n, e: Number(j.e) };
   } catch { return null; }
+}
+/** v141 — check a signed OTP token (any server copy); one code opens one door, five tries. '' = right; else the error text */
+export function checkOtpToken(tok: unknown, phone: string, code: string): string {
+  const t = readOtpToken(tok, phone); if (!t) return 'Ask for a code first.';
+  if (t.e < Date.now()) return 'The code has expired — ask for a new one.';
+  const book = otpBook(); const rec = (book[t.n] ||= { exp: t.e, tries: 0 });
+  if (rec.used) return 'That code was already used — ask for a new one.';
+  if (++rec.tries > 5) { rec.used = true; db.save(); return 'Too many wrong tries — ask for a new code.'; }
+  if (!safeEqual(t.sig, tokSig(t.body, String(code).replace(/\D/g, '')))) { db.save(); return 'That code is not right.'; }
+  rec.used = true; db.save(); return '';
+}
+/** v141 — send a sign-up code to a phone; returns the signed token (and the code itself only in a demo without SMS) */
+export async function sendSignupOtp(phone: string): Promise<{ otpToken: string; devCode?: string } | { error: string; status: number; code: string }> {
+  if (!PHONE_RE.test(phone)) return { error: 'Enter your 10-digit mobile number', status: 400, code: 'BAD_PHONE' };
+  if (hit(`signup-otp:${phone}`, 5, 3600_000, 3600_000) > 0) return { error: 'Too many codes for this number — try again in an hour.', status: 429, code: 'TOO_MANY' };
+  const on = smsGateway();
+  if (!on && !DEMO_MODE) return { error: 'SMS is not set up yet, so GENZ will check your ID instead.', status: 503, code: 'NO_SMS' };
+  const code = secureOtp(); const exp = Date.now() + OTP_MS;
+  await sendSms(phone, `GENZ: your sign-up code is ${code} (valid 10 minutes). Do not share it.`);
+  return { otpToken: makeOtpToken(phone, code, exp), ...(!on && DEMO_MODE ? { devCode: code } : {}) };
 }
 export function createOwnerAuthRouter() {
   const r = Router();
@@ -236,10 +268,19 @@ export function createOwnerListingRouter() {
     const n = networkStrength('');
     res.json({ success: true, brokers: n.brokers.verified, activeBrokers: n.brokers.active30d, liveListings: n.inventory.liveListings, localities: n.inventory.localities, buyerNeeds: n.inventory.buyerNeeds, visits90d: n.work.verifiedSiteVisits90d, bookings12m: n.sales.bookings12m });
   });
+  r.post('/pan', needs('property:create'), rateLimit('olist-pan', 10, 3600_000), (req, res) => {
+    const u = me(); if (u.role !== 'PROPERTY_OWNER') return bad(res, 'Only an owner adds his PAN here', 403);
+    const pan = normPan(String(req.body?.pan || ''));
+    if (!isValidPan(pan)) return bad(res, 'PAN format is invalid (e.g. ABCDE1234F)');
+    if (st().users.some(x => x.id !== u.id && x.panNumber && normPan(x.panNumber) === pan)) return bad(res, 'This PAN is already linked to another GENZ account.', 409, 'PAN_IN_USE');
+    u.panNumber = pan; db.save();
+    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'OWNER_PAN_ADDED', `${u.name} added PAN …${pan.slice(-4)}`);
+    res.json({ success: true });
+  });
   r.get('/mine', needs('property:read'), (_req, res) => {
     const u = me(); const s = st();
     const rows = s.properties.filter(p => p.ownerId === u.id && p.ownerListing).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(p => { const m = mandateOf(p.id); return { ...feeView(p), mandateId: m?.id || null, mandateStatus: m?.status || null }; });
-    res.json({ success: true, listings: rows, upiId: s.ownerListCfg.upiId, payeeName: s.ownerListCfg.payeeName });
+    res.json({ success: true, listings: rows, upiId: s.ownerListCfg.upiId, payeeName: s.ownerListCfg.payeeName, panSet: hasPan(u) });
   });
 
   r.post('/:pid/pay', needs('property:create'), rateLimit('olist-pay', 30, 3600_000), (req, res) => {
@@ -250,9 +291,11 @@ export function createOwnerListingRouter() {
     const paidOn = str(req.body?.paidOn, 10) || nowIso().slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn) || Date.parse(paidOn) > Date.now() + DAY) return bad(res, 'Choose the date you paid (not a future date)');
     if (st().properties.some(x => x.id !== p.id && x.ownerListing?.ref === ref && ['WAITING_CONFIRM', 'PAID'].includes(x.ownerListing.feeStatus))) return bad(res, 'This reference is already used on another listing', 409);
-    o.noDirectDealAt = nowIso(); o.ref = ref; o.paidOn = paidOn; o.payNote = str(req.body?.note, 200) || undefined; o.rejectNote = undefined; o.feeStatus = 'WAITING_CONFIRM'; p.updatedAt = nowIso(); db.save();
-    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_WRITTEN', `Owner wrote the listing fee payment ₹${o.fee} (ref ${ref})`);
-    staffAlert('Listing fee to confirm', `${u.name}: ₹${o.fee} for ${p.title} (ref ${ref}).`);
+    if (!hasPan(u)) return bad(res, 'Add your PAN first (My Property → Your PAN). One PAN, one account.', 409, 'NEED_PAN');
+    o.noDirectDealAt = nowIso(); o.ref = ref; o.paidOn = paidOn; o.payNote = str(req.body?.note, 200) || undefined; o.rejectNote = undefined;
+    goLive(p, 'AUTO'); db.save();   // v141 — live at once; GENZ matches the UTR with the bank later and can take a fake one down (reject)
+    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_WRITTEN', `Owner wrote the listing fee payment ₹${o.fee} (ref ${ref}) — live at once, to be matched with the bank`);
+    staffAlert('Listing fee to match with the bank', `${u.name}: ₹${o.fee} for ${p.title} (ref ${ref}). Already live — reject it if the money did not come.`);
     res.json({ success: true, listing: feeView(p) });
   });
   r.post('/:pid/renew', needs('property:create'), (req, res) => {
@@ -260,7 +303,7 @@ export function createOwnerListingRouter() {
     if (o.feeStatus !== 'EXPIRED') return bad(res, 'Only a listing whose time is over can be renewed', 409);
     const plan = pickOwnerPlan(st().ownerListPlans, p.transactionType, p.propertyType); if (!plan) return bad(res, 'No listing plan covers this kind of property now', 409, 'NO_PLAN');
     Object.assign(o, { planId: plan.id, planName: plan.name, fee: plan.fee, durationDays: plan.durationDays, refundable: plan.refundable, ref: undefined, paidOn: undefined, confirmedAt: undefined, confirmedById: undefined });
-    if (!(plan.fee > 0)) return bad(res, 'A free listing comes only through a GENZ broker or a shop-QR / referral, after a mandate.', 409, 'VIA_BROKER_ONLY');
+    if (!(plan.fee > 0)) { if (!hasPan(me())) return bad(res, 'Add your PAN first (My Property → Your PAN).', 409, 'NEED_PAN'); goLive(p, 'AUTO'); db.save(); return res.json({ success: true, listing: feeView(p) }); }
     o.feeStatus = 'PENDING';
     p.updatedAt = nowIso(); db.save(); res.json({ success: true, listing: feeView(p) });
   });
@@ -394,9 +437,9 @@ export function createOwnerListingRouter() {
   });
   r.post('/:pid/reject', manage, (req, res) => {
     const u = me(); const p = st().properties.find(x => x.id === req.params.pid); const o = p?.ownerListing;
-    if (!p || !o || o.feeStatus !== 'WAITING_CONFIRM') return bad(res, 'No payment is waiting on this listing', 404);
+    if (!p || !o || !(o.feeStatus === 'WAITING_CONFIRM' || (o.feeStatus === 'PAID' && o.confirmedById === 'AUTO' && o.fee > 0))) return bad(res, 'No payment is waiting on this listing', 404);
     const note = str(req.body?.note, 200); if (note.length < 3) return bad(res, 'Write a short reason');
-    o.feeStatus = 'REJECTED'; o.rejectNote = note; p.updatedAt = nowIso(); db.save();
+    o.feeStatus = 'REJECTED'; o.rejectNote = note; o.liveUntil = undefined; if (p.listingStatus === 'active' && !o.assignedBrokerId) p.listingStatus = 'draft'; p.updatedAt = nowIso(); db.save();
     db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'OWNER_LISTING_FEE_REJECTED', `Listing fee not received: ${note}`);
     alert(p.ownerId, 'deals', 'Payment not found', `${p.title}: ${note}. Write the correct reference.`, '/');
     res.json({ success: true, listing: feeView(p) });

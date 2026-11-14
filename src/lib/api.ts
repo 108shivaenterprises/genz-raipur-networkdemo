@@ -109,6 +109,7 @@ export const api = {
     request<{ success: boolean; roles: string[]; matrix: any }>('/api/auth/permission-matrix'),
   revokeInvitation: (id: string) =>
     request<{ success: boolean }>(`/api/invitations/${id}/revoke`, { method: 'POST', body: '{}' }),
+  registerOtp: (code: string, phone: string) => request<{ success: boolean; otpToken: string; devCode?: string }>('/api/auth/register-otp', { method: 'POST', body: JSON.stringify({ code, phone }) }),
   registerInvite: (payload: {
     code: string;
     name: string;
@@ -1049,6 +1050,7 @@ export const api = {
   olDecline: (id: string) => request<any>(`/api/owner-listing/${id}/decline`, { method: 'POST' }),
   olAssigned: () => request<{ success: boolean; listings: any[] }>('/api/owner-listing/assigned'),
   olRenew: (id: string) => request<any>(`/api/owner-listing/${id}/renew`, { method: 'POST' }),
+  olPan: (pan: string) => request<any>('/api/owner-listing/pan', { method: 'POST', body: JSON.stringify({ pan }) }),
   olAdmin: () => request<any>('/api/owner-listing/admin/overview'),
   olAdminCfg: (b: any) => request<any>('/api/owner-listing/admin/config', { method: 'PUT', body: JSON.stringify(b) }),
   olPlanSave: (id: string | null, b: any) => request<any>(id ? `/api/owner-listing/admin/plans/${id}` : '/api/owner-listing/admin/plans', { method: id ? 'PUT' : 'POST', body: JSON.stringify(b) }),

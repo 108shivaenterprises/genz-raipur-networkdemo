@@ -380,9 +380,21 @@ export function createDailyRouter() {
       const who = new Set(st.listingReports.filter(x => x.targetType === 'LISTING' && x.targetId === d.targetId && x.status === 'OPEN').map(x => x.reporterId));
       const prop = db.byId('properties', d.targetId)!;
       if (who.size >= 3 && !prop.heldAt) { prop.heldAt = nowIso(); held = true; }
+    } else {
+      // v141 — the same rule for a member: three different verified members report him → suspended at once, his photo and
+      // self-added RERA badge go with it; no GENZ desk needed (GENZ can still lift it)
+      const who = new Set(st.listingReports.filter(x => x.targetType === 'BROKER' && x.targetId === d.targetId && x.status === 'OPEN')
+        .map(x => x.reporterId).filter(id => db.byId('users', id)?.verificationStatus === 'VERIFIED'));
+      const t = db.byId('users', d.targetId)!;
+      if (who.size >= 3 && t.verificationStatus === 'VERIFIED') {
+        t.verificationStatus = 'SUSPENDED'; t.verificationNotes = `Suspended automatically after reports from ${who.size} members (${nowIso().slice(0, 10)}).`;
+        t.avatarUrl = undefined;
+        if (t.reraClaim?.decidedBy === 'AUTO') { t.reraClaim = { ...t.reraClaim, status: 'REJECTED', note: 'Reported by members' }; t.reraNumber = ''; t.tier = 'TIER2'; }
+        held = true;
+      }
     }
     db.save();
-    audit('REPORT_FILED', rep.id, `${d.targetType} ${d.targetId} reported: ${d.reason}${held ? ' — listing auto-held after 3 reports' : ''}`);
+    audit('REPORT_FILED', rep.id, `${d.targetType} ${d.targetId} reported: ${d.reason}${held ? (d.targetType === 'LISTING' ? ' — listing auto-held after 3 reports' : ' — member auto-suspended after 3 reports') : ''}`);
     res.json({ success: true, message: 'Thank you. GENZ will review this report.' });
   });
   r.get('/reports', needs('report:manage'), (_req, res) => {

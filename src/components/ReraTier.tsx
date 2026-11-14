@@ -5,7 +5,7 @@ import { useTx, useI18n } from '../lib/i18n.js';
 
 /**
  * v117 — "my RERA came". A local associate (Tier 2: resale, rental, land, local) who has now got his RERA registration adds it
- * himself; GENZ checks it on the state RERA portal and moves him to Tier 1 (builder RERA projects: partner, block, book).
+ * himself; v141: a well-formed unused number gives Tier 1 at once (members' reports take it back).
  *   MyReraCard      — on the broker's own profile
  *   ReraClaimsPanel — on GENZ staff's ID Review desk
  */
@@ -34,11 +34,11 @@ export const MyReraCard: React.FC = () => {
         placeholder={tx('RERA no. as on the certificate', 'सर्टिफ़िकेट वाला RERA नंबर')} aria-label={tx('RERA registration number', 'RERA रजिस्ट्रेशन नंबर')} />
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={busy || !plausible(norm(num))} onClick={send} className={`${btn} bg-slate-900 text-white`} data-testid="rera-send">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpCircle className="h-4 w-4" />}{tx('Send to GENZ to check', 'जाँच के लिए GENZ को भेजें')}
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpCircle className="h-4 w-4" />}{tx('Add my RERA', 'मेरा RERA जोड़ें')}
         </button>
         {t1 && <button type="button" className={`${btn} border border-slate-300 bg-white text-slate-700`} onClick={() => setEdit(false)}>{tx('Cancel', 'रद्द')}</button>}
       </div>
-      <p className="text-xs text-slate-500">{tx('GENZ checks the number on the state RERA portal. Till then nothing changes for you.', 'GENZ यह नंबर राज्य के RERA पोर्टल पर जाँचेगी। तब तक आपके लिए कुछ नहीं बदलता।')}</p>
+      <p className="text-xs text-slate-500">{tx('Write it exactly as on your RERA certificate. Tier 1 opens at once; a wrong number reported by members takes it back and suspends the account.', 'RERA सर्टिफ़िकेट पर जैसा लिखा है वैसा ही लिखें। Tier 1 तुरंत खुलता है; गलत नंबर की सदस्य रिपोर्ट करें तो वापस हो जाता है और अकाउंट रुक जाता है।')}</p>
     </div>
   );
   return (
@@ -55,7 +55,7 @@ export const MyReraCard: React.FC = () => {
           <p className="mt-0.5 text-xs text-slate-600">
             {t1
               ? tx('You can work builder (RERA) projects too: partner on a project, block units and book — plus resale, rental and land.', 'आप बिल्डर (RERA) प्रोजेक्ट पर भी काम कर सकते हैं: पार्टनर बनें, यूनिट ब्लॉक और बुक करें — साथ में रीसेल, किराया और ज़मीन।')
-              : tx('You work resale, rental, land and local property. Got your RERA registration? Add it — once GENZ checks it, builder projects open for you.', 'आप रीसेल, किराया, ज़मीन और लोकल प्रॉपर्टी पर काम करते हैं। RERA रजिस्ट्रेशन मिल गया? यहाँ जोड़ें — GENZ की जाँच के बाद बिल्डर प्रोजेक्ट आपके लिए खुल जाएँगे।')}
+              : tx('You work resale, rental, land and local property. Got your RERA registration? Add it — builder projects open at once.', 'आप रीसेल, किराया, ज़मीन और लोकल प्रॉपर्टी पर काम करते हैं। RERA रजिस्ट्रेशन मिल गया? यहाँ जोड़ें — बिल्डर प्रोजेक्ट तुरंत खुलेंगे।')}
           </p>
           {t1 && d.rera && <p className="mt-1 font-mono text-xs font-semibold text-emerald-800">RERA {d.rera}</p>}
         </div>

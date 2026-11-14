@@ -29,6 +29,13 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  // v141 — mobile OTP: with it and a valid PAN the account is live at once (no GENZ desk)
+  const [otpTok, setOtpTok] = useState(''); const [otpCode, setOtpCode] = useState(''); const [otpNote, setOtpNote] = useState(''); const [otpBusy, setOtpBusy] = useState(false);
+  const sendOtp = async () => {
+    setOtpBusy(true); setOtpNote('');
+    try { const r = await api.registerOtp(code.trim(), phone.replace(/\D/g, '').slice(-10)); setOtpTok(r.otpToken); setOtpNote(r.devCode ? `Demo code: ${r.devCode}` : (hi ? 'कोड आपके फ़ोन पर भेजा गया।' : 'Code sent to your phone.')); }
+    catch (e: any) { setOtpTok(''); setOtpNote(e.message); } finally { setOtpBusy(false); }
+  };
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loc, setLoc] = useState<LocationValue>({ state: '', city: '', locality: '', pincode: '' });
@@ -95,7 +102,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setBusy(true);
     try {
       const reg = await api.registerInvite({
-        code: code.trim(), name, phone, email: phoneOnly ? undefined : email, password, consent: true,
+        code: code.trim(), name, phone, email: phoneOnly ? undefined : email, password, consent: true, ...(otpTok ? { otpToken: otpTok, otpCode } : {}),
         state: loc.state || undefined, city: loc.city || undefined, locality: role !== 'GENZ_CONNECTOR' ? (loc.locality || undefined) : undefined, areas: areas.length ? areas : undefined,
         ...(brokerId ? { aadhaarNumber: aadhaarDigits, idConsent: true, kycConsent: true, address: address ? normAddress(address) : undefined, pincode: pincode ? normPin(pincode) : undefined, kycSource: fromPhoto ? 'PHOTO' : 'TYPED' } : {}),
         ...(needsRera ? { companyName: company || undefined, reraNumber: rera || undefined, panNumber: normPan(pan) || undefined, gstin: gstin || undefined } : {}),
@@ -142,7 +149,14 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             {pf && <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">{hi ? `आपके स्पॉन्सर ${sponsorName || ''} ने आपकी कुछ जानकारी पहले से भर दी है। उसे देख लें और कुछ ग़लत हो तो सुधार दें।` : `Your sponsor${sponsorName ? ` ${sponsorName}` : ''} has already filled in some of your details. Please check them and correct anything that is wrong.`}</p>}
             <div><label className="text-xs font-semibold text-slate-700">{hi ? 'पूरा नाम' : 'Full name'} *{chip(name, pf?.name)}</label><input required value={name} onChange={(e) => setName(e.target.value)} className={input} /></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label className="text-xs font-semibold text-slate-700">{hi ? 'मोबाइल नंबर' : 'Mobile number'} *</label><input required value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="9XXXXXXXXX" className={input} /></div>
+              <div><label className="text-xs font-semibold text-slate-700">{hi ? 'मोबाइल नंबर' : 'Mobile number'} *</label><input required value={phone} onChange={(e) => { setPhone(e.target.value); setOtpTok(''); }} inputMode="tel" placeholder="9XXXXXXXXX" className={input} />
+                {role !== 'GENZ_CONNECTOR' && <div className="mt-1.5 space-y-1" data-testid="join-otp">
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => void sendOtp()} disabled={otpBusy || !/^[6-9]\d{9}$/.test(phone.replace(/\D/g, '').slice(-10))} className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold disabled:opacity-40" data-testid="join-otp-send">{otpTok ? (hi ? 'फिर भेजें' : 'Send again') : (hi ? 'कोड भेजें' : 'Send code')}</button>
+                    {otpTok && <input value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder={hi ? '6 अंक का कोड' : '6-digit code'} className={input + ' font-mono'} aria-label={hi ? 'कोड' : 'Code'} data-testid="join-otp-code" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500">{otpNote || (hi ? 'मोबाइल कोड + PAN = अकाउंट तुरंत चालू। बिना कोड के GENZ ID जाँचेगा।' : 'Mobile code + PAN = your account is live at once. Without the code GENZ checks your ID.')}</p>
+                </div>}</div>
               {!phoneOnly && <div><label className="text-xs font-semibold text-slate-700">Email *</label><input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></div>}
             </div>
             <LocationFields value={loc} onChange={setLoc} showLocality showPincode={false} required />

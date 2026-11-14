@@ -182,6 +182,9 @@ export const loginSchema = z.object({
 
 export const registerSchema = z.object({
   code: z.string().trim().min(6).max(60),
+  /** v141 — mobile OTP at sign-up: with a valid unused PAN the account is live at once */
+  otpToken: z.string().max(400).optional(),
+  otpCode: z.string().max(12).optional(),
   name: z.string().trim().min(2, 'Name is required').max(120),
   /** optional only for GENZ Connector invitations (many local partners have no e-mail; they sign in with their mobile number) */
   email: z.string().trim().email('A valid e-mail address is required').max(200).optional().or(z.literal('')),

@@ -57,8 +57,8 @@ export function consentWords(f: ConsentFacts) {
 }
 
 export const PAPER_HELP = {
-  en: 'For an owner who does not use a smartphone: print the form, let the owner read and sign it, and upload a clear photo. GENZ checks it before the listing can go live.',
-  hi: 'जो मालिक स्मार्टफ़ोन नहीं चलाते उनके लिए: फ़ॉर्म प्रिंट करें, मालिक पढ़कर साइन करें, फिर साफ़ फ़ोटो अपलोड करें। लिस्टिंग लाइव होने से पहले GENZ इसे जाँचता है।',
+  en: 'The owner agrees only on his link, with the code that comes to his phone. No paper form, and no GENZ check is needed.',
+  hi: 'मालिक सिर्फ़ अपने लिंक पर, फ़ोन पर आए कोड से हाँ कहते हैं। न काग़ज़ का फ़ॉर्म, न GENZ की जाँच।',
 } as const;
 
 export const TAKEN_MSG = {

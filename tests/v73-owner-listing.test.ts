@@ -101,6 +101,11 @@ describe('master plan (superadmin)', () => {
 let OID = '';
 describe('fee, then the pool', () => {
   it('limits of the plan: photos and open listings', async () => {
+    // v141 — the owner's PAN comes first (once); one PAN = one account
+    const np = await ocall('POST', '/api/properties', prop()); expect(np.status).toBe(409); expect((await j(np)).code).toBe('NEED_PAN');
+    expect((await ocall('POST', '/api/owner-listing/pan', { pan: 'BAD' })).status).toBe(400);
+    expect((await ocall('POST', '/api/owner-listing/pan', { pan: 'AAAPO7312Q' })).status).toBe(200);
+    expect((await j(await ocall('GET', '/api/owner-listing/mine'))).panSet).toBe(true);
     const r = await ocall('POST', '/api/properties', prop({ images: ['https://example.com/a.jpg', 'https://example.com/b.jpg', 'https://example.com/c.jpg'] })); expect(r.status).toBe(400); expect((await j(r)).code).toBe('PHOTO_LIMIT');
     const c = await ocall('POST', '/api/properties', prop()); expect(c.status, await c.clone().text()).toBe(200);
     const p = (await j(c)).property; PID = p.id;
@@ -110,16 +115,15 @@ describe('fee, then the pool', () => {
   it('a listing not paid for is invisible to brokers', async () => {
     expect((await call(jar.B1, 'GET', `/api/properties/${PID}`)).status).toBe(404);
   });
-  it('the owner writes the payment; staff may reject, he writes it again, staff confirm', async () => {
+  it('v141 — the owner writes the payment and it is live at once; GENZ can still take a fake UTR down later', async () => {
     expect((await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: '' })).status).toBe(400);
     expect((await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR111222333' })).status).toBe(400); // the no-direct-deal promise is required
-    const w = await j(await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR111222333', noDirectDeal: true })); expect(w.listing.feeStatus).toBe('WAITING_CONFIRM'); expect(w.listing.noDirectDealAt).toBeTruthy();
-    expect((await ocall('POST', `/api/owner-listing/${PID}/confirm`)).status).toBe(403);
-    const ov = await j(await call(jar.SUP, 'GET', '/api/owner-listing/admin/overview')); expect(ov.waiting.some((x: any) => x.propertyId === PID)).toBe(true);
+    const w = await j(await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR111222333', noDirectDeal: true })); expect(w.listing.feeStatus).toBe('PAID'); expect(w.listing.inPool).toBe(true); expect(w.listing.noDirectDealAt).toBeTruthy();
+    expect((await ocall('POST', `/api/owner-listing/${PID}/reject`, { note: 'x' })).status).toBe(403);
     expect((await call(jar.SUP, 'POST', `/api/owner-listing/${PID}/reject`, { note: '' })).status).toBe(400);
     expect((await j(await call(jar.SUP, 'POST', `/api/owner-listing/${PID}/reject`, { note: 'UTR not found in bank' }))).listing.feeStatus).toBe('REJECTED');
-    await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR999888777', noDirectDeal: true });
-    const ok = await j(await call(jar.SUP, 'POST', `/api/owner-listing/${PID}/confirm`)); expect(ok.listing.feeStatus).toBe('PAID'); expect(ok.listing.inPool).toBe(true);
+    expect((await call(jar.B1, 'GET', `/api/properties/${PID}`)).status).toBe(404);   // taken down
+    const ok = await j(await ocall('POST', `/api/owner-listing/${PID}/pay`, { ref: 'UTR999888777', noDirectDeal: true })); expect(ok.listing.feeStatus).toBe('PAID'); expect(ok.listing.inPool).toBe(true);
   });
   it('once the fee is paid it is live: a broker SEES it (no owner phone, no fee data) and can bring an offer even before a mandate', async () => {
     const g = await j(await call(jar.B1, 'GET', `/api/properties/${PID}`)); expect(g.property.ownerListed).toBe(true); expect(g.property.inPool).toBe(true);
@@ -157,9 +161,10 @@ describe('Leadership Board (the free route)', () => {
 });
 
 describe('free routes and housekeeping', () => {
-  it('a free listing is NOT possible on your own: only through a broker / shop QR after a mandate', async () => {
+  it('v141 — when the superadmin makes a plan free, the owner\'s own listing (with PAN) is live at once', async () => {
     const fp = await j(await call(jar.SUP, 'POST', '/api/owner-listing/admin/plans', { name: 'Free', transactionTypes: ['Lease'], propertyTypes: ['Residential Flat'], fee: 0, durationDays: 30, maxPhotos: 5, maxActivePerOwner: 3 }));
-    const r = await ocall('POST', '/api/properties', prop({ transactionType: 'Lease', askingPrice: 25000, ownerApprovedNetPrice: 22000 })); expect(r.status).toBe(409); expect((await j(r)).code).toBe('VIA_BROKER_ONLY');
+    const r = await ocall('POST', '/api/properties', prop({ transactionType: 'Lease', askingPrice: 25000, ownerApprovedNetPrice: 22000 })); expect(r.status, await r.clone().text()).toBe(200);
+    const fpr = (await j(r)).property; expect(fpr.listingStatus).toBe('active'); expect(fpr.ownerListing.feeStatus).toBe('PAID');
     await call(jar.SUP, 'DELETE', `/api/owner-listing/admin/plans/${fp.plan.id}`);
   });
   it('naming a broker who is NOT on the Leadership Board of the city is refused', async () => {

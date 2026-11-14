@@ -44,36 +44,18 @@ describe('v117 · a local associate gets his RERA → Tier 1', { timeout: 120_00
     expect((await call(ck.OWN, 'POST', '/api/network/my-rera', { reraNumber: NEW_RERA })).status).toBe(403);
     expect((await call(ck.T2, 'GET', '/api/network/rera-claims')).status).toBe(403);   // only GENZ staff see the queue
   });
-  it('adds his RERA → PENDING, admins get an alert, nothing opens yet', async () => {
+  it('v141 — adds his RERA → Tier 1 at once (no GENZ desk): builder projects open, the number is on his profile', async () => {
     const r = await j(await call(ck.T2, 'POST', '/api/network/my-rera', { reraNumber: ' pcgrera261103-0117 ' }));
-    expect(r.claim.status).toBe('PENDING'); expect(r.claim.number).toBe(NEW_RERA); expect(r.tier).toBe('TIER2');
-    expect((await call(ck.T2, 'GET', '/api/pcontrol/partner/projects')).status).toBe(403);
-    const q = await j(await call(ck.ADMIN, 'GET', '/api/network/rera-claims'));
-    const row = q.claims.find((x: any) => x.userId === 'USR-NEW-ASSOCIATE'); expect(row.number).toBe(NEW_RERA); expect(row.idChecked).toBe(true);
-    // another broker cannot claim the same number while it is being checked
-    expect((await call(ck.BRK1, 'POST', '/api/network/my-rera', { reraNumber: NEW_RERA })).status).toBe(409);
-  });
-  it('a send-back needs a reason; the broker sees it and can send again', async () => {
-    expect((await call(ck.ADMIN, 'POST', '/api/network/rera-claims/USR-NEW-ASSOCIATE', { approve: false })).status).toBe(400);
-    const no = await j(await call(ck.ADMIN, 'POST', '/api/network/rera-claims/USR-NEW-ASSOCIATE', { approve: false, note: 'Number not found on the CG RERA portal' }));
-    expect(no.claim.status).toBe('REJECTED'); expect(no.tier).toBe('TIER2');
-    const mine = await j(await call(ck.T2, 'GET', '/api/network/my-rera')); expect(mine.claim.note).toMatch(/not found/);
-    expect((await j(await call(ck.T2, 'POST', '/api/network/my-rera', { reraNumber: NEW_RERA }))).claim.status).toBe('PENDING');
-  });
-  it('GENZ approves → Tier 1, the RERA is on his profile and builder projects open', async () => {
-    const ok = await j(await call(ck.ADMIN, 'POST', '/api/network/rera-claims/USR-NEW-ASSOCIATE', { approve: true }));
-    expect(ok.tier).toBe('TIER1'); expect(ok.claim.status).toBe('APPROVED');
-    expect((await call(ck.ADMIN, 'POST', '/api/network/rera-claims/USR-NEW-ASSOCIATE', { approve: true })).status).toBe(404);   // decided once
+    expect(r.claim.status).toBe('APPROVED'); expect(r.claim.number).toBe(NEW_RERA); expect(r.tier).toBe('TIER1');
     const g = await call(ck.T2, 'GET', '/api/pcontrol/partner/projects'); expect(g.status, await g.clone().text()).toBe(200);
     const me = await j(await call(ck.T2, 'GET', '/api/profiles/mine')); expect(me.card.tier).toBe('TIER1'); expect(me.card.rera).toBe(NEW_RERA);
-    expect((await j(await call(ck.T2, 'GET', '/api/network/my-rera'))).rera).toBe(NEW_RERA);
-    expect((await call(ck.T2, 'POST', '/api/network/my-rera', { reraNumber: NEW_RERA })).status).toBe(409);   // same number again
-    expect((await j(await call(ck.ADMIN, 'GET', '/api/network/rera-claims'))).claims.some((x: any) => x.userId === 'USR-NEW-ASSOCIATE')).toBe(false);
+    expect((await call(ck.BRK1, 'POST', '/api/network/my-rera', { reraNumber: NEW_RERA })).status).toBe(409);   // one number, one account
+    expect((await call(ck.T2, 'POST', '/api/network/my-rera', { reraNumber: NEW_RERA })).status).toBe(409);    // same number again
+    expect((await j(await call(ck.ADMIN, 'GET', '/api/network/rera-claims'))).claims.some((x: any) => x.userId === 'USR-NEW-ASSOCIATE')).toBe(false);   // nothing waits for staff
   });
-  it('the old admin "set tier" path also closes a waiting claim', async () => {
-    expect((await j(await call(ck.BRK1, 'POST', '/api/network/my-rera', { reraNumber: 'PCGRERA261103-0118' }))).claim.status).toBe('PENDING');
-    expect((await call(ck.ADMIN, 'POST', '/api/network/tier/USR-BRK-001', { tier: 'TIER1' })).status).toBe(200);
-    const r = await j(await call(ck.BRK1, 'GET', '/api/network/my-rera')); expect(r.rera).toBe('PCGRERA261103-0118'); expect(r.claim.status).toBe('APPROVED');
+  it('GENZ can still take Tier 1 back with the tier switch', async () => {
+    expect((await call(ck.ADMIN, 'POST', '/api/network/tier/USR-NEW-ASSOCIATE', { tier: 'TIER2' })).status).toBe(200);
+    expect((await call(ck.T2, 'GET', '/api/pcontrol/partner/projects')).status).toBe(403);
   });
 });
 
