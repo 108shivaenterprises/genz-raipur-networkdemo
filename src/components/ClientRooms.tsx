@@ -90,7 +90,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
 
   return (
     <div className="space-y-4" data-testid="rooms-tab">
-      <details open={active.length === 0} className={`rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-950 ${openRoom ? 'hidden lg:block' : ''}`} data-testid="rooms-about">
+      <details className={`rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-950 ${openRoom ? 'hidden lg:block' : ''}`} data-testid="rooms-about">
         <summary className="flex cursor-pointer list-none items-start gap-1.5 font-semibold"><Lock className="mt-0.5 h-4 w-4 shrink-0" />{tx('A private room for each of your own clients', 'आपके हर अपने क्लाइंट के लिए एक निजी रूम')}</summary>
         <p className="mt-1">{tx('Share properties with your buyer / renter / tenant and chat in one place. He opens a link and confirms his mobile with a code — no app, no sign-up. Only you and he can read the chat; the listing broker, co-brokers, your team and GENZ staff cannot. He sees no exact address and no owner number — those come only after a verified visit.',
           'अपने खरीदार / किराएदार को प्रॉपर्टी दिखाएँ और एक ही जगह चैट करें। वह लिंक खोलकर कोड से अपना मोबाइल पक्का करता है — न ऐप, न साइन-अप। चैट सिर्फ़ आप दोनों पढ़ सकते हैं; लिस्टिंग ब्रोकर, को-ब्रोकर, आपकी टीम और GENZ स्टाफ़ नहीं। उसे पूरा पता या मालिक का नंबर नहीं दिखता — वह वेरिफ़ाइड विज़िट के बाद ही मिलता है।')}</p>
@@ -109,7 +109,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
         </div>
       )}
 
-      <div className={`grid grid-cols-2 gap-2 sm:grid-cols-5 ${openRoom ? 'hidden lg:grid' : ''}`}>
+      <div className={`grid-cols-2 gap-2 sm:grid-cols-5 ${openRoom ? 'hidden lg:grid' : tiles.some(t => t.v) ? 'grid' : 'hidden'}`}>   {/* v146 — five zeros are not shown */}
         {tiles.map(t => { const Icon = t.icon; return (
           <button key={t.id} type="button" onClick={() => setF(t.id)} className={`rounded-xl border p-2.5 text-left ${f === t.id ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={`room-kpi-${t.id}`}>
             <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500"><Icon className="h-3.5 w-3.5" />{tx(t.en, t.hi)}</div>

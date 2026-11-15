@@ -107,6 +107,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   const [selectedTag, setSelectedTag] = useState<string>('All');
   const [selectedType, setSelectedType] = useState<string>('All');
   const [mandateFor, setMandateFor] = useState<Property | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -290,7 +291,9 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
       {/* Filter Bar */}
       <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs space-y-3">
         <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
-          <div className="relative col-span-2 lg:col-span-1">
+          {/* v146 — on a phone the four dropdowns open from one "Filters" button; search stays */}
+          <div className="relative col-span-2 flex gap-2 lg:col-span-1">
+            <button type="button" onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters} className="order-2 inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 sm:hidden" data-testid="prop-filters">{hi ? 'फ़िल्टर' : 'Filters'}</button>
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
@@ -301,19 +304,19 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-900 focus:outline-none"
             />
           </div>
-          <select aria-label={hi ? 'राज्य' : 'State'} value={selectedState} onChange={(e) => { setSelectedState(e.target.value); setSelectedCity('All'); }} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'राज्य' : 'State'} value={selectedState} onChange={(e) => { setSelectedState(e.target.value); setSelectedCity('All'); }} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             <option value="All">{hi ? 'सभी राज्य' : 'All states'}</option>
             {statesInUse.map((st) => <option key={st} value={st}>{hi ? (INDIA_STATES.find((x) => x.name === st)?.hi || st) : st}</option>)}
           </select>
-          <select aria-label={hi ? 'शहर' : 'City'} value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'शहर' : 'City'} value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             <option value="All">{hi ? 'सभी शहर' : 'All cities'}</option>
             {selectedCity !== 'All' && !citiesInUse.includes(selectedCity) && <option value={selectedCity}>{selectedCity}</option>}
             {citiesInUse.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select aria-label={hi ? 'प्रॉपर्टी का प्रकार' : 'Property type'} value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'प्रॉपर्टी का प्रकार' : 'Property type'} value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             {propertyTypes.map((t) => <option key={t} value={t}>{t === 'All' ? (hi ? 'सभी प्रकार' : 'All property types') : label('propertyType', t)}</option>)}
           </select>
-          <select aria-label={hi ? 'टैग' : 'Tag'} value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none">
+          <select aria-label={hi ? 'टैग' : 'Tag'} value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             <option value="All">{hi ? 'सभी टैग' : 'Any tag'}</option>
             {tagsInUse.map((t) => <option key={t} value={t}>{label('tag', t)}</option>)}
           </select>

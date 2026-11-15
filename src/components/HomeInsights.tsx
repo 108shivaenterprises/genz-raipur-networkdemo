@@ -32,8 +32,9 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
     return (
       <section className={`${card} mb-6`} data-testid="insight-admin">
         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Clock className="h-4 w-4 text-amber-600" />{tx('Today on GENZ', 'आज GENZ पर')}<span className="font-normal text-slate-500">· {total ? tx(`${total} things waiting`, `${total} काम बाकी`) : tx('all clear', 'सब साफ़')}</span></h3>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {items.map(i => <Stat key={i.id} testId={`today-${i.id}`} n={i.n} tone={i.n ? 'text-amber-700' : 'text-slate-400'} label={tx(i.en, i.hi)} onClick={() => onNavigate(i.tab as TabType)} />)}
+        {/* v146 — only what is waiting is shown; seven zero tiles filled the first screen */}
+        <div className="mt-3 grid grid-cols-2 gap-2 empty:hidden sm:grid-cols-4">
+          {items.filter(i => i.n > 0).map(i => <Stat key={i.id} testId={`today-${i.id}`} n={i.n} tone={i.n ? 'text-amber-700' : 'text-slate-400'} label={tx(i.en, i.hi)} onClick={() => onNavigate(i.tab as TabType)} />)}
         </div>
       </section>
     );

@@ -113,6 +113,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [initialActivities, properties.length, deals.length]);
   const [chartView, setChartView] = useState<'deals' | 'inventory'>('deals');
+  const [moreOpen, setMoreOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   const [chartsOpen, setChartsOpen] = useState(false);
   const [inventoryScope, setInventoryScope] = useState<'personal' | 'network'>(() => {
@@ -597,8 +598,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         />
       ) : (
       <>
-      {/* KPI Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI Stats Grid — v146: two per row on a phone */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4 [&>div]:p-3 sm:[&>div]:p-5">
         {/* Metric 1: Personalized & Role-Specific Inventory Valuation */}
         <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs flex flex-col justify-between">
           <div>
@@ -733,8 +734,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {chartsBlock}
 
-      {/* Main Content 2-Column Section */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* Main Content 2-Column Section — v146: on a phone the feed, deals and charts open from one button */}
+      <button type="button" onClick={() => setMoreOpen(v => !v)} aria-expanded={moreOpen} className="flex min-h-12 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 lg:hidden" data-testid="dash-more">
+        {tx('Activity, deals and charts', 'गतिविधि, डील और चार्ट')}<span aria-hidden>{moreOpen ? '−' : '+'}</span>
+      </button>
+      <div className={`grid-cols-1 gap-6 lg:grid lg:grid-cols-3 ${moreOpen ? 'grid' : 'hidden'}`}>
         {/* Left 2 Cols: Real-Time Activity Feed & High-Priority Deals */}
         <div className="space-y-6 lg:col-span-2">
           {/* Real-Time Platform Activity Feed */}

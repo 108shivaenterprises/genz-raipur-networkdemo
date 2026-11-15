@@ -114,6 +114,7 @@ export const BrokerBoardLine: React.FC<{ city?: string; userId: string }> = ({ c
   useEffect(() => { if (city) api.leadBoard(city).then(r => setB(r.board)).catch(() => setB(null)); }, [city]);
   if (!city || !b) return null;
   const me = b.find(x => x.brokerId === userId);
+  if (!me) return null;   // v146 — the 'how to appear' tip no longer sits on top of the property list; the board itself explains it
   return (
     <p className={`flex items-start gap-1.5 rounded-lg p-2.5 text-xs ${me ? 'bg-amber-50 text-amber-950' : 'bg-slate-50 text-slate-700'}`} data-testid="broker-board-line">
       <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
