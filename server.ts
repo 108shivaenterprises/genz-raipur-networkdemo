@@ -1859,7 +1859,7 @@ app.get('/api/matching/requirement/:reqId', needs('matching:run'), (req: Request
         locality: prop.locality,
         askingPrice: prop.askingPrice,
         builtUpAreaSqFt: prop.builtUpAreaSqFt,
-        listingBrokerId: prop.listingBrokerId,
+        listingBrokerId: currentUser.role === 'BUYER_TENANT' ? undefined : prop.listingBrokerId,   // v151 — same rule as the property list (v148)
         images: prop.images,
       },
       ...matchResult,

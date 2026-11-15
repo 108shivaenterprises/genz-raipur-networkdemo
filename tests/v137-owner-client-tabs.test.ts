@@ -107,4 +107,14 @@ describe('v137 owner + client screens', () => {
     expect(cv).toContain('testId="sahayak-chat"');
     expect(src('src/components/BrokerHome.tsx')).toContain('data-testid="chat-home-on"');
   });
+  it('v151 — Sahayak is a menu bot: every step is buttons, the phone is checked, it saves through the normal requirement API; a buyer gets no listing broker in match results', async () => {
+    const bot = src('src/components/SahayakBot.tsx');
+    for (const id of ['sahayak-add-need', 'sahayak-area-next', 'sahayak-name', 'sahayak-phone', 'sahayak-summary', 'sahayak-save', 'sahayak-open-need', 'sahayak-free']) expect(bot, id).toContain(`data-testid="${id}"`);
+    expect(bot).toContain('api.createRequirement('); expect(bot).toContain('isValidIndianPhone(typed)'); expect(bot).toContain('x.score >= 50');
+    expect(src('src/components/ChatsView.tsx')).toContain('<SahayakBot />');
+    const reqs = await (await get(jar.BUYER_TENANT, '/api/requirements')).json();
+    const r = (reqs.requirements || reqs).find((x: any) => x.buyerId);
+    const m = await (await get(jar.BUYER_TENANT, `/api/matching/requirement/${r.id}`)).json();
+    for (const x of m.matches || []) expect(x.property.listingBrokerId, x.property.id).toBeUndefined();
+  });
 });

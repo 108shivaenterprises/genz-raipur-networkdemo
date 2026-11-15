@@ -17,8 +17,18 @@ Sample (7 phone screen): artifact "GENZ WhatsApp-style UI sample".
 - **Switch:** Chats me "Old home" → purana home wapas (pasand yaad rehti hai). Purane home par "Try the new chat home" button.
 - Files: `src/lib/goto.ts` (`chatHome`), `src/App.tsx`, `NavigationTabs.tsx`, `ChatsView.tsx`, `BrokerHome.tsx`.
 
+## V151 — Sahayak ab menu wala bot (WhatsApp automation jaisa)
+Aapka kehna: "Sahayak me format galat likhega broker to pata nahi chalega, WhatsApp automation type ka kar do taki wo khud options bhi de."
+- Sahayak khulte hi **button**: Client ki zaroorat jodo · Property dhoondho / jodo · Aaj ka kaam · Meri deal aur commission · Mera shop QR · Khud likhunga.
+- **Zaroorat jodna, ek-ek sawal, jawab button se:** khareedna / kiraya → kya (Flat, House, Plot, Shop, Office, Aur…) → ilaka (shahar ke ilake ke chips, ek se zyada) → budget (button; ya rakam + Hazaar / Lakh / Crore) → naam → mobile (10 ank sahi hone par hi aage) → ek line me jaanch → "Haan, save karo".
+- Save usi purane requirement API se (wahi niyam); budget "tak" maana, neeche ki seema uska 70%.
+- Save ke baad **milte ghar ke card** (sirf 50% ya zyada mel wale, 3 tak) + "Ye zaroorat kholo" / "Ek aur jodo".
+- Purana likhne wala Copilot "Khud likhunga" ke peeche hai.
+- Saath me ek chhed band: buyer ko match ke nateeje me bhi listing broker ki pehchan nahi jaati (V148 ka niyam yahan chhoot gaya tha).
+- Files: `src/components/SahayakBot.tsx` (naya), `ChatsView.tsx`, `server.ts`.
+
 ## Abhi sample jaisa kya NAHI hai (agle round)
-1. Sahayak ke andar purana Copilot form hai, bubble + card wali baat-cheet nahi; requirement likhne par milte ghar ke card nahi.
+1. Sahayak me abhi sirf "zaroorat jodo" poora flow hai; property jodna, visit tay karna, offer, commission abhi apne purane tab par le jaate hain. Milte ghar ke card par "client ko bhejo / co-broke pucho" button nahi.
 2. List me DEAL / CLIENT / OWNER / SHOP ke tag aur chips nahi (abhi All / Unread / Clients / Brokers).
 3. Owner aur shopkeeper ki chat list me row nahi; shop QR scan aur commission ka card nahi.
 4. Deal chat me offer / agreement / "agla kadam" ke card nahi (visit, stage, ghar, kaagaz ke hain).

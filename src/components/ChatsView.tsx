@@ -20,7 +20,7 @@ import { CallMenu } from './calls/CallButton.js';
 import { CallsModal } from './calls/CallsPanel.js';
 import { useCalls } from './calls/CallHost.js';
 
-const CopilotPanel = lazyView(() => import('./CopilotPanel.js'), 'CopilotPanel');
+const SahayakBot = lazyView(() => import('./SahayakBot.js'), 'SahayakBot');
 const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600' };
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 /** "Er. Alok Singhania" → "Alok" (the name before a message preview) */
@@ -204,9 +204,9 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
   );
 
   const pane = sahayak ? (
-    <ChatShell onBack={() => { setOpenUrl(''); load(); }} testId="sahayak-chat" title={tx('GENZ Sahayak', 'GENZ सहायक')} subtitle={tx('Write or speak — I do the rest', 'लिखो या बोलो — बाकी मैं करूँगा')}
+    <ChatShell onBack={() => { setOpenUrl(''); load(); }} testId="sahayak-chat" title={tx('GENZ Sahayak', 'GENZ सहायक')} subtitle={tx('Just tap — I will ask step by step', 'बस दबाइए — मैं एक-एक करके पूछूँगा')}
       avatar={<span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-slate-900" aria-hidden>GZ</span>}>
-      <div className="flex-1 overflow-y-auto p-3"><CopilotPanel /></div>
+      <div className="flex-1 overflow-y-auto bg-slate-100 p-3"><SahayakBot /></div>
     </ChatShell>
   ) : !cur ? (
     <div className="hidden h-[max(28rem,calc(100vh-19rem))] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400 lg:flex">{tx('Pick a chat on the left.', 'बाईं ओर से कोई चैट चुनें।')}</div>
@@ -236,7 +236,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
           {canSahayak && !s && f === 'all' && (
             <button type="button" onClick={() => setOpenUrl('sahayak')} className="mb-2 flex w-full items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-left active:bg-amber-100" data-testid="chat-row-sahayak">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-400 text-base font-bold text-slate-900" aria-hidden>GZ</span>
-              <span className="min-w-0 flex-1"><span className="block text-base font-bold text-slate-900">{tx('GENZ Sahayak', 'GENZ सहायक')}</span><span className="block truncate text-sm text-slate-600">{tx('Write: "Alok 3BHK Shankar Nagar 80 lakh"', 'लिखो: "आलोक 3BHK शंकर नगर 80 लाख"')}</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-base font-bold text-slate-900">{tx('GENZ Sahayak', 'GENZ सहायक')}</span><span className="block truncate text-sm text-slate-600">{tx('Tap to add a requirement, find a home, see commission', 'ज़रूरत जोड़ो, घर ढूँढो, कमीशन देखो — बस दबाइए')}</span></span>
             </button>
           )}
           {(rows.length > 6 || s) && (
