@@ -63,4 +63,13 @@ describe('deal hub', () => {
     const adm = await hub('ADMIN');
     for (const d of adm.deals.filter((x: any) => !x.openDispute)) { expect(d.summaryOnly).toBe(true); expect(d.money).toBeUndefined(); expect(d.tasks).toBeUndefined(); expect(d.lastMessage).toBeUndefined(); }
   });
+  it('v149 — the task list is off for members: no task next-step, no task count, no task line in the history', async () => {
+    const h = await hub('BRK1');
+    expect(h.deals.length).toBeGreaterThan(0);
+    for (const d of h.deals) {
+      expect((d.next || []).filter((n: any) => String(n.kind).startsWith('TASKS_')), d.id).toEqual([]);
+      expect(d.tasks, d.id).toBeUndefined();
+      expect((d.history || []).filter((x: any) => x.k === 'TASK_DONE'), d.id).toEqual([]);
+    }
+  });
 });

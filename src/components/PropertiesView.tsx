@@ -77,6 +77,11 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   const { toast, confirm, prompt } = useUI();
   const may = (...p: string[]) => !permissions || hasPerm(permissions, ...p);
   const isBuyer = currentUser.role === 'BUYER_TENANT';
+  const [asked, setAsked] = useState<Set<string>>(new Set());
+  const askBroker = async (id: string) => {
+    try { const r = await api.askAboutHome('mine', id); setAsked(x => new Set(x).add(id)); toast(r.toOwnBroker ? tx('Sent to your broker — he will call you to fix the visit.', 'आपके ब्रोकर को भेजा — वे विज़िट तय करने के लिए कॉल करेंगे।') : tx('Sent to the broker of this home — he will call you.', 'इस घर के ब्रोकर को भेजा — वे आपको कॉल करेंगे।'), 'success'); }
+    catch (e: any) { toast(e?.message || tx('Could not send. Please try again.', 'भेजा नहीं जा सका। फिर कोशिश करें।'), 'error'); }
+  };
   const isOwner = currentUser.role === 'PROPERTY_OWNER';
   const isBroker = currentUser.role === 'BROKER';
   // v56 — a buyer's saved homes (♡ Save on each card; listed on his Home)
@@ -401,6 +406,9 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               <button onClick={() => void toggleSave(p.id)} aria-pressed={saved.has(p.id)} className={`${btn} border ${saved.has(p.id) ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`} data-testid={`save-${p.id}`}>
                 <Heart className={`h-3.5 w-3.5 ${saved.has(p.id) ? 'fill-rose-500 text-rose-500' : ''}`} /><span>{saved.has(p.id) ? tx('Saved', 'सेव है') : tx('Save', 'सेव करें')}</span>
               </button>) });
+            if (isBuyer && !isClosed) actions.push({ key: 'ask', node: (   // v148 — same query as Magic Match: goes to his own broker
+              <button type="button" onClick={() => void askBroker(p.id)} disabled={asked.has(p.id)} className={`${btn} bg-slate-900 text-white disabled:bg-emerald-700`} data-testid="prop-ask">{asked.has(p.id) ? tx('Sent ✓', 'भेज दिया ✓') : tx('Ask broker', 'ब्रोकर से पूछें')}</button>
+            ) });
             if (canEditListing && !isClosed) actions.push({ key: 'edit', node: (
               <button onClick={() => setEditingProperty(p)} className={`${btn} bg-blue-600 text-white hover:bg-blue-700`} title={tx('Edit listing details, price, photos gallery, video tour, or status', 'लिस्टिंग का विवरण, कीमत, फ़ोटो, वीडियो या स्टेटस बदलें')}>
                 <Pencil className="h-3.5 w-3.5" /><span>{tx('Edit', 'एडिट करें')}</span>

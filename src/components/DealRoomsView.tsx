@@ -205,6 +205,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const canRooms = perm('clientroom:use') && currentUser.role === 'BROKER';
   const [myRooms, setMyRooms] = useState<any[]>([]);
   const [roomKey, setRoomKey] = useState(0);
+  const [agMore, setAgMore] = useState(false);
+  const canTasks = perm('task:read') && (currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN');   // v149 — the task list is for GENZ staff only
   useEffect(() => {
     if (!canRooms) return;
     let live = true;
@@ -591,7 +593,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   useEffect(() => { loadHub(); }, [deals, refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
   const hubItemOf = (id?: string) => (hub?.deals || []).find((x: any) => x.id === id);
   const tabAllowed = (t?: string): t is DealSubTab => !!t && (t === 'overview' || t === 'antibypass_protocol'
-    || (t === 'chat_call' && perm('deal:chat')) || (t === 'responsibilities' && perm('task:read'))
+    || (t === 'chat_call' && perm('deal:chat')) || (t === 'responsibilities' && canTasks)
     || (t === 'commission_agreement' && !isOwnerViewer && perm('agreement:read'))
     || ((t === 'due_diligence' || t === 'readiness_report') && perm('dd:read')) || (t === 'media_vault' && perm('property:read'))
     || (t === 'disputes_holds' && perm('dispute:read', 'dispute:create')));
@@ -854,7 +856,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
           ...(mainMode === 'DEAL_ROOMS' ? [['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false]] : []),   // v142 — shown only while a room is open; you enter a room by tapping a deal   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Offers" half off the screen
           ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Offers', 'ऑफ़र'), (offers || []).length, pendingIncomingCount > 0]] : []),
-          ...(canRooms ? [['ROOMS', MessagesSquare, tx('Client rooms', 'क्लाइंट रूम'), myRooms.length, roomsAlert]] : []),
+          // v148 — no "Client rooms" tab here: it has its own tab and is in Deal Desk; a deal's linked room still opens from the deal
           ...(perm('mandate:read') ? [['MANDATES', FileSignature, currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms', 'मेरी ब्रोकरेज शर्तें') : tx('Owners', 'मालिक'), undefined, false]] : []),
         ] as [typeof mainMode, React.ElementType, string, number | undefined, boolean][]).map(([id, Icon, text, n, dot]) => (
           <button key={id} type="button" role="tab" aria-selected={mainMode === id}
@@ -985,7 +987,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               {showSimple && (
                 <DealSimple item={hubItemOf(activeDeal.id)} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
                   doors={[
-                    ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(perm('task:read') ? ['responsibilities' as const] : []),
+                    ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(canTasks ? ['responsibilities' as const] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const]),
                     ...(perm('property:read') ? ['media_vault' as const] : []), ...(perm('dd:read') ? ['due_diligence' as const] : []),
                     ...(hideCommercials ? [] : ['money' as const]),
@@ -1006,7 +1008,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                   tabs={([
                     { id: 'overview', label: tx('Overview', 'ओवरव्यू'), icon: Briefcase, primary: true },
                     ...(perm('deal:chat') ? [{ id: 'chat_call', label: tx('Chat', 'चैट'), count: messages.length, icon: MessageSquare, primary: true }] : []),
-                    ...(perm('task:read') ? [{ id: 'responsibilities', label: tx('Tasks', 'ज़िम्मेदारी'), count: applicableTasks.length, icon: ListTodo, primary: true }] : []),
+                    ...(canTasks ? [{ id: 'responsibilities', label: tx('Tasks', 'ज़िम्मेदारी'), count: applicableTasks.length, icon: ListTodo, primary: true }] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : [{ id: 'commission_agreement', label: tx('Agreement', 'समझौता'), icon: FileCheck2, primary: true }]),
                     ...(perm('property:read') ? [{ id: 'media_vault', label: tx('Photos & map', 'फ़ोटो और लोकेशन'), count: vaultAssets.length, icon: FolderLock }] : []),
                     ...(perm('dd:read') ? [{ id: 'due_diligence', label: tx('Property Due Diligence', 'प्रॉपर्टी Due Diligence'), icon: ShieldCheck }] : []),
@@ -1488,12 +1490,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     <div>
                       <div className="flex items-center gap-2">
                         <FolderLock className="h-5 w-5 text-amber-600" />
-                        <h4 className="text-base font-bold text-slate-900">{tx('Private Property Vault & Selective Sharing', 'प्रॉपर्टी वॉल्ट और चुनिंदा शेयरिंग')}</h4>
-                        <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded">
+                        <h4 className="text-base font-bold text-slate-900"><span className="sm:hidden">{tx('Photos & papers', 'फ़ोटो और काग़ज़')}</span><span className="hidden sm:inline">{tx('Private Property Vault & Selective Sharing', 'प्रॉपर्टी वॉल्ट और चुनिंदा शेयरिंग')}</span></h4>
+                        <span className="hidden bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded sm:inline">
                           {tx('Confidential Storage', 'गोपनीय')}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="hidden text-xs text-slate-500 mt-1 sm:block">
                         {tx(
                           'Title deeds, walkthrough videos and sanctioned maps are kept here as links. You choose who can see which file, and for how many days.',
                           'टाइटल डीड, वॉकथ्रू वीडियो और मंज़ूर नक़्शे यहाँ लिंक के रूप में रखे जाते हैं। कौन-सी फ़ाइल कौन, कितने दिन देख सकता है — यह आप तय करते हैं।',
@@ -1542,7 +1544,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs bg-slate-50 p-4 rounded-lg">
+                    <div className="hidden grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 text-xs sm:grid md:grid-cols-4">   {/* v148 — the address is on the listing; a phone keeps only the map link */}
                       <div>
                         <span className="text-slate-500 block text-xs uppercase font-semibold">{tx('State & City', 'राज्य और शहर')}</span>
                         <div className="font-bold text-slate-900 mt-0.5">
@@ -1620,7 +1622,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         {vaultAssets.map((asset) => (
                           <div
                             key={asset.id}
-                            className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3 hover:border-slate-300 transition-all flex flex-col justify-between"
+                            className="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 shadow-2xs space-y-2 sm:space-y-3 hover:border-slate-300 transition-all flex flex-col justify-between" data-testid="vault-file"
                           >
                             <div className="space-y-2">
                               <div className="flex items-start justify-between gap-2">
@@ -1646,7 +1648,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <img
                                   src={asset.fileUrl}
                                   alt={asset.description}
-                                  className="h-32 w-full object-cover rounded-lg border border-slate-100"
+                                  className="hidden h-32 w-full object-cover rounded-lg border border-slate-100 sm:block"
                                 />
                               )}
 
@@ -1654,12 +1656,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <h6 className="text-xs font-bold text-slate-900 truncate" title={asset.originalFileName}>
                                   {asset.originalFileName}
                                 </h6>
-                                <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">
+                                <p className="hidden text-xs text-slate-500 line-clamp-2 mt-0.5 sm:block">
                                   {asset.description || tx('No description.', 'कोई विवरण नहीं।')}
                                 </p>
                               </div>
 
-                              <div className="text-xs text-slate-400 font-mono pt-1 border-t border-slate-100">
+                              <div className="hidden text-xs text-slate-400 font-mono pt-1 border-t border-slate-100 sm:block">
                                 v{asset.version}
                               </div>
                             </div>
@@ -2080,7 +2082,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setAgMore(o => !o)} aria-expanded={agMore} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 self-start sm:hidden" data-testid="agreement-more">{tx('More', 'और')}</button>   {/* v148 — rarely used on a phone */}
+                    <div className={`${agMore ? 'flex' : 'hidden sm:flex'} flex-wrap items-center gap-2`} data-testid="agreement-actions">
                       <button
                         onClick={() => {
                           setShowProposeAgreementModal(true);

@@ -99,7 +99,7 @@ export const DealSimple: React.FC<{
           </ol>
         </section>
       )}
-      <div className="grid grid-cols-3 gap-2">{bottom.map(id => { const d = all[id]; const Icon = d.icon; return (
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${bottom.length || 1}, minmax(0, 1fr))` }}>{bottom.map(id => { const d = all[id]; const Icon = d.icon; return (
         <button key={id} type="button" onClick={() => onOpen(id)} data-testid={`deal-door-${id}`} className="relative flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-1 text-xs font-bold text-slate-900 shadow-sm active:bg-slate-50">
           <Icon className="h-5 w-5 text-slate-700" aria-hidden />{d.label}
           {dot(d.tab) && id !== 'money' && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}

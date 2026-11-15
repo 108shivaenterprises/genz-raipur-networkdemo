@@ -665,9 +665,7 @@ export function calculateTransactionReadiness(
   if (percentage < 70) {
     blockers.push(`Overall due diligence completion is only ${percentage}% (minimum 70% required for registry scheduling).`);
   }
-  if (!allResponsibilitiesAccepted) {
-    blockers.push('Pending acceptance of task responsibilities by one or more participants in the Deal Room.');
-  }
+  // v149 — the task list is off for members, so it no longer blocks the readiness report
 
   const isReady = blockers.length === 0;
 

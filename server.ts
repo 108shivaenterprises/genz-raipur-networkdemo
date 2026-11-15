@@ -1130,6 +1130,8 @@ function sanitizeProperty(p: any, user: UserProfile, state = db.getState()) {
     }
     out.documents = [];
   }
+  // v148 — a buyer never learns which broker holds a listing (he goes through his own broker); the server still routes his query
+  if (user.role === 'BUYER_TENANT') delete out.listingBrokerId;
   // v58 — a broker's office staff never gets papers (the address alone, if the broker allowed it)
   if (user.role === 'TEAM_MEMBER') { out.documents = []; delete out.ownerConsentId; }
   return out;
@@ -1820,8 +1822,9 @@ app.post('/api/requirements/:id/claim', needs('requirement:create'), (req: Reque
  *  Only an alert: no number, no bond — the broker books the visit / co-broke the usual way. */
 app.post('/api/requirements/:reqId/interest', needs('requirement:read'), rateLimit('buyer-interest', 30, 3600_000), (req: Request, res: Response) => {
   const me = getCurrentUser();
-  const r = db.byId('requirements', req.params.reqId);
-  if (!r || me.role !== 'BUYER_TENANT' || r.buyerId !== me.id) return res.status(404).json({ error: 'Requirement not found' });
+  // v148 — "mine" (asked from the Properties list): his newest open need
+  const r = req.params.reqId === 'mine' ? [...db.getState().requirements].reverse().find((x: any) => x.buyerId === me.id) : db.byId('requirements', req.params.reqId);
+  if (!r || me.role !== 'BUYER_TENANT' || r.buyerId !== me.id) return res.status(404).json({ error: req.params.reqId === 'mine' ? 'Add what you are looking for under "My needs" first, then ask.' : 'Requirement not found' });
   const p = db.byId('properties', String((req.body as any)?.propertyId || ''));
   if (!p || p.listingStatus !== 'active') return res.status(404).json({ error: 'This home is not live' });
   const to = r.assignedBrokerId || p.listingBrokerId;

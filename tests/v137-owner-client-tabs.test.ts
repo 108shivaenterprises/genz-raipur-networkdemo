@@ -76,4 +76,24 @@ describe('v137 owner + client screens', () => {
     expect((await post(jar.BROKER, `/api/requirements/${r.id}/interest`, { propertyId: p.id })).status).toBe(404);   // not his need
     expect(src('src/components/MatchCenterView.tsx')).toContain('data-testid="match-ask"');
   });
+  it('v148 — a buyer is never told which broker holds a listing; he can ask his own broker from the Properties list too', async () => {
+    const post = (c: string, url: string, body: unknown) => fetch(B + url, { method: 'POST', headers: { cookie: c, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const mine = await (await get(jar.BUYER_TENANT, '/api/properties')).json();
+    expect(mine.properties.length).toBeGreaterThan(0);
+    for (const p of mine.properties) expect(p.listingBrokerId, p.id).toBeUndefined();
+    const forBroker = await (await get(jar.BROKER, '/api/properties')).json();
+    expect(forBroker.properties.some((p: any) => p.listingBrokerId)).toBe(true);   // brokers still see it (co-broking needs it)
+    const live = forBroker.properties.find((x: any) => x.listingStatus === 'active');
+    const ok = await post(jar.BUYER_TENANT, '/api/requirements/mine/interest', { propertyId: live.id });
+    expect(ok.status, await ok.clone().text()).toBe(200);
+    expect((await post(jar.BROKER, '/api/requirements/mine/interest', { propertyId: live.id })).status).toBe(404);
+    expect(src('src/components/PropertiesView.tsx')).toContain('data-testid="prop-ask"');
+  });
+  it('v148 — phone: Deals has no Client rooms tab; agreement extras sit behind More; Paper check folds what does not apply', () => {
+    const room = src('src/components/DealRoomsView.tsx');
+    expect(room).not.toContain("['ROOMS', MessagesSquare");
+    expect(room).toContain('data-testid="agreement-more"'); expect(room).toContain('data-testid="vault-file"');
+    const dd = src('src/components/DueDiligenceView.tsx');
+    expect(dd).toContain('data-testid="dd-line"'); expect(dd).toContain('data-testid="dd-show-na"');
+  });
 });

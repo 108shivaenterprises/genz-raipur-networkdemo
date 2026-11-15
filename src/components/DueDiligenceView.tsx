@@ -244,6 +244,10 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
     }
     return true;
   });
+  // v148 — checks that do not apply to this property stay folded until asked for
+  const [showNA, setShowNA] = useState(false);
+  const shownItems = showNA || activeStatusFilter !== 'ALL' ? filteredItems : filteredItems.filter(i => i.isApplicable);
+  const naHidden = filteredItems.length - shownItems.length;
 
   // Scorecard stats
   const totalApplicable = items.filter((i) => i.isApplicable).length;
@@ -349,7 +353,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
 
       {/* Selected Property Header Card */}
       {currentProperty && (
-        <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm">
+        <div className="hidden bg-slate-900 text-white rounded-xl p-4 shadow-sm sm:block">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs text-amber-400 font-mono">
@@ -386,7 +390,9 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
       )}
 
       {/* Scorecard Metrics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3" data-testid="dd-scorecard">
+      {/* v148 — a phone gets one line instead of the dark card and five tiles */}
+      <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 sm:hidden" data-testid="dd-line">{tx(`${verifiedCount} of ${totalApplicable} papers checked`, `${totalApplicable} में से ${verifiedCount} काग़ज़ जाँचे गए`)}</p>
+      <div className="hidden grid-cols-2 sm:grid sm:grid-cols-5 gap-2 sm:gap-3" data-testid="dd-scorecard">
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500 font-medium">{tx('Verified Checks', 'सत्यापित जाँचें')}</span>
@@ -489,7 +495,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
         </div>
 
         {/* Secondary Status Filter */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+        <div className="hidden flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs sm:flex">
           <span className="text-slate-400 font-medium">{tx('Status Filter:', 'स्थिति फ़िल्टर:')}</span>
           {['ALL', 'VERIFIED', 'UNDER_REVIEW', 'PENDING_DOCUMENT', 'ISSUE_FOUND', 'NOT_APPLICABLE'].map((st) => (
             <button
@@ -518,7 +524,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             {tx('No checklist items matching the current filter.', 'मौजूदा फ़िल्टर से मेल खाती कोई जाँच नहीं।')}
           </div>
         ) : (
-          filteredItems.map((item, idx) => {
+          shownItems.map((item, idx) => {
             const hasEvidence = item.evidenceReferences.length > 0;
             const isVerified = item.status === 'VERIFIED';
             const isIssue = item.status === 'ISSUE_FOUND';
@@ -757,6 +763,7 @@ export const DueDiligenceView: React.FC<DueDiligenceViewProps> = ({
             );
           })
         )}
+        {naHidden > 0 && <button type="button" onClick={() => setShowNA(true)} className="min-h-11 w-full rounded-lg border border-dashed border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600" data-testid="dd-show-na">{tx(`Show ${naHidden} that do not apply to this property`, `${naHidden} और दिखाएँ जो इस प्रॉपर्टी पर लागू नहीं`)}</button>}
       </div>
 
       {/* Issue Register Section */}

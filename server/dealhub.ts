@@ -70,7 +70,9 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
   let agreement: { version: number; status: string; signedByMe?: boolean; waitingOn: number } | null = null;
   let lastMessage: { at: string; from: string } | undefined;
   const next: { kind: NextKind; n: number; tab: string; title?: string }[] = [];
-  const add = (kind: NextKind, n: number, title?: string) => { if (n > 0) next.push({ kind, n, tab: TAB_OF[kind], ...(title ? { title } : {}) }); };
+  // v149 — the task list is off for members (only GENZ staff still see it); a deal's next step is a visit, agreement, payment or chat
+  const showTasks = isAdmin(u);
+  const add = (kind: NextKind, n: number, title?: string) => { if (n > 0 && (showTasks || !kind.startsWith('TASKS_'))) next.push({ kind, n, tab: TAB_OF[kind], ...(title ? { title } : {}) }); };
 
   if (dispute) add('DISPUTE_OPEN', 1);
   if (d.closure?.status === 'ASKED' && broker && d.closure.byId !== u.id) add('CLOSE_TO_ANSWER', 1);
@@ -87,7 +89,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     const ts = s.dealTasks.filter(t => t.dealId === d.id && t.isApplicable);
     const isDone = (t: any) => t.taskStatus === 'COMPLETED' || t.taskStatus === 'WAIVED';
     tasks = { total: ts.length, done: ts.filter(isDone).length, open: ts.filter(t => !isDone(t)).length, overdue: ts.filter(t => !isDone(t) && t.dueDate && Date.parse(t.dueDate) < now).length };
-    ts.forEach(t => { later(t.completionTimestamp, 'TASK_DONE', t.title); later(t.acceptedAt); later(t.verifiedAt); });
+    ts.forEach(t => { later(t.completionTimestamp, showTasks ? 'TASK_DONE' : undefined, t.title); later(t.acceptedAt); later(t.verifiedAt); });
     const mine = ts.filter(t => t.assignedParticipantId === u.id);
     add('TASKS_TO_ACCEPT', mine.filter(t => t.assignmentAcceptance === 'PENDING_ACCEPTANCE').length);
     add('TASKS_OVERDUE', mine.filter(t => t.assignmentAcceptance === 'ACCEPTED' && !isDone(t) && t.dueDate && Date.parse(t.dueDate) < now).length);
@@ -139,7 +141,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     }
   }
   return {
-    ...base, lastActivityAt, idleDays, stalled, history: inner ? hist.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6) : undefined, visits: inner ? visits : undefined, tasks: inner ? tasks : undefined, agreement, lastMessage,
+    ...base, lastActivityAt, idleDays, stalled, history: inner ? hist.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6) : undefined, visits: inner ? visits : undefined, tasks: inner && showTasks ? tasks : undefined, agreement, lastMessage,
     // a closed room nags nobody (its next steps come back when it is reopened)
     next: isClosed(d) ? [] : next.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)), needsMe: !isClosed(d) && next.some(x => x.kind !== 'STALLED' && x.kind !== 'TASKS_TO_DO'),
     money: money ? { fee, myShare, split, dealValue } : undefined, summaryOnly: !inner,
