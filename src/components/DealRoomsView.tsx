@@ -835,7 +835,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* v37 — Deal Hub header: title + one segmented switch for Pipeline / Deal room / Proposals / Mandates */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      {/* v143 — inside a room on a phone this header and the tab strip are hidden: the room starts with "← All deals" */}
+      <div className={`flex-col gap-3 sm:flex-row sm:items-end sm:justify-between ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:flex' : 'flex'}`}>
         <div>
           <PageTitle title={mainMode === 'PIPELINE' ? tx('Deal pipeline', 'डील पाइपलाइन')
               : mainMode === 'MANDATES' ? (currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms with brokers', 'ब्रोकरों से मेरी ब्रोकरेज शर्तें') : tx('Owners — brokerage terms', 'मालिक — ब्रोकरेज की शर्तें'))
@@ -848,7 +849,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               : tx('Who does what, the brokerage agreement, title check and registry — all for this deal in one place.', 'कौन क्या करेगा, ब्रोकरेज समझौता, टाइटल जाँच और रजिस्ट्री — इस डील का सब एक जगह।')} {tx('The anti-bypass rule applies in every deal room.', 'हर डील रूम में एंटी-बायपास नियम लागू है।')}</>} />
         </div>
       </div>
-      <div className="-mt-2 flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" data-testid="deal-modes">
+      <div className={`-mt-2 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1 ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:flex' : 'flex'}`} role="tablist" data-testid="deal-modes">
         {([
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
           ...(mainMode === 'DEAL_ROOMS' ? [['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false]] : []),   // v142 — shown only while a room is open; you enter a room by tapping a deal   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Offers" half off the screen
@@ -900,14 +901,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
             const go = (k: number) => { const id = ids[(at + k + ids.length) % ids.length]; if (id) openDeal(id); };
             return (
               <div className="flex items-center gap-2 lg:hidden" data-testid="deal-switcher">
-                <button type="button" onClick={() => setMainMode('PIPELINE')} className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-2.5" aria-label={tx('All deals', 'सभी डील')}><ArrowLeft className="h-4 w-4" /></button>
-                <select value={selectedDealId} onChange={(e) => openDeal(e.target.value)} className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold">
-                  {(hub?.deals || deals).map((d: any) => <option key={d.id} value={d.id}>{d.id} · {d.propertyTitle || d.propertyId} · {label('dealStage', d.stage)}</option>)}
-                </select>
-                {ids.length > 1 && <>
-                  <button type="button" onClick={() => go(-1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-2" aria-label={tx('Previous deal', 'पिछली डील')}><ChevronLeft className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => go(1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-2" aria-label={tx('Next deal', 'अगली डील')}><ChevronRight className="h-4 w-4" /></button>
-                </>}
+                <button type="button" onClick={() => setMainMode('PIPELINE')} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-slate-700" data-testid="deal-back"><ArrowLeft className="h-4 w-4" />{tx('All deals', 'सभी डील')}</button>
+                {ids.length > 1 && <span className="ml-auto flex items-center gap-1">
+                  <button type="button" onClick={() => go(-1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Previous deal', 'पिछली डील')}><ChevronLeft className="h-4 w-4" /></button>
+                  <span className="text-xs text-slate-500">{at + 1}/{ids.length}</span>
+                  <button type="button" onClick={() => go(1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Next deal', 'अगली डील')}><ChevronRight className="h-4 w-4" /></button>
+                </span>}
               </div>
             );
           })()}
@@ -938,10 +937,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     <h3 className="text-base font-bold leading-snug text-slate-900">
                       {activeProperty?.title || tx('Property transaction', 'प्रॉपर्टी लेन-देन')}
                     </h3>
-                    <DealIds dealId={activeDeal.id} propertyId={activeDeal.propertyId} requirementId={activeDeal.requirementId} />
+                    <div className={showSimple ? 'hidden sm:block' : ''}><DealIds dealId={activeDeal.id} propertyId={activeDeal.propertyId} requirementId={activeDeal.requirementId} /></div>
                     {[activeProperty?.locality, activeProperty?.city].filter(Boolean).length > 0 && <p className="text-xs text-slate-500 sm:hidden" data-testid="deal-place">{[activeProperty?.locality, activeProperty?.city].filter(Boolean).join(', ')}</p>}
                     {currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) && (
-                      <DealTeamAccess dealId={activeDeal.id} allotted={activeDeal.teamMemberIds || []} onChanged={onRefreshDeals} />
+                      <div className={showSimple ? 'hidden sm:block' : ''}><DealTeamAccess dealId={activeDeal.id} allotted={activeDeal.teamMemberIds || []} onChanged={onRefreshDeals} /></div>
                     )}
                   </div>
 
@@ -974,7 +973,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               </div>
 
               {/* v99 — Simple ⇄ Full */}
-              {!summaryOnly && (
+              {!summaryOnly && !showSimple && (
                 <div className="flex items-center justify-between gap-2" data-testid="deal-view-toggle">
                   <span className="text-xs font-semibold text-slate-500">{tx('View', 'दृश्य')}</span>
                   <div role="group" aria-label={tx('Deal room view', 'डील रूम का दृश्य')} className="inline-flex rounded-xl border border-slate-300 bg-white p-0.5">

@@ -38,49 +38,48 @@ export const DealSimple: React.FC<{
 
   const all: Record<SimpleDoor, { icon: React.ElementType; label: string; hint: string; tab: string }> = {
     chat_call: { icon: MessageSquare, label: tx('Chat', 'चैट'), tab: 'chat_call', hint: item?.lastMessage ? (item.lastMessage.from === 'OTHER' ? tx(`They wrote ${ago(item.lastMessage.at)}`, `उनका मैसेज ${ago(item.lastMessage.at)}`) : tx(`You wrote ${ago(item.lastMessage.at)}`, `आपका मैसेज ${ago(item.lastMessage.at)}`)) : tx('No message yet', 'अभी कोई मैसेज नहीं') },
-    responsibilities: { icon: ListTodo, label: tx('Who does what', 'कौन क्या करेगा'), tab: 'responsibilities', hint: t?.total ? tx(`${t.open} still open`, `${t.open} बाकी`) : tx('Duties of both sides', 'दोनों तरफ़ की ज़िम्मेदारी') },
+    responsibilities: { icon: ListTodo, label: tx('Tasks', 'काम'), tab: 'responsibilities', hint: t?.total ? tx(`${t.open} still open`, `${t.open} बाकी`) : tx('Who does what', 'कौन क्या करेगा') },
     commission_agreement: { icon: FileCheck2, label: tx('Agreement', 'समझौता'), tab: 'commission_agreement', hint: agText },
     media_vault: { icon: FolderLock, label: tx('Photos & papers', 'फ़ोटो और काग़ज़'), tab: 'media_vault', hint: tx('Photos, map, documents', 'फ़ोटो, लोकेशन, दस्तावेज़') },
     due_diligence: { icon: ShieldCheck, label: tx('Paper check', 'काग़ज़ों की जाँच'), tab: 'due_diligence', hint: tx('Due diligence & registry', 'जाँच और रजिस्ट्री की तैयारी') },
-    money: { icon: IndianRupee, label: tx('Rate & हिसाब', 'रेट और हिसाब'), tab: 'overview', hint: tx('Final rate, commission, payments', 'फ़ाइनल रेट, कमीशन, भुगतान') },
+    money: { icon: IndianRupee, label: tx('Money', 'पैसा / हिसाब'), tab: 'overview', hint: tx('Final rate, commission, payments', 'फ़ाइनल रेट, कमीशन, भुगतान') },
   };
 
+  const top = ['share', 'value', 'other'].map(k => facts.find(f => f.k === k)).filter(Boolean).slice(0, 3) as typeof facts;
+  const door = (id: SimpleDoor, small?: boolean) => { const d = all[id]; const Icon = d.icon; return (
+    <button key={id} type="button" onClick={() => onOpen(id)} data-testid={`deal-door-${id}`}
+      className={`relative flex items-center gap-3 rounded-xl border border-slate-200 bg-white text-left active:bg-slate-50 ${small ? 'min-h-12 px-3' : 'min-h-16 p-3 shadow-sm'}`}>
+      <Icon className="h-5 w-5 shrink-0 text-slate-700" aria-hidden />
+      <span className="min-w-0 flex-1"><span className="block text-sm font-bold leading-tight text-slate-900">{d.label}</span>{!small && <span className="block truncate text-xs text-slate-500">{d.hint}</span>}</span>
+      {dot(d.tab) && id !== 'money' ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />}
+    </button>
+  ); };
+  const MAIN: SimpleDoor[] = ['chat_call', 'responsibilities', 'commission_agreement', 'money'];
+  const main = doors.filter(d => MAIN.includes(d)); const rest = doors.filter(d => !MAIN.includes(d));
+
+  // v143 — light: three numbers, four doors, everything else under "More"
   return (
     <div className="space-y-3" data-testid="deal-simple">
-      {facts.length > 0 && (
-        <section aria-label={tx('The deal at a glance', 'डील एक नज़र में')} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" data-testid="deal-simple-facts">
-          <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{tx('At a glance', 'एक नज़र में')}</h4>
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-            {facts.map(f => (
-              <div key={f.k} className="min-w-0" data-testid={`deal-fact-${f.k}`}>
-                <dt className="flex items-center gap-1 text-xs text-slate-500"><f.icon className="h-3.5 w-3.5 shrink-0" aria-hidden /><span className="truncate">{f.label}</span></dt>
-                <dd className={`mt-0.5 truncate text-sm font-bold ${f.tone || 'text-slate-900'}`}>{f.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
+      {top.length > 0 && (
+        <dl aria-label={tx('The deal at a glance', 'डील एक नज़र में')} className="flex divide-x divide-slate-200 rounded-xl border border-slate-200 bg-white py-2.5 text-center shadow-sm" data-testid="deal-simple-facts">
+          {top.map(f => (
+            <div key={f.k} className="min-w-0 flex-1 px-2" data-testid={`deal-fact-${f.k}`}>
+              <dd className={`truncate text-sm font-bold ${f.tone || 'text-slate-900'}`}>{f.value}</dd>
+              <dt className="truncate text-xs text-slate-500">{f.label}</dt>
+            </div>
+          ))}
+        </dl>
       )}
-
-      <section aria-label={tx('Open a section', 'सेक्शन खोलें')}>
-        <h4 className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-slate-500">{tx('Open', 'खोलें')}</h4>
-        <div className="grid grid-cols-2 gap-2" data-testid="deal-simple-doors">
-          {doors.map(id => { const d = all[id]; const Icon = d.icon; return (
-            <button key={id} type="button" onClick={() => onOpen(id)} data-testid={`deal-door-${id}`}
-              className="relative flex min-h-[92px] flex-col items-start gap-1 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm active:bg-slate-50">
-              <Icon className="h-5 w-5 text-slate-700" aria-hidden />
-              <span className="text-sm font-bold leading-tight text-slate-900">{d.label}</span>
-              <span className="text-xs leading-snug text-slate-500">{d.hint}</span>
-              {dot(d.tab) && id !== 'money' && <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}
-            </button>
-          ); })}
+      <div className="grid gap-2" data-testid="deal-simple-doors">{main.map(id => door(id))}</div>
+      <details className="rounded-xl border border-slate-200 bg-white" data-testid="deal-simple-more">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-600">{tx('More', 'और')}<ChevronRight className="h-4 w-4 rotate-90 opacity-60" aria-hidden /></summary>
+        <div className="grid gap-2 p-2 pt-0">
+          {rest.map(id => door(id, true))}
+          <button type="button" onClick={() => onOpen('full')} data-testid="deal-simple-full" className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-bold text-slate-900">
+            <LayoutList className="h-5 w-5 shrink-0 text-slate-700" aria-hidden /><span className="flex-1">{tx('Full deal room', 'पूरा डील रूम')}</span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />
+          </button>
         </div>
-      </section>
-
-      <button type="button" onClick={() => onOpen('full')} data-testid="deal-simple-full"
-        className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm font-semibold text-slate-800">
-        <span className="flex items-center gap-2"><LayoutList className="h-4 w-4" aria-hidden />{tx('Open the full deal room', 'पूरा डील रूम खोलें')}<span className="text-xs font-normal text-slate-500">{tx('· rules, legal help, disputes…', '· नियम, क़ानूनी मदद, विवाद…')}</span></span>
-        <ChevronRight className="h-4 w-4 shrink-0 opacity-60" aria-hidden />
-      </button>
+      </details>
     </div>
   );
 };
