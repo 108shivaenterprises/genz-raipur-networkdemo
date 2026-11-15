@@ -21,7 +21,10 @@ import { CallsModal } from './calls/CallsPanel.js';
 import { useCalls } from './calls/CallHost.js';
 
 const SahayakBot = lazyView(() => import('./SahayakBot.js'), 'SahayakBot');
-const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600' };
+const LeadCard = lazyView(() => import('./ShopPartners.js'), 'LeadCard');
+const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600', OWNER: 'bg-emerald-700' };
+/** v152 — the small type tag on every row (like the labels in the WhatsApp sample) */
+const TAG_CLS: Record<string, string> = { DEAL: 'bg-amber-100 text-amber-900', CLIENT: 'bg-sky-100 text-sky-900', OWNER: 'bg-emerald-100 text-emerald-900', SHOP: 'bg-rose-100 text-rose-900', PARTNER: 'bg-indigo-100 text-indigo-900' };
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 /** "Er. Alok Singhania" → "Alok" (the name before a message preview) */
 const firstOf = (n: string) => { const w = n.split(/\s+/).filter(Boolean); return w.length > 1 && /^(dr|mr|mrs|ms|miss|shri|smt|sri|er|adv|prof)\.?$/i.test(w[0]) ? w[1] : (w[0] || ''); };
@@ -39,7 +42,7 @@ export const chatTime = (iso: string | undefined, hi: boolean) => {
 };
 
 type Row = {
-  key: string; kind: 'CLIENT' | 'DEAL' | 'PARTNER'; id: string;
+  key: string; kind: 'CLIENT' | 'DEAL' | 'PARTNER' | 'SHOP'; id: string; label: 'CLIENT' | 'DEAL' | 'OWNER' | 'SHOP' | 'PARTNER'; lead?: any;
   title: string; sub: string; lastText?: string; lastMine?: boolean; lastBy?: string; lastAt?: string;
   unread: number; tone: string; badge?: string; closed?: boolean;
   /** a client waiting for his code / asking for a visit — shown as small tags under the message */
@@ -74,6 +77,8 @@ const DealChatPane: React.FC<{ row: Row; meId: string; perms: string[]; onBack: 
   const thread: ThreadMsg[] = (msgs || []).map(m => kit.thread(m, meId));
   const others = new Set((msgs || []).filter(m => m.senderId !== meId).map(m => m.senderId));
   const send = (text: string) => sendBody({ text, audience: kit.audience });
+  // v152 — the "next step" card at the bottom of a deal chat: what to do at this stage, one tap to the right part of the deal room
+  const nextStep = ({ Lead: { text: tx('Fix a site visit', 'विज़िट तय करें'), sub: 'overview' }, Introduction: { text: tx('Fix a site visit', 'विज़िट तय करें'), sub: 'overview' }, 'Site Visit Done': { text: tx('Get the client\'s offer / final rate', 'क्लाइंट का ऑफ़र / फ़ाइनल रेट लें'), sub: 'overview' }, Negotiation: { text: tx('Settle the rate, then write the agreement', 'रेट तय करें, फिर एग्रीमेंट लिखें'), sub: 'commission_agreement' }, Agreement: { text: tx('Open the agreement and commission', 'एग्रीमेंट और कमीशन खोलें'), sub: 'commission_agreement' }, Handover: { text: tx('Check papers and the commission payment', 'काग़ज़ और कमीशन का भुगतान देखें'), sub: 'commission_agreement' } } as Record<string, { text: string; sub: string }>)[row.deal?.stage || ''];
   return (
     <ChatShell
       onBack={onBack} testId="deal-chat"
@@ -84,7 +89,7 @@ const DealChatPane: React.FC<{ row: Row; meId: string; perms: string[]; onBack: 
       {msgs === null && !err ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div> : (
         <ChatThread
           msgs={thread} onSend={send} error={err} showWho={others.size > 1}
-          menu={kit.menu} composerTop={kit.banner}
+          menu={kit.menu} composerTop={<>{nextStep && <button type="button" onClick={() => onOpenDeal(nextStep.sub)} className="mx-3 mb-1 flex min-h-11 w-[calc(100%-1.5rem)] items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-3 text-left text-sm font-semibold text-slate-900" data-testid="deal-next-step"><span><span className="block text-[10px] font-bold text-slate-500">{tx('NEXT STEP', 'अगला कदम')} · {row.deal?.stage}</span>{nextStep.text}</span><span aria-hidden>›</span></button>}{kit.banner}</>}
           placeholder={kit.brokersOnly && kit.can.private ? tx('Message to the other broker only…', 'सिर्फ़ दूसरे ब्रोकर को संदेश…') : tx('Message…', 'संदेश लिखें…')}
           emptyHint={tx('No messages yet. Talk about the visit, token, registry dates here.', 'अभी कोई संदेश नहीं। यहाँ विज़िट, टोकन, रजिस्ट्री की तारीख़ की बात करें।')}
           ids={{ root: 'deal-chat-root', chat: 'deal-chat-messages', input: 'deal-chat-input', send: 'deal-chat-send' }}
@@ -107,7 +112,10 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
   const [pside, setPside] = useState('');
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
-  const [f, setF] = useState<'all' | 'unread' | 'clients' | 'brokers' | 'partners'>('all');
+  const [f, setF] = useState<'all' | 'unread' | 'clients' | 'brokers' | 'partners' | 'shops'>('all');
+  const canShop = permissions.includes('partner:manage');
+  const [leads, setLeads] = useState<any[] | null>(null);
+  const [found, setFound] = useState<{ homes: any[]; needs: any[] }>({ homes: [], needs: [] });
   const [open, setOpen] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('chat') || ''; } catch { return ''; } });
   const [fresh, setFresh] = useState<{ link: string; name: string; phone: string; id: string } | null>(null);
 
@@ -118,9 +126,10 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     Promise.all([
       canClients ? api.crList().then(r => setRooms((r.rooms || []).filter((x: any) => x.status === 'ACTIVE'))) : Promise.resolve(setRooms([])),
       canDeals ? api.chatDeals().then(r => setDeals(r.deals || [])) : Promise.resolve(setDeals([])),
+      canShop ? api.spList().then(r => setLeads((r.leads || []).filter((l: any) => l.chat))) : Promise.resolve(setLeads([])),
       canPartners ? api.pchatList().then(r => { setPartners(r.threads || []); setPside(r.side || ''); }) : Promise.resolve(setPartners([])),
     ]).catch(e => setErr(e.message));
-  }, [canClients, canDeals, canPartners]);
+  }, [canClients, canDeals, canPartners, canShop]);
   useEffect(() => {
     load();
     const t = setInterval(() => { if (!document.hidden) load(); }, 30000);
@@ -136,14 +145,14 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
       if (r.codeAsk) tags.push({ text: tx('asking for code', 'कोड माँग रहा है'), cls: 'bg-amber-600 text-white' });
       if (r.openVisits > 0) tags.push({ text: tx(`${r.openVisits} visit ask`, `${r.openVisits} विज़िट अनुरोध`), cls: 'bg-amber-100 text-amber-900' });
       out.push({
-        key: 'c:' + r.id, kind: 'CLIENT', id: r.id, title: r.clientName, sub: `${kindLabel(r.kind)} · ••${r.phoneLast4}`,
+        key: 'c:' + r.id, kind: 'CLIENT', label: r.kind === 'OWNER' ? 'OWNER' : 'CLIENT', id: r.id, title: r.clientName, sub: `${kindLabel(r.kind)} · ••${r.phoneLast4}`,
         lastText: r.lastMessage?.text, lastMine: r.lastMessage ? r.lastMessage.from !== 'CLIENT' : undefined, lastAt: r.lastMessage?.at || r.updatedAt,
         unread: (r.unread || 0) + (r.codeAsk ? 1 : 0), tone: KIND_TONE[r.kind] || KIND_TONE.OTHER, tags,
       });
     }
     for (const d of deals || []) {
       out.push({
-        key: 'd:' + d.id, kind: 'DEAL', id: d.id, title: d.propertyTitle,
+        key: 'd:' + d.id, kind: 'DEAL', label: 'DEAL', id: d.id, title: d.propertyTitle,
         sub: [d.with?.length ? tx(`with ${d.with.join(', ')}`, `${d.with.join(', ')} के साथ`) : '', d.stage].filter(Boolean).join(' · '),
         lastText: d.last ? (d.last.media && !d.last.text ? tx('Attachment', 'अटैचमेंट') : d.last.text) : undefined, lastMine: d.last?.mine, lastBy: d.last?.by, lastAt: d.last?.at,
         unread: d.unread || 0, tone: 'bg-amber-500', tags: [], closed: d.closed, deal: d,
@@ -151,23 +160,31 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     }
     for (const t of partners || []) {
       out.push({
-        key: t.id ? 'p:' + t.id : 'pn:' + t.withId, kind: 'PARTNER', id: t.id || '', withId: t.withId, title: t.with,
+        key: t.id ? 'p:' + t.id : 'pn:' + t.withId, kind: 'PARTNER', label: 'PARTNER', id: t.id || '', withId: t.withId, title: t.with,
         sub: [pside === 'BUILDER' ? tx('Partner', 'पार्टनर') : tx('Builder', 'बिल्डर'), (t.projects || []).join(', ')].filter(Boolean).join(' · '),
         lastText: t.last ? (t.last.photo && !t.last.text ? tx('📷 Photo', '📷 फ़ोटो') : t.last.text) : undefined, lastMine: t.last?.mine, lastBy: t.last?.by, lastAt: t.last?.at,
         unread: t.unread || 0, tone: 'bg-indigo-600', tags: t.open ? [] : [{ text: tx('ended', 'ख़त्म'), cls: 'bg-slate-200 text-slate-600' }], closed: !t.open,
       });
     }
+    for (const l of leads || []) {
+      const m = l.chat?.msgs?.[l.chat.msgs.length - 1];
+      out.push({
+        key: 's:' + l.id, kind: 'SHOP', label: 'SHOP', id: l.id, title: l.name, sub: [l.shopName, l.locality].filter(Boolean).join(' · '),
+        lastText: m ? (m.kind === 'HOME' ? '🏠 ' + (m.title || '') : m.text || m.en) : undefined, lastMine: m ? m.by !== 'CUSTOMER' : undefined, lastAt: m?.at || l.createdAt,
+        unread: l.chat?.unread || 0, tone: 'bg-rose-600', tags: l.status === 'WON' ? [{ text: tx('deal done', 'डील पक्की'), cls: 'bg-emerald-100 text-emerald-900' }] : [], closed: l.status === 'LOST', lead: l,
+      });
+    }
     return out;
-  }, [rooms, deals, partners, pside, hi]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rooms, deals, partners, leads, pside, hi]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const s = q.trim().toLowerCase();
   const match = (r: Row) => (!s || r.title.toLowerCase().includes(s) || r.sub.toLowerCase().includes(s) || (r.lastText || '').toLowerCase().includes(s))
-    && (f === 'all' || (f === 'unread' && r.unread > 0) || (f === 'clients' && r.kind === 'CLIENT') || (f === 'brokers' && r.kind === 'DEAL') || (f === 'partners' && r.kind === 'PARTNER'));
+    && (f === 'all' || (f === 'unread' && r.unread > 0) || (f === 'clients' && r.kind === 'CLIENT') || (f === 'brokers' && r.kind === 'DEAL') || (f === 'partners' && r.kind === 'PARTNER') || (f === 'shops' && r.kind === 'SHOP'));
   const talking = rows.filter(r => r.lastText || r.kind === 'CLIENT').filter(match)
     .sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
   const silent = rows.filter(r => (r.kind === 'DEAL' || r.kind === 'PARTNER') && !r.lastText && !r.closed).filter(match);
   const unreadTotal = rows.reduce((n, r) => n + r.unread, 0);
-  const both = [canClients, canDeals, canPartners].filter(Boolean).length > 1;
+  const both = [canClients, canDeals, canPartners, canShop].filter(Boolean).length > 1;
   const cur = rows.find(r => r.key === open);
   const canSahayak = permissions.includes('daily:use') && canClients;   // v150 — the broker's helper, pinned on top like a chat
   const sahayak = canSahayak && open === 'sahayak';
@@ -179,8 +196,18 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     api.pchatOpen(row.withId).then(r => { setOpen('p:' + r.id); load(); }).catch(e => { setErr(e.message); setOpen(''); });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // v152 — one search box over homes and requirements as well (chats are filtered above); a tap opens that tab
+  useEffect(() => {
+    if (s.length < 2) { setFound({ homes: [], needs: [] }); return; }
+    const t = setTimeout(() => {
+      Promise.all([api.getProperties({ q: s, limit: 3 }).then(r => r.properties || []).catch(() => []), canClients ? api.getRequirements({ q: s, mine: true, limit: 3 }).then(r => r.requirements || []).catch(() => []) : Promise.resolve([])])
+        .then(([homes, needs]) => setFound({ homes, needs }));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [s, canClients]);
+
   if (err) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
-  if (rooms === null || deals === null || partners === null) return <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />;
+  if (rooms === null || deals === null || partners === null || leads === null) return <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />;
 
   const renderRow = (r: Row) => (
     <button key={r.key} type="button" onClick={() => setOpenUrl(r.key)} className={`flex w-full items-center gap-3 px-3 py-3 text-left active:bg-slate-100 lg:hover:bg-slate-50 ${open === r.key ? 'bg-slate-100' : ''}`} data-testid={`chat-row-${r.key}`}>
@@ -189,7 +216,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
         : <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold text-white ${r.tone}`} aria-hidden>{initials(r.title)}</span>}
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
-          <span className={`truncate text-base ${r.unread > 0 ? 'font-bold' : 'font-semibold'} text-slate-900`}>{r.title}</span>
+          <span className={`truncate text-base ${r.unread > 0 ? 'font-bold' : 'font-semibold'} text-slate-900`}><span className={`mr-1.5 rounded px-1.5 py-0.5 align-middle text-[10px] font-bold ${TAG_CLS[r.label]}`} data-testid={`chat-tag-${r.label}`}>{r.label}</span>{r.title}</span>
           <span className={`shrink-0 text-xs ${r.unread > 0 ? 'font-bold text-emerald-700' : 'text-slate-400'}`}>{chatTime(r.lastAt, hi)}</span>
         </span>
         <span className="flex items-center justify-between gap-2">
@@ -210,6 +237,11 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     </ChatShell>
   ) : !cur ? (
     <div className="hidden h-[max(28rem,calc(100vh-19rem))] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400 lg:flex">{tx('Pick a chat on the left.', 'बाईं ओर से कोई चैट चुनें।')}</div>
+  ) : cur.kind === 'SHOP' ? (
+    <div className="space-y-2" data-testid="shop-chat-pane">
+      <button type="button" onClick={() => { setOpenUrl(''); load(); }} className="min-h-11 px-2 text-sm font-semibold text-slate-600 underline">{tx('← Back to chats', '← चैट पर वापस')}</button>
+      <LeadCard key={cur.id + (cur.lead?.status || '')} l={cur.lead} onChange={load} />
+    </div>
   ) : cur.kind === 'PARTNER' ? (
     cur.id ? <PartnerChatPane key={cur.id} id={cur.id} fallbackTitle={cur.title} onBack={() => { setOpenUrl(''); load(); }} /> : <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />
   ) : cur.kind === 'CLIENT' ? (
@@ -239,7 +271,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
               <span className="min-w-0 flex-1"><span className="block text-base font-bold text-slate-900">{tx('GENZ Sahayak', 'GENZ सहायक')}</span><span className="block truncate text-sm text-slate-600">{tx('Tap to add a requirement, find a home, see commission', 'ज़रूरत जोड़ो, घर ढूँढो, कमीशन देखो — बस दबाइए')}</span></span>
             </button>
           )}
-          {(rows.length > 6 || s) && (
+          {(rows.length > 0 || s) && (
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               <input className="min-h-11 w-full rounded-full border border-slate-300 bg-white pl-9 pr-3 text-base sm:text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search chats', 'चैट खोजें')} aria-label={tx('Search chats', 'चैट खोजें')} data-testid="chats-search" />
@@ -247,7 +279,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
           )}
           {both && (
             <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1" role="tablist">
-              {([['all', 'All', 'सभी'], ['unread', unreadTotal ? `Unread ${unreadTotal}` : 'Unread', unreadTotal ? `नए ${unreadTotal}` : 'नए'], ...(canClients ? [['clients', 'Clients', 'क्लाइंट']] : []), ...(canDeals ? [['brokers', 'Brokers', 'ब्रोकर']] : []), ...(canPartners ? [['partners', pside === 'BUILDER' ? 'Partners' : 'Builders', pside === 'BUILDER' ? 'पार्टनर' : 'बिल्डर']] : [])] as const as ReadonlyArray<readonly [string, string, string]>).map(([id, en, hiT]) => (
+              {([['all', 'All', 'सभी'], ['unread', unreadTotal ? `Unread ${unreadTotal}` : 'Unread', unreadTotal ? `नए ${unreadTotal}` : 'नए'], ...(canClients ? [['clients', 'Clients', 'क्लाइंट']] : []), ...(canDeals ? [['brokers', 'Brokers', 'ब्रोकर']] : []), ...(canShop ? [['shops', 'Shops', 'दुकान']] : []), ...(canPartners ? [['partners', pside === 'BUILDER' ? 'Partners' : 'Builders', pside === 'BUILDER' ? 'पार्टनर' : 'बिल्डर']] : [])] as const as ReadonlyArray<readonly [string, string, string]>).map(([id, en, hiT]) => (
                 <button key={id} type="button" role="tab" aria-selected={f === id} onClick={() => setF(id as typeof f)} className={`min-h-9 shrink-0 rounded-full border px-3.5 text-sm font-semibold ${f === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`chats-filter-${id}`}>{tx(en, hiT)}</button>
               ))}
             </div>
@@ -260,6 +292,12 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
           ) : (
             <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white lg:max-h-[max(24rem,calc(100vh-24rem))] lg:overflow-y-auto">
               {talking.map(renderRow)}
+            </div>
+          )}
+          {(found.homes.length > 0 || found.needs.length > 0) && (
+            <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid="chats-found">
+              {found.homes.map((h: any) => <button key={h.id} type="button" className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm" data-testid={`found-home-${h.id}`} onClick={() => goto('properties', {}, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t })))}><span className="rounded bg-slate-100 px-1.5 text-[10px] font-bold">{tx('HOME', 'घर')}</span><span className="min-w-0 flex-1 truncate font-semibold">{h.title}</span><span className="text-xs text-slate-500">{h.locality}</span></button>)}
+              {found.needs.map((n: any) => <button key={n.id} type="button" className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm" data-testid={`found-need-${n.id}`} onClick={() => goto('requirements', { reqId: n.id }, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t })))}><span className="rounded bg-sky-100 px-1.5 text-[10px] font-bold">{tx('NEED', 'ज़रूरत')}</span><span className="min-w-0 flex-1 truncate font-semibold">{n.customerName}</span><span className="text-xs text-slate-500">{n.propertyType}</span></button>)}
             </div>
           )}
           {silent.length > 0 && (

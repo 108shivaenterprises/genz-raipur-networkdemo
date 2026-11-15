@@ -335,7 +335,7 @@ const AskNetwork: React.FC<{ reqId: string }> = ({ reqId }) => {
   return sent ? <p className="text-xs text-emerald-800" data-testid="sp-asked">{sent}</p>
     : <button type="button" disabled={busy} onClick={go} data-testid="sp-ask-network" className="inline-flex min-h-10 items-center rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-50">🤝 {tx('Ask these brokers to co-broke', 'इन ब्रोकरों से को-ब्रोक माँगें')}</button>;
 };
-const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
+export const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid' | 'need' | 'share'>(''); const [val, setVal] = useState(''); const [reason, setReason] = useState(''); const [pm, setPm] = useState<PartnerPayMode>('UPI'); const [reply, setReply] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const kind = LEAD_KINDS.find((k) => k.id === l.kind)!; const side = sideOfKind(l.kind); const cut: Cut = side === 'SALE' ? l.terms.sale : l.terms.rent;

@@ -27,13 +27,19 @@ Aapka kehna: "Sahayak me format galat likhega broker to pata nahi chalega, Whats
 - Saath me ek chhed band: buyer ko match ke nateeje me bhi listing broker ki pehchan nahi jaati (V148 ka niyam yahan chhoot gaya tha).
 - Files: `src/components/SahayakBot.tsx` (naya), `ChatsView.tsx`, `server.ts`.
 
-## Abhi sample jaisa kya NAHI hai (agle round)
-1. Sahayak me abhi sirf "zaroorat jodo" poora flow hai; property jodna, visit tay karna, offer, commission abhi apne purane tab par le jaate hain. Milte ghar ke card par "client ko bhejo / co-broke pucho" button nahi.
-2. List me DEAL / CLIENT / OWNER / SHOP ke tag aur chips nahi (abhi All / Unread / Clients / Brokers).
-3. Owner aur shopkeeper ki chat list me row nahi; shop QR scan aur commission ka card nahi.
-4. Deal chat me offer / agreement / "agla kadam" ke card nahi (visit, stage, ghar, kaagaz ke hain).
-5. Client, owner, shopkeeper ka apna chat home nahi.
-6. Search abhi sirf chat ke naam par; ghar / requirement / deal ki khoj nahi.
+## V152 — baaki sab jodna (aapka "Sab add karo")
+- **Chats list:** har row par chhota tag **DEAL / CLIENT / OWNER / SHOP / PARTNER**. Owner ke room ka alag rang. Naya filter **Shops** (dukaan ki lead ki chat). Dukaan ki lead dabane par poora lead card (chat, ghar bhejna, visit, commission) khulta hai.
+- **Search box ab hamesha:** chat ke naam ke saath **ghar** aur **zaroorat** bhi dhoondhta hai (dabane par us tab par jata hai).
+- **Deal chat me "Agla kadam" card:** stage ke hisaab se (visit tay karo / offer-final rate lo / agreement-commission) ek dabaao me deal ke sahi hisse par.
+- **Sahayak me nayi cheezen:**
+  - milte ghar ke card par **Client ko bhejo** (client room banta hai, client ki haan puchhi jaati hai, ghar bhej deta hai) aur **Visit tay karo** (kal 11 / kal 4 / parso 11);
+  - neeche **Brokeron se pucho (co-broke)** — client ki zaroorat (naam/number ke bina) milte ghar wale brokeron ko;
+  - menu: **Property dhoondho** (likho, ghar dikhte hain), **Meri deal aur commission** (anumanit commission + 3 deal).
+- Files: `ChatsView.tsx`, `SahayakBot.tsx`, `ShopPartners.tsx` (LeadCard export), test `v137-owner-client-tabs.test.ts`.
 
-## Jaanch
-- `tests/v137-owner-client-tabs.test.ts` me 1 naya test. Phone (390px): broker Chats par utra, Sahayak khula, "Old home" aur wapas dono chale, koi page error nahi.
+## Abhi bhi NAHI hai
+1. Deal chat me offer / agreement ke **alag message-card** (server me naya card prakaar chahiye); abhi sirf "Agla kadam" patti.
+2. **Client, owner, dukaandaar ka apna chat home**: client / dukaandaar app me login hi nahi karte (link se aate hain); owner ke liye landing nahi badli.
+3. Ghar ki khoj me ghar par dabane se seedha wahi ghar nahi khulta, Properties tab khulta hai.
+4. "Property jodo" abhi Properties tab par le jata hai (bot me poora flow nahi).
+5. Commission card dukaan ki chat ke andar ka (LeadCard) purana hai; sample jaisa naya nahi.

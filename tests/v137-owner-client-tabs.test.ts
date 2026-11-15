@@ -117,4 +117,13 @@ describe('v137 owner + client screens', () => {
     const m = await (await get(jar.BUYER_TENANT, `/api/matching/requirement/${r.id}`)).json();
     for (const x of m.matches || []) expect(x.property.listingBrokerId, x.property.id).toBeUndefined();
   });
+  it('v152 — chat rows carry DEAL/CLIENT/OWNER/SHOP tags, shop leads are chats, search covers homes and needs, a deal chat shows the next step, the bot can send / book / ask / find / show commission', () => {
+    const cv = src('src/components/ChatsView.tsx');
+    for (const id of ['chat-tag-', 'chats-filter-', 'chats-found', 'shop-chat-pane', 'deal-next-step']) expect(cv, id).toContain(id);
+    expect(cv).toContain("label: r.kind === 'OWNER' ? 'OWNER' : 'CLIENT'"); expect(cv).toContain('api.spList()'); expect(cv).toContain("'LeadCard'");
+    expect(src('src/components/ShopPartners.tsx')).toContain('export const LeadCard');
+    const bot = src('src/components/SahayakBot.tsx');
+    for (const id of ['sahayak-send-client', 'sahayak-send-yes', 'sahayak-visit', 'sahayak-cobroke', 'sahayak-find', 'sahayak-deals']) expect(bot, id).toContain(`data-testid="${id}"`);
+    for (const call of ['api.crCreate(', 'consent: true', 'api.crSend(', 'api.scheduleSiteVisit(', 'api.broadcastSend(', 'api.getDeals()']) expect(bot, call).toContain(call);
+  });
 });
