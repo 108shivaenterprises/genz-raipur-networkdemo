@@ -13,12 +13,14 @@ import { ROOM_KINDS } from '../shared/clientRoomRules.js';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { useDealChatKit } from './ChatPlus.js';
 import { RoomDetail } from './ClientRooms.js';
-import { goto } from '../lib/goto.js';
+import { goto, chatHome } from '../lib/goto.js';
+import { lazyView } from '../lib/lazyView.js';
 import { PartnerChatPane } from './PartnerChat.js';
 import { CallMenu } from './calls/CallButton.js';
 import { CallsModal } from './calls/CallsPanel.js';
 import { useCalls } from './calls/CallHost.js';
 
+const CopilotPanel = lazyView(() => import('./CopilotPanel.js'), 'CopilotPanel');
 const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600' };
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 /** "Er. Alok Singhania" → "Alok" (the name before a message preview) */
@@ -167,6 +169,8 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
   const unreadTotal = rows.reduce((n, r) => n + r.unread, 0);
   const both = [canClients, canDeals, canPartners].filter(Boolean).length > 1;
   const cur = rows.find(r => r.key === open);
+  const canSahayak = permissions.includes('daily:use') && canClients;   // v150 — the broker's helper, pinned on top like a chat
+  const sahayak = canSahayak && open === 'sahayak';
   // v61 — a partner chat that does not exist yet is made when it is opened
   useEffect(() => {
     if (!open.startsWith('pn:')) return;
@@ -199,7 +203,12 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     </button>
   );
 
-  const pane = !cur ? (
+  const pane = sahayak ? (
+    <ChatShell onBack={() => { setOpenUrl(''); load(); }} testId="sahayak-chat" title={tx('GENZ Sahayak', 'GENZ सहायक')} subtitle={tx('Write or speak — I do the rest', 'लिखो या बोलो — बाकी मैं करूँगा')}
+      avatar={<span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-slate-900" aria-hidden>GZ</span>}>
+      <div className="flex-1 overflow-y-auto p-3"><CopilotPanel /></div>
+    </ChatShell>
+  ) : !cur ? (
     <div className="hidden h-[max(28rem,calc(100vh-19rem))] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400 lg:flex">{tx('Pick a chat on the left.', 'बाईं ओर से कोई चैट चुनें।')}</div>
   ) : cur.kind === 'PARTNER' ? (
     cur.id ? <PartnerChatPane key={cur.id} id={cur.id} fallbackTitle={cur.title} onBack={() => { setOpenUrl(''); load(); }} /> : <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />
@@ -216,13 +225,20 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     <div className="space-y-3" data-testid="chats-view">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xl font-bold text-slate-900">{tx('Chats', 'चैट')}</h2>
+        {canSahayak && chatHome.on() && <button type="button" onClick={() => { chatHome.set(false); window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'dashboard' })); }} className="mr-auto inline-flex min-h-10 items-center rounded-full px-2 text-xs font-semibold text-slate-500 underline" data-testid="chat-home-off">{tx('Old home', 'पुराना होम')}</button>}
         {calls && <button type="button" onClick={() => setShowCalls(true)} className="inline-flex min-h-10 items-center gap-1 rounded-full border border-slate-300 bg-white px-3 text-sm font-semibold" data-testid="chats-calls"><Phone className="h-4 w-4" />{tx('Calls', 'कॉल')}</button>}
         {canClients && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }))} className="inline-flex min-h-10 items-center rounded-full border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700" data-testid="chats-new-room">{tx('+ New client room', '+ नया क्लाइंट रूम')}</button>}
       </div>
 
       {showCalls && <CallsModal onClose={() => setShowCalls(false)} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[24rem_1fr]">
-        <div className={`${cur ? 'hidden lg:block' : ''}`}>
+        <div className={`${cur || sahayak ? 'hidden lg:block' : ''}`}>
+          {canSahayak && !s && f === 'all' && (
+            <button type="button" onClick={() => setOpenUrl('sahayak')} className="mb-2 flex w-full items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-left active:bg-amber-100" data-testid="chat-row-sahayak">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-400 text-base font-bold text-slate-900" aria-hidden>GZ</span>
+              <span className="min-w-0 flex-1"><span className="block text-base font-bold text-slate-900">{tx('GENZ Sahayak', 'GENZ सहायक')}</span><span className="block truncate text-sm text-slate-600">{tx('Write: "Alok 3BHK Shankar Nagar 80 lakh"', 'लिखो: "आलोक 3BHK शंकर नगर 80 लाख"')}</span></span>
+            </button>
+          )}
           {(rows.length > 6 || s) && (
             <div className="relative mb-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
@@ -253,7 +269,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
             </details>
           )}
         </div>
-        <div className={cur ? '' : 'hidden lg:block'}>{pane}</div>
+        <div className={cur || sahayak ? '' : 'hidden lg:block'}>{pane}</div>
       </div>
     </div>
   );

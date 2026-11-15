@@ -1,4 +1,5 @@
 import { goto } from '../lib/goto.js';
+import { chatHome } from '../lib/goto.js';
 import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
@@ -263,7 +264,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const pick = (ids: string[]) => ids.map(id => tabs.find(x => x.id === id)).find(Boolean);
   const HOME = { ids: ['dashboard'], key: 'nav.home', en: 'Home' };
   const BOTTOM: Record<string, Array<{ ids: string[]; key: string; en: string }>> = {
-    BROKER: [HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['requirements'], key: 'nav.buyersShort', en: 'Buyers' }, { ids: ['deals', 'desk'], key: 'nav.dealsShort', en: 'Deals' }],
+    BROKER: [chatHome.on() ? { ids: ['chats', 'dashboard'], key: 'nav.chats', en: 'Chats' } : HOME, { ids: ['properties'], key: 'nav.propShort', en: 'Property' }, { ids: ['requirements'], key: 'nav.buyersShort', en: 'Buyers' }, { ids: ['deals', 'desk'], key: 'nav.dealsShort', en: 'Deals' }],
     DEVELOPER_BUILDER: [HOME, { ids: ['crm'], key: 'nav.leadsShort', en: 'Leads' }, { ids: ['builder', 'pcontrol'], key: 'nav.projectsShort', en: 'Projects' }, { ids: ['chats'], key: 'nav.chats', en: 'Chats' }],
     ADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['plans'], key: 'nav.feesShort', en: 'Fees' }],
     SUPERADMIN: [HOME, { ids: ['onboarding', 'idreview'], key: 'nav.kycShort', en: 'KYC' }, { ids: ['disputes'], key: 'nav.disputesShort', en: 'Disputes' }, { ids: ['control', 'apikeys', 'plans'], key: 'nav.controlShort', en: 'Control' }],

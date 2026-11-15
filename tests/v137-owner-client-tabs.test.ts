@@ -96,4 +96,15 @@ describe('v137 owner + client screens', () => {
     const dd = src('src/components/DueDiligenceView.tsx');
     expect(dd).toContain('data-testid="dd-line"'); expect(dd).toContain('data-testid="dd-show-na"');
   });
+  it('v150 — chat home: a broker lands on Chats once per sign-in, the first bottom tab is Chats, Sahayak is pinned, and the old home is one tap away', () => {
+    expect(src('src/lib/goto.ts')).toContain("localStorage.getItem('genz-chat-home') !== '0'");
+    const app = src('src/App.tsx');
+    expect(app).toContain("currentUser?.role !== 'BROKER' || activeTab !== 'dashboard' || !chatHome.on()");
+    expect(app).toContain("sessionStorage.removeItem('genz.landed')");
+    expect(src('src/components/NavigationTabs.tsx')).toContain("chatHome.on() ? { ids: ['chats', 'dashboard'], key: 'nav.chats', en: 'Chats' } : HOME");
+    const cv = src('src/components/ChatsView.tsx');
+    for (const id of ['chat-row-sahayak', 'chat-home-off']) expect(cv, id).toContain(`data-testid="${id}"`);
+    expect(cv).toContain('testId="sahayak-chat"');
+    expect(src('src/components/BrokerHome.tsx')).toContain('data-testid="chat-home-on"');
+  });
 });

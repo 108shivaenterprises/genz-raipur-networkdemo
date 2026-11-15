@@ -7,6 +7,7 @@
  * v26 — the simple broker home: three first steps for a new broker, then only what needs him today (every tile opens its screen),
  * GENZ's own projects, this month's rank, his chapter's next meet, and the city report to share on WhatsApp.
  */
+import { chatHome } from '../lib/goto.js';
 import React, { useEffect, useState } from 'react';
 import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, Clock, Loader2, Plus, HardHat, Globe } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -102,6 +103,7 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
         <h2 className="text-lg font-bold text-slate-900">{tx(`Namaste, ${greetName(name)} 👋`, `नमस्ते, ${greetName(name)} 👋`)}</h2>
         {user && <span className="md:hidden"><TrustScoreBadge user={user} variant="pill" /></span>}
       </div>
+      {!chatHome.on() && <button type="button" onClick={() => { chatHome.set(true); onNavigate('chats' as any); }} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-3 text-sm font-bold text-slate-900" data-testid="chat-home-on">{tx('Try the new chat home', 'नया चैट होम आज़माएँ')}</button>}
 
       {left > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="first-steps">
