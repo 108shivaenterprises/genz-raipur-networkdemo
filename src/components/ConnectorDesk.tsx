@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ShowMore } from './ShowMore.js';
 import { Loader2, Search, MessageCircle, UserCheck, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { UserProfile } from '../types/index.js';
@@ -153,7 +154,7 @@ export const ConnectorDesk: React.FC<Props> = ({ currentUser, permissions, users
           {queue === 'rewardApprovals' && refs.length > 0 && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">{tx('Each of these closed as won. Approve the reward in the green box under the referral (the default amount comes from Rewards & programme).', 'ये सब जीत के साथ बंद हुए हैं। रेफ़रल के नीचे हरे बॉक्स में रिवॉर्ड मंज़ूर करें (डिफ़ॉल्ट राशि “रिवॉर्ड और प्रोग्राम” से आती है)।')}</p>}
           {refs.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">{queue || filter ? tx('Nothing pending here — all clear.', 'यहाँ कुछ बाकी नहीं — सब साफ़ है।') : tx('No referrals here yet.', 'अभी कोई रेफ़रल नहीं।')}</p>}
           <div className="space-y-3">
-            {refs.map(r => <ReferralRow key={r.id} r={r} manage={manage} full={full} canPay={can('connector:payout')} mine={r.sponsorId === currentUser.id} worker={r.assignedToId === currentUser.id || r.sponsorId === currentUser.id} cap={overview?.maxSharePct} users={users} act={act} upi={partnerById.get(r.connectorId)?.connector?.payoutUpi} />)}
+            <ShowMore step={6}>{refs.map(r => <ReferralRow key={r.id} r={r} manage={manage} full={full} canPay={can('connector:payout')} mine={r.sponsorId === currentUser.id} worker={r.assignedToId === currentUser.id || r.sponsorId === currentUser.id} cap={overview?.maxSharePct} users={users} act={act} upi={partnerById.get(r.connectorId)?.connector?.payoutUpi} />)}</ShowMore>
           </div>
         </>
       )}
@@ -168,7 +169,7 @@ export const ConnectorDesk: React.FC<Props> = ({ currentUser, permissions, users
           <table className="min-w-full text-xs">
             <thead className="bg-slate-50 text-left text-slate-500"><tr>{[tx('Partner', 'पार्टनर'), tx('Shop', 'दुकान'), tx('City', 'शहर'), 'KYC', tx('Referrals', 'रेफ़रल'), tx('Won', 'जीते'), tx('Earned', 'कमाया'), tx('Paid', 'चुकाया'), ''].map((h, i) => <th key={i} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
             <tbody>
-              {shownPartners.map(p => (
+              <ShowMore step={10} cols={12}>{shownPartners.map(p => (
                 <tr key={p.id} className="border-t border-slate-100">
                   <td className="px-3 py-2"><div className="font-semibold text-slate-900">{p.name}</div><div className="text-slate-500">{p.phone}</div></td>
                   <td className="px-3 py-2">{p.connector?.shopName}<div className="text-slate-500">{shopLabel(p.connector?.shopType, hi)}</div></td>
@@ -178,7 +179,7 @@ export const ConnectorDesk: React.FC<Props> = ({ currentUser, permissions, users
                   <td className="px-3 py-2">{formatINR(p.stats.rewardEarnedAmount)}</td><td className="px-3 py-2">{formatINR(p.stats.rewardPaidAmount)}</td>
                   <td className="px-3 py-2">{p.verificationStatus !== 'VERIFIED' && onNavigate && <button onClick={() => onNavigate('onboarding')} className="inline-flex items-center gap-1 font-semibold text-blue-700 underline"><UserCheck className="h-3.5 w-3.5" /> {tx('Verify', 'वेरिफ़ाई करें')}</button>}</td>
                 </tr>
-              ))}
+              ))}</ShowMore>
               {shownPartners.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-500">{partners.length === 0 ? tx('No connector partners yet. Invite one from “Invite & KYC” (role GENZ CONNECTOR).', 'अभी कोई कनेक्टर पार्टनर नहीं। “इनवाइट और KYC” से एक को बुलाएँ (रोल: GENZ कनेक्टर)।') : tx('Nobody in this group.', 'इस समूह में कोई नहीं।')}</td></tr>}
             </tbody>
           </table>

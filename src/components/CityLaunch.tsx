@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { ShowMore } from './ShowMore.js';
 import { Loader2, MessageCircle, Rocket } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
@@ -71,7 +72,7 @@ export const CityLaunch: React.FC<{ canReset: boolean }> = ({ canReset }) => {
         <h3 className="mb-2 text-sm font-bold text-slate-900">{tx('Requests & nominations', 'रिक्वेस्ट और नामांकन')} ({queue.leads.length})</h3>
         {queue.leads.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-xs text-slate-500">{tx('Nothing waiting.', 'कुछ बाकी नहीं।')}</p> : (
           <div className="space-y-2">
-            {queue.leads.map((l: any) => (
+            <ShowMore step={5}>{queue.leads.map((l: any) => (
               <div key={l.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs">
                 <div><b className="text-slate-900">{l.name}</b> · {l.role.replace('_', ' ')} · {l.city} · {l.phone}<div className="text-slate-500">{l.source === 'NOMINATION' && l.nominatorName ? tx(`Nominated by ${l.nominatorName}`, `${l.nominatorName} द्वारा नामांकित`) : tx('Public request', 'पब्लिक रिक्वेस्ट')}{l.note ? ` — “${l.note}”` : ''}</div></div>
                 <div className="flex gap-2">
@@ -79,7 +80,7 @@ export const CityLaunch: React.FC<{ canReset: boolean }> = ({ canReset }) => {
                   <button onClick={async () => { const reason = await prompt(tx('Reject Request', 'रिक्वेस्ट अस्वीकार करें'), { message: tx('Reason (optional)', 'कारण (वैकल्पिक)'), placeholder: tx('Enter reason', 'कारण दर्ज करें') }); if (reason !== null) act(() => api.growthReject(l.id, reason || undefined), tx('Rejected', 'अस्वीकृत')); }} className={small}>{tx('Reject', 'अस्वीकार')}</button>
                 </div>
               </div>
-            ))}
+            ))}</ShowMore>
           </div>
         )}
       </div>
@@ -111,14 +112,14 @@ export const CityLaunch: React.FC<{ canReset: boolean }> = ({ canReset }) => {
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-500"><tr>{[tx('City', 'शहर'), tx('Stage', 'चरण'), tx('Verified', 'सत्यापित'), 'B / D / C / L', tx('KYC pending', 'KYC बाकी'), tx('Waiting', 'इंतज़ार'), tx('Listings', 'लिस्टिंग'), tx('Deals', 'डील')].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
-            <tbody>{cities.map((c: any) => (
+            <tbody><ShowMore step={10} cols={12}>{cities.map((c: any) => (
               <tr key={c.city} className="border-t border-slate-100">
                 <td className="px-3 py-2 font-semibold text-slate-900">{c.city}{c.state ? <span className="ml-1 font-normal text-slate-400">{c.state}</span> : null}</td>
                 <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STAGE_STYLE[c.stage as CityStage]}`}>{hi ? STAGE_LABEL[c.stage as CityStage].hi : STAGE_LABEL[c.stage as CityStage].en}</span></td>
                 <td className="px-3 py-2 font-semibold">{c.verifiedPros}</td><td className="px-3 py-2 text-slate-500">{c.brokers} / {c.builders} / {c.contractors} / {c.legal}</td>
                 <td className="px-3 py-2">{c.pendingKyc}</td><td className="px-3 py-2">{c.waitlist}</td><td className="px-3 py-2">{c.listings}</td><td className="px-3 py-2">{c.deals}</td>
               </tr>
-            ))}</tbody>
+            ))}</ShowMore></tbody>
           </table>
         </div>
       </div>

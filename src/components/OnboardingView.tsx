@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ShowMore } from './ShowMore.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
 import { reraAuthorityOf } from '../shared/india.js';
 import { useI18n, useTx } from '../lib/i18n.js';
@@ -460,7 +461,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredUsers.map((u) => (
+                <ShowMore step={10} cols={12}>{filteredUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50/60">
                     <td className="px-4 py-3">
                       <div className="font-bold text-slate-900">{u.name}</div>
@@ -560,7 +561,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                       )}
                     </td>
                   </tr>
-                ))}
+                ))}</ShowMore>
               </tbody>
             </table>
           </div>

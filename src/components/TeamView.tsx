@@ -161,7 +161,10 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
         </div>
       )}
 
-      <form onSubmit={add} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-4">
+      {/* v145 — the add form opens from one button (it used to fill the first screen above the team list) */}
+      <details className="rounded-xl border border-slate-200 bg-white md:open" data-testid="team-add" open={members.length === 0 || undefined}>
+        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-bold text-slate-900"><UserPlus className="h-4 w-4" />{tx('Add a team member', 'टीम सदस्य जोड़ें')}</summary>
+      <form onSubmit={add} className="grid gap-3 p-4 pt-0 md:grid-cols-4">
         <input required placeholder={tx('Name', 'नाम')} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-xs" />
         <input required placeholder={tx('Mobile (10 digits)', 'मोबाइल (10 अंक)')} inputMode="numeric" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-xs" />
         <div className="flex gap-2">
@@ -175,6 +178,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
           {tx('I confirm this employee has accepted the GENZ Privacy Policy and Terms, and customer data will be used only for work.','मैं पुष्टि करता/करती हूँ कि इस कर्मचारी ने GENZ की प्राइवेसी पॉलिसी और नियम स्वीकार किए हैं, और ग्राहक डेटा केवल काम के लिए उपयोग होगा।')}
         </label>
       </form>
+      </details>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-xs">
