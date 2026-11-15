@@ -341,7 +341,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
         ))}
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className={`flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${items.length > 5 ? 'flex' : 'hidden sm:flex'}`}>   {/* v144 — nothing to search in a handful of deals */}
         <div className="flex w-full items-center gap-2 sm:max-w-sm">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

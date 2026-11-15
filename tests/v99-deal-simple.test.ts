@@ -22,7 +22,7 @@ describe('v99 — simple deal room', () => {
     expect(room).toContain("const showSimple = simple && activeSubTab === 'overview' && !summaryOnly;");   // never hides a section that was opened some other way
   });
   it('the GENZ summary view (admin) is never the simple one; the money door is hidden from anyone who may not see commercials', () => {
-    expect(room).toContain('!summaryOnly && !showSimple && (\n                <div className="flex items-center justify-between gap-2" data-testid="deal-view-toggle">');   // v143 — the switch shows only in the full room
+    expect(room).toContain('!summaryOnly && !showSimple && (\n                <div className="hidden items-center justify-between gap-2 lg:flex" data-testid="deal-view-toggle">');   // v143/v144: only in the full room, only on a wide screen; — the switch shows only in the full room
     expect(room).toContain("...(hideCommercials ? [] : ['money' as const])");
     expect(room).toContain("...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const])");
   });

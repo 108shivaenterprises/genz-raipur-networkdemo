@@ -901,8 +901,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
             const go = (k: number) => { const id = ids[(at + k + ids.length) % ids.length]; if (id) openDeal(id); };
             return (
               <div className="flex items-center gap-2 lg:hidden" data-testid="deal-switcher">
-                <button type="button" onClick={() => setMainMode('PIPELINE')} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-slate-700" data-testid="deal-back"><ArrowLeft className="h-4 w-4" />{tx('All deals', 'सभी डील')}</button>
-                {ids.length > 1 && <span className="ml-auto flex items-center gap-1">
+                <button type="button" onClick={() => (showSimple || summaryOnly ? setMainMode('PIPELINE') : pickView(true))} className="inline-flex min-h-10 min-w-0 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-slate-700" data-testid="deal-back"><ArrowLeft className="h-4 w-4 shrink-0" /><span className="truncate">{showSimple || summaryOnly ? tx('All deals', 'सभी डील') : (activeProperty?.title || tx('Back to the deal', 'डील पर वापस'))}</span></button>
+                {ids.length > 1 && showSimple && <span className="ml-auto flex items-center gap-1">
                   <button type="button" onClick={() => go(-1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Previous deal', 'पिछली डील')}><ChevronLeft className="h-4 w-4" /></button>
                   <span className="text-xs text-slate-500">{at + 1}/{ids.length}</span>
                   <button type="button" onClick={() => go(1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Next deal', 'अगली डील')}><ChevronRight className="h-4 w-4" /></button>
@@ -921,7 +921,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           ) : (
             <div className="space-y-3 sm:space-y-5">
               {/* Deal Header Overview Card */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden" data-testid="deal-header-card">
+              <div className={`bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden ${showSimple || summaryOnly ? '' : 'hidden lg:block'}`} data-testid="deal-header-card">
                 {/* v83 — the big cover is for a wide screen; on a phone the photo is a small thumbnail beside the title (it used to push everything down by ~150px on every tab) */}
                 {activeProperty?.images?.[0] && (
                   <div className="relative hidden h-44 w-full bg-slate-100 sm:block" data-testid="deal-cover">
@@ -974,7 +974,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
               {/* v99 — Simple ⇄ Full */}
               {!summaryOnly && !showSimple && (
-                <div className="flex items-center justify-between gap-2" data-testid="deal-view-toggle">
+                <div className="hidden items-center justify-between gap-2 lg:flex" data-testid="deal-view-toggle">
                   <span className="text-xs font-semibold text-slate-500">{tx('View', 'दृश्य')}</span>
                   <div role="group" aria-label={tx('Deal room view', 'डील रूम का दृश्य')} className="inline-flex rounded-xl border border-slate-300 bg-white p-0.5">
                     <button type="button" aria-pressed={showSimple} onClick={() => pickView(true)} data-testid="deal-view-simple" className={`min-h-10 rounded-[10px] px-4 text-sm font-semibold ${showSimple ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{tx('Simple', 'सरल')}</button>
@@ -999,7 +999,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               {!showSimple && (<>
               {/* Sub-Navigation Tabs (v52: four on the bar, the rest behind "More").
                   v83: the bar sticks under the top bar while you scroll, and picking a tab scrolls to its content (before, a tab changed below the fold and looked like nothing happened). */}
-              <div className="sticky top-[61px] z-30 -mx-4 bg-slate-50/95 px-4 py-1 backdrop-blur sm:mx-0 sm:px-0" data-testid="deal-subtabs-sticky">
+              <div className={`sticky top-[61px] z-30 -mx-4 bg-slate-50/95 px-4 py-1 backdrop-blur sm:mx-0 sm:px-0 ${activeSubTab === 'overview' || summaryOnly ? '' : 'hidden lg:block'}`} data-testid="deal-subtabs-sticky">
                 <SubTabBar
                   active={activeSubTab}
                   onPick={(id) => goTab(id as DealSubTab)}
@@ -1076,13 +1076,13 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         <div className="truncate text-sm font-bold text-slate-900">
                           {participants?.introducingBroker?.name || tx('Assigned broker', 'तय ब्रोकर')}
                         </div>
-                        <div className="text-xs text-slate-500 font-mono">
+                        <div className="hidden text-xs text-slate-500 font-mono sm:block">
                           {participants?.introducingBroker?.brokerId || '—'}
                         </div>
                        </div>
                       {!hideCommercials && activeDeal.feeMode !== 'OWN_SIDE' && (
                         <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                          <span>{tx('Entitlement:', 'हिस्सा:')}</span>
+                          <span>{tx('Share:', 'हिस्सा:')}</span>
                           <span>{activeDeal.introducingBrokerSharePct}%</span>
                         </div>
                       )}
@@ -1103,13 +1103,13 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         <div className="truncate text-sm font-bold text-slate-900">
                           {participants?.closingBroker?.name || tx('Listing broker', 'लिस्टिंग ब्रोकर')}
                         </div>
-                        <div className="text-xs text-slate-500 font-mono">
+                        <div className="hidden text-xs text-slate-500 font-mono sm:block">
                           {participants?.closingBroker?.brokerId || '—'}
                         </div>
                        </div>
                       {!hideCommercials && activeDeal.feeMode !== 'OWN_SIDE' && (
                         <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                          <span>{tx('Entitlement:', 'हिस्सा:')}</span>
+                          <span>{tx('Share:', 'हिस्सा:')}</span>
                           <span>{activeDeal.closingBrokerSharePct}%</span>
                         </div>
                       )}
@@ -2147,7 +2147,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                         {/* Record hash */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400 gap-2 font-mono">
-                          <div className="flex items-center gap-1.5 truncate">
+                          <div className="hidden items-center gap-1.5 truncate sm:flex">
                             <Shield className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                             <span className="truncate">{tx('SHA-256 record hash', 'SHA-256 रिकॉर्ड हैश')}: {currentAgreement.cryptoSealHash}</span>
                           </div>
@@ -2158,7 +2158,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       {/* Participant Allocations Table */}
                       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
                         <div className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                          {tx('Entitlement & payout record', 'हिस्सेदारी और भुगतान का रिकॉर्ड')}
+                          {tx('Who gets what', 'किसे कितना मिलेगा')}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {currentAgreement.allocations.map((alloc) => (
@@ -2166,7 +2166,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                               <div className="flex items-center justify-between">
                                 <div>
                                   <div className="text-sm font-bold text-slate-900">{alloc.participantName}</div>
-                                  <div className="text-xs text-slate-500 font-mono">{alloc.participantId} ({label('role', alloc.role)})</div>
+                                  <div className="hidden text-xs text-slate-500 font-mono sm:block">{alloc.participantId} ({label('role', alloc.role)})</div>
                                 </div>
                                 <span
                                   className={`text-xs font-bold px-2 py-0.5 rounded ${
@@ -2185,7 +2185,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 text-xs">
                                 <div>
-                                  <span className="text-xs text-slate-400 block">{tx('Agreed Entitlement', 'तय हिस्सा')}</span>
+                                  <span className="text-xs text-slate-400 block">{tx('Share', 'हिस्सा')}</span>
                                   <strong className="text-slate-900">{formatINR(alloc.allocationAmount)}</strong> ({alloc.allocationPct}%)
                                 </div>
                                 <div>
@@ -2198,7 +2198,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                              <div className="hidden items-center justify-between text-xs text-slate-500 pt-1 sm:flex">
                                 <span>{tx('TDS rate on this share', 'इस हिस्से पर TDS दर')}: {alloc.taxDeductionTdsPct}% {tx('(as set for the project)', '(प्रोजेक्ट में तय)')}</span>
                                 <span>{tx('GST invoice', 'GST इनवॉइस')}: {alloc.invoiceRequired ? tx('Required', 'ज़रूरी') : tx('Optional', 'वैकल्पिक')}</span>
                               </div>
