@@ -5705,6 +5705,7 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
       kind, refId: b.refId, mediaUrl: b.mediaUrl, deal, property: property || undefined,
       visibleAssets: property ? visibleVaultAssets(state, currentUser, property).assets : [],
       visits: state.siteVisits.filter(v => v.dealRoomId === deal.id),
+      offers: state.propertyOffers.filter(o => o.dealRoomId === deal.id), agreements: state.commissionAgreements.filter(a => a.dealId === deal.id),
       isBroker: isDealBroker(currentUser, deal), userId: currentUser.id,
     });
     if (!r.ok) return res.status(r.status).json({ error: r.error, code: r.code });

@@ -317,9 +317,9 @@ export default function App() {
     };
     prefetch([...(byRole[r] || []), ...(r === 'BROKER' || r === 'PROPERTY_OWNER' ? common : [])]);
   }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  // v150 — chat home: once per sign-in a broker who would land on the dashboard lands on Chats instead (Home stays in the menu)
+  // v150 — chat home: once per sign-in a broker or an owner who would land on the dashboard lands on Chats instead (Home stays in the menu)
   useEffect(() => {
-    if (currentUser?.role !== 'BROKER' || activeTab !== 'dashboard' || !chatHome.on()) return;
+    if ((currentUser?.role !== 'BROKER' && currentUser?.role !== 'PROPERTY_OWNER') || activeTab !== 'dashboard' || !chatHome.on()) return;
     try { if (sessionStorage.getItem('genz.landed') === currentUser.id) return; sessionStorage.setItem('genz.landed', currentUser.id); } catch { return; }
     setActiveTab('chats');
   }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps

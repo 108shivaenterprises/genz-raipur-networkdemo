@@ -37,9 +37,18 @@ Aapka kehna: "Sahayak me format galat likhega broker to pata nahi chalega, Whats
   - menu: **Property dhoondho** (likho, ghar dikhte hain), **Meri deal aur commission** (anumanit commission + 3 deal).
 - Files: `ChatsView.tsx`, `SahayakBot.tsx`, `ShopPartners.tsx` (LeadCard export), test `v137-owner-client-tabs.test.ts`.
 
+## V153 — "Sab naaya karo": chaaron baaki kaam
+- **Deal chat me offer + agreement card.** Chat ke "+" menu me naye tile **Offer** aur **Agreement** (sirf deal ke dono broker). Server `chatcards.ts` me naye card prakaar `OFFER` / `AGREEMENT`: card me sirf id jaati hai (rakam nahi), aur server dekhta hai ki wo offer / agreement isi deal ka hai (dusri deal ka -> 404). Har padhne wale ki screen khud wahi dikhati hai jo wo dekh sakta hai.
+  - Offer card: rakam, token, halat; jo faisla le sakta hai use **Manzoor** button; counter / mana Deal Desk me.
+  - Agreement card: version, halat, tay kul commission; dabane par agreement khulta hai.
+- **Owner ka chat home:** owner login par pehli baar Chats par utarta hai (broker jaisa); Chats me "Old home" se purana home. 
+- **Sahayak me "Property jodo"** ek-ek sawal: bikri/kiraya -> kya -> ilaka -> daam -> malik ka naam -> mobile -> jaanch -> **draft** (live nahi hota; malik ki haan aur photo purane drafts screen me, wahi niyam). "Ye draft kholo" button.
+- **Dukaan chat me commission card:** is dukaan ka kitna baaki, kitna diya, deal-wise.
+- **Ghar seedha khule:** search ya bot me ghar dabane par wahi ghar (Properties me `propertyId` se).
+- Files: `server/chatcards.ts`, `server.ts`, `src/types/index.ts`, `ChatPlus.tsx`, `ChatsView.tsx`, `SahayakBot.tsx`, `App.tsx`; test `v137-owner-client-tabs.test.ts`.
+
 ## Abhi bhi NAHI hai
-1. Deal chat me offer / agreement ke **alag message-card** (server me naya card prakaar chahiye); abhi sirf "Agla kadam" patti.
-2. **Client, owner, dukaandaar ka apna chat home**: client / dukaandaar app me login hi nahi karte (link se aate hain); owner ke liye landing nahi badli.
-3. Ghar ki khoj me ghar par dabane se seedha wahi ghar nahi khulta, Properties tab khulta hai.
-4. "Property jodo" abhi Properties tab par le jata hai (bot me poora flow nahi).
-5. Commission card dukaan ki chat ke andar ka (LeadCard) purana hai; sample jaisa naya nahi.
+1. Offer card me **counter / mana** chat ke andar nahi, Deal Desk me hai.
+2. **Client aur dukaandaar ka chat home:** wo login nahi karte (link se aate hain). Owner ka chat home hai, par sample jaisa "visit ki anumati" card nahi.
+3. Offer card local demo me dekha nahi (demo me koi offer nahi); agreement card dekha.
+4. Bot ka ghar-draft: sirf type, ilaka, daam, malik; BHK, area, photo draft screen me.

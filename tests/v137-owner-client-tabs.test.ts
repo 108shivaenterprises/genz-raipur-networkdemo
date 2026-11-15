@@ -99,7 +99,7 @@ describe('v137 owner + client screens', () => {
   it('v150 — chat home: a broker lands on Chats once per sign-in, the first bottom tab is Chats, Sahayak is pinned, and the old home is one tap away', () => {
     expect(src('src/lib/goto.ts')).toContain("localStorage.getItem('genz-chat-home') !== '0'");
     const app = src('src/App.tsx');
-    expect(app).toContain("currentUser?.role !== 'BROKER' || activeTab !== 'dashboard' || !chatHome.on()");
+    expect(app).toContain("activeTab !== 'dashboard' || !chatHome.on()");
     expect(app).toContain("sessionStorage.removeItem('genz.landed')");
     expect(src('src/components/NavigationTabs.tsx')).toContain("chatHome.on() ? { ids: ['chats', 'dashboard'], key: 'nav.chats', en: 'Chats' } : HOME");
     const cv = src('src/components/ChatsView.tsx');
@@ -125,5 +125,22 @@ describe('v137 owner + client screens', () => {
     const bot = src('src/components/SahayakBot.tsx');
     for (const id of ['sahayak-send-client', 'sahayak-send-yes', 'sahayak-visit', 'sahayak-cobroke', 'sahayak-find', 'sahayak-deals']) expect(bot, id).toContain(`data-testid="${id}"`);
     for (const call of ['api.crCreate(', 'consent: true', 'api.crSend(', 'api.scheduleSiteVisit(', 'api.broadcastSend(', 'api.getDeals()']) expect(bot, call).toContain(call);
+  });
+  it('v153 — offer + agreement cards in the deal chat (checked on the server), owner lands on Chats, the bot adds a home as a draft, shop commission card, home opens directly', async () => {
+    const { checkCard, CARD_KINDS } = await import('../server/chatcards.js');
+    expect(CARD_KINDS).toContain('OFFER'); expect(CARD_KINDS).toContain('AGREEMENT');
+    const base: any = { deal: { id: 'D1', propertyId: 'P1', stage: 'Lead' }, visibleAssets: [], visits: [], offers: [{ id: 'O1', dealRoomId: 'D1' }, { id: 'O2', dealRoomId: 'D2' }], agreements: [{ id: 'A1', dealId: 'D1' }], userId: 'U1' };
+    expect(checkCard({ ...base, kind: 'OFFER', refId: 'O1', isBroker: true }).ok).toBe(true);
+    expect((checkCard({ ...base, kind: 'OFFER', refId: 'O2', isBroker: true }) as any).code).toBe('CARD_NOT_FOUND');   // another deal's offer
+    expect((checkCard({ ...base, kind: 'OFFER', refId: 'O1', isBroker: false }) as any).code).toBe('CARD_NOT_YOURS');
+    expect(checkCard({ ...base, kind: 'AGREEMENT', refId: 'A1', isBroker: true }).ok).toBe(true);
+    expect((checkCard({ ...base, kind: 'AGREEMENT', refId: 'A9', isBroker: true }) as any).code).toBe('CARD_NOT_FOUND');
+    const cp = src('src/components/ChatPlus.tsx');
+    for (const id of ['chat-card-OFFER', 'chat-card-AGREEMENT', 'plus-offer', 'plus-agreement', 'chat-offer-accept']) expect(cp, id).toContain(id);
+    expect(src('src/App.tsx')).toContain("currentUser?.role !== 'PROPERTY_OWNER'");
+    const bot = src('src/components/SahayakBot.tsx');
+    for (const id of ['sahayak-add-home', 'sahayak-open-draft', 'sahayak-open-home']) expect(bot, id).toContain(`data-testid="${id}"`);
+    expect(bot).toContain('api.draftFromForm(');
+    expect(src('src/components/ChatsView.tsx')).toContain('shop-commission-card'); expect(src('src/components/ChatsView.tsx')).toContain("{ propertyId: h.id }");
   });
 });

@@ -10,7 +10,7 @@
  */
 import type { DealRoom, Property, PropertyMediaAsset, SiteVisit } from '../src/types/index.js';
 
-export const CARD_KINDS = ['PROPERTY', 'DOCUMENT', 'PHOTO', 'LOCATION', 'VISIT', 'STAGE'] as const;
+export const CARD_KINDS = ['PROPERTY', 'DOCUMENT', 'PHOTO', 'LOCATION', 'VISIT', 'STAGE', 'OFFER', 'AGREEMENT'] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
 export const isCardKind = (k: unknown): k is CardKind => typeof k === 'string' && (CARD_KINDS as readonly string[]).includes(k);
 
@@ -35,6 +35,9 @@ export function checkCard(i: {
   visibleAssets: Pick<PropertyMediaAsset, 'id' | 'category' | 'fileUrl'>[];
   /** the site visits of this deal room */
   visits: Pick<SiteVisit, 'id' | 'dealRoomId' | 'brokerId' | 'scheduledTime'>[];
+  /** v153 — the offers made on this deal's property for this deal, and the deal's commission agreements (ids only; each reader's screen fetches what he may see) */
+  offers?: { id: string; dealRoomId?: string }[];
+  agreements?: { id: string; dealId: string }[];
   /** the sender is one of the two deal brokers */
   isBroker: boolean;
   userId: string;
@@ -66,6 +69,16 @@ export function checkCard(i: {
       if (v.brokerId !== i.userId && !i.isBroker) return bad(403, 'CARD_NOT_YOURS', 'Only the broker who set up the visit (or a deal broker) can share it.');
       const when = (() => { try { return new Date(v.scheduledTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { return ''; } })();
       return { ok: true, refId: v.id, auto: `Site visit${when ? ` on ${when}` : ''}` };
+    }
+    case 'OFFER': {
+      if (!i.isBroker) return bad(403, 'CARD_NOT_YOURS', 'Only the deal brokers can post an offer card.');
+      if (!(i.offers || []).some(o => o.id === ref && o.dealRoomId === deal.id)) return bad(404, 'CARD_NOT_FOUND', 'That offer is not part of this deal.');
+      return { ok: true, refId: ref, auto: 'Shared an offer' };   // no amount here: each reader's screen shows what he may see
+    }
+    case 'AGREEMENT': {
+      if (!i.isBroker) return bad(403, 'CARD_NOT_YOURS', 'Only the deal brokers can post the agreement card.');
+      if (!(i.agreements || []).some(a => a.id === ref && a.dealId === deal.id)) return bad(404, 'CARD_NOT_FOUND', 'That agreement is not part of this deal.');
+      return { ok: true, refId: ref, auto: 'Shared the commission agreement' };
     }
     case 'STAGE': {
       if (!i.isBroker) return bad(403, 'CARD_NOT_YOURS', 'Only the deal brokers can post a stage card.');

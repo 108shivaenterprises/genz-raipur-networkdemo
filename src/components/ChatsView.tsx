@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Loader2, MessageSquare, Phone, Search } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
+import { formatINR } from '../lib/utils.js';
 import { ROOM_KINDS } from '../shared/clientRoomRules.js';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { useDealChatKit } from './ChatPlus.js';
@@ -126,7 +127,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     Promise.all([
       canClients ? api.crList().then(r => setRooms((r.rooms || []).filter((x: any) => x.status === 'ACTIVE'))) : Promise.resolve(setRooms([])),
       canDeals ? api.chatDeals().then(r => setDeals(r.deals || [])) : Promise.resolve(setDeals([])),
-      canShop ? api.spList().then(r => setLeads((r.leads || []).filter((l: any) => l.chat))) : Promise.resolve(setLeads([])),
+      canShop ? api.spList().then(r => setLeads(r.leads || [])) : Promise.resolve(setLeads([])),
       canPartners ? api.pchatList().then(r => { setPartners(r.threads || []); setPside(r.side || ''); }) : Promise.resolve(setPartners([])),
     ]).catch(e => setErr(e.message));
   }, [canClients, canDeals, canPartners, canShop]);
@@ -166,7 +167,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
         unread: t.unread || 0, tone: 'bg-indigo-600', tags: t.open ? [] : [{ text: tx('ended', 'ख़त्म'), cls: 'bg-slate-200 text-slate-600' }], closed: !t.open,
       });
     }
-    for (const l of leads || []) {
+    for (const l of (leads || []).filter((x: any) => x.chat)) {
       const m = l.chat?.msgs?.[l.chat.msgs.length - 1];
       out.push({
         key: 's:' + l.id, kind: 'SHOP', label: 'SHOP', id: l.id, title: l.name, sub: [l.shopName, l.locality].filter(Boolean).join(' · '),
@@ -240,6 +241,20 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
   ) : cur.kind === 'SHOP' ? (
     <div className="space-y-2" data-testid="shop-chat-pane">
       <button type="button" onClick={() => { setOpenUrl(''); load(); }} className="min-h-11 px-2 text-sm font-semibold text-slate-600 underline">{tx('← Back to chats', '← चैट पर वापस')}</button>
+      {(() => {   // v152 — the shop's commission in one card (the sample's green card): what is still to pay and what was paid, deal by deal
+        const mine = (leads || []).filter((x: any) => x.partnerId === cur.lead?.partnerId && x.won && x.payout);
+        if (!mine.length) return null;
+        const due = mine.filter((x: any) => ['DUE', 'NOT_RECEIVED'].includes(x.payout.status)); const paid = mine.filter((x: any) => ['PAID', 'RECEIVED'].includes(x.payout.status));
+        const sum = (a: any[]) => a.reduce((n, x) => n + (x.won.amount || 0), 0);
+        return (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm" data-testid="shop-commission-card">
+            <div className="text-[11px] font-bold text-slate-600">{tx(`${cur.lead?.shopName || 'SHOP'} COMMISSION`, `${cur.lead?.shopName || 'दुकान'} का कमीशन`)}</div>
+            <div className="text-xl font-bold text-emerald-700">{formatINR(sum(due))} {tx('to pay', 'बाकी')}</div>
+            <div className="text-xs text-slate-600">{tx('Paid so far', 'अब तक दिया')}: {formatINR(sum(paid))}</div>
+            {mine.slice(0, 4).map((x: any) => <div key={x.id} className="flex justify-between border-t border-emerald-100 py-1 text-slate-900"><span className="truncate">{x.name}</span><span className={`font-bold ${['PAID', 'RECEIVED'].includes(x.payout.status) ? 'text-emerald-700' : 'text-amber-800'}`}>{formatINR(x.won.amount || 0)} {['PAID', 'RECEIVED'].includes(x.payout.status) ? tx('paid', 'दिया') : tx('due', 'बाकी')}</span></div>)}
+          </div>
+        );
+      })()}
       <LeadCard key={cur.id + (cur.lead?.status || '')} l={cur.lead} onChange={load} />
     </div>
   ) : cur.kind === 'PARTNER' ? (
@@ -257,7 +272,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
     <div className="space-y-3" data-testid="chats-view">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xl font-bold text-slate-900">{tx('Chats', 'चैट')}</h2>
-        {canSahayak && chatHome.on() && <button type="button" onClick={() => { chatHome.set(false); window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'dashboard' })); }} className="mr-auto inline-flex min-h-10 items-center rounded-full px-2 text-xs font-semibold text-slate-500 underline" data-testid="chat-home-off">{tx('Old home', 'पुराना होम')}</button>}
+        {chatHome.on() && <button type="button" onClick={() => { chatHome.set(false); window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'dashboard' })); }} className="mr-auto inline-flex min-h-10 items-center rounded-full px-2 text-xs font-semibold text-slate-500 underline" data-testid="chat-home-off">{tx('Old home', 'पुराना होम')}</button>}
         {calls && <button type="button" onClick={() => setShowCalls(true)} className="inline-flex min-h-10 items-center gap-1 rounded-full border border-slate-300 bg-white px-3 text-sm font-semibold" data-testid="chats-calls"><Phone className="h-4 w-4" />{tx('Calls', 'कॉल')}</button>}
         {canClients && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }))} className="inline-flex min-h-10 items-center rounded-full border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700" data-testid="chats-new-room">{tx('+ New client room', '+ नया क्लाइंट रूम')}</button>}
       </div>
@@ -296,7 +311,7 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
           )}
           {(found.homes.length > 0 || found.needs.length > 0) && (
             <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid="chats-found">
-              {found.homes.map((h: any) => <button key={h.id} type="button" className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm" data-testid={`found-home-${h.id}`} onClick={() => goto('properties', {}, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t })))}><span className="rounded bg-slate-100 px-1.5 text-[10px] font-bold">{tx('HOME', 'घर')}</span><span className="min-w-0 flex-1 truncate font-semibold">{h.title}</span><span className="text-xs text-slate-500">{h.locality}</span></button>)}
+              {found.homes.map((h: any) => <button key={h.id} type="button" className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm" data-testid={`found-home-${h.id}`} onClick={() => goto('properties', { propertyId: h.id }, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t })))}><span className="rounded bg-slate-100 px-1.5 text-[10px] font-bold">{tx('HOME', 'घर')}</span><span className="min-w-0 flex-1 truncate font-semibold">{h.title}</span><span className="text-xs text-slate-500">{h.locality}</span></button>)}
               {found.needs.map((n: any) => <button key={n.id} type="button" className="flex min-h-12 w-full items-center gap-2 px-3 py-2 text-left text-sm" data-testid={`found-need-${n.id}`} onClick={() => goto('requirements', { reqId: n.id }, t => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t })))}><span className="rounded bg-sky-100 px-1.5 text-[10px] font-bold">{tx('NEED', 'ज़रूरत')}</span><span className="min-w-0 flex-1 truncate font-semibold">{n.customerName}</span><span className="text-xs text-slate-500">{n.propertyType}</span></button>)}
             </div>
           )}

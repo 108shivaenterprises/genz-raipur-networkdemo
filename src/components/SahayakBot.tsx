@@ -32,6 +32,8 @@ export const SahayakBot: React.FC = () => {
   const [typed, setTyped] = useState(''); const [unit, setUnit] = useState(1e5); const [allTypes, setAllTypes] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<{ id: string; homes: any[] } | null>(null);
+  const [mode, setMode] = useState<'need' | 'home'>('need');   // v153 — the same questions add a client's need or an owner's home (as a draft)
+  const [draftId, setDraftId] = useState('');
   const [act, setAct] = useState<{ id: string; kind: 'send' | 'visit' } | null>(null);
   const [found, setFound] = useState<any[] | null>(null);
   const [dealsInfo, setDealsInfo] = useState<any[] | null>(null);
@@ -40,13 +42,13 @@ export const SahayakBot: React.FC = () => {
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [log, step, saved]);
 
   const say = (mine: string, bot: string, next: Step) => { setLog(l => [...l, { me: true, text: mine }, { text: bot }]); setTyped(''); setStep(next); };
-  const restart = () => { setLog([]); setSaved(null); setAct(null); setFound(null); setDealsInfo(null); setTyped(''); setAllTypes(false); setNeed(n => ({ city: n.city, areas: [], name: '', phone: '' })); setStep('menu'); };
+  const restart = () => { setLog([]); setSaved(null); setMode('need'); setDraftId(''); setAct(null); setFound(null); setDealsInfo(null); setTyped(''); setAllTypes(false); setNeed(n => ({ city: n.city, areas: [], name: '', phone: '' })); setStep('menu'); };
   const tab = (t: string) => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: t }));
   const askArea = (city: string) => tx(`Which area of ${city}? Tap or type. You can pick more than one.`, `${city} का कौन सा इलाका? दबाएँ या लिखें। एक से ज़्यादा चुन सकते हैं।`);
-  const askBudget = (deal?: string) => deal === 'Rent' ? tx('Rent up to how much per month?', 'किराया महीने का कितने तक?') : tx('Budget up to how much?', 'बजट कितने तक?');
+  const askBudget = (deal?: string) => mode === 'home' ? (deal === 'Rent' ? tx('Rent per month?', 'किराया महीने का कितना?') : tx('Asking price?', 'माँगा गया दाम कितना?')) : deal === 'Rent' ? tx('Rent up to how much per month?', 'किराया महीने का कितने तक?') : tx('Budget up to how much?', 'बजट कितने तक?');
   const pickType = (v: string, shown: string) => { setNeed(n => ({ ...n, type: v })); if (need.city) say(shown, askArea(need.city), 'area'); else say(shown, tx('Which city?', 'कौन सा शहर?'), 'city'); };
-  const pickBudget = (v: number) => { setNeed(n => ({ ...n, budget: v })); say(formatINR(v), tx("Client's name?", 'क्लाइंट का नाम?'), 'name'); };
-  const summary = `${need.name} · ${need.type} · ${need.deal === 'Rent' ? tx('Rent', 'किराया') : tx('Buy', 'ख़रीद')} · ${need.areas.join(', ')}, ${need.city} · ${tx('up to', 'तक')} ${formatINR(need.budget || 0)}`;
+  const pickBudget = (v: number) => { setNeed(n => ({ ...n, budget: v })); say(formatINR(v), mode === 'home' ? tx("Owner's name?", 'मालिक का नाम?') : tx("Client's name?", 'क्लाइंट का नाम?'), 'name'); };
+  const summary = mode === 'home' ? `${need.type} · ${need.deal === 'Rent' ? tx('For rent', 'किराये के लिए') : tx('For sale', 'बिक्री के लिए')} · ${need.areas.join(', ')}, ${need.city} · ${formatINR(need.budget || 0)} · ${tx('Owner', 'मालिक')}: ${need.name}` : `${need.name} · ${need.type} · ${need.deal === 'Rent' ? tx('Rent', 'किराया') : tx('Buy', 'ख़रीद')} · ${need.areas.join(', ')}, ${need.city} · ${tx('up to', 'तक')} ${formatINR(need.budget || 0)}`;
 
   const botSay = (text: string) => setLog(l => [...l, { text }]);
   // v152 — actions on a home card: send it to the client in a client room, ask the network (co-broke), or book a visit
@@ -88,6 +90,18 @@ export const SahayakBot: React.FC = () => {
     say(tx('My deals and commission', 'मेरी डील और कमीशन'), tx('Your deals:', 'आपकी डील:'), 'deals'); setBusy(false);
   };
 
+  // an owner's home becomes a DRAFT (nothing goes live): the owner's consent and the photos are finished in the normal drafts screen
+  const saveHome = async () => {
+    setBusy(true);
+    try {
+      const r = await api.draftFromForm({ title: `${need.type} · ${need.areas[0]}`, propertyType: need.type, transactionType: need.deal, city: need.city, locality: need.areas[0], askingPrice: need.budget, ownerName: need.name, ownerPhone: need.phone });
+      setDraftId(r.draft.id);
+      setLog(l => [...l, { me: true, text: tx('Save it', 'सेव करो') }, { text: tx('Saved as a draft. It goes live after the owner says yes and the photos are added.', 'ड्राफ़्ट सेव हो गया। मालिक की हाँ और फ़ोटो जुड़ने के बाद ही लाइव होगा।') }]);
+      setStep('done');
+    } catch (e: any) { setLog(l => [...l, { text: e?.message || tx('Could not save. Please check and try again.', 'सेव नहीं हुआ। जाँच कर फिर कोशिश करें।') }]); }
+    setBusy(false);
+  };
+
   const save = async () => {
     setBusy(true);
     try {
@@ -115,6 +129,7 @@ export const SahayakBot: React.FC = () => {
           <div className="font-bold text-slate-900">{h.property.title}</div>
           <div className="text-xs text-slate-500">{h.property.locality}{h.score != null && <> · {Math.round(h.score)}% {tx('match', 'मेल')}</>}</div>
           <div className="font-bold text-emerald-700">{formatINR(h.property.askingPrice)}</div>
+          {step === 'find' && <button type="button" className={`${opt} mt-2`} onClick={() => goto('properties', { propertyId: h.property.id }, t => tab(t))} data-testid="sahayak-open-home">{tx('Open this home', 'यह घर खोलो')}</button>}
           {step === 'done' && <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" className={opt} onClick={() => setAct({ id: h.property.id, kind: 'send' })} data-testid="sahayak-send-client">{tx('Send to client', 'क्लाइंट को भेजो')}</button>
             <button type="button" className={opt} onClick={() => setAct({ id: h.property.id, kind: 'visit' })} data-testid="sahayak-visit">{tx('Book a visit', 'विज़िट तय करो')}</button>
@@ -133,7 +148,7 @@ export const SahayakBot: React.FC = () => {
         {step === 'menu' && <>
           <button type="button" className={go} onClick={() => say(tx('Add a client requirement', 'क्लाइंट की ज़रूरत जोड़ो'), tx('Does the client want to buy or rent?', 'क्लाइंट को ख़रीदना है या किराये पर?'), 'deal')} data-testid="sahayak-add-need">{tx('Add a client requirement', 'क्लाइंट की ज़रूरत जोड़ो')}</button>
           <button type="button" className={opt} onClick={() => say(tx('Find a property', 'प्रॉपर्टी ढूँढो'), tx('Type an area, a name or a type — for example Shankar Nagar.', 'इलाका, नाम या प्रकार लिखिए — जैसे शंकर नगर।'), 'find')} data-testid="sahayak-find">{tx('Find a property', 'प्रॉपर्टी ढूँढो')}</button>
-          <button type="button" className={opt} onClick={() => tab('properties')}>{tx('Add a property', 'प्रॉपर्टी जोड़ो')}</button>
+          <button type="button" className={opt} onClick={() => { setMode('home'); say(tx('Add a property', 'प्रॉपर्टी जोड़ो'), tx('For sale or for rent?', 'बिक्री के लिए या किराये के लिए?'), 'deal'); }} data-testid="sahayak-add-home">{tx('Add a property', 'प्रॉपर्टी जोड़ो')}</button>
           <button type="button" className={opt} onClick={() => tab('daily')}>{tx("Today's work", 'आज का काम')}</button>
           <button type="button" className={opt} disabled={busy} onClick={() => void showDeals()} data-testid="sahayak-deals">{tx('My deals and commission', 'मेरी डील और कमीशन')}</button>
           <button type="button" className={opt} onClick={() => tab('share')}>{tx('My shop QR', 'मेरा शॉप QR')}</button>
@@ -154,7 +169,7 @@ export const SahayakBot: React.FC = () => {
           </div>}
           <button type="button" className={go} onClick={() => tab('deals')}>{tx('Open my deals', 'मेरी डील खोलो')}</button>
         </div>}
-        {step === 'deal' && (['Sale', 'Rent'] as const).map(d => <button key={d} type="button" className={opt} data-testid={`sahayak-deal-${d}`} onClick={() => { setNeed(n => ({ ...n, deal: d })); say(d === 'Sale' ? tx('Buy', 'ख़रीदना') : tx('Rent', 'किराये पर'), tx('What is needed?', 'क्या चाहिए?'), 'type'); }}>{d === 'Sale' ? tx('Buy', 'ख़रीदना') : tx('Rent', 'किराये पर')}</button>)}
+        {step === 'deal' && (['Sale', 'Rent'] as const).map(d => <button key={d} type="button" className={opt} data-testid={`sahayak-deal-${d}`} onClick={() => { setNeed(n => ({ ...n, deal: d })); say(d === 'Sale' ? tx('Buy', 'ख़रीदना') : tx('Rent', 'किराये पर'), tx('What is needed?', 'क्या चाहिए?'), 'type'); }}>{mode === 'home' ? (d === 'Sale' ? tx('Sale', 'बिक्री') : tx('Rent', 'किराया')) : d === 'Sale' ? tx('Buy', 'ख़रीदना') : tx('Rent', 'किराये पर')}</button>)}
         {step === 'type' && <>
           {QUICK_TYPES.map(([v, en, hi]) => <button key={v} type="button" className={opt} data-testid={`sahayak-type-${en}`} onClick={() => pickType(v, tx(en, hi))}>{tx(en, hi)}</button>)}
           {!allTypes ? <button type="button" className={opt} onClick={() => setAllTypes(true)}>{tx('Other…', 'और…')}</button>
@@ -174,14 +189,18 @@ export const SahayakBot: React.FC = () => {
             <button className={go} disabled={!(Number(typed) > 0)}>{tx('Next', 'आगे')}</button>
           </form>
         </>}
-        {step === 'name' && <form className="flex w-full gap-2" onSubmit={e => { e.preventDefault(); const v = typed.trim(); if (v.length < 2) return; setNeed(n => ({ ...n, name: v })); say(v, tx("Client's mobile number? (10 digits)", 'क्लाइंट का मोबाइल नंबर? (10 अंक)'), 'phone'); }}>
-          <input className={field} value={typed} onChange={e => setTyped(e.target.value)} aria-label={tx('Client name', 'क्लाइंट का नाम')} placeholder={tx('Client name', 'क्लाइंट का नाम')} data-testid="sahayak-name" /><button className={go} disabled={typed.trim().length < 2}>{tx('Next', 'आगे')}</button></form>}
+        {step === 'name' && <form className="flex w-full gap-2" onSubmit={e => { e.preventDefault(); const v = typed.trim(); if (v.length < 2) return; setNeed(n => ({ ...n, name: v })); say(v, mode === 'home' ? tx("Owner's mobile number? (10 digits)", 'मालिक का मोबाइल नंबर? (10 अंक)') : tx("Client's mobile number? (10 digits)", 'क्लाइंट का मोबाइल नंबर? (10 अंक)'), 'phone'); }}>
+          <input className={field} value={typed} onChange={e => setTyped(e.target.value)} aria-label={tx('Client name', 'क्लाइंट का नाम')} placeholder={mode === 'home' ? tx('Owner name', 'मालिक का नाम') : tx('Client name', 'क्लाइंट का नाम')} data-testid="sahayak-name" /><button className={go} disabled={typed.trim().length < 2}>{tx('Next', 'आगे')}</button></form>}
         {step === 'phone' && <form className="flex w-full gap-2" onSubmit={e => { e.preventDefault(); if (!isValidIndianPhone(typed)) return; const v = sanitizePhone(typed); setNeed(n => ({ ...n, phone: v })); say(v, tx('Please check. Is this right?', 'देख लीजिए। सही है?'), 'confirm'); }}>
           <input className={field} type="tel" inputMode="numeric" value={typed} onChange={e => setTyped(e.target.value)} aria-label={tx('Mobile number', 'मोबाइल नंबर')} placeholder="98XXXXXXXX" data-testid="sahayak-phone" /><button className={go} disabled={!isValidIndianPhone(typed)}>{tx('Next', 'आगे')}</button></form>}
         {step === 'confirm' && <div className="w-full space-y-2">
           <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-slate-900" data-testid="sahayak-summary">{summary}</p>
-          <div className="flex gap-2"><button type="button" className={go} disabled={busy} onClick={() => void save()} data-testid="sahayak-save">{busy ? tx('Saving…', 'सेव हो रहा है…') : tx('Yes, save', 'हाँ, सेव करो')}</button><button type="button" className={opt} onClick={restart}>{tx('Start again', 'फिर से शुरू')}</button></div>
+          <div className="flex gap-2"><button type="button" className={go} disabled={busy} onClick={() => void (mode === 'home' ? saveHome() : save())} data-testid="sahayak-save">{busy ? tx('Saving…', 'सेव हो रहा है…') : tx('Yes, save', 'हाँ, सेव करो')}</button><button type="button" className={opt} onClick={restart}>{tx('Start again', 'फिर से शुरू')}</button></div>
         </div>}
+        {step === 'done' && draftId && <>
+          <button type="button" className={go} onClick={() => goto('properties', { drafts: '1', draft: draftId }, t => tab(t))} data-testid="sahayak-open-draft">{tx('Open the draft', 'ड्राफ़्ट खोलो')}</button>
+          <button type="button" className={opt} onClick={restart}>{tx('Add another', 'एक और जोड़ो')}</button>
+        </>}
         {step === 'done' && saved && <>
           <button type="button" className={go} onClick={() => goto('requirements', { reqId: saved.id }, t => tab(t))} data-testid="sahayak-open-need">{tx('Open this requirement', 'यह ज़रूरत खोलो')}</button>
           <button type="button" className={opt} disabled={busy} onClick={() => void askNetwork()} data-testid="sahayak-cobroke">{tx('Ask brokers (co-broke)', 'ब्रोकरों से पूछो (को-ब्रोक)')}</button>

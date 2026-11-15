@@ -46,6 +46,39 @@ const CATEGORY: Record<string, [string, string]> = {
 
 const when = (iso?: string) => { try { return iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; } catch { return ''; } };
 
+/** v153 — an offer in the chat: the amount, the state, and Accept for the one who may decide (counter / reject stay in the Deal Desk) */
+const OfferChatCard: React.FC<{ id: string }> = ({ id }) => {
+  const tx = useTx(); const [o, setO] = useState<any>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const load = useCallback(() => api.ofList().then((r) => setO([...(r.made || []), ...(r.incoming || [])].find((x: any) => x.id === id) || null)).catch(() => setO(null)), [id]);
+  useEffect(() => { void load(); }, [load]);
+  if (!o) return <div className={box} data-testid="chat-card-OFFER">{tx('Offer', 'ऑफ़र')}</div>;
+  const accept = async () => { setBusy(true); setErr(''); try { await api.ofDecide(id, { action: 'ACCEPT' }); await load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  return (
+    <div className={`${box} !border-amber-300 !bg-amber-50`} data-testid="chat-card-OFFER">
+      <span className="block text-[10px] font-bold text-slate-500">{tx('OFFER', 'ऑफ़र')} · {o.status}</span>
+      <span className="block text-base font-bold text-slate-900">{formatINR(o.status === 'COUNTERED' && o.counterAmount ? o.counterAmount : o.amount)}</span>
+      <span className="block text-xs text-slate-600">{tx('Token', 'टोकन')} {formatINR(o.tokenProposed || 0)}</span>
+      <span className="mt-1.5 flex gap-1.5">
+        {o.canDecide && o.status === 'SUBMITTED' && <button type="button" disabled={busy} onClick={accept} className="inline-flex min-h-9 items-center rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" data-testid="chat-offer-accept">{tx('Accept', 'मंज़ूर')}</button>}
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'desk' }))} className="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">{tx('Counter / reject', 'काउंटर / मना')}</button>
+      </span>
+      {err && <span className="block text-xs text-red-700" role="alert">{err}</span>}
+    </div>
+  );
+};
+
+/** v153 — the commission agreement in the chat: version, state and the agreed total, one tap to the agreement itself */
+const AgreementChatCard: React.FC<{ id: string; dealId?: string; onOpen: (tab: string) => void }> = ({ id, dealId, onOpen }) => {
+  const tx = useTx(); const [a, setA] = useState<any>(null);
+  useEffect(() => { if (dealId) api.getDealCommissionAgreements(dealId).then((r) => setA((r.agreements || []).find((x: any) => x.id === id) || null)).catch(() => setA(null)); }, [id, dealId]);
+  return (
+    <button type="button" onClick={() => onOpen('commission_agreement')} className={`${box} !border-emerald-300 !bg-emerald-50`} data-testid="chat-card-AGREEMENT">
+      <span className="block text-[10px] font-bold text-slate-500">{tx('COMMISSION AGREEMENT', 'कमीशन एग्रीमेंट')}{a ? ` · v${a.version} · ${a.status}` : ''}</span>
+      <span className="block text-base font-bold text-emerald-800">{a ? formatINR(a.totalAgreedBrokerage) : tx('Open the agreement', 'एग्रीमेंट खोलें')}</span>
+    </button>
+  );
+};
+
 // ───────────── the card inside a bubble ─────────────
 const box = 'block w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-left hover:bg-slate-100';
 
@@ -133,6 +166,10 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
     }
     case 'PAPER':
       return <PaperCard m={m} papers={data ? data.papers : null} canClientShare={!!data?.canClientShare} onChanged={() => reload?.()} />;
+    case 'OFFER':
+      return <OfferChatCard id={m.refId} />;
+    case 'AGREEMENT':
+      return <AgreementChatCard id={m.refId} dealId={data?.deal.id} onOpen={onOpen} />;
     case 'STAGE':
       return (
         <button type="button" onClick={open('overview')} className={`${box} flex items-center gap-2.5`} data-testid="chat-card-STAGE">
@@ -168,7 +205,7 @@ const Head: React.FC<{ title: string; onBack: () => void }> = ({ title, onBack }
 /** what the "+" panel needs from the hook */
 interface Kit {
   data: Data | null;
-  can: { property: boolean; visit: boolean; stage: boolean; private: boolean };
+  can: { property: boolean; visit: boolean; stage: boolean; private: boolean; deal: boolean };
   brokersOnly: boolean;
   setBrokersOnly: (on: boolean) => void;
   post: (body: Record<string, unknown>) => Promise<boolean>;
@@ -188,6 +225,14 @@ const PlusPanel: React.FC<{ kit: Kit; close: () => void }> = ({ kit, close }) =>
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const d = kit.data;
+  // v153 — the newest offer / agreement of this deal goes into the chat as a card
+  const newest = async (kind: 'OFFER' | 'AGREEMENT') => {
+    if (!d) return false;
+    const list: any[] = kind === 'OFFER' ? [...(await api.ofList().then((r) => [...(r.made || []), ...(r.incoming || [])]).catch(() => []))].filter((x: any) => x.dealRoomId === d.deal.id) : (await api.getDealCommissionAgreements(d.deal.id).then((r) => r.agreements || []).catch(() => []));
+    const pick = list.sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))[0];
+    if (!pick) throw new Error(kind === 'OFFER' ? tx('No offer on this deal yet.', 'इस डील पर अभी कोई ऑफ़र नहीं।') : tx('No commission agreement on this deal yet.', 'इस डील पर अभी कोई कमीशन एग्रीमेंट नहीं।'));
+    return kit.post({ kind, refId: pick.id });
+  };
   if (!d) return <div className="flex items-center justify-center py-6 text-sm text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />{tx('Loading…', 'लोड हो रहा है…')}</div>;
 
   const run = async (key: string, fn: () => Promise<boolean | void>) => {
@@ -311,6 +356,8 @@ const PlusPanel: React.FC<{ kit: Kit; close: () => void }> = ({ kit, close }) =>
         {kit.can.property && <Tile icon={Camera} label={tx('Photo', 'फ़ोटो')} tone="bg-violet-100 text-violet-700" testId="plus-photo" onClick={() => setView('photo')} />}
         {kit.can.property && <Tile icon={MapPin} label={tx('Location', 'लोकेशन')} tone="bg-rose-100 text-rose-700" testId="plus-location" busy={busy === 'location'} onClick={() => void run('location', () => kit.post({ kind: 'LOCATION' }))} />}
         {kit.can.visit && <Tile icon={CalendarClock} label={tx('Visit', 'विज़िट')} tone="bg-sky-100 text-sky-700" testId="plus-visit" onClick={() => { kit.startVisit(); close(); }} />}
+        {kit.can.deal && <Tile icon={IndianRupee} label={tx('Offer', 'ऑफ़र')} tone="bg-amber-100 text-amber-800" testId="plus-offer" busy={busy === 'offer'} onClick={() => void run('offer', () => newest('OFFER'))} />}
+        {kit.can.deal && <Tile icon={FileText} label={tx('Agreement', 'एग्रीमेंट')} tone="bg-emerald-100 text-emerald-700" testId="plus-agreement" busy={busy === 'agreement'} onClick={() => void run('agreement', () => newest('AGREEMENT'))} />}
         {kit.can.stage && <Tile icon={Flag} label={tx('Stage', 'स्टेज')} tone="bg-amber-100 text-amber-800" testId="plus-stage" onClick={() => setView('stage')} />}
       </div>
       {kit.can.private && (
@@ -396,6 +443,7 @@ export function useDealChatKit(o: {
     visit: !!data && o.perms.includes('sitevisit:create') && !closed && data.deal.stage !== 'Settled',
     stage: !!data && isBroker && o.role !== 'TEAM_MEMBER' && o.perms.includes('deal:update_stage') && !closed && data.deal.stage !== 'Settled',
     private: isBroker && o.role !== 'TEAM_MEMBER',
+    deal: !!data && isBroker && !closed,   // v153 — the offer / agreement cards
   };
 
   const kit: Kit = {
