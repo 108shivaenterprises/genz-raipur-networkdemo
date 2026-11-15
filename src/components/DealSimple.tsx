@@ -4,7 +4,8 @@
  * Nothing is removed: "Full view" is one tap away and every section keeps its own id. This screen only reads what the Deal Hub already knows.
  */
 import React from 'react';
-import { MessageSquare, ListTodo, FileCheck2, FolderLock, ShieldCheck, IndianRupee, LayoutList, ChevronRight, CalendarCheck, Users, Clock, Shield } from 'lucide-react';
+import { MessageSquare, ListTodo, FileCheck2, FolderLock, ShieldCheck, IndianRupee, LayoutList, ChevronRight, CalendarCheck, Users, Clock, Shield, Phone, MessageCircle } from 'lucide-react';
+import { useTemplateHi } from '../lib/templateHi.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
 
@@ -16,8 +17,9 @@ export const DealSimple: React.FC<{
   item?: any;                       // the Deal Hub row of this deal (stage, next steps, money, visits, tasks, agreement, last activity)
   doors: SimpleDoor[];              // the sections THIS person may open (the parent decides, from the same permissions as the tab bar)
   onOpen: (door: SimpleDoor | 'full') => void;
-}> = ({ item, doors, onOpen }) => {
-  const tx = useTx();
+  phone?: string;                   // the other broker's number — the two brokers of a deal already see it in the chat header
+}> = ({ item, doors, onOpen, phone }) => {
+  const tx = useTx(); const th = useTemplateHi();
   const ago = (iso?: string) => { const d = agoDays(iso); return d < 0 ? '' : d === 0 ? tx('today', 'आज') : d === 1 ? tx('yesterday', 'कल') : tx(`${d} days ago`, `${d} दिन पहले`); };
   const next: any[] = item?.next || [];
   const dot = (tab: string) => next.some(n => n.tab === tab && n.kind !== 'STALLED');
@@ -54,12 +56,21 @@ export const DealSimple: React.FC<{
       {dot(d.tab) && id !== 'money' ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />}
     </button>
   ); };
-  const MAIN: SimpleDoor[] = ['chat_call', 'responsibilities', 'commission_agreement', 'money'];
-  const main = doors.filter(d => MAIN.includes(d)); const rest = doors.filter(d => !MAIN.includes(d));
+  // v147 — laid out like a CRM deal screen (Pipedrive / Bigin): numbers, round quick actions, the history, then the sections
+  const tel = (phone || '').replace(/\D/g, '').slice(-10);
+  const round = 'flex flex-1 flex-col items-center gap-1 text-xs font-semibold text-slate-700';
+  const ring = 'flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm';
+  const histText = (h: { k: string; t?: string }) => ({
+    CREATED: tx('Deal started', 'डील शुरू हुई'), VISIT_DONE: tx('Site visit done', 'साइट विज़िट हुई'), VISIT_BOOKED: tx('Site visit booked', 'साइट विज़िट तय हुई'),
+    TASK_DONE: tx(`Done: ${th(h.t || 'a task')}`, `पूरा: ${th(h.t || 'एक काम')}`), AGREEMENT_ACTIVE: tx('Agreement in force', 'समझौता लागू'), AGREEMENT_SENT: tx('Agreement sent', 'समझौता भेजा गया'),
+    MSG_ME: tx('You wrote in chat', 'आपने चैट में लिखा'), MSG_OTHER: tx(`${item?.counterpartName || 'They'} wrote in chat`, `${item?.counterpartName || 'उन्होंने'} चैट में लिखा`),
+  } as Record<string, string>)[h.k] || h.k;
+  const BOTTOM: SimpleDoor[] = ['responsibilities', 'commission_agreement', 'money'];
+  const bottom = doors.filter(d => BOTTOM.includes(d)); const extra = doors.filter(d => d === 'due_diligence');
+  const history: { at: string; k: string; t?: string }[] = item?.history || [];
 
-  // v143 — light: three numbers, four doors, everything else under "More"
   return (
-    <div className="space-y-3" data-testid="deal-simple">
+    <div className="space-y-4" data-testid="deal-simple">
       {top.length > 0 && (
         <dl aria-label={tx('The deal at a glance', 'डील एक नज़र में')} className="flex divide-x divide-slate-200 rounded-xl border border-slate-200 bg-white py-2.5 text-center shadow-sm" data-testid="deal-simple-facts">
           {top.map(f => (
@@ -70,11 +81,34 @@ export const DealSimple: React.FC<{
           ))}
         </dl>
       )}
-      <div className="grid gap-2" data-testid="deal-simple-doors">{main.map(id => door(id))}</div>
+      <div className="flex gap-1" data-testid="deal-simple-doors">
+        {tel.length === 10 && <a href={`tel:+91${tel}`} className={round} data-testid="deal-call"><span className={ring}><Phone className="h-5 w-5 text-emerald-700" aria-hidden /></span>{tx('Call', 'कॉल')}</a>}
+        {tel.length === 10 && <a href={`https://wa.me/91${tel}`} target="_blank" rel="noreferrer" className={round} data-testid="deal-wa"><span className={ring}><MessageCircle className="h-5 w-5 text-emerald-700" aria-hidden /></span>WhatsApp</a>}
+        {doors.includes('chat_call') && <button type="button" onClick={() => onOpen('chat_call')} className={round} data-testid="deal-door-chat_call"><span className={`${ring} relative`}><MessageSquare className="h-5 w-5 text-slate-800" aria-hidden />{dot('chat_call') && <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}</span>{tx('Chat', 'चैट')}</button>}
+        {doors.includes('media_vault') && <button type="button" onClick={() => onOpen('media_vault')} className={round} data-testid="deal-door-media_vault"><span className={ring}><FolderLock className="h-5 w-5 text-slate-800" aria-hidden /></span>{tx('Papers', 'काग़ज़')}</button>}
+      </div>
+      {history.length > 0 && (
+        <section data-testid="deal-history">
+          <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('History', 'अब तक क्या हुआ')}</h3>
+          <ol className="rounded-xl border border-slate-200 bg-white px-3 py-1 shadow-sm">
+            {history.slice(0, 4).map((h, i) => (
+              <li key={i} className="flex items-baseline gap-3 border-b border-slate-100 py-2 text-sm last:border-0">
+                <span className="w-20 shrink-0 text-xs text-slate-500">{ago(h.at)}</span><span className="min-w-0 flex-1 text-slate-800">{histText(h)}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+      <div className="grid grid-cols-3 gap-2">{bottom.map(id => { const d = all[id]; const Icon = d.icon; return (
+        <button key={id} type="button" onClick={() => onOpen(id)} data-testid={`deal-door-${id}`} className="relative flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-1 text-xs font-bold text-slate-900 shadow-sm active:bg-slate-50">
+          <Icon className="h-5 w-5 text-slate-700" aria-hidden />{d.label}
+          {dot(d.tab) && id !== 'money' && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}
+        </button>
+      ); })}</div>
       <details className="rounded-xl border border-slate-200 bg-white" data-testid="deal-simple-more">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-600">{tx('More', 'और')}<ChevronRight className="h-4 w-4 rotate-90 opacity-60" aria-hidden /></summary>
         <div className="grid gap-2 p-2 pt-0">
-          {rest.map(id => door(id, true))}
+          {extra.map(id => door(id, true))}
           <button type="button" onClick={() => onOpen('full')} data-testid="deal-simple-full" className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-bold text-slate-900">
             <LayoutList className="h-5 w-5 shrink-0 text-slate-700" aria-hidden /><span className="flex-1">{tx('Full deal room', 'पूरा डील रूम')}</span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />
           </button>

@@ -62,7 +62,9 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     protectionDaysLeft: d.ownerProtectionExpiresAt ? Math.ceil((Date.parse(d.ownerProtectionExpiresAt) - now) / DAY) : undefined,
   };
   let lastActivityAt = d.updatedAt;
-  const later = (iso?: string) => { if (iso && iso > lastActivityAt) lastActivityAt = iso; };
+  // v147 — the room's history line: the same dates, each with what happened (newest six go to the client)
+  const hist: { at: string; k: string; t?: string }[] = [{ at: d.createdAt, k: 'CREATED' }];
+  const later = (iso?: string, k?: string, t?: string) => { if (!iso) return; if (iso > lastActivityAt) lastActivityAt = iso; if (k) hist.push({ at: iso, k, ...(t ? { t } : {}) }); };
   let visits = { total: 0, verified: 0, upcoming: 0 };
   let tasks = { open: 0, overdue: 0, total: 0, done: 0 };
   let agreement: { version: number; status: string; signedByMe?: boolean; waitingOn: number } | null = null;
@@ -78,14 +80,14 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
   if (inner) {
     const vs = s.siteVisits.filter(v => v.dealRoomId === d.id);
     visits = { total: vs.length, verified: vs.filter(v => v.isVerified).length, upcoming: vs.filter(v => !v.isVerified && Date.parse(v.scheduledTime) > now).length };
-    vs.forEach(v => later(v.verifiedAt || v.createdAt));
+    vs.forEach(v => later(v.verifiedAt || v.createdAt, v.verifiedAt ? 'VISIT_DONE' : 'VISIT_BOOKED'));
     // the property side verifies a visit (maker-checker): closing broker or owner
     if (d.closingBrokerId === u.id || d.ownerId === u.id) add('VISITS_TO_VERIFY', vs.filter(v => !v.isVerified && Date.parse(v.scheduledTime) <= now && v.brokerId !== u.id).length);
 
     const ts = s.dealTasks.filter(t => t.dealId === d.id && t.isApplicable);
     const isDone = (t: any) => t.taskStatus === 'COMPLETED' || t.taskStatus === 'WAIVED';
     tasks = { total: ts.length, done: ts.filter(isDone).length, open: ts.filter(t => !isDone(t)).length, overdue: ts.filter(t => !isDone(t) && t.dueDate && Date.parse(t.dueDate) < now).length };
-    ts.forEach(t => { later(t.completionTimestamp); later(t.acceptedAt); later(t.verifiedAt); });
+    ts.forEach(t => { later(t.completionTimestamp, 'TASK_DONE', t.title); later(t.acceptedAt); later(t.verifiedAt); });
     const mine = ts.filter(t => t.assignedParticipantId === u.id);
     add('TASKS_TO_ACCEPT', mine.filter(t => t.assignmentAcceptance === 'PENDING_ACCEPTANCE').length);
     add('TASKS_OVERDUE', mine.filter(t => t.assignmentAcceptance === 'ACCEPTED' && !isDone(t) && t.dueDate && Date.parse(t.dueDate) < now).length);
@@ -102,7 +104,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     } else if (broker || money) {
       const ag = s.commissionAgreements.filter(a => a.dealId === d.id).sort((a, b) => b.version - a.version)[0];
       if (ag) {
-        later(ag.updatedAt);
+        later(ag.updatedAt, ag.status === 'ACTIVE' ? 'AGREEMENT_ACTIVE' : 'AGREEMENT_SENT');
         const mineAp = ag.requiredApprovals?.find(a => a.userId === u.id);
         agreement = { version: ag.version, status: ag.status, signedByMe: mineAp ? mineAp.hasAccepted : undefined, waitingOn: (ag.requiredApprovals || []).filter(a => !a.hasAccepted).length };
         if (broker && ['DRAFT', 'SENT_TO_PARTICIPANTS'].includes(ag.status) && mineAp && !mineAp.hasAccepted) add('AGREEMENT_TO_SIGN', 1);
@@ -117,7 +119,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
 
     const ms = s.dealMessages.filter(m => m.dealRoomId === d.id && (broker || isAdmin(u) || m.audience !== 'BROKERS'));
     const lm = ms[ms.length - 1];
-    if (lm) { lastMessage = { at: lm.timestamp, from: lm.senderId === u.id ? 'ME' : 'OTHER' }; later(lm.timestamp); }
+    if (lm) { lastMessage = { at: lm.timestamp, from: lm.senderId === u.id ? 'ME' : 'OTHER' }; later(lm.timestamp, lastMessage.from === 'ME' ? 'MSG_ME' : 'MSG_OTHER'); }
   }
   const idleDays = Math.floor((now - Date.parse(lastActivityAt)) / DAY);
   const stalled = d.stage !== 'Settled' && !isClosed(d) && idleDays >= STALLED_DAYS;
@@ -137,7 +139,7 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
     }
   }
   return {
-    ...base, lastActivityAt, idleDays, stalled, visits: inner ? visits : undefined, tasks: inner ? tasks : undefined, agreement, lastMessage,
+    ...base, lastActivityAt, idleDays, stalled, history: inner ? hist.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6) : undefined, visits: inner ? visits : undefined, tasks: inner ? tasks : undefined, agreement, lastMessage,
     // a closed room nags nobody (its next steps come back when it is reopened)
     next: isClosed(d) ? [] : next.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)), needsMe: !isClosed(d) && next.some(x => x.kind !== 'STALLED' && x.kind !== 'TASKS_TO_DO'),
     money: money ? { fee, myShare, split, dealValue } : undefined, summaryOnly: !inner,

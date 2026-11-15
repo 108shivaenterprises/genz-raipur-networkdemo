@@ -983,7 +983,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 </div>
               )}
               {showSimple && (
-                <DealSimple item={hubItemOf(activeDeal.id)}
+                <DealSimple item={hubItemOf(activeDeal.id)} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
                   doors={[
                     ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(perm('task:read') ? ['responsibilities' as const] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const]),
@@ -1463,7 +1463,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 const others = new Set(messages.filter(m => m.senderId !== currentUser.id).map(m => m.senderId));
                 return (
                   <ChatShell
-                    onBack={() => setActiveSubTab('overview')} testId="deal-room-chat"
+                    onBack={() => pickView(true)} testId="deal-room-chat"
                     avatar={<PropertyThumb src={activeProperty?.images?.[0]} type={activeProperty?.propertyType} seed={activeProperty?.title || activeDeal.propertyId} className="h-10 w-10 rounded-xl" />}
                     title={names.join(' · ') || tx('Deal chat', 'डील चैट')}
                     subtitle={`${activeProperty?.title || activeDeal.propertyId} · ${tx('saved in the deal record', 'डील रिकॉर्ड में सेव')}`}

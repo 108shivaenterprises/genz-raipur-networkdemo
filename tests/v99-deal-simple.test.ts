@@ -30,5 +30,11 @@ describe('v99 — simple deal room', () => {
     for (const id of ['deal-subtabs-sticky', 'deal-header-card', 'deal-money', 'deal-parties', 'deal-protection', 'deal-cover']) expect(room, id).toContain(`data-testid="${id}"`);
     for (const id of ['stage-summary', 'stage-stepper', 'next-steps', 'deal-subtabs', 'deal-tab-more']) expect(hub, id).toContain(`data-testid="${id}`);
   });
+  it('v147 — CRM-style room (call / WhatsApp / chat / papers, history) and a phone pipeline of stage chips + compact rows', () => {
+    for (const id of ['deal-call', 'deal-wa', 'deal-history', 'deal-door-chat_call', 'deal-door-media_vault']) expect(simple, id).toContain(`data-testid="${id}"`);
+    expect(hub).toContain('data-testid="hub-compact"'); expect(hub).toContain('hub-stage-');
+    expect(hub).toContain("if (stage && d.stage !== stage) return false;");
+    expect(read('server/dealhub.ts')).toContain('history: inner ?');   // the history is for the two brokers of the deal only
+  });
   it('text is never below 12px on the simple screen', () => { expect(simple).not.toMatch(/text-\[(?:9|10|11)px\]/); });
 });

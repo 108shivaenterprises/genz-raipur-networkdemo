@@ -293,6 +293,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
   const [role, setRole] = useState<'ALL' | 'INTRODUCING' | 'CLOSING'>('ALL');
   const [q, setQ] = useState('');
   const [tools, setTools] = useState(false);
+  const [stage, setStage] = useState('');   // v147 — phone: one chip per stage (Bigin / Pipedrive mobile)
   const items: any[] = hub?.deals || [];
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -305,10 +306,11 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
       if (filter === 'stalled' && !d.stalled) return false;
       if (filter === 'disputes' && !d.openDispute) return false;
       if (role !== 'ALL' && d.myRole !== role) return false;
+      if (stage && d.stage !== stage) return false;
       if (s && ![d.id, d.propertyId, d.propertyTitle, d.locality, d.city, d.counterpartName].filter(Boolean).some((x: string) => x.toLowerCase().includes(s))) return false;
       return true;
     }).sort((a, b) => (Number(b.needsMe) - Number(a.needsMe)) || String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)));
-  }, [items, filter, role, q]);
+  }, [items, filter, role, q, stage]);
   if (!hub) return <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;
   const k = hub.kpis;
   // v52 — two big tiles (what needs me, my money) and one row of filters, instead of seven tiles
@@ -320,6 +322,8 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
     ...(k.closed ? [{ id: 'closed' as Filter, en: 'Closed', hi: 'बंद', v: k.closed }] : []),
   ];
   const wide = typeof window === 'undefined' || window.innerWidth >= 1024;
+  const liveItems = items.filter(d => !d.closed && d.stage !== 'Settled');
+  const stageChips = [{ s: '', label: tx('All', 'सब'), n: liveItems.length }, ...STAGES.filter(x => liveItems.some(d => d.stage === x)).map(x => ({ s: x, label: label('dealStage', x) || x, n: liveItems.filter(d => d.stage === x).length }))];
   const cols = [...STAGES, ...(shown.some(d => d.stage === 'Disputed') ? ['Disputed'] : [])].filter(s => filter !== 'live' || s !== 'Settled').filter(s => filter !== 'settled' || s === 'Settled')
     .filter(s => wide || shown.some(d => d.stage === s)); // on a small screen empty stages only take space
   return (
@@ -336,8 +340,11 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
         </button>
       </div>
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" data-testid="hub-filters">
-        {chips.map(c => (
-          <button key={c.id} type="button" onClick={() => setFilter(c.id)} aria-pressed={filter === c.id} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === c.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`hub-kpi-${c.id}`}>{tx(c.en, c.hi)} <span className="ml-0.5 opacity-70">{c.v}</span></button>
+        {!wide && stageChips.map(c => (
+          <button key={c.s || 'all'} type="button" onClick={() => { setFilter('live'); setStage(c.s); }} aria-pressed={filter === 'live' && stage === c.s} data-testid={`hub-stage-${(c.s || 'all').replace(/\s+/g, '-')}`} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === 'live' && stage === c.s ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{c.label} <span className="opacity-70">{c.n}</span></button>
+        ))}
+        {chips.filter(c => wide || (c.id !== 'live' && c.v > 0)).map(c => (
+          <button key={c.id} type="button" onClick={() => { setFilter(c.id); setStage(''); }} aria-pressed={filter === c.id} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === c.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`hub-kpi-${c.id}`}>{tx(c.en, c.hi)} <span className="ml-0.5 opacity-70">{c.v}</span></button>
         ))}
       </div>
 
@@ -375,6 +382,25 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
         </div>
       ) : shown.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">{tx('No deal matches this filter.', 'इस फ़िल्टर में कोई डील नहीं।')} <button type="button" className="font-semibold underline" onClick={() => { setFilter('all'); setRole('ALL'); setQ(''); }}>{tx('Show all', 'सभी दिखाएँ')}</button></div>
+      ) : !wide ? (
+        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid="hub-compact">
+          {shown.map(d => {
+            const first = (d.next || [])[0];
+            const amt = d.money?.myShare || d.money?.dealValue;
+            return (
+              <li key={d.id}>
+                <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' && first.kind !== 'TASKS_TO_DO' ? first.tab : undefined, first?.kind)} className="block w-full px-3 py-2.5 text-left active:bg-slate-50" data-testid={`deal-card-${d.id}`}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm font-bold text-slate-900">{d.propertyTitle}</span>
+                    {amt ? <span className={`shrink-0 text-sm font-bold ${d.money?.myShare ? 'text-emerald-700' : 'text-slate-600'}`}>{short(amt)}</span> : null}
+                  </div>
+                  <div className="truncate text-xs text-slate-500">{[d.locality || d.city, d.closed ? tx('Closed', 'बंद') : (label('dealStage', d.stage) || d.stage)].filter(Boolean).join(' · ')}{d.openDispute ? ` · ${tx('Dispute', 'विवाद')}` : ''}</div>
+                  {first && !d.closed && <div className={`mt-0.5 truncate text-xs font-semibold ${d.needsMe ? 'text-amber-800' : 'text-slate-600'}`}>▸ {nextText(first, d.idleDays, tx, th)}</div>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       ) : view === 'board' ? (
         <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2" data-testid="hub-board">
           {cols.map(s => {
