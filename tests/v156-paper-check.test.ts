@@ -53,3 +53,20 @@ describe('paper check', () => {
     expect((await call(undefined, 'GET', u)).status).toBe(401);
   });
 });
+
+// v158 — the deal's dates: only the deal brokers set them, order is checked, the other broker and strangers are refused
+describe('key dates', () => {
+  it('set / clear / order / who may', async () => {
+    const deals = (await j(await call(jar.B1, 'GET', '/api/deals'))).deals as any[];
+    const d = deals.find(x => x.introducingBrokerId === B1 || x.closingBrokerId === B1);
+    const u = `/api/deals/${d.id}/key-dates`;
+    expect((await j(await call(jar.B1, 'GET', u))).canSet).toBe(true);
+    const ok = await j(await call(jar.B1, 'POST', u, { token: '2027-03-10', registry: '2027-04-20' })); expect(ok.dates.registry).toBe('2027-04-20');
+    expect((await call(jar.B1, 'POST', u, { registry: '2027-03-01' })).status).toBe(400);          // registry before token
+    expect((await call(jar.B1, 'POST', u, { token: 'tomorrow' })).status).toBe(400);
+    expect((await j(await call(jar.B1, 'POST', u, { registry: null }))).dates.registry).toBeUndefined();
+    expect((await call(jar.B3, 'POST', u, { token: '2027-03-11' })).status).toBeGreaterThanOrEqual(403);
+    expect([403, 404]).toContain((await call(jar.OWN, 'POST', u, { token: '2027-03-11' })).status);
+    expect((await call(undefined, 'GET', u)).status).toBe(401);
+  });
+});

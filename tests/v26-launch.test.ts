@@ -372,6 +372,7 @@ describe('buyer need → network (“mere paas hai”)', () => {
     const mine = await j(await call(jar.BRK2, 'GET', '/api/broadcast/mine'));
     const row = mine.items.find((x: any) => x.id === bcId);
     expect(row.responses[0].property.id).toBe(listingId); expect(row.responses[0].broker.id).toBe('USR-BRK-001');
+    expect(typeof row.responses[0].mins).toBe('number');
     expect((await call(jar.ADMIN, 'POST', `/api/broadcast/${bcId}/respond`, { note: 'I have one too' })).status).toBe(404);
   });
 });

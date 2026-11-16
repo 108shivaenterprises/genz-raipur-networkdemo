@@ -258,7 +258,7 @@ export function createBroadcastRouter() {
         responses: b.responses.map(x => {
           const who = db.byId('users', x.brokerId) as UserProfile | undefined;
           const prop = x.propertyId ? db.byId('properties', x.propertyId) as Property | undefined : undefined;
-          return { at: x.at, note: x.note, broker: who ? { id: who.id, name: who.name, company: who.companyName || '', trustScore: who.trustScore ?? null } : null, property: prop && live(prop) ? { id: prop.id, title: prop.title, locality: prop.locality, price: prop.askingPrice } : null };
+          return { at: x.at, mins: Math.max(0, Math.round((Date.parse(x.at) - Date.parse(b.createdAt)) / 60000)), note: x.note, broker: who ? { id: who.id, name: who.name, company: who.companyName || '', trustScore: who.trustScore ?? null } : null, property: prop && live(prop) ? { id: prop.id, title: prop.title, locality: prop.locality, price: prop.askingPrice } : null };
         }),
       })),
     });

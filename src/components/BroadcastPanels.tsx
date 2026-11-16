@@ -100,6 +100,13 @@ export const BroadcastInbox: React.FC = () => {
   );
 };
 
+/** how fast a broker answered: "5 min", "2 hr", "1 din" */
+export function answerTime(m: number, tx: (en: string, hi: string) => string): string {
+  if (m < 60) return tx(`${Math.max(1, m)} min`, `${Math.max(1, m)} मिनट`);
+  if (m < 1440) return tx(`${Math.round(m / 60)} hr`, `${Math.round(m / 60)} घंटे`);
+  return tx(`${Math.round(m / 1440)} day`, `${Math.round(m / 1440)} दिन`);
+}
+
 export const MyBroadcasts: React.FC = () => {
   const tx = useTx();
   const [items, setItems] = useState<any[] | null>(null);
@@ -116,7 +123,7 @@ export const MyBroadcasts: React.FC = () => {
               <ul className="mt-1 space-y-1">
                 {b.responses.map((r: any, i: number) => (
                   <li key={i} className="rounded bg-emerald-50 px-2 py-1 text-emerald-900">
-                    <b>{r.broker?.name}</b>{r.broker?.company ? ` (${r.broker.company})` : ''}: {r.property ? <a className="font-semibold underline" href={`/?tab=properties&propertyId=${encodeURIComponent(r.property.id)}`}>{r.property.title} · {formatINR(r.property.price)}</a> : r.note}
+                    <span className="mr-1 rounded-full bg-white px-1.5 py-0.5 text-[11px] font-bold text-emerald-800" data-testid="answer-time">⚡ {answerTime(r.mins, tx)}</span>                    <b>{r.broker?.name}</b>{r.broker?.company ? ` (${r.broker.company})` : ''}: {r.property ? <a className="font-semibold underline" href={`/?tab=properties&propertyId=${encodeURIComponent(r.property.id)}`}>{r.property.title} · {formatINR(r.property.price)}</a> : r.note}
                   </li>
                 ))}
               </ul>

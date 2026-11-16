@@ -904,6 +904,8 @@ export interface CollaborationOffer {
 }
 
 export interface DealRoom {
+  /** v158 — token / agreement / registry / possession dates, set by the deal brokers */
+  keyDates?: import('../src/shared/keyDates.js').KeyDates;
   /** v156 — the brokers' own tick list of papers (key → who ticked, when); GENZ does not verify it */
   paperChecks?: Record<string, { by: string; byName: string; at: string }>;
   id: string; // e.g. DEAL-2026-001

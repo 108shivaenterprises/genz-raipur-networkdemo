@@ -45,6 +45,8 @@ export const HOME_TODOS: readonly TodoDef[] = [
   { key: 'readyToPublish', en: 'Owner said yes — publish', hi: 'मालिक ने हाँ कहा — लाइव करें', tab: 'properties', params: { drafts: '1' }, tone: 'emerald' },
   { key: 'inbox', en: 'Brokers looking for what you have', hi: 'ब्रोकरों को आपकी प्रॉपर्टी चाहिए', tab: 'requirements', params: undefined, tone: 'indigo' },
   { key: 'answers', en: 'Answers to your buyer needs', hi: 'आपकी खरीदार ज़रूरत के जवाब', tab: 'requirements', params: undefined, tone: 'indigo' },
+  { key: 'dealDates', en: 'A deal date is close — token, agreement, registry or possession', hi: 'डील की तारीख़ पास है — टोकन, एग्रीमेंट, रजिस्ट्री या क़ब्ज़ा', tab: 'deals', params: undefined, tone: 'amber', testId: 'tile-deal-dates' },
+  { key: 'dealMutation', en: 'Registry is done — update the land / municipal record (dakhil-kharij)', hi: 'रजिस्ट्री हो गई — दाख़िल-ख़ारिज करवाएँ', tab: 'deals', params: undefined, tone: 'emerald', testId: 'tile-deal-mutation' },
   { key: 'followUps', en: 'Client follow-ups due', hi: 'क्लाइंट फ़ॉलो-अप बाकी', tab: 'daily', params: undefined, tone: 'amber' },
   { key: 'waitingOwner', en: 'Waiting for owner’s yes', hi: 'मालिक की हाँ का इंतज़ार', tab: 'properties', params: { drafts: '1' }, tone: 'slate' },
   { key: 'protectedListings', en: 'Listings with bypass protection', hi: 'बायपास सुरक्षा वाली लिस्टिंग', tab: 'properties', params: undefined, tone: 'slate' },

@@ -22,6 +22,7 @@ import { PropertyThumb } from './PropertyThumb.js';
 import { STAGES } from './DealHub.js';
 import type { ThreadMsg } from './ChatKit.js';
 import { PaperCard, PaperSharePanel } from './PaperShare.js';
+import { VisitJoint } from './VisitJoint.js';
 
 interface Data { deal: any; property: any; visits: any[]; assets: any[]; isPrincipal: boolean; shared: Set<string>;
   /** v55 — Property Papers of this deal's property I may open / share, who of the deal can receive one, may I show my client */
@@ -166,6 +167,7 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
           </button>
+          {v && viewerIsBroker && <div className="mt-1"><VisitJoint v={v} /></div>}
           {v && reply && !viewerIsBroker && !v.isVerified && Date.parse(v.scheduledTime) > Date.now() && (
             // v153 — the owner answers the visit in one tap; it is a chat reply (the visit itself needs no owner approval)
             <div className="mt-1.5 flex gap-1.5" data-testid="visit-owner-reply">

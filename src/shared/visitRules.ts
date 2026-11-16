@@ -104,3 +104,11 @@ export function scanLine(k: ScanKind, id?: string): { where: { en: string; hi: s
   const p = SCAN_POINTS[k].find(x => x.id === id) || SCAN_POINTS[k][0];
   return { where: { en: p.en, hi: p.hi }, who: SCAN_WHO[k] };
 }
+
+/** v159 — both sides of a visit, in one word: the owner's reply from his room (ownerOk) and the buyer's confirmation (ack status).
+ *  PAKKA = owner said yes and the buyer confirmed (or no confirmation was asked); CHANGE = the owner asked for another time; WAIT = one of them has not answered. */
+export function visitJoint(v: { ownerOk?: { answer: 'YES' | 'NO' }; ackStatus?: 'NONE' | 'PENDING' | 'ACKED' }): { state: 'PAKKA' | 'WAIT' | 'CHANGE'; owner: 'YES' | 'NO' | 'WAIT'; buyer: 'YES' | 'WAIT' } {
+  const owner = v.ownerOk?.answer || 'WAIT';
+  const buyer = v.ackStatus === 'PENDING' ? 'WAIT' : 'YES';
+  return { owner, buyer, state: owner === 'NO' ? 'CHANGE' : owner === 'YES' && buyer === 'YES' ? 'PAKKA' : 'WAIT' };
+}

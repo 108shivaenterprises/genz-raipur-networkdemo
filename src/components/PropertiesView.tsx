@@ -17,6 +17,7 @@ import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { ReportButton } from './ReportButton.js';
 import { EditPropertyModal } from './EditPropertyModal.js';
 import { ListingDrafts } from './ListingDrafts.js';
+import { PostMaker } from './PostMaker.js';
 import { ConsentQueue } from './ConsentQueue.js';
 import { MessageCircle, Heart } from 'lucide-react';
 import {
@@ -78,6 +79,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   const may = (...p: string[]) => !permissions || hasPerm(permissions, ...p);
   const isBuyer = currentUser.role === 'BUYER_TENANT';
   const [asked, setAsked] = useState<Set<string>>(new Set());
+  const [postFor, setPostFor] = useState<Property | null>(null);
   const askBroker = async (id: string) => {
     try { const r = await api.askAboutHome('mine', id); setAsked(x => new Set(x).add(id)); toast(r.toOwnBroker ? tx('Sent to your broker — he will call you to fix the visit.', 'आपके ब्रोकर को भेजा — वे विज़िट तय करने के लिए कॉल करेंगे।') : tx('Sent to the broker of this home — he will call you.', 'इस घर के ब्रोकर को भेजा — वे आपको कॉल करेंगे।'), 'success'); }
     catch (e: any) { toast(e?.message || tx('Could not send. Please try again.', 'भेजा नहीं जा सका। फिर कोशिश करें।'), 'error'); }
@@ -203,6 +205,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   return (
     <div className="space-y-6">
       {showDrafts && <ListingDrafts openId={draftOpenId} onClose={() => { setShowDrafts(false); setDraftOpenId(''); try { const u = new URL(window.location.href); u.searchParams.delete('drafts'); u.searchParams.delete('draft'); u.searchParams.delete('stext'); u.searchParams.delete('stitle'); u.searchParams.delete('surl'); window.history.replaceState(null, '', u.toString()); } catch { /* */ } }} onPublished={() => onPropertyUpdated?.()} />}
+      {postFor && <PostMaker home={{ title: postFor.title, propertyType: postFor.propertyType, transactionType: postFor.transactionType as 'Sale' | 'Rent' | 'Lease', city: postFor.city, locality: postFor.locality, askingPrice: postFor.askingPrice, builtUpAreaSqFt: postFor.builtUpAreaSqFt, plotAreaSqFt: postFor.plotAreaSqFt, tags: postFor.tags }} broker={currentUser.name} phone={currentUser.phone} link={decodeURIComponent(getPropertyWhatsAppShareUrl(postFor).split('text=')[1] || '').split('\n').find(l => l.startsWith('http'))} onClose={() => setPostFor(null)} />}
       {may('property:moderate') && <ConsentQueue />}
       {isOwner && <OwnerPanel onNew={onOpenAddProperty} refreshKey={properties.length} />}
       {isBroker && <OwnerRequests />}
@@ -424,6 +427,10 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
             if (onScheduleVisit && !isClosed && may('sitevisit:create')) actions.push({ key: 'visit', node: (
               <button onClick={() => onScheduleVisit(p)} className={`${btn} border border-emerald-300 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100`} title={tx('Schedule verified site visit with client OTP anti-bypass protection', 'क्लाइंट OTP एंटी-बायपास सुरक्षा के साथ वेरिफ़ाइड साइट विज़िट तय करें')}>
                 <Clock className="h-3.5 w-3.5 text-emerald-600" /><span>{tx('Book visit', 'विज़िट तय करें')}</span>
+              </button>) });
+            if (isMyListing && !isClosed) actions.push({ key: 'post', node: (
+              <button onClick={() => setPostFor(p)} className={`${btn} border border-pink-300 bg-pink-50/70 text-pink-800 hover:bg-pink-100`} data-testid={`post-${p.id}`}>
+                <Share2 className="h-3.5 w-3.5 text-pink-600" /><span>{tx('Post text', 'पोस्ट बनाएँ')}</span>
               </button>) });
             actions.push({ key: 'share', node: (
               <a href={getPropertyWhatsAppShareUrl(p)} target="_blank" rel="noopener noreferrer" className={`${btn} border border-emerald-500/40 bg-emerald-50 text-emerald-800 hover:bg-emerald-100`} title={tx('Quick Share on WhatsApp with verified deep link', 'वेरिफ़ाइड लिंक के साथ WhatsApp पर झटपट शेयर करें')}>

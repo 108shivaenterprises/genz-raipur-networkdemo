@@ -20,6 +20,7 @@ import { pageCounts, pageSummary } from './publicPage.js';
 import { rentCounts } from './rentdesk.js';
 import { billCounts } from './payreq.js';
 import { syncHomeBell } from './homebell.js';
+import { dateCounts } from '../src/shared/keyDates.js';
 
 const nowIso = () => new Date().toISOString();
 const st = () => db.getState();
@@ -72,11 +73,13 @@ export function brokerHomeCounts(u: UserProfile) {
   const followUps = clients.filter(c => c.followUpAt && Date.parse(c.followUpAt) <= now + 86400_000).length;
   // v29 — buyer bonds: active ones, co-broke requests on them (last 14 days), and "your buyer's property was marked sold"
   const myBonds = (s.buyerBonds || []).filter(b => b.brokerId === u.id && b.status === 'ACTIVE' && Date.parse(b.expiresAt) > now);
+  const dc = dateCounts(s.dealRooms.filter(d => brokersOf(d).includes(u.id)), now);
   return {
     listings: myListings.length, drafts: drafts.length, readyToPublish: drafts.filter(d => d.status === 'READY').length,
     waitingOwner: drafts.filter(d => d.status === 'CONSENT_PENDING').length, protectedListings: myListings.filter(p => p.protectionUntil && Date.parse(p.protectionUntil) > now).length,
     requirements: reqs.length, clients: clients.length, followUps, inbox, answers, toConfirm: pendingFor(u).length,
     buyerBonds: myBonds.length,
+    dealDates: dc.dealDates, dealMutation: dc.dealMutation,
     offersWaiting: s.offers.filter(o => o.receivingBrokerId === u.id && o.status === 'PENDING').length,
     ...roomCounts(s, u.id), ...shareCounts(s, u.id), ...partnerCounts(u.id), ...pageCounts(u.id), ...billCounts(u.id), ...rentCounts(u.id),
     bondAsks: myBonds.reduce((n, b) => n + b.asks.filter(x => Date.parse(x.at) > now - 14 * 86400_000).length, 0), bondAlerts: myBonds.filter(b => b.closedNotice).length,

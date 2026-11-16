@@ -17,6 +17,8 @@ import { DealTeamAccess } from './DealTeamAccess.js';
 import { CommissionPayments } from './CommissionPayments.js';
 import { LegalHelpPanel } from './LegalHelp.js';
 import { PaperCheck } from './PaperCheck.js';
+import { KeyDates } from './KeyDates.js';
+import { VisitJoint } from './VisitJoint.js';
 import { api } from '../lib/api.js';
 import { formatINR, formatDateTime, formatDate, printTarget } from '../lib/utils.js';
 import { useI18n, useTx } from '../lib/i18n.js';
@@ -1059,6 +1061,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       Nothing is removed and nothing is unmounted: the folded block only hides, so the हिसाब keeps loading and refreshing by itself. */}
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                     <div className="space-y-4 lg:col-span-2" data-testid="deal-money">
+                      {!activeDeal?.summaryOnly && <KeyDates dealId={activeDeal.id} />}
                       {dealDetail?.finalRate && !activeDeal?.summaryOnly && <FinalRateCard f={dealDetail.finalRate} dealId={activeDeal.id} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} />}
                       {(isOwnerViewer || !activeDeal?.commercialsHidden) && !activeDeal?.summaryOnly ? (
                         <DealHisaab dealId={activeDeal.id} fold refreshKey={`${dealDetail?.finalRate?.price ?? ''}|${dealDetail?.finalRate?.source ?? ''}|${dealDetail?.brokerage?.price ?? ''}|${(dealDetail?.deal || activeDeal)?.dealValue ?? ''}`} extra={dealDetail?.brokerage?.mandate && !hideCommercials ? <BrokerageAtPrice b={dealDetail.brokerage} dealId={activeDeal.id} hideSetter={!!dealDetail?.finalRate && !activeDeal?.summaryOnly} onChanged={() => { onRefreshDeals(); api.getDeal(activeDeal.id).then(setDealDetail).catch(() => {}); }} /> : undefined} />
@@ -1220,6 +1223,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <span className="font-mono font-bold text-slate-900">{visit.id}</span>
                                 <span className="text-slate-400">·</span>
                                 <span className="font-medium text-slate-800">{visit.customerName}</span>
+                                <VisitJoint v={visit} />
                                 {!visit.isVerified && visit.ackStatus === 'PENDING' && <span className="bg-amber-100 text-amber-900 text-xs font-bold px-2 py-0.5 rounded-full">{tx('Buyer not confirmed yet', 'खरीदार की पुष्टि बाकी')}</span>}
                                 {visit.isVerified ? (
                                   <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded">
@@ -1417,6 +1421,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 <span className="font-mono font-bold text-slate-900">{visit.id}</span>
                                 <span className="text-slate-400">·</span>
                                 <span className="font-medium text-slate-800">{visit.customerName}</span>
+                                <VisitJoint v={visit} />
                                 {visit.isVerified ? (
                                   <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded flex items-center gap-1">
                                     <ShieldCheck className="h-3 w-3 text-emerald-600" />

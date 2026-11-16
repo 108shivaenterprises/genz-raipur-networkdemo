@@ -182,6 +182,8 @@ import { createLandRecordsRouter } from './server/landrecords.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
 import { findState, matchState, stateOfIso, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
 import { PAPER_KEYS } from './src/shared/paperRules.js';
+import { DATE_KEYS, DATE_WORDS, checkDates, type KeyDates } from './src/shared/keyDates.js';
+import { pushTo } from './server/webpush.js';
 import { createPrivacyRouter, legalConfig, POLICY_VERSION } from './server/privacy.js';
 import { normPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
 import compression from 'compression';
@@ -5660,6 +5662,28 @@ app.post('/api/deals/:id/paper-checks', needs('deal:chat'), (req: Request, res: 
   db.save();
   db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, req.body?.done ? 'PAPER_TICKED' : 'PAPER_UNTICKED', key);
   res.json({ success: true, checks });
+});
+
+// v158 — the deal's four dates (token, agreement, registry, possession) and the "record updated after registry" tick. Only the deal brokers set them; the other broker is told.
+app.get('/api/deals/:id/key-dates', needs('deal:chat'), (req: Request, res: Response) => {
+  const { deal } = loadDealFor(req, getCurrentUser());
+  res.json({ success: true, dates: deal.keyDates || {}, canSet: isDealBroker(getCurrentUser(), deal) });
+});
+app.post('/api/deals/:id/key-dates', needs('deal:chat'), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const { deal } = loadDealFor(req, currentUser);
+  if (!isDealBroker(currentUser, deal)) return res.status(403).json({ error: 'Only the deal brokers can set the dates' });
+  const next: KeyDates = { ...(deal.keyDates || {}) };
+  for (const k of DATE_KEYS) if (k in (req.body || {})) { const v = req.body[k]; if (v === null || v === '') delete next[k]; else next[k] = String(v); }
+  if ('mutationDone' in (req.body || {})) next.mutationDone = !!req.body.mutationDone;
+  const why = checkDates(next); if (why) return res.status(400).json({ error: why });
+  const changed = DATE_KEYS.filter(k => next[k] !== (deal.keyDates || {})[k]);
+  deal.keyDates = next; deal.updatedAt = new Date().toISOString();
+  db.save();
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, 'DEAL_DATES_SET', changed.map(k => `${k}=${next[k] || 'cleared'}`).join(', ') || 'record tick');
+  const other = [deal.introducingBrokerId, deal.closingBrokerId].find(id => id && id !== currentUser.id);
+  if (other && changed.length) void pushTo(other, { kind: 'deals', title: `${currentUser.name} set a deal date`, body: changed.map(k => `${DATE_WORDS[k].en}: ${next[k] || 'cleared'}`).join(' · '), url: '/?tab=deals', tag: `dates-${deal.id}` });
+  res.json({ success: true, dates: next });
 });
 
 // ==========================================
