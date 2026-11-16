@@ -237,7 +237,9 @@ setInterval(() => {
 
 export function rateLimit(name: string, limit: number, windowMs: number) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const wait = hit(`${name}:${req.ip}`, limit, windowMs);
+    // signed-in members are counted one by one: many brokers share one office / mobile-carrier IP and must not lock each other out
+    const u = ctx().user; const who = u?.id ? `u:${u.id}` : req.ip;
+    const wait = hit(`${name}:${who}`, limit, windowMs);
     if (wait) {
       res.setHeader('Retry-After', String(wait));
       return res.status(429).json({ error: 'Too many requests. Please slow down.' });

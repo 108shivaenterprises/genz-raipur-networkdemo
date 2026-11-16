@@ -27,7 +27,7 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
   if (!d) return <div className="py-4"><Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /></div>;
 
   if (d.role === 'ADMIN' || d.role === 'SUPERADMIN') {
-    const items = (d.items as any[]);
+    const items = ((d.items || []) as any[]);
     const total = items.reduce((n, i) => n + i.n, 0);
     return (
       <section className={`${card} mb-6`} data-testid="insight-admin">
@@ -41,7 +41,7 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
   }
 
   if (d.role === 'PROPERTY_OWNER') {
-    const L = d.listings as any[];
+    const L = (d.listings || []) as any[];
     if (!L.length) return null;
     return (
       <section className={`${card} mt-6`} data-testid="insight-owner">
