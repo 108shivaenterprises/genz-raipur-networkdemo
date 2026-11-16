@@ -22,7 +22,7 @@ const ROLE_LABEL: Record<string, [string, string]> = {
   CONTRACTOR: ['Contractor', 'ठेकेदार'], LEGAL_COUNSEL: ['Legal', 'वकील'], PROPERTY_OWNER: ['Owner', 'मालिक'], BUYER_TENANT: ['Buyer', 'खरीदार'],
   GENZ_CONNECTOR: ['Connector', 'कनेक्टर'], TEAM_MEMBER: ['Employee', 'कर्मचारी'],
 };
-const ORDER = ['SUPERADMIN', 'ADMIN', 'DEVELOPER_BUILDER', 'BROKER', 'CONTRACTOR', 'LEGAL_COUNSEL', 'PROPERTY_OWNER', 'BUYER_TENANT', 'GENZ_CONNECTOR', 'TEAM_MEMBER'];
+const ORDER = ['SUPERADMIN', 'ADMIN', 'DEVELOPER_BUILDER', 'BROKER', 'CONTRACTOR', 'PROPERTY_OWNER', 'BUYER_TENANT', 'GENZ_CONNECTOR', 'TEAM_MEMBER'];
 export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
   const { t } = useI18n();
   const tx = useTx();

@@ -1,3 +1,5 @@
+// v155 — legal / due-diligence is switched off by default; these tests keep the dormant feature honest
+process.env.LEGAL_FEATURES = 'on';
 import { freePort } from './helpers/port';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';

@@ -366,8 +366,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
 /** While KYC is not VERIFIED the account may only use these. */
 export const UNVERIFIED_ALLOWED: Permission[] = ['self:read', 'self:update'];
 
+/** v155 — GENZ is a tech platform, not a legal service: due diligence / title check / legal help are switched off for every role.
+ *  shortcut: one env switch, the code stays dormant; set LEGAL_FEATURES=on to bring the feature back when legal help is launched. */
+const LEGAL_PERM = /^(dd:|legal:|readiness:)/;
+export const legalFeaturesOn = (): boolean => process.env.LEGAL_FEATURES === 'on';
+
 export function permissionsForRole(role: UserRole): Permission[] {
-  return ROLE_PERMISSIONS[role] ?? [];
+  const all = ROLE_PERMISSIONS[role] ?? [];
+  return legalFeaturesOn() ? all : all.filter(p => !LEGAL_PERM.test(p));
 }
 
 export function roleHas(role: UserRole, perm: Permission): boolean {

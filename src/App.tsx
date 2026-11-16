@@ -621,7 +621,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'due_diligence' && (
+        {activeTab === 'due_diligence' && hasPerm(permissions, 'dd:read') && (
           <DueDiligenceView
             // v28: only properties whose due-diligence workspace this member may open (own listing, a deal he is in, admin / legal)
             properties={['SUPERADMIN', 'ADMIN', 'LEGAL_COUNSEL'].includes(currentUser.role) ? properties : properties.filter((p) => p.ownerId === currentUser.id || p.listingBrokerId === currentUser.id || deals.some((d) => d.propertyId === p.id))}

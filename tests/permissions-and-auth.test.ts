@@ -1,3 +1,5 @@
+// v155 — legal / due-diligence is switched off by default; these tests keep the dormant feature honest
+process.env.LEGAL_FEATURES = 'on';
 import { describe, it, expect } from 'vitest';
 import { can, effectivePermissions, permissionMatrix, PERMISSION_CATALOG } from '../server/permissions.js';
 import { hashPassword, verifyPassword, passwordPolicyError, signSession, verifySession, isSafeUrl, secureOtp } from '../server/auth.js';

@@ -55,6 +55,15 @@ Aapka kehna: "Sahayak me format galat likhega broker to pata nahi chalega, Whats
 - **Due Diligence:** deal room me sirf LEGAL_COUNSEL / ADMIN / SUPERADMIN ko (aur `dd:read`). Broker/owner/client se chhupa (`ddOn`). Data, server, Title Check, legal role vaise ke vaise — hataya nahi.
 - Files: `DealRoomsView.tsx`, `ChatPlus.tsx`, `ControlCenter.tsx`, `DailyView.tsx`, test `v137-owner-client-tabs.test.ts`.
 
+## V155 — Legal / Due Diligence / Title Check band (GENZ sirf tech platform)
+- **Faisla:** GENZ koi kanooni zimmedari nahi leta; legal help baad me aayega. Isliye abhi sab band.
+- **Kaise:** `server/permissions.ts` me `permissionsForRole` har role se `dd:*`, `legal:*`, `readiness:*` hata deta hai (switch `LEGAL_FEATURES=on` se wapas). Isse server ke saare Title Check / Legal Help / Registry Readiness routes 403 dete hain, aur nav tab, deal room ke tab, Properties ka Title Check button, Legal Desk sab apne aap gayab (screen permission se chalti hai).
+- **Role:** "Legal Counsel" signup/invite list aur login demo list se hataya; AccessRequest se bhi.
+- **Hataya nahi:** code, data, tests (ab `LEGAL_FEATURES=on` ke saath chalte hain), Land Records, RERA/profile jaanch (aapne rakhne kaha).
+- **Baaki:** deal ke shuru ke kaam (jaise "Independent Legal Title Review", "Agreement drafting") broker ke apne to-do hain, wo abhi bhi banenge.
+- Wapas lane ke liye: server par env `LEGAL_FEATURES=on`, Legal Counsel option signup me dobara.
+- Files: `server/permissions.ts`, `App.tsx`, `OnboardingView.tsx`, `LoginView.tsx`, `AccessRequest.tsx`, 7 purane tests + naya `tests/v155-legal-off.test.ts`.
+
 ## Abhi bhi NAHI hai
 1. Offer ka counter/mana aur owner ka visit jawab browser me aazmaya nahi (demo me offer nahi); sirf test aur tsc.
 2. **Client aur dukaandaar ka chat home:** wo login nahi karte (link se aate hain). Owner ka chat home hai, par sample jaisa "visit ki anumati" card nahi.

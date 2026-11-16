@@ -6,7 +6,7 @@ import { useTx, useI18n } from '../lib/i18n.js';
 const input = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none';
 const ROLES: [string, string, string][] = [
   ['BROKER', 'Broker', 'ब्रोकर'], ['DEVELOPER_BUILDER', 'Builder / Developer', 'बिल्डर / डेवलपर'], ['CONTRACTOR', 'Contractor', 'ठेकेदार'],
-  ['LEGAL_COUNSEL', 'Legal counsel', 'वकील'], ['PROPERTY_OWNER', 'Property owner', 'प्रॉपर्टी मालिक'],
+  ['PROPERTY_OWNER', 'Property owner', 'प्रॉपर्टी मालिक'],
 ];
 
 /** Public, login-free panels: "Request access" (city waitlist) and "Forgot password". */

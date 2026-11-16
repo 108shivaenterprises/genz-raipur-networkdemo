@@ -278,7 +278,6 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   <option value="BUYER_TENANT">{tx('BUYER / TENANT', 'खरीदार / किरायेदार')}</option>
                   <option value="CONTRACTOR">{tx('CONTRACTOR (GENZ BUILDCON Partner)', 'कॉन्ट्रैक्टर (GENZ BUILDCON पार्टनर)')}</option>
                   <option value="DEVELOPER_BUILDER">{tx('DEVELOPER / BUILDER', 'डेवलपर / बिल्डर')}</option>
-                  <option value="LEGAL_COUNSEL">{tx('LEGAL COUNSEL (empanelled advocate)', 'लीगल काउंसल (पैनल के अधिवक्ता)')}</option>
                   {isSuperAdmin && <option value="ADMIN">{tx('ADMIN (operations desk)', 'एडमिन (ऑपरेशंस डेस्क)')}</option>}
                 </select>
               </div>
