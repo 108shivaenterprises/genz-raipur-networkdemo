@@ -141,6 +141,10 @@ describe('v137 owner + client screens', () => {
     const bot = src('src/components/SahayakBot.tsx');
     for (const id of ['sahayak-add-home', 'sahayak-open-draft', 'sahayak-open-home']) expect(bot, id).toContain(`data-testid="${id}"`);
     expect(bot).toContain('api.draftFromForm(');
+    expect(src('src/components/ControlCenter.tsx')).toContain('cc-fold-'); expect(src('src/components/DailyView.tsx')).toContain('daily-open-sahayak');
+    for (const id of ['visit-owner-reply', 'visit-owner-ok', 'visit-owner-other']) expect(cp, id).toContain(id);
+    for (const id of ['chat-offer-counter', 'chat-offer-reject', 'chat-offer-input']) expect(cp, id).toContain(id);
+    expect(src('src/components/DealRoomsView.tsx')).toContain("['LEGAL_COUNSEL', 'ADMIN', 'SUPERADMIN'].includes(currentUser.role)");
     expect(src('src/components/ChatsView.tsx')).toContain('shop-commission-card'); expect(src('src/components/ChatsView.tsx')).toContain("{ propertyId: h.id }");
   });
 });

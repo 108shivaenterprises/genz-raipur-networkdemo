@@ -206,6 +206,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const [myRooms, setMyRooms] = useState<any[]>([]);
   const [roomKey, setRoomKey] = useState(0);
   const [agMore, setAgMore] = useState(false);
+  // v154 — paper check / registry readiness are for the legal counsel and GENZ staff; brokers, owners and clients no longer see them in a deal (Title Check tab and data stay)
+  const ddOn = perm('dd:read') && ['LEGAL_COUNSEL', 'ADMIN', 'SUPERADMIN'].includes(currentUser.role);
   const canTasks = perm('task:read') && (currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN');   // v149 — the task list is for GENZ staff only
   useEffect(() => {
     if (!canRooms) return;
@@ -989,7 +991,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                   doors={[
                     ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(canTasks ? ['responsibilities' as const] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const]),
-                    ...(perm('property:read') ? ['media_vault' as const] : []), ...(perm('dd:read') ? ['due_diligence' as const] : []),
+                    ...(perm('property:read') ? ['media_vault' as const] : []), ...(ddOn ? ['due_diligence' as const] : []),
                     ...(hideCommercials ? [] : ['money' as const]),
                   ] as SimpleDoor[]}
                   onOpen={(d) => {
@@ -1011,8 +1013,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     ...(canTasks ? [{ id: 'responsibilities', label: tx('Tasks', 'ज़िम्मेदारी'), count: applicableTasks.length, icon: ListTodo, primary: true }] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : [{ id: 'commission_agreement', label: tx('Agreement', 'समझौता'), icon: FileCheck2, primary: true }]),
                     ...(perm('property:read') ? [{ id: 'media_vault', label: tx('Photos & map', 'फ़ोटो और लोकेशन'), count: vaultAssets.length, icon: FolderLock }] : []),
-                    ...(perm('dd:read') ? [{ id: 'due_diligence', label: tx('Property Due Diligence', 'प्रॉपर्टी Due Diligence'), icon: ShieldCheck }] : []),
-                    ...(perm('dd:read') ? [{ id: 'readiness_report', label: tx('Registry Readiness', 'रजिस्ट्री तैयारी'), icon: Award }] : []),
+                    ...(ddOn ? [{ id: 'due_diligence', label: tx('Property Due Diligence', 'प्रॉपर्टी Due Diligence'), icon: ShieldCheck }] : []),
+                    ...(ddOn ? [{ id: 'readiness_report', label: tx('Registry Readiness', 'रजिस्ट्री तैयारी'), icon: Award }] : []),
                     { id: 'antibypass_protocol', label: tx('Anti-Bypass Rules', 'एंटी-बायपास नियम'), icon: ShieldCheck },
                     ...(perm('legal:request') && currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) ? [{ id: 'legal_help', label: tx('Legal Help', 'क़ानूनी मदद'), icon: Scale }] : []),
                     ...(perm('dispute:read', 'dispute:create') ? [{ id: 'disputes_holds', label: tx('Disputes & Commission Holds', 'विवाद और कमीशन होल्ड'), icon: Scale }] : []),

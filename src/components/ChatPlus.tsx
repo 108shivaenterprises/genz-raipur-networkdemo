@@ -49,19 +49,28 @@ const when = (iso?: string) => { try { return iso ? new Date(iso).toLocaleString
 /** v153 — an offer in the chat: the amount, the state, and Accept for the one who may decide (counter / reject stay in the Deal Desk) */
 const OfferChatCard: React.FC<{ id: string }> = ({ id }) => {
   const tx = useTx(); const [o, setO] = useState<any>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [ask, setAsk] = useState<'' | 'COUNTER' | 'REJECT'>(''); const [val, setVal] = useState('');
   const load = useCallback(() => api.ofList().then((r) => setO([...(r.made || []), ...(r.incoming || [])].find((x: any) => x.id === id) || null)).catch(() => setO(null)), [id]);
   useEffect(() => { void load(); }, [load]);
   if (!o) return <div className={box} data-testid="chat-card-OFFER">{tx('Offer', 'ऑफ़र')}</div>;
-  const accept = async () => { setBusy(true); setErr(''); try { await api.ofDecide(id, { action: 'ACCEPT' }); await load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const decide = async (b: any) => { setBusy(true); setErr(''); try { await api.ofDecide(id, b); setAsk(''); setVal(''); await load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const accept = () => decide({ action: 'ACCEPT' });
+  const mayDecide = o.canDecide && ['SUBMITTED', 'COUNTERED'].includes(o.status);
   return (
     <div className={`${box} !border-amber-300 !bg-amber-50`} data-testid="chat-card-OFFER">
       <span className="block text-[10px] font-bold text-slate-500">{tx('OFFER', 'ऑफ़र')} · {o.status}</span>
       <span className="block text-base font-bold text-slate-900">{formatINR(o.status === 'COUNTERED' && o.counterAmount ? o.counterAmount : o.amount)}</span>
       <span className="block text-xs text-slate-600">{tx('Token', 'टोकन')} {formatINR(o.tokenProposed || 0)}</span>
       <span className="mt-1.5 flex gap-1.5">
-        {o.canDecide && o.status === 'SUBMITTED' && <button type="button" disabled={busy} onClick={accept} className="inline-flex min-h-9 items-center rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" data-testid="chat-offer-accept">{tx('Accept', 'मंज़ूर')}</button>}
-        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'desk' }))} className="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">{tx('Counter / reject', 'काउंटर / मना')}</button>
+        {mayDecide && <button type="button" disabled={busy} onClick={accept} className="inline-flex min-h-9 items-center rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" data-testid="chat-offer-accept">{tx('Accept', 'मंज़ूर')}</button>}
+        {mayDecide && <button type="button" onClick={() => { setAsk('COUNTER'); setVal(''); }} className="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700" data-testid="chat-offer-counter">{tx('Own price', 'अपना दाम')}</button>}
+        {mayDecide && <button type="button" onClick={() => { setAsk('REJECT'); setVal(''); }} className="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700" data-testid="chat-offer-reject">{tx('No', 'मना')}</button>}
+        {!mayDecide && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'desk' }))} className="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">{tx('Open Deal Desk', 'डील डेस्क खोलें')}</button>}
       </span>
+      {ask && <form className="mt-1.5 flex gap-1.5" onSubmit={(e) => { e.preventDefault(); void decide(ask === 'COUNTER' ? { action: 'COUNTER', counterAmount: Number(val.replace(/[^\d.]/g, '')) } : { action: 'REJECT', note: val.trim() }); }}>
+        <input value={val} onChange={(e) => setVal(e.target.value)} inputMode={ask === 'COUNTER' ? 'numeric' : 'text'} aria-label={ask === 'COUNTER' ? tx('Your price in rupees', 'आपका दाम (रुपये)') : tx('Reason', 'वजह')} placeholder={ask === 'COUNTER' ? tx('Your price, e.g. 7800000', 'आपका दाम, जैसे 7800000') : tx('Short reason', 'छोटी वजह')} className="min-h-9 min-w-0 flex-1 rounded-lg border border-slate-300 px-2 text-sm" data-testid="chat-offer-input" />
+        <button disabled={busy || !val.trim()} className="inline-flex min-h-9 items-center rounded-lg bg-slate-900 px-3 text-xs font-bold text-white" data-testid="chat-offer-send">{tx('Send', 'भेजो')}</button>
+      </form>}
       {err && <span className="block text-xs text-red-700" role="alert">{err}</span>}
     </div>
   );
@@ -82,7 +91,7 @@ const AgreementChatCard: React.FC<{ id: string; dealId?: string; onOpen: (tab: s
 // ───────────── the card inside a bubble ─────────────
 const box = 'block w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-left hover:bg-slate-100';
 
-export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: string) => void; reload?: () => void }> = ({ m, data, onOpen, reload }) => {
+export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: string) => void; reload?: () => void; reply?: (text: string) => Promise<boolean>; viewerIsBroker?: boolean }> = ({ m, data, onOpen, reload, reply, viewerIsBroker }) => {
   const tx = useTx(); const label = useLabel();
   const p = data?.property;
   const open = (tab: string) => () => onOpen(tab);
@@ -157,6 +166,13 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
           </button>
+          {v && reply && !viewerIsBroker && !v.isVerified && Date.parse(v.scheduledTime) > Date.now() && (
+            // v153 — the owner answers the visit in one tap; it is a chat reply (the visit itself needs no owner approval)
+            <div className="mt-1.5 flex gap-1.5" data-testid="visit-owner-reply">
+              <button type="button" onClick={() => void reply(tx(`OK, please bring them: ${when(v.scheduledTime)}`, `ठीक है, आने दीजिए: ${when(v.scheduledTime)}`))} className="inline-flex min-h-9 items-center rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" data-testid="visit-owner-ok">{tx('Yes, let them come', 'हाँ, आने दो')}</button>
+              <button type="button" onClick={() => void reply(tx('Please suggest another time for the visit.', 'कृपया विज़िट के लिए दूसरा समय बताइए।'))} className="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700" data-testid="visit-owner-other">{tx('Other time', 'दूसरा समय')}</button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-1.5">
             {v && <button type="button" onClick={open(`visit:${v.id}`)} className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white" data-testid="chat-card-visit-qr"><QrCode className="h-3.5 w-3.5" aria-hidden />{v.isVerified ? tx('Visit pass', 'विज़िट पास') : tx('Visit QR Pass', 'विज़िट QR पास')}</button>}
             {v && (v.isVerified || Date.parse(v.scheduledTime) < Date.now()) && <button type="button" onClick={open('final-rate')} className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800" data-testid="chat-card-final-rate"><IndianRupee className="h-3.5 w-3.5" aria-hidden />{tx('Rate agreed? Write it', 'रेट तय हुआ? लिखें')}</button>}
@@ -484,7 +500,7 @@ export function useDealChatKit(o: {
     menu: (close: () => void) => <PlusPanel kit={kit} close={close} />,
     /** a stored message → a bubble (with its card) */
     thread: (m: any, meId = o.meId): ThreadMsg => {
-      const card = m.kind ? <ChatCard m={m} data={data} onOpen={(t) => live.current.onOpen(t)} reload={() => void load()} /> : undefined;
+      const card = m.kind ? <ChatCard m={m} data={data} onOpen={(t) => live.current.onOpen(t)} reload={() => void load()} reply={(text) => post({ text })} viewerIsBroker={isBroker} /> : undefined;
       return { id: m.id, mine: m.senderId === meId, who: m.senderName, text: m.text, at: m.timestamp, link: m.kind === 'PHOTO' ? undefined : m.mediaUrl, card, hideText: !!(card && m.auto), priv: m.audience === 'BROKERS' };
     },
   };

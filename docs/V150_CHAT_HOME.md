@@ -47,8 +47,16 @@ Aapka kehna: "Sahayak me format galat likhega broker to pata nahi chalega, Whats
 - **Ghar seedha khule:** search ya bot me ghar dabane par wahi ghar (Properties me `propertyId` se).
 - Files: `server/chatcards.ts`, `server.ts`, `src/types/index.ts`, `ChatPlus.tsx`, `ChatsView.tsx`, `SahayakBot.tsx`, `App.tsx`; test `v137-owner-client-tabs.test.ts`.
 
+## V154 — "Continue": offer counter/mana chat me, owner visit jawab, baaki screens naye
+- **Offer card me Counter / Mana chat ke andar:** jo faisla le sakta hai (offer SUBMITTED/COUNTERED) use **Manzoor / Apna daam / Na** (`chat-offer-*`). Apna daam = counter rakam; Na = chhota karan (server kam se kam 3 akshar maangta hai). Baaki ko "Deal Desk kholo".
+- **Owner ko visit ka card:** owner/client ko VISIT card par **Haan, aane do / Dusra samay** — sirf chat jawab (`visit-owner-*`), koi state nahi badalta (visit ko owner ki manzoori chahiye hi nahi).
+- **Control Center:** 6 tah (Network pulse, Brand, Numbers, Settings, Audit, Functions). Phone par band (sirf Numbers khula), 768px+ par sab khula. Phone par lambai 5287px -> 1661px.
+- **Daily (CRM):** chat home chalu ho to Today par **Sahayak** ka darwaza (Chats kholta hai); purana likhne wala "Khud likhunga" tah me.
+- **Due Diligence:** deal room me sirf LEGAL_COUNSEL / ADMIN / SUPERADMIN ko (aur `dd:read`). Broker/owner/client se chhupa (`ddOn`). Data, server, Title Check, legal role vaise ke vaise — hataya nahi.
+- Files: `DealRoomsView.tsx`, `ChatPlus.tsx`, `ControlCenter.tsx`, `DailyView.tsx`, test `v137-owner-client-tabs.test.ts`.
+
 ## Abhi bhi NAHI hai
-1. Offer card me **counter / mana** chat ke andar nahi, Deal Desk me hai.
+1. Offer ka counter/mana aur owner ka visit jawab browser me aazmaya nahi (demo me offer nahi); sirf test aur tsc.
 2. **Client aur dukaandaar ka chat home:** wo login nahi karte (link se aate hain). Owner ka chat home hai, par sample jaisa "visit ki anumati" card nahi.
 3. Offer card local demo me dekha nahi (demo me koi offer nahi); agreement card dekha.
 4. Bot ka ghar-draft: sirf type, ilaka, daam, malik; BHK, area, photo draft screen me.

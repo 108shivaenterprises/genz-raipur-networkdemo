@@ -43,6 +43,17 @@ const Card: React.FC<{ title: string; value: React.ReactNode; hint?: string; ton
   </button>
 );
 
+/** v154 — phone: the long Control Center is a list of fold-away parts (only the numbers that need him are open); on a laptop every part is open */
+const Fold: React.FC<{ title: string; open?: boolean; id: string; children: React.ReactNode }> = ({ title, open, id, children }) => {
+  const [o, setO] = useState(() => !!open || (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches));
+  return (
+    <details open={o} onToggle={(e) => setO((e.currentTarget as HTMLDetailsElement).open)} className="rounded-xl border border-slate-200 bg-white" data-testid={`cc-fold-${id}`}>
+      <summary className="flex min-h-12 cursor-pointer items-center justify-between px-4 text-sm font-bold text-slate-900 md:hidden">{title}<span aria-hidden className="text-slate-400">{o ? '−' : '+'}</span></summary>
+      <div className="space-y-4 p-0 md:p-0">{children}</div>
+    </details>
+  );
+};
+
 export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
   const tx = useTx();
   const label = useLabel();
@@ -102,11 +113,11 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
         {d.settings.maintenanceMode && <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">{tx('MAINTENANCE MODE ON — non-admins blocked', 'मेंटेनेंस मोड चालू — एडमिन के अलावा सब बंद')}</span>}
       </div>
 
-      <NetworkPulse onNavigate={onNavigate} />
+      <Fold id="pulse" title={tx('Network pulse', 'नेटवर्क पल्स')}><NetworkPulse onNavigate={onNavigate} /></Fold>
 
-      <BrandLogoCard />
+      <Fold id="brand" title={tx('Brand logo', 'ब्रांड लोगो')}><BrandLogoCard /></Fold>
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <Fold id="numbers" open title={tx('Numbers that need you', 'जिन आँकड़ों पर ध्यान चाहिए')}><section className="grid grid-cols-2 gap-3 p-3 md:grid-cols-4 md:p-0">
         <Card title={tx('Users', 'यूज़र')} value={d.users.total} hint={`${d.users.byStatus.VERIFIED || 0} ${tx('verified', 'वेरिफ़ाइड')}`} onClick={() => onNavigate('onboarding')} />
         <Card title={tx('KYC pending', 'KYC बाकी')} value={d.users.pendingKyc.length} tone={d.users.pendingKyc.length ? 'warn' : 'ok'} hint={tx('Click to review', 'देखने के लिए क्लिक करें')} onClick={() => onNavigate('onboarding')} />
         {idr && <Card title={tx('ID checks waiting', 'ID जाँच बाकी')} value={idr.todo} tone={idr.todo ? 'warn' : 'ok'} hint={`${tx('Auto-verify', 'ऑटो-वेरिफ़ाई')} ${idr.autoVerifyOn ? tx('ON', 'चालू') : tx('OFF', 'बंद')}${idr.auto ? ` · ${idr.auto} ${tx('auto-verified', 'ऑटो')}` : ''}`} onClick={() => onNavigate('idreview')} />}
@@ -120,9 +131,9 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
         <Card title={tx('Invitations pending', 'बाकी इनवाइट')} value={d.invitations.pending} hint={`${d.invitations.redeemed} ${tx('redeemed', 'इस्तेमाल हुए')}`} onClick={() => onNavigate('onboarding')} />
         <Card title={tx('Privacy requests open', 'खुले प्राइवेसी अनुरोध')} value={d.privacy.openRequests} tone={d.privacy.openRequests ? 'warn' : 'ok'} onClick={() => onNavigate('onboarding')} />
         <Card title={tx('Audit chain', 'ऑडिट चेन')} value={intact ? tx('Intact', 'सही') : tx('BROKEN', 'टूटी')} tone={intact ? 'ok' : 'bad'} hint={tx('SHA-256 hash chain', 'SHA-256 हैश चेन')} onClick={() => onNavigate('audit')} />
-      </section>
+      </section></Fold>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <Fold id="settings" title={tx('Users, settings, protection, team limits, 2-step login', 'यूज़र, सेटिंग, सुरक्षा, टीम सीमा, 2-स्टेप लॉगिन')}><section className="grid gap-4 p-3 md:grid-cols-2 md:p-0">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="mb-2 text-sm font-semibold text-slate-900">{tx('Users by role', 'भूमिका के अनुसार यूज़र')}</h3>
           <div className="flex flex-wrap gap-2">
@@ -178,9 +189,9 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
         <ProtectionAdmin />
         <TeamLimitsAdmin />
         <div className="rounded-xl border border-slate-200 bg-white p-4"><TwoFactorCard /></div>
-      </section>
+      </section></Fold>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <Fold id="audit" title={tx('Recent audit events', 'हाल की ऑडिट घटनाएँ')}><section className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="mb-2 text-sm font-semibold text-slate-900">{tx('Recent audit events', 'हाल की ऑडिट घटनाएँ')}</h3>
         <ul className="divide-y divide-slate-100 text-xs text-slate-600">
           {d.audit.recent.map((e: any) => (
@@ -192,9 +203,9 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
           {!d.audit.recent.length && <li className="py-2 text-slate-400">{tx('No events yet.', 'अभी कोई घटना नहीं।')}</li>}
         </ul>
         <button className="mt-2 text-xs text-indigo-600 hover:underline" onClick={() => onNavigate('audit')}>{tx('Open full audit trail →', 'पूरा ऑडिट ट्रेल खोलें →')}</button>
-      </section>
+      </section></Fold>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <Fold id="functions" title={tx('Function directory', 'फ़ंक्शन डायरेक्टरी')}><section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-slate-900">{tx('Function directory — every function, who may use it, where it lives', 'फ़ंक्शन डायरेक्टरी — हर फ़ंक्शन, कौन इस्तेमाल कर सकता है, कहाँ मिलेगा')} ({rows.length})</h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -239,7 +250,7 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
           </table>
         </div>
         <p className="mt-2 flex items-center gap-1 text-[11px] text-slate-400"><CheckCircle2 className="h-3 w-3" /> {tx('Generated live from the server permission catalog — it can never drift from what the API enforces.', 'सर्वर के परमिशन कैटलॉग से सीधे बना — API जो लागू करता है उससे कभी अलग नहीं हो सकता।')}</p>
-      </section>
+      </section></Fold>
     </div>
   );
 };

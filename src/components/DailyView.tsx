@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Loader2, Sun, Users, Map as MapIcon, ShieldCheck, BarChart3, Award, BellOff, Bell, Share2, Handshake, ThumbsDown, Star, HelpCircle, CheckCircle2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
+import { chatHome } from '../lib/goto.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { ClientsView } from './ClientsView.js';
@@ -41,7 +42,15 @@ export const DailyView: React.FC<{ currentUser: UserProfile; onNavigate: (t: any
         </div>
         <HelpLink lesson="app-start" onNavigate={onNavigate} />
       </div>
-      {sub === 'today' && !staff && <CopilotPanel />}
+      {sub === 'today' && !staff && (chatHome.on()
+        ? <div className="space-y-2" data-testid="daily-sahayak">
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'chats' }))} className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 text-left" data-testid="daily-open-sahayak">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-slate-900" aria-hidden>GZ</span>
+              <span className="min-w-0 flex-1"><span className="block text-base font-bold text-slate-900">{tx('GENZ Sahayak', 'GENZ सहायक')}</span><span className="block text-sm text-slate-600">{tx('Tap buttons — add a need, a home, a visit', 'बटन दबाएँ — ज़रूरत, घर, विज़िट जोड़ें')}</span></span>
+            </button>
+            <details className="rounded-xl border border-slate-200 bg-white"><summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold text-slate-600">{tx('Or type it yourself', 'या खुद लिखें')}</summary><div className="p-2"><CopilotPanel /></div></details>
+          </div>
+        : <CopilotPanel />)}
       {sub === 'today' && <Digest onGoClients={() => setSub('clients')} />}
       {sub === 'clients' && <ClientsView currentUser={currentUser} />}
       {sub === 'map' && <Suspense fallback={<div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>}><MapView /></Suspense>}
