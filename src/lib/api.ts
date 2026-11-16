@@ -1218,6 +1218,8 @@ export const api = {
   legalSettingsSave: (b: any) => request<any>('/api/legal/settings', { method: 'PUT', body: JSON.stringify(b) }),
   legalCounsellorStates: (id: string, states: string[]) => request<any>(`/api/legal/counsellors/${encodeURIComponent(id)}/states`, { method: 'POST', body: JSON.stringify({ states }) }),
   legalCounsellorPanel: (id: string, action: 'REMOVE' | 'RESTORE', reason: string) => request<any>(`/api/legal/counsellors/${encodeURIComponent(id)}/panel`, { method: 'POST', body: JSON.stringify({ action, reason }) }),
+  paperGet: (dealId: string) => request<{ success: boolean; checks: Record<string, { byName: string; at: string }>; canTick: boolean }>(`/api/deals/${dealId}/paper-checks`),
+  paperSet: (dealId: string, key: string, done: boolean) => request<{ success: boolean; checks: Record<string, { byName: string; at: string }> }>(`/api/deals/${dealId}/paper-checks`, { method: 'POST', body: JSON.stringify({ key, done }) }),
   legalBadge: () => request<{ success: boolean; count: number }>('/api/legal/badge'),
   // v23 — Plans & Fees
   billingCatalog: () => request<any>('/api/billing/catalog'),

@@ -64,6 +64,14 @@ Aapka kehna: "Sahayak me format galat likhega broker to pata nahi chalega, Whats
 - Wapas lane ke liye: server par env `LEGAL_FEATURES=on`, Legal Counsel option signup me dobara.
 - Files: `server/permissions.ts`, `App.tsx`, `OnboardingView.tsx`, `LoginView.tsx`, `AccessRequest.tsx`, 7 purane tests + naya `tests/v155-legal-off.test.ts`.
 
+## V156 — Paper check ab sirf tick / untick list
+- Deal room me **Paper check** (More ke andar, simple room me bhi darwaza): 8 kaagzaat ki saadi list — owner ID, registry, khasra/B1, tax, naksha/NOC, diversion, loan nahi, kabza. Dabane par tick, dobara dabane par untick; kisne aur kab tick kiya dikhta hai; upar `2/8` ginti.
+- Bas itna likha hai: "GENZ kisi kaagaz ki jaanch ya guarantee nahi karta."
+- **Kaun tick kare:** sirf deal ke dono broker (server rokta hai: dusra broker / owner / bina login nahi). Baaki sirf dekhte hain.
+- **Kya nahi hai:** verify, advocate, signoff, issue, Registry Readiness, Title Check ka purana screen — sab band (V155) hi hain.
+- Server: `GET/POST /api/deals/:id/paper-checks` (key list `src/shared/paperRules.ts`), deal me `paperChecks`, audit me PAPER_TICKED / PAPER_UNTICKED.
+- Files: `src/shared/paperRules.ts`, `src/components/PaperCheck.tsx`, `DealRoomsView.tsx`, `DealSimple.tsx`, `server.ts`, `server/db.ts`, `src/types/index.ts`, `src/lib/api.ts`; tests `v156-paper-check.test.ts`, `v137`.
+
 ## Abhi bhi NAHI hai
 1. Offer ka counter/mana aur owner ka visit jawab browser me aazmaya nahi (demo me offer nahi); sirf test aur tsc.
 2. **Client aur dukaandaar ka chat home:** wo login nahi karte (link se aate hain). Owner ka chat home hai, par sample jaisa "visit ki anumati" card nahi.

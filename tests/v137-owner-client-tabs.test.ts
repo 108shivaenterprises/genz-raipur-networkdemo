@@ -144,7 +144,7 @@ describe('v137 owner + client screens', () => {
     expect(src('src/components/ControlCenter.tsx')).toContain('cc-fold-'); expect(src('src/components/DailyView.tsx')).toContain('daily-open-sahayak');
     for (const id of ['visit-owner-reply', 'visit-owner-ok', 'visit-owner-other']) expect(cp, id).toContain(id);
     for (const id of ['chat-offer-counter', 'chat-offer-reject', 'chat-offer-input']) expect(cp, id).toContain(id);
-    expect(src('src/components/DealRoomsView.tsx')).toContain("['LEGAL_COUNSEL', 'ADMIN', 'SUPERADMIN'].includes(currentUser.role)");
+    expect(src('src/components/DealRoomsView.tsx')).toContain("['BROKER', 'DEVELOPER_BUILDER', 'ADMIN', 'SUPERADMIN'].includes(currentUser.role)");
     expect(src('src/components/ChatsView.tsx')).toContain('shop-commission-card'); expect(src('src/components/ChatsView.tsx')).toContain("{ propertyId: h.id }");
   });
 });

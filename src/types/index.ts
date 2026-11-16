@@ -334,6 +334,8 @@ export interface CollaborationOffer {
 
 export interface DealRoom {
   id: string;
+  /** v156 — the brokers' own tick list of papers (key → who ticked, when); GENZ does not verify it */
+  paperChecks?: Record<string, { by: string; byName: string; at: string }>;
   propertyId: string;
   requirementId: string;
   introducingBrokerId: string;

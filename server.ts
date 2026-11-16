@@ -181,6 +181,7 @@ import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
 import { createLandRecordsRouter } from './server/landrecords.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
 import { findState, matchState, stateOfIso, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
+import { PAPER_KEYS } from './src/shared/paperRules.js';
 import { createPrivacyRouter, legalConfig, POLICY_VERSION } from './server/privacy.js';
 import { normPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
 import compression from 'compression';
@@ -5640,6 +5641,25 @@ app.post('/api/deals/:id/final-price', needs('deal:chat'), (req: Request, res: R
     hi: [`फ़ाइनल रेट तय · ${deal.id}`, `${currentUser.name}: ${rs}${note ? ` — ${note}` : ''}। डील रूम में देख लें; जो तय हुआ था उससे अलग हो तो वहीं सुधार दें।`],
   });
   res.json({ success: true, dealValue: deal.dealValue, finalRate: finalRateFor(deal, currentUser, state), brokerage: brokerageFor(deal, currentUser, state) });
+});
+
+// v156 — Paper check: a plain tick / untick list of the deal's papers. Only the deal brokers tick; GENZ verifies nothing.
+app.get('/api/deals/:id/paper-checks', needs('deal:chat'), (req: Request, res: Response) => {
+  const { deal } = loadDealFor(req, getCurrentUser());
+  res.json({ success: true, checks: deal.paperChecks || {}, canTick: isDealBroker(getCurrentUser(), deal) });
+});
+app.post('/api/deals/:id/paper-checks', needs('deal:chat'), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const { deal } = loadDealFor(req, currentUser);
+  if (!isDealBroker(currentUser, deal)) return res.status(403).json({ error: 'Only the deal brokers can tick the papers' });
+  const key = String(req.body?.key || '');
+  if (!PAPER_KEYS.includes(key)) return res.status(400).json({ error: 'Unknown paper' });
+  const checks = { ...(deal.paperChecks || {}) };
+  if (req.body?.done) checks[key] = { by: currentUser.id, byName: currentUser.name, at: new Date().toISOString() }; else delete checks[key];
+  deal.paperChecks = checks; deal.updatedAt = new Date().toISOString();
+  db.save();
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', deal.id, req.body?.done ? 'PAPER_TICKED' : 'PAPER_UNTICKED', key);
+  res.json({ success: true, checks });
 });
 
 // ==========================================

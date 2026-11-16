@@ -43,7 +43,7 @@ export const DealSimple: React.FC<{
     responsibilities: { icon: ListTodo, label: tx('Tasks', 'काम'), tab: 'responsibilities', hint: t?.total ? tx(`${t.open} still open`, `${t.open} बाकी`) : tx('Who does what', 'कौन क्या करेगा') },
     commission_agreement: { icon: FileCheck2, label: tx('Agreement', 'समझौता'), tab: 'commission_agreement', hint: agText },
     media_vault: { icon: FolderLock, label: tx('Photos & papers', 'फ़ोटो और काग़ज़'), tab: 'media_vault', hint: tx('Photos, map, documents', 'फ़ोटो, लोकेशन, दस्तावेज़') },
-    due_diligence: { icon: ShieldCheck, label: tx('Paper check', 'काग़ज़ों की जाँच'), tab: 'due_diligence', hint: tx('Due diligence & registry', 'जाँच और रजिस्ट्री की तैयारी') },
+    due_diligence: { icon: ShieldCheck, label: tx('Paper check', 'काग़ज़ों की जाँच'), tab: 'due_diligence', hint: tx('Tick the papers you have seen', 'जो काग़ज़ देखे उन पर टिक') },
     money: { icon: IndianRupee, label: tx('Money', 'पैसा / हिसाब'), tab: 'overview', hint: tx('Final rate, commission, payments', 'फ़ाइनल रेट, कमीशन, भुगतान') },
   };
 

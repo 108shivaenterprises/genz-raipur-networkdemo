@@ -16,13 +16,13 @@ import {
 import { DealTeamAccess } from './DealTeamAccess.js';
 import { CommissionPayments } from './CommissionPayments.js';
 import { LegalHelpPanel } from './LegalHelp.js';
+import { PaperCheck } from './PaperCheck.js';
 import { api } from '../lib/api.js';
 import { formatINR, formatDateTime, formatDate, printTarget } from '../lib/utils.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useUI } from '../lib/ui.js';
 import { useLabel } from '../lib/labels.js';
 import { useTemplateHi } from '../lib/templateHi.js';
-import { DueDiligenceView } from './DueDiligenceView.js';
 import { SiteVisitQrPassModal } from './SiteVisitQrPassModal.js';
 import {
   Briefcase,
@@ -206,8 +206,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const [myRooms, setMyRooms] = useState<any[]>([]);
   const [roomKey, setRoomKey] = useState(0);
   const [agMore, setAgMore] = useState(false);
-  // v154 — paper check / registry readiness are for the legal counsel and GENZ staff; brokers, owners and clients no longer see them in a deal (Title Check tab and data stay)
-  const ddOn = perm('dd:read') && ['LEGAL_COUNSEL', 'ADMIN', 'SUPERADMIN'].includes(currentUser.role);
+  // v156 — the Paper check is a plain tick list for the deal brokers (GENZ verifies nothing); the old Due Diligence / Registry Readiness tabs are off
+  const ddOn = perm('deal:chat') && ['BROKER', 'DEVELOPER_BUILDER', 'ADMIN', 'SUPERADMIN'].includes(currentUser.role);
   const canTasks = perm('task:read') && (currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN');   // v149 — the task list is for GENZ staff only
   useEffect(() => {
     if (!canRooms) return;
@@ -597,7 +597,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const tabAllowed = (t?: string): t is DealSubTab => !!t && (t === 'overview' || t === 'antibypass_protocol'
     || (t === 'chat_call' && perm('deal:chat')) || (t === 'responsibilities' && canTasks)
     || (t === 'commission_agreement' && !isOwnerViewer && perm('agreement:read'))
-    || ((t === 'due_diligence' || t === 'readiness_report') && perm('dd:read')) || (t === 'media_vault' && perm('property:read'))
+    || (t === 'due_diligence' && ddOn) || (t === 'media_vault' && perm('property:read'))
     || (t === 'disputes_holds' && perm('dispute:read', 'dispute:create')));
   // v83 — no particular ask → 'AUTO': the Tasks tab opens on "mine, not done" (else "not done", else all) instead of every task
   const filterFor = (kind?: string) => (kind === 'TASKS_TO_VERIFY' ? 'REVIEW' : kind === 'TASKS_OVERDUE' ? 'OVERDUE' : kind === 'TASKS_TO_ACCEPT' || kind === 'TASKS_TO_DO' ? 'MINE' : 'AUTO') as typeof taskFilter;
@@ -1013,8 +1013,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     ...(canTasks ? [{ id: 'responsibilities', label: tx('Tasks', 'ज़िम्मेदारी'), count: applicableTasks.length, icon: ListTodo, primary: true }] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : [{ id: 'commission_agreement', label: tx('Agreement', 'समझौता'), icon: FileCheck2, primary: true }]),
                     ...(perm('property:read') ? [{ id: 'media_vault', label: tx('Photos & map', 'फ़ोटो और लोकेशन'), count: vaultAssets.length, icon: FolderLock }] : []),
-                    ...(ddOn ? [{ id: 'due_diligence', label: tx('Property Due Diligence', 'प्रॉपर्टी Due Diligence'), icon: ShieldCheck }] : []),
-                    ...(ddOn ? [{ id: 'readiness_report', label: tx('Registry Readiness', 'रजिस्ट्री तैयारी'), icon: Award }] : []),
+                    ...(ddOn ? [{ id: 'due_diligence', label: tx('Paper check', 'काग़ज़ों की सूची'), icon: ShieldCheck }] : []),
                     { id: 'antibypass_protocol', label: tx('Anti-Bypass Rules', 'एंटी-बायपास नियम'), icon: ShieldCheck },
                     ...(perm('legal:request') && currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) ? [{ id: 'legal_help', label: tx('Legal Help', 'क़ानूनी मदद'), icon: Scale }] : []),
                     ...(perm('dispute:read', 'dispute:create') ? [{ id: 'disputes_holds', label: tx('Disputes & Commission Holds', 'विवाद और कमीशन होल्ड'), icon: Scale }] : []),
@@ -2331,12 +2330,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
               {/* TAB 4: DUE DILIGENCE CHECKLIST EMBEDDED */}
               {activeSubTab === 'due_diligence' && (
-                <DueDiligenceView
-                  properties={properties.length > 0 ? properties : [activeProperty].filter(Boolean)}
-                  currentUser={currentUser}
-                  initialPropertyId={activeDeal.propertyId}
-                  permissions={permissions}
-                />
+                <PaperCheck dealId={activeDeal.id} />
               )}
 
               {/* TAB 5: REGISTRY READINESS REPORT (MODULE B6) */}
