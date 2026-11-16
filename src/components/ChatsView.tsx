@@ -23,6 +23,7 @@ import { useCalls } from './calls/CallHost.js';
 
 const SahayakBot = lazyView(() => import('./SahayakBot.js'), 'SahayakBot');
 const LeadCard = lazyView(() => import('./ShopPartners.js'), 'LeadCard');
+const ShopLeadChat = lazyView(() => import('./ShopLeadChat.js'), 'ShopLeadChat');
 const KIND_TONE: Record<string, string> = { BUYER: 'bg-sky-600', RENTER: 'bg-violet-600', TENANT: 'bg-amber-600', OTHER: 'bg-slate-600', OWNER: 'bg-emerald-700' };
 /** v152 — the small type tag on every row (like the labels in the WhatsApp sample) */
 const TAG_CLS: Record<string, string> = { DEAL: 'bg-amber-100 text-amber-900', CLIENT: 'bg-sky-100 text-sky-900', OWNER: 'bg-emerald-100 text-emerald-900', SHOP: 'bg-rose-100 text-rose-900', PARTNER: 'bg-indigo-100 text-indigo-900' };
@@ -239,24 +240,21 @@ export const ChatsView: React.FC<{ meId: string; permissions: string[] }> = ({ m
   ) : !cur ? (
     <div className="hidden h-[max(28rem,calc(100vh-19rem))] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400 lg:flex">{tx('Pick a chat on the left.', 'बाईं ओर से कोई चैट चुनें।')}</div>
   ) : cur.kind === 'SHOP' ? (
-    <div className="space-y-2" data-testid="shop-chat-pane">
-      <button type="button" onClick={() => { setOpenUrl(''); load(); }} className="min-h-11 px-2 text-sm font-semibold text-slate-600 underline">{tx('← Back to chats', '← चैट पर वापस')}</button>
-      {(() => {   // v152 — the shop's commission in one card (the sample's green card): what is still to pay and what was paid, deal by deal
+    <ShopLeadChat key={cur.id + (cur.lead?.status || '')} l={cur.lead} onBack={() => { setOpenUrl(''); load(); }} onChange={load}
+      extra={(() => {   // v152 — the shop's commission in one card: what is still to pay and what was paid, deal by deal (now under "Details")
         const mine = (leads || []).filter((x: any) => x.partnerId === cur.lead?.partnerId && x.won && x.payout);
         if (!mine.length) return null;
         const due = mine.filter((x: any) => ['DUE', 'NOT_RECEIVED'].includes(x.payout.status)); const paid = mine.filter((x: any) => ['PAID', 'RECEIVED'].includes(x.payout.status));
         const sum = (a: any[]) => a.reduce((n, x) => n + (x.won.amount || 0), 0);
         return (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm" data-testid="shop-commission-card">
+          <div className="mb-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm" data-testid="shop-commission-card">
             <div className="text-[11px] font-bold text-slate-600">{tx(`${cur.lead?.shopName || 'SHOP'} COMMISSION`, `${cur.lead?.shopName || 'दुकान'} का कमीशन`)}</div>
             <div className="text-xl font-bold text-emerald-700">{formatINR(sum(due))} {tx('to pay', 'बाकी')}</div>
             <div className="text-xs text-slate-600">{tx('Paid so far', 'अब तक दिया')}: {formatINR(sum(paid))}</div>
             {mine.slice(0, 4).map((x: any) => <div key={x.id} className="flex justify-between border-t border-emerald-100 py-1 text-slate-900"><span className="truncate">{x.name}</span><span className={`font-bold ${['PAID', 'RECEIVED'].includes(x.payout.status) ? 'text-emerald-700' : 'text-amber-800'}`}>{formatINR(x.won.amount || 0)} {['PAID', 'RECEIVED'].includes(x.payout.status) ? tx('paid', 'दिया') : tx('due', 'बाकी')}</span></div>)}
           </div>
         );
-      })()}
-      <LeadCard key={cur.id + (cur.lead?.status || '')} l={cur.lead} onChange={load} />
-    </div>
+      })()} />
   ) : cur.kind === 'PARTNER' ? (
     cur.id ? <PartnerChatPane key={cur.id} id={cur.id} fallbackTitle={cur.title} onBack={() => { setOpenUrl(''); load(); }} /> : <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin text-slate-400" />
   ) : cur.kind === 'CLIENT' ? (

@@ -335,7 +335,7 @@ const AskNetwork: React.FC<{ reqId: string }> = ({ reqId }) => {
   return sent ? <p className="text-xs text-emerald-800" data-testid="sp-asked">{sent}</p>
     : <button type="button" disabled={busy} onClick={go} data-testid="sp-ask-network" className="inline-flex min-h-10 items-center rounded-lg bg-indigo-700 px-3 text-xs font-bold text-white disabled:opacity-50">🤝 {tx('Ask these brokers to co-broke', 'इन ब्रोकरों से को-ब्रोक माँगें')}</button>;
 };
-export const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) => {
+export const LeadCard: React.FC<{ l: any; onChange: () => void; noChat?: boolean }> = ({ l, onChange, noChat }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [mode, setMode] = useState<'' | 'won' | 'lost' | 'paid' | 'need' | 'share'>(''); const [val, setVal] = useState(''); const [reason, setReason] = useState(''); const [pm, setPm] = useState<PartnerPayMode>('UPI'); const [reply, setReply] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const kind = LEAD_KINDS.find((k) => k.id === l.kind)!; const side = sideOfKind(l.kind); const cut: Cut = side === 'SALE' ? l.terms.sale : l.terms.rent;
@@ -350,7 +350,7 @@ export const LeadCard: React.FC<{ l: any; onChange: () => void }> = ({ l, onChan
       <p className="text-xs text-slate-600">{l.locality}{l.budget ? ` · ${l.budget}` : ''}{l.propertyType ? ` · ${l.propertyType}` : ''}{l.note ? ` · “${l.note}”` : ''}</p>
       {l.homeTitle && <p className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900" data-testid="sp-lead-home">👍 {tx('Interested in', 'पसंद आया')}: {l.homeTitle} <span className="font-normal text-emerald-800">· {l.homeOwn ? tx('your listing', 'आपकी लिस्टिंग') : tx('another GENZ broker’s listing — he never sees this lead; use a co-broking offer', 'दूसरे GENZ ब्रोकर की लिस्टिंग — उसे यह लीड नहीं दिखती; को-ब्रोकिंग ऑफ़र से काम करें')}</span></p>}
       {l.promise && <p className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-700" data-testid="sp-lead-promise"><ShieldCheck className="mr-0.5 inline h-3 w-3 text-emerald-700" />{tx('“No direct deal” promise ticked and signed by', '“सीधा सौदा नहीं” की सहमति — हस्ताक्षर')} <b>{l.promise.signName}</b> · {when(l.promise.at)} · {tx('wording', 'शब्द')} {l.promise.version}</p>}
-      <LeadChat l={l} onChange={onChange} />
+      {!noChat && <LeadChat l={l} onChange={onChange} />}
       {!l.masked && (<>
       {/* v56 — a client room first: the chat, the homes shown and the visits stay on record (a call or WhatsApp does not) */}
       <div className="flex flex-wrap gap-1.5">

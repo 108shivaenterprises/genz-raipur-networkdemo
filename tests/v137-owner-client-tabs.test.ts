@@ -119,7 +119,8 @@ describe('v137 owner + client screens', () => {
   });
   it('v152 — chat rows carry DEAL/CLIENT/OWNER/SHOP tags, shop leads are chats, search covers homes and needs, a deal chat shows the next step, the bot can send / book / ask / find / show commission', () => {
     const cv = src('src/components/ChatsView.tsx');
-    for (const id of ['chat-tag-', 'chats-filter-', 'chats-found', 'shop-chat-pane', 'deal-next-step']) expect(cv, id).toContain(id);
+    for (const id of ['chat-tag-', 'chats-filter-', 'chats-found', 'deal-next-step']) expect(cv, id).toContain(id);
+    expect(src('src/components/ShopLeadChat.tsx')).toContain('shop-chat-pane'); // v163: a shop customer's chat is a real chat screen, not a card
     expect(cv).toContain("label: r.kind === 'OWNER' ? 'OWNER' : 'CLIENT'"); expect(cv).toContain('api.spList()'); expect(cv).toContain("'LeadCard'");
     expect(src('src/components/ShopPartners.tsx')).toContain('export const LeadCard');
     const bot = src('src/components/SahayakBot.tsx');
