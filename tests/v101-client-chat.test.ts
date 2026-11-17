@@ -176,10 +176,12 @@ describe('v101 — his number opens (a home of the broker’s own fits): one buy
     expect((await form(undefined, `/q/chat/${tok}/ans`, { a: 'YES' })).status).toBe(303);
   });
   it('the need made at confirm now carries the number (no second need), the room is open, and the chips stay under the last message', async () => {
+    const pageBefore = await chat(tok);   // the chips sit under the last message until the broker writes (his visit line comes next)
+    { const l0 = await lead('9802'); const h0 = l0.chat.msgs.find((m: any) => m.kind === 'HOME').homeId; await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l0.id}/visit`, { homeId: h0, when: 'Sunday 11 am' }); }   // v165 — the visit opens the number
     const l = await lead('9802'); expect(l.masked).toBe(false); expect(l.phone).toBe(MOHIT);
     const needs = await reqsOf('Mohit QA'); expect(needs).toHaveLength(1); expect(needs[0].customerPhone).toBe(MOHIT); expect(needs[0].leadId).toBe(l.id);
     expect(l.bot.room).toBe(true); expect(l.clientCardId).toBeTruthy();
-    expect(lastBot(l).kind).toBe('CHIPS'); const page = await chat(tok); expect(page).toContain('data-testid="chat-room"'); expect(page).toContain('data-testid="bot-chips"');
+    expect(lastBot(l).kind).toBe('CHIPS'); const page = await chat(tok); expect(page).toContain('data-testid="chat-room"'); expect(pageBefore).toContain('data-testid="bot-chips"');
   });
   it('a later change in the open chat (budget) moves the buyer need and the client card, and the bot answers', async () => {
     const n0 = bots(await lead('9802')).length; await say(tok, 'mera budget 4 crore hai'); const l = await lead('9802');

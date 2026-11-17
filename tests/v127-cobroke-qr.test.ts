@@ -101,6 +101,8 @@ describe('co-broke from a QR lead (v127)', { timeout: 180000 }, () => {
   it('now broker 1 can share it: the number opens, the home is in the chat and in the room, broker 2 is not named to the customer', async () => {
     const l = await lead('1271'); expect(l.matches.map((m: any) => m.id)).toEqual([H]);
     const o = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/offer`, { homeId: H }); expect(o.status, await o.clone().text()).toBe(200);
+    expect((await lead('1271')).chat.revealedAt).toBeFalsy();   // v165 — only a created visit opens the number
+    expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/visit`, { homeId: H, when: 'Sunday 11 am' })).status).toBe(200);
     expect((await lead('1271')).chat.revealedAt).toBeTruthy();
     const html = await chat(tok); expect(html).toContain('Cobroke farm house'); expect(html).not.toMatch(/Amit Verma|Shri Kripa/);
     const rooms = ((await j(await call(jar.BRK1, 'GET', '/api/client-rooms'))).rooms || []) as any[]; const rm = rooms.find(x => x.clientName === 'Kiran Cobroke'); expect(rm).toBeTruthy();

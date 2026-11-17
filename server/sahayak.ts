@@ -142,7 +142,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     say(l, `✅ आपकी ज़रूरत से मेल खाते ${n} ${n === 1 ? 'घर' : 'घर'} ऊपर भेजे हैं — ये अभी उपलब्ध हैं (बिके या किराये पर गए घर मैं नहीं दिखाता)। पसंद आए तो 📅 विज़िट चुनें।`,
       `I have sent ${n} matching home${n === 1 ? '' : 's'} above — they are available right now (I never show a sold or rented home). If you like one, choose 📅 visit.`, menu(l));
     autoRoom(l);   // v101 — his number is open now: the client room opens by itself (it needs his number)
-    if (why === 'first' || !l.chat!.revealedAt) d.tellBroker(l, `🤖 ${l.name}: ज़रूरत पक्की`, `सहायक ने ${n} मेल खाते घर भेजे — अब उसका नंबर आपको दिखेगा।`);
+    if (why === 'first' || !l.chat!.revealedAt) d.tellBroker(l, `🤖 ${l.name}: ज़रूरत पक्की`, `सहायक ने ${n} मेल खाते घर भेजे — विज़िट तय होते ही उसका नंबर दिखेगा।`);
     else d.tellBroker(l, `🤖 ${l.name}: ${n} और घर भेजे`, 'सहायक ने चैट में नए मेल खाते घर दिखाए।');
     return n;
   }
@@ -436,7 +436,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       `🆕 ${n === 1 ? 'A new home' : `${n} new homes`} that fit${n === 1 ? 's' : ''} your need just came — I have sent ${n === 1 ? 'it' : 'them'} above. If you like ${n === 1 ? 'it' : 'one'}, choose 📅 visit.`, menu(l));
     d.hist(l, `The assistant showed ${n} new matching home(s) that came after he confirmed: ${pick.map(h => `“${h.title}”`).join(', ').slice(0, 160)}`);
     if (b.needsBroker === 'no-match') b.needsBroker = undefined;
-    if (!wasOpen) d.tellBroker(l, `🤖 ${l.name}: नया घर आया — नंबर खुल गया`, `सहायक ने ${n} नया मेल खाता घर भेजा — अब उसका नंबर आपको दिखेगा।`);
+    if (!wasOpen) d.tellBroker(l, `🤖 ${l.name}: नया घर आया`, `सहायक ने ${n} नया मेल खाता घर भेजा — विज़िट तय होते ही उसका नंबर दिखेगा।`);
     else d.tellBroker(l, `🆕 ${l.name}: ${n} नया घर भेजा`, 'नया मेल खाता घर आया — सहायक ने चैट में दिखा दिया।');
     d.ping(l, 'HOME'); return 2;
   }
@@ -656,6 +656,21 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     return { ok: true, push: true };
   }
 
+  /** v165 — the broker creates the visit himself for a home he already sent: the customer is told in the chat, the number opens */
+  function brokerSchedule(l: PartnerLead, homeId: string, when: string, brokerName: string): { ok: true } | { ok: false; error: string; status?: number } {
+    const b = botOf(l); const h = propOf(homeId);
+    if (!h || !sentIds(l).includes(homeId)) return { ok: false, error: 'Share this home in the chat first', status: 400 };
+    const t = String(when || '').trim().slice(0, 80);
+    if (t.length < 3) return { ok: false, error: 'Write the visit day and time (for example “Sunday 11 am”)' };
+    if (containsContact(t)) return { ok: false, error: 'Do not write a phone number or any contact id' };
+    const v: LeadVisitReq = { id: `LVR-${rnd()}`, at: nowIso(), homeId, title: h.title.slice(0, 120), preferred: t, status: 'OK', answeredAt: nowIso() };
+    (b.visits ||= []).push(v);
+    d.addMsg(l, { by: 'BROKER', kind: 'MSG', text: `📅 ${first(brokerName) || 'ब्रोकर'} ने विज़िट तय की: “${v.title}” · ${t}।`, vid: v.id });
+    d.hist(l, `Broker created a visit to “${v.title}” — ${t}`);
+    d.visitAgreed(l, v.id);
+    return { ok: true };
+  }
+
   /** the broker wrote himself: the assistant keeps quiet for a while */
   function brokerSaid(l: PartnerLead) { const b = botOf(l); if (b.interview && !b.interview.doneAt) b.interview.step = undefined; /* the broker is asking him himself — the owner can resume with the “finish the details” button */ b.quietUntil = new Date(Date.now() + BOT_LIMITS.quietMinutes * 60_000).toISOString(); b.needsBroker = undefined; }
 
@@ -683,6 +698,6 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
     network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
-  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed, syncRoom, remindVisits };
+  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSchedule, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed, syncRoom, remindVisits };
 }
 export type Sahayak = ReturnType<typeof makeSahayak>;

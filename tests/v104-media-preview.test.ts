@@ -206,6 +206,7 @@ describe('photos & video in the chat, and a real video upload (v104)', { timeout
   });
 
   it('his client room opens with the same PUBLIC photos / video the chat showed (an /m/ link, never the login-only one)', async () => {
+    { const l0 = await lead('0401'); const h0 = l0.chat.msgs.find((m: any) => m.kind === 'HOME').homeId; await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l0.id}/visit`, { homeId: h0, when: 'Sunday 11 am' }); }   // v165 — the visit opens the number
     const r = await tap(tokA, 'ROOM'); expect(r.status).toBe(303);
     const l = await lead('0401');
     const rooms = (await j(await call(jar.BRK1, 'GET', '/api/client-rooms'))).rooms as any[];

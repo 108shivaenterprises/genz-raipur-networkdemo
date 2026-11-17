@@ -282,6 +282,7 @@ function visitAgreed(l: PartnerLead, vid: string) {
   const first = !l.chat.revealedAt;
   revealNumber(l, { homeId: v.homeId, title: v.title });
   autoStage(l, 'CONTACTED', 'A visit was agreed in the chat');
+  try { sahayak.syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); }   // his held room is the broker's now, with the homes in it
   if (first) db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_NUMBER_SHOWN', `Number shown to the broker after a visit to “${v.title}” was agreed in the chat`);
 }
 
@@ -292,12 +293,9 @@ function shareHomeAuto(l: PartnerLead, h: Property, by: 'BOT' | 'CUSTOMER') {
   const b = homeBrief(h);
   addMsg(l, { by: 'BOT', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
   makeBuyerBond({ brokerId: l.brokerId, propertyId: h.id, buyerPhone: l.phone, buyerName: l.name, source: 'SHOWN', sourceId: l.id });   // v127
-  const first = !l.chat.revealedAt;
-  revealNumber(l, { homeId: h.id, title: h.title });
   autoStage(l, 'CONTACTED', 'GENZ assistant showed a matching home');
   hist(l, 'SYSTEM', `GENZ assistant showed “${h.title}” in the chat${by === 'CUSTOMER' ? ' (he picked it on Explore)' : ''}`);
-  db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED',
-    first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}, listed ${(h as any).createdAt || 'before v92'}) was shown by the GENZ assistant` : `Another home (${h.id}) shown in the chat by the GENZ assistant`);
+  db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_HOME_SHARED', `Home (${h.id}) shown in the chat by the GENZ assistant — the number stays hidden until a visit is created`);
 }
 /** what the customer wrote → the lead (budget / type / area / BHK; buy↔rent only before the number is open). Returns the words of what changed. */
 function applyNeedChange(l: PartnerLead, ch: NeedChange): string[] {
@@ -816,6 +814,15 @@ export function createShopPartnerRouter() {
     void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
     res.json({ success: true, lead: leadView(l) });
   });
+  /** v165 — the broker himself creates the visit for a home he shared (the number is still hidden): the customer sees it in the chat and the number opens now — the visit need not be done */
+  r.post('/leads/:id/visit', needs('partner:manage'), (req: Request, res: Response) => {
+    const l = chatLead(req, res); if (!l?.chat) return;
+    const out = sahayak.brokerSchedule(l, str(req.body?.homeId, 40), str(req.body?.when, 80), me().name);
+    if (!out.ok) return bad(res, out.error, out.status || 400);
+    l.chat.brokerSeenAt = nowIso(); audit(l.id, 'SHOP_LEAD_VISIT_CREATED', 'Broker created a visit from the chat — number shown'); db.save();
+    void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
+    res.json({ success: true, lead: leadView(l) });
+  });
   /** v97 — the broker answers a visit request the customer made in the chat: yes / another time / no */
   r.post('/leads/:id/visit/:vid', needs('partner:manage'), (req: Request, res: Response) => {
     const l = chatLead(req, res); if (!l?.chat) return;
@@ -868,12 +875,10 @@ export function createShopPartnerRouter() {
     addMsg(l, { by: 'BROKER', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
     makeBuyerBond({ brokerId: l.brokerId, propertyId: h.id, buyerPhone: l.phone, buyerName: l.name, source: 'SHOWN', sourceId: l.id });   // v127
     l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l);
-    const first = !l.chat.revealedAt;
-    revealNumber(l, { homeId: h.id, title: h.title });
     autoStage(l, 'CONTACTED', 'Broker shared a matching home');
     try { sahayak.syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); }   // v105 — the home he sent is in his client room too
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
-    audit(l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED', first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}, listed ${(h as any).createdAt || 'before v92'}) was shared` : `Another home (${h.id}) shared in the chat`);
+    audit(l.id, 'SHOP_LEAD_HOME_SHARED', `Home (${h.id}) shared in the chat — the number stays hidden until a visit is created`);
     db.save();
     void brokerWrote(`lc-${l.id}`, me().name, 'HOME');
     res.json({ success: true, lead: leadView(l) });

@@ -66,7 +66,8 @@ describe('J1 · shop QR → the broker’s own home → client room → deal', {
     const m = (await list()).leads.find((l: any) => l.id === leadId).matches as any[]; expect(m.length, 'the bot finds a matching home').toBeGreaterThan(0);
     const home = m[0];
     own = ((await j(await call(jar.BRK1, 'GET', '/api/properties'))).properties as any[]).find(p => p.id === home.id) || own;   // the home the bot found for him
-    const r = await j(await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/offer`, { homeId: home.id })); expect(r.lead.masked).toBe(false);
+    const r = await j(await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/offer`, { homeId: home.id })); expect(r.lead.masked).toBe(true);   // v165 — a shared home alone keeps the number hidden
+    const vr = await j(await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/visit`, { homeId: home.id, when: 'Sunday 11 am' })); expect(vr.lead.masked).toBe(false); r.lead = vr.lead;
     const card = (await clientsOf('BRK1')).find(c => c.id === r.lead.clientCardId); expect(card, 'the client card').toBeTruthy();
     cardId = card.id; expect(card.needId, 'the card points at its need').toBeTruthy(); needId = card.needId;
     const need = (await needsOf('BRK1')).filter(q => String(q.customerPhone).endsWith(CUST.slice(-10)));

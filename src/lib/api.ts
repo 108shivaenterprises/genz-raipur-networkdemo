@@ -632,6 +632,7 @@ export const api = {
   spBotLead: (id: string, off: boolean) => request<any>(`/api/shop-partners/leads/${id}/bot`, { method: 'POST', body: JSON.stringify({ off }) }),
   spVisitReply: (id: string, vid: string, action: 'OK' | 'COUNTER' | 'NO', text?: string) => request<any>(`/api/shop-partners/leads/${id}/visit/${vid}`, { method: 'POST', body: JSON.stringify({ action, text }) }),
   spAskNeed: (id: string) => request<any>(`/api/shop-partners/leads/${id}/ask-need`, { method: 'POST', body: '{}' }),
+  spVisitCreate: (id: string, homeId: string, when: string) => request<any>(`/api/shop-partners/leads/${id}/visit`, { method: 'POST', body: JSON.stringify({ homeId, when }) }),
   spOffer: (id: string, homeId: string) => request<any>(`/api/shop-partners/leads/${id}/offer`, { method: 'POST', body: JSON.stringify({ homeId }) }),
   spLeadStatus: (id: string, status: string, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) }),
   // v82 — "Deal done" takes the share from the deal itself; a typed brokerage is only a correction (with a reason) or for a deal that is not in the app

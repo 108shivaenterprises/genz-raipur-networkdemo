@@ -62,7 +62,7 @@ async function reveal(phone: string, kind: string, budget: string, ptype = 'Hous
   await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/ask-need`);
   await form(undefined, `/q/chat/${t}/ans`, { a: 'YES' });
   const m = (await leadByLast4(last4)).matches;
-  if (m.length) return (await (await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/offer`, { homeId: m[0].id })).json()).lead;
+  if (m.length) { await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/offer`, { homeId: m[0].id }); return (await (await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/visit`, { homeId: m[0].id, when: 'Sunday 11 am' })).json()).lead; }   // v165 — the visit opens the number
   return { id: l.id, matches: m };
 }
 

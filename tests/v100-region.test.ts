@@ -131,6 +131,7 @@ describe('the shop QR: a customer at a Pune shop names another city', { timeout:
     expect(l.city).toBe('Raipur');
     const homes = homesOf(l); expect(homes.length).toBeGreaterThan(0);
     for (const h of homes) expect(cityOfId(h), h).toBe('Raipur');
+    await call(s.ck, 'POST', `/api/shop-partners/leads/${l.id}/visit`, { homeId: homes[0], when: 'Sunday 11 am' });   // v165 — the visit opens the number (the need then carries it)
     const need = (await (await call(s.ck, 'GET', '/api/requirements')).json()).requirements.find((q: any) => String(q.customerPhone).endsWith('9123459821'));
     expect(need, 'a buyer need was made').toBeTruthy(); expect(need.city).toBe('Raipur');
     const stored = await leadRaw('9123459821', x => !!x.wantCity); expect(stored.wantCity).toBe('Raipur');

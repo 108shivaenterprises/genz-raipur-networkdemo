@@ -97,6 +97,7 @@ describe('the client room follows the chat (v105)', { timeout: 180000 }, () => {
   it('A confirms → the assistant shows 3 homes and opens his room with those 3 (and the public photo as an /m/ link)', async () => {
     tokA = tokOf(await scan('Asha Room', A)); expect(tokA).toBeTruthy();
     expect((await form(undefined, `/q/chat/${tokA}/ans`, { a: 'YES' })).status).toBe(303);
+    { const l0 = await lead('0501'); await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l0.id}/visit`, { homeId: homesOf(l0)[0], when: 'Sunday 11 am' }); }   // v165 — a created visit opens the number, and his held room becomes the broker's
     const l = await lead('0501'); const shown = homesOf(l); expect(shown.length).toBe(3);
     const inRoom = await roomHomes('Asha Room'); expect([...inRoom].sort()).toEqual([...shown].sort());
     const room = await roomOf('Asha Room'); const withPhoto = room.items.find((i: any) => i.propertyId === hs[0]);
@@ -128,6 +129,7 @@ describe('the client room follows the chat (v105)', { timeout: 180000 }, () => {
     const mkRoom = await call(jar.BRK1, 'POST', '/api/client-rooms', { clientName: 'Chetan Room', phone: C, kind: 'BUYER', consent: true }); expect(mkRoom.status, await mkRoom.clone().text()).toBe(200);
     tokC = tokOf(await scan('Chetan Room', C)); expect(tokC).toBeTruthy();
     expect((await form(undefined, `/q/chat/${tokC}/ans`, { a: 'YES' })).status).toBe(303);
+    { const l0 = await lead('0503'); await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l0.id}/visit`, { homeId: homesOf(l0)[0], when: 'Sunday 11 am' }); }   // v165 — the visit opens the number
     const l = await lead('0503'); const shown = homesOf(l); expect(shown.length).toBeGreaterThan(0);
     const inRoom = await until(() => roomHomes('Chetan Room'), v => shown.every(x => v.includes(x))); for (const h of shown) expect(inRoom, h).toContain(h);
     expect((await rooms()).filter(x => x.clientName === 'Chetan Room' && x.status === 'ACTIVE').length).toBe(1);        // still one room

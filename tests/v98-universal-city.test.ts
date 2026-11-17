@@ -128,6 +128,7 @@ describe('v98 — a shop in Pune, end to end (the broker’s home city is Raipur
     expect((await form(undefined, `/q/chat/${tok}/ans`, { a: 'YES' })).status).toBe(303);
     l = await lead('9801');
     expect(l.chat.msgs.filter((m: any) => m.kind === 'HOME').map((m: any) => m.homeId)).toContain(mine);
+    expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/visit`, { homeId: mine, when: 'Sunday 11 am' })).status).toBe(200); l = await lead('9801');   // v165 — the visit opens the number
     expect(l.masked).toBe(false); expect(l.clientCardId).toBeTruthy();
     const cards = await (await call(jar.BRK1, 'GET', '/api/daily/clients')).json();
     const card = (cards.clients || []).find((c: any) => c.id === l.clientCardId);

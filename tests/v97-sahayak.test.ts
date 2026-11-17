@@ -91,7 +91,7 @@ describe('GENZ सहायक — buyer chat from the QR to a visit', { timeout
     const l = await lead('9701');
     homes = l.chat.msgs.filter((m: any) => m.kind === 'HOME').map((m: any) => m.homeId);
     expect(homes.length).toBeGreaterThan(1); expect(homes.length).toBeLessThanOrEqual(3); expect(homes).toContain(mine);
-    expect(l.masked).toBe(false); expect(l.phone).toBe(BUYER); expect(l.clientCardId).toBeTruthy();
+    expect(l.masked).toBe(true);   // v165 — homes shown, number still hidden until a visit is created
     expect(lastBot(l).kind).toBe('CHIPS'); expect(lastBot(l).chips.map((c: any) => c.id)).toEqual(expect.arrayContaining(['VISIT', 'MORE', 'HUMAN']));   // v101 — the client room opens by itself with the first home, so no 🏠 chip (and the chips stay under the LAST message)
     const page = await chat(tok); expect(page).toContain('data-testid="bot-chips"'); expect(page).toContain('data-testid="chat-explore"');
     const all = (await (await call(jar.BRK1, 'GET', '/api/properties')).json()).properties;
@@ -132,6 +132,7 @@ describe('GENZ सहायक — buyer chat from the QR to a visit', { timeout
     l = await lead('9701'); expect(l.bot.visits[0].status).toBe('COUNTER'); expect(lastBot(l).chips.map((c: any) => c.id)).toEqual([`VOK:${v.id}`, `VAGAIN:${v.id}`]);
     await tap(tok, `VOK:${v.id}`);
     l = await lead('9701'); expect(l.bot.visits[0].status).toBe('OK'); expect(l.bot.visits[0].preferred).toBe('Sunday 11 am');
+    expect(l.masked).toBe(false); expect(l.phone).toBe(BUYER); expect(l.clientCardId).toBeTruthy();   // v165 — the customer took his time: the visit is agreed, the number opens (the visit is not done yet)
   });
   it('forged chips do nothing: a home that was never sent, an unknown visit id, an unknown key', async () => {
     const before = await lead('9701');

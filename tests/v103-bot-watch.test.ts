@@ -94,7 +94,8 @@ describe('the assistant follows the homes by itself (v103)', { timeout: 120000 }
     expect((await form(undefined, `/q/chat/${tokA}/ans`, { a: 'YES' })).status).toBe(303);
     expect((await form(undefined, `/q/chat/${tokB}/ans`, { a: 'YES' })).status).toBe(303);
     const a = await lead('0301'); const b = await lead('0302'); const c = await lead('0303');
-    expect(homesOf(a).length).toBeGreaterThan(0); expect(a.masked).toBe(false); expect(a.bot.following).toBe(true);
+    expect(homesOf(a).length).toBeGreaterThan(0); expect(a.masked).toBe(true); expect(a.bot.following).toBe(true);   // v165 — number opens only when a visit is created
+    expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${a.id}/visit`, { homeId: homesOf(a)[0], when: 'Sunday 11 am' })).status).toBe(200);
     expect(homesOf(b)).toHaveLength(0); expect(b.masked).toBe(true); expect(botText(b)).toContain('as soon as it comes');   // the promise the assistant now keeps
     expect(c.chat.reqConfirmedAt).toBeNull(); expect(c.bot.following).toBe(false);
   });
@@ -123,8 +124,8 @@ describe('the assistant follows the homes by itself (v103)', { timeout: 120000 }
     await chatPage(tokB);
     const b = await until('0302', l => homesOf(l).length > 0);
     expect(homesOf(b).length).toBeGreaterThan(0); expect(homesOf(b).every((id: string) => [h2, h3].includes(id))).toBe(true);
-    expect(b.masked).toBe(false); expect(botText(b)).toContain('new home');
-    expect((await inbox()).some(i => /नंबर खुल गया/.test(i.title) && /Bimal Watch/.test(i.title))).toBe(true);
+    expect(b.masked).toBe(true); expect(botText(b)).toContain('new home');
+    expect((await inbox()).some(i => /नया घर आया/.test(i.title) && /Bimal Watch/.test(i.title))).toBe(true);
   });
 
   it('a home he was shown is SOLD → one plain line + the card carries the status + the next best home; the broker is not spammed; saying it twice never happens', async () => {

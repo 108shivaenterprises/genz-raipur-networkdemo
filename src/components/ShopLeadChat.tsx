@@ -12,7 +12,7 @@ const initials = (n: string) => String(n || '').split(/\s+/).filter(Boolean).sli
 /** v163 — a shop-QR customer's chat opens like every other chat: name on top, the thread, the message box. Lead details (status, room, deal) sit behind "Details". */
 export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () => void; extra?: React.ReactNode }> = ({ l, onBack, onChange, extra }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
-  const [details, setDetails] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [visitFor, setVisitFor] = useState(''); const [when, setWhen] = useState(''); const [details, setDetails] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const c = l.chat; const owner = l.kind === 'SELL' || l.kind === 'RENT_OUT'; const kind = LEAD_KINDS.find(k => k.id === l.kind);
   useEffect(() => { if ((c?.unread || 0) > 0) void api.spLeadSeen(l.id).then(onChange).catch(() => undefined); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [l.id, c?.unread]);
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
@@ -22,14 +22,27 @@ export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () =
     return { id: String(i), mine: m.by === 'BROKER' || m.by === 'BOT', who: m.by === 'BOT' ? tx('🤖 GENZ assistant', '🤖 GENZ सहायक') : m.by === 'SYSTEM' ? 'GENZ' : l.name, text, at: m.at };
   });
   const matches: any[] = l.matches || [];
+  const shared: any[] = (c?.msgs || []).filter((m: any) => m.kind === 'HOME' && m.homeId && !m.gone).reduce((a: any[], m: any) => a.some(x => x.homeId === m.homeId) ? a : [...a, m], []);
+  const visitBox = l.masked && !owner && shared.length > 0 && (
+    <div className="space-y-1" data-testid="sp-visit-create">
+      <p className="text-xs font-semibold text-indigo-900">{tx('He likes a home? Schedule the visit — his number shows right then (the visit need not be done).', 'पसंद आया? विज़िट तय करें — तभी नंबर दिखेगा (विज़िट होना ज़रूरी नहीं)।')}</p>
+      {shared.map((h: any) => visitFor === h.homeId ? (
+        <div key={h.homeId} className="flex gap-1">
+          <input value={when} onChange={e => setWhen(e.target.value)} maxLength={80} placeholder={tx('Sunday 11 am', 'रविवार सुबह 11')} data-testid="sp-visit-when" className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-2 text-xs" />
+          <button type="button" disabled={busy || when.trim().length < 3} onClick={() => run(async () => { await api.spVisitCreate(l.id, h.homeId, when.trim()); setVisitFor(''); setWhen(''); })} data-testid="sp-visit-go" className="min-h-10 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white">{tx('Create visit', 'विज़िट बनाएँ')}</button>
+        </div>
+      ) : <button key={h.homeId} type="button" onClick={() => setVisitFor(h.homeId)} data-testid={`sp-visit-${h.homeId}`} className="flex min-h-10 w-full items-center justify-between rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-900"><span className="truncate">📅 {h.title}</span><span>{tx('Schedule visit', 'विज़िट तय करें')}</span></button>)}
+    </div>
+  );
   const top = (
     <div className="space-y-1">
       {l.masked && c?.reqConfirmedAt && !owner && matches.length > 0 && (
         <div className="space-y-1" data-testid="sp-matches">
-          <p className="text-xs font-semibold text-emerald-900">{tx('He confirmed his need. Share a matching home — his number shows after you share:', 'उन्होंने ज़रूरत पक्की की। मेल खाता घर शेयर करें — शेयर करते ही नंबर दिखेगा:')}</p>
+          <p className="text-xs font-semibold text-emerald-900">{tx('He confirmed his need. Share a matching home, then schedule a visit — his number shows once the visit is created:', 'उन्होंने ज़रूरत पक्की की। मेल खाता घर शेयर करें, फिर विज़िट तय करें — विज़िट बनते ही नंबर दिखेगा:')}</p>
           {matches.map(h => <button key={h.id} type="button" disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-offer-${h.id}`} className="flex min-h-10 w-full items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-900"><span className="truncate">🏠 {h.title}</span><span>{h.price}</span></button>)}
         </div>
       )}
+      {visitBox}
       {l.masked && c?.reqConfirmedAt && !owner && matches.length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it. Add or switch on a matching listing — his number stays hidden until you share one.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर मेल नहीं खाता। मेल खाता लिस्टिंग जोड़ें / चालू करें — तब तक नंबर छुपा रहेगा।')}</p>}
       {l.masked && c && !c.reqConfirmedAt && !c.reqAskedAt && <button type="button" disabled={busy} onClick={() => run(() => api.spAskNeed(l.id))} data-testid="sp-ask-need" className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">✔ {tx('Ask him to confirm his need', 'उनसे ज़रूरत पक्की करवाएँ')}</button>}
       {l.masked && c?.reqAskedAt && !c.reqConfirmedAt && <p className="text-xs text-slate-700" data-testid="sp-need-waiting">⏳ {tx('Waiting for him to confirm: ', 'उनकी पुष्टि का इंतज़ार: ')}{l.needLine}</p>}

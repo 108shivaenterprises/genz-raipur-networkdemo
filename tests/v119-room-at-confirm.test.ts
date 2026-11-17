@@ -104,6 +104,7 @@ describe('the room opens at confirm, the broker gets it with the number (v119)',
     await sleep(11500);
     const l = await lead('1901');
     const o = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/offer`, { homeId }); expect(o.status, await o.clone().text()).toBe(200);
+    expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/visit`, { homeId, when: 'Sunday 11 am' })).status).toBe(200);   // v165 — the visit opens the number
     await chat(tok);   // opening his chat page levels the room with the chat (v105)
     const got = await until(rooms, v => v.some(x => x.clientName === 'Hira Held'), 6000);
     expect(got.some(x => x.clientName === 'Hira Held')).toBe(true);

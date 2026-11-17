@@ -104,9 +104,13 @@ describe('shop QR lead: the number stays hidden until the need is confirmed in c
     const r = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/offer`, { homeId: rent?.id || 'PROP-NOT-THERE' }); expect(r.status).toBe(400);
     expect((await leadByLast4('5501')).masked).toBe(true);                       // a refused offer shows nothing
   });
-  it('sharing a matching home shows the number to the broker (once), puts the home in the customer’s chat and makes the client card', async () => {
+  it('sharing a matching home then creating a visit shows the number to the broker (once), puts the home in the customer’s chat and makes the client card', async () => {
+    expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/visit`, { homeId: matchId, when: 'Sunday 11 am' })).status).toBe(400);   // a home not shared yet cannot be visited
     const r = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/offer`, { homeId: matchId }); expect(r.status).toBe(200);
-    const l = (await r.json()).lead;
+    expect((await r.json()).lead.masked).toBe(true);
+    expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/visit`, { homeId: matchId, when: 'call 9876543210' })).status).toBe(400);   // v165 — sharing a home alone does not open the number
+    const v = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/visit`, { homeId: matchId, when: 'Sunday 11 am' }); expect(v.status).toBe(200);   // a created visit does — it need not be done
+    const l = (await v.json()).lead;
     expect(l.masked).toBe(false); expect(l.phone).toBe(BUYER); expect(l.clientCardId).toBeTruthy(); expect(l.chat.revealedAt).toBeTruthy();
     const page = await (await fetch(`${B}/q/chat/${tok}`)).text(); expect(page).toContain('🏠'); expect(page).toContain('अब ब्रोकर को दिख गया');
     const audit = await (await call(jar.BRK1, 'GET', '/api/shop-partners')).json(); expect(audit.success).toBe(true);
