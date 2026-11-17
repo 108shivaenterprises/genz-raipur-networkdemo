@@ -267,6 +267,24 @@ function revealNumber(l: PartnerLead, how: { homeId?: string; title?: string }) 
   addMsg(l, { by: 'SYSTEM', kind: 'INFO', text: how.title ? 'आपका नंबर अब ब्रोकर को दिख गया है — आपकी ज़रूरत से मेल खाता घर शेयर हुआ। / The broker can now see your number — a home matching your need was shared.' : 'आपका नंबर अब ब्रोकर को दिख गया है। / The broker can now see your number.' });
 }
 
+/** v164 — the stage follows the chat by itself (forward only; never past what the broker set, never on closed leads); the shop is told once per step */
+const STAGE_ORDER = ['NEW', 'CONTACTED', 'VISIT', 'NEGOTIATION'];
+function autoStage(l: PartnerLead, to: 'CONTACTED' | 'NEGOTIATION', why: string) {
+  if (!STAGE_ORDER.includes(l.status) || STAGE_ORDER.indexOf(to) <= STAGE_ORDER.indexOf(l.status)) return;
+  l.status = to; hist(l, 'SYSTEM', `${why} — lead moved to “${LEAD_STATUSES.find(x => x.id === to)!.en}” automatically`);
+  const p = partnerOf(l.partnerId); const st2 = LEAD_STATUSES.find(x => x.id === to)!;
+  if (p) tellShop(p, `लीड आगे बढ़ी: ${st2.hi}`, `Lead moved: ${st2.en}`, `${l.locality} वाली आपकी लीड पर काम चल रहा है।`, `stage-${l.id}-${to}`);
+}
+
+/** v164 — a visit is agreed (broker said yes, or the customer accepted his other time): the number opens now and the lead is "Spoke" */
+function visitAgreed(l: PartnerLead, vid: string) {
+  const v = (l.chat?.bot?.visits || []).find(x => x.id === vid); if (!v || !l.chat) return;
+  const first = !l.chat.revealedAt;
+  revealNumber(l, { homeId: v.homeId, title: v.title });
+  autoStage(l, 'CONTACTED', 'A visit was agreed in the chat');
+  if (first) db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_LEAD_NUMBER_SHOWN', `Number shown to the broker after a visit to “${v.title}” was agreed in the chat`);
+}
+
 // ───────────────────────────── v97 — GENZ सहायक (the chat helper): its hands in this module ─────────────────────────────
 /** the assistant (or the customer's own tap on Explore) shows a home in the chat — same effect as the broker's "share a home": the number opens once, with the audit line */
 function shareHomeAuto(l: PartnerLead, h: Property, by: 'BOT' | 'CUSTOMER') {
@@ -276,6 +294,7 @@ function shareHomeAuto(l: PartnerLead, h: Property, by: 'BOT' | 'CUSTOMER') {
   makeBuyerBond({ brokerId: l.brokerId, propertyId: h.id, buyerPhone: l.phone, buyerName: l.name, source: 'SHOWN', sourceId: l.id });   // v127
   const first = !l.chat.revealedAt;
   revealNumber(l, { homeId: h.id, title: h.title });
+  autoStage(l, 'CONTACTED', 'GENZ assistant showed a matching home');
   hist(l, 'SYSTEM', `GENZ assistant showed “${h.title}” in the chat${by === 'CUSTOMER' ? ' (he picked it on Explore)' : ''}`);
   db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED',
     first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}, listed ${(h as any).createdAt || 'before v92'}) was shown by the GENZ assistant` : `Another home (${h.id}) shown in the chat by the GENZ assistant`);
@@ -317,7 +336,7 @@ export const previewMedia = (h?: Property): { photos: string[]; videos: string[]
   return { photos: m.photos.slice(0, 10), videos: m.videos.slice(0, 2) };
 };
 export const sahayak = makeSahayak({
-  addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, heldElsewhere, needLine, shareHome: shareHomeAuto, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
+  addMsg, hist: (l, text) => hist(l, 'SYSTEM', text), matchesFor, heldElsewhere, needLine, shareHome: shareHomeAuto, visitAgreed, ownerSide, broker: l => userOf(l.brokerId), tellBroker: botTell,
   audit: (l, action, text) => db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, action, text),
   isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead, networkScan,
   media: h => { const m = previewMedia(h); return { photos: m.photos.length, videos: m.videos.length }; },
@@ -802,6 +821,7 @@ export function createShopPartnerRouter() {
     const l = chatLead(req, res); if (!l?.chat) return;
     const out = sahayak.brokerReply(l, String(req.params.vid), String(req.body?.action || ''), str(req.body?.text, 80), me().name);
     if (!out.ok) return bad(res, out.error, out.status || 400);
+    if (String(req.body?.action) === 'OK') visitAgreed(l, String(req.params.vid));
     l.chat.brokerSeenAt = nowIso(); audit(l.id, 'SHOP_LEAD_VISIT_ANSWERED', `Broker answered the customer's visit request: ${String(req.body?.action)}`); db.save();
     void brokerWrote(`lc-${l.id}`, me().name, 'MSG');
     res.json({ success: true, lead: leadView(l) });
@@ -850,6 +870,7 @@ export function createShopPartnerRouter() {
     l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l);
     const first = !l.chat.revealedAt;
     revealNumber(l, { homeId: h.id, title: h.title });
+    autoStage(l, 'CONTACTED', 'Broker shared a matching home');
     try { sahayak.syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); }   // v105 — the home he sent is in his client room too
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
     audit(l.id, first ? 'SHOP_LEAD_NUMBER_SHOWN' : 'SHOP_LEAD_HOME_SHARED', first ? `Number shown to the broker after the need was confirmed in chat and a matching home (${h.id}, listed ${(h as any).createdAt || 'before v92'}) was shared` : `Another home (${h.id}) shared in the chat`);

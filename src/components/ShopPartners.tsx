@@ -393,7 +393,7 @@ export const LeadCard: React.FC<{ l: any; onChange: () => void; noChat?: boolean
       {l.status !== 'WON' ? (
         <div className="flex flex-wrap items-center gap-1">
           {LEAD_STATUSES.filter((s) => !['WON', 'LOST'].includes(s.id)).map((s) => (
-            <button key={s.id} disabled={busy} onClick={() => run(() => api.spLeadStatus(l.id, s.id))} className={`inline-flex min-h-9 items-center rounded-full border px-3 text-xs font-semibold ${l.status === s.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? s.hi : s.en}</button>
+            <span key={s.id} data-testid="sp-stage" className={`inline-flex min-h-7 items-center rounded-full border px-3 text-xs font-semibold ${l.status === s.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{hi ? s.hi : s.en}</span>
           ))}
           <button onClick={() => setMode(mode === 'won' ? '' : 'won')} className="inline-flex min-h-9 items-center rounded-full border border-emerald-500 bg-emerald-50 px-3 text-xs font-bold text-emerald-800" data-testid="sp-won">{tx('Deal done', 'डील हुई')}</button>
           <button onClick={() => setMode(mode === 'lost' ? '' : 'lost')} className={`inline-flex min-h-9 items-center rounded-full border px-3 text-xs font-semibold ${l.status === 'LOST' ? 'border-red-600 bg-red-600 text-white' : 'border-red-300 text-red-700'}`}>{tx('Not going ahead', 'आगे नहीं बढ़ी')}</button>

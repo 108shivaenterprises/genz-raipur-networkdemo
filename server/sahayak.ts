@@ -32,6 +32,8 @@ export interface BotDeps {
   ownerSide(l: PartnerLead): boolean;
   broker(l: PartnerLead): UserProfile | undefined;
   tellBroker(l: PartnerLead, title: string, body: string): void;
+  /** v164 — a visit was agreed: open the number, move the stage */
+  visitAgreed(l: PartnerLead, vid: string): void;
   audit(l: PartnerLead, action: string, text: string): void;
   isLive(h?: Property): boolean;
   /** v104 — how many PUBLIC photos / videos a home has for an anonymous customer (the same set the preview page shows) */
@@ -606,7 +608,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       }
       case 'VOK': {
         const v = (b.visits || []).find(x => x.id === arg); if (!v || v.status !== 'COUNTER') return;
-        v.status = 'OK'; v.answeredAt = nowIso(); v.preferred = v.counter || v.preferred; echo(`✔ ठीक है — ${v.preferred}`);
+        v.status = 'OK'; v.answeredAt = nowIso(); v.preferred = v.counter || v.preferred; echo(`✔ ठीक है — ${v.preferred}`); d.visitAgreed(l, v.id);
         say(l, `तय हो गया ✅ ${v.title} · ${v.preferred}। ब्रोकर आपसे यहीं पक्का करेंगे।`, `Settled ✅ ${v.title} · ${v.preferred}. The broker will confirm with you here.`);
         d.tellBroker(l, `✔ ${l.name} ने समय मान लिया`, `${v.title} · ${v.preferred} — अब विज़िट बुक करें।`); d.hist(l, `Accepted the visit time “${v.preferred}” for “${v.title}”`); return;
       }
