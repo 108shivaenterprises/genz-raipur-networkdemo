@@ -174,6 +174,11 @@ export default function App() {
     requirementId?: string;
     receivingBrokerId: string;
   } | null>(null);
+  // v166 — a client room's "talk co-broking" button (a home he liked, listed by another broker) opens the same offer sheet
+  useEffect(() => {
+    const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d?.propertyId && d?.receivingBrokerId) setCollaborationTarget({ open: true, propertyId: d.propertyId, receivingBrokerId: d.receivingBrokerId }); };
+    window.addEventListener('genz:collab', h); return () => window.removeEventListener('genz:collab', h);
+  }, []);
   const [scheduleVisitTarget, setScheduleVisitTarget] = useState<{
     open: boolean;
     dealId?: string;

@@ -5,6 +5,7 @@ import { PageTitle } from './PageTitle.js';
 import { Property, UserProfile } from '../types/index.js';
 import { api, type PropertyFacets } from '../lib/api.js';
 import { formatINR, formatArea, getPropertyWhatsAppShareUrl } from '../lib/utils.js';
+import { SendToClient } from './SendToClient.js';
 import { PROPERTY_TYPES, INDIA_STATES, ALL_TAGS } from '../shared/india.js';
 import { MandateModal } from './MandateModal.js';
 import { useI18n, useTx } from '../lib/i18n.js';
@@ -123,6 +124,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
     return '';
   });
   const [selectedPropHistory, setSelectedPropHistory] = useState<Property | null>(null);
+  const [sendFor, setSendFor] = useState<Property | null>(null);   // v166 — "Send to client"
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -205,6 +207,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   return (
     <div className="space-y-6">
       {showDrafts && <ListingDrafts openId={draftOpenId} onClose={() => { setShowDrafts(false); setDraftOpenId(''); try { const u = new URL(window.location.href); u.searchParams.delete('drafts'); u.searchParams.delete('draft'); u.searchParams.delete('stext'); u.searchParams.delete('stitle'); u.searchParams.delete('surl'); window.history.replaceState(null, '', u.toString()); } catch { /* */ } }} onPublished={() => onPropertyUpdated?.()} />}
+      {sendFor && <SendToClient home={sendFor} onClose={() => setSendFor(null)} />}
       {postFor && <PostMaker home={{ title: postFor.title, propertyType: postFor.propertyType, transactionType: postFor.transactionType as 'Sale' | 'Rent' | 'Lease', city: postFor.city, locality: postFor.locality, askingPrice: postFor.askingPrice, builtUpAreaSqFt: postFor.builtUpAreaSqFt, plotAreaSqFt: postFor.plotAreaSqFt, tags: postFor.tags }} broker={currentUser.name} phone={currentUser.phone} link={decodeURIComponent(getPropertyWhatsAppShareUrl(postFor).split('text=')[1] || '').split('\n').find(l => l.startsWith('http'))} onClose={() => setPostFor(null)} />}
       {may('property:moderate') && <ConsentQueue />}
       {isOwner && <OwnerPanel onNew={onOpenAddProperty} refreshKey={properties.length} />}
@@ -428,6 +431,10 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               <button onClick={() => onScheduleVisit(p)} className={`${btn} border border-emerald-300 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100`} title={tx('Schedule verified site visit with client OTP anti-bypass protection', 'क्लाइंट OTP एंटी-बायपास सुरक्षा के साथ वेरिफ़ाइड साइट विज़िट तय करें')}>
                 <Clock className="h-3.5 w-3.5 text-emerald-600" /><span>{tx('Book visit', 'विज़िट तय करें')}</span>
               </button>) });
+            if (isBroker && !isClosed && may('clientroom:use')) actions.push({ key: 'send', node: (   // v166 — straight into his client's room
+              <button onClick={() => setSendFor(p)} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`} data-testid={`send-${p.id}`}>
+                <Share2 className="h-3.5 w-3.5" /><span>{tx('Send to client', 'क्लाइंट को भेजें')}</span>
+              </button>) });
             if (isMyListing && !isClosed) actions.push({ key: 'post', node: (
               <button onClick={() => setPostFor(p)} className={`${btn} border border-pink-300 bg-pink-50/70 text-pink-800 hover:bg-pink-100`} data-testid={`post-${p.id}`}>
                 <Share2 className="h-3.5 w-3.5 text-pink-600" /><span>{tx('Post text', 'पोस्ट बनाएँ')}</span>
@@ -444,6 +451,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               <button onClick={() => { window.location.href = `/?tab=due_diligence&propertyId=${p.id}`; }} className={`${btn} border border-blue-300 bg-blue-50/60 text-blue-800 hover:bg-blue-100`} title={tx('Launch or audit title due diligence', 'टाइटल ड्यू डिलिजेंस शुरू करें या जाँचें')}>
                 <ShieldCheck className="h-3.5 w-3.5 text-blue-600" /><span>{tx('Title check', 'टाइटल जाँच')}</span>
               </button>) });
+            actions.sort((a, b) => Number(b.key === 'send') - Number(a.key === 'send'));   // "Send to client" is always on the card, not hidden under More
             const mainActions = actions.slice(0, 2);
             const moreActions = actions.slice(2);
             const mandateBox = showMandate ? (() => {
@@ -479,7 +487,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                 data-testid={isClosed ? `closed-${p.id}` : `prop-card-${p.id}`}
               >
                 {p.images[0] && (
-                  <div className="relative h-36 w-full bg-slate-100 overflow-hidden">
+                  <div className="relative h-36 w-full cursor-pointer bg-slate-100 overflow-hidden" role="button" tabIndex={0} onClick={toggle} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }} aria-expanded={open} aria-label={tx('Open details', 'डिटेल खोलें')} data-testid={`open-photo-${p.id}`}>
                     <img src={p.images[0]} alt="" className="h-full w-full object-cover" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
                     {p.videoUrl && <span className="absolute top-2 right-2 rounded bg-purple-900/90 px-2 py-0.5 text-[10px] font-semibold text-white">{tx('Video', 'वीडियो')}</span>}
                   </div>
@@ -501,7 +509,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                   )}
                   {isClosed && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800" role="status">{p.listingStatus === 'rented' ? tx('This property is rented out — no more offers or visits.', 'यह प्रॉपर्टी किराये पर जा चुकी है — अब ऑफ़र या विज़िट नहीं।') : tx('This property is sold — no more offers or visits.', 'यह प्रॉपर्टी बिक चुकी है — अब ऑफ़र या विज़िट नहीं।')}</div>}
 
-                  <div>
+                  <div role="button" tabIndex={0} onClick={toggle} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }} aria-expanded={open} className="cursor-pointer" data-testid={`open-title-${p.id}`}>
                     <h3 className="text-sm font-bold text-slate-900 line-clamp-2">{p.title}</h3>
                     <p className="mt-0.5 text-xs text-slate-500">{label('propertyType', p.propertyType)} · <span className="font-medium text-slate-700">{p.locality}, {p.city}</span> · {label('transactionType', p.transactionType)}</p>
                   </div>
@@ -527,6 +535,12 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
 
                   {open && (
                     <div className="space-y-2.5 border-t border-slate-100 pt-2.5" data-testid={`details-${p.id}`}>
+                      {p.images.length > 1 && (
+                        <div className="flex gap-1.5 overflow-x-auto" data-testid={`gallery-${p.id}`}>
+                          {p.images.map((u) => <img key={u} src={u} alt="" loading="lazy" className="h-24 w-32 shrink-0 rounded-lg bg-slate-100 object-cover" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />)}
+                        </div>
+                      )}
+                      {p.videoUrl && <a href={p.videoUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center rounded-lg bg-purple-50 px-3 text-xs font-semibold text-purple-900">▶ {tx('Watch video', 'वीडियो देखें')}</a>}
                       <p className="text-xs leading-relaxed text-slate-600">{p.description}</p>
                       <p className="text-[11px] text-slate-500">{p.locality}, {p.city}{p.state ? ` (${p.state})` : ''}{p.pincode ? ` – ${p.pincode}` : ''}</p>
                       {p.tags && p.tags.length > 0 && (

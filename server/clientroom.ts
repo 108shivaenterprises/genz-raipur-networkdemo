@@ -327,7 +327,8 @@ function detail(r: ClientRoom) {
     items: r.items.map(i => {
       const p = props.find(x => x.id === i.propertyId);
       const avail = p ? shareableMedia({ id: r.brokerId }, p) : { photos: [], videos: [] };
-      return { ...i, property: p ? publicProperty(p) : null, media: chosenMedia(r, i, p), mediaAvailable: { photos: avail.photos.length, videos: avail.videos.length } };
+      // v166 — a home listed by ANOTHER broker: when the client likes it, the room offers "Co-broking offer" to that broker
+      return { ...i, property: p ? publicProperty(p) : null, media: chosenMedia(r, i, p), mediaAvailable: { photos: avail.photos.length, videos: avail.videos.length }, listedBy: p?.listingBrokerId && p.listingBrokerId !== r.brokerId ? p.listingBrokerId : undefined };
     }),
     /** only when no SMS gateway is set: the code the client has just asked for — the broker reads it out to him */
     codeForClient: awaiting, smsOn: smsOn(),
