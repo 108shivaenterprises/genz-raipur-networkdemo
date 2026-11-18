@@ -68,6 +68,9 @@ export function networkMatchesFor(r: BuyerRequirement, brokerId: string) {
     }),
   };
 }
+/** v168 — the homes behind that count (same rule as the count: up to 10% over his budget), for a broker who shows one to his customer */
+export const networkHomesFor = (r: BuyerRequirement, brokerId: string): Property[] =>
+  fits(r, brokerId).map(f => f.p).filter(p => !r.budgetMax || (Number(p.askingPrice) || 0) <= r.budgetMax * 1.1);
 /** v101 — how many live homes of OTHER brokers fit this need and the price range they span (count + range only: no title, place or broker — safe to tell the client) */
 export function networkRange(r: BuyerRequirement, brokerId: string): { count: number; min: number; max: number } {
   // a home far above his budget is not "a home for you" (the 60-point match still scores it for the broker's own alert): only prices up to 10% over the top of his budget are counted

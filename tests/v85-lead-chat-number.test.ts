@@ -98,8 +98,8 @@ describe('shop QR lead: the number stays hidden until the need is confirmed in c
   });
   it('after the confirmation the broker is offered only the homes that fit (sale, area, budget); a home that does not fit is refused', async () => {
     const l = await leadByLast4('5501');
-    expect(l.matches.length).toBeGreaterThan(0); for (const h of l.matches) { expect(h.rent).toBe(false); expect(h.place).toContain('Shankar Nagar'); }
-    matchId = l.matches[0].id;
+    expect(l.matches.length).toBeGreaterThan(0); const own = l.matches.filter((h: any) => !h.by); expect(own.length).toBeGreaterThan(0); for (const h of own) { expect(h.rent).toBe(false); expect(h.place).toContain('Shankar Nagar'); }   // v168 — network homes (h.by) may also be listed
+    matchId = own[0].id;
     const rent = (await (await call(jar.BRK1, 'GET', '/api/properties')).json()).properties.find((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.transactionType !== 'Sale');
     const r = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${leadId}/offer`, { homeId: rent?.id || 'PROP-NOT-THERE' }); expect(r.status).toBe(400);
     expect((await leadByLast4('5501')).masked).toBe(true);                       // a refused offer shows nothing

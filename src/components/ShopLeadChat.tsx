@@ -13,7 +13,7 @@ const initials = (n: string) => String(n || '').split(/\s+/).filter(Boolean).sli
 /** v163 — a shop-QR customer's chat opens like every other chat: name on top, the thread, the message box. Lead details (status, room, deal) sit behind "Details". */
 export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () => void; extra?: React.ReactNode }> = ({ l, onBack, onChange, extra }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
-  const [visitFor, setVisitFor] = useState(''); const [when, setWhen] = useState(''); const [details, setDetails] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [visitFor, setVisitFor] = useState(''); const [when, setWhen] = useState(''); const [details, setDetails] = useState(false); const [netOpen, setNetOpen] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const c = l.chat; const owner = l.kind === 'SELL' || l.kind === 'RENT_OUT'; const kind = LEAD_KINDS.find(k => k.id === l.kind);
   useEffect(() => { if ((c?.unread || 0) > 0) void api.spLeadSeen(l.id).then(onChange).catch(() => undefined); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [l.id, c?.unread]);
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
@@ -45,7 +45,19 @@ export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () =
       )}
       {visitBox}
       {l.masked && c?.reqConfirmedAt && !owner && matches.length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it. Add or switch on a matching listing, or ask the network below — his number shows once a visit is created.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर मेल नहीं खाता। मेल खाती लिस्टिंग जोड़ें / चालू करें, या नीचे से नेटवर्क से पूछें — विज़िट बनते ही नंबर दिखेगा।')}</p>}
-      {l.bot?.network && l.bot.network.count > 0 && !owner && <p className="rounded-lg bg-indigo-50 p-2 text-xs text-indigo-900" data-testid="sp-network">🌐 {tx(`The network holds ${l.bot.network.count} home${l.bot.network.count > 1 ? 's' : ''} for his need (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''}). Ask those brokers — a home they answer with can be shared here.`, `नेटवर्क में उनकी ज़रूरत के ${l.bot.network.count} घर हैं (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''})। उन ब्रोकरों से पूछें — जो घर वे दें, वह यहीं शेयर हो सकता है।`)}</p>}
+      {l.bot?.network && l.bot.network.count > 0 && !owner && <button type="button" onClick={() => setNetOpen(o => !o)} aria-expanded={netOpen} className="flex w-full items-start gap-1 rounded-lg bg-indigo-50 p-2 text-left text-xs text-indigo-900" data-testid="sp-network">🌐 <span className="min-w-0 flex-1">{tx(`The network holds ${l.bot.network.count} home${l.bot.network.count > 1 ? 's' : ''} for his need (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''}). Ask those brokers — a home they answer with can be shared here.`, `नेटवर्क में उनकी ज़रूरत के ${l.bot.network.count} घर हैं (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''})। उन ब्रोकरों से पूछें — जो घर वे दें, वह यहीं शेयर हो सकता है।`)} <b>{netOpen ? tx('Hide', 'बंद करें') : tx('Tap to check each home', 'हर घर अलग देखें')}</b></span></button>}
+      {netOpen && l.bot?.network && !owner && (
+        <div className="space-y-1" data-testid="sp-network-list">
+          {matches.length === 0 && <p className="text-xs text-slate-700">{tx('The homes are being matched — ask the brokers below, or check again in a moment.', 'घर मिलाए जा रहे हैं — नीचे से ब्रोकरों से पूछें, या कुछ देर में फिर देखें।')}</p>}
+          {matches.map(h => (
+            <div key={h.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2" data-testid={`sp-net-${h.id}`}>
+              {h.photo ? <img src={h.photo} alt="" loading="lazy" className="h-12 w-16 shrink-0 rounded object-cover" /> : <span className="grid h-12 w-16 shrink-0 place-items-center rounded bg-slate-100 text-lg" aria-hidden>🏠</span>}
+              <div className="min-w-0 flex-1 text-xs"><p className="truncate font-bold text-slate-900">{h.title}</p><p className="truncate text-slate-600">{h.price} · {h.place}{h.by ? ` · ${h.by}` : ''}</p></div>
+              <button type="button" disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-net-share-${h.id}`} className="min-h-10 shrink-0 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white">{tx('Share', 'भेजें')}</button>
+            </div>
+          ))}
+        </div>
+      )}
       {l.bot?.network?.reqId && l.bot.network.count > 0 && !owner && <AskNetwork reqId={l.bot.network.reqId} />}
       {l.masked && c && !c.reqConfirmedAt && !c.reqAskedAt && <button type="button" disabled={busy} onClick={() => run(() => api.spAskNeed(l.id))} data-testid="sp-ask-need" className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">✔ {tx('Ask him to confirm his need', 'उनसे ज़रूरत पक्की करवाएँ')}</button>}
       {l.masked && c?.reqAskedAt && !c.reqConfirmedAt && <p className="text-xs text-slate-700" data-testid="sp-need-waiting">⏳ {tx('Waiting for him to confirm: ', 'उनकी पुष्टि का इंतज़ार: ')}{l.needLine}</p>}

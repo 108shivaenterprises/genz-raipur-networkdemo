@@ -198,11 +198,22 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   // owners and employees of a broker are not parties to the broker↔broker commission: they get the redacted view
   const isOwnerViewer = currentUser.role === 'PROPERTY_OWNER' || currentUser.role === 'TEAM_MEMBER';
   // v37 — Deal Hub: the pipeline (board / list) is the home of this tab; a deal room opens from a card
-  const [mainMode, setMainMode] = useState<'PIPELINE' | 'DEAL_ROOMS' | 'PROPOSALS' | 'MANDATES' | 'ROOMS'>(() => {
+  type Mode = 'PIPELINE' | 'DEAL_ROOMS' | 'PROPOSALS' | 'MANDATES' | 'ROOMS';
+  const [mainMode, setModeRaw] = useState<Mode>(() => {
     if (urlQ.get('deal')) return 'DEAL_ROOMS';
     const v = urlQ.get('view');
     return v === 'mandates' ? 'MANDATES' : v === 'proposals' ? 'PROPOSALS' : v === 'room' ? 'DEAL_ROOMS' : v === 'rooms' ? 'ROOMS' : 'PIPELINE';
   });
+  // v169 — the phone's Back button walks back through the screens of this tab (deal → owner's terms → back to the deal), instead of leaving the app
+  const setMainMode = (m: Mode) => {
+    if (m === mainMode) return;
+    try { window.history.replaceState({ ...(window.history.state || {}), gdr: { mode: mainMode, deal: selectedDealId } }, ''); window.history.pushState({ gdr: { mode: m, deal: selectedDealId } }, ''); } catch { /* old browser */ }
+    setModeRaw(m);
+  };
+  useEffect(() => {
+    const back = (e: PopStateEvent) => { const g = e.state?.gdr; if (!g) return; setModeRaw(g.mode); if (g.deal) setSelectedDealId(g.deal); try { window.scrollTo({ top: 0 }); } catch { /* old browser */ } };
+    window.addEventListener('popstate', back); return () => window.removeEventListener('popstate', back);
+  }, []);
   // v45 — my client rooms, to show them beside the deals and to link a deal to the rooms that carry its property
   const canRooms = perm('clientroom:use') && currentUser.role === 'BROKER';
   const [myRooms, setMyRooms] = useState<any[]>([]);

@@ -39,7 +39,8 @@ import { sendSms, smsGateway } from './notify.js';
 import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEndpoint, brokerWrote, roomAlertInfo, roomPushKey } from './webpush.js';
 import { buyerBondBlock, makeBuyerBond } from './buyerbond.js';
 import { partyBlock } from './partywatch.js';
-import { alertNeedNetwork, networkRange } from './broadcast.js';
+import { alertNeedNetwork, networkRange, networkHomesFor } from './broadcast.js';
+import { alert as alertUsers } from './alerts.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
 import { shareableMedia } from './clientroom.js';
 import { videoKind, youtubeId } from '../src/shared/roomMedia.js';
@@ -155,7 +156,7 @@ export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | '
 }
 function typeFits(want: string, have: string): boolean { return want === have || RELATED_TYPE_GROUPS.some(g => g.includes(want) && g.includes(have)); }
 /** the homes this broker may show (own live listings + other brokers' listings opened to pages) that fit the lead */
-function matchesFor(l: PartnerLead): Property[] {
+function matchesFor(l: PartnerLead, withNet = false): Property[] {
   const b = userOf(l.brokerId); if (!b) return [];
   const pool = new Map<string, Property>();
   for (const p of st().properties) if (p.listingBrokerId === b.id && pageLive(p)) pool.set(p.id, p);
@@ -166,11 +167,17 @@ function matchesFor(l: PartnerLead): Property[] {
     const h = x.propertyId ? st().properties.find(p => p.id === x.propertyId) : undefined;
     if (h && h.listingBrokerId === x.brokerId && pageLive(h)) pool.set(h.id, h);
   }
+  // v168 — a home its listing broker already opened to other brokers' pages (publicShareOk) can be shown at once — no need to wait for a broadcast answer
+  for (const h of st().properties) if (!pool.has(h.id) && canShow(b, h) === 'NETWORK' && homeFits(l, h)) pool.set(h.id, h);
+  // v168 — the homes the network count is made of can be shown right away (its listing broker is alerted when one is shared — see /offer); not once the number is open to a stranger's listing
+  const q = reqId ? st().requirements.find(x => x.id === reqId) : undefined;
+  const net = new Set<string>();
+  if (q && withNet) for (const h of networkHomesFor(q as any, b.id)) if (pageLive(h)) { pool.set(h.id, h); net.add(h.id); }
   // v100 — a customer who wants ANOTHER city than the shop's: the homes of that city that their brokers opened to pages (the same rule a broker's own page follows)
   if (l.wantCity && !sameCity(l.wantCity, shopCityOf(l))) for (const h of st().properties) if (sameCity(h.city, l.wantCity) && canShow(b, h)) pool.set(h.id, h);
   // v103 — the 48-hour wait (audit F3) only guards the moment the NUMBER opens; once it is open a new home can be shown at once
   // v127 — a home this customer was already shown / booked on by ANOTHER broker is not his to show (first broker to show holds the buyer on that home)
-  return [...pool.values()].filter(h => homeFits(l, h) && (!tooFreshFor(l, h) || !!l.chat?.revealedAt) && !buyerBondBlock({ id: b.id }, h.id, l.phone)).slice(0, 12);
+  return [...pool.values()].filter(h => (net.has(h.id) || homeFits(l, h)) && (!tooFreshFor(l, h) || !!l.chat?.revealedAt) && !buyerBondBlock({ id: b.id }, h.id, l.phone)).slice(0, 12);
 }
 /** v127 — homes that fit him but that he is already seeing with another GENZ broker (count only; never which broker) */
 const heldElsewhere = (l: PartnerLead): number => st().properties.filter(h => pageLive(h) && homeFits(l, h) && !!buyerBondBlock({ id: l.brokerId }, h.id, l.phone)).length;
@@ -639,7 +646,7 @@ function leadView(l: PartnerLead) {
     // v85 — the in-app chat (never the customer's link token); `matches` = the homes he may share now (only offered once the need is confirmed)
     chat: chat ? { msgs: chat.msgs.slice(-80).map(m => m.kind === 'HOME' && m.homeId ? { ...m, gone: homeGone(m.homeId) || undefined } : m), reqAskedAt: chat.reqAskedAt || null, reqConfirmedAt: chat.reqConfirmedAt || null, reqText: chat.reqText || null, revealedAt: chat.revealedAt || null, unread: chat.msgs.filter(m => m.by === 'CUSTOMER' && (!chat.brokerSeenAt || m.at > chat.brokerSeenAt)).length } : null,
     alerts: chat ? roomAlertInfo(`lc-${l.id}`).phones : 0, bot: chat ? sahayak.view(l) : null,
-    matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l).map(homeBrief) : [], needLine: needLine(l),
+    matches: chat && !chat.revealedAt && chat.reqConfirmedAt && !ownerSide(l) ? matchesFor(l, true).map(h => ({ ...homeBrief(h), by: h.listingBrokerId !== l.brokerId ? userOf(h.listingBrokerId)?.name : undefined, photo: (h.images || [])[0] || '' })) : [], needLine: needLine(l),
     brief: chat && !ownerSide(l) && !l.won && l.status !== 'LOST' ? briefFor(l) : null,   // v120; v124 — none on a finished lead (it said “Cold · nothing to do” over a deal whose share was still to pay)
     shopName: p?.shopName || '', partnerPersonName: p?.personName || '', partnerPhoneLast4: p?.phoneLast4 || '',
     partnerPageUrl: p ? (() => { const t = linkOf(p, `sp|${p.id}`); return t ? `/sp/${t}` : ''; })() : '',
@@ -864,7 +871,7 @@ export function createShopPartnerRouter() {
     const l = chatLead(req, res); if (!l?.chat) return;
     if (ownerSide(l)) return bad(res, 'An owner lead needs no matching home — his number shows once he confirms the property details');
     if (!l.chat.reqConfirmedAt) return bad(res, 'Ask him to confirm his need first — the number stays hidden until he does', 409);
-    const h = matchesFor(l).find(x => x.id === str(req.body?.homeId, 40));
+    const h = matchesFor(l, true).find(x => x.id === str(req.body?.homeId, 40));
     if (!h) {
       const asked = st().properties.find(x => x.id === str(req.body?.homeId, 40));
       { const blocked = asked ? buyerBondBlock({ id: l.brokerId }, asked.id, l.phone) : null; if (blocked) return res.status(409).json(blocked); }   // v127 — another broker showed him this home first
@@ -879,6 +886,8 @@ export function createShopPartnerRouter() {
     try { sahayak.syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); }   // v105 — the home he sent is in his client room too
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
     audit(l.id, 'SHOP_LEAD_HOME_SHARED', `Home (${h.id}) shared in the chat — the number stays hidden until a visit is created`);
+    // v168 — another broker's home that is not opened to pages: its listing broker is told at once (co-broking: the split is settled in the deal room)
+    if (h.listingBrokerId && h.listingBrokerId !== l.brokerId && !h.publicShareOk) alertUsers(h.listingBrokerId, 'broadcast', `Co-broking: ${me().name} is showing your home`, `${me().name} shared “${h.title}” with a buyer. Talk co-broking and the split with him from the Network.`, '/', { tag: `cobroke-${h.id}-${l.brokerId}`, hi: [`को-ब्रोकिंग: ${me().name} आपका घर दिखा रहे हैं`, `${me().name} ने “${h.title}” एक खरीदार को भेजा है। नेटवर्क से उनसे को-ब्रोकिंग और हिस्से की बात करें।`] });
     db.save();
     void brokerWrote(`lc-${l.id}`, me().name, 'HOME');
     res.json({ success: true, lead: leadView(l) });

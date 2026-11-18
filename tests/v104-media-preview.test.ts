@@ -142,7 +142,7 @@ describe('photos & video in the chat, and a real video upload (v104)', { timeout
     expect(shown.length).toBeGreaterThan(0);
     if (ids.includes(hYT)) { expect(page).toContain(`/q/chat/${tokA}/home/${hYT}`); expect(page).toContain('https://photos.example.com/a.jpg'); }
     if (ids.includes(hUP)) { expect(page).toContain(`/q/chat/${tokA}/home/${hUP}`); expect(page).toContain(`data-src="/m/${imgId}"`); }
-    if (ids.includes(hNO)) expect(page).not.toContain(`/q/chat/${tokA}/home/${hNO}`);
+    if (ids.includes(hNO)) expect(page).toContain(`/q/chat/${tokA}/home/${hNO}`);   // v167 — a card without photos still opens the home page (visit button)
     expect(page).toContain('data-testid="home-media"'); expect(page).toContain('/c/page.js'); expect(page).toContain('data-wm='); expect(page).not.toContain('/api/owner-media/f/');
   });
 

@@ -89,13 +89,12 @@ describe('co-broke from a QR lead (v127)', { timeout: 180000 }, () => {
   it('the customer confirms; nothing of broker 1 fits, the network has the home; broker 1 cannot show it yet', async () => {
     tok = tokOf(await scan('Kiran Cobroke', A, { locality: 'Cobrokepur', budget: '9 lakh', ptype: 'Farm House' })); expect(tok).toBeTruthy();
     expect((await form(undefined, `/q/chat/${tok}/ans`, { a: 'YES' })).status).toBe(303);
-    const l = await lead('1271'); expect(l.chat.revealedAt).toBeFalsy(); expect(l.bot.network.count).toBeGreaterThan(0); expect(l.matches).toEqual([]);
-    expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/offer`, { homeId: H })).status).toBe(400);
+    const l = await lead('1271'); expect(l.chat.revealedAt).toBeFalsy(); expect(l.bot.network.count).toBeGreaterThan(0); expect(l.matches.map((m: any) => m.id)).toEqual([H]);   // v168 — a network home can be shown at once; its listing broker is alerted when it is shared
   });
   it('he asks the network: broker 2 gets the need without the name or number, and answers “I have it” with his home', async () => {
     const l = await lead('1271'); const r = await call(jar.BRK1, 'POST', '/api/broadcast', { requirementId: l.bot.network.reqId }); expect(r.status, await r.clone().text()).toBe(200); bc = (await j(r)).broadcast.id;
     const it = ((await j(await call(jar.BRK2, 'GET', '/api/broadcast/inbox'))).items as any[]).find(x => x.id === bc); expect(it).toBeTruthy(); expect(JSON.stringify(it)).not.toMatch(/Kiran|9123411271|1271/);
-    expect((await lead('1271')).matches).toEqual([]);   // asking is not enough
+    expect((await lead('1271')).matches.map((m: any) => m.id)).toEqual([H]);
     expect((await call(jar.BRK2, 'POST', `/api/broadcast/${bc}/respond`, { propertyId: H, note: '' })).status).toBe(200);
   });
   it('now broker 1 can share it: the number opens, the home is in the chat and in the room, broker 2 is not named to the customer', async () => {
