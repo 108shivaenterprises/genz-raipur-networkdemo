@@ -1155,7 +1155,8 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
     const wmChat = `${b ? brandOf(b).displayName : 'GENZ'} · GENZ`; let anyThumb = false;
     const mediaBit = (homeId?: string, gone?: string | null) => {
       if (!homeId || gone) return '';
-      const pm = previewMedia(st().properties.find(x => x.id === homeId)); if (!pm.photos.length && !pm.videos.length) return '';
+      const pm = previewMedia(st().properties.find(x => x.id === homeId));
+      if (!pm.photos.length && !pm.videos.length) return `<br><a href="/q/chat/${esc(tok)}/home/${esc(homeId)}" data-testid="home-media" style="display:block;color:inherit;text-decoration:none"><b style="color:#14213d">📅 घर देखें / विज़िट माँगें</b> <small style="color:#64748b">Open · request a visit</small></a>`;   // v167 — a card without photos is still tappable: it opens the home page with the visit button
       const cnt = [pm.photos.length ? `📷 ${pm.photos.length}` : '', pm.videos.length ? `🎬 ${pm.videos.length}` : ''].filter(Boolean).join(' · ');
       if (pm.photos.length) anyThumb = true;
       return `<br><a href="/q/chat/${esc(tok)}/home/${esc(homeId)}" data-testid="home-media" style="display:block;color:inherit;text-decoration:none">${pm.photos.length ? `<span class="hm" style="display:block;box-shadow:none;border-radius:10px;margin:6px 0 4px"><span class="ph" style="display:block"><canvas width="480" height="300" data-src="${esc(pm.photos[0])}" data-wm="${esc(wmChat)}" aria-label=""></canvas><span class="np">📷</span></span></span>` : ''}<b style="color:#14213d">${pm.videos.length ? '🎬' : '📷'} फ़ोटो / वीडियो देखें</b> <small style="color:#64748b">${cnt} · View photos / video</small></a>`;

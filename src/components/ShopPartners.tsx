@@ -282,7 +282,7 @@ const LeadChat: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) =
               {l.matches.map((h: any) => <button key={h.id} className={light + ' !min-h-9 w-full !justify-between !text-xs'} disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-offer-${h.id}`}><span className="truncate">🏠 {h.title}</span><span>{h.price}</span></button>)}
             </div>
           )}
-          {l.masked && c.reqConfirmedAt && !owner && (l.matches || []).length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it (area, rent/sale, budget). Add or switch on a matching listing — until you share one, his number stays hidden.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर उससे मेल नहीं खाता (इलाका, किराया/बिक्री, बजट)। मेल खाती लिस्टिंग जोड़ें या चालू करें — जब तक शेयर नहीं, नंबर छुपा रहेगा।')}</p>}
+          {l.masked && c.reqConfirmedAt && !owner && (l.matches || []).length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it (area, rent/sale, budget). Add or switch on a matching listing, or ask the network — his number shows once a visit is created.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर उससे मेल नहीं खाता (इलाका, किराया/बिक्री, बजट)। मेल खाती लिस्टिंग जोड़ें, या नेटवर्क से पूछें — विज़िट बनते ही नंबर दिखेगा।')}</p>}
           {l.bot?.network && l.bot.network.count > 0 && !owner && <p className="rounded-lg bg-indigo-50 p-2 text-xs text-indigo-900" data-testid="sp-network">🌐 {tx(`The network holds ${l.bot.network.count} home${l.bot.network.count > 1 ? 's' : ''} for his need (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''}). He was told the count and range. Ask those brokers with the button below — a home they answer with can be shared with him here.`, `नेटवर्क में उनकी ज़रूरत के ${l.bot.network.count} घर हैं (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''})। उन्हें गिनती और दाम की सीमा बता दी गई है। नीचे के बटन से उन ब्रोकरों से पूछें — जो घर वे जवाब में दें, वह यहीं उन्हें भेज सकते हैं।`)}</p>}
           {l.bot?.network?.reqId && l.bot.network.count > 0 && !owner && <AskNetwork reqId={l.bot.network.reqId} />}
           {err && <p className="text-xs font-semibold text-red-700" role="alert">{err}</p>}
@@ -325,7 +325,7 @@ const LeadVisit: React.FC<{ l: any; onChange: () => void }> = ({ l, onChange }) 
 };
 
 /** v127 — one tap from the lead: his need (never his name or number) goes to the brokers who hold a matching home; a home they answer with can then be shared with him here */
-const AskNetwork: React.FC<{ reqId: string }> = ({ reqId }) => {
+export const AskNetwork: React.FC<{ reqId: string }> = ({ reqId }) => {
   const tx = useTx(); const { toast } = useUI(); const [busy, setBusy] = useState(false); const [sent, setSent] = useState('');
   const go = async () => {
     setBusy(true);

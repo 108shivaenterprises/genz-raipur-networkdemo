@@ -13,6 +13,9 @@ export const SendToClient: React.FC<{ home: { id: string; title: string; localit
   const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [ok, setOk] = useState(false);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const [sent, setSent] = useState<{ to: string; link?: string; phone?: string } | null>(null);
+  // v167 — a shop-QR customer whose confirmed need fits this home gets it in HIS chat (same rules as the lead chat's share button)
+  const [qr, setQr] = useState<any[]>([]);
+  useEffect(() => { api.spList().then((x: any) => setQr((x.leads || []).filter((l: any) => l.masked && l.chat?.reqConfirmedAt && (l.matches || []).some((m: any) => m.id === home.id)))).catch(() => undefined); }, [home.id]);
   useEffect(() => { api.crList().then((x: any) => { const l = (x.rooms || []).filter((r: any) => r.status === 'ACTIVE' && r.kind !== 'OWNER' && !r.held); setRooms(l); if (!l.length) setFresh(true); }).catch(() => { setRooms([]); setFresh(true); }); }, []);
 
   const give = async (roomId: string, to: string, link?: string, ph?: string) => {
@@ -48,6 +51,7 @@ export const SendToClient: React.FC<{ home: { id: string; title: string; localit
               const has = (r.propertyIds || []).includes(home.id);
               return <button key={r.id} type="button" disabled={busy || has} onClick={() => run(() => give(r.id, r.clientName))} data-testid={`send-room-${r.id}`} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-slate-200 px-3 text-left text-sm disabled:opacity-60"><span className="truncate font-semibold text-slate-900">{r.clientName}</span><span className="shrink-0 text-xs text-slate-500">{has ? tx('Already sent', 'पहले भेजा है') : `${r.items} ${tx('homes', 'घर')}`}</span></button>;
             })}
+            {!fresh && qr.map((l: any) => <button key={l.id} type="button" disabled={busy} onClick={() => run(async () => { await api.spOffer(l.id, home.id); setSent({ to: l.name }); })} data-testid={`send-qr-${l.id}`} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 text-left text-sm"><span className="truncate font-semibold text-slate-900">{l.name}</span><span className="shrink-0 text-xs text-rose-800">{tx('Shop QR · in his chat', 'दुकान QR · उनकी चैट में')}</span></button>)}
             {!fresh && <button type="button" onClick={() => setFresh(true)} className="min-h-10 w-full rounded-lg border border-dashed border-slate-300 text-sm font-semibold text-slate-700" data-testid="send-new">{tx('+ New client', '+ नया क्लाइंट')}</button>}
             {fresh && (
               <div className="space-y-2" data-testid="send-fresh">

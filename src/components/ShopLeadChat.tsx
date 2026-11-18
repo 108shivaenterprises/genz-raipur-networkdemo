@@ -3,7 +3,8 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
-import { LeadCard } from './ShopPartners.js';
+import { LeadCard, AskNetwork } from './ShopPartners.js';
+import { formatINR } from '../lib/utils.js';
 import { LEAD_KINDS } from '../shared/shopPartner.js';
 import { GONE_WORDS, type GoneKind } from '../shared/sahayak.js';
 
@@ -43,7 +44,9 @@ export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () =
         </div>
       )}
       {visitBox}
-      {l.masked && c?.reqConfirmedAt && !owner && matches.length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it. Add or switch on a matching listing — his number stays hidden until you share one.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर मेल नहीं खाता। मेल खाता लिस्टिंग जोड़ें / चालू करें — तब तक नंबर छुपा रहेगा।')}</p>}
+      {l.masked && c?.reqConfirmedAt && !owner && matches.length === 0 && <p className="text-xs text-amber-900" data-testid="sp-no-match">{tx('He confirmed his need, but none of your homes matches it. Add or switch on a matching listing, or ask the network below — his number shows once a visit is created.', 'उन्होंने ज़रूरत पक्की की, पर आपका कोई घर मेल नहीं खाता। मेल खाती लिस्टिंग जोड़ें / चालू करें, या नीचे से नेटवर्क से पूछें — विज़िट बनते ही नंबर दिखेगा।')}</p>}
+      {l.bot?.network && l.bot.network.count > 0 && !owner && <p className="rounded-lg bg-indigo-50 p-2 text-xs text-indigo-900" data-testid="sp-network">🌐 {tx(`The network holds ${l.bot.network.count} home${l.bot.network.count > 1 ? 's' : ''} for his need (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''}). Ask those brokers — a home they answer with can be shared here.`, `नेटवर्क में उनकी ज़रूरत के ${l.bot.network.count} घर हैं (${formatINR(l.bot.network.min)}${l.bot.network.max !== l.bot.network.min ? ` – ${formatINR(l.bot.network.max)}` : ''})। उन ब्रोकरों से पूछें — जो घर वे दें, वह यहीं शेयर हो सकता है।`)}</p>}
+      {l.bot?.network?.reqId && l.bot.network.count > 0 && !owner && <AskNetwork reqId={l.bot.network.reqId} />}
       {l.masked && c && !c.reqConfirmedAt && !c.reqAskedAt && <button type="button" disabled={busy} onClick={() => run(() => api.spAskNeed(l.id))} data-testid="sp-ask-need" className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">✔ {tx('Ask him to confirm his need', 'उनसे ज़रूरत पक्की करवाएँ')}</button>}
       {l.masked && c?.reqAskedAt && !c.reqConfirmedAt && <p className="text-xs text-slate-700" data-testid="sp-need-waiting">⏳ {tx('Waiting for him to confirm: ', 'उनकी पुष्टि का इंतज़ार: ')}{l.needLine}</p>}
     </div>
