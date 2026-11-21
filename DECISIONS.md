@@ -45,6 +45,13 @@ Reverse: UI-only changes; revert the commit on `launch-prep`.
 **Chosen:** the plain `tel:` Call link in client chat/deal room stays. D1 covers only in-app voice calls and the speech mic. A dialer link costs nothing and is what brokers use today.
 Reverse: remove the `room-call` link (ClientRooms/ChatsView) if "no voice" should also mean no dialer links.
 
+## D9. PropGrid BUILD.md + 5-app findings (Sell.Do, Square Connect, NoBroker, LeadSquared, Housing.com): what we take
+**Take (free, already mostly built; polish only):** 60-day-style protection and phone dedup = existing protection/anti-bypass (keep, show countdown pills); co-branded WhatsApp flyer = ShareKit (make sure RERA no. + name + phone are always on it); dynamic cost sheet = V106 (keep); tower grid = V108 (keep); "speed to lead" = WhatsApp deep link / tel: link on new lead (no telephony); sub-broker split display = agency team view.
+**Skip for now (paid or out of brief):** Exotel/Twilio masking, WhatsApp Cloud API, Razorpay UPI token hold, Digio/Leegality e-sign and e-stamp, CIBIL check, Mapbox, OpenAI voice CRM (voice is OFF, D1), PropWorth AVM (needs registry data), Home-loan DSA referral (needs a licence and legal review; revisit after launch), TDS/GST engine (GENZ does not hold or move money).
+**Do not copy:** the "Dynamic API Vault" that writes keys to a JSON file from the UI. Keys stay in `.env`/secret store only; the existing API-keys tab stays as is.
+**Do not trust:** the numbers in the findings file (391% conversion, 4.2x time-on-site, 3x inquiries) are unsourced marketing claims; 150 m geofence needs real property coordinates; Section 194H TDS is 5% in these files but is believed to be 2% since 1 Oct 2024 (CA to confirm).
+Reverse: policy only; nothing built.
+
 ## Needs the owner's eyes (updated as rounds finish)
 - DigiLocker partner credentials (D2)
 - Real VPS, domain, `.env` values: `AUTH_SECRET`, `KYC_VAULT_KEY`, `AUDIT_HMAC_KEY`, `PUBLIC_URL`, grievance-officer details
