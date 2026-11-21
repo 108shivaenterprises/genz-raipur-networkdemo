@@ -1,3 +1,4 @@
+import { voiceOn } from './features.js';
 /**
  * GENZ BROKER NETWORK — Central Access Control (RBAC)
  *
@@ -413,7 +414,8 @@ export interface AccountLike {
 
 /** Effective permission list for an account, honouring its verification state. */
 export function effectivePermissions(user: AccountLike): Permission[] {
-  const all = user.role === 'TEAM_MEMBER' ? memberPermissions(user.employerRole, user.teamPolicy) : permissionsForRole(user.role);
+  const raw = user.role === 'TEAM_MEMBER' ? memberPermissions(user.employerRole, user.teamPolicy) : permissionsForRole(user.role);
+  const all = voiceOn() ? raw : raw.filter(p => p !== 'call:use'); // D1: voice off => call:use is not effective
   if (user.verificationStatus === 'VERIFIED') return all;
   if (user.verificationStatus === 'PENDING' || user.verificationStatus === 'SUSPENDED') {
     return all.filter(p => UNVERIFIED_ALLOWED.includes(p));

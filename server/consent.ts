@@ -22,6 +22,7 @@
  * Publishing goes through the normal POST /api/properties with `consentId` — that route calls `consentForPublish()` and
  * `findBlockingBond()` here, so the same-property rule also stops a second broker who uses the normal listing form.
  */
+import { publicBase } from './features.js';
 import express, { Router, type Request, type Response } from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -75,7 +76,6 @@ const note = (c: OwnerConsent, text: string) => { c.events.push({ at: nowIso(), 
 const smsOn = () => smsGateway();
 /** 15 Jan 2027 — the owner reads Indian dates, not ISO */
 const dIN = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '');
-const publicBase = (req: Request) => (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 
 /** an ACTIVE bond of ANOTHER broker on the same property (owner phone + city + locality + type, area within 10 %) */
 export function findBlockingBond(p: { ownerPhone: string; city: string; locality: string; propertyType: string; areaSqft?: number }, brokerId: string, exceptConsentId = ''): OwnerConsent | undefined {

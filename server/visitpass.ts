@@ -129,7 +129,7 @@ export function createVisitRouter() {
     };
     st().visitPasses.unshift(pass);
     // v33 — the buyer confirms “no direct deal” (tick + his mobile code) before the pass works; needs a valid mobile on the lead
-    const newAck = createAck({ kind: 'PASS', refId: pass.id, phone: lead.phone, buyerName: lead.name, brokerId: lead.associateId || lead.builderId || u.id, subject: project.projectName });
+    const newAck = createAck({ kind: 'PASS', refId: pass.id, phone: lead.phone, buyerName: lead.name, brokerId: lead.associateId || lead.builderId || u.id, subject: project.projectName, req });
     // the same buyer already confirmed for an earlier pass of this lead → a re-issued pass does not ask him again
     if (newAck) { const prior = st().visitPasses.filter(o => o.leadId === lead.id && o.id !== pass.id).map(o => ackFor('PASS', o.id)).find(a => a && a.status === 'ACKED' && a.phoneKey === newAck.phoneKey);
       if (prior) { newAck.status = 'ACKED'; newAck.tickedAt = prior.tickedAt; newAck.ackedAt = prior.ackedAt; newAck.textVersion = prior.textVersion; } }

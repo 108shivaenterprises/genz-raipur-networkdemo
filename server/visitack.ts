@@ -18,6 +18,7 @@ import { db } from './db.js';
 import type { UserProfile, VisitAck } from './db.js';
 import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, DEMO_MODE } from './auth.js';
 import { can } from './permissions.js';
+import { publicBase } from './features.js';
 import { sendSms, smsGateway } from './notify.js';
 import { pushTo } from './webpush.js';
 import { ACK_VERSION, ACK_LIMITS, ACK_NOTE, ackTextFor, type AckKind } from '../src/shared/visitAckRules.js';
@@ -49,7 +50,7 @@ export function ackBlock(kind: AckKind, refId: string): string | undefined {
   return 'The buyer has not yet confirmed the “no direct deal” acknowledgement (tick + mobile code) — send him the link first. / खरीदार ने अभी “सीधा सौदा नहीं” की सहमति नहीं दी — पहले उसे लिंक भेजें।';
 }
 /** one acknowledgement per visit; none when the buyer's mobile is not a valid Indian mobile (the screens then warn the broker) */
-export function createAck(a: { kind: AckKind; refId: string; phone?: string; buyerName: string; brokerId: string; subject: string; /** v102 — the OTHER broker of a broker-to-broker visit (the property's listing broker): he is named in the promise too */ alsoBrokerId?: string }): VisitAck | null {
+export function createAck(a: { kind: AckKind; refId: string; phone?: string; buyerName: string; brokerId: string; subject: string; /** v102 — the OTHER broker of a broker-to-broker visit (the property's listing broker): he is named in the promise too */ alsoBrokerId?: string; /** the request, for the link base (publicBase) */ req: Pick<Request, 'protocol' | 'get'> }): VisitAck | null {
   const phone = phone10(a.phone); if (!PHONE_RE.test(phone)) return null;
   const old = ackFor(a.kind, a.refId); if (old) return old;
   const broker = db.byId('users', a.brokerId) as UserProfile | undefined;
@@ -60,7 +61,7 @@ export function createAck(a: { kind: AckKind; refId: string; phone?: string; buy
   };
   st().visitAcks.unshift(ack);
   db.appendAuditEvent('SYSTEM', 'SUPERADMIN', 'VISIT', a.refId, 'VISIT_ACK_REQUESTED', `“No direct deal” acknowledgement requested from ${a.buyerName} (••${ack.phoneLast4}) for ${a.subject}, introduced by ${ack.brokerName}. Wording ${ACK_VERSION}.`);
-  if (smsOn()) void sendSms(`+91${phone}`, `GENZ: ${ack.brokerName} has arranged your property visit. Open this link to confirm and get your visit pass: ${process.env.PUBLIC_URL || ''}${ackLinkFor(ack)}`);
+  if (smsOn()) void sendSms(`+91${phone}`, `GENZ: ${ack.brokerName} has arranged your property visit. Open this link to confirm and get your visit pass: ${publicBase(a.req)}${ackLinkFor(ack)}`);
   return ack;
 }
 export const sweepVisitAcks = () => {

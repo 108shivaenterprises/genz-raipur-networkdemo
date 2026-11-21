@@ -2,6 +2,7 @@
  * v81 — "Calls": the owner's rule for his staff's calls (on / off, recording), and the log of calls with the recordings the person may hear.
  * Never a phone number. Audio is fetched only when "Listen" is tapped and is deleted after 30 days (or sooner, by the businesses on the call).
  */
+import { useCalls } from './CallHost.js';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Trash2, Loader2, Circle } from 'lucide-react';
 import { useTx } from '../../lib/i18n.js';
@@ -12,7 +13,8 @@ type Row = { id: string; context: string; with: string; staff: boolean; directio
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 const CTX: Record<string, [string, string]> = { TEAM: ['Team', 'टीम'], DEAL: ['Deal room', 'डील रूम'], PARTNER: ['Builder / partner', 'बिल्डर / पार्टनर'] };
 
-export const CallsPanel: React.FC = () => {
+export const CallsPanel: React.FC = () => (useCalls() ? <CallsPanelInner /> : null); // D1: hidden while voice is off
+const CallsPanelInner: React.FC = () => {
   const tx = useTx();
   const { confirm } = useUI();
   const [rows, setRows] = useState<Row[] | null>(null); const [keep, setKeep] = useState(30);

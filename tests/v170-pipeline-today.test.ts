@@ -4,7 +4,7 @@ const f = (p: string) => readFileSync(p, 'utf8');
 describe('v170 — pipeline: Today list + Paper check on the bar', () => {
   it('the pipeline starts with "Today": first waiting item of each deal, one tap into its tab', () => {
     const s = f('src/components/DealHub.tsx');
-    expect(s).toContain('data-testid="deal-today"'); expect(s).toContain('onOpen(d.id, n.tab, n.kind)'); expect(s).toContain('.slice(0, 5)');
+    expect(s).toContain('data-testid="deal-today"'); expect(s).toContain('onOpen(d.id, n.tab, n.kind)'); expect(s).toContain('.slice(0, 3)');
   });
   it('Paper check is a main tab, not hidden behind More', () => {
     expect(f('src/components/DealRoomsView.tsx')).toContain("icon: ShieldCheck, primary: true");

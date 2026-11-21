@@ -101,6 +101,7 @@ import { createPulseRouter, activityMiddleware, recordActivity } from './server/
 import { createTeamRouter, createTeamLimitsRouter } from './server/team.js';
 import { createHrRouter, sweepHr } from './server/hr.js';
 import { createCallsRouter, sweepCalls } from './server/calls.js';
+import { voiceOn } from './server/features.js';
 import { createInventoryRouter, sweepHolds } from './server/inventory.js';
 import { createInventoryDeskRouter } from './server/inventory2.js';
 import { createLaunchRouter } from './server/launch.js';
@@ -149,6 +150,7 @@ import { createBroadcastRouter, alertNewListing, sweepDigestPush, networkMatches
 import { createReputationRouter, createHomeRouter } from './server/reputation.js';
 import { createReportRouter } from './server/report.js';
 import { createTwoFactorRouter, twoFactorOn, makeTicket, readTicket, verifySecondFactor, twoFactorRecommended } from './server/twofactor.js';
+import { vaultKey, vaultKeyProblem } from './server/vaultCrypto.js';
 import { createKycVaultRouter, storeKyc, readKycBody, sweepKycVault } from './server/kycvault.js';
 import { createBrandRouter, brandInject } from './server/brandlogo.js';
 import { createIdReviewRouter, openIdTask, autoVerifyDecision, closeIdTaskOnAdverse, sweepIdDocs, ensureIdTasks, docsOfApplication } from './server/idreview.js';
@@ -472,7 +474,7 @@ app.get('/api/auth/config', (_req: Request, res: Response) => {
         .filter(u => u.verificationStatus !== 'BLACKLISTED')
         .map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, companyName: u.companyName, verificationStatus: u.verificationStatus }))
     : [];
-  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts });
+  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts, voice: voiceOn(), ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL.trim().replace(/\/+$/, '') } : {}) });
 });
 
 app.post('/api/auth/login', (req: Request, res: Response) => {
@@ -2790,7 +2792,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   if (customerPhone) makeBuyerBond({ brokerId: currentUser.id, propertyId, buyerPhone: customerPhone, buyerName: customerName, source: 'BOOKED', sourceId: visitId, dealRoomId: deal?.id });
   if (roomLink) linkVisitToRoom(roomLink.room, roomLink.item, clientRoomRequestId, newVisit);
   // v33 — “no direct deal” acknowledgement from the buyer (tick + mobile code) before his QR / code is shown
-  const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title, alsoBrokerId: prop.listingBrokerId });
+  const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title, alsoBrokerId: prop.listingBrokerId, req });
 
   if (deal) {
     deal.siteVisitsCount = (deal.siteVisitsCount || 0) + 1;
@@ -5831,7 +5833,7 @@ app.use('/api/team', createTeamRouter());
 app.use('/api/admin/team-limits', createTeamLimitsRouter());
 app.use('/api/hr', createHrRouter());
 // v81 — in-app voice calls (signals, call log, consent-based recording)
-app.use('/api/calls', createCallsRouter());
+if (voiceOn()) app.use('/api/calls', createCallsRouter()); // D1: voice off => no call routes (unknown /api path => 404)
 app.use('/api/inventory', createInventoryRouter());
 app.use('/api/invdesk', createInventoryDeskRouter());
 app.use('/api/launch', createLaunchRouter());
@@ -5999,6 +6001,14 @@ function assertProductionConfig() {
   // A public demo on purpose (fake data only): PUBLIC_DEMO=true lets DEMO_MODE run in production. Never set it on a real network.
   if (DEMO_MODE && process.env.PUBLIC_DEMO !== 'true') problems.push('DEMO_MODE must be false in production');
   if (!process.env.DATABASE_URL && process.env.ALLOW_FILE_DB !== 'true') problems.push('DATABASE_URL must be set (or ALLOW_FILE_DB=true for a pilot)');
+  // a real network (not the fake-data public demo) must know its own address (links in SMS / QR / inlets) and decide about the KYC vault key
+  if (process.env.PUBLIC_DEMO !== 'true') {
+    if (!/^https?:\/\/[^/\s]+/i.test(process.env.PUBLIC_URL || '')) problems.push('PUBLIC_URL must be set to the public https address (links sent to people are built from it, never from the request Host header)');
+    if (process.env.KYC_VAULT_DISABLED !== 'true') {
+      if (!process.env.KYC_VAULT_KEY?.trim() && !process.env.KYC_VAULT_KEY_FILE?.trim()) problems.push('KYC_VAULT_KEY (or KYC_VAULT_KEY_FILE outside data/) must be set, or say KYC_VAULT_DISABLED=true to run with the vault off on purpose');
+      else if (!vaultKey()) problems.push(vaultKeyProblem() || 'the KYC vault key could not be loaded'); // malformed key, or key file inside data/
+    }
+  }
   if (problems.length) {
     console.error('[BOOT] Refusing to start in production:\n - ' + problems.join('\n - '));
     process.exit(1);

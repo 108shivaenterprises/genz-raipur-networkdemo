@@ -464,6 +464,7 @@ export default function App() {
         permissions={permissions}
         chatBadge={chatBadge}
         onTabsResolved={setAvailableTabs}
+        onOpenSearch={() => setShowCommandPalette(true)}
         unreadCount={{
           deals: pendingIncomingOffers.length > 0 ? pendingIncomingOffers.length : deals.length,
           leads: constructionLeads.filter((l) => l.status === 'OPEN').length,

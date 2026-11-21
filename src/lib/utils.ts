@@ -70,11 +70,18 @@ export function getRoleBadgeStyle(role: string): string {
 /**
  * Returns the web app base URL suitable for generating deep links
  */
+let publicUrl = '';   // the server's PUBLIC_URL (public, no secret), read once from /api/auth/config
+if (typeof window !== 'undefined' && typeof fetch === 'function') {
+  fetch('/api/auth/config').then(r => r.json()).then(c => { if (typeof c?.publicUrl === 'string') publicUrl = c.publicUrl; }).catch(() => { /* offline: fall back to the page origin */ });
+}
+/** Origin for links people share: PUBLIC_URL when the server sets it, else this page's origin. */
+export const getShareOrigin = (): string => publicUrl || (typeof window !== 'undefined' ? window.location.origin : '');
 export function getAppBaseUrl(): string {
+  if (publicUrl) return `${publicUrl}/`;
   if (typeof window !== 'undefined' && window.location) {
     return `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
   }
-  return 'https://ais-pre-ic44jqwdaroh2tkmlueoh5-570785440685.asia-southeast1.run.app';
+  return '';
 }
 
 /**

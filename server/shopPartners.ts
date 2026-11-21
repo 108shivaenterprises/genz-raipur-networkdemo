@@ -11,6 +11,7 @@
  * work on that mobile number by the same broker — a lead marked "lost" and then closed quietly shows up for the shop and for GENZ.
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
+import { publicBase } from './features.js';
 import { firebaseOn, otpUrl } from './phoneOtp.js';
 import { leadBrief } from '../src/shared/leadBrief.js';
 import { linkNeedForCard } from './clientlink.js';
@@ -1114,7 +1115,7 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
     const p = byCode(req.params.code); if (!p || p.status === 'ENDED') return notLive(res, p);
     const b = userOf(p.brokerId);
     const a4 = String(req.query.size || '').toLowerCase() === 'a4';
-    const url = `${req.protocol}://${req.get('host')}/q/${p.qrCode}`;
+    const url = `${publicBase(req)}/q/${p.qrCode}`;
     const svg = await brandedQrSvg(url, 400);
     noStore(res);
     res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>QR poster — ${esc(p.shopName)}</title>
@@ -1640,7 +1641,7 @@ ${wonLine}${lastLine}
     const html = shell('QR पार्टनर', `<div class="top"><h1>नमस्ते ${esc(p.personName.split(' ')[0])} 🙏</h1><p>${esc(p.shopName)} · ${esc(b?.name || '')} के साथ QR पार्टनर</p></div>
 ${langBar(langOf(req))}
 ${msg ? `<div class="card ok"><p class="t">${msg}</p></div>` : ''}
-${p.status === 'ACTIVE' ? `<div class="say" data-testid="shop-say"><b>🗣️ ग्राहक से कहें: “भैया, घर, दुकान या प्लॉट लेना या बेचना हो तो ये QR स्कैन करके अपनी ज़रूरत भर दीजिए — सही प्रॉपर्टी वाले आपको ख़ुद फ़ोन करेंगे।” / Tell customers: “Scan this QR, fill what you need — we’ll find it for you.”</b><div class="row"><a class="btn g" href="/sp/${tok}/show" data-testid="shop-show-qr">📲 QR ग्राहक को दिखाएँ / Show QR</a><a class="btn l" href="https://wa.me/?text=${encodeURIComponent(`भैया, घर / दुकान / प्लॉट लेना या बेचना हो तो ये लिंक खोलकर अपनी ज़रूरत भर दीजिए: ${req.protocol}://${req.get('host')}/q/${p.qrCode}`)}" target="_blank" rel="noopener" data-testid="shop-wa">💬 WhatsApp पर भेजें / Send on WhatsApp</a></div></div>` : ''}
+${p.status === 'ACTIVE' ? `<div class="say" data-testid="shop-say"><b>🗣️ ग्राहक से कहें: “भैया, घर, दुकान या प्लॉट लेना या बेचना हो तो ये QR स्कैन करके अपनी ज़रूरत भर दीजिए — सही प्रॉपर्टी वाले आपको ख़ुद फ़ोन करेंगे।” / Tell customers: “Scan this QR, fill what you need — we’ll find it for you.”</b><div class="row"><a class="btn g" href="/sp/${tok}/show" data-testid="shop-show-qr">📲 QR ग्राहक को दिखाएँ / Show QR</a><a class="btn l" href="https://wa.me/?text=${encodeURIComponent(`भैया, घर / दुकान / प्लॉट लेना या बेचना हो तो ये लिंक खोलकर अपनी ज़रूरत भर दीजिए: ${publicBase(req)}/q/${p.qrCode}`)}" target="_blank" rel="noopener" data-testid="shop-wa">💬 WhatsApp पर भेजें / Send on WhatsApp</a></div></div>` : ''}
 ${p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' ? `<div class="card red" data-testid="auto-paused"><p class="t"><b>⏸ आपका QR GENZ ने रोका है</b></p><p class="t">आपका हिस्सा ${OVERDUE.pauseDays} दिन से ज़्यादा बाकी है, इसलिए नए अनुरोध फ़िलहाल रुके हैं। ब्रोकर के चुकाते ही QR फिर चालू हो जाएगा। <small>GENZ paused new requests because your share is over ${OVERDUE.pauseDays} days late; it starts again once it is paid.</small></p></div>` : ''}
 ${need.length ? `<h2>आपके ध्यान के लिए / Needs your eye (${need.length})</h2>${need.map(x => chgCard(x.l, x.c, tok)).join('')}` : ''}
 ${agree}
@@ -1782,7 +1783,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
       const who = userOf(l.brokerId)?.name || 'ब्रोकर';
       hist(l, 'PARTNER', 'Partner asked the customer (one SMS) whether it went ahead'); db.save();
       db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_CUSTOMER_ASKED', 'Shop partner asked the customer by SMS (he had agreed on the QR page)');
-      await sendSms(`+91${l.phone}`, `GENZ: क्या ${who} के साथ आपकी प्रॉपर्टी की बात आगे बढ़ी? हाँ/नहीं बताने के लिए खोलें: ${req.protocol}://${req.get('host')}/q/ok/${token} (${ASK_LIMITS.validDays} दिन मान्य)`);
+      await sendSms(`+91${l.phone}`, `GENZ: क्या ${who} के साथ आपकी प्रॉपर्टी की बात आगे बढ़ी? हाँ/नहीं बताने के लिए खोलें: ${publicBase(req)}/q/ok/${token} (${ASK_LIMITS.validDays} दिन मान्य)`);
       ping(p, `${p.shopName}: ग्राहक से पूछा गया`, `••${l.phoneLast4} पर GENZ का SMS गया।`);
       return render(req, res, p, 'ग्राहक को SMS भेज दिया गया। / The customer has been sent an SMS.');
     } else return back(res, req.params.token);
@@ -1830,7 +1831,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
   r.get('/:token/show', rateLimit('sp-page', 60, 60_000), async (req: Request, res: Response) => {
     const p = authed(req, res); if (!p) return;
     if (p.status !== 'ACTIVE') return back(res, req.params.token);
-    const svg = await brandedQrSvg(`${req.protocol}://${req.get('host')}/q/${p.qrCode}`, 320);
+    const svg = await brandedQrSvg(`${publicBase(req)}/q/${p.qrCode}`, 320);
     const mode = langOf(req);
     const html = shell('QR स्कैन', `<div class="top" style="text-align:center"><h1>📲 स्कैन करें / Scan</h1><p>घर · दुकान · प्लॉट — लेना या बेचना / Buy · sell · rent</p></div>
 <div class="card" style="text-align:center" data-testid="show-qr"><div style="width:min(80vw,320px);margin:0 auto">${svg}</div><p class="t" style="font-size:18px;margin-top:10px"><b>कैमरा खोलें, QR पर रखें, अपनी ज़रूरत भरें / Open the camera, point at the QR, fill what you need</b></p><p class="small">ब्रोकर आपको सही प्रॉपर्टी बताएँगे। / The broker will show you the right property.</p></div>
@@ -1842,7 +1843,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     const p = authed(req, res); if (!p) return;
     if (!p.acceptedAt || p.status === 'PENDING' || p.status === 'ENDED') return back(res, req.params.token);
     const b = userOf(p.brokerId);
-    const svg = await brandedQrSvg(`${req.protocol}://${req.get('host')}/q/${p.qrCode}`, 200);
+    const svg = await brandedQrSvg(`${publicBase(req)}/q/${p.qrCode}`, 200);
     res.send(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>GENZ नेटवर्क पार्टनर — ${esc(p.shopName)}</title>
 <style>@page{size:A4 landscape;margin:12mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#eee}.c{max-width:277mm;margin:10px auto;background:#fff;border:6px double #14213d;padding:14mm 12mm;text-align:center}
 .k{letter-spacing:3px;color:#b45309;font-weight:700;font-size:13px}h1{font-size:34px;margin:6px 0 2px;color:#14213d}h2{font-size:26px;margin:14px 0 4px}.s{color:#444;font-size:15px}.qr{width:38mm;margin:12px auto 4px}.qr svg{width:100%;height:auto}.f{margin-top:12px;font-size:12px;color:#555}.p{margin:12px auto;text-align:center}@media print{body{background:#fff}.p{display:none}.c{margin:0}}</style></head>

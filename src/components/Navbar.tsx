@@ -58,10 +58,10 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:px-6">
         {/* Brand */}
         <div className="flex min-w-0 items-center gap-2.5">
-          <BrandMark className="h-10 w-10" />
+          <BrandMark className="h-10 w-10 shrink-0" />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg"><span className="sm:hidden">GENZ</span><span className="hidden sm:inline">GENZ BROKER NETWORK</span></div>
-            <div className="truncate text-[11px] text-slate-500 sm:text-xs"><span className="sm:hidden">{tx('Broker Network', 'ब्रोकर नेटवर्क')}</span><span className="hidden sm:inline">{tx('Powered by GENZ BUILDCON', 'GENZ BUILDCON द्वारा संचालित')}</span></div>
+            <div className="hidden truncate text-xs text-slate-500 sm:block">{tx('Powered by GENZ BUILDCON', 'GENZ BUILDCON द्वारा संचालित')}</div>
           </div>
         </div>
 
@@ -81,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {/* Mobile search trigger */}
           {onOpenSearch && (
             <button
@@ -89,7 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenSearch}
               aria-label={tx('Search screens & tools', 'स्क्रीन और टूल्स खोजें')}
               title={tx('Search screens & tools', 'स्क्रीन और टूल्स खोजें')}
-              className={`md:hidden ${iconBtn} border-slate-200 bg-white hover:border-slate-900`}
+              className={`max-[419px]:hidden md:hidden ${iconBtn} border-slate-200 bg-white hover:border-slate-900`}   /* below 420px the brand needs the room; search stays in the bottom bar / More */
             >
               <Search className="h-5 w-5" />
             </button>

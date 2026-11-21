@@ -1,5 +1,8 @@
 # Deploy & launch runbook (India)
 
+> **UPGRADE NOTE:** `PUBLIC_URL` (e.g. `https://network.example.in`) and a KYC key decision (`KYC_VAULT_KEY` / `KYC_VAULT_KEY_FILE` outside `data/`, or `KYC_VAULT_DISABLED=true`) are now **required**. Installs started with plain `npm start` or pm2 will **refuse to boot** in production until both are set in their environment. A malformed `KYC_VAULT_KEY`, or a key file inside `data/`, also stops the boot with a message.
+> `DB_PASSWORD` goes raw into the `postgres://` URL: generate it with `openssl rand -hex 24` (no `@ : / # %`). For an external Postgres edit `DATABASE_URL` under `app:` in `docker-compose.yml`.
+
 ## 1. Server
 - Any Indian-region VM (AWS Mumbai `ap-south-1`, DigitalOcean Bangalore, Hostinger/Contabo India) with 2 vCPU / 2–4 GB RAM, Ubuntu 22.04+, Docker + Docker Compose.
 - Point your domain's A record to the server's IP (needed for automatic HTTPS by Caddy).
@@ -7,7 +10,7 @@
 ## 2. First deploy
 ```bash
 git clone <your repo> /opt/genz && cd /opt/genz      # or unzip the project there
-cp .env.production.example .env && nano .env           # DOMAIN, DB_PASSWORD, AUTH_SECRET (openssl rand -hex 32), grievance details
+cp .env.production.example .env && nano .env           # DOMAIN, PUBLIC_URL, DB_PASSWORD, AUTH_SECRET (openssl rand -hex 32), KYC_VAULT_KEY (openssl rand -hex 32) or KYC_VAULT_DISABLED=true, grievance details
 docker compose up -d --build
 docker compose logs app | grep AUTH                    # if SEED_ADMIN_PASSWORD was empty, the one-time admin password is printed here
 ```

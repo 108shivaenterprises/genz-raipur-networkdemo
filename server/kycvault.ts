@@ -143,7 +143,7 @@ export function createKycVaultRouter() {
     const s = st(); const k = vaultKey();
     const rows = s.kycVault || [];
     res.json({
-      success: true, on: vaultOn(), switchedOff: !!s.settings.kycVaultOff, keyReady: !!k, keyMode: k?.mode || null, keyProblem: k ? '' : vaultKeyProblem(),
+      success: true, on: vaultOn(), switchedOff: !!s.settings.kycVaultOff, keyReady: !!k, keyMode: k?.mode || null, keyProblem: k || process.env.KYC_VAULT_DISABLED === 'true' ? '' : vaultKeyProblem(),
       keyWarning: k?.mode === 'file' ? 'The encryption key is a file on the same disk as the data. Set KYC_VAULT_KEY in the server settings so a copy of the data folder alone cannot be opened.' : '',
       counts: { records: rows.length, withAadhaar: rows.filter(x => x.aadhaarEnc).length, withAddress: rows.filter(x => x.addressEnc).length, brokers: s.users.filter(x => x.role === 'BROKER').length },
       changedBy: s.users.find(x => x.id === s.settings.kycVaultChangedBy)?.name || '', changedAt: s.settings.kycVaultChangedAt || null,

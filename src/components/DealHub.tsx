@@ -224,7 +224,7 @@ export const StageStepper: React.FC<{ stage: string; canEdit: boolean; onChange:
             <li key={s} className="flex shrink-0 items-center gap-1">
               {canEdit && !now
                 ? <button type="button" title={tx(`Move the deal to “${s}”`, `डील को “${label('dealStage', s)}” पर ले जाएँ`)} onClick={() => { if (window.confirm(tx(`Move this deal to “${s}”?`, `इस डील को “${label('dealStage', s)}” पर ले जाएँ?`))) onChange(s); }}
-                    className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold hover:border-slate-500 ${cls}`} data-testid={`stage-step-${i}`}>{body}</button>
+                    className={`flex min-h-11 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold hover:border-slate-500 ${cls}`} data-testid={`stage-step-${i}`}>{body}</button>
                 : <span className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold ${cls}`} aria-current={now ? 'step' : undefined} data-testid={`stage-step-${i}`}>{body}</span>}
               {i < STAGES.length - 1 && <span className={`h-0.5 w-3 shrink-0 ${i < cur ? 'bg-emerald-400' : 'bg-slate-200'}`} />}
             </li>
@@ -284,7 +284,7 @@ export const DealCard: React.FC<{ d: any; onOpen: (id: string, tab?: string, kin
 };
 
 type Filter = 'live' | 'needs' | 'stalled' | 'disputes' | 'settled' | 'closed' | 'all';
-export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: string, kind?: string) => void; showRoles: boolean }> = ({ hub, onOpen, showRoles }) => {
+export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: string, kind?: string) => void; showRoles: boolean; isBroker?: boolean }> = ({ hub, onOpen, showRoles, isBroker = true }) => {
   const tx = useTx(); const label = useLabel(); const th = useTemplateHi();
   // a phone starts in the list (one column reads better); the choice is remembered once the broker picks one
   const [view, setViewRaw] = useState<'board' | 'list'>(() => { const v = store.get('genz-deal-view'); return v === 'list' || v === 'board' ? v : (typeof window !== 'undefined' && window.innerWidth < 640 ? 'list' : 'board'); });
@@ -293,6 +293,10 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
   const [role, setRole] = useState<'ALL' | 'INTRODUCING' | 'CLOSING'>('ALL');
   const [q, setQ] = useState('');
   const [tools, setTools] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);   // phone: the search icon beside the stage chips reveals the box
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [vw, setVw] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth);
+  useEffect(() => { const f = () => setVw(window.innerWidth); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
   const [stage, setStage] = useState('');   // v147 — phone: one chip per stage (Bigin / Pipedrive mobile)
   const items: any[] = hub?.deals || [];
   const shown = useMemo(() => {
@@ -321,7 +325,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
     { id: 'settled', en: 'Settled', hi: 'निपटी', v: k.settled },
     ...(k.closed ? [{ id: 'closed' as Filter, en: 'Closed', hi: 'बंद', v: k.closed }] : []),
   ];
-  const wide = typeof window === 'undefined' || window.innerWidth >= 1024;
+  const wide = vw >= 1024;
   const liveItems = items.filter(d => !d.closed && d.stage !== 'Settled');
   const stageChips = [{ s: '', label: tx('All', 'सब'), n: liveItems.length }, ...STAGES.filter(x => liveItems.some(d => d.stage === x)).map(x => ({ s: x, label: label('dealStage', x) || x, n: liveItems.filter(d => d.stage === x).length }))];
   const cols = [...STAGES, ...(shown.some(d => d.stage === 'Disputed') ? ['Disputed'] : [])].filter(s => filter !== 'live' || s !== 'Settled').filter(s => filter !== 'settled' || s === 'Settled')
@@ -330,8 +334,9 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
     <div className="space-y-4" data-testid="deal-pipeline">
       {/* v170 — "Today": the first thing waiting on me in each deal, across ALL deals, one tap into the right tab (no hunting through rooms) */}
       {(() => {
-        const todo = liveItems.filter(d => d.needsMe && (d.next || []).length).sort((x, y) => (y.idleDays || 0) - (x.idleDays || 0)).slice(0, 5);   // longest-waiting first
-        if (!todo.length) return null;
+        const todo = liveItems.filter(d => d.needsMe && (d.next || []).length).sort((x, y) => (y.idleDays || 0) - (x.idleDays || 0)).slice(0, 3);   // longest-waiting first; "See all" shows the rest
+        const ending = liveItems.filter(d => typeof d.protectionDaysLeft === 'number' && d.protectionDaysLeft > 0 && d.protectionDaysLeft <= 7);
+        if (!todo.length && !ending.length) return null;
         return (
           <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 p-2.5" data-testid="deal-today">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900"><AlertTriangle className="h-4 w-4" />{tx('Today', 'आज का काम')} · {k.needsMe}</div>
@@ -341,38 +346,60 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
                 <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
               </button>
             ); })}
+            {k.needsMe > todo.length && <button type="button" onClick={() => setFilter('needs')} data-testid="today-see-all" className="min-h-11 w-full rounded-lg text-xs font-bold text-amber-900 underline">{tx(`See all ${k.needsMe}`, `सभी ${k.needsMe} देखें`)}</button>}
+            {ending.length > 0 && <div className="pt-1 text-xs font-bold text-amber-900" data-testid="today-ending">{tx('Ending soon', 'जल्द खत्म')}</div>}
+            {ending.map(d => (
+              <button key={`end-${d.id}`} type="button" onClick={() => onOpen(d.id, 'antibypass_protocol')} data-testid={`ending-${d.id}`} className="flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-left">
+                <span className="min-w-0 truncate text-xs font-bold text-slate-900">{d.propertyTitle || d.id}</span>
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">{tx(`${d.protectionDaysLeft} days protection left`, `सुरक्षा के ${d.protectionDaysLeft} दिन बचे`)}</span>
+              </button>
+            ))}
           </div>
         );
       })()}
-      <div className="grid grid-cols-2 gap-2">
+      {/* v173 — phone: one strip of three numbers instead of two big tiles */}
+      <div className="flex divide-x divide-slate-200 rounded-xl border border-slate-200 bg-white text-center sm:hidden" data-testid="hub-strip">
+        {[{ id: 'needs', f: 'needs' as Filter, v: String(k.needsMe), l: tx('Needs me', 'मेरा काम'), tone: k.needsMe ? 'text-amber-700' : 'text-slate-900' },
+          { id: 'live', f: 'live' as Filter, v: String(k.live), l: tx('Live', 'चालू'), tone: 'text-slate-900' },
+          ...(isBroker && k.hasMoney ? [{ id: 'share', f: 'live' as Filter, v: short(k.myPipeline), l: tx('My share', 'मेरा हिस्सा'), tone: 'text-emerald-700' }] : [])].map(c => (
+          <button key={c.id} type="button" onClick={() => { setFilter(c.f); setStage(''); }} className="min-h-12 min-w-0 flex-1 px-2 py-1.5" data-testid={`hub-strip-${c.id}`}>
+            <div className={`truncate text-lg font-bold ${c.tone}`}>{c.v}</div><div className="truncate text-xs text-slate-500">{c.l}</div>
+          </button>
+        ))}
+      </div>
+      <div className="hidden grid-cols-2 gap-2 sm:grid">
         <button type="button" onClick={() => setFilter('needs')} aria-pressed={filter === 'needs'} className={`rounded-xl border p-3 text-left transition-colors ${filter === 'needs' ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid="hub-kpi-needs">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><AlertTriangle className="h-4 w-4" />{tx('Need my action', 'मेरा काम बाकी')}</div>
           <div className={`mt-1 text-2xl font-bold ${k.needsMe ? 'text-amber-700' : 'text-slate-900'}`}>{k.needsMe}</div>
         </button>
-        <button type="button" onClick={() => setFilter('live')} aria-pressed={filter === 'live'} className={`rounded-xl border p-3 text-left transition-colors ${filter === 'live' ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={k.hasMoney ? 'hub-kpi-money' : 'hub-kpi-live-tile'}>
-          {k.hasMoney
+        <button type="button" onClick={() => setFilter('live')} aria-pressed={filter === 'live'} className={`rounded-xl border p-3 text-left transition-colors ${filter === 'live' ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid={isBroker && k.hasMoney ? 'hub-kpi-money' : 'hub-kpi-live-tile'}>
+          {isBroker && k.hasMoney
             ? <><div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Wallet className="h-4 w-4" />{tx('My share in pipeline', 'पाइपलाइन में मेरा हिस्सा')}</div><div className="mt-1 text-2xl font-bold text-emerald-700">{short(k.myPipeline)}</div></>
             : <><div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Briefcase className="h-4 w-4" />{tx('Live deals', 'चालू डील')}</div><div className="mt-1 text-2xl font-bold text-slate-900">{k.live}</div></>}
         </button>
       </div>
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" data-testid="hub-filters">
+      <div className="relative flex items-center gap-1.5">
+      {items.length <= 5 && <button type="button" onClick={() => { setSearchOpen(o => !o); window.setTimeout(() => searchRef.current?.focus(), 50); }} aria-expanded={searchOpen} aria-label={tx('Search deals', 'डील खोजें')} className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border sm:hidden ${searchOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="hub-search-toggle"><Search className="h-4 w-4" /></button>}
+      <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 pr-8" data-testid="hub-filters">
         {!wide && stageChips.map(c => (
-          <button key={c.s || 'all'} type="button" onClick={() => { setFilter('live'); setStage(c.s); }} aria-pressed={filter === 'live' && stage === c.s} data-testid={`hub-stage-${(c.s || 'all').replace(/\s+/g, '-')}`} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === 'live' && stage === c.s ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{c.label} <span className="opacity-70">{c.n}</span></button>
+          <button key={c.s || 'all'} type="button" onClick={() => { setFilter('live'); setStage(c.s); }} aria-pressed={filter === 'live' && stage === c.s} data-testid={`hub-stage-${(c.s || 'all').replace(/\s+/g, '-')}`} className={`min-h-11 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === 'live' && stage === c.s ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{c.label} <span className="opacity-70">{c.n}</span></button>
         ))}
         {chips.filter(c => wide || (c.id !== 'live' && c.v > 0)).map(c => (
-          <button key={c.id} type="button" onClick={() => { setFilter(c.id); setStage(''); }} aria-pressed={filter === c.id} className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === c.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`hub-kpi-${c.id}`}>{tx(c.en, c.hi)} <span className="ml-0.5 opacity-70">{c.v}</span></button>
+          <button key={c.id} type="button" onClick={() => { setFilter(c.id); setStage(''); }} aria-pressed={filter === c.id} className={`min-h-11 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === c.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`hub-kpi-${c.id}`}>{tx(c.en, c.hi)} <span className="ml-0.5 opacity-70">{c.v}</span></button>
         ))}
       </div>
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
+      </div>
 
-      <div className={`flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${items.length > 5 ? 'flex' : 'hidden sm:flex'}`}>   {/* v144 — nothing to search in a handful of deals */}
+      <div className={`flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${items.length > 5 || searchOpen ? 'flex' : 'hidden sm:flex'}`}>   {/* v144 — nothing to search in a handful of deals */}
         <div className="flex w-full items-center gap-2 sm:max-w-sm">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, area, broker', 'प्रॉपर्टी, इलाका, ब्रोकर खोजें')} data-testid="hub-search" />
+            <input ref={searchRef} className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, area, broker', 'प्रॉपर्टी, इलाका, ब्रोकर खोजें')} data-testid="hub-search" />
             {q && <button type="button" onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" aria-label={tx('Clear', 'साफ़ करें')}><X className="h-4 w-4" /></button>}
           </div>
           {/* v116 — on a phone the rarely-used "which deals / board or list" sit behind one button, so the first deal shows sooner */}
-          <button type="button" onClick={() => setTools(o => !o)} aria-expanded={tools} className={`inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold sm:hidden ${tools || role !== 'ALL' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="hub-tools">
+          <button type="button" onClick={() => setTools(o => !o)} aria-expanded={tools} className={`inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold sm:hidden ${showRoles ? '' : 'hidden'} ${tools || role !== 'ALL' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="hub-tools">
             <SlidersHorizontal className="h-4 w-4" />{tx('Filter', 'फ़िल्टर')}
           </button>
         </div>
@@ -384,10 +411,10 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
               <option value="CLOSING">{tx('My listing', 'मेरी लिस्टिंग')}</option>
             </select>
           )}
-          <div className="inline-flex shrink-0 rounded-lg border border-slate-300 bg-white p-0.5">
+          {wide && <div className="inline-flex shrink-0 rounded-lg border border-slate-300 bg-white p-0.5">
             <button type="button" onClick={() => setView('board')} aria-label={tx('Board', 'बोर्ड')} aria-pressed={view === 'board'} className={`inline-flex min-h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold ${view === 'board' ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid="hub-view-board"><LayoutGrid className="h-4 w-4" /><span className="hidden sm:inline">{tx('Board', 'बोर्ड')}</span></button>
             <button type="button" onClick={() => setView('list')} aria-label={tx('List', 'लिस्ट')} aria-pressed={view === 'list'} className={`inline-flex min-h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold ${view === 'list' ? 'bg-slate-900 text-white' : 'text-slate-600'}`} data-testid="hub-view-list"><ListIcon className="h-4 w-4" /><span className="hidden sm:inline">{tx('List', 'लिस्ट')}</span></button>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -410,7 +437,12 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
                     <span className="min-w-0 truncate text-sm font-bold text-slate-900">{d.propertyTitle}</span>
                     {amt ? <span className={`shrink-0 text-sm font-bold ${d.money?.myShare ? 'text-emerald-700' : 'text-slate-600'}`}>{short(amt)}</span> : null}
                   </div>
-                  <div className="truncate text-xs text-slate-500">{[d.locality || d.city, d.closed ? tx('Closed', 'बंद') : (label('dealStage', d.stage) || d.stage)].filter(Boolean).join(' · ')}{d.openDispute ? ` · ${tx('Dispute', 'विवाद')}` : ''}</div>
+                  <div className="truncate text-xs text-slate-500">{[d.locality || d.city, d.openDispute ? tx('Dispute', 'विवाद') : ''].filter(Boolean).join(' · ')}</div>
+                  <div className="mt-1 flex flex-wrap gap-1" data-testid={`deal-pills-${d.id}`}>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{d.closed ? tx('Closed', 'बंद') : (label('dealStage', d.stage) || d.stage)}</span>
+                    {d.visits?.upcoming > 0 && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-900">{tx('Visit booked', 'विज़िट तय')}</span>}
+                    {!d.closed && typeof d.protectionDaysLeft === 'number' && d.protectionDaysLeft > 0 && d.protectionDaysLeft <= 7 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">{tx(`${d.protectionDaysLeft} days protection`, `सुरक्षा ${d.protectionDaysLeft} दिन`)}</span>}
+                  </div>
                   {first && !d.closed && <div className={`mt-0.5 truncate text-xs font-semibold ${d.needsMe ? 'text-amber-800' : 'text-slate-600'}`}>▸ {nextText(first, d.idleDays, tx, th)}</div>}
                 </button>
               </li>
@@ -611,4 +643,32 @@ export const MessageHint: React.FC<{ at?: string }> = ({ at }) => {
   const tx = useTx();
   if (!at) return null;
   return <span className="inline-flex items-center gap-1 text-xs text-slate-500"><MessageSquare className="h-3 w-3" />{ago(at, tx)}</span>;
+};
+
+// v173 — "Earnings": my share across deals (brokers who have money in a deal only)
+export const EarningsBoard: React.FC<{ hub: any; onOpen: (id: string) => void }> = ({ hub, onOpen }) => {
+  const tx = useTx(); const label = useLabel();
+  const k = hub?.kpis || {};
+  const rows: any[] = (hub?.deals || []).filter((d: any) => d.money && !d.closed).sort((a: any, b: any) => (b.money.myShare || 0) - (a.money.myShare || 0));
+  const toConfirm = (hub?.deals || []).filter((d: any) => !d.closed).reduce((n: number, d: any) => n + (d.next || []).filter((x: any) => x.kind === 'PAYMENTS_TO_CONFIRM' || x.kind === 'CLIENT_PAYMENT').length, 0);
+  return (
+    <div className="space-y-3" data-testid="deal-earnings">
+      <div className="flex divide-x divide-slate-200 rounded-xl border border-slate-200 bg-white text-center" data-testid="earnings-summary">
+        <div className="min-w-0 flex-1 px-2 py-2.5"><div className="truncate text-lg font-bold text-emerald-700">{short(k.myPipeline)}</div><div className="text-xs text-slate-500">{tx('In pipeline', 'पाइपलाइन में')}</div></div>
+        <div className="min-w-0 flex-1 px-2 py-2.5"><div className="truncate text-lg font-bold text-slate-900">{short(k.mySettled)}</div><div className="text-xs text-slate-500">{tx('Settled', 'मिल चुका')}</div></div>
+        <div className="min-w-0 flex-1 px-2 py-2.5"><div className={`text-lg font-bold ${toConfirm ? 'text-amber-700' : 'text-slate-900'}`}>{toConfirm}</div><div className="text-xs text-slate-500">{tx('To confirm', 'पुष्टि बाकी')}</div></div>
+      </div>
+      <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        {rows.map(d => (
+          <li key={d.id}>
+            <button type="button" onClick={() => onOpen(d.id)} data-testid={`earn-${d.id}`} className="flex min-h-12 w-full items-center justify-between gap-2 px-3 py-2 text-left active:bg-slate-50">
+              <span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-900">{d.propertyTitle || d.id}</span><span className="block truncate text-xs text-slate-500">{label('dealStage', d.stage) || d.stage}{d.money.dealValue ? ` · ${short(d.money.dealValue)}` : ''}</span></span>
+              <span className="shrink-0 text-sm font-bold text-emerald-700">{short(d.money.myShare)}</span>
+            </button>
+          </li>
+        ))}
+        {rows.length === 0 && <li className="p-6 text-center text-sm text-slate-500">{tx('No deal with your share yet.', 'अभी किसी डील में आपका हिस्सा तय नहीं।')}</li>}
+      </ul>
+    </div>
+  );
 };

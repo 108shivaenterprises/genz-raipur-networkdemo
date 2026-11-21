@@ -25,7 +25,7 @@ const row = (j: any, n: string) => j.keys.find((k: any) => k.name === n);
 beforeAll(async () => {
   dir = mkdtempSync(path.join(tmpdir(), 'genz-keys-')); mkdirSync(path.join(dir, 'data'));
   const root = path.resolve(import.meta.dirname, '..');
-  const env: any = { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', NODE_ENV: 'development', DEMO_MODE: 'true', SEED_DEMO_DATA: 'true', DISABLE_HMR: 'true' };
+  const env: any = { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', NODE_ENV: 'development', DEMO_MODE: 'true', FEATURE_VOICE: 'true', SEED_DEMO_DATA: 'true', DISABLE_HMR: 'true' };
   for (const k of ['FAST2SMS_API_KEY', 'FAST2SMS_OTP_ID', 'SMS_WEBHOOK_URL', 'SMS_WEBHOOK_TOKEN', 'TURN_URLS', 'TURN_USERNAME', 'TURN_CREDENTIAL', 'FIREBASE_API_KEY', 'FIREBASE_PROJECT_ID']) delete env[k];
   proc = spawn(path.join(root, 'node_modules/.bin/tsx'), [path.join(root, 'server.ts')], { cwd: dir, env, stdio: 'ignore' });
   for (let i = 0; i < 80; i++) {

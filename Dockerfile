@@ -16,8 +16,10 @@ COPY --from=build /app/dist ./dist
 COPY server.ts tsconfig.json ./
 COPY server ./server
 COPY src/types ./src/types
+# server imports ./src/shared/* and ../src/shared/* at runtime
+COPY src/shared ./src/shared
 RUN mkdir -p data && chown -R node:node /app
 USER node
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node_modules/.bin/tsx", "server.ts"]

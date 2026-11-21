@@ -3,6 +3,11 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       POSTGRES_DB: genz
       POSTGRES_USER: genz
@@ -18,6 +23,12 @@ services:
   app:
     build: .
     restart: unless-stopped
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     depends_on:
       db:
         condition: service_healthy
@@ -26,12 +37,30 @@ services:
       DATABASE_URL: postgres://genz:${DB_PASSWORD}@db:5432/genz
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
       KYC_VAULT_KEY: ${KYC_VAULT_KEY:-}
+      KYC_VAULT_DISABLED: ${KYC_VAULT_DISABLED:-false}   # set true to run with the vault off on purpose; else KYC_VAULT_KEY is needed
+      KYC_VAULT_KEY_FILE: ${KYC_VAULT_KEY_FILE:-}
+      KYC_RETAIN_DAYS: ${KYC_RETAIN_DAYS:-}
+      ALLOW_FRESH_DB: ${ALLOW_FRESH_DB:-false}
+      PGSSLMODE: ${PGSSLMODE:-}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-}
+      VAPID_KEY_FILE: ${VAPID_KEY_FILE:-/app/data/.vapid.json}   # empty would switch the key file off
+      SEED_ADMIN_CITY: ${SEED_ADMIN_CITY:-}
+      SEED_ADMIN_COMPANY: ${SEED_ADMIN_COMPANY:-}
+      BACKUP_EVERY_MS: ${BACKUP_EVERY_MS:-}
+      BACKUP_KEEP: ${BACKUP_KEEP:-}
+      VIDEO_MAX_MB: ${VIDEO_MAX_MB:-}
+      INLET_DAILY_CAP: ${INLET_DAILY_CAP:-}
+      AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:-}
+      FEATURE_VOICE: ${FEATURE_VOICE:-false}
+      OTP_MODE: ${OTP_MODE:-manual}
+      DIGILOCKER_MODE: ${DIGILOCKER_MODE:-manual-review}
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=768}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
-      PUBLIC_URL: ${PUBLIC_URL:-}
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env (https://your-domain)}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-${ADMIN_EMAIL:-admin@genzbuildcon.com}}
       SEED_ADMIN_PHONE: ${SEED_ADMIN_PHONE:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       DEMO_MODE: "false"
@@ -52,6 +81,11 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     depends_on:
       - app
     ports:

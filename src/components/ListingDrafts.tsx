@@ -2,7 +2,7 @@
  * v26 — "WhatsApp se listing": paste forwards → drafts → owner consent (link or signed form) → publish.
  * A draft is private to the broker. It goes live only after the owner says yes; that yes starts the bypass protection.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardPaste, Loader2, Trash2, Send, FileSignature, Upload, CheckCircle2, AlertTriangle, ExternalLink, Copy, X, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
@@ -34,6 +34,12 @@ export const ListingDrafts: React.FC<{ onClose: () => void; onPublished: () => v
   const [sms, setSms] = useState(false);
   const load = () => api.drafts().then(r => { setDrafts(r.drafts); setSms(!!r.smsCodes); }).catch(e => setErr(e.message));
   useEffect(() => { load(); }, []);
+  // Escape never throws away pasted text silently: with text in the box the first Escape only shows a hint; focus goes back to the opener on close
+  const [discardHint, setDiscardHint] = useState(false);
+  const opener = useRef<HTMLElement | null>(typeof document !== 'undefined' ? document.activeElement as HTMLElement | null : null);
+  useEffect(() => () => { try { opener.current?.focus(); } catch { /* element gone */ } }, []);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (text.trim().length > 20 && !discardHint) setDiscardHint(true); else onClose(); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose, text, discardHint]);
+  useEffect(() => { setDiscardHint(false); }, [text]);
 
   const paste = async () => {
     setBusy(true); setErr('');
@@ -53,17 +59,18 @@ export const ListingDrafts: React.FC<{ onClose: () => void; onPublished: () => v
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={onClose}>
-      <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[92vh] sm:rounded-2xl" onClick={e => e.stopPropagation()} data-testid="listing-drafts">
+      <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[92vh] sm:rounded-2xl" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={tx('Listings & buyer needs from WhatsApp', 'WhatsApp से लिस्टिंग और खरीदार की ज़रूरत')} data-testid="listing-drafts">
         <div className="flex items-center gap-2 border-b border-slate-200 bg-emerald-700 px-4 py-3 text-white">
           <MessageCircle className="h-5 w-5" />
-          <div className="flex-1"><h2 className="text-sm font-bold">{tx('Listings & buyer needs from WhatsApp', 'WhatsApp से लिस्टिंग और खरीदार की ज़रूरत')}</h2><p className="text-[11px] opacity-90">{tx('Listing: paste → details → owner says yes → live · Need: paste → client details → saved', 'लिस्टिंग: पेस्ट → डिटेल → मालिक की हाँ → लाइव · ज़रूरत: पेस्ट → क्लाइंट डिटेल → सेव')}</p></div>
-          <button onClick={onClose} aria-label={tx('Close', 'बंद करें')}><X className="h-5 w-5" /></button>
+          <div className="flex-1"><h2 className="text-sm font-bold">{tx('Listings & buyer needs from WhatsApp', 'WhatsApp से लिस्टिंग और खरीदार की ज़रूरत')}</h2><p className="text-xs opacity-90">{tx('Listing: paste → details → owner says yes → live · Need: paste → client details → saved', 'लिस्टिंग: पेस्ट → डिटेल → मालिक की हाँ → लाइव · ज़रूरत: पेस्ट → क्लाइंट डिटेल → सेव')}</p></div>
+          <button onClick={onClose} aria-label={tx('Close', 'बंद करें')} className="inline-flex min-h-11 min-w-11 items-center justify-center"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           <label className="text-xs font-semibold text-slate-700">{tx('Paste WhatsApp messages — properties and buyer requirements (one or many)', 'WhatsApp मैसेज पेस्ट करें — प्रॉपर्टी और खरीदार की ज़रूरत (एक या कई)')}</label>
-          <textarea value={text} onChange={e => setText(e.target.value)} rows={5} maxLength={20000} data-testid="wa-paste-text"
+          <textarea value={text} onChange={e => setText(e.target.value)} rows={5} maxLength={20000} autoFocus data-testid="wa-paste-text"
             placeholder={tx('Listings and buyer needs, e.g. “*2BHK flat for sale* Shankar Nagar 1150 sqft 45 L” or “2BHK chahiye Telibandha budget 40-50 L”', 'लिस्टिंग और खरीदार की ज़रूरत दोनों, जैसे “*2BHK फ्लैट बिक्री* शंकर नगर 1150 sqft 45 L” या “2BHK चाहिए तेलीबांधा बजट 40-50 L”')}
             className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" />
+          {discardHint && <p className="mt-1 text-xs font-semibold text-amber-700" role="status" data-testid="wa-discard-hint">{tx('Press Escape again to discard the pasted text', 'पेस्ट किया टेक्स्ट हटाने के लिए फिर Escape दबाएँ')}</p>}
           <VoiceNote onText={t => setText(x => (x ? x.replace(/\s+$/, '') + '\n' : '') + t)} />
           <div className="mt-2 flex flex-wrap gap-2">
             <button onClick={paste} disabled={busy || !text.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" data-testid="wa-paste-go">

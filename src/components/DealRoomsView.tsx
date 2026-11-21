@@ -69,14 +69,14 @@ import {
 } from 'lucide-react';
 import { PropertyMediaAsset, MediaShareGrant, DealMessage } from '../types/index.js';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
-import { DealPipeline, StageStepper, NextSteps, MandatesBoard, DealCard, SubTabBar, DealIds } from './DealHub.js';
+import { DealPipeline, EarningsBoard, StageStepper, NextSteps, MandatesBoard, DealCard, SubTabBar, DealIds } from './DealHub.js';
 import { ShareToRoom } from './ShareToRoom.js';
 import { SideFeePanel } from './SideFeePanel.js';
 import { DealStatusPanel } from './DealStatusPanel.js';
 import { DealSimple, type SimpleDoor } from './DealSimple.js';
 import { PaymentRequestsPanel } from './PaymentRequestsPanel.js';
 import { isClosed } from '../shared/dealClose.js';
-import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, Search as SearchIcon, LayoutGrid, FileSignature, MessagesSquare, Wallet } from 'lucide-react';
 import { ChatShell, ChatThread } from './ChatKit.js';
 import { useDealChatKit } from './ChatPlus.js';
 import { lazyView } from '../lib/lazyView.js';
@@ -198,7 +198,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   // owners and employees of a broker are not parties to the broker↔broker commission: they get the redacted view
   const isOwnerViewer = currentUser.role === 'PROPERTY_OWNER' || currentUser.role === 'TEAM_MEMBER';
   // v37 — Deal Hub: the pipeline (board / list) is the home of this tab; a deal room opens from a card
-  type Mode = 'PIPELINE' | 'DEAL_ROOMS' | 'PROPOSALS' | 'MANDATES' | 'ROOMS';
+  type Mode = 'PIPELINE' | 'DEAL_ROOMS' | 'PROPOSALS' | 'MANDATES' | 'ROOMS' | 'EARNINGS';
   const [mainMode, setModeRaw] = useState<Mode>(() => {
     if (urlQ.get('deal')) return 'DEAL_ROOMS';
     const v = urlQ.get('view');
@@ -241,6 +241,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   // keep the chosen mode's button in view on a phone (the switch scrolls sideways)
   useEffect(() => { try { document.querySelector(`[data-testid="deal-mode-${mainMode}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch { /* old browser */ } }, [mainMode]);
   const [hub, setHub] = useState<any>(null);
+  const showEarnings = currentUser.role === 'BROKER' && !!hub?.kpis?.hasMoney;   // my share is a broker's number, never an owner's / employee's
+  useEffect(() => { if (mainMode === 'EARNINGS' && hub && !showEarnings) setModeRaw('PIPELINE'); }, [mainMode, hub, showEarnings]);
   const [listQ, setListQ] = useState('');
   const [taskFilter, setTaskFilter] = useState<'AUTO' | 'ALL' | 'MINE' | 'OPEN' | 'OVERDUE' | 'REVIEW'>('AUTO');
   const [protOpen, setProtOpen] = useState(false);   // v83 — the anti-bypass / privacy notes of the Overview: one line, "Details" opens them
@@ -646,6 +648,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     setSelectedDealId(id);
     if (tab && tab !== 'overview') setSimple(false);
     setActiveSubTab(tabAllowed(tab) ? tab : 'overview');
+    // phone: land in the Simple room (header, pager, glance, next-step card) — its button goes to the tab; wide screens deep-link straight to it
+    if (tab && tab !== 'overview' && typeof window !== 'undefined' && window.innerWidth < 1024) { setSimple(true); setActiveSubTab('overview'); }
     setTaskFilter(filterFor(kind));
     setMainMode('DEAL_ROOMS');
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* old browser */ }
@@ -873,33 +877,41 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               : mainMode === 'MANDATES' ? (currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms with brokers', 'ब्रोकरों से मेरी ब्रोकरेज शर्तें') : tx('Owners — brokerage terms', 'मालिक — ब्रोकरेज की शर्तें'))
               : mainMode === 'ROOMS' ? tx('Client rooms', 'क्लाइंट रूम')
               : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Co-broking offers', 'को-ब्रोकिंग ऑफ़र')
+              : mainMode === 'EARNINGS' ? tx('Earnings (कमाई)', 'कमाई (Earnings)')
               : tx('Deal room', 'डील रूम')} meta={mainMode === 'PIPELINE' && deals.length > 0 ? tx(`${deals.length} deal rooms`, `${deals.length} डील रूम`) : undefined} help={<>{mainMode === 'PIPELINE' ? tx('Every deal by stage — what needs you first. Tap a card to open its deal room.', 'हर डील स्टेज के हिसाब से — पहले वो जिसमें आपका काम बाकी है। डील रूम खोलने के लिए कार्ड दबाएँ।')
               : mainMode === 'MANDATES' ? tx('Brokerage mandates signed by owners — status, terms and protection days left.', 'मालिकों के साइन किए ब्रोकरेज मैंडेट — स्थिति, शर्तें और सुरक्षा के बचे दिन।')
               : mainMode === 'ROOMS' ? tx('Your buyers’ private rooms — share homes, chat, and book visits. A deal shows the rooms that have its property.', 'आपके खरीदारों के निजी रूम — प्रॉपर्टी भेजें, बात करें, विज़िट तय करें। हर डील में वो रूम दिखते हैं जिनमें उसकी प्रॉपर्टी है।')
+              : mainMode === 'EARNINGS' ? tx('Your share in every live deal, and what is settled.', 'हर चालू डील में आपका हिस्सा और जो मिल चुका।')
               : mainMode === 'PROPOSALS' && !isOwnerViewer ? tx('Offers other brokers sent on your listings, and the ones you sent. Accepting one opens a deal room.', 'आपकी लिस्टिंग पर दूसरे ब्रोकरों के ऑफ़र, और आपके भेजे ऑफ़र। मंज़ूर करते ही डील रूम खुलता है।')
               : tx('Who does what, the brokerage agreement, title check and registry — all for this deal in one place.', 'कौन क्या करेगा, ब्रोकरेज समझौता, टाइटल जाँच और रजिस्ट्री — इस डील का सब एक जगह।')} {tx('The anti-bypass rule applies in every deal room.', 'हर डील रूम में एंटी-बायपास नियम लागू है।')}</>} />
         </div>
       </div>
-      <div className={`-mt-2 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1 ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:flex' : 'flex'}`} role="tablist" data-testid="deal-modes">
+      <div className={`relative -mt-2 ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:block' : ''}`}>
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1 pr-7 sm:pr-1" role="tablist" data-testid="deal-modes">
         {([
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
-          ...(mainMode === 'DEAL_ROOMS' ? [['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false]] : []),   // v142 — shown only while a room is open; you enter a room by tapping a deal   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Offers" half off the screen
-          ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Offers', 'ऑफ़र'), (offers || []).length, pendingIncomingCount > 0]] : []),
+          ...(mainMode === 'DEAL_ROOMS' ? [['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false]] : []),   // v142 — shown only while a room is open; you enter a room by tapping a deal   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Co-broke" half off the screen
+          ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Co-broke', 'को-ब्रोक'), (offers || []).length, pendingIncomingCount > 0]] : []),
+          ...(showEarnings ? [['EARNINGS', Wallet, tx('Earnings', 'कमाई'), undefined, false]] : []),   // v173 — only when this person has a share to show
           // v148 — no "Client rooms" tab here: it has its own tab and is in Deal Desk; a deal's linked room still opens from the deal
           ...(perm('mandate:read') ? [['MANDATES', FileSignature, currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms', 'मेरी ब्रोकरेज शर्तें') : tx('Owners', 'मालिक'), undefined, false]] : []),
         ] as [typeof mainMode, React.ElementType, string, number | undefined, boolean][]).map(([id, Icon, text, n, dot]) => (
           <button key={id} type="button" role="tab" aria-selected={mainMode === id}
             onClick={() => (id === 'DEAL_ROOMS' && !selectedDealId && deals[0] ? openDeal(deals[0].id) : id === 'ROOMS' ? openClientRoom() : setMainMode(id))}
-            className={`relative inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all ${mainMode === id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`} data-testid={`deal-mode-${id}`}>
-            <Icon className="h-3.5 w-3.5" /><span className="whitespace-nowrap">{text}</span>
+            className={`relative inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-all sm:gap-1.5 sm:px-3 ${mainMode === id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`} data-testid={`deal-mode-${id}`}>
+            <Icon className="hidden h-3.5 w-3.5 min-[400px]:block" /><span className="whitespace-nowrap">{text}</span>
             {n !== undefined && <span className={`rounded-full px-1.5 text-xs font-bold ${mainMode === id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{n}</span>}
             {dot && <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />}
           </button>
         ))}
       </div>
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-7 rounded-r-xl bg-gradient-to-l from-slate-100 to-transparent sm:hidden" aria-hidden="true" />
+      </div>
 
       {mainMode === 'PIPELINE' ? (
-        <DealPipeline hub={hub} onOpen={openDeal} showRoles={currentUser.role === 'BROKER'} />
+        <DealPipeline hub={hub} onOpen={openDeal} showRoles={currentUser.role === 'BROKER'} isBroker={currentUser.role === 'BROKER'} />
+      ) : mainMode === 'EARNINGS' && showEarnings ? (
+        <EarningsBoard hub={hub} onOpen={(id) => { openDeal(id, 'overview'); setSimple(false); let tries = 0; const iv = window.setInterval(() => { const el = document.querySelector('[data-testid="deal-money"]') as HTMLElement | null; if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); window.clearInterval(iv); } else if (++tries > 20) window.clearInterval(iv); }, 150); }} />
       ) : mainMode === 'MANDATES' ? (
         <MandatesBoard currentUser={currentUser} deals={hub?.deals || []} onOpenDeal={(id) => openDeal(id)} />
       ) : mainMode === 'ROOMS' && canRooms ? (
@@ -933,7 +945,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
             return (
               <div className="flex items-center gap-2 lg:hidden" data-testid="deal-switcher">
                 <button type="button" onClick={() => (showSimple || summaryOnly ? setMainMode('PIPELINE') : pickView(true))} className="inline-flex min-h-10 min-w-0 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-slate-700" data-testid="deal-back"><ArrowLeft className="h-4 w-4 shrink-0" /><span className="truncate">{showSimple || summaryOnly ? tx('All deals', 'सभी डील') : (activeProperty?.title || tx('Back to the deal', 'डील पर वापस'))}</span></button>
-                {ids.length > 1 && showSimple && <span className="ml-auto flex items-center gap-1">
+                {ids.length > 1 && <span className="ml-auto flex items-center gap-1">
                   <button type="button" onClick={() => go(-1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Previous deal', 'पिछली डील')}><ChevronLeft className="h-4 w-4" /></button>
                   <span className="text-xs text-slate-500">{at + 1}/{ids.length}</span>
                   <button type="button" onClick={() => go(1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Next deal', 'अगली डील')}><ChevronRight className="h-4 w-4" /></button>
@@ -1014,7 +1026,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 </div>
               )}
               {showSimple && (
-                <DealSimple item={hubItemOf(activeDeal.id)} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
+                <DealSimple item={hubItemOf(activeDeal.id)} onBookVisit={perm('sitevisit:create') && !activeDeal.closed && activeDeal.stage !== 'Settled' ? () => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId) : undefined} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
                   doors={[
                     ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(canTasks ? ['responsibilities' as const] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const]),
@@ -1041,9 +1053,9 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     ...(hideCommercials || !perm('agreement:read') ? [] : [{ id: 'commission_agreement', label: tx('Agreement', 'समझौता'), icon: FileCheck2, primary: true }]),
                     ...(perm('property:read') ? [{ id: 'media_vault', label: tx('Photos & map', 'फ़ोटो और लोकेशन'), count: vaultAssets.length, icon: FolderLock }] : []),
                     ...(ddOn ? [{ id: 'due_diligence', label: tx('Paper check', 'काग़ज़ों की सूची'), icon: ShieldCheck, primary: true }] : []),
-                    { id: 'antibypass_protocol', label: tx('Anti-Bypass Rules', 'एंटी-बायपास नियम'), icon: ShieldCheck },
-                    ...(perm('legal:request') && currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) ? [{ id: 'legal_help', label: tx('Legal Help', 'क़ानूनी मदद'), icon: Scale }] : []),
                     ...(perm('dispute:read', 'dispute:create') ? [{ id: 'disputes_holds', label: tx('Disputes & Commission Holds', 'विवाद और कमीशन होल्ड'), icon: Scale }] : []),
+                    ...(perm('legal:request') && currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) ? [{ id: 'legal_help', label: tx('Legal Help', 'क़ानूनी मदद'), icon: Scale }] : []),
+                    { id: 'antibypass_protocol', label: tx('Anti-Bypass Rules', 'एंटी-बायपास नियम'), icon: ShieldCheck },
                   ] as { id: string; label: string; count?: number; icon: React.ElementType; primary?: boolean }[])
                     .filter((tab) => !summaryOnly || ['overview', 'antibypass_protocol', 'disputes_holds'].includes(tab.id))
                     .map((tab) => ({ ...tab, dot: (hubItemOf(activeDeal.id)?.next || []).some((n: any) => n.tab === tab.id && n.kind !== 'STALLED') }))}

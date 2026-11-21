@@ -102,6 +102,8 @@ interface NavigationTabsProps {
   /** v50: unread chat messages (client rooms + deal rooms) */
   chatBadge?: number;
   onTabsResolved?: (tabs: any[]) => void;
+  /** phones: the header search icon is hidden below 420px, so More carries a Search row */
+  onOpenSearch?: () => void;
 }
 
 export const NavigationTabs: React.FC<NavigationTabsProps> = ({
@@ -112,6 +114,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   unreadCount = {},
   chatBadge = 0,
   onTabsResolved,
+  onOpenSearch,
 }) => {
   const { t } = useI18n();
   const has = (...p: string[]) => p.some((x) => permissions.includes(x));
@@ -363,6 +366,12 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                     />
                   </div>
                 </div>
+
+                {onOpenSearch && (
+                  <button type="button" onClick={() => { setMore(false); setMoreFilter(''); onOpenSearch(); }} data-testid="more-search" className="mb-3 flex min-h-11 w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800">
+                    <Search className="h-4 w-4 text-slate-500" />Search (खोजें)
+                  </button>
+                )}
 
                 {groups.map(g => {
                   const rest = g.tabs.filter(x => !bottom.some(b => b.tab!.id === x.id)).filter(x => !moreFilter.trim() || x.label.toLowerCase().includes(moreFilter.toLowerCase()) || x.id.toLowerCase().includes(moreFilter.toLowerCase()));

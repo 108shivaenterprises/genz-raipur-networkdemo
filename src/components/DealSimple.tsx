@@ -17,8 +17,9 @@ export const DealSimple: React.FC<{
   item?: any;                       // the Deal Hub row of this deal (stage, next steps, money, visits, tasks, agreement, last activity)
   doors: SimpleDoor[];              // the sections THIS person may open (the parent decides, from the same permissions as the tab bar)
   onOpen: (door: SimpleDoor | 'full') => void;
+  onBookVisit?: () => void;         // only passed when this person may create a site visit
   phone?: string;                   // the other broker's number — the two brokers of a deal already see it in the chat header
-}> = ({ item, doors, onOpen, phone }) => {
+}> = ({ item, doors, onOpen, phone, onBookVisit }) => {
   const tx = useTx(); const th = useTemplateHi();
   const ago = (iso?: string) => { const d = agoDays(iso); return d < 0 ? '' : d === 0 ? tx('today', 'आज') : d === 1 ? tx('yesterday', 'कल') : tx(`${d} days ago`, `${d} दिन पहले`); };
   const next: any[] = item?.next || [];
@@ -47,7 +48,8 @@ export const DealSimple: React.FC<{
     money: { icon: IndianRupee, label: tx('Money', 'पैसा / हिसाब'), tab: 'overview', hint: tx('Final rate, commission, payments', 'फ़ाइनल रेट, कमीशन, भुगतान') },
   };
 
-  const top = ['share', 'value', 'other'].map(k => facts.find(f => f.k === k)).filter(Boolean).slice(0, 3) as typeof facts;
+  const protSoon = typeof item?.protectionDaysLeft === 'number' && item.protectionDaysLeft <= 7;
+  const top = ['share', 'value', ...(protSoon ? ['prot'] : []), 'other'].map(k => facts.find(f => f.k === k)).filter(Boolean).slice(0, 3) as typeof facts;
   const door = (id: SimpleDoor, small?: boolean) => { const d = all[id]; const Icon = d.icon; return (
     <button key={id} type="button" onClick={() => onOpen(id)} data-testid={`deal-door-${id}`}
       className={`relative flex items-center gap-3 rounded-xl border border-slate-200 bg-white text-left active:bg-slate-50 ${small ? 'min-h-12 px-3' : 'min-h-16 p-3 shadow-sm'}`}>
@@ -58,7 +60,7 @@ export const DealSimple: React.FC<{
   ); };
   // v147 — laid out like a CRM deal screen (Pipedrive / Bigin): numbers, round quick actions, the history, then the sections
   const tel = (phone || '').replace(/\D/g, '').slice(-10);
-  const round = 'flex flex-1 flex-col items-center gap-1 text-xs font-semibold text-slate-700';
+  const round = 'flex min-h-11 min-w-11 flex-1 flex-col items-center gap-1 text-xs font-semibold text-slate-700';
   const ring = 'flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm';
   const histText = (h: { k: string; t?: string }) => ({
     CREATED: tx('Deal started', 'डील शुरू हुई'), VISIT_DONE: tx('Site visit done', 'साइट विज़िट हुई'), VISIT_BOOKED: tx('Site visit booked', 'साइट विज़िट तय हुई'),
@@ -82,6 +84,7 @@ export const DealSimple: React.FC<{
         </dl>
       )}
       <div className="flex gap-1" data-testid="deal-simple-doors">
+        {onBookVisit && <button type="button" onClick={onBookVisit} className={round} data-testid="deal-book-visit"><span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-700 text-white shadow-sm"><CalendarCheck className="h-5 w-5" aria-hidden /></span>{tx('Book visit', 'विज़िट तय करें')}</button>}
         {tel.length === 10 && <a href={`tel:+91${tel}`} className={round} data-testid="deal-call"><span className={ring}><Phone className="h-5 w-5 text-emerald-700" aria-hidden /></span>{tx('Call', 'कॉल')}</a>}
         {tel.length === 10 && <a href={`https://wa.me/91${tel}`} target="_blank" rel="noreferrer" className={round} data-testid="deal-wa"><span className={ring}><MessageCircle className="h-5 w-5 text-emerald-700" aria-hidden /></span>WhatsApp</a>}
         {doors.includes('chat_call') && <button type="button" onClick={() => onOpen('chat_call')} className={round} data-testid="deal-door-chat_call"><span className={`${ring} relative`}><MessageSquare className="h-5 w-5 text-slate-800" aria-hidden />{dot('chat_call') && <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}</span>{tx('Chat', 'चैट')}</button>}

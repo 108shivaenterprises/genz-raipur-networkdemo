@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTx } from '../lib/i18n.js';
 import { Loader2, Copy, MessageCircle, Download, Link2, Flame, Printer } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { getShareOrigin } from '../lib/utils.js';
 import { drawBrandLogo } from '../lib/brandQr.js';
 import { LANG_LABELS, TEMPLATE_LABELS, TEMPLATE_LABELS_HI, renderTemplate, waLink, type TemplateKind, type TemplateLang } from '../shared/templates.js';
 
@@ -118,7 +119,7 @@ export const ShareKit: React.FC = () => {
   useEffect(() => { load(); const t = setInterval(() => api.shareLinks().then(r => setLinks(r.links)).catch(() => {}), 30000); return () => clearInterval(t); }, [load]);
 
   const src = useMemo(() => sources.find(s => `${s.kind}:${s.id}` === sel), [sources, sel]);
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const origin = getShareOrigin();
 
   const flash = (ok: boolean, text: string) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 5000); };
   const saveBrand = async () => { if (!brand) return; try { const r = await api.shareSaveBrand({ displayName: brand.displayName, tagline: brand.tagline, reraId: brand.reraId, logo: brand.logo }); setBrand(r.brand); flash(true, tx('Brand profile saved','ब्रांड प्रोफ़ाइल सेव हो गई')); } catch (e: any) { flash(false, e.message); } };

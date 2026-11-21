@@ -6,3 +6,13 @@ data
 *.log
 tests
 docs
+.env.*
+!.env.production.example
+# Vercel demo only (D4) - never in the VPS image
+api
+server/vercelBoot.ts
+.github
+deploy/*.zip
+*.zip
+.ruff_cache
+tests

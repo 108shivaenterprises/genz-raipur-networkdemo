@@ -131,7 +131,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <CheckCircle2 className="mb-1 h-5 w-5 text-emerald-600" />
             <p className="font-semibold">{autoVerified ? (hi ? 'आप वेरिफ़ाइड हैं!' : 'You are verified!') : (hi ? 'आवेदन जमा हो गया!' : 'Application submitted!')}</p>
             <p className="mt-1 text-xs">{autoVerified
-              ? (hi ? `RERA-रजिस्टर्ड ${sponsorName || 'ब्रोकर'} के ज़रिए आप तुरंत वेरिफ़ाई हो गए। GENZ टीम आपकी PAN / आधार ID बाद में देखेगी — ज़रूरत हो तो वह आपसे संपर्क करेगी।` : `You were verified straight away through RERA-registered ${sponsorName || 'your sponsor'}. The GENZ team will check your PAN / Aadhaar ID afterwards and will contact you if anything is needed.`)
+              ? (hi ? `आपके मोबाइल OTP और PAN से आप तुरंत वेरिफ़ाई हो गए। GENZ टीम आपकी PAN / आधार ID बाद में देखेगी — ज़रूरत हो तो वह आपसे संपर्क करेगी।` : `You were verified straight away through your mobile OTP and PAN. The GENZ team will check your PAN / Aadhaar ID afterwards and will contact you if anything is needed.`)
               : (hi ? 'GENZ टीम आपके विवरण की जाँच करेगी। मंज़ूरी के बाद आप साइन इन कर पाएँगे।' : 'The GENZ team will verify your details. You can sign in once you are approved.')} {done}</p>
             {uploadNote && <p role="alert" className="mt-2 text-xs font-medium text-red-700">{uploadNote}</p>}
             <button onClick={onBack} className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white">{hi ? 'साइन इन पेज' : 'Go to sign in'}</button>

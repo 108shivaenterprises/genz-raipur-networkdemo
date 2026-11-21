@@ -84,6 +84,8 @@ export const api = {
     request<{
       success: boolean;
       demoMode: boolean;
+      voice?: boolean;
+      publicUrl?: string;
       demoPassword?: string;
       demoAccounts: { id: string; name: string; email: string; role: string; companyName?: string; verificationStatus: string }[];
     }>('/api/auth/config'),

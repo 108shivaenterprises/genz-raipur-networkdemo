@@ -7,11 +7,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Mic, Square } from 'lucide-react';
 import { useTx } from '../lib/i18n.js';
+import { useVoiceFlag } from '../lib/voiceFlag.js';
 
 type Rec = { lang: string; interimResults: boolean; continuous: boolean; onresult: ((e: any) => void) | null; onerror: ((e: any) => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
 const Ctor = (): (new () => Rec) | null => { try { const w = window as any; return w.SpeechRecognition || w.webkitSpeechRecognition || null; } catch { return null; } };
 
-export const VoiceNote: React.FC<{ onText: (spoken: string) => void; /** v111 — another button text and no “say: type, area, budget” hint (the copilot takes any command) */ label?: [string, string] }> = ({ onText, label }) => {
+export const VoiceNote: React.FC<{ onText: (spoken: string) => void; label?: [string, string] }> = props => (useVoiceFlag() ? <VoiceNoteInner {...props} /> : null); // D1: hidden while voice is off
+const VoiceNoteInner: React.FC<{ onText: (spoken: string) => void; /** v111 — another button text and no “say: type, area, budget” hint (the copilot takes any command) */ label?: [string, string] }> = ({ onText, label }) => {
   const tx = useTx();
   const [on, setOn] = useState(false); const [lang, setLang] = useState<'en-IN' | 'hi-IN'>('en-IN'); const [msg, setMsg] = useState(''); const [live, setLive] = useState('');
   const rec = useRef<Rec | null>(null);

@@ -1,0 +1,25 @@
+name: ci
+on:
+  push:
+    branches: [launch-prep, main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npx vitest run
+      - run: npx vite build
+      - name: Dockerfile syntax check
+        run: docker build --check .
+      - name: Docker image builds (no push, no secrets)
+        run: docker build -t genz-network:ci .

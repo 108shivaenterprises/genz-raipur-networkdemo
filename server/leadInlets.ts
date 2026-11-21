@@ -11,6 +11,7 @@
  * a lead-ad's own consent line). That statement is dated and kept as the lead's consent record (`via: 'API'`). A sender who says "no" is refused; the hosted
  * form will not send without a ticked box.
  */
+import { publicBase } from './features.js';
 import express, { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
@@ -29,7 +30,7 @@ const nowIso = () => new Date().toISOString();
 const dailyCap = () => Math.max(1, Number(process.env.INLET_DAILY_CAP) || INLET_LIMITS.dailyCap);
 const today = () => new Date().toISOString().slice(0, 10);
 const tail = (s: string, n = 140) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
-const origin = (req: Request) => `${req.protocol}://${req.get('host')}`;
+const origin = (req: Request) => publicBase(req);
 
 const byToken = (t: string) => /^[A-Za-z0-9_-]{20,64}$/.test(String(t)) ? db.getState().leadInlets.find(i => i.token === t) : undefined;
 
