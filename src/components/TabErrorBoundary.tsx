@@ -27,7 +27,7 @@ const TabErrorCard: React.FC<{ message: string; onRetry: () => void }> = ({ mess
         : tx('The GENZ team has been told automatically. Other tabs keep working; your data is safe.', 'GENZ टीम को अपने-आप ख़बर चली गई है। बाकी टैब चलते रहेंगे; आपका डेटा सुरक्षित है।')}</p>
       {!chunk && message && <p className="mt-2 break-words rounded bg-white/70 p-2 font-mono text-[10px] text-amber-900" data-testid="tab-error-detail">{message.slice(0, 160)}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={onRetry} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"><RotateCcw className="h-4 w-4" />{tx('Try again', 'फिर से कोशिश करें')}</button>
+        <button onClick={chunk ? () => window.location.reload() : onRetry} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"><RotateCcw className="h-4 w-4" />{tx('Try again', 'फिर से कोशिश करें')}</button>
         <button onClick={() => window.location.reload()} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800"><RefreshCw className="h-4 w-4" />{tx('Reload app', 'ऐप दोबारा खोलें')}</button>
       </div>
     </div>

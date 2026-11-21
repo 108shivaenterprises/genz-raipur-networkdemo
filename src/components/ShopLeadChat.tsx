@@ -29,10 +29,10 @@ export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () =
       <p className="text-xs font-semibold text-indigo-900">{tx('He likes a home? Schedule the visit — his number shows right then (the visit need not be done).', 'पसंद आया? विज़िट तय करें — तभी नंबर दिखेगा (विज़िट होना ज़रूरी नहीं)।')}</p>
       {shared.map((h: any) => visitFor === h.homeId ? (
         <div key={h.homeId} className="flex gap-1">
-          <input value={when} onChange={e => setWhen(e.target.value)} maxLength={80} placeholder={tx('Sunday 11 am', 'रविवार सुबह 11')} data-testid="sp-visit-when" className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-2 text-xs" />
-          <button type="button" disabled={busy || when.trim().length < 3} onClick={() => run(async () => { await api.spVisitCreate(l.id, h.homeId, when.trim()); setVisitFor(''); setWhen(''); })} data-testid="sp-visit-go" className="min-h-10 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white">{tx('Create visit', 'विज़िट बनाएँ')}</button>
+          <input value={when} onChange={e => setWhen(e.target.value)} maxLength={80} placeholder={tx('Sunday 11 am', 'रविवार सुबह 11')} data-testid="sp-visit-when" className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 px-2 text-xs" />
+          <button type="button" disabled={busy || when.trim().length < 3} onClick={() => run(async () => { await api.spVisitCreate(l.id, h.homeId, when.trim()); setVisitFor(''); setWhen(''); })} data-testid="sp-visit-go" className="min-h-11 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white">{tx('Create visit', 'विज़िट बनाएँ')}</button>
         </div>
-      ) : <button key={h.homeId} type="button" onClick={() => setVisitFor(h.homeId)} data-testid={`sp-visit-${h.homeId}`} className="flex min-h-10 w-full items-center justify-between rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-900"><span className="truncate">📅 {h.title}</span><span>{tx('Schedule visit', 'विज़िट तय करें')}</span></button>)}
+      ) : <button key={h.homeId} type="button" onClick={() => setVisitFor(h.homeId)} data-testid={`sp-visit-${h.homeId}`} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-900"><span className="truncate">📅 {h.title}</span><span>{tx('Schedule visit', 'विज़िट तय करें')}</span></button>)}
     </div>
   );
   const top = (
@@ -40,7 +40,7 @@ export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () =
       {l.masked && c?.reqConfirmedAt && !owner && matches.length > 0 && (
         <div className="space-y-1" data-testid="sp-matches">
           <p className="text-xs font-semibold text-emerald-900">{tx('He confirmed his need. Share a matching home, then schedule a visit — his number shows once the visit is created:', 'उन्होंने ज़रूरत पक्की की। मेल खाता घर शेयर करें, फिर विज़िट तय करें — विज़िट बनते ही नंबर दिखेगा:')}</p>
-          {matches.map(h => <button key={h.id} type="button" disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-offer-${h.id}`} className="flex min-h-10 w-full items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-900"><span className="truncate">🏠 {h.title}</span><span>{h.price}</span></button>)}
+          {matches.map(h => <button key={h.id} type="button" disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-offer-${h.id}`} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-900"><span className="truncate">🏠 {h.title}</span><span>{h.price}</span></button>)}
         </div>
       )}
       {visitBox}
@@ -53,13 +53,13 @@ export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () =
             <div key={h.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2" data-testid={`sp-net-${h.id}`}>
               {h.photo ? <img src={h.photo} alt="" loading="lazy" className="h-12 w-16 shrink-0 rounded object-cover" /> : <span className="grid h-12 w-16 shrink-0 place-items-center rounded bg-slate-100 text-lg" aria-hidden>🏠</span>}
               <div className="min-w-0 flex-1 text-xs"><p className="truncate font-bold text-slate-900">{h.title}</p><p className="truncate text-slate-600">{h.price} · {h.place}{h.by ? ` · ${h.by}` : ''}</p></div>
-              <button type="button" disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-net-share-${h.id}`} className="min-h-10 shrink-0 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white">{tx('Share', 'भेजें')}</button>
+              <button type="button" disabled={busy} onClick={() => run(() => api.spOffer(l.id, h.id))} data-testid={`sp-net-share-${h.id}`} className="min-h-11 shrink-0 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white">{tx('Share', 'भेजें')}</button>
             </div>
           ))}
         </div>
       )}
       {l.bot?.network?.reqId && l.bot.network.count > 0 && !owner && <AskNetwork reqId={l.bot.network.reqId} />}
-      {l.masked && c && !c.reqConfirmedAt && !c.reqAskedAt && <button type="button" disabled={busy} onClick={() => run(() => api.spAskNeed(l.id))} data-testid="sp-ask-need" className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">✔ {tx('Ask him to confirm his need', 'उनसे ज़रूरत पक्की करवाएँ')}</button>}
+      {l.masked && c && !c.reqConfirmedAt && !c.reqAskedAt && <button type="button" disabled={busy} onClick={() => run(() => api.spAskNeed(l.id))} data-testid="sp-ask-need" className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800">✔ {tx('Ask him to confirm his need', 'उनसे ज़रूरत पक्की करवाएँ')}</button>}
       {l.masked && c?.reqAskedAt && !c.reqConfirmedAt && <p className="text-xs text-slate-700" data-testid="sp-need-waiting">⏳ {tx('Waiting for him to confirm: ', 'उनकी पुष्टि का इंतज़ार: ')}{l.needLine}</p>}
     </div>
   );
@@ -73,8 +73,8 @@ export const ShopLeadChat: React.FC<{ l: any; onBack: () => void; onChange: () =
   );
   return (
     <ChatShell onBack={onBack} testId="shop-chat-pane" title={l.name} subtitle={`${l.shopName}${kind ? ` · ${hi ? kind.hi : kind.en}` : ''}`}
-      avatar={<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-600 text-sm font-bold text-white" aria-hidden>{initials(l.name)}</span>}
-      actions={<button type="button" onClick={() => setDetails(d => !d)} data-testid="shop-chat-details" className="inline-flex min-h-10 items-center gap-1 rounded-full border border-slate-300 px-3 text-xs font-bold text-slate-800">{details ? tx('Chat', 'चैट') : tx('Details', 'विवरण')}{details ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button>}
+      avatar={<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-600 text-sm font-bold text-white" aria-hidden>{initials(l.name)}</span>}
+      actions={<button type="button" onClick={() => setDetails(d => !d)} data-testid="shop-chat-details" className="inline-flex min-h-11 items-center gap-1 rounded-full border border-slate-300 px-3 text-xs font-bold text-slate-800">{details ? tx('Chat', 'चैट') : tx('Details', 'विवरण')}{details ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button>}
       below={below}>
       {details ? <div className="flex-1 overflow-y-auto bg-slate-50 p-3">{extra}<LeadCard l={l} onChange={onChange} noChat /></div> : (
         <ChatThread msgs={msgs} error={err} composerTop={top} placeholder={tx('Write to him (no phone numbers)', 'उन्हें लिखें (फ़ोन नंबर नहीं)')}

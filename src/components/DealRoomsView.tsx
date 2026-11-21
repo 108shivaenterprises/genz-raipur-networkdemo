@@ -595,7 +595,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     const id = selectedDealId;
     const seen = () => api.chatRead(id).then(() => window.dispatchEvent(new Event('genz:chats-changed'))).catch(() => undefined);
     seen();
-    const t = setInterval(() => { if (!document.hidden) loadMessages(id).then(seen); }, 12000);
+    const t = setInterval(() => { if (!document.hidden) loadMessages(id).then(seen).catch(() => undefined); }, 12000);
     return () => clearInterval(t);
   }, [chatOpen, selectedDealId, messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 

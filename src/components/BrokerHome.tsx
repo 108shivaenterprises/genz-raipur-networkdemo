@@ -58,7 +58,7 @@ const ShopQrTile: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
     <button onClick={onOpen} className="flex w-full items-center gap-3 rounded-2xl border border-emerald-200 bg-white p-3 text-left" data-testid="home-shopqr">
       <span className="text-2xl">📍</span>
       <span className="min-w-0 flex-1">
-        <b className="block text-sm text-slate-900">{tx('Shop QR', 'दुकान QR')}{fresh > 0 && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">{fresh} {tx('new', 'नई')}</span>}</b>
+        <b className="block text-sm text-slate-900">{tx('Shop QR', 'दुकान QR')}{fresh > 0 && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">{fresh} {tx('new', 'नई')}</span>}</b>
         <span className="text-xs text-slate-600">{tx(`This week: ${recent.length} lead${recent.length === 1 ? '' : 's'} · ${owners} owner${owners === 1 ? '' : 's'} · ${partners.length} shop${partners.length === 1 ? '' : 's'}`, `इस हफ़्ते: ${recent.length} लीड · ${owners} मालिक · ${partners.length} दुकान`)}</span>
       </span>
       <span className="shrink-0 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white">{tx('+ Shop', '+ दुकान')}</span>
@@ -73,17 +73,19 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
   const [alertsOn, setAlertsOn] = useState<boolean | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [confirms, setConfirms] = useState<any[]>([]);
-  const [busy, setBusy] = useState('');
+  const [busy, setBusy] = useState(''); const [confirmErr, setConfirmErr] = useState(false); const [failed, setFailed] = useState(false);
   const load = () => {
-    api.homeBroker().then(setH).catch(() => setH(null));
+    api.homeBroker().then(x => { setH(x); setFailed(false); }).catch(() => setFailed(true));
     api.reputationPending().then(r => setConfirms(r.items || [])).catch(() => setConfirms([]));
   };
   useEffect(() => {
     load();
-    pushState().then(s => setAlertsOn(s === 'on'));
+    pushState().then(s => setAlertsOn(s === 'on')).catch(() => {});
     api.launchFeed().then(r => setProjects((r.items || []).filter((x: any) => x.view === 'OPEN').slice(0, 3))).catch(() => setProjects([]));
   }, []);
-  if (!h) return null;
+  if (!h) return failed
+    ? <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" data-testid="home-failed"><p>{tx('Could not load Home — check your internet.', 'होम नहीं खुला — इंटरनेट देखें।')}</p><button onClick={load} className="mt-2 min-h-11 rounded-lg bg-red-700 px-4 font-semibold text-white">{tx('Try again', 'फिर कोशिश करें')}</button></div>
+    : <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;
   const steps = [
     { done: h.firstRun.listing, icon: MessageCircle, en: 'Put your first listing — paste it from WhatsApp', hi: 'पहली लिस्टिंग डालें — WhatsApp से पेस्ट करें', go: () => goto('properties', { drafts: '1' }, onNavigate), testId: 'step-listing' },
     { done: h.firstRun.client, icon: UserPlus, en: 'Add a client’s need — GENZ finds matches for you', hi: 'किसी क्लाइंट की ज़रूरत जोड़ें — GENZ मैच ढूँढेगा', go: onOpenAddRequirement, testId: 'step-client' },
@@ -95,7 +97,7 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
   const reportUrl = `${window.location.origin}/report/${encodeURIComponent(cityName || 'India')}${h.refCode ? `?ref=${encodeURIComponent(h.refCode)}` : ''}`;
   // v79 — with his public page ON, the WhatsApp link is HIS page (his homes + an enquiry form; the city report is a link inside it); with it OFF the city report, which now tells who shared it
   const pageUrl = h.page?.on && h.refCode ? `${window.location.origin}/c/${encodeURIComponent(h.refCode)}` : '';
-  const confirm = async (x: any) => { setBusy(x.refId + x.toId); try { await api.reputationConfirm(x.refId, x.toId); load(); } finally { setBusy(''); } };
+  const confirm = async (x: any) => { setBusy(x.refId + x.toId); try { await api.reputationConfirm(x.refId, x.toId); load(); } catch { setConfirmErr(true); } finally { setBusy(''); } };
 
   return (
     <section className="mb-6 space-y-3" data-testid="broker-home">
@@ -130,12 +132,12 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
 
       <ShopQrTile onOpen={() => onNavigate('partners' as TabType)} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <button onClick={() => goto('properties', { drafts: '1' }, onNavigate)} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-emerald-600 p-3 text-left text-white" data-testid="home-wa"><MessageCircle className="h-5 w-5" /><span className="text-sm font-bold">{tx('Add from WhatsApp', 'WhatsApp से जोड़ें')}<small className="block text-[11px] font-normal opacity-90">{tx('listing or client need', 'लिस्टिंग या क्लाइंट की ज़रूरत')}</small></span></button>
-        <button onClick={onOpenAddRequirement} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-slate-900 p-3 text-left text-white"><UserPlus className="h-5 w-5 text-amber-400" /><span className="text-sm font-bold">{tx('Add client’s need', 'क्लाइंट की ज़रूरत जोड़ें')}<small className="block text-[11px] font-normal opacity-90">{tx('what he wants to buy / rent', 'क्या खरीदना / किराए पर लेना है')}</small></span></button>
-        <button onClick={() => onNavigate('daily')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900"><Clock className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('My clients', 'मेरे क्लाइंट')}<small className="block text-[11px] font-normal text-slate-500">{tx('follow-ups, new client', 'फॉलो-अप, नया क्लाइंट')}</small></span></button>
-        <button onClick={() => onNavigate('matches')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-amber-200 bg-amber-50 p-3 text-left text-slate-900" data-testid="home-magic"><Sparkles className="h-5 w-5 text-amber-500" /><span className="text-sm font-bold">{tx('Magic Match', 'मैजिक मैच')}<small className="block text-[11px] font-normal text-slate-600">{tx('homes for a client', 'क्लाइंट के लिए घर')}</small></span></button>
-        <button onClick={() => onNavigate('chats' as TabType)} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900" data-testid="home-chats"><MessageCircle className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('Chats', 'चैट')}<small className="block text-[11px] font-normal text-slate-500">{tx('clients & brokers', 'क्लाइंट और ब्रोकर')}</small></span></button>
-        <button onClick={() => onNavigate('properties')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900" data-testid="home-listings"><Building2 className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('Properties', 'प्रॉपर्टी')}<small className="block text-[11px] font-normal text-slate-500">{tx('my listings & network', 'मेरी लिस्टिंग और नेटवर्क')}</small></span></button>
+        <button onClick={() => goto('properties', { drafts: '1' }, onNavigate)} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-emerald-600 p-3 text-left text-white" data-testid="home-wa"><MessageCircle className="h-5 w-5" /><span className="text-sm font-bold">{tx('Add from WhatsApp', 'WhatsApp से जोड़ें')}<small className="block text-xs font-normal opacity-90">{tx('listing or client need', 'लिस्टिंग या क्लाइंट की ज़रूरत')}</small></span></button>
+        <button onClick={onOpenAddRequirement} className="flex min-h-20 flex-col items-start justify-between rounded-2xl bg-slate-900 p-3 text-left text-white"><UserPlus className="h-5 w-5 text-amber-400" /><span className="text-sm font-bold">{tx('Add client’s need', 'क्लाइंट की ज़रूरत जोड़ें')}<small className="block text-xs font-normal opacity-90">{tx('what he wants to buy / rent', 'क्या खरीदना / किराए पर लेना है')}</small></span></button>
+        <button onClick={() => onNavigate('daily')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900"><Clock className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('My clients', 'मेरे क्लाइंट')}<small className="block text-xs font-normal text-slate-500">{tx('follow-ups, new client', 'फॉलो-अप, नया क्लाइंट')}</small></span></button>
+        <button onClick={() => onNavigate('matches')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-amber-200 bg-amber-50 p-3 text-left text-slate-900" data-testid="home-magic"><Sparkles className="h-5 w-5 text-amber-500" /><span className="text-sm font-bold">{tx('Magic Match', 'मैजिक मैच')}<small className="block text-xs font-normal text-slate-600">{tx('homes for a client', 'क्लाइंट के लिए घर')}</small></span></button>
+        <button onClick={() => onNavigate('chats' as TabType)} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900" data-testid="home-chats"><MessageCircle className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('Chats', 'चैट')}<small className="block text-xs font-normal text-slate-500">{tx('clients & brokers', 'क्लाइंट और ब्रोकर')}</small></span></button>
+        <button onClick={() => onNavigate('properties')} className="flex min-h-20 flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left text-slate-900" data-testid="home-listings"><Building2 className="h-5 w-5 text-slate-500" /><span className="text-sm font-bold">{tx('Properties', 'प्रॉपर्टी')}<small className="block text-xs font-normal text-slate-500">{tx('my listings & network', 'मेरी लिस्टिंग और नेटवर्क')}</small></span></button>
       </div>
       {(onOpenAddProperty || onOpenAddLead) && (
         <div className="flex flex-wrap gap-2" data-testid="home-more-adds">
@@ -150,8 +152,9 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
           <p className="text-xs text-slate-500">{tx('Your “yes” shows on the other broker’s GENZ card (counts only).', 'आपकी “हाँ” दूसरे ब्रोकर के GENZ कार्ड पर दिखेगी (सिर्फ़ गिनती)।')}</p>
           <ul className="mt-2 space-y-1">{confirms.slice(0, 5).map((x: any) => (
             <li key={x.refId + x.toId} className="flex items-center gap-2 text-xs"><span className="flex-1">{x.toName} · {x.title}</span>
-              <button onClick={() => confirm(x)} disabled={!!busy} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white" data-testid="peer-confirm">{busy === x.refId + x.toId ? <Loader2 className="h-3 w-3 animate-spin" /> : tx('Deal went fine ✔', 'सौदा ठीक हुआ ✔')}</button></li>
+              <button onClick={() => confirm(x)} disabled={!!busy} className="min-h-11 rounded bg-emerald-600 px-3 font-semibold text-white" data-testid="peer-confirm">{busy === x.refId + x.toId ? <Loader2 className="h-3 w-3 animate-spin" /> : tx('Deal went fine ✔', 'सौदा ठीक हुआ ✔')}</button></li>
           ))}</ul>
+          {confirmErr && <p className="mt-1 text-xs text-red-700">{tx('Could not save — try again.', 'सेव नहीं हुआ — फिर कोशिश करें।')}</p>}
         </div>
       )}
 

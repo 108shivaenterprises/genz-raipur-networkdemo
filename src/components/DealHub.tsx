@@ -513,7 +513,7 @@ export const MandatesBoard: React.FC<{ currentUser: UserProfile; deals?: any[]; 
     setOpening(m.id); setErr('');
     try { const r = await api.getProperty(m.propertyId); setOpenProp(r.property); } catch (e: any) { setErr(e.message); } finally { setOpening(''); }
   };
-  if (err && !list) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>;
+  if (err && !list) return <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700"><p>{err}</p><button onClick={() => { setErr(''); load(); }} className="mt-2 min-h-11 rounded-lg bg-red-700 px-4 font-semibold text-white">{tx('Try again', 'फिर कोशिश करें')}</button></div>;
   if (!list) return <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;
   const iAmBroker = (m: OwnerMandate) => m.brokerId === currentUser.id;
   const count = (x: MFilter) => list.filter(m => (x === 'active' ? ['active', 'ending'].includes(mState(m)) : mState(m) === x)).length;
