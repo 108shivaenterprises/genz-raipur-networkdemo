@@ -66,6 +66,7 @@ export type TabType =
   | 'connector'
   | 'control'
   | 'apikeys'
+  | 'otpcodes'
   | 'team'
   | 'share'
   | 'landrecords'
@@ -238,6 +239,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     ...(has('admin:control_center') ? [{ id: 'revenue', label: t('nav.revenue', 'Revenue & Growth'), icon: IndianRupee }] : []),
     ...(has('admin:control_center') ? [{ id: 'control', label: t('nav.control', 'Control Center'), icon: Settings2 }] : []),
     ...(has('admin:control_center') && currentUser?.role === 'SUPERADMIN' ? [{ id: 'apikeys', label: t('nav.apikeys', 'API Keys'), icon: KeyRound }] : []),
+    ...(has('otp:relay') ? [{ id: 'otpcodes', label: t('nav.otpcodes', 'OTP Codes'), icon: KeyRound }] : []),
   ];
   // v62 — the super admin holds every permission, but a broker's own workspace (his clients, rooms, page, rent desk, offers, passes) is empty
   // for him: those tabs are left out of his menu (he sees a member's screens with "view as"; the routes still work for a direct link)
@@ -295,7 +297,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     { id: 'money', key: 'nav.g.money', en: 'Money & Growth', ids: ['plans', 'ownerlist', 'revenue', 'citylaunch', 'launchdesk', 'grow', 'network', 'community'] },
     { id: 'market', key: 'nav.g.market', en: 'Listings & Deals', ids: ['properties', 'requirements', 'matches', 'deals', 'due_diligence', 'construction', 'landrecords', 'propdocs', 'pdocs'] },
     { id: 'sales', key: 'nav.g.sales', en: 'Sales & Team', ids: ['crm', 'builder', 'pcontrol', 'connector', 'partners', 'team'] },
-    { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'apikeys', 'people', 'audit'] },
+    { id: 'control', key: 'nav.g.control', en: 'Control & Records', ids: ['control', 'apikeys', 'otpcodes', 'people', 'audit'] },
   ];
   // v75 — a builder, a lawyer and a contractor each get a few plain groups of their own (not the broker's "Property & Buyers / Deals / Sales & Team")
   const BUILDER_GROUP_DEFS: Array<{ id: string; key: string; en: string; ids: string[] }> = [

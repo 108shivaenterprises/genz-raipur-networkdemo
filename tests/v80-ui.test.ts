@@ -20,7 +20,7 @@ describe('owner sign-in: no flicker loop, the city fills in once', () => {
   it('the automatic detection runs ONCE when a new owner reaches the code step (a ref guard), the button can run it again', () => {
     const c = signIn();
     expect(c).toContain('const autoRan = useRef(false);');
-    expect(c).toContain("if (step === 'code' && !exists && !autoRan.current) { autoRan.current = true; detect(); }");
+    expect(c).toContain("if (step === 'code' && !autoRan.current) { autoRan.current = true; detect(); }");
     expect(c).toContain('data-testid="owner-detect"');
   });
   it('the form is filled only while the owner has not typed or chosen anything himself', () => {

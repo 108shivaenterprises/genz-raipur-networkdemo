@@ -31,7 +31,7 @@ describe('compose + env', () => {
     for (const k of ['DB_PASSWORD', 'AUTH_SECRET', 'PUBLIC_URL', 'DOMAIN']) expect(c).toContain(`\${${k}:?`);
     expect(c).toContain('max-size'); expect(c).toContain('max-file'); expect(c).toContain('mem_limit'); expect(c).toContain('NODE_OPTIONS');
     expect(c).toContain('FEATURE_VOICE: ${FEATURE_VOICE:-false}');
-    for (const k of ['KYC_VAULT_KEY_FILE', 'ALLOW_FRESH_DB', 'PGSSLMODE', 'DATABASE_SCHEMA', 'VAPID_KEY_FILE', 'SEED_ADMIN_CITY', 'SEED_ADMIN_COMPANY', 'BACKUP_EVERY_MS', 'BACKUP_KEEP', 'VIDEO_MAX_MB', 'INLET_DAILY_CAP', 'KYC_RETAIN_DAYS']) expect(c, k).toMatch(new RegExp(`^\\s+${k}: \\$\\{${k}:-`, 'm'));
+    for (const k of ['KYC_VAULT_KEY_FILE', 'ALLOW_FRESH_DB', 'PGSSLMODE', 'DATABASE_SCHEMA', 'VAPID_KEY_FILE', 'SEED_ADMIN_CITY', 'SEED_ADMIN_COMPANY', 'BACKUP_EVERY_MS', 'BACKUP_KEEP', 'VIDEO_MAX_MB', 'INLET_DAILY_CAP', 'KYC_RETAIN_DAYS', 'OTP_WHATSAPP_NUMBER', 'OTP_DAILY_CAP']) expect(c, k).toMatch(new RegExp(`^\\s+${k}: \\$\\{${k}:-`, 'm'));
     for (const k of ['ALLOW_FILE_DB', 'ALLOW_VAULT_KEY_IN_DATA']) expect(c, k).not.toContain(k);
   });
   it('admin email default matches the deploy doc', () => {
@@ -39,7 +39,7 @@ describe('compose + env', () => {
     expect(read('docs/DEPLOY_INDIA.md')).toContain('admin@genzbuildcon.com');
   });
   it('the example lists every key and holds no real value', () => {
-    for (const k of ['DB_PASSWORD', 'AUTH_SECRET', 'KYC_VAULT_KEY', 'AUDIT_HMAC_KEY', 'PUBLIC_URL', 'DOMAIN', 'ADMIN_EMAIL', 'GRIEVANCE_EMAIL', 'OTP_MODE', 'FEATURE_VOICE', 'DIGILOCKER_MODE']) expect(e, k).toMatch(new RegExp(`^#? ?${k}=`, 'm'));
+    for (const k of ['DB_PASSWORD', 'AUTH_SECRET', 'KYC_VAULT_KEY', 'AUDIT_HMAC_KEY', 'PUBLIC_URL', 'DOMAIN', 'ADMIN_EMAIL', 'GRIEVANCE_EMAIL', 'OTP_MODE', 'OTP_WHATSAPP_NUMBER', 'OTP_DAILY_CAP', 'FEATURE_VOICE', 'DIGILOCKER_MODE']) expect(e, k).toMatch(new RegExp(`^#? ?${k}=`, 'm'));
     expect(e).toMatch(/^AUTH_SECRET=\s*(#.*)?$/m); expect(e).toMatch(/^KYC_VAULT_KEY=\s*(#.*)?$/m);
   });
   it('documents the DB password format and the upgrade note', () => {

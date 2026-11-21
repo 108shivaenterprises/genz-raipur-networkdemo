@@ -38,11 +38,17 @@ v26: the backup now also packs the files on disk (ID copies, signed owner-consen
 ## 6. Site-visit OTP / SMS
 Codes for the customer / shop / client (shop-partner page, visit "no direct deal" acknowledgement, client room) are sent by SMS through `SMS_WEBHOOK_URL` (POST `{to, message}` with Bearer token). **Without it, and with DEMO_MODE=false, these pages say "SMS is not set up" and no code is made** — the broker never sees a code (v93, audit F2). Only a local DEMO shows the code to the broker so it can be read out. Connect a DLT-registered provider (MSG91 etc.) before launch.
 
+## 6-b. Sign-in / sign-up / forgot-password codes (D5, `OTP_MODE`)
+- `OTP_MODE=manual` (default in production): the server makes the 6-digit code and keeps only a hash (plus a sealed copy for staff, wiped when used). The person taps "Send on WhatsApp" (a `wa.me` link to `OTP_WHATSAPP_NUMBER`, text carries a request number, never the code); an ADMIN / SUPERADMIN opens **OTP Codes** and replies with the code. If `OTP_WHATSAPP_NUMBER` is empty the screen says "Ask your admin for the code".
+- Limits: 60 s between codes per phone, 3 per phone per day (a code locked by wrong guesses does not count), a budget per purpose (`OTP_CAP_RESET` 150, `OTP_CAP_OWNER` 100, `OTP_CAP_SIGNUP` 50) and `OTP_DAILY_CAP` (default 300) overall, counted over codes still live (used / expired ones are not counted), at most 10 different phones per IP per 24 h, 5 wrong codes lock the phone 15 min. Each code opened on the admin screen is written to the audit log.
+- `OTP_MODE=sms` keeps the SMS / Firebase path (the Fast2SMS and Firebase key fields are hidden in API Keys while the mode is `manual`). `OTP_MODE=demo` only works with `DEMO_MODE=true`.
+
 ## 6a. v93 hardening switches (AUDIT_REPORT.md)
 - `AUTH_SECRET` — set it (32+ chars). It also keys the sealed page links and, unless `AUDIT_HMAC_KEY` is set, the audit chain.
 - `AUDIT_HMAC_KEY` — optional separate key (24+ chars) for the audit-trail HMAC. Keep it stable: a new key makes the existing chain read as broken. Ship the server log off-box: every start prints `[AUDIT] chain tip …`.
 - `KYC_VAULT_KEY` — **required in production**: with `NODE_ENV=production` a key file inside `data/` is refused and the vault stays OFF (override only with `ALLOW_VAULT_KEY_IN_DATA=true`).
-- `TRUST_PROXY=true` behind nginx / a load balancer (docker-compose sets it). Without it every user shares the proxy's IP for rate limits.
+- `TRUST_PROXY` (docker-compose passes it through; unset by default). The value is the NUMBER OF PROXY HOPS in front of the app: `1` behind one nginx / load balancer, `2` for Cloudflare + nginx. Too low = every user shares the proxy's IP for rate limits (one person can lock out everyone); too high = a visitor can fake his IP with an X-Forwarded-For header and dodge the per-IP OTP limit. `true` means 1 hop. Check with a test sign-in from two phones: the audit log must show two different IPs.
+- Manual OTP relay: the admin screen shows the full mobile number and a "Send to this number" button that opens WhatsApp to that number; staff / admin numbers never appear there and their password reset needs a SUPERADMIN.
 - Database file: a damaged `data/database.json` is moved aside and the newest `data/backups/database-*.json` is used; with no backup the server **refuses to start** (`ALLOW_FRESH_DB=true` starts empty on purpose). Backups: `BACKUP_EVERY_MS` (default 1 h), `BACKUP_KEEP` (default 48). Copy `data/backups/` off the server too.
 - Signing out ends the account's sessions on every device.
 

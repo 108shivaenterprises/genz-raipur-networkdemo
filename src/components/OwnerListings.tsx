@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, ArrowLeft, Plus, Check, MapPin, Upload, Trash2, ExternalLink, ShieldCheck, Camera } from 'lucide-react';
 import { INDIA_STATES, matchState, stateOfCity, citiesOf } from '../shared/india.js';
 import { api } from '../lib/api.js';
+import { OtpSent, OtpAlert, type OtpReq, type OtpErr } from './OtpStep.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
 import { FreeRouteOffer, OwnerBrokerRoute } from './LeadBoard.js';
@@ -21,9 +22,9 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
    *  set state again — an endless loop (the flicker, and the city never settling). Now the latest tx sits in a ref and detect is created once. */
   const txRef = useRef(tx); txRef.current = tx;
   const [phone, setPhone] = useState(''); const [step, setStep] = useState<'phone' | 'code'>('phone'); const [code, setCode] = useState('');
-  const [exists, setExists] = useState(false); const [name, setName] = useState(''); const [city, setCity] = useState(''); const [stateName, setStateName] = useState(''); const [country, setCountry] = useState('India'); const [ok, setOk] = useState(false);
+  const [name, setName] = useState(''); const [city, setCity] = useState(''); const [stateName, setStateName] = useState(''); const [country, setCountry] = useState('India'); const [ok, setOk] = useState(false);
   const [locNote, setLocNote] = useState(''); const [locBusy, setLocBusy] = useState(false); const touched = useRef(false); const autoRan = useRef(false); const alive = useRef(true);
-  const [dev, setDev] = useState(''); const [tok, setTok] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [otpV, setOtpV] = useState<OtpReq | null>(null); const [sentAt, setSentAt] = useState(0); const [errObj, setErrObj] = useState<OtpErr | null>(null); const [tok, setTok] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   /** put a place into the form — only while the owner has not typed or chosen anything himself */
   const apply = useCallback((r: { state?: string; city?: string; country?: string }) => {
@@ -57,9 +58,9 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
     }, () => { void viaNetwork(t('Location was not allowed — choose your state and city.', 'लोकेशन की इजाज़त नहीं मिली — राज्य और शहर चुनें।')).finally(done); }, { timeout: 8000, maximumAge: 600000 });
   }, [apply]);
   // ONCE, the first time a new owner reaches the code step (never again on a re-render)
-  useEffect(() => { if (step === 'code' && !exists && !autoRan.current) { autoRan.current = true; detect(); } }, [step, exists, detect]);
-  const sendCode = async () => { const r = await api.ownerOtp(phone.replace(/\D/g, '')); setExists(r.exists); setDev(r.devCode || ''); setTok(r.otpToken || ''); setCode(''); };
-  const go = async (fn: () => Promise<void>) => { setBusy(true); setErr(''); try { await fn(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  useEffect(() => { if (step === 'code' && !autoRan.current) { autoRan.current = true; detect(); } }, [step, detect]);
+  const sendCode = async () => { const r = await api.ownerOtp(phone.replace(/\D/g, '')); setOtpV(r); setSentAt(Date.now()); setTok(r.otpToken || ''); setCode(''); };
+  const go = async (fn: () => Promise<void>) => { setBusy(true); setErr(''); setErrObj(null); try { await fn(); } catch (e: any) { setErr(e.message); setErrObj(e); } finally { setBusy(false); } };
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="owner-signin">
@@ -69,14 +70,15 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
         {step === 'phone' ? (
           <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { await sendCode(); setStep('code'); }); }}>
             <input className={inp} inputMode="numeric" maxLength={10} placeholder={tx('10-digit mobile', '10 अंकों का मोबाइल')} value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ''))} data-testid="owner-phone" />
-            {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
+            <OtpAlert err={errObj} />
             <button className={btn + ' w-full'} disabled={busy || phone.length !== 10} data-testid="owner-send">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Send code', 'कोड भेजें')}</button>
           </form>
         ) : (
-          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { const r = await api.ownerVerify({ phone, code: code.replace(/\D/g, ''), otpToken: tok || undefined, name: exists ? undefined : name, city: exists ? undefined : city, state: exists ? undefined : stateName || undefined, consent: exists ? undefined : ok }); void r; onLoggedIn(await api.getMe()); }); }}>
-            {dev && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800" data-testid="owner-devcode">{tx('Demo: your code is', 'डेमो: आपका कोड')} <b>{dev}</b></p>}
+          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { const r = await api.ownerVerify({ phone, code: code.replace(/\D/g, ''), otpToken: tok || undefined, name: name.trim() || undefined, city: city || undefined, state: stateName || undefined, consent: ok || undefined }); void r; onLoggedIn(await api.getMe()); }); }}>
+            {otpV && <OtpSent v={otpV} sentAt={sentAt} onResend={() => void go(sendCode)} busy={busy} />}
             <input className={inp + ' text-center font-mono text-xl tracking-widest'} inputMode="numeric" maxLength={6} autoFocus autoComplete="one-time-code" placeholder="••••••" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} data-testid="owner-code" />
-            {!exists && <>
+            <p className="text-[11px] font-semibold text-slate-700">{tx('First time here? Fill these in. Returning owners can skip them.', 'पहली बार हैं? ये भरें। पुराने मालिक छोड़ सकते हैं।')}</p>
+            <>
               <input className={inp} placeholder={tx('Your name', 'आपका नाम')} value={name} onChange={e => setName(e.target.value)} data-testid="owner-name" />
               <div className="flex items-center justify-between"><span className="text-[11px] font-semibold text-slate-700">{tx('Where is your property?', 'आपकी प्रॉपर्टी कहाँ है?')}</span><button type="button" onClick={() => { touched.current = false; detect(); }} disabled={locBusy} className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700" data-testid="owner-detect">{locBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />}{tx('Use my location', 'मेरी लोकेशन लें')}</button></div>
               <select className={inp} value={country} onChange={e => { touched.current = true; setCountry(e.target.value); }} data-testid="owner-country"><option value="India">{tx('India', 'भारत')}</option></select>
@@ -85,10 +87,10 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
               <datalist id="owner-city-list">{citiesOf(stateName).map(c => <option key={c} value={c} />)}</datalist>
               {locNote && <p className="text-[11px] text-slate-500">{locNote}</p>}
               <label className="flex items-start gap-2 text-[11px] text-slate-600"><input type="checkbox" className="mt-0.5" checked={ok} onChange={e => setOk(e.target.checked)} data-testid="owner-consent" />{tx('I agree to GENZ keeping my name and mobile number to run my listing. If I give GENZ my face photo / ID, GENZ may keep them sealed for 3 years even after I delete my account (privacy policy).', 'मैं सहमत हूँ कि GENZ मेरी लिस्टिंग चलाने के लिए मेरा नाम और मोबाइल नंबर रखे। अगर मैं अपनी फ़ोटो / ID दूँ तो अकाउंट डिलीट करने के बाद भी GENZ उन्हें 3 साल सील करके रख सकता है (प्राइवेसी पॉलिसी)।')}</label>
-            </>}
-            {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
+            </>
+            <OtpAlert err={errObj} />
             {err && /expired|already used|new code|नया कोड/i.test(err) && <button type="button" className="text-xs font-semibold text-emerald-700 underline" disabled={busy} onClick={() => void go(sendCode)} data-testid="owner-resend">{tx('Send a new code', 'नया कोड भेजें')}</button>}
-            <button className={btn + ' w-full'} disabled={busy || code.length !== 6 || (!exists && (!ok || name.trim().length < 2))} data-testid="owner-go">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Sign in', 'साइन-इन')}</button>
+            <button className={btn + ' w-full'} disabled={busy || code.length !== 6} data-testid="owner-go">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Sign in', 'साइन-इन')}</button>
           </form>
         )}
       </div>

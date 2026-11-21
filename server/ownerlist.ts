@@ -20,6 +20,8 @@ import { db } from './db.js';
 import type { UserProfile, Property } from './db.js';
 import { ctx, needs, rateLimit, hit, resetHits, secureOtp, safeEqual, secret, signSession, setSessionCookie, DEMO_MODE } from './auth.js';
 import { sendSms, smsGateway } from './notify.js';
+import { otpMode } from './features.js';
+import { issueOtp, checkOtp, useOtp, requestView, failBody, ipPhoneGate } from './otpManual.js';
 import { alert } from './alerts.js';
 import { issueSignCode } from './signing.js';
 import { effectivePermissions } from './permissions.js';
@@ -143,7 +145,8 @@ export function readOtpToken(tok: unknown, phone: string): { body: string; sig: 
   } catch { return null; }
 }
 /** v141 — check a signed OTP token (any server copy); one code opens one door, five tries. '' = right; else the error text */
-export function checkOtpToken(tok: unknown, phone: string, code: string): string {
+export function checkOtpToken(tok: unknown, phone: string, code: string, consume = true): string {
+  if (otpMode() === 'manual') { const c = checkOtp(tok, phone, 'signup', code, Date.now(), consume); return c.ok ? '' : c.error; }
   const t = readOtpToken(tok, phone); if (!t) return 'Ask for a code first.';
   if (t.e < Date.now()) return 'The code has expired — ask for a new one.';
   const book = otpBook(); const rec = (book[t.n] ||= { exp: t.e, tries: 0 });
@@ -152,9 +155,16 @@ export function checkOtpToken(tok: unknown, phone: string, code: string): string
   if (!safeEqual(t.sig, tokSig(t.body, String(code).replace(/\D/g, '')))) { db.save(); return 'That code is not right.'; }
   rec.used = true; db.save(); return '';
 }
+/** v176 — after a sign-up finished: spend the manual code that checkOtpToken(…, false) only looked at */
+export function finishSignupOtp(tok: unknown) { if (otpMode() === 'manual' && typeof tok === 'string') useOtp(tok); }
 /** v141 — send a sign-up code to a phone; returns the signed token (and the code itself only in a demo without SMS) */
-export async function sendSignupOtp(phone: string): Promise<{ otpToken: string; devCode?: string } | { error: string; status: number; code: string }> {
+export async function sendSignupOtp(phone: string, ip?: string): Promise<({ otpToken: string; devCode?: string } & Partial<ReturnType<typeof requestView>>) | { error: string; errorHi?: string; wait?: number; status: number; code: string }> {
   if (!PHONE_RE.test(phone)) return { error: 'Enter your 10-digit mobile number', status: 400, code: 'BAD_PHONE' };
+  const g = ipPhoneGate(ip, phone); if (g) return { error: g.error, errorHi: g.errorHi, wait: g.wait, status: g.status, code: g.code };
+  if (otpMode() === 'manual') {   // D5: the code waits for an admin / the person's own WhatsApp message; the browser gets only a reference
+    const o = issueOtp(phone, 'signup'); if (!o.ok) return { error: o.error, errorHi: o.errorHi, wait: o.wait, status: o.status, code: o.code };
+    const v = requestView(o, phone, 'signup'); return { ...v, otpToken: o.ref };
+  }
   if (hit(`signup-otp:${phone}`, 5, 3600_000, 3600_000) > 0) return { error: 'Too many codes for this number — try again in an hour.', status: 429, code: 'TOO_MANY' };
   const on = smsGateway();
   if (!on && !DEMO_MODE) return { error: 'SMS is not set up yet, so GENZ will check your ID instead.', status: 503, code: 'NO_SMS' };
@@ -167,22 +177,29 @@ export function createOwnerAuthRouter() {
   r.post('/otp', rateLimit('owner-otp-ip', 20, 3600_000), async (req: Request, res: Response) => {
     const phone = phone10(req.body?.phone);
     if (!PHONE_RE.test(phone)) return bad(res, 'Enter your 10-digit mobile number');
+    const g = ipPhoneGate(req.ip, phone); if (g) return res.status(g.status).json(failBody(g));
+    if (otpMode() === 'manual') {   // D5: same code path and limits as sign-up; the answer is the same for a new and a returning owner
+      const o = issueOtp(phone, 'owner'); if (!o.ok) return res.status(o.status).json(failBody(o));
+      return res.json({ ...requestView(o, phone, 'owner'), otpToken: o.ref });
+    }
     if (hit(`owner-otp:${phone}`, 5, 3600_000, 3600_000) > 0) return bad(res, 'Too many codes for this number — try again in an hour.', 429);
     const smsOn = smsGateway();
     if (!smsOn && !DEMO_MODE) return bad(res, 'SMS is not set up on this server, so a code cannot be sent.', 503, 'NO_SMS');
     const ex = st().users.find(u => phone10(u.phone) === phone && u.role === 'PROPERTY_OWNER');
-    if (ex && !ex.selfSignup) return bad(res, 'This number already has a GENZ owner account with a password — sign in with it.', 409, 'USE_PASSWORD');
     const code = secureOtp();
     const exp = Date.now() + OTP_MS;
     OTPS.set(phone, { hash: hm('owner-otp', `${phone}|${code}`), exp, tries: 0 });
     await sendSms(phone, `GENZ: your code is ${code} (valid 10 minutes). Do not share it.`);
-    res.json({ success: true, exists: !!ex, otpToken: makeOtpToken(phone, code, exp), ...(!smsOn && DEMO_MODE ? { devCode: code } : {}) });
+    res.json({ success: true, otpToken: makeOtpToken(phone, code, exp), ...(!smsOn && DEMO_MODE ? { devCode: code } : {}) });
   });
   r.post('/verify', rateLimit('owner-verify-ip', 40, 3600_000), (req: Request, res: Response) => {
     const phone = phone10(req.body?.phone); const code = String(req.body?.code || '').replace(/\D/g, '');
     const tk = readOtpToken(req.body?.otpToken, phone);
-    let usedNonce = '';
-    if (tk) {
+    let usedNonce = ''; const manual = otpMode() === 'manual';
+    if (manual) {
+      const c = checkOtp(req.body?.otpToken, phone, 'owner', code, Date.now(), false);
+      if (!c.ok) return res.status(c.status).json(failBody(c));
+    } else if (tk) {
       // the signed token: valid on any copy of the server
       if (tk.e < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED');
       const book = otpBook(); const rec = (book[tk.n] ||= { exp: tk.e, tries: 0 });
@@ -214,7 +231,8 @@ export function createOwnerAuthRouter() {
       s.users.push(u);
       db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'OWNER_SELF_SIGNUP', `Owner ${name} signed up with a mobile OTP (••${phone.slice(-4)})`);
     }
-    OTPS.delete(phone); resetHits(`owner-otp:${phone}`);
+    if (manual) useOtp(String(req.body.otpToken)); else OTPS.delete(phone);
+    resetHits(`owner-otp:${phone}`);
     if (usedNonce) { const b = otpBook(); (b[usedNonce] ||= { exp: Date.now() + OTP_MS, tries: 0 }).used = true; }
     u.lastLoginAt = now; db.save();
     setSessionCookie(req, res, signSession(u.id, u.sessionVersion || 1));

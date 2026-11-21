@@ -5,6 +5,7 @@ import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { useUI } from '../lib/ui.js';
 import { JoinView } from './JoinView.js';
 import { AccessRequest } from './AccessRequest.js';
+import { ForgotPassword } from './ForgotPassword.js';
 import { OwnerSignIn } from './OwnerListings.js';
 import { BrandMark } from './BrandMark.js';
 import { IdDocSlot } from './IdDocSlot.js';
@@ -82,6 +83,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
 
   if (joining) return <JoinView onBack={() => setJoining(false)} />;
   if (panel === 'owner') return <OwnerSignIn onLoggedIn={onLoggedIn as any} onBack={() => setPanel('')} />;
+  if (panel === 'forgot') return <div className="px-4"><ForgotPassword onBack={() => setPanel('')} /></div>;
   if (panel) return <div className="mx-auto max-w-5xl px-4 py-10"><AccessRequest mode={panel} refCode={refParam} onBack={() => setPanel('')} /></div>;
 
   return (

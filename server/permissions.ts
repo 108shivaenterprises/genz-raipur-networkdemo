@@ -214,6 +214,7 @@ export const PERMISSION_CATALOG = {
   'kyc:reveal': 'Superadmin only: open a member\u2019s encrypted full Aadhaar number and address for a legal / dispute matter (written reason, audited, shown to the member); switch the vault on or off',
 
   // ── Superadmin control ──────────────────────────────────────────────────
+  'otp:relay': 'Admin / superadmin: see pending sign-in codes (manual OTP mode) and relay them to the member on WhatsApp; every view is audited',
   'admin:control_center': 'Open the Superadmin Control Center (platform health, function directory, role matrix)',
 } as const;
 
@@ -232,7 +233,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     ...SELF,
     'users:list', 'users:invite', 'users:review', 'users:reset_password',
     'connector:manage', 'connector:payout', 'team:manage', 'growth:manage',
-    'audit:read_all', 'metrics:global', 'permissions:read_matrix',
+    'otp:relay', 'audit:read_all', 'metrics:global', 'permissions:read_matrix',
     'property:read', 'property:create', 'property:update', 'property:moderate', 'partywatch:review', 'property:withdraw', 'vault:read_all',
     'requirement:read', 'matching:run',
     'mandate:read',

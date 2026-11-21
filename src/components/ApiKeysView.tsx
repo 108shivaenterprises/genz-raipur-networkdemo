@@ -12,6 +12,8 @@ export const ApiKeysView: React.FC = () => {
   const [vault, setVault] = useState(true);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
+  const [manual, setManual] = useState(false);   // D5: OTP by WhatsApp / admin screen — the SMS and Firebase fields are never called, so they are hidden
+  useEffect(() => { api.authConfig().then(c => setManual(c.otpMode === 'manual')).catch(() => undefined); }, []);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = async () => {
@@ -31,7 +33,7 @@ export const ApiKeysView: React.FC = () => {
     finally { setBusy(''); }
   };
 
-  const groups = [...new Set((keys || []).map(k => k.group))];
+  const groups = [...new Set((keys || []).filter(k => !(manual && /^(SMS|Firebase)/.test(k.group))).map(k => k.group))];
   const chip = (k: Key) => k.source === 'panel'
     ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">{tx('Set here', 'यहाँ से लगी')}</span>
     : k.source === 'server' ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{tx('From server settings', 'सर्वर सेटिंग से')}</span>

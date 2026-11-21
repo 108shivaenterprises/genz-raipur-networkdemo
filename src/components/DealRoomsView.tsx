@@ -871,8 +871,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     <div className="space-y-4 sm:space-y-6">
       {/* v37 — Deal Hub header: title + one segmented switch for Pipeline / Deal room / Proposals / Mandates */}
       {/* v143 — inside a room on a phone this header and the tab strip are hidden: the room starts with "← All deals" */}
-      <div className={`flex-col gap-3 sm:flex-row sm:items-end sm:justify-between ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:flex' : 'flex'}`}>
-        <div>
+      <div className={`flex-col gap-3 sm:flex-row sm:items-end sm:justify-between ${mainMode === 'DEAL_ROOMS' || mainMode === 'PIPELINE' ? 'hidden lg:flex' : 'flex'}`}>
+        <div className={mainMode === 'PIPELINE' ? 'hidden lg:block' : ''}>   {/* v177 — phone: the mode bar below is the heading; no clipped big title */}
           <PageTitle title={mainMode === 'PIPELINE' ? tx('Deal pipeline', 'डील पाइपलाइन')
               : mainMode === 'MANDATES' ? (currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms with brokers', 'ब्रोकरों से मेरी ब्रोकरेज शर्तें') : tx('Owners — brokerage terms', 'मालिक — ब्रोकरेज की शर्तें'))
               : mainMode === 'ROOMS' ? tx('Client rooms', 'क्लाइंट रूम')
@@ -886,21 +886,21 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               : tx('Who does what, the brokerage agreement, title check and registry — all for this deal in one place.', 'कौन क्या करेगा, ब्रोकरेज समझौता, टाइटल जाँच और रजिस्ट्री — इस डील का सब एक जगह।')} {tx('The anti-bypass rule applies in every deal room.', 'हर डील रूम में एंटी-बायपास नियम लागू है।')}</>} />
         </div>
       </div>
-      <div className={`relative -mt-2 ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:block' : ''}`}>
+      <div className={`relative ${mainMode === 'PIPELINE' ? 'lg:-mt-2' : '-mt-2'} ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:block' : ''}`}>
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1 pr-7 sm:pr-1" role="tablist" data-testid="deal-modes">
         {([
-          ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, (hub?.kpis?.needsMe || 0) > 0],
+          ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, false],
           ...(mainMode === 'DEAL_ROOMS' ? [['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false]] : []),   // v142 — shown only while a room is open; you enter a room by tapping a deal   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Co-broke" half off the screen
           ...(!isOwnerViewer ? [['PROPOSALS', Sparkles, tx('Co-broke', 'को-ब्रोक'), (offers || []).length, pendingIncomingCount > 0]] : []),
           ...(showEarnings ? [['EARNINGS', Wallet, tx('Earnings', 'कमाई'), undefined, false]] : []),   // v173 — only when this person has a share to show
           // v148 — no "Client rooms" tab here: it has its own tab and is in Deal Desk; a deal's linked room still opens from the deal
           ...(perm('mandate:read') ? [['MANDATES', FileSignature, currentUser.role === 'PROPERTY_OWNER' ? tx('My brokerage terms', 'मेरी ब्रोकरेज शर्तें') : tx('Owners', 'मालिक'), undefined, false]] : []),
         ] as [typeof mainMode, React.ElementType, string, number | undefined, boolean][]).map(([id, Icon, text, n, dot]) => (
-          <button key={id} type="button" role="tab" aria-selected={mainMode === id}
+          <button key={id} type="button" role="tab" aria-selected={mainMode === id} aria-label={n !== undefined ? `${text}, ${n}` : undefined}
             onClick={() => (id === 'DEAL_ROOMS' && !selectedDealId && deals[0] ? openDeal(deals[0].id) : id === 'ROOMS' ? openClientRoom() : setMainMode(id))}
-            className={`relative inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-all sm:gap-1.5 sm:px-3 ${mainMode === id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`} data-testid={`deal-mode-${id}`}>
+            className={`relative inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-all min-[400px]:gap-1.5 sm:px-3 ${mainMode === id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`} data-testid={`deal-mode-${id}`}>
             <Icon className="hidden h-3.5 w-3.5 min-[400px]:block" /><span className="whitespace-nowrap">{text}</span>
-            {n !== undefined && <span className={`rounded-full px-1.5 text-xs font-bold ${mainMode === id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{n}</span>}
+            {n !== undefined && <span aria-hidden="true" className={`rounded-full px-1.5 text-xs font-bold ${mainMode === id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{n}</span>}
             {dot && <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />}
           </button>
         ))}

@@ -85,6 +85,7 @@ export const api = {
       success: boolean;
       demoMode: boolean;
       voice?: boolean;
+      otpMode?: 'manual' | 'sms' | 'demo';
       publicUrl?: string;
       demoPassword?: string;
       demoAccounts: { id: string; name: string; email: string; role: string; companyName?: string; verificationStatus: string }[];
@@ -111,7 +112,7 @@ export const api = {
     request<{ success: boolean; roles: string[]; matrix: any }>('/api/auth/permission-matrix'),
   revokeInvitation: (id: string) =>
     request<{ success: boolean }>(`/api/invitations/${id}/revoke`, { method: 'POST', body: '{}' }),
-  registerOtp: (code: string, phone: string) => request<{ success: boolean; otpToken: string; devCode?: string }>('/api/auth/register-otp', { method: 'POST', body: JSON.stringify({ code, phone }) }),
+  registerOtp: (code: string, phone: string) => request<{ success: boolean; otpToken: string } & import('../components/OtpStep.js').OtpReq>('/api/auth/register-otp', { method: 'POST', body: JSON.stringify({ code, phone }) }),
   registerInvite: (payload: {
     code: string;
     name: string;
@@ -1016,7 +1017,10 @@ export const api = {
   hisaabBookVoid: (dealId: string, eid: string, reason: string) => request<any>(`/api/deals/${dealId}/hisaab/book/${eid}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
   hisaabPlan: (dealId: string, body: { buyerSide?: { mode: string; value: number } | null; shareOut?: { mode: string; value: number } | null }) => request<any>(`/api/deals/${dealId}/hisaab/plan`, { method: 'PUT', body: JSON.stringify(body) }),
   hisaabDue: (dealId: string, amount: number | null) => request<any>(`/api/deals/${dealId}/hisaab/due`, { method: 'PUT', body: JSON.stringify({ amount }) }),
-  ownerOtp: (phone: string) => request<{ success: boolean; exists: boolean; devCode?: string; otpToken?: string }>('/api/owner/otp', { method: 'POST', body: JSON.stringify({ phone }) }),
+  ownerOtp: (phone: string) => request<{ success: boolean; otpToken?: string } & import('../components/OtpStep.js').OtpReq>('/api/owner/otp', { method: 'POST', body: JSON.stringify({ phone }) }),
+  forgotRequest: (phone: string) => request<{ success: boolean } & import('../components/OtpStep.js').OtpReq>('/api/auth/forgot/request', { method: 'POST', body: JSON.stringify({ phone }) }),
+  forgotReset: (b: { phone: string; ref: string; code: string; password: string }) => request<{ success: boolean }>('/api/auth/forgot/reset', { method: 'POST', body: JSON.stringify(b) }),
+  otpPending: () => request<{ success: boolean; mode: string; dailyCap: number; usedToday: number; pending: { ref: string; phoneMasked: string; purpose: string; ageSec: number; expiresInSec: number; code: string }[] }>('/api/admin/otp-pending'),
   geoIp: () => request<{ success: boolean; found: boolean; country?: string; state?: string; city?: string }>('/api/geo/ip'),
   geoReverse: (lat: number, lng: number) => request<{ success: boolean; found: boolean; country?: string; state?: string; city?: string; pincode?: string }>(`/api/geo/reverse?lat=${lat}&lng=${lng}`),
   ownerVerify: (b: { phone: string; code: string; otpToken?: string; name?: string; city?: string; state?: string; consent?: boolean }) => request<any>('/api/owner/verify', { method: 'POST', body: JSON.stringify(b) }),

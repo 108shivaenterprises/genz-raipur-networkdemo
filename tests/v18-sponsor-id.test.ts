@@ -145,13 +145,13 @@ describe('a local associate enters only through a RERA-registered sponsor', () =
   it('one PAN = one broker account: a second sign-up with the same PAN is refused (also on the RERA route)', async () => {
     const phone = rnd();
     const p = await j(await call(jar.BRK2, 'POST', '/api/network/tier2/applications', mkApp('Umesh Pending', phone)));
-    const dup = await regRaw(p.invitation.code, phone, { panNumber: T.pan }); expect(dup.status).toBe(409); expect((await dup.json()).code).toBe('PAN_IN_USE');
-    const dup2 = await regRaw(p.invitation.code, phone, { panNumber: ` ${T.pan.toLowerCase()} ` }); expect(dup2.status).toBe(409); // spaces / case do not help
+    const dup = await regRaw(p.invitation.code, phone, { panNumber: T.pan }); expect(dup.status).toBe(400); expect((await dup.json()).code).toBe('CANNOT_REGISTER');   // v176: the same generic answer as a taken mobile / e-mail
+    const dup2 = await regRaw(p.invitation.code, phone, { panNumber: ` ${T.pan.toLowerCase()} ` }); expect(dup2.status).toBe(400); // spaces / case do not help
     // the RERA route
     const email = `dup.${Date.now()}@example.in`; const ph2 = rnd();
     const inv = await j(await call(jar.SUP, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: ph2, targetRole: 'BROKER' }));
     const rr = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.invitation.code, name: 'Dup Pan', email, phone: ph2, password: PW, consent: true, city: 'Raipur', reraNumber: 'PCGRERA250999-0001', panNumber: S.pan, aadhaarNumber: mkAadhaar(), idConsent: true }) });
-    expect(rr.status).toBe(409);
+    expect(rr.status).toBe(400);
     // and a fresh PAN works — Umesh stays PENDING for the later tests
     const pan = mkPan(); const ok = await regRaw(p.invitation.code, phone, { panNumber: pan }); expect(ok.status).toBe(200);
     U = { id: (await ok.json()).user.id, cookie: ok.headers.get('set-cookie')!.split(';')[0], pan, code: p.invitation.code, phone };

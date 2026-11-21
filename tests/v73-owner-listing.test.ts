@@ -60,7 +60,7 @@ const ocall = (method: string, url: string, body?: unknown) => call(OWNER, metho
 describe('owner mobile sign-in', () => {
   it('a bad number is refused; a code is sent; a wrong code fails; a new owner must give name + consent', async () => {
     expect((await call(undefined, 'POST', '/api/owner/otp', { phone: '12345' })).status).toBe(400);
-    const o = await j(await call(undefined, 'POST', '/api/owner/otp', { phone: PH })); expect(o.devCode).toMatch(/^\d{6}$/); expect(o.exists).toBe(false);
+    const o = await j(await call(undefined, 'POST', '/api/owner/otp', { phone: PH })); expect(o.devCode).toMatch(/^\d{6}$/); expect(o.exists).toBeUndefined();   // v175: no account-exists leak
     expect((await call(undefined, 'POST', '/api/owner/verify', { phone: PH, code: '000000', name: 'Self Owner', consent: true })).status).toBe(400);
     const need = await call(undefined, 'POST', '/api/owner/verify', { phone: PH, code: o.devCode });
     expect((await j(need)).code).toBe('NAME_REQUIRED');
@@ -71,13 +71,14 @@ describe('owner mobile sign-in', () => {
     const me = await j(await ocall('GET', '/api/auth/me')); expect(me.user.role).toBe('PROPERTY_OWNER');
   });
   it('the code works once; the same number signs in again to the same account', async () => {
-    const o = await j(await call(undefined, 'POST', '/api/owner/otp', { phone: PH })); expect(o.exists).toBe(true);
+    const o = await j(await call(undefined, 'POST', '/api/owner/otp', { phone: PH })); expect(o.exists).toBeUndefined();
     const ok = await call(undefined, 'POST', '/api/owner/verify', { phone: PH, code: o.devCode }); expect(ok.status).toBe(200); expect((await j(ok)).user.id).toBe(OWNER_ID);
     expect((await call(undefined, 'POST', '/api/owner/verify', { phone: PH, code: o.devCode })).status).toBe(400);
   });
   it('an owner who already has a password account cannot be taken over by an OTP', async () => {
     const me = await j(await call(jar.OWN, 'GET', '/api/auth/me')); const ph = String(me.user.phone).replace(/\D/g, '').slice(-10);
-    const r = await call(undefined, 'POST', '/api/owner/otp', { phone: ph }); expect(r.status).toBe(409); expect((await j(r)).code).toBe('USE_PASSWORD');
+    const r = await call(undefined, 'POST', '/api/owner/otp', { phone: ph }); expect(r.status).toBe(200);   // v175: asking says nothing about the account; only a right code meets the answer
+    const v = await call(undefined, 'POST', '/api/owner/verify', { phone: ph, code: (await j(r)).devCode, otpToken: undefined }); expect(v.status).toBe(409); expect((await j(v)).code).toBe('USE_PASSWORD');
   });
 });
 

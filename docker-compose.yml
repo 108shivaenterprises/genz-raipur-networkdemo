@@ -53,6 +53,11 @@ services:
       AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:-}
       FEATURE_VOICE: ${FEATURE_VOICE:-false}
       OTP_MODE: ${OTP_MODE:-manual}
+      OTP_WHATSAPP_NUMBER: ${OTP_WHATSAPP_NUMBER:-}
+      OTP_DAILY_CAP: ${OTP_DAILY_CAP:-300}
+      OTP_CAP_RESET: ${OTP_CAP_RESET:-150}
+      OTP_CAP_OWNER: ${OTP_CAP_OWNER:-100}
+      OTP_CAP_SIGNUP: ${OTP_CAP_SIGNUP:-50}
       DIGILOCKER_MODE: ${DIGILOCKER_MODE:-manual-review}
       NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=768}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -64,7 +69,7 @@ services:
       SEED_ADMIN_PHONE: ${SEED_ADMIN_PHONE:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       DEMO_MODE: "false"
-      TRUST_PROXY: "true"
+      TRUST_PROXY: ${TRUST_PROXY:-}   # unset = the proxy's own address is used for every rate limit; set 1 behind ONE nginx / load balancer (see docs/DEPLOY_INDIA.md)
       SMS_WEBHOOK_URL: ${SMS_WEBHOOK_URL:-}
       SMS_WEBHOOK_TOKEN: ${SMS_WEBHOOK_TOKEN:-}
       COMPANY_NAME: ${COMPANY_NAME:-GENZ BUILDCON INFRA PVT LTD}

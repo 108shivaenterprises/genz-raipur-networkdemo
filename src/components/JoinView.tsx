@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { OtpSent, OtpAlert, type OtpReq, type OtpErr } from './OtpStep.js';
 import { api } from '../lib/api.js';
 import { useI18n } from '../lib/i18n.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
@@ -30,11 +31,11 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   // v141 — mobile OTP: with it and a valid PAN the account is live at once (no GENZ desk)
-  const [otpTok, setOtpTok] = useState(''); const [otpCode, setOtpCode] = useState(''); const [otpNote, setOtpNote] = useState(''); const [otpBusy, setOtpBusy] = useState(false);
+  const [otpTok, setOtpTok] = useState(''); const [otpCode, setOtpCode] = useState(''); const [otpV, setOtpV] = useState<OtpReq | null>(null); const [otpErr, setOtpErr] = useState<OtpErr | null>(null); const [otpAt, setOtpAt] = useState(0); const [otpBusy, setOtpBusy] = useState(false);
   const sendOtp = async () => {
-    setOtpBusy(true); setOtpNote('');
-    try { const r = await api.registerOtp(code.trim(), phone.replace(/\D/g, '').slice(-10)); setOtpTok(r.otpToken); setOtpNote(r.devCode ? `Demo code: ${r.devCode}` : (hi ? 'कोड आपके फ़ोन पर भेजा गया।' : 'Code sent to your phone.')); }
-    catch (e: any) { setOtpTok(''); setOtpNote(e.message); } finally { setOtpBusy(false); }
+    setOtpBusy(true); setOtpErr(null);
+    try { const r = await api.registerOtp(code.trim(), phone.replace(/\D/g, '').slice(-10)); setOtpTok(r.otpToken); setOtpV(r); setOtpAt(Date.now()); setOtpCode(''); }
+    catch (e: any) { setOtpTok(''); setOtpV(null); setOtpErr(e); } finally { setOtpBusy(false); }
   };
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -149,13 +150,13 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             {pf && <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">{hi ? `आपके स्पॉन्सर ${sponsorName || ''} ने आपकी कुछ जानकारी पहले से भर दी है। उसे देख लें और कुछ ग़लत हो तो सुधार दें।` : `Your sponsor${sponsorName ? ` ${sponsorName}` : ''} has already filled in some of your details. Please check them and correct anything that is wrong.`}</p>}
             <div><label className="text-xs font-semibold text-slate-700">{hi ? 'पूरा नाम' : 'Full name'} *{chip(name, pf?.name)}</label><input required value={name} onChange={(e) => setName(e.target.value)} className={input} /></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label className="text-xs font-semibold text-slate-700">{hi ? 'मोबाइल नंबर' : 'Mobile number'} *</label><input required value={phone} onChange={(e) => { setPhone(e.target.value); setOtpTok(''); }} inputMode="tel" placeholder="9XXXXXXXXX" className={input} />
+              <div><label className="text-xs font-semibold text-slate-700">{hi ? 'मोबाइल नंबर' : 'Mobile number'} *</label><input required value={phone} onChange={(e) => { setPhone(e.target.value); setOtpTok(''); setOtpV(null); }} inputMode="tel" placeholder="9XXXXXXXXX" className={input} />
                 {role !== 'GENZ_CONNECTOR' && <div className="mt-1.5 space-y-1" data-testid="join-otp">
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => void sendOtp()} disabled={otpBusy || !/^[6-9]\d{9}$/.test(phone.replace(/\D/g, '').slice(-10))} className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold disabled:opacity-40" data-testid="join-otp-send">{otpTok ? (hi ? 'फिर भेजें' : 'Send again') : (hi ? 'कोड भेजें' : 'Send code')}</button>
-                    {otpTok && <input value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder={hi ? '6 अंक का कोड' : '6-digit code'} className={input + ' font-mono'} aria-label={hi ? 'कोड' : 'Code'} data-testid="join-otp-code" />}
-                  </div>
-                  <p className="text-[11px] text-slate-500">{otpNote || (hi ? 'मोबाइल कोड + PAN = अकाउंट तुरंत चालू। बिना कोड के GENZ ID जाँचेगा।' : 'Mobile code + PAN = your account is live at once. Without the code GENZ checks your ID.')}</p>
+                  {!otpV && <button type="button" onClick={() => void sendOtp()} disabled={otpBusy || !/^[6-9]\d{9}$/.test(phone.replace(/\D/g, '').slice(-10))} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold disabled:opacity-40" data-testid="join-otp-send">{hi ? 'कोड भेजें' : 'Send code'}</button>}
+                  {otpV && <OtpSent v={otpV} sentAt={otpAt} onResend={() => void sendOtp()} busy={otpBusy} />}
+                  {otpTok && <input value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder={hi ? '6 अंक का कोड' : '6-digit code'} className={input + ' font-mono'} aria-label={hi ? 'कोड' : 'Code'} data-testid="join-otp-code" />}
+                  <OtpAlert err={otpErr} />
+                  <p className="text-[11px] text-slate-500">{hi ? 'मोबाइल कोड + PAN = अकाउंट तुरंत चालू। बिना कोड के GENZ ID जाँचेगा।' : 'Mobile code + PAN = your account is live at once. Without the code GENZ checks your ID.'}</p>
                 </div>}</div>
               {!phoneOnly && <div><label className="text-xs font-semibold text-slate-700">Email *</label><input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></div>}
             </div>

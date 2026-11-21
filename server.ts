@@ -101,7 +101,7 @@ import { createPulseRouter, activityMiddleware, recordActivity } from './server/
 import { createTeamRouter, createTeamLimitsRouter } from './server/team.js';
 import { createHrRouter, sweepHr } from './server/hr.js';
 import { createCallsRouter, sweepCalls } from './server/calls.js';
-import { voiceOn } from './server/features.js';
+import { voiceOn, otpMode } from './server/features.js';
 import { createInventoryRouter, sweepHolds } from './server/inventory.js';
 import { createInventoryDeskRouter } from './server/inventory2.js';
 import { createLaunchRouter } from './server/launch.js';
@@ -170,11 +170,12 @@ import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createLeadInletRouter, createLeadInletPublicRouter } from './server/leadInlets.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
-import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, sendSignupOtp } from './server/ownerlist.js';
+import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, finishSignupOtp, sendSignupOtp } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
 import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
+import { createForgotRouter, createOtpAdminRouter } from './server/otpManual.js';
 import { createApiKeysRouter } from './server/apiKeys.js';
 import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, watchShares, sweepShopPartners, leadVisitEvent, primeHomes, followHomes, sweepSahayak } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
@@ -474,7 +475,7 @@ app.get('/api/auth/config', (_req: Request, res: Response) => {
         .filter(u => u.verificationStatus !== 'BLACKLISTED')
         .map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, companyName: u.companyName, verificationStatus: u.verificationStatus }))
     : [];
-  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts, voice: voiceOn(), ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL.trim().replace(/\/+$/, '') } : {}) });
+  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts, voice: voiceOn(), otpMode: otpMode(), ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL.trim().replace(/\/+$/, '') } : {}) });
 });
 
 app.post('/api/auth/login', (req: Request, res: Response) => {
@@ -816,8 +817,8 @@ app.post('/api/auth/register-otp', rateLimit('register-otp', 20, 60 * 60_000), a
   const code = String(req.body?.code || '');
   const invite = db.getState().invitations.find(i => i.code.trim().toUpperCase() === code.trim().toUpperCase());
   if (!invite || invite.status !== 'PENDING' || new Date(invite.expiresAt) < new Date()) return res.status(404).json({ error: 'Invitation not found or expired' });
-  const r = await sendSignupOtp(String(req.body?.phone || '').replace(/\D/g, '').slice(-10));
-  if ('error' in r) return res.status(r.status).json({ error: r.error, code: r.code });
+  const r = await sendSignupOtp(String(req.body?.phone || '').replace(/\D/g, '').slice(-10), req.ip);
+  if ('error' in r) return res.status(r.status).json({ error: r.error, errorHi: r.errorHi, code: r.code, wait: r.wait });
   res.json({ success: true, ...r });
 });
 
@@ -837,7 +838,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   // v141 — mobile OTP (when given): a wrong code stops here; a right one + a valid unused PAN makes the account live at once
   let otpOk = false;
   if (parsed.data.otpToken) {
-    const e = checkOtpToken(parsed.data.otpToken, String(phone || '').replace(/\D/g, '').slice(-10), parsed.data.otpCode || '');
+    const e = checkOtpToken(parsed.data.otpToken, String(phone || '').replace(/\D/g, '').slice(-10), parsed.data.otpCode || '', false);   // looked at now, spent only when the account is made
     if (e) return res.status(400).json({ error: e, code: 'OTP' });
     otpOk = true;
   }
@@ -878,11 +879,9 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     const sp = invite.sponsorId ? db.byId('users', invite.sponsorId) : undefined;
     if (sp && sp.role === 'BROKER') connectorProfile.sponsorId = sp.id;
   }
-  if (state.users.some(u => digits(u.phone) === digits(phone) && u.role === 'GENZ_CONNECTOR') && invite.targetRole === 'GENZ_CONNECTOR') {
-    return res.status(400).json({ error: 'A partner with this mobile number already exists' });
-  }
-  if (state.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-    return res.status(400).json({ error: 'An account with this email address already exists' });
+  // v175 — one answer for "this mobile is taken" and "this e-mail is taken": it does not say which, or that an account exists
+  if ((state.users.some(u => digits(u.phone) === digits(phone) && u.role === 'GENZ_CONNECTOR') && invite.targetRole === 'GENZ_CONNECTOR') || state.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+    return res.status(400).json({ error: 'We could not create an account with these details. Check them, or use "Forgot password" on the sign-in page if you already joined.', code: 'CANNOT_REGISTER' });
   }
 
   const t2app = invite.tier2AppId ? db.byId('tier2Applications', invite.tier2AppId) : undefined;
@@ -900,7 +899,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     if (parsed.data.idConsent !== true) return res.status(400).json({ error: 'Please agree to GENZ keeping your PAN and the last 4 digits of your Aadhaar for verification', code: 'ID_CONSENT_REQUIRED' });
     // one PAN = one GENZ account: stops a removed broker coming back under a new name / number
     if (state.users.some(u => u.role === 'BROKER' && u.panNumber && normPan(u.panNumber) === panNumber)) {
-      return res.status(409).json({ error: 'This PAN is already linked to another GENZ account. If that is you, sign in — or write to GENZ support.', code: 'PAN_IN_USE' });
+      return res.status(400).json({ error: 'We could not create an account with these details. Check them, or use "Forgot password" on the sign-in page if you already joined.', code: 'CANNOT_REGISTER' });   // same answer as a taken mobile / e-mail
     }
     if (t2app) {
       sponsor = db.byId('users', t2app.proposerId);
@@ -972,6 +971,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   invite.redeemedAt = now;
 
   state.users.push(newUser);
+  if (otpOk) finishSignupOtp(parsed.data.otpToken);
   if (invite.targetRole === 'BROKER') openIdTask(userId, autoVerified ? 'AUTO_VERIFY' : 'SIGNUP', { autoVerified, by: userId, note: autoWhy || undefined });
   // v25 — the member ticked the KYC agreement: the FULL Aadhaar and the address go into the encrypted vault (never onto the user record)
   let vaultStored = false;
@@ -5878,6 +5878,8 @@ app.use('/api/kyc-vault', createKycVaultRouter());
 app.use('/api/protection', createProtectionRouter());
 app.use('/api/admin/api-keys', createApiKeysRouter());   // v135 — superadmin types API keys; every flow reads them
 app.use('/api/auth/2fa', createTwoFactorRouter());
+app.use('/api/auth/forgot', createForgotRouter());   // v175 — forgot password: mobile code, then a new password
+app.use('/api/admin/otp-pending', createOtpAdminRouter());   // v175 — manual OTP mode: staff relay the code on WhatsApp
 app.use('/api/owner', createOwnerAuthRouter());
 app.use('/api/owner-listing', createOwnerListingRouter());
 app.use('/api/consent', createConsentRouter());
