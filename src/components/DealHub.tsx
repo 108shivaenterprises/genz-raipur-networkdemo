@@ -328,6 +328,22 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
     .filter(s => wide || shown.some(d => d.stage === s)); // on a small screen empty stages only take space
   return (
     <div className="space-y-4" data-testid="deal-pipeline">
+      {/* v170 — "Today": the first thing waiting on me in each deal, across ALL deals, one tap into the right tab (no hunting through rooms) */}
+      {(() => {
+        const todo = liveItems.filter(d => d.needsMe && (d.next || []).length).sort((x, y) => (y.idleDays || 0) - (x.idleDays || 0)).slice(0, 5);   // longest-waiting first
+        if (!todo.length) return null;
+        return (
+          <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 p-2.5" data-testid="deal-today">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900"><AlertTriangle className="h-4 w-4" />{tx('Today', 'आज का काम')} · {k.needsMe}</div>
+            {todo.map(d => { const n = d.next[0]; const Icon = NEXT_ICON[n.kind] || ChevronRight; return (
+              <button key={d.id} type="button" onClick={() => onOpen(d.id, n.tab, n.kind)} data-testid={`today-${d.id}`} className="flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-left">
+                <span className="flex min-w-0 items-center gap-2"><Icon className="h-4 w-4 shrink-0 text-amber-700" /><span className="min-w-0"><span className="block truncate text-xs font-bold text-slate-900">{d.propertyTitle || d.id}{d.counterpartName ? ` · ${d.counterpartName}` : ''}</span><span className="block truncate text-xs text-slate-600">{nextText(n, d.idleDays, tx, th)}</span></span></span>
+                <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
+              </button>
+            ); })}
+          </div>
+        );
+      })()}
       <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={() => setFilter('needs')} aria-pressed={filter === 'needs'} className={`rounded-xl border p-3 text-left transition-colors ${filter === 'needs' ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid="hub-kpi-needs">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><AlertTriangle className="h-4 w-4" />{tx('Need my action', 'मेरा काम बाकी')}</div>

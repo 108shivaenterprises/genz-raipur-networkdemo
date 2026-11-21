@@ -40,7 +40,7 @@ import { pushTo, pushToShop, shopAlertInfo, dropShopPush, shopPushKey, allowedEn
 import { buyerBondBlock, makeBuyerBond } from './buyerbond.js';
 import { partyBlock } from './partywatch.js';
 import { alertNeedNetwork, networkRange, networkHomesFor } from './broadcast.js';
-import { alert as alertUsers } from './alerts.js';
+import { alert as alertUsers, once } from './alerts.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
 import { shareableMedia } from './clientroom.js';
 import { videoKind, youtubeId } from '../src/shared/roomMedia.js';
@@ -887,7 +887,7 @@ export function createShopPartnerRouter() {
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
     audit(l.id, 'SHOP_LEAD_HOME_SHARED', `Home (${h.id}) shared in the chat — the number stays hidden until a visit is created`);
     // v168 — another broker's home that is not opened to pages: its listing broker is told at once (co-broking: the split is settled in the deal room)
-    if (h.listingBrokerId && h.listingBrokerId !== l.brokerId && !h.publicShareOk) alertUsers(h.listingBrokerId, 'broadcast', `Co-broking: ${me().name} is showing your home`, `${me().name} shared “${h.title}” with a buyer. Talk co-broking and the split with him from the Network.`, '/', { tag: `cobroke-${h.id}-${l.brokerId}`, hi: [`को-ब्रोकिंग: ${me().name} आपका घर दिखा रहे हैं`, `${me().name} ने “${h.title}” एक खरीदार को भेजा है। नेटवर्क से उनसे को-ब्रोकिंग और हिस्से की बात करें।`] });
+    if (h.listingBrokerId && h.listingBrokerId !== l.brokerId && !h.publicShareOk && once(`cobroke-${h.id}-${l.brokerId}`, 24 * 3600_000)) alertUsers(h.listingBrokerId, 'broadcast', `Co-broking: ${me().name} is showing your home`, `${me().name} shared “${h.title}” with a buyer. Talk co-broking and the split with him from the Network.`, '/', { tag: `cobroke-${h.id}-${l.brokerId}`, hi: [`को-ब्रोकिंग: ${me().name} आपका घर दिखा रहे हैं`, `${me().name} ने “${h.title}” एक खरीदार को भेजा है। नेटवर्क से उनसे को-ब्रोकिंग और हिस्से की बात करें।`] });
     db.save();
     void brokerWrote(`lc-${l.id}`, me().name, 'HOME');
     res.json({ success: true, lead: leadView(l) });

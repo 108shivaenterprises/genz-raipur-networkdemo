@@ -339,6 +339,19 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const [propIntroPct, setPropIntroPct] = useState(50);
   const [propClosePct, setPropClosePct] = useState(50);
   const [propReason, setPropReason] = useState('');
+  // v170 — the last terms these two brokers agreed on another property / client: one tap fills the form (the agreement itself stays for THIS property + client)
+  const [lastTerms, setLastTerms] = useState<Awaited<ReturnType<typeof api.lastAgreementTerms>>['terms']>(null);
+  useEffect(() => {
+    if (!showProposeAgreementModal || !selectedDealId) { setLastTerms(null); return; }
+    let live = true; api.lastAgreementTerms(selectedDealId).then(r => { if (live) setLastTerms(r.terms); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [showProposeAgreementModal, selectedDealId]);
+  const useLastTerms = () => {
+    if (!lastTerms) return;
+    setPropPayer(lastTerms.payer); setPropIntroPct(lastTerms.introPct); setPropClosePct(100 - lastTerms.introPct);
+    if (lastTerms.feePct && propDealValue > 0) setPropTotalFee(Math.round((propDealValue * lastTerms.feePct) / 100));
+    if (!propReason.trim()) setPropReason(tx(`Same terms as the deal on ${lastTerms.fromTitle}`, `वही शर्तें जो ${lastTerms.fromTitle} की डील में थीं`));
+  };
   const [proposalError, setProposalError] = useState('');
   const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
 
@@ -594,6 +607,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
   useEffect(() => {
     if (selectedDealId && mainMode === 'DEAL_ROOMS') {
+      try { window.history.replaceState({ ...(window.history.state || {}), gdr: { mode: 'DEAL_ROOMS', deal: selectedDealId } }, ''); } catch { /* old browser */ }   // the history entry remembers the deal actually opened (not the one before it)
       loadDetail(selectedDealId);
     }
   }, [selectedDealId, refreshTrigger, mainMode === 'DEAL_ROOMS']); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1026,7 +1040,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     ...(canTasks ? [{ id: 'responsibilities', label: tx('Tasks', 'ज़िम्मेदारी'), count: applicableTasks.length, icon: ListTodo, primary: true }] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : [{ id: 'commission_agreement', label: tx('Agreement', 'समझौता'), icon: FileCheck2, primary: true }]),
                     ...(perm('property:read') ? [{ id: 'media_vault', label: tx('Photos & map', 'फ़ोटो और लोकेशन'), count: vaultAssets.length, icon: FolderLock }] : []),
-                    ...(ddOn ? [{ id: 'due_diligence', label: tx('Paper check', 'काग़ज़ों की सूची'), icon: ShieldCheck }] : []),
+                    ...(ddOn ? [{ id: 'due_diligence', label: tx('Paper check', 'काग़ज़ों की सूची'), icon: ShieldCheck, primary: true }] : []),
                     { id: 'antibypass_protocol', label: tx('Anti-Bypass Rules', 'एंटी-बायपास नियम'), icon: ShieldCheck },
                     ...(perm('legal:request') && currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) ? [{ id: 'legal_help', label: tx('Legal Help', 'क़ानूनी मदद'), icon: Scale }] : []),
                     ...(perm('dispute:read', 'dispute:create') ? [{ id: 'disputes_holds', label: tx('Disputes & Commission Holds', 'विवाद और कमीशन होल्ड'), icon: Scale }] : []),
@@ -1150,7 +1164,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       <div className="flex flex-wrap gap-1.5 pt-2" data-testid="deal-links">
                         {perm('mandate:read') && (
                           <button type="button" onClick={() => setMainMode('MANDATES')} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 hover:border-slate-900" data-testid="deal-owner-terms">
-                            <FileSignature className="h-3.5 w-3.5" />{tx('Owner’s terms', 'मालिक की शर्तें')}
+                            <FileSignature className="h-3.5 w-3.5" />{tx('Owner’s brokerage', 'मालिक की ब्रोकरेज')}
                           </button>
                         )}
                         {canRooms && roomsFor(activeDeal.propertyId).map((r: any) => (
@@ -3107,6 +3121,12 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               </button>
             </div>
 
+            {lastTerms && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900" data-testid="same-terms">
+                <span className="min-w-0 flex-1">{tx(`Last deal with this broker (${lastTerms.fromTitle}): ${lastTerms.introPct}–${lastTerms.closePct}${lastTerms.feePct ? `, ${lastTerms.feePct}% brokerage` : ''}. This agreement stays for this property and client only.`, `इस ब्रोकर के साथ पिछली डील (${lastTerms.fromTitle}): ${lastTerms.introPct}–${lastTerms.closePct}${lastTerms.feePct ? `, ${lastTerms.feePct}% ब्रोकरेज` : ''}। यह एग्रीमेंट सिर्फ इसी प्रॉपर्टी और क्लाइंट के लिए रहेगा।`)}</span>
+                <button type="button" onClick={useLastTerms} className="min-h-10 shrink-0 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white" data-testid="same-terms-use">{tx('Use same terms', 'वही शर्तें रखें')}</button>
+              </div>
+            )}
             {proposalError && (
               <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-lg p-3 text-xs">
                 {proposalError}

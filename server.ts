@@ -4586,6 +4586,27 @@ app.get('/api/deals/:id/commission-agreements', needs('agreement:read'), (req: R
   res.json({ success: true, agreements: state.commissionAgreements.filter(a => a.dealId === deal.id).map(a => shapeAgreementFor(a, currentUser)) });
 });
 
+/** v170 — the last agreed terms between THESE two brokers (another property / client), so a new deal's form is filled and the broker only taps "same terms".
+ *  The agreement itself stays per deal = one property + one client; this only copies the numbers. */
+app.get('/api/deals/:id/last-terms', needs('agreement:propose'), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const { state, deal } = loadDealFor(req, currentUser);
+  if (!isDealBroker(currentUser, deal)) return res.status(403).json({ error: 'Only the deal brokers can see this' });
+  const a1 = deal.introducingBrokerId, a2 = deal.closingBrokerId;
+  if (!a1 || !a2 || a1 === a2) return res.json({ success: true, terms: null });
+  const same = (d: any) => d.id !== deal.id && ((d.introducingBrokerId === a1 && d.closingBrokerId === a2) || (d.introducingBrokerId === a2 && d.closingBrokerId === a1));
+  const done = ['ACTIVE', 'ACCEPTED', 'COMPLETED'];
+  const last = state.commissionAgreements
+    .filter(a => done.includes(a.status) && same(state.dealRooms.find(d => d.id === a.dealId) || {}))
+    .sort((x: any, y: any) => String(y.updatedAt || y.createdAt || '').localeCompare(String(x.updatedAt || x.createdAt || '')))[0];
+  if (!last) return res.json({ success: true, terms: null });
+  const pctOf = (id: string) => Number(last.allocations.find(x => x.participantId === id)?.allocationPct) || 0;
+  if (pctOf(a1) + pctOf(a2) !== 100) return res.json({ success: true, terms: null });   // a third party shared it or it was edited: do not guess a split
+  const d0: any = state.dealRooms.find(d => d.id === last.dealId);
+  const prop = state.properties.find(p => p.id === d0?.propertyId);
+  res.json({ success: true, terms: { payer: last.payer, introPct: pctOf(a1), closePct: pctOf(a2), feePct: last.dealValue ? Math.round((last.totalAgreedBrokerage / last.dealValue) * 10000) / 100 : null, fromTitle: prop?.title || last.dealId } });
+});
+
 app.post('/api/deals/:id/commission-agreements/propose', needs('agreement:propose'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { state, deal } = loadDealFor(req, currentUser);

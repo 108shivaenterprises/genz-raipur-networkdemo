@@ -438,6 +438,9 @@ export const api = {
   // Versioned Commission Agreements (Module A2 & A3)
   getDealCommissionAgreements: (dealId: string) =>
     request<{ success: boolean; agreements: DealCommissionAgreement[] }>(`/api/deals/${dealId}/commission-agreements`),
+  /** v170 — the last agreed terms between these two brokers (another property / client), to fill a new deal's form */
+  lastAgreementTerms: (dealId: string) =>
+    request<{ success: boolean; terms: { payer: 'SPLIT_EQUAL' | 'SELLER' | 'BUYER' | 'BUILDER_DEVELOPER'; introPct: number; closePct: number; feePct: number | null; fromTitle: string } | null }>(`/api/deals/${dealId}/last-terms`),
   proposeCommissionAgreement: (dealId: string, payload: any) =>
     request<{ success: boolean; agreement: DealCommissionAgreement }>(`/api/deals/${dealId}/commission-agreements/propose`, {
       method: 'POST',
