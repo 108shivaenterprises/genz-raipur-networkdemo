@@ -20,6 +20,7 @@ import { SourceField, ProfileFields, LeadDetailsCard, CallPanel, ForwardSheet, H
 import { inferTeamRole, optLabel, TEAM_ROLES, type LeadProfile } from '../shared/crmSales.js';
 import { LOST_CODES } from '../shared/crmRules.js';
 import type { UserProfile } from '../types/index.js';
+import { ProtectionPill } from './ProtectionDays.js';
 import { slaState, slaLeftMin, SLA_DEFAULT_MIN } from '../shared/slaRules.js';
 import { CRM_STAGE_ORDER, type CrmBooking, type CrmLead, type CrmLeadStage } from '../types/crm.js';
 
@@ -56,7 +57,7 @@ interface Props {
 }
 
 export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
-  const { t } = useI18n();
+  const { t, lang } = useI18n(); const hi = lang === 'hi';
   const [overview, setOverview] = useState<any>(null);
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [bookings, setBookings] = useState<CrmBooking[]>([]);
@@ -237,37 +238,27 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
                               {l.stale && <span className="rounded bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800">{tx('STALE', 'निष्क्रिय')}</span>}
                               {l.forwardUnseen && <span className="rounded bg-violet-100 px-1.5 text-[9px] font-bold text-violet-800">{tx('FORWARDED', 'फ़ॉरवर्ड')}</span>}
                               {!!l.callAttempts && <span className="rounded bg-sky-50 px-1.5 text-[9px] font-bold text-sky-800">📞 {l.callAttempts}</span>}
-                              {!['BOOKED', 'LOST'].includes(l.stage) && (l.protectionDaysLeft ?? 99) <= 7 && <span className="rounded bg-red-50 px-1.5 text-[9px] font-bold text-red-700">{Math.max(0, l.protectionDaysLeft ?? 0)}{tx('d protection', 'दिन सुरक्षा')}</span>}
+                              {!['BOOKED', 'LOST'].includes(l.stage) && typeof l.protectionDaysLeft === 'number' && <ProtectionPill left={l.protectionDaysLeft} />}
                               {(l.tags || []).slice(0, 2).map(tg => <span key={tg} className="rounded bg-slate-100 px-1.5 text-[9px] font-semibold text-slate-600">{tg}</span>)}
                             </div>
                             {!isBroker && <div className="mt-1 truncate text-[10px] text-slate-400">{tx('via', 'द्वारा')} {l.associateName || tx('Builder direct', 'बिल्डर सीधे')}</div>}
                           </div>
 
                           {/* Quick Actions (PROPi & Clixence style fast pipeline operations) */}
-                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
-                            <div className="flex items-center gap-1">
-                              {l.phone && !l.phoneMasked && (
-                                <a
-                                  href={`https://wa.me/91${l.phone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hi ${l.name}, sharing details of ${l.projectName || 'property'} on GENZ Network.`)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition-colors"
-                                  title={tx('WhatsApp Follow-up', 'व्हाट्सएप फॉलो-अप')}
-                                >
-                                  <MessageCircle className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-                              {l.phone && !l.phoneMasked && (
-                                <a
-                                  href={`tel:${l.phone}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="p-1 rounded hover:bg-sky-50 text-sky-600 transition-colors"
-                                  title={tx('Direct Call', 'सीधा कॉल')}
-                                >
-                                  <Phone className="w-3.5 h-3.5" />
-                                </a>
-                              )}
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {l.phone && !l.phoneMasked && !l.optedOutAt && (() => {
+                                const unreplied = slaState(l, SLA_DEFAULT_MIN, Date.now()) !== 'DONE' && !['BOOKED', 'LOST'].includes(l.stage);
+                                const mins = Math.max(0, Math.round((Date.now() - Date.parse(l.createdAt)) / 60000));
+                                const d10 = l.phone.replace(/\D/g, '').slice(-10);
+                                const hello = hi ? `नमस्ते ${l.name} जी, मैं GENZ Network से बोल रहा हूँ. आपकी पूछताछ मिली, ${l.projectName || 'प्रॉपर्टी'} की डिटेल भेज दूँ?` : `Namaste ${l.name} ji, GENZ Network se bol raha hoon. Aapki enquiry mili, ${l.projectName || 'property'} ki details bhej dun?`;
+                                const lnk = 'inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs font-bold';
+                                return <>
+                                  {unreplied && mins < 1440 && <span data-testid="lead-age-pill" className={`rounded-full px-2 py-0.5 text-xs font-bold ${mins > 10 ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{mins < 1 ? tx('just now', 'अभी') : tx(`${mins} min ago`, `${mins} मिनट पहले`)}</span>}
+                                  <a href={`https://wa.me/91${d10}?text=${encodeURIComponent(hello)}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} data-testid="lead-wa-now" className={`${lnk} bg-emerald-600 text-white`}><MessageCircle className="h-4 w-4" />{tx('WhatsApp now', 'व्हाट्सएप')}</a>
+                                  <a href={`tel:+91${d10}`} onClick={(e) => e.stopPropagation()} data-testid="lead-call-now" className={`${lnk} border border-sky-300 text-sky-800`}><Phone className="h-4 w-4" />{tx('Call', 'कॉल')}</a>
+                                </>;
+                              })()}
                             </div>
 
                             {/* 1-Click Fast Stage Advance */}

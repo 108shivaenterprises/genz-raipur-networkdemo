@@ -3,8 +3,9 @@
  *   where is the deal (the stage, above) · what do I do next (above) · the few numbers that matter · a door to chat / tasks / agreement / photos.
  * Nothing is removed: "Full view" is one tap away and every section keeps its own id. This screen only reads what the Deal Hub already knows.
  */
-import React from 'react';
-import { MessageSquare, ListTodo, FileCheck2, FolderLock, ShieldCheck, IndianRupee, LayoutList, ChevronRight, CalendarCheck, Users, Clock, Shield, Phone, MessageCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../lib/api.js';
+import { MessageSquare, ListTodo, FileCheck2, FolderLock, ShieldCheck, IndianRupee, LayoutList, ChevronRight, CalendarCheck, Users, Clock, Shield, Phone, MessageCircle, Receipt } from 'lucide-react';
 import { useTemplateHi } from '../lib/templateHi.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -21,6 +22,14 @@ export const DealSimple: React.FC<{
   phone?: string;                   // the other broker's number — the two brokers of a deal already see it in the chat header
 }> = ({ item, doors, onOpen, phone, onBookVisit }) => {
   const tx = useTx(); const th = useTemplateHi();
+  // the live cost sheet this broker already made for this deal's project (matched by project name; hidden when none / no access)
+  const [sheet, setSheet] = useState<string>('');
+  useEffect(() => {
+    const t = String(item?.propertyTitle || '').trim().toLowerCase(); if (!t) { setSheet(''); return; }
+    let live = true;
+    api.costSheets().then((r: any) => { const m = (r.sheets || []).find((x: any) => !x.revoked && !x.expired && (String(x.projectName).toLowerCase().includes(t) || t.includes(String(x.projectName).toLowerCase()))); if (live) setSheet(m?.token || ''); }).catch(() => { if (live) setSheet(''); });
+    return () => { live = false; };
+  }, [item?.propertyTitle]);
   const ago = (iso?: string) => { const d = agoDays(iso); return d < 0 ? '' : d === 0 ? tx('today', 'आज') : d === 1 ? tx('yesterday', 'कल') : tx(`${d} days ago`, `${d} दिन पहले`); };
   const next: any[] = item?.next || [];
   const dot = (tab: string) => next.some(n => n.tab === tab && n.kind !== 'STALLED');
@@ -90,6 +99,7 @@ export const DealSimple: React.FC<{
         {doors.includes('chat_call') && <button type="button" onClick={() => onOpen('chat_call')} className={round} data-testid="deal-door-chat_call"><span className={`${ring} relative`}><MessageSquare className="h-5 w-5 text-slate-800" aria-hidden />{dot('chat_call') && <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} />}</span>{tx('Chat', 'चैट')}</button>}
         {doors.includes('media_vault') && <button type="button" onClick={() => onOpen('media_vault')} className={round} data-testid="deal-door-media_vault"><span className={ring}><FolderLock className="h-5 w-5 text-slate-800" aria-hidden /></span>{tx('Papers', 'काग़ज़')}</button>}
       </div>
+      {sheet && <a href={`/s/${sheet}`} target="_blank" rel="noopener noreferrer" data-testid="deal-costsheet" className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 shadow-sm"><Receipt className="h-5 w-5 text-slate-700" aria-hidden />{tx('Cost sheet', 'कॉस्ट शीट')}<ChevronRight className="ml-auto h-4 w-4 text-slate-300" aria-hidden /></a>}
       {history.length > 0 && (
         <section data-testid="deal-history">
           <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">{tx('History', 'अब तक क्या हुआ')}</h3>

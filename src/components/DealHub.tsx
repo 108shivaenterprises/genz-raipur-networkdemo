@@ -649,6 +649,9 @@ export const MessageHint: React.FC<{ at?: string }> = ({ at }) => {
 export const EarningsBoard: React.FC<{ hub: any; onOpen: (id: string) => void }> = ({ hub, onOpen }) => {
   const tx = useTx(); const label = useLabel();
   const k = hub?.kpis || {};
+  // agency admins only: the endpoint is employer-only, so everyone else gets a 403 and sees nothing. Read-only; GENZ holds no money.
+  const [split, setSplit] = useState<{ name: string; pct: number }[]>([]);
+  useEffect(() => { api.teamIncentives().then(r => setSplit((r.rows || []).filter((m: any) => m.incentiveMode === 'PCT' && m.incentivePct > 0).map((m: any) => ({ name: m.name, pct: m.incentivePct })))).catch(() => setSplit([])); }, []);
   const rows: any[] = (hub?.deals || []).filter((d: any) => d.money && !d.closed).sort((a: any, b: any) => (b.money.myShare || 0) - (a.money.myShare || 0));
   const toConfirm = (hub?.deals || []).filter((d: any) => !d.closed).reduce((n: number, d: any) => n + (d.next || []).filter((x: any) => x.kind === 'PAYMENTS_TO_CONFIRM' || x.kind === 'CLIENT_PAYMENT').length, 0);
   return (
@@ -658,6 +661,14 @@ export const EarningsBoard: React.FC<{ hub: any; onOpen: (id: string) => void }>
         <div className="min-w-0 flex-1 px-2 py-2.5"><div className="truncate text-lg font-bold text-slate-900">{short(k.mySettled)}</div><div className="text-xs text-slate-500">{tx('Settled', 'मिल चुका')}</div></div>
         <div className="min-w-0 flex-1 px-2 py-2.5"><div className={`text-lg font-bold ${toConfirm ? 'text-amber-700' : 'text-slate-900'}`}>{toConfirm}</div><div className="text-xs text-slate-500">{tx('To confirm', 'पुष्टि बाकी')}</div></div>
       </div>
+      {split.length > 0 && (
+        <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600" data-testid="earn-split">
+          <b className="text-slate-800">{tx('Team split on brokerage', 'ब्रोकरेज पर टीम का बँटवारा')}:</b>{' '}
+          {split.slice(0, 4).map(m => tx(`${m.name} ${m.pct}% / agency ${100 - m.pct}%`, `${m.name} ${m.pct}% / एजेंसी ${100 - m.pct}%`)).join(' · ')}
+          {split.length > 4 ? ` +${split.length - 4}` : ''}
+          <span className="block text-slate-500">{tx('Only a view. You pay your team yourself; GENZ does not hold money.', 'सिर्फ़ जानकारी। टीम को भुगतान आप खुद करते हैं; GENZ पैसा नहीं रखता।')}</span>
+        </p>
+      )}
       <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
         {rows.map(d => (
           <li key={d.id}>

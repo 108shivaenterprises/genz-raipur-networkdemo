@@ -60,3 +60,11 @@ export const PROTECTION_EXPLAIN = {
   en: 'For these days the customer cannot be taken away from you: if the deal closes through anyone else on GENZ, you are on record as the broker who brought them.',
   hi: 'इतने दिन तक ग्राहक आपसे छीना नहीं जा सकता: GENZ पर किसी और के ज़रिए भी सौदा हुआ, तो रिकॉर्ड में आप ही उन्हें लाने वाले ब्रोकर रहेंगे।',
 } as const;
+
+/** days left until an ISO date (ceil, never below 0); undefined if no date */
+export const daysUntil = (iso: string | undefined, now = Date.now()): number | undefined => {
+  const t = iso ? Date.parse(iso) : NaN; return Number.isFinite(t) ? Math.max(0, Math.ceil((t - now) / 86400_000)) : undefined;
+};
+/** pill colours for a protection countdown: red <= 2 days, amber <= 7, otherwise calm green */
+export const protectionTone = (left: number): string =>
+  left <= 2 ? 'bg-red-100 text-red-800' : left <= 7 ? 'bg-amber-100 text-amber-900' : 'bg-emerald-50 text-emerald-800';

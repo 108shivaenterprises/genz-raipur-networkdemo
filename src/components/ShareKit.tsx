@@ -147,7 +147,10 @@ export const ShareKit: React.FC = () => {
   };
 
   const text = brand ? renderTemplate(tpl, lang, { customer: client || undefined, broker: brand.displayName, company: brand.company, city: brand.city, project: src?.title, rera: brand.reraId, date: f.date, time: f.time, amount: f.amount }) : '';
-  const shareText = lastUrl ? `${text}\n${lastUrl}` : text;
+  // every shared message ends with the broker's name, firm, RERA (only if they have one) and phone, even if the template omitted them
+  const sign = brand ? [brand.displayName, brand.company, brand.reraId && `RERA: ${brand.reraId.replace(/^RERA:?\s*/i, '')}`, brand.phone && `📞 ${brand.phone}`].filter(Boolean).join(' · ') : '';
+  const body = brand && brand.reraId && !text.includes(brand.reraId) || brand && brand.phone && !text.includes(brand.phone) ? `${text}\n— ${sign}` : text;
+  const shareText = lastUrl ? `${body}\n${lastUrl}` : body;
 
   if (!brand) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>;
 

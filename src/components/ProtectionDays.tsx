@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
-import { daysLabel, protectionProblem, PROTECTION_CEILING, PROTECTION_MIN, PROTECTION_EXPLAIN, type ProtectionConfig } from '../shared/protectionRules.js';
+import { daysLabel, protectionTone, protectionProblem, PROTECTION_CEILING, PROTECTION_MIN, PROTECTION_EXPLAIN, type ProtectionConfig } from '../shared/protectionRules.js';
 
 let cache: ProtectionConfig | null = null;
 export function useProtectionConfig() {
@@ -64,4 +64,11 @@ export const ProtectionAdmin: React.FC = () => {
       {msg && <p className={`mt-2 text-xs ${msg.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{msg.text}</p>}
     </div>
   );
+};
+
+/** "N days left" countdown pill for list rows (same look as the Deal rows) */
+export const ProtectionPill: React.FC<{ left: number | undefined }> = ({ left }) => {
+  const tx = useTx();
+  if (left === undefined || left <= 0) return null;
+  return <span data-testid="protection-pill" className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${protectionTone(left)}`}><ShieldCheck className="h-3 w-3" />{tx(`${left} days left`, `${left} दिन बाकी`)}</span>;
 };

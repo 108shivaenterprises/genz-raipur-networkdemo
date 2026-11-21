@@ -20,6 +20,8 @@ import { EditPropertyModal } from './EditPropertyModal.js';
 import { ListingDrafts } from './ListingDrafts.js';
 import { PostMaker } from './PostMaker.js';
 import { ConsentQueue } from './ConsentQueue.js';
+import { ProtectionPill } from './ProtectionDays.js';
+import { daysUntil } from '../shared/protectionRules.js';
 import { MessageCircle, Heart } from 'lucide-react';
 import {
   Building2,
@@ -498,6 +500,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600">{p.id}</span>
                     {isMyListing && <span className="flex items-center gap-1 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white"><UserCheck className="h-3 w-3" />{tx('Your listing', 'आपकी लिस्टिंग')}</span>}
                     {!p.images[0] && p.videoUrl && <span className="rounded bg-purple-900/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">{tx('Video', 'वीडियो')}</span>}
+                    {!isClosed && (isMyListing || isAdmin) && <ProtectionPill left={daysUntil(p.protectionUntil)} />}
                     <span className="ml-auto">{statusChip}</span>
                   </div>
 
