@@ -2114,7 +2114,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     </div>
 
                     <button type="button" onClick={() => setAgMore(o => !o)} aria-expanded={agMore} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 self-start sm:hidden" data-testid="agreement-more">{tx('More', 'और')}</button>   {/* v148 — rarely used on a phone */}
-                    <div className={`${agMore ? 'flex' : 'hidden sm:flex'} flex-wrap items-center gap-2`} data-testid="agreement-actions">
+                    <div className={`${agMore || agreements.length === 0 ? 'flex' : 'hidden sm:flex'} flex-wrap items-center gap-2`} data-testid="agreement-actions">
                       <button
                         onClick={() => {
                           setShowProposeAgreementModal(true);
@@ -2128,7 +2128,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
                       >
                         <PlusCircle className="h-3.5 w-3.5" />
-                        <span>{tx('Propose Amendment', 'संशोधन प्रस्तावित करें')} (V{agreements.length + 1})</span>
+                        <span>{agreements.length === 0 ? tx('Propose terms', 'शर्तें प्रस्तावित करें') : <>{tx('Propose Amendment', 'संशोधन प्रस्तावित करें')} (V{agreements.length + 1})</>}</span>
                       </button>
 
                       <button

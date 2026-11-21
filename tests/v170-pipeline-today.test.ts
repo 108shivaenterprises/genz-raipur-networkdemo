@@ -12,4 +12,7 @@ describe('v170 — pipeline: Today list + Paper check on the bar', () => {
   it('Back button walks the deal screens (v169)', () => {
     const s = f('src/components/DealRoomsView.tsx'); expect(s).toContain("addEventListener('popstate'"); expect(s).toContain('gdr:');
   });
+  it('no agreement yet: the Propose button is visible without tapping More (phone)', () => {
+    const s = f('src/components/DealRoomsView.tsx'); expect(s).toContain("agMore || agreements.length === 0 ? 'flex'");
+  });
 });
