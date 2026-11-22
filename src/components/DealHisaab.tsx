@@ -52,8 +52,13 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
   const [dueEdit, setDueEdit] = useState<string | null>(null);
   const load = useCallback(() => api.hisaab(dealId).then(x => { setH(x.hisaab); setErr(''); }).catch(e => setErr(e.message)), [dealId, refreshKey]);   // v83 — refreshKey: the numbers in the folded header follow the final rate / deal changes made elsewhere on the screen
   useEffect(() => { void load(); }, [load]);
-  const run = async (fn: () => Promise<any>, after?: () => void) => { setBusy(true); setErr(''); try { const x = await fn(); if (x?.hisaab) setH(x.hisaab); after?.(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const run = async (fn: () => Promise<any>, after?: () => void) => { setBusy(true); setErr(''); try { const x = await fn(); if (x?.hisaab) setH(x.hisaab); window.dispatchEvent(new Event('genz:hisaab-changed')); after?.(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   const [folded, setFolded] = useState(true);
+  // the "+ ₹ amount" buttons under the deal dates open this same record-payment form, kind and date filled in
+  useEffect(() => {
+    const f = (e: Event) => { const d = (e as CustomEvent).detail || {}; setPf(p => ({ ...p, kind: d.kind || p.kind, paidOn: d.paidOn || today() })); setOpen('pay'); setFolded(false); setTimeout(() => document.querySelector('[data-testid="hisaab-fold"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); };
+    window.addEventListener('genz:hisaab-pay', f); return () => window.removeEventListener('genz:hisaab-pay', f);
+  }, []);
   // v83 — in the deal room the हिसाब is ONE folded block. Its header always shows the key numbers (and anything that waits for me); the body stays MOUNTED (only hidden),
   // so it keeps loading and refreshing by itself exactly as before. On a big screen it is simply open.
   const sum = (() => {

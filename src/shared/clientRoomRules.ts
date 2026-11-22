@@ -25,6 +25,10 @@ const NUMBER_WORDS: Record<string, string> = {
   shunya: '0', oh: '0', ek: '1', do: '2', teen: '3', char: '4', chaar: '4', paanch: '5', panch: '5', chhe: '6', chhah: '6', saat: '7', aath: '8', nau: '9',
   'शून्य': '0', 'एक': '1', 'दो': '2', 'तीन': '3', 'चार': '4', 'पांच': '5', 'पाँच': '5', 'छह': '6', 'छः': '6', 'सात': '7', 'आठ': '8', 'नौ': '9',
 };
+/** words run together ("oneseven", "chaarpaanch") → digits, only when the WHOLE word is made of number words (so "someone" or "tone" stay words) */
+const GLUE = new RegExp(`^(?:${Object.keys(NUMBER_WORDS).sort((a, b) => b.length - a.length).join('|')})+$`, 'iu');
+const GLUE_TOK = new RegExp(Object.keys(NUMBER_WORDS).sort((a, b) => b.length - a.length).join('|'), 'giu');
+const glued = (w: string): string => (w.length > 4 && GLUE.test(w) ? w.replace(GLUE_TOK, m => NUMBER_WORDS[m.toLowerCase()] ?? m) : w);
 /** "ninety eight" → 98, "twenty six" → 26, "sixty" → 60 (English tens words) */
 const TENS: Record<string, string> = { twenty: '2', thirty: '3', forty: '4', fourty: '4', fifty: '5', sixty: '6', seventy: '7', eighty: '8', ninety: '9' };
 const UNITS: Record<string, string> = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9' };
@@ -32,7 +36,7 @@ const UNITS: Record<string, string> = { one: '1', two: '2', three: '3', four: '4
 function plainDigits(text: string): string {
   let t = asciiDigits(String(text || '').normalize('NFKC')).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, '');
   t = t.replace(/\b(twenty|thirty|fou?rty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b)?/gi, (_m, ten: string, unit?: string) => `${TENS[ten.toLowerCase()]}${unit ? UNITS[unit.toLowerCase()] : '0'}`);
-  t = t.replace(/[\p{L}\p{M}]+/gu, w => NUMBER_WORDS[w.toLowerCase()] ?? w);
+  t = t.replace(/[\p{L}\p{M}]+/gu, w => NUMBER_WORDS[w.toLowerCase()] ?? glued(w));
   t = t.replace(/\b(double|dabal|dubal|triple|tripple|teepal)[\s-]+(\d)/gi, (_m, w: string, d: string) => d.repeat(/^(?:double|dabal|dubal)$/i.test(w) ? 2 : 3));   // "double nine" = 99, "triple seven" = 777
   for (let i = 0; i < 3; i++) t = t.replace(/(\d)[oO](?=\d)/g, '$10').replace(/(\d)[lI|](?=\d)/g, '$11');
   return t;

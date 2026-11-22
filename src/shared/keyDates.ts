@@ -54,3 +54,13 @@ export function dateCounts(deals: { stage: string; keyDates?: KeyDates }[], now 
   }
   return { dealDates, dealMutation };
 }
+
+/** v193 — what the buyer paid at each milestone, read from the हिसाब entries (the one money ledger): token → TOKEN, agreement → PART, registry → FINAL. Void and refund entries do not count; a masked amount counts as 0. */
+export const MILESTONE_KIND = { token: 'TOKEN', agreement: 'PART', registry: 'FINAL' } as const;
+export function milestoneAmounts(entries: { kind: string; amount?: number; void?: unknown; masked?: boolean }[]): Record<'token' | 'agreement' | 'registry', number> {
+  const sum = (k: string) => (entries || []).filter(e => e.kind === k && !e.void && !e.masked).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+  return { token: sum('TOKEN'), agreement: sum('PART'), registry: sum('FINAL') };
+}
+/** final rate minus what was received (never below 0) — the same number the हिसाब "Left" tile shows */
+export const balanceLeft = (price: number, received: number) => Math.max(0, Math.round((Number(price) || 0) - (Number(received) || 0)));
+export const PAY_EVENT = 'genz:hisaab-pay';

@@ -164,9 +164,10 @@ export const ChatShell: React.FC<{
   useEffect(() => {
     const v = window.visualViewport;
     if (!v || !window.matchMedia?.('(max-width: 1023px)').matches) return;
-    const f = () => setVv({ h: v.height, t: v.offsetTop });
-    f(); v.addEventListener('resize', f); v.addEventListener('scroll', f);
-    return () => { v.removeEventListener('resize', f); v.removeEventListener('scroll', f); };
+    // only follow the visual viewport while the keyboard is open — iOS reports odd values otherwise and pushed the message box off screen
+    const f = () => setVv(v.height < window.innerHeight - 120 ? { h: v.height, t: v.offsetTop } : null);
+    f(); v.addEventListener('resize', f); v.addEventListener('scroll', f); window.addEventListener('orientationchange', f);
+    return () => { v.removeEventListener('resize', f); v.removeEventListener('scroll', f); window.removeEventListener('orientationchange', f); };
   }, []);
   // on a phone the Back button closes the chat instead of leaving the app; the page behind does not scroll
   useEffect(() => {
@@ -184,7 +185,7 @@ export const ChatShell: React.FC<{
     };
   }, []);
   return (
-    <div className="fixed inset-0 z-[55] flex flex-col bg-white lg:static lg:z-auto lg:h-[max(28rem,calc(100vh-19rem))] lg:overflow-hidden lg:rounded-xl lg:border lg:border-slate-200" role="dialog" aria-label={title} data-testid={testId || 'chat-shell'}
+    <div className="fixed inset-x-0 top-0 z-[55] flex h-screen h-[100dvh] max-h-[100dvh] flex-col bg-white lg:static lg:z-auto lg:h-[max(28rem,calc(100vh-19rem))] lg:overflow-hidden lg:rounded-xl lg:border lg:border-slate-200" role="dialog" aria-label={title} data-testid={testId || 'chat-shell'}
       style={vv ? { top: vv.t, height: vv.h, bottom: 'auto' } : undefined}>
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] lg:pt-2">
         <button type="button" onClick={onBack} aria-label={tx('Back', 'वापस')} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 lg:hidden" data-testid={backId || 'chat-back'}><ArrowLeft className="h-5 w-5" /></button>

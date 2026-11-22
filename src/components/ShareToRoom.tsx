@@ -7,7 +7,7 @@ import { useTx } from '../lib/i18n.js';
  * v40 — from a Deal Room (or anywhere a property is open): put this home into one of the broker's own Client Rooms,
  * with the listing's photos and video. The client then sees it in his room and can ask for a visit.
  */
-export const ShareToRoom: React.FC<{ propertyId: string; className?: string }> = ({ propertyId, className }) => {
+export const ShareToRoom: React.FC<{ propertyId: string; className?: string; label?: string }> = ({ propertyId, className, label }) => {
   const tx = useTx();
   const [open, setOpen] = useState(false);
   const [rooms, setRooms] = useState<any[] | null>(null);
@@ -22,7 +22,7 @@ export const ShareToRoom: React.FC<{ propertyId: string; className?: string }> =
   return (
     <span className="relative inline-block">
       <button type="button" onClick={() => setOpen(o => !o)} className={className || 'flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white min-h-11 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900'} data-testid="share-to-room">
-        <Send className="h-3.5 w-3.5" /><span>{tx('Send to client room', 'क्लाइंट रूम में भेजें')}</span>
+        <Send className="h-3.5 w-3.5" /><span>{label || tx('Send to client room', 'क्लाइंट रूम में भेजें')}</span>
       </button>
       {open && (
         <div className="absolute right-0 z-30 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-2 text-xs shadow-xl" data-testid="share-to-room-list">

@@ -25,7 +25,7 @@ export default function FinalRateCard({ f, dealId, onChanged }: { f: any; dealId
       <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-600"><Handshake className="h-3 w-3" aria-hidden />{tx('Final rate', 'फ़ाइनल रेट')}</span>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <b className="text-lg text-slate-900" data-testid="final-rate-price">{formatINR(f.price)}</b>
-        <span className="text-xs text-slate-500">{src}</span>
+        <span className="text-xs text-slate-500">{f.source === 'ASKING' ? tx('asking price — final rate not set', 'माँगी कीमत — फ़ाइनल रेट अभी तय नहीं') : src}</span>
       </div>
       {f.source !== 'ASKING' && f.diff !== 0 && <p className="text-xs text-slate-600" data-testid="final-rate-diff">{f.diff < 0 ? tx(`${formatINR(-f.diff)} below the asking price (${formatINR(f.asking)})`, `माँगी कीमत (${formatINR(f.asking)}) से ${formatINR(-f.diff)} कम`) : tx(`${formatINR(f.diff)} above the asking price (${formatINR(f.asking)})`, `माँगी कीमत (${formatINR(f.asking)}) से ${formatINR(f.diff)} ज़्यादा`)}</p>}
       {f.source === 'MANUAL' && (f.by || f.note) && <p className="text-xs text-slate-500" data-testid="final-rate-by">{f.by ? tx(`Set by ${f.by}`, `${f.by} ने भरा`) : ''}{f.at ? ` · ${new Date(f.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}{f.note ? ` — ${f.note}` : ''}</p>}

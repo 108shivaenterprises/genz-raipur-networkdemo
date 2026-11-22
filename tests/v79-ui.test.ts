@@ -61,7 +61,7 @@ describe('a builder\'s unit card opens its details', () => {
   });
   it('the sheet sits ABOVE the full-screen chat (z-[55]) — a z-50 sheet was drawn behind it and nothing seemed to happen', () => {
     const z = Number(/fixed inset-0 z-\[(\d+)\][^"]*"[^>]*data-testid="pc-unit-sheet"/.exec(p)?.[1]);
-    const chat = Number(/fixed inset-0 z-\[(\d+)\]/.exec(read('src/components/ChatKit.tsx'))?.[1]);
+    const chat = Number(/fixed inset-(?:0|x-0 top-0) z-\[(\d+)\]/.exec(read('src/components/ChatKit.tsx'))?.[1]);
     expect(chat).toBeGreaterThan(0); expect(z).toBeGreaterThan(chat);
   });
   it('a hidden price is shown as "On request" — the screen never computes a price itself', () => {

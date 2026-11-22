@@ -178,7 +178,7 @@ import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as vi
 import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, finishSignupOtp, sendSignupOtp } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
-import { setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
+import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
 import { createForgotRouter, createOtpAdminRouter } from './server/otpManual.js';
 import { createApiKeysRouter } from './server/apiKeys.js';
@@ -1897,6 +1897,9 @@ app.post('/api/requirements/:reqId/interest', needs('requirement:read'), rateLim
   res.json({ success: true, toOwnBroker: own });
 });
 
+const phoneOfReq = (q: any): string => String(q.customerPhone || (q.leadId && db.getState().partnerLeads.find(l => l.id === q.leadId)?.phone) || '');
+// v195 — a client with his own buyer account likes a home by saving it; one with only a room likes it there; a QR lead likes it in his chat
+const likedForReq = (brokerId: string, q: any): string[] => [...new Set([...likedHomeIds(brokerId, phoneOfReq(q), q.leadId), ...(q.buyerId ? db.getState().savedProperties.filter(s => s.userId === q.buyerId).map(s => s.propertyId) : [])])];
 app.get('/api/matching/requirement/:reqId', needs('matching:run'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { reqId } = req.params;
@@ -1926,7 +1929,9 @@ app.get('/api/matching/requirement/:reqId', needs('matching:run'), (req: Request
   }).filter(m => m.score > 20)
     .sort((a, b) => b.score - a.score);
 
-  res.json({ success: true, requirement: sanitizeRequirement(requirement, currentUser), matches });
+  // v194 — 👍 from the customer (room or QR chat) = the trigger for a co-broking offer; only my own client's likes are looked at
+  const liked = (requirement as any).assignedBrokerId === currentUser.id ? likedForReq(currentUser.id, requirement) : [];
+  res.json({ success: true, requirement: sanitizeRequirement(requirement, currentUser), matches, liked, roomId: (requirement as any).assignedBrokerId === currentUser.id ? roomIdByPhone(currentUser.id, phoneOfReq(requirement)) : undefined });
 });
 
 app.get('/api/matching/property/:propId', needs('matching:run'), (req: Request, res: Response) => {
@@ -1956,6 +1961,9 @@ app.get('/api/matching/property/:propId', needs('matching:run'), (req: Request, 
         budgetMax: reqItem.budgetMax,
         assignedBrokerId: reqItem.assignedBrokerId,
         urgency: reqItem.urgency,
+        leadId: mine ? (reqItem as any).leadId : undefined,
+        liked: mine && likedForReq(currentUser.id, reqItem).includes(property.id),
+        roomId: mine ? roomIdByPhone(currentUser.id, phoneOfReq(reqItem)) : undefined,
       },
       ...matchResult,
     };

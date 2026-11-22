@@ -4,6 +4,7 @@
  * one compact card per match (photo, title, type · locality, price, score), the four checks as small chips, "Why this match" opens the
  * reasons and the ids, and the list shows 8 at a time instead of every match at once.
  */
+import { ShareToRoom } from './ShareToRoom.js';
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from './PageTitle.js';
 import { PropertyThumb } from './PropertyThumb.js';
@@ -58,6 +59,10 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   const mode = canMatchByProperty ? modeState : 'by_requirement';
 
   const [matches, setMatches] = useState<any[]>([]);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());   // v194 — homes my client 👍 (opens the co-broking offer)
+  const [reqRoomId, setReqRoomId] = useState('');
+  const [sharing, setSharing] = useState('');
+  const [shared, setShared] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState(PAGE);
@@ -85,6 +90,16 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
     }
   };
 
+  /** QR lead → his chat + held room (the number stays hidden); a normal client → ShareToRoom */
+  const shareToLead = async (leadId: string, homeId: string, name: string) => {
+    setSharing(homeId);
+    try { await api.spOffer(leadId, homeId); setShared(x => new Set(x).add(homeId)); toast(tx(`Shared with ${name} — he sees it in his chat and room.`, `${name} को भेज दिया — उन्हें चैट और रूम में दिखेगा।`), 'success'); }
+    catch (e: any) {
+      const at = e?.code === 'LISTING_TOO_NEW' && e?.body?.availableAt ? new Date(e.body.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+      toast(at ? tx(`This new listing can be shared from ${at}.`, `यह नई लिस्टिंग ${at} से शेयर हो सकेगी।`) : e?.message || tx('Could not share. Try again.', 'शेयर नहीं हो सका। फिर कोशिश करें।'), 'error');
+    } finally { setSharing(''); }
+  };
+
   const fetchMatches = () => {
     setShown(PAGE);
     setWhy('');
@@ -93,7 +108,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
       setLoading(true);
       api.getMatchesForRequirement(activeReqId)
         .then((res) => {
-          setMatches(res.matches || []);
+          setMatches(res.matches || []); setLikedIds(new Set(res.liked || [])); setReqRoomId(res.roomId || '');
           setLoading(false);
         })
         .catch((err: any) => {
@@ -263,32 +278,46 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                       {asked.has(p.id) ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}{asked.has(p.id) ? tx('Sent', 'भेजा') : tx('Ask broker', 'ब्रोकर से पूछें')}
                     </button>
                   )}
-                  {canPropose && own && (
-                    <button
-                      onClick={() => {
-                        const req = isPropMatch ? currentReq : r; const home = isPropMatch ? p : currentProp;
-                        try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: req?.customerName || '', phone: String(req?.customerPhone || '').replace(/\D/g, '').slice(-10), kind: 'BUYER', note: `Magic Match · ${home?.title || ''}`.slice(0, 190), homeId: home?.id || '', homeTitle: home?.title || '' })); } catch { /* storage blocked: the form opens empty */ }
-                        window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
-                      }}
-                      className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800"
-                      data-testid="match-own-room"
-                    >
-                      <MessagesSquare className="h-4 w-4" />{tx('Your own home & buyer — open client room', 'आपका अपना घर और खरीदार — क्लाइंट रूम खोलें')}
-                    </button>
-                  )}
-                  {canPropose && act.kind === 'OFFER' && (
-                    <button
-                      onClick={() => onOpenCollaborationModal({
-                        propertyId: isPropMatch ? p.id : activePropId,
-                        requirementId: isPropMatch ? activeReqId : r.id,
-                        receivingBrokerId: act.to,
-                      })}
-                      className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-sm font-semibold text-white hover:bg-slate-800"
-                      data-testid="match-offer"
-                    >
-                      <Send className="h-4 w-4 text-amber-400" />{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}
-                    </button>
-                  )}
+                  {canPropose && (() => {
+                    const rq: any = isPropMatch ? currentReq : r; const home: any = isPropMatch ? p : currentProp;
+                    const mineBuyer = !!meId && rq?.assignedBrokerId === meId; const nm = String(rq?.customerName || '').split(' ')[0] || tx('client', 'क्लाइंट');
+                    const liked = isPropMatch ? likedIds.has(p.id) : !!r?.liked;
+                    return (<>
+                      {mineBuyer && home?.id && (rq?.leadId ? (
+                        <button type="button" disabled={sharing === home.id || shared.has(home.id)} onClick={() => void shareToLead(rq.leadId, home.id, nm)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60" data-testid="match-share">
+                          <Send className="h-4 w-4" />{shared.has(home.id) ? tx('Shared', 'भेज दिया') : tx(`Share with ${nm}`, `${nm} को भेजें`)}
+                        </button>
+                      ) : own ? <ShareToRoom propertyId={home.id} label={tx(`Share with ${nm}`, `${nm} को भेजें`)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800" /> : null)}
+                      {own && !rq?.leadId && (() => { const roomId = isPropMatch ? reqRoomId : r?.roomId; return (
+                        <button
+                          onClick={() => {
+                            if (!(isPropMatch ? reqRoomId : r?.roomId)) try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: rq?.customerName || '', phone: String(rq?.customerPhone || '').replace(/\D/g, '').slice(-10), kind: 'BUYER', note: `Magic Match · ${home?.title || ''}`.slice(0, 120) })); } catch { /* optional */ }
+                            window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
+                          }}
+                          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800"
+                          data-testid="match-own-room"
+                        >
+                          <MessagesSquare className="h-4 w-4" />{roomId ? tx('Go to his client room', 'उनका क्लाइंट रूम देखें') : tx('Open client room', 'क्लाइंट रूम खोलें')}
+                        </button>
+                      ); })()}
+                      {act.kind === 'OFFER' && mineBuyer && !liked && (
+                        <span className="max-w-[12rem] text-right text-xs leading-snug text-slate-500" data-testid="match-offer-wait">{tx(`Co-broking opens after ${nm} likes this home.`, `${nm} को घर पसंद आने के बाद को-ब्रोकिंग खुलेगी।`)}{!rq?.leadId && !(isPropMatch ? reqRoomId : r?.roomId) ? tx(' Open a client room so he can like homes.', ' क्लाइंट रूम खोलें ताकि वे घर पसंद कर सकें।') : ''}</span>
+                      )}
+                      {act.kind === 'OFFER' && (!mineBuyer || liked) && (
+                        <button
+                          onClick={() => onOpenCollaborationModal({
+                            propertyId: isPropMatch ? p.id : activePropId,
+                            requirementId: isPropMatch ? activeReqId : r.id,
+                            receivingBrokerId: act.to,
+                          })}
+                          className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-sm font-semibold text-white hover:bg-slate-800"
+                          data-testid="match-offer"
+                        >
+                          <Send className="h-4 w-4 text-amber-400" />{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}
+                        </button>
+                      )}
+                    </>);
+                  })()}
                   {canPropose && act.kind === 'NONE' && (
                     <span className="ml-auto max-w-[11rem] text-right text-xs leading-snug text-slate-500" data-testid="match-not-mine">{tx('Neither this home nor this buyer is yours', 'न यह घर आपका है, न यह खरीदार')}</span>
                   )}

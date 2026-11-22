@@ -727,7 +727,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   function like(l: PartnerLead, homeId: string, wantVisit: boolean): boolean {
     const row = explore(l).find(x => x.h.id === homeId); if (!row || !confirmed(l) || d.ownerSide(l)) return false;
     if (!row.sent) d.shareHome(l, row.h, 'CUSTOMER');
-    d.addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: `👍 पसंद आया: ${row.h.title}` });
+    d.addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: `👍 पसंद आया: ${row.h.title}`, homeId: row.h.id });
     d.tellBroker(l, `👍 ${l.name}: घर पसंद आया`, `${row.h.title} (Explore से).`);
     if (wantVisit && !off(l)) startVisit(l, homeId);
     else if (!off(l)) say(l, `👍 “${row.h.title}” मैंने ब्रोकर को बता दिया। विज़िट चाहिए तो नीचे दबाएँ।`, `👍 I told the broker you like “${row.h.title}”. Tap below for a visit.`, [M.visit, M.more, M.human]);

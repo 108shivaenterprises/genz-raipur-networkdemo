@@ -884,7 +884,7 @@ export function createShopPartnerRouter() {
     if (!h) {
       const asked = st().properties.find(x => x.id === str(req.body?.homeId, 40));
       { const blocked = asked ? buyerBondBlock({ id: l.brokerId }, asked.id, l.phone) : null; if (blocked) return res.status(409).json(blocked); }   // v127 — another broker showed him this home first
-      if (asked && homeFits(l, asked) && tooFreshFor(l, asked)) return bad(res, `A listing added after this customer scanned counts as his matching home only after ${Math.round(REVEAL_FRESH_LISTING_MS / 3600_000)} hours. Share it in the chat later, or pick an older home.`, 409, { code: 'LISTING_TOO_NEW' });
+      if (asked && homeFits(l, asked) && tooFreshFor(l, asked)) return bad(res, `A listing added after this customer scanned counts as his matching home only after ${Math.round(REVEAL_FRESH_LISTING_MS / 3600_000)} hours. Share it in the chat later, or pick an older home.`, 409, { code: 'LISTING_TOO_NEW', availableAt: new Date(Date.parse(String((asked as any).createdAt || (asked as any).listedAt)) + REVEAL_FRESH_LISTING_MS).toISOString() });
       return bad(res, 'That home does not match what he asked for (or is not on your page). Pick one from the list.', 400);
     }
     const b = homeBrief(h);

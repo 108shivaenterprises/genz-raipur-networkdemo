@@ -163,6 +163,21 @@ export function openRoomAuto(brokerId: string, a: { name: string; phone: string;
   st().clientRooms.push(room);
   return { ok: true, room, token };
 }
+/** v194 — the homes this customer LIKED (👍 in his room, or on Explore in the QR chat): the trigger for a co-broking offer. Looks only at this broker's own room / lead. */
+export function likedHomeIds(brokerId: string, phone: string, leadId?: string): string[] {
+  const out = new Set<string>(); const ph = phone10(phone);
+  if (PHONE_RE.test(ph)) { const key = hmac('cr-phone', ph); for (const r of st().clientRooms) if (r.brokerId === brokerId && r.status === 'ACTIVE' && r.phoneKey === key) for (const i of r.items) if (i.reaction === 'LIKE') out.add(i.propertyId); }
+  const l = leadId ? st().partnerLeads.find(x => x.id === leadId && x.brokerId === brokerId) : undefined;
+  for (const m of l?.chat?.msgs || []) if (m.by === 'CUSTOMER' && m.kind === 'ANSWER' && m.homeId && m.text.startsWith('👍')) out.add(m.homeId);
+  const rid2 = l?.chat?.bot?.roomId || l?.chat?.bot?.roomLinked; const room = rid2 ? st().clientRooms.find(x => x.id === rid2 && x.brokerId === brokerId) : undefined;
+  for (const i of room?.items || []) if (i.reaction === 'LIKE') out.add(i.propertyId);
+  return [...out];
+}
+/** v195 — the id of this broker's open room for that mobile number (a client with no QR lead): the Match screen goes to it instead of offering a second room (v123) */
+export function roomIdByPhone(brokerId: string, phone: string): string | undefined {
+  const ph = phone10(phone); if (!PHONE_RE.test(ph)) return undefined; const key = hmac('cr-phone', ph);
+  return st().clientRooms.find(r => r.brokerId === brokerId && r.status === 'ACTIVE' && !r.held && r.kind !== 'OWNER' && r.phoneKey === key)?.id;
+}
 /** v119 — the customer's number is open now: the room he already has becomes the broker's too */
 export function releaseRoom(brokerId: string, roomId: string): void { const r = st().clientRooms.find(x => x.id === roomId && x.brokerId === brokerId); if (r?.held) { r.held = undefined; r.updatedAt = nowIso(); } }
 /**
@@ -322,7 +337,8 @@ function detail(r: ClientRoom) {
   const props = st().properties;
   const awaiting = brokerReads() && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
   return {
-    ...summary(r), note: r.note, messages: r.messages, events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
+    ...summary(r), leadId: st().partnerLeads.find(l => l.brokerId === r.brokerId && (l.chat?.bot?.roomId === r.id || l.chat?.bot?.roomLinked === r.id))?.id,   // v195 — a QR customer's room: homes are shared through his lead (48h rule, number stays hidden)
+    note: r.note, messages: r.messages, events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
     ...(r.kind === 'OWNER' ? { propertyId: r.propertyId, propertyTitle: st().properties.find(p => p.id === r.propertyId)?.title, ownerStats: ownerStats(r) } : {}),
     items: r.items.map(i => {
       const p = props.find(x => x.id === i.propertyId);
@@ -366,6 +382,8 @@ export function createClientRoomRouter() {
 
   r.post('/', rateLimit('cr-create', 40, 3600_000), (req: Request, res: Response) => {
     const u = me();
+    { const lid = String(req.body?.leadId || ''); const l = lid ? st().partnerLeads.find(x => x.id === lid && x.brokerId === roomOwnerOf(u)) : undefined; const b = l?.chat?.bot;
+      if (b && (b.roomId || b.roomLinked)) return res.status(409).json({ error: 'Room already ready — share a home from the match card or the lead.', errorHi: 'रूम पहले से तैयार है — मैच कार्ड या लीड से घर शेयर करें।', code: 'ROOM_READY' }); }   // v194 — a QR customer's room is made by the assistant
     const name = String(req.body?.clientName || '').trim().slice(0, 80);
     const phone = phone10(req.body?.phone);
     const kind = ROOM_KINDS.find(k => k.id === req.body?.kind && k.id !== 'OWNER')?.id || 'BUYER';
