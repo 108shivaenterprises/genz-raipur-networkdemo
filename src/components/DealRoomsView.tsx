@@ -868,7 +868,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
   const verifiedTasksCount = applicableTasks.filter((t) => t.verificationStatus === 'VERIFIED').length;
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="font-deal -mx-4 -my-6 min-h-[70vh] space-y-4 bg-paper px-4 py-6 pb-24 text-ink shadow-[0_0_0_100vmax_var(--color-paper)] [clip-path:inset(0_-100vmax)] sm:-mx-6 sm:space-y-6 sm:px-6 md:pb-6" data-testid="deal-canvas">
       {/* v37 — Deal Hub header: title + one segmented switch for Pipeline / Deal room / Proposals / Mandates */}
       {/* v143 — inside a room on a phone this header and the tab strip are hidden: the room starts with "← All deals" */}
       <div className={`flex-col gap-3 sm:flex-row sm:items-end sm:justify-between ${mainMode === 'DEAL_ROOMS' || mainMode === 'PIPELINE' ? 'hidden lg:flex' : 'flex'}`}>
@@ -887,7 +887,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
         </div>
       </div>
       <div className={`relative ${mainMode === 'PIPELINE' ? 'lg:-mt-2' : '-mt-2'} ${mainMode === 'DEAL_ROOMS' ? 'hidden lg:block' : ''}`}>
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-1 pr-7 sm:pr-1" role="tablist" data-testid="deal-modes">
+      <div className="flex gap-1 overflow-x-auto rounded-2xl bg-paper-2 p-1 pr-7 sm:pr-1" role="tablist" data-testid="deal-modes">
         {([
           ['PIPELINE', LayoutGrid, tx('Pipeline', 'पाइपलाइन'), hub?.kpis?.live ?? deals.length, false],
           ...(mainMode === 'DEAL_ROOMS' ? [['DEAL_ROOMS', Briefcase, tx('Deal room', 'डील रूम'), undefined, false]] : []),   // v142 — shown only while a room is open; you enter a room by tapping a deal   // v83 — the deal id is on the card below; a long label here pushed "Pipeline" / "Co-broke" half off the screen
@@ -898,14 +898,14 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
         ] as [typeof mainMode, React.ElementType, string, number | undefined, boolean][]).map(([id, Icon, text, n, dot]) => (
           <button key={id} type="button" role="tab" aria-selected={mainMode === id} aria-label={n !== undefined ? `${text}, ${n}` : undefined}
             onClick={() => (id === 'DEAL_ROOMS' && !selectedDealId && deals[0] ? openDeal(deals[0].id) : id === 'ROOMS' ? openClientRoom() : setMainMode(id))}
-            className={`relative inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-all min-[400px]:gap-1.5 sm:px-3 ${mainMode === id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`} data-testid={`deal-mode-${id}`}>
+            className={`relative inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl px-2.5 text-[13px] font-semibold transition-all min-[400px]:gap-1.5 sm:px-3 ${mainMode === id ? 'bg-navy-900 text-white shadow-xs' : 'text-mute hover:bg-white hover:text-ink'}`} data-testid={`deal-mode-${id}`}>
             <Icon className="hidden h-3.5 w-3.5 min-[400px]:block" /><span className="whitespace-nowrap">{text}</span>
-            {n !== undefined && <span aria-hidden="true" className={`rounded-full px-1.5 text-xs font-bold ${mainMode === id ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{n}</span>}
+            {n !== undefined && <span aria-hidden="true" className={`rounded-full px-[7px] text-xs font-bold ${mainMode === id ? 'bg-gold-500 text-navy-900' : 'bg-white text-ink'}`}>{n}</span>}
             {dot && <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />}
           </button>
         ))}
       </div>
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-7 rounded-r-xl bg-gradient-to-l from-slate-100 to-transparent sm:hidden" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-7 rounded-r-2xl bg-gradient-to-l from-paper-2 to-transparent sm:hidden" aria-hidden="true" />
       </div>
 
       {mainMode === 'PIPELINE' ? (
@@ -944,11 +944,11 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
             const go = (k: number) => { const id = ids[(at + k + ids.length) % ids.length]; if (id) openDeal(id); };
             return (
               <div className="flex items-center gap-2 lg:hidden" data-testid="deal-switcher">
-                <button type="button" onClick={() => (showSimple || summaryOnly ? setMainMode('PIPELINE') : pickView(true))} className="inline-flex min-h-10 min-w-0 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-slate-700" data-testid="deal-back"><ArrowLeft className="h-4 w-4 shrink-0" /><span className="truncate">{showSimple || summaryOnly ? tx('All deals', 'सभी डील') : (activeProperty?.title || tx('Back to the deal', 'डील पर वापस'))}</span></button>
+                <button type="button" onClick={() => (showSimple || summaryOnly ? setMainMode('PIPELINE') : pickView(true))} className="inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-full border border-edge bg-white px-3.5 text-[13px] font-bold text-ink shadow-card" data-testid="deal-back"><ArrowLeft className="h-4 w-4 shrink-0" /><span className="truncate">{showSimple || summaryOnly ? tx('All deals', 'सभी डील') : (activeProperty?.title || tx('Back to the deal', 'डील पर वापस'))}</span></button>
                 {ids.length > 1 && <span className="ml-auto flex items-center gap-1">
-                  <button type="button" onClick={() => go(-1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Previous deal', 'पिछली डील')}><ChevronLeft className="h-4 w-4" /></button>
-                  <span className="text-xs text-slate-500">{at + 1}/{ids.length}</span>
-                  <button type="button" onClick={() => go(1)} className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 text-slate-500" aria-label={tx('Next deal', 'अगली डील')}><ChevronRight className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => go(-1)} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-mute" aria-label={tx('Previous deal', 'पिछली डील')}><ChevronLeft className="h-4 w-4" /></button>
+                  <span className="text-xs font-semibold text-mute">{at + 1}/{ids.length}</span>
+                  <button type="button" onClick={() => go(1)} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-mute" aria-label={tx('Next deal', 'अगली डील')}><ChevronRight className="h-4 w-4" /></button>
                 </span>}
               </div>
             );
@@ -964,7 +964,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
           ) : (
             <div className="space-y-3 sm:space-y-5">
               {/* Deal Header Overview Card */}
-              <div className={`bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden ${showSimple || summaryOnly ? '' : 'hidden lg:block'}`} data-testid="deal-header-card">
+              <div className={`overflow-hidden rounded-[20px] border border-edge bg-paper shadow-card ${showSimple || summaryOnly ? '' : 'hidden lg:block'}`} data-testid="deal-header-card">
                 {/* v83 — the big cover is for a wide screen; on a phone the photo is a small thumbnail beside the title (it used to push everything down by ~150px on every tab) */}
                 {activeProperty?.images?.[0] && (
                   <div className="relative hidden h-44 w-full bg-slate-100 sm:block" data-testid="deal-cover">
@@ -972,19 +972,16 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/70 to-transparent px-4 pb-2 pt-8 text-sm font-semibold text-white">{[activeProperty.locality, activeProperty.city].filter(Boolean).join(', ')}</div>
                   </div>
                 )}
-                <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
+                <div className="bg-gradient-to-br from-navy-800 to-navy-950 px-4 pb-4 pt-3.5 text-white sm:p-5">
                 <div className="flex items-start gap-3 sm:items-center sm:justify-between">
                   <PropertyThumb src={activeProperty?.images?.[0]} type={activeProperty?.propertyType} seed={activeProperty?.title || activeDeal.id} className="h-16 w-16 shrink-0 rounded-lg sm:hidden" />
                   <div className="min-w-0 flex-1">
                     {/* v116 — the home first (what a broker recognises), the deal code under it */}
-                    <h3 className="text-base font-bold leading-snug text-slate-900">
+                    <span className={`mb-1.5 inline-flex min-h-6 items-center rounded-full px-2.5 text-xs font-extrabold ${hubItemOf(activeDeal.id)?.openDispute || activeDeal.stage === 'Disputed' ? 'bg-bad-bg text-bad' : 'bg-gold-500 text-navy-900'}`} data-testid="deal-stage-pill">{hubItemOf(activeDeal.id)?.openDispute ? tx('Disputed', 'विवाद') : (label('dealStage', activeDeal.stage) || activeDeal.stage)}</span>
+                    <h3 className="text-[21px] font-extrabold leading-[26px] text-white">
                       {activeProperty?.title || tx('Property transaction', 'प्रॉपर्टी लेन-देन')}
                     </h3>
-                    <div className={showSimple ? 'hidden sm:block' : ''}><DealIds dealId={activeDeal.id} propertyId={activeDeal.propertyId} requirementId={activeDeal.requirementId} /></div>
-                    {[activeProperty?.locality, activeProperty?.city].filter(Boolean).length > 0 && <p className="text-xs text-slate-500 sm:hidden" data-testid="deal-place">{[activeProperty?.locality, activeProperty?.city].filter(Boolean).join(', ')}</p>}
-                    {currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) && (
-                      <div className={showSimple ? 'hidden sm:block' : ''}><DealTeamAccess dealId={activeDeal.id} allotted={activeDeal.teamMemberIds || []} onChanged={onRefreshDeals} /></div>
-                    )}
+                    {[activeProperty?.locality, activeProperty?.city].filter(Boolean).length > 0 && <p className="mt-0.5 text-[13px] text-[#C9D1E4] sm:hidden" data-testid="deal-place">{[activeProperty?.locality, activeProperty?.city].filter(Boolean).join(', ')}{hubItemOf(activeDeal.id)?.counterpartName ? ` · ${tx('with', 'साथ')} ${hubItemOf(activeDeal.id)?.counterpartName}` : ''}</p>}
                   </div>
 
                   {/* v37: the stage is moved with the stepper below; here only previous / next deal on a big screen */}
@@ -1001,8 +998,23 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                     );
                   })()}
                 </div>
+                </div>
+                <div className="space-y-3 bg-paper p-4 sm:space-y-4 sm:p-5">
+                <div className={showSimple ? 'hidden sm:block' : ''}><DealIds dealId={activeDeal.id} propertyId={activeDeal.propertyId} requirementId={activeDeal.requirementId} /></div>
+                {currentUser.role === 'BROKER' && (activeDeal.introducingBrokerId === currentUser.id || activeDeal.closingBrokerId === currentUser.id) && (
+                  <div className={showSimple ? 'hidden sm:block' : ''}><DealTeamAccess dealId={activeDeal.id} allotted={activeDeal.teamMemberIds || []} onChanged={onRefreshDeals} /></div>
+                )}
+                {!summaryOnly && hubItemOf(activeDeal.id)?.openDispute && (
+                  <div className="rounded-[18px] border border-[#F5B5B5] bg-[#FEF2F2] p-3.5" data-testid="deal-dispute-banner">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bad-bg text-bad"><Scale className="h-5 w-5" aria-hidden /></span>
+                      <div className="min-w-0"><div className="font-bold text-bad">{tx('A dispute is open', 'विवाद खुला है')}</div><p className="text-[13px] text-[#7F1D1D]">{tx('GENZ is reviewing it. See the holds and add your side.', 'GENZ इसकी समीक्षा कर रहा है। होल्ड देखें और अपना पक्ष जोड़ें।')}</p></div>
+                    </div>
+                    <button type="button" onClick={() => goTab(tabAllowed('disputes_holds') ? 'disputes_holds' : 'overview')} className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-bad font-bold text-white active:scale-[.98] motion-safe:transition-transform" data-testid="deal-dispute-holds"><Lock className="h-4 w-4" aria-hidden />{tx('See the holds', 'होल्ड देखें')}</button>
+                  </div>
+                )}
 
-                <StageStepper stage={activeDeal.stage} canEdit={currentUser.role !== 'TEAM_MEMBER' && perm('deal:update_stage') && !summaryOnly && !isClosed(dealDetail?.deal || activeDeal)} onChange={handleStageChange} />
+                <StageStepper stage={activeDeal.stage} disputed={!!hubItemOf(activeDeal.id)?.openDispute} canEdit={currentUser.role !== 'TEAM_MEMBER' && perm('deal:update_stage') && !summaryOnly && !isClosed(dealDetail?.deal || activeDeal)} onChange={handleStageChange} />
                 {!summaryOnly && <NextSteps item={hubItemOf(activeDeal.id)} onGo={(t, k) => { goTab(tabAllowed(t) ? t : 'overview'); setTaskFilter(filterFor(k)); }} />}
                 {/* v47 — close a deal that did not happen / reopen; a visit that happened outside the app */}
                 {!summaryOnly && <DealStatusPanel deal={dealDetail?.deal || activeDeal} me={currentUser} verifiedVisits={hubItemOf(activeDeal.id)?.visits?.verified ?? 0}

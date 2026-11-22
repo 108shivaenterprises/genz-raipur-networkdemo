@@ -6,6 +6,24 @@ main { min-width: 0; }
 main pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 
+/* Deal tab redesign — "Navy hero, gold signal, warm paper". Tokens only add utilities (bg-paper, text-gold-500 …); nothing global is restyled. */
+@theme {
+  --color-navy-950:#0B1220; --color-navy-900:#111827; --color-navy-800:#1F2A44; --color-navy-700:#2B3A5C;
+  --color-gold-500:#F5B301; --color-gold-400:#FBC531; --color-gold-100:#FEF3C7; --color-gold-800:#8A5A00;
+  --color-paper:#F6F4EF; --color-paper-2:#ECE8DE; --color-edge:#E7E3DA; --color-track:#E5E1D6;
+  --color-ink:#111827; --color-mute:#5B6475;
+  --color-money:#047857; --color-money-bg:#D1FAE5;
+  --color-warn:#B45309; --color-warn-bg:#FEF3C7;
+  --color-bad:#B91C1C; --color-bad-bg:#FEE2E2;
+  --color-info:#0369A1; --color-info-bg:#E0F2FE;
+  --color-sign:#1D4ED8; --color-sign-bg:#DBEAFE;
+  --font-deal: "Inter","Noto Sans Devanagari",system-ui,sans-serif;
+  --shadow-card: 0 4px 16px rgba(17,24,39,.08);
+}
+@keyframes deal-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+.deal-pulse-once { animation: deal-pulse 1.2s ease-in-out 1; }
+@media (prefers-reduced-motion: reduce) { .deal-pulse-once { animation: none; } }
+
 /* v30 — "print this report" prints only the marked block, not the whole app screen */
 @media print {
   body.printing-target * { visibility: hidden !important; }

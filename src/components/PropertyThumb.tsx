@@ -28,11 +28,13 @@ export const PropertyThumb: React.FC<{
   seed?: string;
   className?: string;
   iconClassName?: string;
-}> = ({ src, type, seed, className = 'h-12 w-12 rounded-lg', iconClassName = 'h-1/2 w-1/2' }) => {
+  /** colour classes of the fallback tile (default: a soft tint picked from the seed) */
+  tint?: string;
+}> = ({ src, type, seed, className = 'h-12 w-12 rounded-lg', iconClassName = 'h-1/2 w-1/2', tint: tintOverride }) => {
   const [failed, setFailed] = useState(false);
   useEffect(() => { setFailed(false); }, [src]);
   const Icon = iconFor(type);
-  const tint = TINTS[hash(String(seed || type || 'x')) % TINTS.length];
+  const tint = tintOverride || TINTS[hash(String(seed || type || 'x')) % TINTS.length];
   return (
     <span className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden ${className} ${src && !failed ? 'bg-slate-100' : tint}`} data-testid="prop-thumb" aria-hidden="true">
       {src && !failed

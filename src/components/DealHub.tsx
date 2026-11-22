@@ -9,7 +9,7 @@
 import { PropertyThumb } from './PropertyThumb.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, LayoutGrid, List as ListIcon, AlertTriangle, Clock, Wallet, Briefcase, Scale, CheckCircle2, ChevronRight, CalendarCheck,
+  Search, LayoutGrid, List as ListIcon, AlertTriangle, Clock, Wallet, Briefcase, Scale, CheckCircle2, Users, ChevronRight, CalendarCheck,
   FileSignature, ListTodo, MessageSquare, ShieldCheck, Loader2, IndianRupee, Hourglass, X, UserRound, XCircle, ChevronDown, SlidersHorizontal,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -35,6 +35,15 @@ const short = (n?: number) => {
   if (n >= 1e5) return `₹${(n / 1e5).toFixed(n >= 1e6 ? 1 : 2).replace(/\.?0+$/, '')} L`;
   return formatINR(n);
 };
+
+/** one colour per stage — colour is never the only signal (the stage name and "n/7" always sit beside it) */
+export const STAGE_COLOR: Record<string, string> = {
+  Lead: '#64748B', Introduction: '#4F46E5', 'Site Visit Done': '#0284C7', Negotiation: '#D97706', Agreement: '#7C3AED', Handover: '#0D9488', Settled: '#059669', Disputed: '#B91C1C',
+};
+/** seven slim segments, filled up to the current stage in that stage's colour */
+export const StageRail: React.FC<{ idx: number; color?: string }> = ({ idx, color = '#64748B' }) => (
+  <div className="flex gap-[3px]" aria-hidden="true">{STAGES.map((_, k) => <span key={k} className={`h-1.5 flex-1 rounded-full motion-safe:transition-colors ${k <= idx ? '' : 'bg-track'}`} style={k <= idx ? { background: color } : undefined} />)}</div>
+);
 
 // ───────────── next steps ─────────────
 const NEXT_ICON: Record<string, React.ElementType> = {
@@ -79,31 +88,36 @@ export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string)
   if (!item) return null;
   const list: any[] = item.next || [];
   if (!list.length) return (
-    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800" data-testid="next-steps-clear">
+    <div className="flex items-center gap-2 rounded-2xl border border-edge bg-money-bg px-3.5 py-3 text-[13px] font-semibold text-money" data-testid="next-steps-clear">
       <CheckCircle2 className="h-4 w-4" />{tx('Nothing waiting on you in this deal right now.', 'इस डील में अभी आपके लिए कुछ बाकी नहीं।')}
     </div>
   );
-  const row = (n: any, big: boolean) => {
+  const row = (n: any) => {
     const Icon = NEXT_ICON[n.kind] || ChevronRight;
     return (
-      <button key={n.kind} type="button" onClick={() => onGo(n.tab, n.kind)} className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 text-left font-semibold ${big ? 'min-h-12 py-2 text-sm' : 'min-h-11 text-xs'} ${NEXT_TONE[n.kind] || ''}`} data-testid={`next-${n.kind}`}>
-        <span className="flex items-center gap-2"><Icon className={`shrink-0 ${big ? 'h-5 w-5' : 'h-4 w-4'}`} />{nextText(n, item.idleDays, tx, th)}</span>
+      <button key={n.kind} type="button" onClick={() => onGo(n.tab, n.kind)} className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border bg-white px-3 text-left text-[13px] font-semibold ${NEXT_TONE[n.kind] || ''}`} data-testid={`next-${n.kind}`}>
+        <span className="flex items-center gap-2"><Icon className="h-4 w-4 shrink-0" />{nextText(n, item.idleDays, tx, th)}</span>
         <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
       </button>
     );
   };
   const [top, ...rest] = list;
+  const TopIcon = NEXT_ICON[top.kind] || ChevronRight;
+  const dispute = !!item.openDispute && top.kind === 'DISPUTE_OPEN';
   return (
-    <div className="space-y-1.5" data-testid="next-steps">
-      <div className="text-xs font-bold uppercase tracking-wider text-slate-500">👉 {tx('Your next step', 'आपका अगला कदम')}</div>
-      {row(top, true)}
+    <div className={`space-y-2 rounded-[20px] border p-3.5 ${dispute ? 'border-[#FED7AA] bg-[#FFF7ED]' : 'border-[#F3D77A] bg-gold-100'}`} data-testid="next-steps">
+      <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-warn"><Clock className="h-4 w-4" />{tx('Next step', 'अगला क़दम')}</div>
+      <p className="text-[17px] font-bold leading-snug text-ink">{dispute ? tx('Open the holds and add your side', 'होल्ड खोलें और अपना पक्ष जोड़ें') : nextText(top, item.idleDays, tx, th)}</p>
+      <button type="button" onClick={() => onGo(top.tab, top.kind)} className="flex h-12 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy-900 text-[15px] font-bold text-gold-500 active:scale-[.98] motion-safe:transition-transform focus-visible:ring-2 focus-visible:ring-gold-500 focus-visible:ring-offset-2" data-testid={`next-${top.kind}`}>
+        <TopIcon className="h-4 w-4" aria-hidden />{dispute ? tx('Open holds', 'होल्ड खोलें') : tx('Open', 'खोलें')}<ChevronRight className="h-4 w-4" aria-hidden />
+      </button>
       {rest.length > 0 && (
         <>
-          <button type="button" onClick={() => setMore((o) => !o)} aria-expanded={more} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-600 hover:bg-slate-100" data-testid="next-more">
+          <button type="button" onClick={() => setMore((o) => !o)} aria-expanded={more} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-warn hover:bg-white/60" data-testid="next-more">
             {more ? tx('Show less', 'कम दिखाएँ') : tx(`+${rest.length} more to do`, `+${rest.length} और काम`)}
             <ChevronRight className={`h-3.5 w-3.5 transition-transform ${more ? '-rotate-90' : 'rotate-90'}`} />
           </button>
-          {more && <div className="space-y-1.5" data-testid="next-rest">{rest.map((n) => row(n, false))}</div>}
+          {more && <div className="space-y-1.5" data-testid="next-rest">{rest.map((n) => row(n))}</div>}
         </>
       )}
     </div>
@@ -189,26 +203,39 @@ export const DealIds: React.FC<{ dealId: string; propertyId?: string; requiremen
 };
 
 // ───────────── stage stepper ─────────────
-export const StageStepper: React.FC<{ stage: string; canEdit: boolean; onChange: (s: string) => void }> = ({ stage, canEdit, onChange }) => {
+export const StageStepper: React.FC<{ stage: string; canEdit: boolean; onChange: (s: string) => void; disputed?: boolean }> = ({ stage, canEdit, onChange, disputed }) => {
   const tx = useTx(); const label = useLabel();
   const cur = STAGES.indexOf(stage);
   const [open, setOpen] = useState(false);
+  const bad = disputed || stage === 'Disputed';
   return (
     <div className="space-y-1" data-testid="stage-stepper">
-      {stage === 'Disputed' && <p className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800">{tx('This deal is marked Disputed.', 'यह डील विवाद में है।')}</p>}
-      {/* v83 — on a phone the seven steps are one line ("Site Visit Done · step 3 of 7") with a slim bar; tap it to see / move the steps. A big screen always shows the steps. */}
+      {stage === 'Disputed' && <p className="rounded-xl bg-bad-bg px-3 py-1.5 text-xs font-semibold text-bad">{tx('This deal is marked Disputed.', 'यह डील विवाद में है।')}</p>}
+      {/* v83 — on a phone the seven steps are one rail ("Site Visit Done · 3 / 7"); tap it to see / move the steps. A big screen always shows the steps. */}
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-testid="stage-summary"
-        className="flex min-h-12 w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left lg:hidden"
+        className="block min-h-12 w-full rounded-[20px] border border-edge bg-white p-3.5 text-left shadow-card lg:hidden"
         aria-label={canEdit ? tx('Deal stage — tap to see or change', 'डील का स्टेज — देखने / बदलने के लिए दबाएँ') : tx('Deal stage — tap to see the steps', 'डील का स्टेज — चरण देखने के लिए दबाएँ')}>
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-400 text-xs font-bold text-slate-900">{cur >= 0 ? cur + 1 : '!'}</span>
-        <span className="min-w-0 flex-1 space-y-1.5">
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-sm font-bold text-slate-900">{label('dealStage', stage)}</span>
-            {cur >= 0 && <span className="shrink-0 text-xs font-semibold text-slate-500">{cur + 1} / {STAGES.length}</span>}
-          </span>
-          <Progress i={cur} />
+        <span className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold text-mute">{tx('Deal stage', 'डील का स्टेज')}</span>
+          {cur >= 0 && <span className="text-[13px] font-extrabold text-ink">{cur + 1} / {STAGES.length}</span>}
         </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span className="mt-3 flex items-center" aria-hidden="true">
+          {STAGES.map((_, i) => {
+            const done = cur >= 0 && i < cur; const now = i === cur;
+            return (
+              <React.Fragment key={i}>
+                <span className={`flex shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${now ? (bad ? 'h-[30px] w-[30px] bg-bad text-white' : 'h-[30px] w-[30px] bg-gold-500 text-navy-900') : done ? 'h-6 w-6 bg-navy-900 text-gold-500' : 'h-6 w-6 border-2 border-[#D5D0C3] bg-white'}`}>
+                  {now ? (bad ? <AlertTriangle className="h-4 w-4" /> : i + 1) : done ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+                </span>
+                {i < STAGES.length - 1 && <span className={`h-[3px] flex-1 ${i < cur ? 'bg-gold-500' : 'bg-track'}`} />}
+              </React.Fragment>
+            );
+          })}
+        </span>
+        <span className="mt-2.5 flex items-center justify-between gap-2">
+          <span className={`truncate text-[13px] font-extrabold ${bad ? 'text-bad' : 'text-ink'}`}>{bad && cur >= 0 ? tx(`Disputed at ${label('dealStage', stage)}`, `विवाद: ${label('dealStage', stage)}`) : label('dealStage', stage)}</span>
+          <span className="flex shrink-0 items-center gap-1 text-xs text-mute">{cur >= 0 && cur < STAGES.length - 1 ? tx(`Next: ${label('dealStage', STAGES[cur + 1])}`, `अगला: ${label('dealStage', STAGES[cur + 1])}`) : ''}<ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} /></span>
+        </span>
       </button>
       <ol className={`${open ? 'flex' : 'hidden'} items-center gap-1 overflow-x-auto pb-1 lg:flex`}>
         {STAGES.map((s, i) => {
@@ -333,7 +360,43 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
     .filter(s => wide || shown.some(d => d.stage === s)); // on a small screen empty stages only take space
   return (
     <div className="space-y-3 sm:space-y-4" data-testid="deal-pipeline">
-      {/* v177 — "Today": max 3 single-line rows (disputes grouped), collapsed to one summary line when there is more than 3 */}
+      {/* v173 — phone: the navy hero. "My share in pipeline" is the one big number; Needs me / Live / Disputes are the three small tiles (each a filter) */}
+      {(() => {
+        const money = isBroker && k.hasMoney;
+        const pct = money && k.myPipeline > 0 ? Math.min(100, Math.round((k.mySettled || 0) / k.myPipeline * 100)) : 0;
+        const big = money ? short(k.myPipeline) : String(k.live);
+        const unit = money ? (big.match(/ (L|Cr)$/) || [''])[0] : '';
+        const numEl = <><span className="text-[44px] font-extrabold leading-[48px] tracking-tight">{unit ? big.slice(0, -unit.length) : big}</span>{unit && <span className="text-2xl font-extrabold text-gold-500">{unit}</span>}</>;
+        const tiles = [
+          { id: 'needs', f: 'needs' as Filter, v: k.needsMe, l: tx('Needs me', 'मेरा काम'), tone: k.needsMe ? 'text-gold-500' : 'text-white' },
+          { id: 'live', f: 'live' as Filter, v: k.live, l: tx('Live', 'चालू'), tone: 'text-white' },
+          { id: 'disputes', f: 'disputes' as Filter, v: k.disputes, l: tx('Disputes', 'विवाद'), tone: k.disputes ? 'text-[#FCA5A5]' : 'text-white' },
+        ];
+        return (
+          <div className="rounded-3xl bg-gradient-to-br from-navy-800 to-navy-950 p-5 text-white shadow-card text-center lg:hidden" data-testid="hub-strip">
+            <div className="text-left">
+              <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#C9D1E4]">{money ? <Wallet className="h-4 w-4 text-gold-500" aria-hidden /> : <Briefcase className="h-4 w-4 text-gold-500" aria-hidden />}{money ? tx('My share in pipeline', 'पाइपलाइन में मेरा हिस्सा') : tx('Live deals', 'चालू डील')}</div>
+              {money
+                ? <button type="button" onClick={() => { setFilter('live'); setStage(''); }} className="mt-1 flex min-h-12 items-baseline gap-1.5 text-left" data-testid="hub-strip-share">{numEl}</button>
+                : <div className="mt-1 flex items-baseline gap-1.5">{numEl}</div>}
+              {money && k.myPipeline > 0 && (
+                <div className="mt-2">
+                  <div className="h-2 overflow-hidden rounded-full bg-white/15" aria-hidden="true"><div className="h-full rounded-full bg-gradient-to-r from-gold-400 to-gold-500 motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out" style={{ width: `${Math.max(pct, k.mySettled ? 3 : 0)}%` }} /></div>
+                  <div className="mt-1.5 flex items-center justify-between gap-2 text-xs font-semibold"><span className="text-[#C9D1E4]">{tx('Settled', 'मिल चुका')} {short(k.mySettled)}</span><span className="text-gold-500">{tx(`${pct}% of pipeline`, `पाइपलाइन का ${pct}%`)}</span></div>
+                </div>
+              )}
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {tiles.map(c => (
+                <button key={c.id} type="button" disabled={c.id === 'disputes' && !c.v} onClick={() => { setFilter(c.f); setStage(''); }} className="min-h-14 min-w-0 rounded-2xl border border-white/10 bg-white/[.08] px-3 py-2 text-left active:scale-[.98] motion-safe:transition-transform" data-testid={`hub-strip-${c.id}`}>
+                  <div className={`text-xl font-extrabold ${c.tone}`}>{c.v}</div><div className="truncate text-xs font-medium text-[#C9D1E4]">{c.l}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+      {/* v177 — "Today": max 3 single-line rows (disputes grouped), collapsed to one summary line when there is more than 3. Phone look: a header + a swipe strip of cards with an urgency badge */}
       {(() => {
         const need = liveItems.filter(d => d.needsMe && (d.next || []).length).sort((x, y) => (y.idleDays || 0) - (x.idleDays || 0));   // longest-waiting first
         const isDisp = (d: any) => d.openDispute || d.next[0].kind === 'DISPUTE_OPEN';
@@ -341,51 +404,41 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
         const todo = need.filter(d => !isDisp(d));
         const ending = liveItems.filter(d => typeof d.protectionDaysLeft === 'number' && d.protectionDaysLeft > 0 && d.protectionDaysLeft <= 7);
         if (!need.length && !ending.length) return null;
-        type Row = { key: string; tid: string; Icon: React.ElementType; tone: string; title: string; go: () => void };
+        type Row = { key: string; tid: string; Icon: React.ElementType; tint: string; badge: string; badgeTone: string; title: string; sub: string; go: () => void };
+        const signKind = (kd: string) => kd === 'AGREEMENT_TO_SIGN' || kd === 'NO_AGREEMENT';
         const rows: Row[] = [
-          ...(disp.length ? [{ key: 'disp', tid: 'today-disputes', Icon: Scale, tone: 'text-red-600', title: tx(`Disputes (${disp.length})`, `विवाद (${disp.length})`), go: () => { setFilter('disputes'); setStage(''); } }] : []),
-          ...todo.slice(0, 3).map(d => { const n = d.next[0]; return { key: d.id, tid: `today-${d.id}`, Icon: NEXT_ICON[n.kind] || ChevronRight, tone: n.kind === 'AGREEMENT_TO_SIGN' || n.kind === 'NO_AGREEMENT' ? 'text-blue-600' : 'text-amber-600', title: `${d.propertyTitle || d.id}${d.counterpartName ? ` · ${d.counterpartName}` : ''}`, go: () => onOpen(d.id, n.tab, n.kind) }; }),
-          ...ending.map(d => ({ key: `end-${d.id}`, tid: `ending-${d.id}`, Icon: ShieldCheck, tone: 'text-slate-500', title: `${d.propertyTitle || d.id} · ${tx(`${d.protectionDaysLeft} days protection left`, `सुरक्षा के ${d.protectionDaysLeft} दिन बचे`)}`, go: () => onOpen(d.id, 'antibypass_protocol') })),
+          ...(disp.length ? [{ key: 'disp', tid: 'today-disputes', Icon: Scale, tint: 'bg-bad-bg text-bad', badge: tx('Urgent', 'ज़रूरी'), badgeTone: 'bg-bad-bg text-bad', title: tx(`Disputes (${disp.length})`, `विवाद (${disp.length})`), sub: tx('See the holds', 'होल्ड देखें'), go: () => { setFilter('disputes'); setStage(''); } }] : []),
+          ...todo.slice(0, 3).map(d => { const n = d.next[0]; return { key: d.id, tid: `today-${d.id}`, Icon: NEXT_ICON[n.kind] || ChevronRight, tint: signKind(n.kind) ? 'bg-sign-bg text-sign' : 'bg-warn-bg text-warn', badge: signKind(n.kind) ? tx('Sign', 'साइन') : tx('Today', 'आज'), badgeTone: signKind(n.kind) ? 'bg-sign-bg text-sign' : 'bg-warn-bg text-warn', title: `${d.propertyTitle || d.id}`, sub: nextText(n, d.idleDays, tx, th), go: () => onOpen(d.id, n.tab, n.kind) }; }),
+          ...ending.map(d => ({ key: `end-${d.id}`, tid: `ending-${d.id}`, Icon: ShieldCheck, tint: 'bg-gold-100 text-gold-800', badge: tx(`${d.protectionDaysLeft} days`, `${d.protectionDaysLeft} दिन`), badgeTone: 'bg-gold-100 text-gold-800', title: `${d.propertyTitle || d.id}`, sub: tx(`${d.protectionDaysLeft} days protection left`, `सुरक्षा के ${d.protectionDaysLeft} दिन बचे`), go: () => onOpen(d.id, 'antibypass_protocol') })),
         ];
         const shownRows = rows.slice(0, 3);
         const hidden = need.length + ending.length - shownRows.reduce((n, r) => n + (r.key === 'disp' ? disp.length : 1), 0);
         const count = need.length + ending.length;
         const toggle = () => { const v = !todayOpen; setTodayOpen(v); store.set('genz-today-open', v ? '1' : '0'); };
+        const head = <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-warn" />{tx(`Today: ${count} need you`, `आज: ${count} काम आपके`)}</span>;
         return (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid="deal-today" data-ending={ending.length > 0 ? 'yes' : undefined}>
-            {count > 3 && (
-              <button type="button" onClick={toggle} aria-expanded={todayOpen} data-testid="today-toggle" className="flex min-h-11 w-full items-center justify-between gap-2 px-3 text-left text-xs font-bold text-slate-900">
-                <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />{tx(`Today: ${count} need you`, `आज: ${count} काम आपके`)}</span>
-                <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${todayOpen ? 'rotate-180' : ''}`} />
-              </button>
-            )}
+          <section data-testid="deal-today" data-ending={ending.length > 0 ? 'yes' : undefined}>
+            {count > 3
+              ? <button type="button" onClick={toggle} aria-expanded={todayOpen} data-testid="today-toggle" className="flex min-h-11 w-full items-center justify-between gap-2 text-left text-[15px] font-bold text-ink">{head}<ChevronDown className={`h-4 w-4 text-mute transition-transform ${todayOpen ? 'rotate-180' : ''}`} /></button>
+              : <div className="flex min-h-11 items-center text-[15px] font-bold text-ink">{head}</div>}
             {(count <= 3 || todayOpen) && (
-              <ul className={`divide-y divide-slate-100 ${count > 3 ? 'border-t border-slate-100' : ''}`}>
+              <ul className="-mx-4 flex scroll-pl-4 snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
                 {shownRows.map(r => (
-                  <li key={r.key}>
-                    <button type="button" onClick={r.go} data-testid={r.tid} className="flex min-h-11 w-full items-center justify-between gap-2 px-3 text-left active:bg-slate-50">
-                      <span className="flex min-w-0 items-center gap-2"><r.Icon className={`h-4 w-4 shrink-0 ${r.tone}`} /><span className="truncate text-xs font-semibold text-slate-900">{r.title}</span></span>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                  <li key={r.key} className="w-[272px] max-w-[85%] shrink-0 snap-start">
+                    <button type="button" onClick={r.go} data-testid={r.tid} className="flex min-h-16 w-full items-center gap-2.5 rounded-2xl border border-edge bg-white p-2.5 text-left shadow-card active:scale-[.98] motion-safe:transition-transform">
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${r.tint}`}><r.Icon className="h-5 w-5" aria-hidden /></span>
+                      <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-bold text-ink">{r.title}</span><span className="block truncate text-xs text-mute">{r.sub}</span></span>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold deal-pulse-once ${r.badgeTone}`}>{r.badge}</span>
                     </button>
                   </li>
                 ))}
-                {hidden > 0 && <li><button type="button" onClick={() => { setFilter('needs'); setStage(''); }} data-testid="today-see-all" className="flex min-h-11 w-full items-center justify-between px-3 text-xs font-bold text-slate-700"><span>{tx(`${hidden} more`, `${hidden} और`)}</span><ChevronRight className="h-4 w-4 text-slate-400" /></button></li>}
+                {hidden > 0 && <li className="shrink-0 snap-start"><button type="button" onClick={() => { setFilter('needs'); setStage(''); }} data-testid="today-see-all" className="flex min-h-16 items-center gap-1 rounded-2xl border border-edge bg-white px-4 text-[13px] font-bold text-sign shadow-card">{tx(`See all ${hidden} more`, `${hidden} और देखें`)}<ChevronRight className="h-4 w-4" aria-hidden /></button></li>}
               </ul>
             )}
             {ending.length > 0 && <span className="sr-only" data-testid="today-ending">{tx('Ending soon', 'जल्द खत्म')}</span>}
-          </div>
+          </section>
         );
       })()}
-      {/* v173 — phone: one strip of three numbers instead of two big tiles */}
-      <div className="flex divide-x divide-slate-200 rounded-xl border border-slate-200 bg-white text-center lg:hidden" data-testid="hub-strip">
-        {[{ id: 'needs', f: 'needs' as Filter, v: String(k.needsMe), l: tx('Needs me', 'मेरा काम'), tone: k.needsMe ? 'text-amber-700' : 'text-slate-900' },
-          { id: 'live', f: 'live' as Filter, v: String(k.live), l: tx('Live', 'चालू'), tone: 'text-slate-900' },
-          ...(isBroker && k.hasMoney ? [{ id: 'share', f: 'live' as Filter, v: short(k.myPipeline), l: tx('My share', 'मेरा हिस्सा'), tone: 'text-emerald-700' }] : [])].map(c => (
-          <button key={c.id} type="button" onClick={() => { setFilter(c.f); setStage(''); }} className="min-h-12 min-w-0 flex-1 px-2 py-1.5" data-testid={`hub-strip-${c.id}`}>
-            <div className={`truncate text-lg font-bold ${c.tone}`}>{c.v}</div><div className="truncate text-xs text-slate-500">{c.l}</div>
-          </button>
-        ))}
-      </div>
       <div className="hidden grid-cols-2 gap-2 lg:grid">
         <button type="button" onClick={() => setFilter('needs')} aria-pressed={filter === 'needs'} className={`rounded-xl border p-3 text-left transition-colors ${filter === 'needs' ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900' : 'border-slate-200 bg-white hover:border-slate-400'}`} data-testid="hub-kpi-needs">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500"><AlertTriangle className="h-4 w-4" />{tx('Need my action', 'मेरा काम बाकी')}</div>
@@ -398,27 +451,27 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
         </button>
       </div>
       <div className="relative flex items-center gap-1.5">
-      {items.length <= 5 && <button type="button" onClick={() => { setSearchOpen(o => !o); window.setTimeout(() => searchRef.current?.focus(), 50); }} aria-expanded={searchOpen} aria-label={tx('Search deals', 'डील खोजें')} className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border sm:hidden ${searchOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="hub-search-toggle"><Search className="h-4 w-4" /></button>}
+      {items.length <= 5 && <button type="button" onClick={() => { setSearchOpen(o => !o); window.setTimeout(() => searchRef.current?.focus(), 50); }} aria-expanded={searchOpen} aria-label={tx('Search deals', 'डील खोजें')} className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border sm:hidden ${searchOpen ? 'border-navy-900 bg-navy-900 text-white' : 'border-edge bg-white text-ink'}`} data-testid="hub-search-toggle"><Search className="h-4 w-4" /></button>}
       <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 pr-8" data-testid="hub-filters">
         {!wide && stageChips.map(c => (
-          <button key={c.s || 'all'} type="button" onClick={() => { setFilter('live'); setStage(c.s); }} aria-pressed={filter === 'live' && stage === c.s} data-testid={`hub-stage-${(c.s || 'all').replace(/\s+/g, '-')}`} className={`min-h-11 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === 'live' && stage === c.s ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{c.label} <span className="opacity-70">{c.n}</span></button>
+          <button key={c.s || 'all'} type="button" onClick={() => { setFilter('live'); setStage(c.s); }} aria-pressed={filter === 'live' && stage === c.s} data-testid={`hub-stage-${(c.s || 'all').replace(/\s+/g, '-')}`} className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-bold ${filter === 'live' && stage === c.s ? 'border-navy-900 bg-navy-900 text-white' : 'border-edge bg-white text-ink'}`}>{c.s && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STAGE_COLOR[c.s] }} aria-hidden="true" />}{c.label} <span className={filter === 'live' && stage === c.s ? 'text-gold-500' : 'text-mute'}>{c.n}</span></button>
         ))}
         {chips.filter(c => wide || (c.id !== 'live' && c.v > 0)).map(c => (
-          <button key={c.id} type="button" onClick={() => { setFilter(c.id); setStage(''); }} aria-pressed={filter === c.id} className={`min-h-11 shrink-0 rounded-full border px-3 text-xs font-semibold ${filter === c.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid={`hub-kpi-${c.id}`}>{tx(c.en, c.hi)} <span className="ml-0.5 opacity-70">{c.v}</span></button>
+          <button key={c.id} type="button" onClick={() => { setFilter(c.id); setStage(''); }} aria-pressed={filter === c.id} className={`min-h-11 shrink-0 rounded-full border px-3 text-[13px] font-bold ${filter === c.id ? 'border-navy-900 bg-navy-900 text-white' : 'border-edge bg-white text-ink'}`} data-testid={`hub-kpi-${c.id}`}>{tx(c.en, c.hi)} <span className={`ml-0.5 ${filter === c.id ? 'text-gold-500' : 'text-mute'}`}>{c.v}</span></button>
         ))}
       </div>
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-paper to-transparent sm:hidden" aria-hidden="true" />
       </div>
 
       <div className={`flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${items.length > 5 || searchOpen ? 'flex' : 'hidden sm:flex'}`}>   {/* v144 — nothing to search in a handful of deals */}
         <div className="flex w-full items-center gap-2 sm:max-w-sm">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input ref={searchRef} className="min-h-10 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, area, broker', 'प्रॉपर्टी, इलाका, ब्रोकर खोजें')} data-testid="hub-search" />
+            <input ref={searchRef} className="min-h-11 w-full rounded-[14px] border border-edge bg-white pl-8 pr-8 text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={tx('Search property, area, broker', 'प्रॉपर्टी, इलाका, ब्रोकर खोजें')} data-testid="hub-search" />
             {q && <button type="button" onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" aria-label={tx('Clear', 'साफ़ करें')}><X className="h-4 w-4" /></button>}
           </div>
           {/* v116 — on a phone the rarely-used "which deals / board or list" sit behind one button, so the first deal shows sooner */}
-          <button type="button" onClick={() => setTools(o => !o)} aria-expanded={tools} className={`inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold sm:hidden ${showRoles ? '' : 'hidden'} ${tools || role !== 'ALL' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700'}`} data-testid="hub-tools">
+          <button type="button" onClick={() => setTools(o => !o)} aria-expanded={tools} className={`inline-flex min-h-11 shrink-0 items-center gap-1 rounded-[14px] border px-3 text-[13px] font-semibold sm:hidden ${showRoles ? '' : 'hidden'} ${tools || role !== 'ALL' ? 'border-navy-900 bg-navy-900 text-white' : 'border-edge bg-white text-ink'}`} data-testid="hub-tools">
             <SlidersHorizontal className="h-4 w-4" />{tx('Filter', 'फ़िल्टर')}
           </button>
         </div>
@@ -438,32 +491,46 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-          <Briefcase className="mx-auto mb-2 h-8 w-8 text-slate-300" />
-          {tx('No deal room yet. A deal room opens when a co-broking proposal is accepted or a site visit is booked on a listing.', 'अभी कोई डील रूम नहीं। को-ब्रोकिंग प्रस्ताव मंज़ूर होने पर या किसी लिस्टिंग पर साइट विज़िट बुक होने पर डील रूम खुलता है।')}
+        <div className="rounded-[24px] border-2 border-dashed border-[#E9CF7A] bg-white p-7 text-center shadow-card" data-testid="deal-empty">
+          <div className="mx-auto mb-3 flex h-[84px] w-[84px] items-center justify-center rounded-full bg-gold-100"><Briefcase className="h-9 w-9 text-gold-800" aria-hidden /></div>
+          <h3 className="text-xl font-extrabold text-ink">{tx('No deal room yet', 'अभी कोई डील रूम नहीं')}</h3>
+          <p className="mt-1.5 text-sm text-mute">{tx('A deal room opens when a co-broking proposal is accepted or a site visit is booked on a listing.', 'को-ब्रोकिंग प्रस्ताव मंज़ूर होने पर या किसी लिस्टिंग पर साइट विज़िट बुक होने पर डील रूम खुलता है।')}</p>
+          <ul className="mt-4 space-y-2 text-left text-[13px] font-semibold text-ink">
+            <li className="flex min-h-12 items-center gap-2.5 rounded-[14px] bg-[#FAF7EE] px-3"><Users className="h-4 w-4 shrink-0 text-gold-800" aria-hidden />{tx('Co-broking proposal accepted', 'को-ब्रोकिंग प्रस्ताव मंज़ूर हुआ')}</li>
+            <li className="flex min-h-12 items-center gap-2.5 rounded-[14px] bg-[#FAF7EE] px-3"><CalendarCheck className="h-4 w-4 shrink-0 text-gold-800" aria-hidden />{tx('Site visit booked on a listing', 'लिस्टिंग पर साइट विज़िट बुक हुई')}</li>
+          </ul>
         </div>
       ) : shown.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">{tx('No deal matches this filter.', 'इस फ़िल्टर में कोई डील नहीं।')} <button type="button" className="font-semibold underline" onClick={() => { setFilter('all'); setRole('ALL'); setQ(''); }}>{tx('Show all', 'सभी दिखाएँ')}</button></div>
+        <div className="rounded-2xl border border-dashed border-edge bg-white p-6 text-center text-sm text-mute">{tx('No deal matches this filter.', 'इस फ़िल्टर में कोई डील नहीं।')} <button type="button" className="min-h-11 font-semibold text-ink underline" onClick={() => { setFilter('all'); setRole('ALL'); setQ(''); }}>{tx('Show all', 'सभी दिखाएँ')}</button></div>
       ) : !wide ? (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid="hub-compact">
+        <ul className="space-y-3" data-testid="hub-compact">
           {shown.map(d => {
             const first = (d.next || [])[0];
             const amt = d.money?.myShare || d.money?.dealValue;
+            const col = STAGE_COLOR[d.stage] || '#64748B';
+            const idx = d.closed ? -1 : d.stageIndex;
+            const prot = !d.closed && d.stage !== 'Settled' && typeof d.protectionDaysLeft === 'number' && d.protectionDaysLeft > 0 ? d.protectionDaysLeft : 0;
             return (
               <li key={d.id}>
-                <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' && first.kind !== 'TASKS_TO_DO' ? first.tab : undefined, first?.kind)} className="block w-full px-3 py-2.5 text-left active:bg-slate-50" data-testid={`deal-card-${d.id}`}>
-                  <div className="flex min-h-12 items-start justify-between gap-3">
+                <button type="button" onClick={() => onOpen(d.id, first && first.kind !== 'STALLED' && first.kind !== 'TASKS_TO_DO' ? first.tab : undefined, first?.kind)} className={`block w-full rounded-[20px] border bg-white p-3.5 text-left shadow-card active:scale-[.98] motion-safe:transition-transform ${d.openDispute ? 'border-[#F5B5B5]' : 'border-edge'}`} data-testid={`deal-card-${d.id}`}>
+                  <div className="flex items-start gap-3">
+                    <PropertyThumb src={d.cover} type={d.propertyType} seed={d.propertyTitle} tint="bg-gradient-to-br from-navy-800 to-navy-950 text-gold-500" className="h-[68px] w-[68px] rounded-2xl" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-bold text-slate-900">{d.propertyTitle}</div>
-                      <div className="flex flex-nowrap items-center gap-1 overflow-hidden text-xs text-slate-500" data-testid={`deal-pills-${d.id}`}>
-                        {(d.locality || d.city) && <span className="min-w-0 truncate">{d.locality || d.city} ·</span>}
-                        <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{d.closed ? tx('Closed', 'बंद') : (label('dealStage', d.stage) || d.stage)}</span>
-                        {d.openDispute && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">{tx('Dispute', 'विवाद')}</span>}
-                        {d.visits?.upcoming > 0 && <span className="shrink-0 whitespace-nowrap rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-900">{tx('Visit booked', 'विज़िट तय')}</span>}
-                      </div>
-                      {first && !d.closed && <div className={`flex items-center gap-1.5 truncate text-xs font-semibold ${d.needsMe ? 'text-amber-800' : 'text-slate-600'}`}><span className={`h-2 w-2 shrink-0 rounded-full ${d.needsMe ? 'bg-amber-500' : 'bg-slate-300'}`} aria-hidden="true" /><span className="truncate">{nextText(first, d.idleDays, tx, th)}</span></div>}
+                      <div className="line-clamp-2 text-[15px] font-bold leading-snug text-ink">{d.propertyTitle}</div>
+                      <div className="mt-0.5 truncate text-[13px] text-mute">{[d.locality || d.city, d.counterpartName].filter(Boolean).join(' · ')}</div>
                     </div>
-                    {amt ? <div className="shrink-0 text-right leading-tight"><div className="text-xs text-slate-500">{d.money?.myShare ? tx('Your share', 'आपका हिस्सा') : tx('Deal value', 'डील की कीमत')}</div><div className={`text-sm font-bold ${d.money?.myShare ? 'text-emerald-700' : 'text-slate-600'}`}>{short(amt)}</div></div> : null}
+                    {amt ? <div className="shrink-0 text-right leading-tight"><div className="text-xs text-mute">{d.money?.myShare ? tx('Your share', 'आपका हिस्सा') : tx('Deal value', 'डील की कीमत')}</div><div className={`text-lg font-extrabold ${d.money?.myShare ? 'text-money' : 'text-mute'}`}>{short(amt)}</div></div> : null}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2 text-[13px]">
+                    <span className="flex min-w-0 items-center gap-1.5 font-bold text-ink"><span className="h-2 w-2 shrink-0 rounded-full" style={{ background: d.closed ? '#94A3B8' : col }} aria-hidden="true" /><span className="truncate">{d.closed ? tx('Closed', 'बंद') : (label('dealStage', d.stage) || d.stage)}</span></span>
+                    {idx >= 0 && <span className="shrink-0 text-xs font-semibold text-mute">{idx + 1}/{STAGES.length}</span>}
+                  </div>
+                  <div className="mt-1.5"><StageRail idx={idx} color={col} /></div>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs font-semibold" data-testid={`deal-pills-${d.id}`}>
+                    {first && !d.closed && <span className={`inline-flex max-w-full items-center gap-1 rounded-2xl px-2.5 py-1 ${d.openDispute ? 'bg-bad-bg text-bad' : d.needsMe ? 'bg-warn-bg text-warn' : 'bg-slate-100 text-slate-700'}`}>{first.kind === 'STALLED' ? <Hourglass className="h-3.5 w-3.5 shrink-0" aria-hidden /> : <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />}<span className="line-clamp-2">{nextText(first, d.idleDays, tx, th)}</span></span>}
+                    {prot > 0 && <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 ${prot <= 7 ? 'bg-warn-bg text-warn' : 'bg-money-bg text-money'}`}><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{tx(`${prot} days`, `${prot} दिन`)}</span>}
+                    {d.openDispute && <span className="shrink-0 rounded-full bg-bad-bg px-2.5 py-1 text-bad">{tx('Dispute', 'विवाद')}</span>}
+                    {d.visits?.upcoming > 0 && <span className="shrink-0 whitespace-nowrap rounded-full bg-info-bg px-2.5 py-1 text-info">{tx('Visit booked', 'विज़िट तय')}</span>}
                   </div>
                 </button>
               </li>
@@ -677,29 +744,53 @@ export const EarningsBoard: React.FC<{ hub: any; onOpen: (id: string) => void }>
   const toConfirm = (hub?.deals || []).filter((d: any) => !d.closed).reduce((n: number, d: any) => n + (d.next || []).filter((x: any) => x.kind === 'PAYMENTS_TO_CONFIRM' || x.kind === 'CLIENT_PAYMENT').length, 0);
   return (
     <div className="space-y-3" data-testid="deal-earnings">
-      <div className="flex divide-x divide-slate-200 rounded-xl border border-slate-200 bg-white text-center" data-testid="earnings-summary">
-        <div className="min-w-0 flex-1 px-2 py-2.5"><div className="truncate text-lg font-bold text-emerald-700">{short(k.myPipeline)}</div><div className="text-xs text-slate-500">{tx('In pipeline', 'पाइपलाइन में')}</div></div>
-        <div className="min-w-0 flex-1 px-2 py-2.5"><div className="truncate text-lg font-bold text-slate-900">{short(k.mySettled)}</div><div className="text-xs text-slate-500">{tx('Settled', 'मिल चुका')}</div></div>
-        <div className="min-w-0 flex-1 px-2 py-2.5"><div className={`text-lg font-bold ${toConfirm ? 'text-amber-700' : 'text-slate-900'}`}>{toConfirm}</div><div className="text-xs text-slate-500">{tx('To confirm', 'पुष्टि बाकी')}</div></div>
-      </div>
+      {(() => {
+        const big = short(k.myPipeline); const unit = (big.match(/ (L|Cr)$/) || [''])[0];
+        const tot = (k.myPipeline || 0) + (k.mySettled || 0) || 1;
+        const w = (n: number) => `${Math.max(n ? 3 : 0, Math.round(n / tot * 100))}%`;
+        return (
+          <div className="rounded-3xl bg-gradient-to-br from-navy-800 to-navy-950 p-5 text-white shadow-card" data-testid="earnings-summary">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#C9D1E4]"><Wallet className="h-4 w-4 text-gold-500" aria-hidden />{tx('In pipeline', 'पाइपलाइन में')}</div>
+            <div className="mt-1 flex items-baseline gap-1.5"><span className="text-[44px] font-extrabold leading-[48px] tracking-tight">{unit ? big.slice(0, -unit.length) : big}</span>{unit && <span className="text-2xl font-extrabold text-gold-500">{unit}</span>}</div>
+            <div className="mt-3 flex h-2 gap-0.5 overflow-hidden rounded-full bg-white/15" aria-hidden="true">
+              <div className="rounded-full bg-gold-500 motion-safe:transition-[width] motion-safe:duration-500" style={{ width: w(k.myPipeline || 0) }} />
+              <div className="rounded-full bg-[#34D399] motion-safe:transition-[width] motion-safe:duration-500" style={{ width: w(k.mySettled || 0) }} />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-left">
+              {[{ l: tx('Expected', 'अपेक्षित'), v: short(k.myPipeline), t: 'text-gold-500' }, { l: tx('Settled', 'मिल चुका'), v: short(k.mySettled), t: 'text-[#34D399]' }, { l: tx('To confirm', 'पुष्टि बाकी'), v: String(toConfirm), t: toConfirm ? 'text-gold-500' : 'text-white' }].map(c => (
+                <div key={c.l} className="min-w-0 rounded-2xl border border-white/10 bg-white/[.08] px-3 py-2"><div className={`truncate text-lg font-extrabold ${c.t}`}>{c.v}</div><div className="truncate text-xs font-medium text-[#C9D1E4]">{c.l}</div></div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       {split.length > 0 && (
-        <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600" data-testid="earn-split">
-          <b className="text-slate-800">{tx('Team split on brokerage', 'ब्रोकरेज पर टीम का बँटवारा')}:</b>{' '}
+        <p className="rounded-[20px] border border-edge bg-white px-3.5 py-3 text-xs text-mute shadow-card" data-testid="earn-split">
+          <Users className="mr-1 inline h-4 w-4 align-[-3px] text-navy-900" aria-hidden /><b className="text-ink">{tx('Team split on brokerage', 'ब्रोकरेज पर टीम का बँटवारा')}:</b>{' '}
           {split.slice(0, 4).map(m => tx(`${m.name} ${m.pct}% / agency ${100 - m.pct}%`, `${m.name} ${m.pct}% / एजेंसी ${100 - m.pct}%`)).join(' · ')}
           {split.length > 4 ? ` +${split.length - 4}` : ''}
           <span className="block text-slate-500">{tx('Only a view. You pay your team yourself; GENZ does not hold money.', 'सिर्फ़ जानकारी। टीम को भुगतान आप खुद करते हैं; GENZ पैसा नहीं रखता।')}</span>
         </p>
       )}
-      <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {rows.map(d => (
-          <li key={d.id}>
-            <button type="button" onClick={() => onOpen(d.id)} data-testid={`earn-${d.id}`} className="flex min-h-12 w-full items-center justify-between gap-2 px-3 py-2 text-left active:bg-slate-50">
-              <span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-900">{d.propertyTitle || d.id}</span><span className="block truncate text-xs text-slate-500">{label('dealStage', d.stage) || d.stage}{d.money.dealValue ? ` · ${short(d.money.dealValue)}` : ''}</span></span>
-              <span className="shrink-0 text-sm font-bold text-emerald-700">{short(d.money.myShare)}</span>
-            </button>
-          </li>
-        ))}
-        {rows.length === 0 && <li className="p-6 text-center text-sm text-slate-500">{tx('No deal with your share yet.', 'अभी किसी डील में आपका हिस्सा तय नहीं।')}</li>}
+      <h3 className="flex items-baseline justify-between px-1 pt-1 text-[15px] font-bold text-ink">{tx('Your share by deal', 'डील के हिसाब से आपका हिस्सा')}<span className="text-xs font-semibold text-mute">{tx('Biggest first', 'सबसे बड़ी पहले')}</span></h3>
+      <ul className="space-y-2.5">
+        {rows.map(d => {
+          const mx = Math.max(...rows.map(r => r.money.myShare || 0), 1);
+          return (
+            <li key={d.id}>
+              <button type="button" onClick={() => onOpen(d.id)} data-testid={`earn-${d.id}`} className="flex min-h-14 w-full items-center gap-3 rounded-[20px] border border-edge bg-white p-3 text-left shadow-card active:scale-[.98] motion-safe:transition-transform">
+                <PropertyThumb src={d.cover} type={d.propertyType} seed={d.propertyTitle} tint="bg-gradient-to-br from-navy-800 to-navy-950 text-gold-500" className="h-11 w-11 rounded-xl" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[15px] font-bold text-ink">{d.propertyTitle || d.id}</span>
+                  <span className="block truncate text-xs text-mute">{label('dealStage', d.stage) || d.stage}{d.money.dealValue ? ` · ${short(d.money.dealValue)}` : ''}</span>
+                  <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-track" aria-hidden="true"><span className="block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500" style={{ width: `${Math.max(4, Math.round((d.money.myShare || 0) / mx * 100))}%`, background: STAGE_COLOR[d.stage] || '#64748B' }} /></span>
+                </span>
+                <span className="shrink-0 text-base font-extrabold text-money">{short(d.money.myShare)}</span>
+              </button>
+            </li>
+          );
+        })}
+        {rows.length === 0 && <li className="rounded-[20px] border border-dashed border-edge bg-white p-6 text-center text-sm text-mute">{tx('No deal with your share yet.', 'अभी किसी डील में आपका हिस्सा तय नहीं।')}</li>}
       </ul>
     </div>
   );
