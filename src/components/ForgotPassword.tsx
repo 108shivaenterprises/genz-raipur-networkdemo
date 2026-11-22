@@ -27,7 +27,7 @@ export const ForgotPassword: React.FC<{ onBack: () => void }> = ({ onBack }) => 
       <h2 className="text-lg font-bold text-slate-900">{tx('Forgot password', 'पासवर्ड भूल गए')}</h2>
       {done ? (
         <div className="mt-4 space-y-3" data-testid="forgot-done">
-          <p className="rounded-lg bg-emerald-50 p-3 text-sm font-medium text-emerald-800">{tx('Done. If this number has an account, the password is changed and other devices are signed out. Sign in with the new password.', 'हो गया। अगर इस नंबर पर अकाउंट है तो पासवर्ड बदल गया है और बाकी डिवाइस साइन-आउट हैं। नए पासवर्ड से साइन इन करें।')}</p>
+          <p className="rounded-lg bg-emerald-50 p-3 text-sm font-medium text-emerald-800">{tx('Request received. If a password account exists for this number, its password is now changed and other devices are signed out. Owners who sign in with a mobile code have no password, and admin / staff accounts are reset only by a SUPERADMIN. Try signing in; if it does not work, ask your admin.', 'रिक्वेस्ट मिल गई। अगर इस नंबर पर पासवर्ड वाला अकाउंट है तो उसका पासवर्ड बदल गया है और बाकी डिवाइस साइन-आउट हैं। जो मालिक मोबाइल कोड से साइन इन करते हैं उनका कोई पासवर्ड नहीं होता, और एडमिन / स्टाफ अकाउंट सिर्फ़ सुपरएडमिन रीसेट करता है। साइन इन करके देखें; न हो तो अपने एडमिन से पूछें।')}</p>
           <button onClick={onBack} className="min-h-11 w-full rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">{tx('Go to sign in', 'साइन इन पर जाएँ')}</button>
         </div>
       ) : !v ? (
@@ -40,7 +40,7 @@ export const ForgotPassword: React.FC<{ onBack: () => void }> = ({ onBack }) => 
         </form>
       ) : (
         <form className="mt-3 space-y-3" onSubmit={reset}>
-          <OtpSent v={v} sentAt={sentAt} onResend={() => void ask()} busy={busy} />
+          <OtpSent generic v={v} sentAt={sentAt} onResend={() => void ask()} busy={busy} />
           <input inputMode="numeric" maxLength={6} autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} placeholder={tx('6-digit code', '6 अंकों का कोड')} className={input + ' text-center font-mono text-lg tracking-widest'} data-testid="forgot-code" aria-label={tx('Code', 'कोड')} />
           <input type="password" autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} placeholder={tx('New password', 'नया पासवर्ड')} className={input} data-testid="forgot-password-new" aria-label={tx('New password', 'नया पासवर्ड')} />
           <p className="text-[11px] text-slate-500">{tx('At least 10 characters with a capital letter, a small letter and a digit.', 'कम से कम 10 अक्षर — एक बड़ा अक्षर, एक छोटा अक्षर और एक अंक।')}</p>

@@ -33,6 +33,10 @@ const V109 = {
   who: /(are\s*you\s*(a\s*)?(bot|robot|human|real|ai)|\bbot\s*(ho|hai|h)\b|kya\s*aap\s*(bot|insaan|human|robot)|aap\s*kaun|tum\s*kaun|आप\s*कौन|तुम\s*कौन|कौन\s*हो|who\s*are\s*you)/,
   help: /^(help|menu|madad|मदद|kya\s*kar\s*sakte|kaise\s*kaam)/,
   stop: /^(stop|unsubscribe|stop\s*messages?)\b|(mat|na)\s*bhejo|msg\s*mat|message\s*mat|ab\s*mat\s*bhej|मत\s*भेजो|मैसेज\s*मत|बंद\s*करो\s*(msg|message|मैसेज)/,
+  /** B8 — plain opt-outs, only in a SHORT message and with no need words left ("villa nahi chahiye, flat chahiye" is a change of need, not a goodbye). "stop" must be the first word: "don't stop calling me" / "bus stop near the house" never match */
+  stopShort: /\bnot\s+interested\b|\bno\s+longer\s+interested\b|\b(?:band|bandh)\s*kar\s*(?:o|do|dijiye)\b|बंद\s*कर(?:ो|\s*दो|\s*दीजिए)|\bab\s*nahi\s*(?:lena|leni|chahiye)\b|अब\s*नहीं\s*(?:लेना|चाहिए|चाहिये)|\b(?:please|pls|plz)\s+stop(?!\s+(?:by|at|near|here|there|the|in)\b)|\b(?:do\s*not|don['’]?t|dont)\s+(?:contact|message|text|call|msg|disturb)\b|\bremove\s+me\b|^(?:ruko|रुको|रुकिए)\s*[.!]*$|^(?:mujhe\s+|mujhko\s+|hame\s+)?(?:nahi|nahin|nhi)\s*(?:chahiye|chahie|chaiye)\s*[.!]*$|^(?:मुझे\s+|हमें\s+)?(?:नहीं|नही)\s*(?:चाहिए|चाहिये)\s*[.!]*$|^stop\s*(?:it|this|calling|texting|messaging|sending)\b/,
+  /** B4 — loan / legal / title / registry / RERA / parking questions are the broker's, never an "available?" answer */
+  brokerQ: /(?:loan|लोन|legal|कानूनी|\btitle\b|टाइटल|registry|रजिस्ट्री|\brera\b|रेरा|parking|पार्किंग|mortgage|stamp\s*duty|\bnoc\b)/,
   brokerage: /(brokerage|ब्रोकरेज|commission|कमीशन)/,
   confirm: /^(haan|han|haa+n?|hn|ji|jee|yes|yep|y|ok(ay)?|sahi|sahi\s*hai|theek|thik|theek\s*hai|bilkul|done|सही|सही\s*है|हाँ|हां|जी|ठीक|ठीक\s*है|बिल्कुल|✅|👍)\s*[.!]*$/,
   deny: /^(nahi|nhi|nahin|no|galat|गलत|नहीं)\s*[.!]*$|^(nahi|nhi|galat|नहीं|गलत)\s*(hai|है)\s*[.!]*$/,
@@ -48,6 +52,7 @@ export function readIntent(text: string): Intent {
   if (t.length <= 30 && V109.confirm.test(t)) return 'CONFIRM';
   if (t.length <= 30 && V109.deny.test(t)) return 'DENY';
   if (V109.stop.test(t)) return 'STOP';
+  if (t.length <= 60 && V109.stopShort.test(t) && !RX.need.test(t.replace(/(?:nahi|nahin|nhi|नहीं|नही)\s*(?:chahiye|chahie|chaiye|चाहिए|चाहिये)/g, ' '))) return 'STOP';
   if (V109.who.test(t)) return 'WHO';
   if (t.length < 40 && V109.help.test(t)) return 'HELP';
   if (V109.brokerage.test(t) && !/(call|baat|bulao|number)/.test(t)) return 'PRICE';
@@ -55,6 +60,7 @@ export function readIntent(text: string): Intent {
   if (RX.human.test(t)) return 'HUMAN';
   if (RX.visit.test(t)) return 'VISIT';
   if (RX.photos.test(t)) return 'PHOTOS';
+  if (V109.brokerQ.test(t) && (V109.question.test(t) || RX.avail.test(t)) && !V109.ask.test(t) && !RX.update.test(t)) return 'PROPERTY_Q';   // B4
   if (RX.avail.test(t)) return 'AVAIL';
   // a question about the home he was sent ("2 bhk hai kya", "parking hai?", "kitne sqft ka hai") is a question — not a new need
   if (V109.fact.test(t) && V109.question.test(t) && !V109.ask.test(t) && !RX.update.test(t)) return 'PROPERTY_Q';
@@ -87,14 +93,15 @@ export function readNeedChange(text: string, city = ''): NeedChange {
   // v101 — "farm house nahi, flat chahiye" / "Amlidih nahi, Pandri mein dekho": what he rejects is not read — the type, buy / rent and place come from the part AFTER "nahi" (the money is read from the whole line)
   const neg = /^(.{2,70}?)\s*\b(?:nahi|nahin|nhi|नहीं|not)\b[\s,;:.-]*(.{3,})$/i.exec(full.replace(/\s+/g, ' ').trim());
   const raw = neg && !/\d/.test(neg[1]) ? neg[2] : full; const t = flat(raw); const t0 = flat(full);
-  if (/(kiraya|किराया|किराये|kiraye|rent\b|rental|lease)/.test(t)) out.kind = 'RENT_IN';
-  else if (/(khareed|kharid|खरीद|खरीदना|buy\b|purchase|sale\b|bikri|बिक्री|lena\s*hai|लेना\s*है)/.test(t)) out.kind = 'BUY';
+  // B1: a word must START at a word edge (JS \b ignores Devanagari): "please" / "release" / "different" are not lease / rent
+  if (/(?<![a-z\u0900-\u097f])(?:kiraya|किराया|किराये|kiraye|rent\b|rental|lease)/.test(t)) out.kind = 'RENT_IN';
+  else if (/(?<![a-z\u0900-\u097f])(?:khareed|kharid|खरीद|खरीदना|buy\b|purchase|sale\b|bikri|बिक्री|lena\s*hai|लेना\s*है)/.test(t)) out.kind = 'BUY';
   // 50 lakh / 1.2 cr / 15k / 15000 / ₹ 12,000
   const bhk = /(\d)\s*(?:bhk|बीएचके|bedroom)/.exec(t0);
   if (bhk) out.bhk = Number(bhk[1]);
-  const moneyText = full.replace(/(\d)\s*(?:bhk|बीएचके|bedroom)\w*/gi, ' ');
-  const mm = /(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(lakhs?|lacs?|cr(?:ore)?s?|k\b|thousand|लाख|करोड़|करोड|हज़ार|हजार)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2'))
-    || ((/(budget|बजट|kiraya|किराया|rent|price|कीमत|tak|तक|under|within)/.test(t0)) ? /(?:₹|rs\.?|inr)?\s*(\d{4,9})(?!\d)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2')) : null);
+  const moneyText = full.replace(/\s+/g, ' ').replace(/(\d) ?(?:bhk|बीएचके|bedroom)\w*/gi, ' ');   // F2: collapsed whitespace + digit-run guards below (no quadratic backtracking)
+  const mm = /(?:₹|rs\.?|inr)?\s*(?<![\d,])(\d{1,15}(?:\.\d{1,6})?)\s*(lakhs?|lacs?|cr(?:ore)?s?|k\b|thousand|लाख|करोड़|करोड|हज़ार|हजार)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2'))
+    || ((/(budget|बजट|kiraya|किराया|rent|price|कीमत|tak|तक|under|within)/.test(t0)) ? /(?:₹|rs\.?|inr)?\s*(?<![\d,])(\d{4,9})(?!\d)/i.exec(moneyText.replace(/(\d),(\d{3})/g, '$1$2')) : null);
   if (mm) { const n = Number(mm[1]); if (n > 0) out.budget = mm[2] ? (/^(k|thousand)$/i.test(mm[2]) ? `${mm[1]}k` : `${mm[1]} ${mm[2]}`) : String(Math.round(n)); }
   for (const [re, ty] of TYPE_RULES) if (re.test(t)) { out.ptype = ty; break; }
   // v100 — "Indore mein chahiye" at a Pune shop: the customer's own city wins; the area is then read inside THAT city, and a bare city name means "any area"
@@ -109,7 +116,10 @@ const NOT_PLACE = new Set(('budget rent rental kiraya kiraye sale buy purchase f
   + 'makaan makan dukaan dukan kothi zameen jamin lakh lakhs lac lacs cr crore crores thousand under within below above upto max min maximum minimum around about nearby near and aur or ya for with the a an my me mein mai main to of from want need '
   + 'chahiye chahie chaiye hai hain ho hu hoon ka ki ke ko se tak per month monthly mahina mahine price rate sasta accha achha good best safe quiet new old purana city town area location locality place ghar kharidna lena dena dekhna dekhni '
   + 'please plz pls kindly looking searching interested ready furnished unfurnished semi parking floor ground first second third lift gated society sq ft sqft i we you he she it is are was be do does can could would should will '
-  + 'mujhe humein hamein mera meri mere hume koi koi bhi bahut thoda zyada kam abhi aaj kal ya wala wali wale ek do teen char paanch').split(' '));
+  + 'mujhe humein hamein mera meri mere hume koi koi bhi bahut thoda zyada kam abhi aaj kal ya wala wali wale ek do teen char paanch '
+  // B2: filler / command words, so "call me", "dont message me", "send me 98…", "tell me a joke" and "मुझे 3 बीएचके चाहिए शंकर नगर में" never leave a fake area
+  + 'dikhao dikha batao bata btao bhejo bhej bhejna call calls message messages msg text sms whatsapp mail email tell send give show say dont don\'t doesnt do not no stop kar karo kara karna karwao ping contact number phone '
+  + 'मुझे हमें हमे मैं मै चाहिए चाहिये चाहिए। में मे तक के लिए लिये ढूंढ ढूँढ ढूंढो ढूँढो दिखाओ दिखाइए बताओ भेजो कॉल मैसेज मेसेज बात करो कर दो दें दे का की को से और या एक बीएचके फ्लैट मकान घर प्लॉट दुकान').split(' '));
 const GENERIC_PLACE_WORD = new Set('nagar ngr colony road marg vihar sector phase ward para chowk enclave extension layout society town gram gaon naya nava purana main east west north south block mohalla basti nagara कॉलोनी नगर रोड सेक्टर'.split(' '));
 /** a place named after "in / at / near" or before "mein / ke paas / में" — for cities where we hold no list, and for areas no list holds */
 function areaFromPhrase(text: string): string | undefined {

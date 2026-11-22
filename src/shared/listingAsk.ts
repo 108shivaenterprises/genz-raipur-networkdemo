@@ -43,6 +43,8 @@ const FURN_LABEL: Record<string, string> = { UNF: 'unfurnished', SEMI: 'semi-fur
 const AVAIL_LABEL: Record<string, string> = { NOW: 'available now', D15: 'available in about 15 days', M1: 'available in about a month', LATER: 'available later' };
 const PAPER_LABEL: Record<string, string> = { REG: 'registry / ownership papers available', LOAN: 'bank loan running on it', SOME: 'some papers available', UNSURE: 'papers: owner not sure' };
 
+/** B9: a floor answer must carry a number or a floor word — "asdf qwer" is not a floor */
+const FLOOR_WORD = /\d|ground|basement|stilt|top|terrace|roof|upper|lower|mezz|first|second|third|fourth|fifth|last|floor|\bg\b|ग्राउंड|ग्राऊंड|भूतल|तल|पहली|पहला|दूसरी|दूसरा|तीसरी|तीसरा|चौथी|चौथा|पाँचवी|पांचवी|टॉप|छत|बेसमेंट|मंज़िल|मंजिल|मंज़िल/i;
 const ORDER: AskId[] = ['ptype', 'bhk', 'area', 'floor', 'price', 'furn', 'avail', 'address', 'papers', 'owner'];
 const PHONE10 = /^[6-9]\d{9}$/;
 
@@ -143,12 +145,12 @@ export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: 
     case 'floor': {
       const lbl = FLOOR_CHIPS.find(x => x.id === chip);
       if (lbl) { f.floor = lbl.en; return ok(`${lbl.hi} नोट किया।`, `${lbl.en} floor noted.`); }
-      const t = clean(text, 30); if (!t || /^\d{6,}$/.test(t)) return { ok: false, hint: { hi: 'मंज़िल बताएँ — जैसे “ग्राउंड”, “2nd”, “टॉप फ़्लोर”।', en: 'Tell the floor — e.g. “ground”, “2nd”, “top floor”.' } };
+      const t = clean(text, 30); if (!t || /^\d{6,}$/.test(t) || !FLOOR_WORD.test(t)) return { ok: false, hint: { hi: 'मंज़िल बताएँ — जैसे “ग्राउंड”, “2nd”, “टॉप फ़्लोर”।', en: 'Tell the floor — e.g. “ground”, “2nd”, “top floor”.' } };
       f.floor = t; return ok(`मंज़िल: ${t}।`, `Floor: ${t}.`);
     }
     case 'price': {
       const rent = isRent(f);
-      if (chip === 'KEEP' && Number(f.askingPrice) > 0) { f.priceConfirmed = true; f.ownerApprovedNetPrice = f.ownerApprovedNetPrice || f.askingPrice; return ok('कीमत पक्की की।', 'Price confirmed.'); }
+      if (chip === 'KEEP' && Number(f.askingPrice) > 0) { f.priceConfirmed = true; return ok('कीमत पक्की की।', 'Price confirmed.'); }
       const clean0 = stripPhones(text).replace(/(\d)\s*\/\s*-/g, '$1').replace(/(\d+(?:\.\d+)?)\s*(?:hazar|hazaar|हज़ार|हजार)/gi, '$1k');
       let n = findPrice(clean0).price || 0;
       const bare = /^\s*(?:₹|rs\.?)?\s*(\d{1,3}(?:,\d{2,3})+|\d+(?:\.\d+)?)\s*$/i.exec(clean0);
@@ -156,7 +158,7 @@ export function applyAnswer(f0: Record<string, any>, id: AskId, input: { chip?: 
       if (!(n > 0)) return { ok: false, hint: rent ? { hi: 'किराया रकम में लिखें — जैसे “15000” या “15k”।', en: 'Write the rent as an amount — e.g. “15000” or “15k”.' } : { hi: 'कीमत लिखें — जैसे “45 लाख” या “1.2 करोड़”।', en: 'Write the price — e.g. “45 lakh” or “1.2 crore”.' } };
       if (!rent && n < 100_000) return { ok: false, hint: { hi: `${money(n)} बहुत कम लग रहा है — बिक्री की कीमत लाख या करोड़ में लिखें, जैसे “45 लाख”।`, en: `${moneyEn(n)} looks too low for a sale — write the price in lakh or crore, e.g. “45 lakh”.` } };
       if (rent && (n < 500 || n > 5_000_000)) return { ok: false, hint: { hi: 'महीने का किराया सही नहीं लगा — जैसे “15000” लिखें।', en: 'That monthly rent does not look right — write e.g. “15000”.' } };
-      f.askingPrice = Math.round(n); f.ownerApprovedNetPrice = Math.round(n); f.priceConfirmed = true;
+      f.askingPrice = Math.round(n); f.priceConfirmed = true;   // D11: the owner's net price is NOT set here — it stays pending until the owner confirms it through the consent flow
       return ok(`${money(n)}${rent ? ' महीना' : ''} नोट किया।`, `${moneyEn(n)}${rent ? ' / month' : ''} noted.`);
     }
     case 'furn': {

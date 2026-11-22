@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
+import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { goto } from '../lib/goto.js';
 import { lazyView } from '../lib/lazyView.js';
@@ -25,7 +26,7 @@ const go = 'min-h-11 rounded-full bg-slate-900 px-4 text-sm font-semibold text-w
 const field = 'min-h-11 min-w-0 flex-1 rounded-full border border-slate-300 bg-white px-4 text-base';
 
 export const SahayakBot: React.FC = () => {
-  const tx = useTx();
+  const tx = useTx(); const stageLabel = useLabel();
   const [step, setStep] = useState<Step>('menu');
   const [log, setLog] = useState<{ me?: boolean; text: string }[]>([]);
   const [need, setNeed] = useState<Need>({ city: '', areas: [], name: '', phone: '' });
@@ -165,7 +166,7 @@ export const SahayakBot: React.FC = () => {
             <div className="text-xs font-bold text-slate-600">{tx('COMMISSION EXPECTED', 'अनुमानित कमीशन')}</div>
             <div className="text-xl font-bold text-emerald-700">{formatINR((dealsInfo || []).filter((d: any) => d.stage !== 'Disputed').reduce((n: number, d: any) => n + (d.totalCommissionExpected || 0), 0))}</div>
             <div className="text-xs text-slate-600">{tx(`${(dealsInfo || []).length} deals · all stages together`, `${(dealsInfo || []).length} डील · सभी चरण मिलाकर`)}</div>
-            {(dealsInfo || []).slice(0, 3).map((d: any) => <div key={d.id} className="flex justify-between border-t border-emerald-100 py-1.5 text-slate-900"><span className="truncate">{d.propertyTitle || d.stage}</span><span className="font-bold">{d.stage}</span></div>)}
+            {(dealsInfo || []).slice(0, 3).map((d: any) => <div key={d.id} className="flex justify-between border-t border-emerald-100 py-1.5 text-slate-900"><span className="truncate">{d.propertyTitle || stageLabel('dealStage', d.stage)}</span><span className="font-bold">{stageLabel('dealStage', d.stage)}</span></div>)}
           </div>}
           <button type="button" className={go} onClick={() => tab('deals')}>{tx('Open my deals', 'मेरी डील खोलो')}</button>
         </div>}

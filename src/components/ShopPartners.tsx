@@ -342,7 +342,7 @@ export const LeadCard: React.FC<{ l: any; onChange: () => void; noChat?: boolean
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); setMode(''); setVal(''); setReason(''); setReply(''); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   const pay = l.payout ? PAYOUT_LABEL[l.payout.status as keyof typeof PAYOUT_LABEL] : null;
   return (
-    <div className={`space-y-1.5 rounded-xl border bg-white p-3 ${l.flags.length ? 'border-red-300' : 'border-slate-200'}`} data-testid={`sp-lead-${l.id}`}>
+    <div className={`break-words [overflow-wrap:anywhere] space-y-1.5 rounded-xl border bg-white p-3 ${l.flags.length ? 'border-red-300' : 'border-slate-200'}`} data-testid={`sp-lead-${l.id}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-slate-900">{l.name} <span className="ml-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">{hi ? kind.hi : kind.en}</span></p>
         <span className="text-xs text-slate-500">{tx('via', 'से')} <b>{l.shopName}</b> · {when(l.createdAt)}</span>
@@ -368,8 +368,8 @@ export const LeadCard: React.FC<{ l: any; onChange: () => void; noChat?: boolean
           className={light + ' !min-h-10 !text-xs !bg-emerald-50 !border-emerald-200 !text-emerald-900'}
           href={`https://wa.me/?text=${encodeURIComponent(
             hi
-              ? `नमस्ते ${l.partnerPersonName || 'पार्टनर'} जी (${l.shopName}),\nआपके QR से आए ग्राहक ${l.name} की लीड में ताज़ा अपडेट:\n📌 स्थिति: ${LEAD_STATUSES.find((s) => s.id === l.status)?.hi || l.status}\n🏠 रुचि: ${l.homeTitle || 'क्वालिफाइड आवश्यकता'}\n🔒 आपका हिस्सा तय शर्तों के अनुसार दर्ज है।\nलाइव ट्रैकर: ${abs(l.partnerPageUrl || '')}`
-              : `Namaste ${l.partnerPersonName || 'Partner'} ji (${l.shopName}),\nUpdate on your referred client ${l.name}:\n📌 Stage: ${LEAD_STATUSES.find((s) => s.id === l.status)?.en || l.status}\n🏠 Property: ${l.homeTitle || 'Qualified Requirement'}\n🔒 Your share is recorded as per our agreed terms.\nLive tracker: ${abs(l.partnerPageUrl || '')}`
+              ? `नमस्ते ${l.partnerPersonName || 'पार्टनर'} जी (${l.shopName}),\nआपके QR से आए ग्राहक ${(l.name || '').trim().split(/\s+/)[0]} (••${String(l.phone || '').slice(-4)}) की लीड में ताज़ा अपडेट:\n📌 स्थिति: ${LEAD_STATUSES.find((s) => s.id === l.status)?.hi || l.status}\n🏠 रुचि: ${l.homeTitle || 'क्वालिफाइड आवश्यकता'}\n🔒 आपका हिस्सा तय शर्तों के अनुसार दर्ज है।`
+              : `Namaste ${l.partnerPersonName || 'Partner'} ji (${l.shopName}),\nUpdate on your referred client ${(l.name || '').trim().split(/\s+/)[0]} (••${String(l.phone || '').slice(-4)}):\n📌 Stage: ${LEAD_STATUSES.find((s) => s.id === l.status)?.en || l.status}\n🏠 Property: ${l.homeTitle || 'Qualified Requirement'}\n🔒 Your share is recorded as per our agreed terms.`
           )}`}
           target="_blank"
           rel="noopener noreferrer"

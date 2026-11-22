@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, Check, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
+import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { useUI } from '../lib/ui.js';
 import { sanitizeDecimal } from '../lib/validate.js';
@@ -212,7 +213,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
 
 /** Deal Desk → हिसाब: all my deals at a glance; tap one to open its accounts */
 export const HisaabTab: React.FC = () => {
-  const tx = useTx();
+  const tx = useTx(); const stageLabel = useLabel();
   const [d, setD] = useState<any>(null); const [open, setOpen] = useState(''); const [err, setErr] = useState('');
   useEffect(() => { api.hisaabList().then(setD).catch(e => setErr(e.message)); }, []);
   if (err) return <p className="text-xs text-red-700">{err}</p>;
@@ -230,7 +231,7 @@ export const HisaabTab: React.FC = () => {
       {d.deals.map((x: any) => (
         <div key={x.dealId} className="rounded-xl border border-slate-200 bg-white" data-testid={`hisaab-row-${x.dealId}`}>
           <button type="button" className="flex w-full items-start justify-between gap-2 p-3 text-left" onClick={() => setOpen(open === x.dealId ? '' : x.dealId)}>
-            <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900">{x.title}</span><span className="text-xs text-slate-500">{x.dealId} · {x.stage}</span></span>
+            <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900">{x.title}</span><span className="text-xs text-slate-500">{x.dealId} · {stageLabel('dealStage', x.stage)}</span></span>
             <span className="shrink-0 text-right text-xs"><span className="block font-bold text-emerald-700">{tx('Got', 'मिला')} {formatINR(x.received)}</span><span className="block font-bold text-amber-700">{tx('Left', 'बाक़ी')} {formatINR(x.balance)}</span></span>
           </button>
           {open === x.dealId && <div className="border-t border-slate-100 p-2"><DealHisaab dealId={x.dealId} /></div>}

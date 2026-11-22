@@ -25,6 +25,7 @@ import { goneKind, GONE_WORDS, readIntent } from '../src/shared/sahayak.js';
 import { localityFit, areasOf, canonPlace, inferCity } from '../src/shared/places.js';
 import { PROPERTY_TYPES, RELATED_TYPE_GROUPS, findState, sameCity } from '../src/shared/india.js';
 import { findCityNames } from '../src/shared/waParse.js';
+import { normNum } from '../src/shared/hiNum.js';
 import { saveOwnerChatDraft, stateFor } from './consent.js';
 import { draftMissing } from '../src/shared/consentRules.js';
 import { normCity, TOP_CITIES } from '../src/shared/cities.js';
@@ -89,6 +90,8 @@ const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
 const hmac = (tag: string, v: string) => crypto.createHmac('sha256', secret()).update(`${tag}|${v}`).digest('hex');
 const phone10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
 const PHONE_RE = /^[6-9]\d{9}$/;
+/** v178: a mobile as typed on the QR form -> 10 digits. Accepts +91 / 91 / 0 and spaces, dashes, dots, brackets; anything else (letters, 11+ digits) -> '' */
+const normPhone = (raw: unknown): string => { const t = String(raw ?? '').trim(); if (/[^\d\s+().-]/.test(t)) return ''; const d = t.replace(/\D/g, ''); const m = d.match(/^(?:91|0)?([6-9]\d{9})$/); return m ? m[1] : ''; };
 const newToken = () => crypto.randomBytes(18).toString('base64url');
 const QR_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newQrCode = () => Array.from(crypto.randomBytes(8), b => QR_ALPHA[b % QR_ALPHA.length]).join('');
@@ -124,8 +127,9 @@ const MSG_MAX = 600; const MSGS_KEEP = 300;
 const ownerSide = (l: PartnerLead) => l.kind === 'SELL' || l.kind === 'RENT_OUT';
 const addMsg = (l: PartnerLead, m: Omit<LeadMsg, 'at'>) => { if (!l.chat) return; l.chat.msgs.push({ at: nowIso(), ...m }); if (l.chat.msgs.length > MSGS_KEEP) l.chat.msgs.splice(0, l.chat.msgs.length - MSGS_KEEP); l.updatedAt = nowIso(); };
 /** "40 lakh" / "1.2 cr" / "12,000 महीना" / "12k" → rupees, or null when it cannot be read (then the budget is not used to match) */
+/** B5: "sixty lakh" / "साठ लाख" / "50L" read like "60 lakh" (normNum); budgetRupees below is the one reader the form and the matcher share */
 export function parseMoney(t?: string): number | null {
-  const x = String(t || '').toLowerCase().replace(/,/g, '').trim(); const m = /(\d+(?:\.\d+)?)/.exec(x); if (!m) return null; const n = Number(m[1]); if (!(n > 0)) return null;
+  const x = normNum(String(t || '')).toLowerCase().replace(/(\d),(?=\d)/g, '$1').trim(); const m = /(\d+(?:\.\d+)?)/.exec(x); if (!m) return null; const n = Number(m[1]); if (!(n > 0)) return null;
   if (/(cr|crore|करोड़|करोड)/.test(x)) return n * 1e7;
   if (/(lakh|lac|lakhs|लाख)/.test(x)) return n * 1e5;
   if (/(\bk\b|\d\s*k\b|thousand|हज़ार|हजार)/.test(x)) return n * 1e3;
@@ -139,6 +143,8 @@ const tooFreshFor = (l: Pick<PartnerLead, 'createdAt'>, h: Property, now = Date.
   return made > Date.parse(l.createdAt) && now - made < REVEAL_FRESH_LISTING_MS;
 };
 /** does this home fit what the customer asked for? buy/rent side, the area (or the very home he tapped), and the budget when it can be read. Owner-side leads have no "match" */
+/** B5 (D11): a home up to 10% over the stated budget may still be shown (and is then called "slightly above your budget"); more is never shown */
+export const BUDGET_SLACK = 1.1;
 export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | 'homeId'> & { propertyType?: string; wantCity?: string }, h: Property): boolean {
   if (l.kind !== 'BUY' && l.kind !== 'RENT_IN') return false;
   if (l.wantCity && !sameCity(l.wantCity, h.city)) return false;   // v100 — the customer named a city: only homes of that city
@@ -151,8 +157,8 @@ export function homeFits(l: Pick<PartnerLead, 'kind' | 'locality' | 'budget' | '
   if (!area) return false;
   // v91: a plot customer is not offered a flat — the picked type (or its close family) must fit; blank / "Other" means any
   if (!chosen && (l as any).propertyType && (l as any).propertyType !== 'Other' && !typeFits(inferPtype((l as any).propertyType), h.propertyType)) return false;
-  const cap = parseMoney(l.budget); const price = Number(h.askingPrice) || 0;
-  if (cap && price && price > cap * 1.25) return false;
+  const cap = budgetRupees(l.budget, l.kind === 'RENT_IN'); const price = Number(h.askingPrice) || 0;   // B5: the same reader as the form ("60" = 60 lakh / 60 thousand rent), at most BUDGET_SLACK over
+  if (cap && price && price > cap * BUDGET_SLACK) return false;
   return true;
 }
 function typeFits(want: string, have: string): boolean { return want === have || RELATED_TYPE_GROUPS.some(g => g.includes(want) && g.includes(have)); }
@@ -327,7 +333,7 @@ function ownerFacts(l: PartnerLead): Record<string, any> {
   const bhk = Number(/(\d{1,2})\s*bhk/i.exec(String(l.note || ''))?.[1]) || null;
   const known = (u?.state && findState(u.state)?.name) || stateFor('', city);
   return { propertyType: pt, transactionType: rent ? 'Rent' : 'Sale', state: stateFor(known, city), city, locality: l.locality, ...(bhk ? { bhk } : {}),
-    ...(price ? { askingPrice: price, ownerApprovedNetPrice: price } : {}), ownerName: l.name, ownerPhone: l.phone, tags: [], addressHidden: '', shopId: l.partnerId };
+    ...(price ? { askingPrice: price } : {}), ownerName: l.name, ownerPhone: l.phone, tags: [], addressHidden: '', shopId: l.partnerId };
 }
 function draftState(l: PartnerLead) {
   const id = l.chat?.bot?.interview?.draftId; if (!id) return null;
@@ -347,6 +353,7 @@ export const sahayak = makeSahayak({
   isLive: h => pageLive(h), applyNeed: applyNeedChange, cityOf: cityOfLead, networkScan,
   media: h => { const m = previewMedia(h); return { photos: m.photos.length, videos: m.videos.length }; },
   ping: (l, what) => { void brokerWrote(`lc-${l.id}`, 'GENZ सहायक', what); },   // v103 — the customer's phone hears about what the assistant wrote on its own
+  budgetOf: l => budgetRupees(l.budget, l.kind === 'RENT_IN'),
   ownerFacts, saveDraft: (l, fields) => saveOwnerChatDraft(l.brokerId, fields, l.id), draftState,
 });
 
@@ -975,9 +982,9 @@ const CSS = `*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-
 .card{background:#fff;border-radius:14px;padding:14px;margin-top:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}.warn{background:#fff6e5}.ok{background:#e9f7ee}.red{background:#fdecec}
 p.t{font-size:14px;line-height:1.55;margin:6px 0}small,.small{color:#666;font-size:12px}h2{font-size:15px;margin:16px 4px 0}
 label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}input[type=text],input[type=tel],input[type=number],textarea,select{width:100%;padding:12px;border:1px solid #bbb;border-radius:10px;font-size:16px;font-family:inherit;background:#fff}
-button,.btn{display:inline-block;padding:12px 16px;border-radius:11px;border:0;font-size:15px;font-weight:700;background:#14213d;color:#fff;text-decoration:none;cursor:pointer}.g{background:#1fa855}.l{background:#eee;color:#222}.r{background:#c0392b}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kinds label{margin:0;display:flex;align-items:center;gap:8px;border:1px solid #ccc;border-radius:12px;padding:12px;font-size:14px;background:#fff}
-.ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px}.ck input{width:20px;height:20px;margin-top:2px}.hp{position:absolute;left:-9999px}
+button,.btn{display:inline-block;min-height:44px;padding:12px 16px;border-radius:11px;border:0;font-size:15px;font-weight:700;background:#14213d;color:#fff;text-decoration:none;cursor:pointer}.g{background:#1fa855}.l{background:#eee;color:#222}.r{background:#c0392b}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.kinds{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kinds label{margin:0;display:flex;align-items:center;gap:8px;border:1px solid #ccc;border-radius:12px;padding:12px;font-size:14px;background:#fff;min-height:48px}
+.ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px;min-height:44px}.ck input{width:24px;height:24px;margin-top:2px;flex:none}.kinds input[type=radio]{width:24px;height:24px;flex:none}.hp{position:absolute;left:-9999px}
 .lead{border-top:1px solid #eee;padding:10px 0}.prog{display:flex;gap:3px;margin:8px 0 4px}.prog .st{flex:1;text-align:center;font-size:10px;font-weight:700;padding:5px 0;border-radius:6px;background:#eef1f7;color:#64748b}.prog .st.on{background:#16a34a;color:#fff}.prog .st.now{background:#fde68a;color:#92400e}.chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;background:#eef1f7;margin:2px 4px 0 0}.chip.ok{background:#dcfce7;color:#166534}.chip.w{background:#fef3c7;color:#92400e}.chip.x{background:#fee2e2;color:#991b1b}
 .hms{display:flex;gap:10px;margin-top:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px}.hms .hm{flex:0 0 82%;scroll-snap-align:start}.hm .ph.nophoto{display:none}.hm{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.06)}.hm .ph{position:relative;background:#e5e7eb;aspect-ratio:16/10;overflow:hidden}.hm .ph canvas{display:block;width:100%;height:100%;-webkit-touch-callout:none;user-select:none}
 .hm .np{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#64748b;font-size:13px;font-weight:600}.hm .ph.nophoto .np{display:flex}.hm .ph.nophoto canvas{display:none}.hm .ph.nophoto{aspect-ratio:auto;height:40px}.hm .bd{padding:10px 12px 12px}.hm .pr{font-size:19px;font-weight:800}.hm .tt{font-weight:700;font-size:14px;margin-top:2px}.hm .sb{color:#555;font-size:12px;margin-top:2px}
@@ -1065,7 +1072,7 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
 <label>आपको क्या चाहिए? / What do you need?</label><div class="kinds">${kinds}</div>
 <p class="small" id="sellnote" data-testid="qr-seller-note">🏠 मालिक के लिए: प्रॉपर्टी कहाँ है, किस तरह की है, और आप कितना चाहते हैं (कीमत / किराया) — नीचे लिखें। <small>For owners: write where the property is, its type, and the price or rent you expect.</small></p>
 <label>नाम / Name</label><input type="text" name="name" maxlength="80" required value="${esc(keep.name || '')}" autocomplete="name">
-<label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required value="${esc(keep.phone || '')}" autocomplete="tel-national" placeholder="98XXXXXXXX">
+<label>मोबाइल / Mobile</label><input type="tel" name="phone" inputmode="tel" maxlength="24" required value="${esc(keep.phone || '')}" autocomplete="tel-national" placeholder="98XXXXXXXX">
 <label>इलाका / Area</label><input type="text" name="locality" maxlength="80" required list="areas" autocomplete="off" value="${esc(keep.locality || (picked ? picked.locality : p.area))}"><datalist id="areas">${areasOf(p.city || userOf(p.brokerId)?.city || '').slice(0, 80).map(a => `<option value="${esc(a.replace(/\s*\(.*\)\s*/g, ''))}">`).join('')}</datalist><p class="small" style="margin:2px 0 0">पूरा शहर चाहिए तो शहर का नाम लिख दें / For the whole city just write the city name.</p>
 <label>बजट / किराया (अंदाज़न) / Budget or rent</label><input type="text" name="budget" maxlength="60" value="${esc(keep.budget || '')}" placeholder="जैसे 40 लाख / 12,000 महीना">
 <details data-testid="qr-more" ${keep.ptype || keep.note ? 'open' : ''} style="margin-top:10px"><summary class="small" style="cursor:pointer;min-height:40px;font-weight:700">➕ और बताएँ (ज़रूरी नहीं): शहर, प्रॉपर्टी का प्रकार, कुछ और / Tell more (optional): city, type, anything else</summary><label>शहर / City</label><input type="text" name="city" maxlength="40" list="cities" autocomplete="off" data-testid="qr-city" value="${esc(keep.city || p.city || userOf(p.brokerId)?.city || '')}"><datalist id="cities">${TOP_CITIES.slice(0, 60).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist><p class="small" style="margin:2px 0 0">घर किस शहर में चाहिए? दूसरे शहर में चाहिए तो यहाँ बदल दें। / Which city do you want the home in? Change it if it is not this city.</p>
@@ -1175,7 +1182,7 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
       const t = `<small style="color:#64748b">${hm(m.at)}</small>`;
       if (m.by === 'SYSTEM') return `<div class="bub sys">${esc(m.text)}</div>`;
       if (m.kind === 'HOME') { const gk = homeGone(m.homeId); return `<div class="bub br"${gk ? ' data-gone="' + gk + '"' : ''}><b>🏠 ${esc(m.title || '')}</b><br>${esc(m.price || '')} · ${esc(m.place || '')}${gk ? `<br><b style="color:#b91c1c">${GONE_WORDS[gk].shortHi}</b> <small style="color:#64748b">${GONE_WORDS[gk].shortEn}</small>` : b?.publicCard?.enabled && b.referralCode && m.homeId ? `<br><a href="/c/${esc(b.referralCode)}#h-${esc(m.homeId)}" rel="noopener">देखें / View</a>` : ''}${mediaBit(m.homeId, gk)}<br>${t}</div>`; }
-      if (m.kind === 'ASK') return `<div class="bub br ask"><b>✔ क्या आपकी ज़रूरत यही है?</b><br>${esc(m.text)}<br>${t}</div>`;
+      if (m.kind === 'ASK') return `<div class="bub br ask">${m.by === 'BOT' ? '<small class="bn">🤖 GENZ सहायक · <i>automatic (bot)</i></small><br>' : ''}<b>✔ क्या आपकी ज़रूरत यही है?</b><br>${esc(m.text)}<br>${t}</div>`;
       if (m.by === 'BOT') return `<div class="bub bot" data-testid="bot-msg"><small class="bn">🤖 GENZ सहायक · <i>automatic</i></small><br>${esc(m.text).replace(/\n/g, '<br>')}${m.en ? `<br><small style="color:#64748b">${esc(m.en).replace(/\n/g, '<br>')}</small>` : ''}<br>${t}</div>`;
       return `<div class="bub ${m.by === 'CUSTOMER' ? 'me' : 'br'}">${esc(m.text)}<br>${t}</div>`;
     }).join('');
@@ -1192,13 +1199,14 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
     const rl = sahayak.roomLink(l);
     const roomHtml = rl ? `<div class="card ok" data-testid="chat-room"><p class="t"><b>🏠 आपका क्लाइंट रूम · Your client room</b></p><p class="t"><small>अपना वही मोबाइल नंबर डालें जो आपने QR फ़ॉर्म में दिया था; कोड आपके फ़ोन पर SMS से आएगा (SMS चालू न हो तो ब्रोकर बताएँगे)। · Type the same mobile number you gave in the QR form; the code comes by SMS (if SMS is off, the broker tells you).</small></p><a class="btn g" href="/r/${esc(rl.replace(/^\/r\//, ''))}" data-testid="chat-room-open">खोलें / Open</a></div>` : '';
     const exploreHtml = l.chat.reqConfirmedAt && !ownerSide(l) ? `<div class="card" data-testid="chat-explore-card"><a class="btn l" href="/q/chat/${esc(tok)}/explore" data-testid="chat-explore">🔎 मेरी ज़रूरत के सारे घर देखें · Explore homes for my need</a></div>` : '';
-    const ask = askPending(l) ? `<div class="card pick" data-testid="chat-confirm"><p class="t"><b>${esc(who)} पूछ रहे हैं: क्या आपकी ज़रूरत यही है?</b><br><small>${esc(who)} asks: is this what you need?</small></p><p class="t">${esc(needLine(l))}</p>
+    const botAsk = [...l.chat.msgs].reverse().find(m => m.kind === 'ASK')?.by === 'BOT';   // B10: the card says plainly who is asking
+    const ask = askPending(l) ? `<div class="card pick" data-testid="chat-confirm"><p class="t">${botAsk ? '<b>🤖 GENZ सहायक (बॉट, ब्रोकर नहीं) पूछ रहा है: क्या आपकी ज़रूरत यही है?</b><br><small>The GENZ assistant (a bot, not the broker) asks: is this what you need?</small>' : `<b>${esc(who)} पूछ रहे हैं: क्या आपकी ज़रूरत यही है?</b><br><small>${esc(who)} asks: is this what you need?</small>`}</p><p class="t">${esc(needLine(l))}</p>
 <form method="post" action="/q/chat/${esc(tok)}/ans"><div class="big2"><button class="g" type="submit" name="a" value="YES" data-testid="chat-yes">✅ हाँ, सही है<br><small style="color:#e9ffe9">Yes, correct</small></button><button class="l" type="submit" name="a" value="EDIT" data-testid="chat-edit">✏️ बदलाव भेजें<br><small>Send a change</small></button></div>
 <label>बदलाव (सिर्फ़ ✏️ के लिए) / Change (only for ✏️)</label><textarea name="text" rows="2" maxlength="${MSG_MAX}" placeholder="जैसे: बजट 50 लाख, 3BHK"></textarea></form></div>` : '';
     const done = l.chat.reqConfirmedAt && !l.chat.revealedAt ? `<div class="card ok"><p class="t">✔ आपकी ज़रूरत पक्की हो गई। ${esc(who)} अब आपके लिए मेल खाता घर ढूँढ रहे हैं।<br><small>Your need is confirmed. ${esc(who)} is now looking for a home that matches.</small></p></div>` : '';
     const showApp = !!l.chat.reqConfirmedAt || l.chat.msgs.some(m => m.by === 'CUSTOMER' && m.kind !== 'INFO');   // offered once he has written / confirmed — not on the very first look
     const appCard = showApp ? `<div class="card app" id="app-card" style="display:none" data-testid="chat-app-card"><p class="t"><b id="app-title"></b></p><p class="small" id="app-sub"></p><div class="row"><button class="g" id="app-push" type="button" style="display:none">🔔 अलर्ट चालू करें / Turn alerts on</button><button class="l" id="app-later" type="button" style="display:none">बाद में / Later</button><button class="l" id="app-install" type="button" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to home screen</button></div><p class="small" id="app-ios" style="display:none">iPhone: Safari में नीचे “Share” → “Add to Home Screen”, फिर उस ऐप को खोलें। / On iPhone: Safari → Share → Add to Home Screen, then open that app.</p><p class="small" id="app-how" style="display:none" data-testid="chat-app-how">Android: Chrome में ⋮ मेन्यू → “Install app / Add to Home screen”। / Android: Chrome ⋮ menu → “Install app / Add to Home screen”.</p><p class="small" id="app-push-msg"></p></div>` : '';
-    res.send(shell('GENZ चैट', `<style>.bub{max-width:85%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.bub.bot{border-left:4px solid #6366f1;background:#f5f3ff}.bn{color:#4338ca;font-weight:700}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.chips button{flex:1 1 44%;min-height:46px;line-height:1.25}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px}</style>
+    res.send(shell('GENZ चैट', `<style>.bub{max-width:85%;min-width:0;overflow-wrap:anywhere;word-break:break-word;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.4;margin:6px 0;background:#fff;box-shadow:0 1px 1px #0002}.bub.me{margin-left:auto;background:#d9fdd3}.bub.sys{max-width:100%;text-align:center;background:#fef9c3;font-size:12px}.bub.ask{border:2px solid #86efac}.bub.bot{border-left:4px solid #6366f1;background:#f5f3ff}.bn{color:#4338ca;font-weight:700}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.chips button{flex:1 1 44%;min-height:46px;line-height:1.25}.cb{background:#efeae2;border-radius:14px;padding:8px 10px;min-height:120px;min-width:0;overflow-wrap:anywhere}</style>
 <div class="top"><h1>${esc(who)}</h1><p>GENZ verified broker${b?.reraNumber ? ` · RERA ${esc(b.reraNumber)}` : ''} · ${esc(partnerOf(l.partnerId)?.shopName || '')}</p></div>
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${promiseHtml}${visitsHtml}${roomHtml}${exploreHtml}${ask}${done}
@@ -1245,6 +1253,7 @@ ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${p
     if (text.length < 1) return chatPage(res, l, req.params.token, 'कुछ लिखें। / Write something.');
     { const k = contactKind(text, recentOwn(l.chat.msgs.filter(m => m.by === 'CUSTOMER'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return chatPage(res, l, req.params.token, `${esc(m.hi)}<br><small>${esc(m.en)}</small>`); } }
     if (hit(`sp-chatmsg:${l.id}`, 40, 3600_000) > 0) return chatPage(res, l, req.params.token, 'बहुत संदेश हो गए — थोड़ी देर बाद। / Too many messages — try later.');
+    { const lc = [...l.chat.msgs].reverse().find(m => m.by === 'CUSTOMER'); if (lc && lc.text === text && Date.now() - Date.parse(lc.at) < 3000) return res.redirect(303, `/q/chat/${req.params.token}`); }   // B10: a double tap sends once
     addMsg(l, { by: 'CUSTOMER', kind: 'MSG', text });
     if (askPending(l) && readIntent(text) === 'CONFIRM') confirmNeed(l);   // v109 — a typed “haan / sahi hai” confirms the need card, exactly like the ✅ button
     else sahayak.onText(l, text);
@@ -1263,7 +1272,7 @@ ${appCard}<div class="cb" data-testid="chat-box">${bubbles}</div>${chipsHtml}${p
       if (text.length < 2) return chatPage(res, l, req.params.token, 'बदलाव लिखें। / Write the change.');
       { const k = contactKind(text, recentOwn(l.chat.msgs.filter(m => m.by === 'CUSTOMER'), m => m.at, m => m.text)); if (k) { const m = contactMsg(k); return chatPage(res, l, req.params.token, `${esc(m.hi)}<br><small>${esc(m.en)}</small>`); } }
       addMsg(l, { by: 'CUSTOMER', kind: 'ANSWER', text: `✏️ ${text}` });
-      if (sahayak.off(l)) l.chat.reqAskedAt = undefined; else sahayak.onEdit(l, text);   // the broker asks again by hand — or the assistant reads the change and asks him again
+      if (sahayak.off(l)) { l.chat.reqAskedAt = undefined; sahayak.ack(l); } else sahayak.onEdit(l, text);   // the broker asks again by hand — or the assistant reads the change and asks him again
       db.save();
       if (hit(`sp-chatpush:${l.id}`, 1, 300_000) === 0) void pushTo(l.brokerId, { kind: 'matches', title: `${l.name} changed his need`, body: text.slice(0, 80), url: '/?tab=partners' });
     }
@@ -1417,12 +1426,12 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
     if (!wantCity && !cityBad) { const f = findCityNames(locIn).find(c => !sameCity(c.city, shopCity)); if (f) wantCity = f.city; }
     if (wantCity && sameCity(wantCity, shopCity)) wantCity = '';
     const locClean = wantCity ? (locIn.replace(new RegExp(`\\b${wantCity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'ig'), ' ').replace(/\s{2,}/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '') || wantCity) : locIn;
-    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 14), city: cityIn, locality: canonPlace(wantCity || shopCity, locClean), budget: str(body.budget, 60), ptype: str(body.ptype, 30), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
+    const keep = { kind: str(body.kind, 10), name: str(body.name, 80), phone: str(body.phone, 24), city: cityIn, locality: canonPlace(wantCity || shopCity, locClean), budget: str(body.budget, 60), ptype: str(body.ptype, 30), note: str(body.note, 300), home: str(body.home, 40), sign: str(body.sign, 80), direct: body.direct === '1' ? '1' : '', outcome: body.outcome === '1' ? '1' : '' };
     if (str(body.website, 50)) return res.redirect(303, `/q/${p.qrCode}/thanks`); // a bot filled the hidden field
     if (!formTsOk(body.t)) return page(res, p, 'कृपया फ़ॉर्म दोबारा भरें। / Please fill the form again.', keep);
     const kind = LEAD_KINDS.find(k => k.id === keep.kind)?.id as LeadKind | undefined;
     if (!kind) return page(res, p, 'बताएँ कि आपको क्या चाहिए। / Choose what you need.', keep);
-    const phone = phone10(keep.phone);
+    const phone = normPhone(keep.phone);
     if (keep.name.length < 2) return page(res, p, 'अपना नाम लिखें। / Write your name.', keep);
     if (!PHONE_RE.test(phone)) return page(res, p, 'सही 10 अंकों का मोबाइल नंबर लिखें। / Write a valid 10-digit mobile number.', keep);
     if (cityBad) return page(res, p, 'इस शहर का नाम पहचान नहीं पाए — शहर का सही नाम लिखें (जैसे Raipur, Pune, Indore)। / We could not recognise that city — write its proper name (for example Raipur, Pune, Indore).', keep);

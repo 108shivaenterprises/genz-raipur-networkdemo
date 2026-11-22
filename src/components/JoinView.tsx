@@ -54,7 +54,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   // v25: address (as on Aadhaar) + PIN; `fromPhoto` = at least one value came from “Fill from photo”
   const [address, setAddress] = useState(''); const [pincode, setPincode] = useState(''); const [fromPhoto, setFromPhoto] = useState(false);
   // v19: what the sponsor already filled in (the form opens PREFILLED), the copies he uploaded, and the copies this person adds now
-  const [pf, setPf] = useState<{ name: string; city: string; companyName: string; panNumber: string; aadhaarLast4: string; docs: string[] } | null>(null);
+  const [pf, setPf] = useState<{ name: string; city: string; companyName: string; panNumber: string; hasPan?: boolean; aadhaarLast4: string; docs: string[] } | null>(null);
   const [files, setFiles] = useState<{ PAN?: PreparedIdFile; AADHAAR?: PreparedIdFile }>({});
   const [autoVerified, setAutoVerified] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
@@ -67,7 +67,8 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   // v18: every broker gives PAN + Aadhaar (only the last 4 digits are kept)
   const brokerId = role === 'BROKER';
   const aadhaarDigits = normAadhaar(aadhaar);
-  const panIssue = panProblem(pan);
+  const panMasked = !!pf?.hasPan && pan === pf.panNumber;   // F1: the sponsor's PAN arrives masked; the server keeps using the stored one
+  const panIssue = panMasked ? null : panProblem(pan);
   const aadhaarIssue = aadhaarProblem(aadhaarDigits);
   const addrIssue = address ? addressProblem(address) : null;
   const pinIssue = pincode ? pinProblem(pincode) : null;
@@ -94,7 +95,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
     if (brokerId) {
-      if (!isValidPan(normPan(pan))) { const w = panProblem(pan); setError(w ? (hi ? w.hi : w.en) : (hi ? 'PAN डालें (जैसे ABCPD1234E)' : 'Enter your PAN (e.g. ABCPD1234E)')); return; }
+      if (!panMasked && !isValidPan(normPan(pan))) { const w = panProblem(pan); setError(w ? (hi ? w.hi : w.en) : (hi ? 'PAN डालें (जैसे ABCPD1234E)' : 'Enter your PAN (e.g. ABCPD1234E)')); return; }
       if (!isValidAadhaar(aadhaarDigits)) { const w = aadhaarProblem(aadhaarDigits); setError(w ? (hi ? w.hi : w.en) : (hi ? 'आधार नंबर डालें (12 अंक)' : 'Enter your Aadhaar number (12 digits)')); return; }
       if (addrIssue || pinIssue) { const w = addrIssue || pinIssue!; setError(hi ? w.hi : w.en); return; }
       if (!idConsent) { setError(hi ? 'PAN, आधार नंबर और पता रखने की सहमति दें' : 'Please agree to GENZ keeping your PAN, Aadhaar number and address'); return; }
@@ -106,10 +107,10 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         code: code.trim(), name, phone, email: phoneOnly ? undefined : email, password, consent: true, ...(otpTok ? { otpToken: otpTok, otpCode } : {}),
         state: loc.state || undefined, city: loc.city || undefined, locality: role !== 'GENZ_CONNECTOR' ? (loc.locality || undefined) : undefined, areas: areas.length ? areas : undefined,
         ...(brokerId ? { aadhaarNumber: aadhaarDigits, idConsent: true, kycConsent: true, address: address ? normAddress(address) : undefined, pincode: pincode ? normPin(pincode) : undefined, kycSource: fromPhoto ? 'PHOTO' : 'TYPED' } : {}),
-        ...(needsRera ? { companyName: company || undefined, reraNumber: rera || undefined, panNumber: normPan(pan) || undefined, gstin: gstin || undefined } : {}),
+        ...(needsRera ? { companyName: company || undefined, reraNumber: rera || undefined, panNumber: panMasked ? undefined : normPan(pan) || undefined, gstin: gstin || undefined } : {}),
         ...(role === 'GENZ_CONNECTOR' ? { shopType, shopName, locality: loc.locality || undefined, payoutUpi: upi || undefined } : {}),
-        ...(tier2 ? { companyName: company || undefined, reraNumber: rera || undefined, panNumber: normPan(pan) || undefined } : {}),
-        ...(role !== 'GENZ_CONNECTOR' && !needsRera && !tier2 ? { companyName: company || undefined, panNumber: pan || undefined } : {}),
+        ...(tier2 ? { companyName: company || undefined, reraNumber: rera || undefined, panNumber: panMasked ? undefined : normPan(pan) || undefined } : {}),
+        ...(role !== 'GENZ_CONNECTOR' && !needsRera && !tier2 ? { companyName: company || undefined, panNumber: panMasked ? undefined : pan || undefined } : {}),
       } as any);
       // v19: the account exists now (and is signed in), so the chosen PAN / Aadhaar copies can go up; a failure here never undoes the registration
       const failed: string[] = [];

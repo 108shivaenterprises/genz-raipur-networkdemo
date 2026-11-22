@@ -1015,7 +1015,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 )}
 
                 <StageStepper stage={activeDeal.stage} disputed={!!hubItemOf(activeDeal.id)?.openDispute} canEdit={currentUser.role !== 'TEAM_MEMBER' && perm('deal:update_stage') && !summaryOnly && !isClosed(dealDetail?.deal || activeDeal)} onChange={handleStageChange} />
-                {!summaryOnly && <NextSteps item={hubItemOf(activeDeal.id)} onGo={(t, k) => { goTab(tabAllowed(t) ? t : 'overview'); setTaskFilter(filterFor(k)); }} />}
+                {!summaryOnly && <NextSteps quiet={isOwnerViewer && ((!activeDeal.ownerRemunerationConfirmed && perm('mandate:read')) || activeVisits.some((v: SiteVisit) => !v.isVerified))} item={hubItemOf(activeDeal.id)} onGo={(t, k) => { goTab(tabAllowed(t) ? t : 'overview'); setTaskFilter(filterFor(k)); }} />}
                 {/* v47 — close a deal that did not happen / reopen; a visit that happened outside the app */}
                 {!summaryOnly && <DealStatusPanel deal={dealDetail?.deal || activeDeal} me={currentUser} verifiedVisits={hubItemOf(activeDeal.id)?.visits?.verified ?? 0}
                   onChanged={() => { onRefreshDeals(); loadHub(); loadDetail(activeDeal.id); }} />}
@@ -1038,7 +1038,10 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 </div>
               )}
               {showSimple && (
-                <DealSimple item={hubItemOf(activeDeal.id)} onBookVisit={perm('sitevisit:create') && !activeDeal.closed && activeDeal.stage !== 'Settled' ? () => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId) : undefined} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
+                <DealSimple pending={[
+                  ...(isOwnerViewer && !activeDeal.ownerRemunerationConfirmed && perm('mandate:read') ? [{ id: 'mandate', en: 'Confirm your brokerage terms (mandate)', hi: 'अपनी ब्रोकरेज शर्तें (मैंडेट) कन्फ़र्म करें', go: () => setMainMode('MANDATES') }] : []),
+                  ...(isOwnerViewer ? activeVisits.filter((v: SiteVisit) => !v.isVerified).slice(0, 3) : []).map((v: SiteVisit) => ({ id: `visit-${v.id}`, en: `Visit ${v.id} (${v.customerName}): code not entered yet`, hi: `विज़िट ${v.id} (${v.customerName}): OTP अभी नहीं डाला`, go: () => pickView(false) })),
+                ]} item={hubItemOf(activeDeal.id)} onBookVisit={perm('sitevisit:create') && !activeDeal.closed && activeDeal.stage !== 'Settled' ? () => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId) : undefined} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
                   doors={[
                     ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(canTasks ? ['responsibilities' as const] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const]),
@@ -3873,7 +3876,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700">{tx('Counter Notes &amp; Terms:', 'काउंटर नोट और शर्तें:')}</label>
+                <label className="text-xs font-semibold text-slate-700">{tx('Counter Notes & Terms:', 'काउंटर नोट और शर्तें:')}</label>
                 <textarea
                   rows={3}
                   required

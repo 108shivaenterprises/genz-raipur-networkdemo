@@ -98,7 +98,7 @@ export const ChatThread: React.FC<{
             <React.Fragment key={m.id}>
               {newDay && <div className="sticky top-0 z-10 flex justify-center py-1"><span className="rounded-full bg-white/95 px-3 py-0.5 text-xs font-semibold text-slate-500 shadow-xs">{dayLabel(m.at, hi)}</span></div>}
               <div className={`flex ${m.mine ? 'justify-end' : 'justify-start'} ${newRun ? 'pt-1.5' : ''}`}>
-                <div className={`${m.card ? 'w-[85%] sm:w-80' : 'max-w-[85%]'} whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-[15px] leading-snug ${m.priv ? 'ring-1 ring-amber-300' : ''} ${m.mine ? 'rounded-br-md bg-emerald-100 text-slate-900' : 'rounded-bl-md bg-white text-slate-900 shadow-xs'}`}>
+                <div className={`${m.card ? 'w-[85%] sm:w-80' : 'max-w-[85%]'} min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-2xl px-3 py-1.5 text-[15px] leading-snug ${m.priv ? 'ring-1 ring-amber-300' : ''} ${m.mine ? 'rounded-br-md bg-emerald-100 text-slate-900' : 'rounded-bl-md bg-white text-slate-900 shadow-xs'}`}>
                   {showWho && !m.mine && newRun && <div className="mb-0.5 text-xs font-bold text-indigo-700">{m.who}</div>}
                   {m.priv && <div className="mb-0.5 flex items-center gap-1 text-xs font-semibold text-amber-800" data-testid="msg-private"><Lock className="h-3 w-3" aria-hidden />{tx('Brokers only', 'सिर्फ़ ब्रोकर')}</div>}
                   {m.card}

@@ -44,7 +44,7 @@ const ActivityTab: React.FC = () => {
     <div className="space-y-5">
       <div className="flex items-center gap-2 text-xs">{tx('Last', 'पिछले')} <select value={days} onChange={e => setDays(Number(e.target.value))} className="rounded border border-slate-300 px-2 py-1">{[1, 7, 14, 30].map(d => <option key={d} value={d}>{d} {tx(d === 1 ? 'day' : 'days', 'दिन')}</option>)}</select></div>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-xs [&_th]:whitespace-nowrap [&_th]:px-2.5 [&_th]:py-2 [&_td]:px-2.5 [&_td]:py-1.5">
           <thead className="bg-slate-50 text-slate-500"><tr><th className="p-2.5">{tx('Who', 'कौन')}</th><th>{tx('Calls', 'कॉल')}</th><th>{tx('WhatsApp', 'WhatsApp')}</th><th>{tx('Meetings', 'मीटिंग')}</th><th>{tx('Site visits', 'साइट विज़िट')}</th><th>{tx('Open leads', 'खुली लीड')}</th><th>{tx('Overdue', 'देर')}</th><th>{tx('Booked', 'बुक')}</th><th>{tx('Deals', 'डील')}</th><th>{tx('Last check-in', 'आख़िरी चेक-इन')}</th></tr></thead>
           <tbody>{rows.map(r => (
             <tr key={r.id} className="border-t border-slate-100"><td className="p-2.5 font-medium">{r.name}<div className="text-[10px] font-normal text-slate-400">{r.title}</div></td>
@@ -71,9 +71,9 @@ const ActivityTab: React.FC = () => {
       {inc && (() => {
         const value = inc.base === 'VALUE'; const role = value ? 'DEVELOPER_BUILDER' : 'BROKER';
         return (
-        <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid="incentive-table">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4" data-testid="incentive-table">
           <div className="mb-2 text-sm font-bold">{value ? tx('Agent incentive', 'एजेंट इंसेंटिव') : tx('Firm share vs agent incentive', 'फ़र्म का हिस्सा बनाम एजेंट इंसेंटिव')}</div>
-          <table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-1">{tx('Member', 'सदस्य')}</th><th>{tx('Incentive', 'इंसेंटिव')}</th><th>{tx('Bookings', 'बुकिंग')}</th><th>{value ? tx('Booking value', 'बुकिंग मूल्य') : tx('Brokerage', 'ब्रोकरेज')}</th><th>{tx('Agent incentive', 'एजेंट इंसेंटिव')}</th>{!value && <th>{tx('Firm share', 'फ़र्म का हिस्सा')}</th>}</tr></thead>
+          <table className="w-full text-left text-xs [&_th]:whitespace-nowrap [&_th]:px-2.5 [&_th]:py-2 [&_td]:px-2.5 [&_td]:py-1.5"><thead className="text-slate-500"><tr><th className="py-1">{tx('Member', 'सदस्य')}</th><th>{tx('Incentive', 'इंसेंटिव')}</th><th>{tx('Bookings', 'बुकिंग')}</th><th>{value ? tx('Booking value', 'बुकिंग मूल्य') : tx('Brokerage', 'ब्रोकरेज')}</th><th>{tx('Agent incentive', 'एजेंट इंसेंटिव')}</th>{!value && <th>{tx('Firm share', 'फ़र्म का हिस्सा')}</th>}</tr></thead>
             <tbody>{inc.rows.length === 0 && <tr><td colSpan={6} className="py-3 text-center text-slate-400">{tx('No members','कोई सदस्य नहीं')}</td></tr>}
               {inc.rows.map(r => <tr key={r.id} className="border-t border-slate-100"><td className="py-1.5">{r.name}</td><td>{incentiveLabel(r, role, lang === 'hi')}</td><td>{r.bookings}</td><td>{inr(value ? r.value : r.brokerage)}</td><td>{inr(r.incentiveAccrued)}</td>{!value && <td>{inr(r.firmShareAccrued)}</td>}</tr>)}</tbody></table>
           <p className="mt-2 text-[10px] text-slate-400">{inc.note}</p>
@@ -181,9 +181,9 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
       </details>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-xs [&_th]:whitespace-nowrap [&_th]:px-2.5 [&_th]:py-2 [&_td]:px-2.5 [&_td]:py-1.5">
           <thead className="bg-slate-50 text-slate-500"><tr>
-            <th className="p-2.5">{tx('Name', 'नाम')}</th><th>{tx('Mobile', 'मोबाइल')}</th><th>{tx('Role', 'भूमिका')}</th><th>{tx('Leads', 'लीड')}</th><th>{tx('Deals', 'डील')}</th>{employerRole !== 'CONTRACTOR' && <th>{tx('Incentive', 'इंसेंटिव')}</th>}<th>{tx('Last login', 'पिछला लॉगिन')}</th><th>{tx('Status', 'स्टेटस')}</th><th></th>
+            <th className="p-2.5">{tx('Name', 'नाम')}</th><th>{tx('Mobile', 'मोबाइल')}</th><th>{tx('Role', 'भूमिका')}</th><th>{tx('Leads', 'लीड')}</th><th>{tx('Deals', 'डील')}</th>{employerRole !== 'CONTRACTOR' && <th>{tx('Incentive', 'इंसेंटिव')}</th>}<th>{tx('Last login', 'पिछला लॉगिन')}</th><th>{tx('Status', 'स्टेटस')}</th><th className="sticky right-0 bg-slate-50"></th>
           </tr></thead>
           <tbody>
             {members.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-slate-400">{tx('No team members yet','अभी कोई टीम सदस्य नहीं')}</td></tr>}
@@ -196,7 +196,7 @@ export const TeamView: React.FC<{ isBuilder?: boolean; canControl?: boolean; hr?
                 <td>{m.openLeads}/{m.leads}</td><td>{m.deals}</td>{employerRole !== 'CONTRACTOR' && <td><IncentiveCell m={m} base={employerRole === 'DEVELOPER_BUILDER' ? 'VALUE' : 'BROKERAGE'} save={async patch => { try { await api.teamUpdate(m.id, patch); flash(true, tx('Incentive saved', 'इंसेंटिव सेव हुआ')); await load(); } catch (x: any) { flash(false, x.message); } }} /></td>}
                 <td>{m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleDateString('en-IN') : '—'}</td>
                 <td><span className={m.status === 'VERIFIED' ? 'text-emerald-700' : 'text-red-600'}>{m.status === 'VERIFIED' ? tx('Active', 'चालू') : m.status}</span></td>
-                <td className="space-x-2 whitespace-nowrap pr-2.5 text-right">
+                <td className="sticky right-0 space-x-2 whitespace-nowrap bg-white pr-2.5 text-right shadow-[-6px_0_6px_-6px_rgba(15,23,42,0.25)]">
                   {m.status === 'VERIFIED' && <span className="inline-block align-middle"><CallButton toUserId={m.id} name={m.name} context="TEAM" compact className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-600 px-2 text-emerald-700" /></span>}
                   <button onClick={() => reset(m)} title={tx('New temporary password', 'नया अस्थायी पासवर्ड')} className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"><KeyRound className="h-3.5 w-3.5" /> {tx('Reset', 'रीसेट')}</button>
                   {m.status !== 'BLACKLISTED' && (

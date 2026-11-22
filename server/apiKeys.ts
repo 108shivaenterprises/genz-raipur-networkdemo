@@ -7,12 +7,13 @@ import { Router, type Request, type Response } from 'express';
 import { db } from './db.js';
 import { ctx, needs } from './auth.js';
 import { seal, unseal, vaultReady } from './vaultCrypto.js';
+import { voiceOn, otpMode } from './features.js';
 
 type Spec = { name: string; group: string; label: string; secret: boolean; re?: RegExp; hint?: string };
 export const API_KEYS: Spec[] = [
   { name: 'FAST2SMS_API_KEY', group: 'SMS — Fast2SMS', label: 'API key (Dev API)', secret: true },
   { name: 'FAST2SMS_OTP_ID', group: 'SMS — Fast2SMS', label: 'OTP template id (Smart OTP)', secret: false, re: /^[A-Za-z0-9_-]{1,40}$/ },
-  { name: 'SMS_WEBHOOK_URL', group: 'SMS — other gateway', label: 'Gateway URL', secret: false, re: /^https:\/\/[^\s]+$/, hint: 'https:// only' },
+  { name: 'SMS_WEBHOOK_URL', group: 'SMS — other gateway', label: 'Gateway URL', secret: true, re: /^https:\/\/[^\s]+$/, hint: 'https:// only' },
   { name: 'SMS_WEBHOOK_TOKEN', group: 'SMS — other gateway', label: 'Gateway token', secret: true },
   { name: 'FIREBASE_API_KEY', group: 'Firebase phone OTP', label: 'Web API key', secret: true },
   { name: 'FIREBASE_PROJECT_ID', group: 'Firebase phone OTP', label: 'Project id', secret: false, re: /^[a-z0-9-]{4,40}$/ },
@@ -50,7 +51,8 @@ export function createApiKeysRouter() {
     const all = rows();
     res.json({
       success: true, vault: vaultReady(),
-      keys: API_KEYS.map(k => {
+      // v178: no TURN group while voice is off; no SMS / Firebase metadata while codes go by WhatsApp (manual mode)
+      keys: API_KEYS.filter(k => (voiceOn() || !k.group.startsWith('Calls')) && (otpMode() !== 'manual' || !/^(SMS|Firebase)/.test(k.group))).map(k => {
         const row = all[k.name]; const v = apiKey(k.name); const source = row?.v ? 'panel' : v ? 'server' : 'none';
         return { name: k.name, group: k.group, label: k.label, secret: k.secret, hint: k.hint, source, shown: v ? (k.secret ? tail(v) : v) : '', updatedAt: row?.at || null, updatedBy: row ? db.byId('users', row.by)?.name || null : null };
       }),

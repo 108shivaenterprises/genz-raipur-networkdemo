@@ -24,6 +24,8 @@ import { ProtectionPill } from './ProtectionDays.js';
 import { slaState, slaLeftMin, SLA_DEFAULT_MIN } from '../shared/slaRules.js';
 import { CRM_STAGE_ORDER, type CrmBooking, type CrmLead, type CrmLeadStage } from '../types/crm.js';
 
+/** v178: minutes -> '45m' / '5h' / '10d' (English, Hindi) — '14389m late' told nobody anything */
+export const humanMin = (m: number): [string, string] => { const a = Math.abs(Math.round(m)); return a < 60 ? [`${a}m`, `${a} मि`] : a < 1440 ? [`${Math.floor(a / 60)}h`, `${Math.floor(a / 60)} घंटे`] : [`${Math.floor(a / 1440)}d`, `${Math.floor(a / 1440)} दिन`]; };
 const inr = (n: number) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const dt = (s?: string) => (s ? new Date(s).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 const STAGE_LABEL: Record<string, string> = {
@@ -233,7 +235,7 @@ export const CrmView: React.FC<Props> = ({ currentUser, permissions }) => {
                             <div className="truncate text-[11px] text-slate-500 font-medium">{l.projectName}</div>
                             <div className="mt-1 text-[11px] text-slate-700">{l.unitInterest || '—'}</div>
                             <div className="mt-1.5 flex flex-wrap gap-1">
-                              {(() => { const st = slaState(l, SLA_DEFAULT_MIN, Date.now()); const m = slaLeftMin(l, SLA_DEFAULT_MIN, Date.now()); return (st === 'BREACHED' || st === 'DUE_SOON') && m !== null ? <span data-testid="sla-chip" className={`rounded px-1.5 text-[9px] font-bold ${st === 'BREACHED' ? 'bg-red-600 text-white' : 'bg-amber-200 text-amber-900'}`}>{st === 'BREACHED' ? tx(`Call now · ${-m}m late`, `अभी कॉल करें · ${-m} मि देर`) : tx(`Reply in ${m}m`, `${m} मि में जवाब दें`)}</span> : null; })()}
+                              {(() => { const st = slaState(l, SLA_DEFAULT_MIN, Date.now()); const m = slaLeftMin(l, SLA_DEFAULT_MIN, Date.now()); return (st === 'BREACHED' || st === 'DUE_SOON') && m !== null ? <span data-testid="sla-chip" className={`rounded px-1.5 text-[9px] font-bold ${st === 'BREACHED' ? 'bg-red-600 text-white' : 'bg-amber-200 text-amber-900'}`}>{st === 'BREACHED' ? tx(`Call now · ${humanMin(-m)[0]} late`, `अभी कॉल करें · ${humanMin(-m)[1]} देर`) : tx(`Reply in ${humanMin(m)[0]}`, `${humanMin(m)[1]} में जवाब दें`)}</span> : null; })()}
                               {l.optedOutAt && <span className="rounded bg-red-100 px-1.5 text-[9px] font-bold text-red-700">{tx('OPTED OUT', 'ऑप्ट-आउट')}</span>}
                               {l.stale && <span className="rounded bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800">{tx('STALE', 'निष्क्रिय')}</span>}
                               {l.forwardUnseen && <span className="rounded bg-violet-100 px-1.5 text-[9px] font-bold text-violet-800">{tx('FORWARDED', 'फ़ॉरवर्ड')}</span>}

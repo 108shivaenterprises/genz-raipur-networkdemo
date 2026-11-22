@@ -23,6 +23,7 @@ import { isDealBroker, isSuper } from './access.js';
 import { releaseMemberLeads } from './leadflow.js';
 import { POLICY_VERSION } from './privacy.js';
 import type { SiteCheckin } from './db.js';
+import { sniffMime } from '../src/shared/propDocs.js';
 import { TEAM_ROLE_IDS, TEAM_ROLES, inferTeamRole, teamMaxFor, teamCapProblem, TEAM_MAX_DEFAULT, TEAM_CAP_ROLES } from '../src/shared/crmSales.js';
 import { cleanIncentive, incentiveOf, incentiveModeOf, incentiveBaseFor, isOwnBooking } from '../src/shared/incentiveRules.js';
 
@@ -61,7 +62,9 @@ export function createTeamRouter() {
     lng: z.number().min(68).max(98, 'Location is outside India'),
     accuracy: z.number().min(0).max(100000).optional(),
     leadId: z.string().max(40).optional(),
-    selfie: z.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, 'A selfie with the client is required').max(220_000, 'Selfie is too large'),
+    selfie: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, 'A selfie with the client is required').max(220_000, 'Selfie is too large')
+      // v178: a real photo, not 'data:image/jpeg;base64,AAAA' — decoded size and magic bytes must look like jpeg / png / webp
+      .refine(v => { const b = Buffer.from(v.slice(v.indexOf(',') + 1), 'base64'); return b.length >= 1500 && sniffMime(b) !== null && sniffMime(b) !== 'application/pdf'; }, 'The selfie is not a real photo — take it again'),
   });
   r.post('/checkin', needs('team:checkin'), rateLimit('checkin', 40, 24 * 60 * 60_000), (req: Request, res: Response) => {
     const u = me();

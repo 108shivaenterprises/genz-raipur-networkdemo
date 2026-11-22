@@ -44,6 +44,8 @@ export interface BotDeps {
   applyNeed(l: PartnerLead, ch: NeedChange): string[];
   /** v101 — search the NETWORK (other brokers' live homes) for his need: makes / updates his buyer need and returns how many homes there are and their price range; null = no budget yet / not a buyer */
   networkScan(l: PartnerLead): { count: number; min: number; max: number; reqId: string } | null;
+  /** B5 — his budget in rupees (the one reader the form and the matcher share); null = empty or unreadable */
+  budgetOf(l: PartnerLead): number | null;
   /** v98 — the city this lead is in (the shop's, else the broker's); '' when unknown. Any city of India. */
   cityOf(l: PartnerLead): string;
   /** v99 — what the QR form already told us about an OWNER's property (type, sale / rent, place, price, name, number) */
@@ -74,7 +76,8 @@ export function makeSahayak(d: BotDeps) {
   const botOf = (l: PartnerLead): LeadBot => (l.chat!.bot ||= {});
   const off = (l: PartnerLead) => !l.chat || !!l.chat.bot?.off || !!d.broker(l)?.sahayakOff || process.env.SAHAYAK === 'off';
   const quiet = (l: PartnerLead) => { const q = l.chat?.bot?.quietUntil; return !!q && Date.parse(q) > Date.now(); };
-  const say = (l: PartnerLead, hi: string, en: string, chips?: Chip[]) => d.addMsg(l, { by: 'BOT', kind: chips?.length ? 'CHIPS' : 'MSG', text: hi, en, ...(chips?.length ? { chips } : {}) });
+  // B7/B10: the same canned line is never written twice in a row (within an hour); the short acknowledgement below covers the customer instead
+  const say = (l: PartnerLead, hi: string, en: string, chips?: Chip[]) => { const lb = [...(l.chat?.msgs || [])].reverse().find(m => m.by === 'BOT' && (m.kind === 'MSG' || m.kind === 'CHIPS')); if (lb && lb.text === hi && Date.now() - Date.parse(lb.at) < 3600_000) return; d.addMsg(l, { by: 'BOT', kind: chips?.length ? 'CHIPS' : 'MSG', text: hi, en, ...(chips?.length ? { chips } : {}) }); };
   const first = (n: string) => String(n || '').trim().split(/\s+/)[0] || '';
   const sentIds = (l: PartnerLead) => [...new Set((l.chat?.msgs || []).filter(m => m.kind === 'HOME' && m.homeId).map(m => m.homeId!))];
   const propOf = (id: string) => st().properties.find(p => p.id === id);
@@ -82,7 +85,6 @@ export function makeSahayak(d: BotDeps) {
   const confirmed = (l: PartnerLead) => !!l.chat?.reqConfirmedAt;
   const buyerSide = (l: PartnerLead) => !d.ownerSide(l);
   const menu = (l: PartnerLead): Chip[] => { if (d.ownerSide(l)) { const iv = l.chat?.bot?.interview; return [...(iv && !iv.doneAt ? [M.info] : [M.status]), M.human]; } const m = [M.visit, M.more]; if (l.chat?.revealedAt && !botOf(l).roomId && buyerSide(l)) m.push(M.room); m.push(M.human); return m; };
-  const price = (h: Property) => { const p = Number(h.askingPrice) || 0; return p >= 1e7 ? `₹${(p / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr` : p >= 1e5 ? `₹${(p / 1e5).toFixed(2).replace(/\.?0+$/, '')} लाख` : `₹${p.toLocaleString('en-IN')}`; };
 
   /** the Hindi words applyNeed returns for what changed → the same in English (the English line of a bot message never carries Hindi words) */
 const CH_EN: Record<string, string> = { 'खरीदना': 'buy', 'किराया': 'rent', 'बजट': 'budget', 'प्रकार': 'type', 'शहर': 'city', 'इलाका': 'area', 'BHK': 'BHK' };
@@ -119,10 +121,21 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     d.hist(l, 'The GENZ assistant started the chat and asked him to confirm his need');
   }
 
+  /** B5: a home above the stated budget (up to 10% over — the matcher allows no more) is said to be so, in both languages */
+  const overNote = (l: PartnerLead, hs: Property[]): { hi: string; en: string } => {
+    const cap = buyerSide(l) ? d.budgetOf(l) : null; const over = cap ? hs.filter(h => (Number(h.askingPrice) || 0) > cap) : [];
+    if (!over.length) return { hi: '', en: '' };
+    const n = over.map(h => `“${h.title.slice(0, 30)}”`).join(', ');
+    return { hi: `\nℹ️ ${n} थोड़ा बजट से ऊपर ${over.length === 1 ? 'है' : 'हैं'} (आपका बजट ${rsHi(cap!)}).`, en: `\nℹ️ ${n} ${over.length === 1 ? 'is' : 'are'} slightly above your budget (${rsEn(cap!)}).` };
+  };
   /** show up to 3 live homes that fit and have not been shown yet. Returns how many were shown. */
   function showHomes(l: PartnerLead, by: 'BOT' | 'CUSTOMER' = 'BOT', why: 'first' | 'more' = 'more'): number {
     const all = d.matchesFor(l); botOf(l).seen = all.map(h => h.id);   // v103 — every home that fits NOW is known to the assistant; only a home that is not in this list counts as "new" later
-    const sent = sentIds(l); const pick = all.filter(h => !sent.includes(h.id)).slice(0, BOT_LIMITS.autoHomes);
+    const sent = sentIds(l); const fresh = all.filter(h => !sent.includes(h.id));
+    // B5: with no readable budget he is NOT sent the dearest home — only a couple of mid-range ones (none when there is just one to choose from), and he is asked for the budget
+    const noBudget = buyerSide(l) && !d.budgetOf(l); let pick: Property[];
+    if (noBudget) { const by = [...fresh].sort((a, z) => (Number(a.askingPrice) || 0) - (Number(z.askingPrice) || 0)); const mid = by.length >= 2 ? by.slice(Math.floor((by.length - 1) / 2), Math.floor((by.length - 1) / 2) + 2) : []; pick = mid.slice(0, 2); if (fresh.length && !pick.length) { const bb = botOf(l); bb.askedBudget = true; say(l, 'आपका बजट मुझे पता नहीं है — कृपया लिखें (जैसे “बजट 60 लाख”), फिर मैं सही घर दिखाऊँगा। 🙏', 'I do not know your budget yet — please write it (for example “budget 60 lakh”) and I will show the right homes. 🙏', [M.human]); return 0; } }
+    else pick = fresh.slice(0, BOT_LIMITS.autoHomes);
     if (!pick.length) {
       // v127 — the home he came for is one he already sees with another GENZ broker: say so plainly (never who)
       if (d.heldElsewhere(l) > 0) say(l, 'ℹ️ आपकी ज़रूरत का एक घर आप पहले से GENZ के एक दूसरे ब्रोकर के साथ देख रहे हैं। उस घर की विज़िट और आगे की बात उन्हीं के साथ होगी — यहाँ मैं आपको दूसरे घर दिखाऊँगा।', 'ℹ️ One home that fits you is one you are already seeing with another GENZ broker. Its visit and the next steps stay with that broker — here I will show you other homes.');
@@ -139,8 +152,9 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     }
     for (const h of pick) d.shareHome(l, h, by);
     const n = pick.length;
-    say(l, `✅ आपकी ज़रूरत से मेल खाते ${n} ${n === 1 ? 'घर' : 'घर'} ऊपर भेजे हैं — ये अभी उपलब्ध हैं (बिके या किराये पर गए घर मैं नहीं दिखाता)। पसंद आए तो 📅 विज़िट चुनें।`,
-      `I have sent ${n} matching home${n === 1 ? '' : 's'} above — they are available right now (I never show a sold or rented home). If you like one, choose 📅 visit.`, menu(l));
+    const on = overNote(l, pick);
+    say(l, `✅ आपकी ज़रूरत से मेल खाते ${n} ${n === 1 ? 'घर' : 'घर'} ऊपर भेजे हैं — ये अभी उपलब्ध हैं (बिके या किराये पर गए घर मैं नहीं दिखाता)। पसंद आए तो 📅 विज़िट चुनें।${on.hi}${noBudget ? '\nबजट लिख दें (जैसे “बजट 60 लाख”) — तब मैं आपके बजट के घर ही दिखाऊँगा।' : ''}`,
+      `I have sent ${n} matching home${n === 1 ? '' : 's'} above — they are available right now (I never show a sold or rented home). If you like one, choose 📅 visit.${on.en}${noBudget ? '\nPlease write your budget (for example “budget 60 lakh”) — then I will show only homes within it.' : ''}`, menu(l));
     autoRoom(l);   // v101 — his number is open now: the client room opens by itself (it needs his number)
     if (why === 'first' || !l.chat!.revealedAt) d.tellBroker(l, `🤖 ${l.name}: ज़रूरत पक्की`, `सहायक ने ${n} मेल खाते घर भेजे — विज़िट तय होते ही उसका नंबर दिखेगा।`);
     else d.tellBroker(l, `🤖 ${l.name}: ${n} और घर भेजे`, 'सहायक ने चैट में नए मेल खाते घर दिखाए।');
@@ -174,7 +188,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     const id = iv.step as AskId; const r = applyAnswer(iv.fields, id, input);
     if (!r.ok) {
       // a typed line that is clearly something else (rate, photos, "when will it be live") is served normally; the question stays open
-      if (input.text && !input.chip) { const it = readIntent(input.text); if (['PRICE', 'PHOTOS', 'VISIT', 'STATUS'].includes(it) && id !== 'price') return false; }
+      if (input.text && !input.chip) { const it = readIntent(input.text); if (['PRICE', 'PHOTOS', 'VISIT', 'STATUS', 'STOP'].includes(it) && id !== 'price') return false; }
       iv.tries += 1;
       if (iv.tries >= 3 && id !== 'price' && id !== 'ptype' && id !== 'address') { iv.skipped.push(id); iv.step = undefined; askNext(l, { hi: 'कोई बात नहीं, इसे ब्रोकर आपसे पूछ लेंगे।', en: 'No problem — the broker will ask you this later.' }); return true; }
       if (iv.tries >= 4) { iv.step = undefined; b.needsBroker = 'listing-answer'; say(l, 'मैं ये समझ नहीं पा रहा — मैंने ब्रोकर को बता दिया है, वे आपसे यहीं पूछ लेंगे। 🙏', 'I cannot read this — I have told the broker, he will ask you here. 🙏', [M.human]); d.tellBroker(l, `✍️ ${l.name}: जवाब नहीं पढ़ पाया`, 'सहायक मालिक का जवाब नहीं समझ सका — आप ड्राफ़्ट पूरा कर लें।'); return true; }
@@ -338,7 +352,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     for (const id of ids.slice(-6)) {
       const h = propOf(id); const t = h?.title || id;
       if (d.isLive(h)) { const s = h!.listingStatus === 'under_negotiation' ? ['⏳ बातचीत में है', 'in talks'] : ['✅ उपलब्ध है', 'available']; lines.push(`• ${t} — ${s[0]}`); en.push(`• ${t} — ${s[1]}`); }
-      else { gone++; const s = !h ? ['❌ अब लिस्ट में नहीं', 'no longer listed'] : h.listingStatus === 'sold' ? ['❌ बिक चुका है', 'sold'] : h.listingStatus === 'rented' ? ['❌ किराये पर जा चुका है', 'rented out'] : ['⚠️ अभी उपलब्ध नहीं', 'not available now']; lines.push(`• ${t} — ${s[0]}`); en.push(`• ${t} — ${s[1]}`); }
+      else { gone++; const gw = GONE_WORDS[goneKind(h, false) || 'GONE']; lines.push(`• ${t} — ${gw.shortHi}`); en.push(`• ${t} — ${gw.shortEn}`); }   // B10: the same words as the push ("taken off the list" for a withdrawn home)
     }
     say(l, `अभी की स्थिति:\n${lines.join('\n')}`, `Status right now:\n${en.join('\n')}`, menu(l));
     if (gone) showHomes(l);
@@ -407,7 +421,8 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       const more = d.matchesFor(l).filter(h => !sent.has(h.id)).slice(0, BOT_LIMITS.autoHomes);
       if (more.length) {
         showMore(more); const n = more.length;
-        say(l, `इसकी जगह ${n} मेल खाते ${n === 1 ? 'घर' : 'घर'} ऊपर भेजे हैं — ये अभी उपलब्ध हैं।`, `I have sent ${n} matching home${n === 1 ? '' : 's'} above instead — available right now.`, menu(l));
+        const on = overNote(l, more);
+        say(l, `इसकी जगह ${n} मेल खाते ${n === 1 ? 'घर' : 'घर'} ऊपर भेजे हैं — ये अभी उपलब्ध हैं।${on.hi}`, `I have sent ${n} matching home${n === 1 ? '' : 's'} above instead — available right now.${on.en}`, menu(l));
         (b.watch ||= { pushes: 0 }).lastPushAt = nowIso();
       } else say(l, 'अभी इसके जैसा कोई और मेल खाता घर नहीं है — नया घर आते ही मैं यहीं बता दूँगा। 🙏', 'There is no other matching home right now — I will tell you here as soon as a new one comes. 🙏', menu(l));
       if (b.pendingHome && lost.some(x => x.id === b.pendingHome)) { b.awaiting = undefined; b.pendingHome = undefined; }
@@ -432,8 +447,9 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     if (!pick.length) return 0;
     const wasOpen = showMore(pick); const n = pick.length;
     w.pushes++; w.lastPushAt = nowIso(); b.seen = [...known, ...pick.map(h => h.id)];
-    say(l, `🆕 आपकी ज़रूरत से मेल खाता ${n === 1 ? 'नया घर' : `${n} नए घर`} आया है — ऊपर भेजा है। पसंद आए तो 📅 विज़िट दबाएँ।`,
-      `🆕 ${n === 1 ? 'A new home' : `${n} new homes`} that fit${n === 1 ? 's' : ''} your need just came — I have sent ${n === 1 ? 'it' : 'them'} above. If you like ${n === 1 ? 'it' : 'one'}, choose 📅 visit.`, menu(l));
+    const on = overNote(l, pick);
+    say(l, `🆕 आपकी ज़रूरत से मेल खाता ${n === 1 ? 'नया घर' : `${n} नए घर`} आया है — ऊपर भेजा है। पसंद आए तो 📅 विज़िट दबाएँ।${on.hi}`,
+      `🆕 ${n === 1 ? 'A new home' : `${n} new homes`} that fit${n === 1 ? 's' : ''} your need just came — I have sent ${n === 1 ? 'it' : 'them'} above. If you like ${n === 1 ? 'it' : 'one'}, choose 📅 visit.${on.en}`, menu(l));
     d.hist(l, `The assistant showed ${n} new matching home(s) that came after he confirmed: ${pick.map(h => `“${h.title}”`).join(', ').slice(0, 160)}`);
     if (b.needsBroker === 'no-match') b.needsBroker = undefined;
     if (!wasOpen) d.tellBroker(l, `🤖 ${l.name}: नया घर आया`, `सहायक ने ${n} नया मेल खाता घर भेजा — विज़िट तय होते ही उसका नंबर दिखेगा।`);
@@ -484,11 +500,35 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     d.tellBroker(l, `🏠 ${l.name} का क्लाइंट रूम खुला`, 'सहायक ने ग्राहक के कहने पर रूम बनाया। कोड ग्राहक के फ़ोन पर SMS से जाता है।');
   }
 
+  /** B7: whatever the reason (quiet, throttled, bot off) the customer always sees one short "your message reached the broker" bubble — at most once per 10 minutes */
+  const ACK = { hi: 'आपका संदेश broker तक पहुँच गया है, वे जल्द जवाब देंगे 🙏', en: 'Your message has reached the broker — he will reply soon. 🙏' };
+  function ack(l: PartnerLead) {
+    if (!l.chat) return; const b = botOf(l);
+    if (b.lastAckAt && Date.now() - Date.parse(b.lastAckAt) < 10 * 60_000) return;
+    b.lastAckAt = nowIso(); d.addMsg(l, { by: 'BOT', kind: 'MSG', text: ACK.hi, en: ACK.en });
+  }
+  /** B8: he does not want to be contacted — the assistant stops pushing, the lead is closed as "not going ahead" (the broker can reopen it) and the broker is told */
+  function optOut(l: PartnerLead) {
+    const b = botOf(l); const w = (b.watch ||= { pushes: 0 }); w.pushes = BOT_WATCH.maxPushes; b.awaiting = undefined; b.pendingHome = undefined; if (b.interview) b.interview.step = undefined;
+    if (l.chat && !l.chat.reqConfirmedAt) l.chat.reqAskedAt = undefined;   // v181: the open "Is this what you need?" card closes with the opt-out
+    if (l.status !== 'WON' && l.status !== 'LOST') { l.status = 'LOST'; l.lostAt = nowIso(); l.lostReason = 'ग्राहक ने चैट में मना किया / customer opted out in the chat'; }
+    d.hist(l, 'Asked not to be contacted / said he is not interested — no more automatic homes; lead closed as “not going ahead”');
+    d.tellBroker(l, `🔕 ${l.name}: अब नहीं चाहिए`, 'ग्राहक ने चैट में मना कर दिया — अपने आप संदेश बंद, लीड “आगे नहीं बढ़ी” में गई। चाहें तो स्टेज बदलकर वापस खोलें।');
+    if (!off(l)) say(l, 'ठीक है 🙏 मैं अब अपने आप कोई घर या संदेश नहीं भेजूँगा। कभी ज़रूरत हो तो यहीं लिख दीजिए।', 'Okay 🙏 I will not send any homes or messages on my own any more. Write here any time you need something.');
+  }
   /** the customer's own words */
   function onText(l: PartnerLead, text: string) {
     if (!l.chat) return;
+    const msgs = l.chat.msgs; const mark = msgs[msgs.length - 1];
+    onTextInner(l, text);
+    const i = mark ? l.chat.msgs.lastIndexOf(mark) : -1;
+    if (!(i >= 0 ? l.chat.msgs.slice(i + 1) : l.chat.msgs).some(m => m.by === 'BOT')) { const it = readIntent(text); if (it !== 'CONFIRM' && it !== 'THANKS') ack(l); }
+  }
+  function onTextInner(l: PartnerLead, text: string) {
+    if (!l.chat) return;
     const b = botOf(l); const intent = readIntent(text);
     if (intent === 'HUMAN') { b.awaiting = undefined; if (b.interview) b.interview.step = undefined; if (!off(l)) handoff(l, 'human'); return; }
+    if (intent === 'STOP') return optOut(l);   // heard first: while a time / question is open, while quiet, and with the assistant switched off
     // a question the bot asked him is answered even while it is "quiet" (he started the flow)
     if (b.awaiting === 'WHEN' && b.pendingHome) {
       const w = readWhen(text);
@@ -502,7 +542,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     if (off(l)) return;
     // v101 — a clear change of his NEED is data, not chat: it is applied even while the assistant is "quiet" (after “talk to the broker”, or while the broker is writing). He asked in plain words — the answer must not be silence.
     const brokerActive = quiet(l) && !b.needsBroker;
-    if (quiet(l) && !(intent === 'NEED' && buyerSide(l)) && intent !== 'CANCEL_VISIT' && intent !== 'STOP') return;   // v109 — cancelling a visit and “stop” are always heard
+    if (quiet(l) && !(intent === 'NEED' && buyerSide(l)) && intent !== 'CANCEL_VISIT') return;   // v109 — cancelling a visit and “stop” are always heard
     switch (intent) {
       case 'STATUS': if (d.ownerSide(l)) return ownerStatus(l); return fallback(l);
       case 'GREET': if (!confirmed(l)) return remindConfirm(l); return say(l, `नमस्ते ${first(l.name)}! 👋 बताइए, क्या मदद करूँ?`, `Hello ${first(l.name)}! 👋 How can I help?`, menu(l));
@@ -513,8 +553,8 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       case 'PHOTOS': return mediaReply(l);
       case 'PRICE': {
         const hs = liveSent(l).slice(0, 4);
-        const list = hs.length ? `\nलिस्टेड कीमत:\n${hs.map(h => `• ${h.title} — ${price(h)}`).join('\n')}` : '';
-        const listEn = hs.length ? `\nListed price:\n${hs.map(h => `• ${h.title} — ${price(h)}`).join('\n')}` : '';
+        const list = hs.length ? `\nलिस्टेड कीमत:\n${hs.map(h => `• ${h.title} — ${rsHi(Number(h.askingPrice) || 0)}`).join('\n')}` : '';
+        const listEn = hs.length ? `\nListed price:\n${hs.map(h => `• ${h.title} — ${rsEn(Number(h.askingPrice) || 0)}`).join('\n')}` : '';
         return handoff(l, 'price', [`रेट और मोलभाव पर ब्रोकर आपसे खुद बात करेंगे — मैंने उन्हें बता दिया है।${list}`, `The broker will talk to you himself about the rate and any negotiation — I have told him.${listEn}`]);
       }
       case 'NEED': {
@@ -549,11 +589,6 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       case 'DENY': if (!!l.chat.reqAskedAt && !l.chat.reqConfirmedAt) return say(l, 'ठीक है — क्या बदलना है? बजट, इलाका या BHK लिखें, जैसे “बजट 60 लाख” या “Pandri में 3BHK”।', 'Alright — what should change? Write the budget, area or BHK, e.g. “budget 60 lakh” or “3BHK in Pandri”.'); return;
       case 'WHO': return say(l, `मैं GENZ सहायक हूँ — एक स्वचालित सहायक (इंसान नहीं)। घर दिखाना, विज़िट तय करना और आपकी ज़रूरत समझना मेरा काम है। रेट और मोलभाव ब्रोकर खुद करते हैं।`, `I am the GENZ assistant — an automatic assistant (not a person). I show homes, set up visits and note your need. Rates and bargaining are done by the broker himself.`, menu(l));
       case 'HELP': return say(l, 'मैं ये कर सकता हूँ: 🏠 घर दिखाना · 📅 विज़िट तय/रद्द करना · 📷 फ़ोटो-वीडियो भेजना · ✏️ आपकी ज़रूरत बदलना (जैसे “बजट 60 लाख”). रेट पर ब्रोकर से बात करवाता हूँ।', 'I can: 🏠 show homes · 📅 set up or cancel a visit · 📷 send photos / videos · ✏️ change your need (e.g. “budget 60 lakh”). For rates I connect you to the broker.', menu(l));
-      case 'STOP': {
-        const w = (botOf(l).watch ||= { pushes: 0 }); w.pushes = BOT_WATCH.maxPushes; d.hist(l, 'Asked the assistant to stop sending new homes on its own');
-        d.tellBroker(l, `🔕 ${l.name}: नए घर भेजना बंद`, 'ग्राहक ने कहा कि अपने आप नए घर न भेजें। चैट में आप जवाब दे सकते हैं।');
-        return say(l, 'ठीक है 🙏 अब मैं अपने आप नए घर नहीं भेजूँगा। आप लिखेंगे तभी जवाब दूँगा; ब्रोकर भी यहीं उपलब्ध हैं।', 'Okay 🙏 I will not send new homes on my own any more. I will answer only when you write; the broker is here too.');
-      }
       case 'PROPERTY_Q': {
         // the assistant never invents a fact about a home: it says so, asks the broker once, and does NOT go quiet (he can keep asking)
         const b2 = botOf(l); const addr = /(address|पता|kahan|kidhar|location)/i.test(text);
@@ -608,8 +643,10 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       }
       case 'VOK': {
         const v = (b.visits || []).find(x => x.id === arg); if (!v || v.status !== 'COUNTER') return;
-        v.status = 'OK'; v.answeredAt = nowIso(); v.preferred = v.counter || v.preferred; echo(`✔ ठीक है — ${v.preferred}`); d.visitAgreed(l, v.id);
-        say(l, `तय हो गया ✅ ${v.title} · ${v.preferred}। ब्रोकर आपसे यहीं पक्का करेंगे।`, `Settled ✅ ${v.title} · ${v.preferred}. The broker will confirm with you here.`);
+        // B6: the agreed time is the broker's counter — the reminder / follow-up clock and the English words move with it (an unreadable time clears the clock rather than firing at the old one)
+        const cw = readWhen(v.counter || '');
+        v.status = 'OK'; v.answeredAt = nowIso(); v.preferred = v.counter || v.preferred; v.preferredEn = cw?.en || v.counter || v.preferredEn; v.whenIso = cw?.iso; v.remindedAt = undefined; v.askedAfterAt = undefined; echo(`✔ ठीक है — ${v.preferred}`); d.visitAgreed(l, v.id);
+        say(l, `तय हो गया ✅ ${v.title} · ${v.preferred}। ब्रोकर आपसे यहीं पक्का करेंगे।`, `Settled ✅ ${v.title} · ${v.preferredEn || v.preferred}. The broker will confirm with you here.`);
         d.tellBroker(l, `✔ ${l.name} ने समय मान लिया`, `${v.title} · ${v.preferred} — अब विज़िट बुक करें।`); d.hist(l, `Accepted the visit time “${v.preferred}” for “${v.title}”`); return;
       }
       case 'VAGAIN': {
@@ -663,7 +700,8 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     const t = String(when || '').trim().slice(0, 80);
     if (t.length < 3) return { ok: false, error: 'Write the visit day and time (for example “Sunday 11 am”)' };
     if (containsContact(t)) return { ok: false, error: 'Do not write a phone number or any contact id' };
-    const v: LeadVisitReq = { id: `LVR-${rnd()}`, at: nowIso(), homeId, title: h.title.slice(0, 120), preferred: t, status: 'OK', answeredAt: nowIso() };
+    const tw = readWhen(t);   // B6: a readable time gets a clock, so the visit is reminded and followed up like any other
+    const v: LeadVisitReq = { id: `LVR-${rnd()}`, at: nowIso(), homeId, title: h.title.slice(0, 120), preferred: t, ...(tw ? { preferredEn: tw.en } : {}), ...(tw?.iso ? { whenIso: tw.iso } : {}), status: 'OK', answeredAt: nowIso() };
     (b.visits ||= []).push(v);
     d.addMsg(l, { by: 'BROKER', kind: 'MSG', text: `📅 ${first(brokerName) || 'ब्रोकर'} ने विज़िट तय की: “${v.title}” · ${t}।`, vid: v.id });
     d.hist(l, `Broker created a visit to “${v.title}” — ${t}`);
@@ -698,6 +736,6 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     interview: iv ? { finished: !!iv.doneAt, asking: !!iv.step, draftId: iv.draftId || null, ...progress(iv.fields, iv.skipped) } : null,
     network: b.network ? { count: b.network.count, min: b.network.min, max: b.network.max, reqId: b.network.reqId || null, at: b.network.at } : null }; };
 
-  return { welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSchedule, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed, syncRoom, remindVisits };
+  return { ack, welcome, onConfirmed, onEdit, onText, onChip, onPromise, brokerReply, brokerSchedule, brokerSaid, explore, like, roomLink, sentIds, view, off, startVisit, showHomes, follow, viewed, syncRoom, remindVisits };
 }
 export type Sahayak = ReturnType<typeof makeSahayak>;

@@ -31,7 +31,7 @@ const wrong = c.code === '111111' ? '222222' : '111111'; const codes: string[] =
 for (let i = 0; i < 5; i++) codes.push((checkOtp(c.ref, '9833333333', 'reset', wrong, T + 1000 + i) as any).code);
 out.wrongs = codes;
 out.rightAfterLock = (checkOtp(c.ref, '9833333333', 'reset', c.code, T + 6000) as any).code;
-out.newWhileLocked = (issueOtp('9833333333', 'reset', T + 120_000) as any).code;
+out.newWhileLocked = (issueOtp('9833333333', 'reset', T + 120_000) as any).ok;
 out.afterLock = (issueOtp('9833333333', 'reset', T + 16 * 60_000) as any).ok;
 let day = 0; for (let i = 0; i < 5; i++) { const r: any = issueOtp('9844444444', 'owner', T + i * 61_000); if (r.ok) day++; else out.dayCode = r.code; } out.dayOk = day;
 let cap = ''; for (let i = 0; i < 30 && !cap; i++) { const r: any = issueOtp('98550000' + String(10 + i), 'signup', T + 500_000); if (!r.ok) cap = r.code + '|' + r.status + '|' + /[\u0900-\u097F]/.test(r.errorHi) + '|' + Object.keys((db.getState() as any).manualOtp).length; } out.cap = cap;
@@ -55,7 +55,7 @@ describe('manual OTP module', () => {
   it('60 s cooldown per phone; a code expires after 10 minutes', () => { expect(U.cooldown).toBe('COOLDOWN'); expect(U.expired).toBe('EXPIRED'); });
   it('5 wrong codes lock the phone for 15 minutes (even the right code, and a new request); then it opens', () => {
     expect(U.wrongs.slice(0, 4)).toEqual(['WRONG_CODE', 'WRONG_CODE', 'WRONG_CODE', 'WRONG_CODE']); expect(U.wrongs[4]).toBe('LOCKED');
-    expect(U.rightAfterLock).toBe('LOCKED'); expect(U.newWhileLocked).toBe('LOCKED'); expect(U.afterLock).toBe(true);
+    expect(U.rightAfterLock).toBe('LOCKED'); expect(U.newWhileLocked).toBe(true); expect(U.afterLock).toBe(true);
   });
   it('3 codes per phone per day', () => { expect(U.dayOk).toBe(3); expect(U.dayCode).toBe('PHONE_DAY'); expect(U.badPhone).toBe('BAD_PHONE'); });
   it('global cap (OTP_DAILY_CAP=20): the 21st code in 24 h gets the friendly bilingual "try later" (503)', () => { expect(U.cap).toBe('DAILY_CAP|503|true|22'); });   // v176: 20 live codes; the 2 used / locked ones are in the store but do not count

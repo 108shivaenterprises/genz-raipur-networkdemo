@@ -29,14 +29,14 @@ import { boardFor } from './leadboard.js';
 import { findState } from '../src/shared/india.js';
 import { networkStrength } from './revenue.js';
 import { termsProblem } from '../src/shared/ownerListRules.js';
-import { normPan, isValidPan } from './kyc.js';
+import { normPan, isValidPan, maskPan } from './kyc.js';
 import { pickOwnerPlan, planProblem, inPool, expiryStep, type OwnerListPlan, type OwnerListingState } from '../src/shared/ownerListRules.js';
 
 const st = () => db.getState();
 const me = () => ctx().user as UserProfile;
 const nowIso = () => new Date().toISOString();
 const DAY = 86400_000;
-const bad = (res: Response, error: string, status = 400, code?: string) => res.status(status).json({ error, ...(code ? { code } : {}) });
+const bad = (res: Response, error: string, status = 400, code?: string, errorHi?: string) => res.status(status).json({ error, ...(errorHi ? { errorHi } : {}), ...(code ? { code } : {}) });
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const phone10 = (v: unknown) => String(v || '').replace(/\D/g, '').slice(-10);
 const PHONE_RE = /^[6-9]\d{9}$/;
@@ -145,8 +145,8 @@ export function readOtpToken(tok: unknown, phone: string): { body: string; sig: 
   } catch { return null; }
 }
 /** v141 — check a signed OTP token (any server copy); one code opens one door, five tries. '' = right; else the error text */
-export function checkOtpToken(tok: unknown, phone: string, code: string, consume = true): string {
-  if (otpMode() === 'manual') { const c = checkOtp(tok, phone, 'signup', code, Date.now(), consume); return c.ok ? '' : c.error; }
+export function checkOtpToken(tok: unknown, phone: string, code: string, consume = true, ip?: string): string {
+  if (otpMode() === 'manual') { const c = checkOtp(tok, phone, 'signup', code, Date.now(), consume, ip); return c.ok ? '' : c.error; }
   const t = readOtpToken(tok, phone); if (!t) return 'Ask for a code first.';
   if (t.e < Date.now()) return 'The code has expired — ask for a new one.';
   const book = otpBook(); const rec = (book[t.n] ||= { exp: t.e, tries: 0 });
@@ -162,7 +162,7 @@ export async function sendSignupOtp(phone: string, ip?: string): Promise<({ otpT
   if (!PHONE_RE.test(phone)) return { error: 'Enter your 10-digit mobile number', status: 400, code: 'BAD_PHONE' };
   const g = ipPhoneGate(ip, phone); if (g) return { error: g.error, errorHi: g.errorHi, wait: g.wait, status: g.status, code: g.code };
   if (otpMode() === 'manual') {   // D5: the code waits for an admin / the person's own WhatsApp message; the browser gets only a reference
-    const o = issueOtp(phone, 'signup'); if (!o.ok) return { error: o.error, errorHi: o.errorHi, wait: o.wait, status: o.status, code: o.code };
+    const o = issueOtp(phone, 'signup', Date.now(), ip); if (!o.ok) return { error: o.error, errorHi: o.errorHi, wait: o.wait, status: o.status, code: o.code };
     const v = requestView(o, phone, 'signup'); return { ...v, otpToken: o.ref };
   }
   if (hit(`signup-otp:${phone}`, 5, 3600_000, 3600_000) > 0) return { error: 'Too many codes for this number — try again in an hour.', status: 429, code: 'TOO_MANY' };
@@ -176,10 +176,10 @@ export function createOwnerAuthRouter() {
   const r = Router();
   r.post('/otp', rateLimit('owner-otp-ip', 20, 3600_000), async (req: Request, res: Response) => {
     const phone = phone10(req.body?.phone);
-    if (!PHONE_RE.test(phone)) return bad(res, 'Enter your 10-digit mobile number');
+    if (!PHONE_RE.test(phone)) return bad(res, 'Enter your 10-digit mobile number', 400, 'BAD_PHONE', '10 अंकों का मोबाइल नंबर लिखें');
     const g = ipPhoneGate(req.ip, phone); if (g) return res.status(g.status).json(failBody(g));
     if (otpMode() === 'manual') {   // D5: same code path and limits as sign-up; the answer is the same for a new and a returning owner
-      const o = issueOtp(phone, 'owner'); if (!o.ok) return res.status(o.status).json(failBody(o));
+      const o = issueOtp(phone, 'owner', Date.now(), req.ip); if (!o.ok) return res.status(o.status).json(failBody(o));
       return res.json({ ...requestView(o, phone, 'owner'), otpToken: o.ref });
     }
     if (hit(`owner-otp:${phone}`, 5, 3600_000, 3600_000) > 0) return bad(res, 'Too many codes for this number — try again in an hour.', 429);
@@ -197,7 +197,7 @@ export function createOwnerAuthRouter() {
     const tk = readOtpToken(req.body?.otpToken, phone);
     let usedNonce = ''; const manual = otpMode() === 'manual';
     if (manual) {
-      const c = checkOtp(req.body?.otpToken, phone, 'owner', code, Date.now(), false);
+      const c = checkOtp(req.body?.otpToken, phone, 'owner', code, Date.now(), false, req.ip);
       if (!c.ok) return res.status(c.status).json(failBody(c));
     } else if (tk) {
       // the signed token: valid on any copy of the server
@@ -216,13 +216,13 @@ export function createOwnerAuthRouter() {
     const s = st(); const now = nowIso();
     let u = s.users.find(x => phone10(x.phone) === phone && x.role === 'PROPERTY_OWNER');
     const isNew = !u;
-    if (u && !u.selfSignup) return bad(res, 'This number already has a GENZ owner account with a password — sign in with it.', 409, 'USE_PASSWORD');
-    if (u && ['BLACKLISTED', 'REJECTED', 'SUSPENDED'].includes(u.verificationStatus)) return bad(res, `This account is ${u.verificationStatus.toLowerCase()}. Contact GENZ.`, 403);
+    if (u && !u.selfSignup) return bad(res, 'This number already has a GENZ owner account with a password — sign in with it.', 409, 'USE_PASSWORD', 'इस नंबर पर पासवर्ड वाला GENZ मालिक अकाउंट पहले से है — उसी पासवर्ड से साइन-इन करें।');   // the code is NOT spent here
+    if (u && ['BLACKLISTED', 'REJECTED', 'SUSPENDED'].includes(u.verificationStatus)) return bad(res, `This account is ${u.verificationStatus.toLowerCase()}. Contact GENZ.`, 403, undefined, 'यह अकाउंट बंद है। GENZ से संपर्क करें।');
     if (!u) {
       const name = str(req.body?.name, 80);
-      if (name.length < 2) return bad(res, 'Write your name to create your account', 400, 'NAME_REQUIRED');
-      if (s.users.some(x => phone10(x.phone) === phone && x.role !== 'PROPERTY_OWNER')) return bad(res, 'This number belongs to another kind of GENZ account.', 409);
-      if (req.body?.consent !== true) return bad(res, 'Please agree to GENZ keeping your name and mobile number to run your listing', 400, 'CONSENT_REQUIRED');
+      if (name.length < 2) return bad(res, 'Write your name to create your account', 400, 'NAME_REQUIRED', 'अकाउंट बनाने के लिए अपना नाम लिखें');
+      if (s.users.some(x => phone10(x.phone) === phone && x.role !== 'PROPERTY_OWNER')) return bad(res, 'This number belongs to another kind of GENZ account.', 409, undefined, 'यह नंबर GENZ के किसी दूसरे तरह के अकाउंट का है।');
+      if (req.body?.consent !== true) return bad(res, 'Please agree to GENZ keeping your name and mobile number to run your listing', 400, 'CONSENT_REQUIRED', 'लिस्टिंग चलाने के लिए GENZ को आपका नाम और मोबाइल नंबर रखने की सहमति दें');
       u = {
         id: `USR-OWN-${Date.now()}${crypto.randomBytes(2).toString('hex')}`, name, email: `owner-${phone}@phone.genz.local`, phone: `+91 ${phone}`, role: 'PROPERTY_OWNER', city: str(req.body?.city, 60), state: findState(str(req.body?.state, 60))?.name,
         consent: { policyVersion: 'owner-1', acceptedAt: now }, verificationStatus: 'VERIFIED', verificationNotes: 'Self sign-up with mobile OTP (mobile verified; ID / title checks are separate).',
@@ -292,7 +292,7 @@ export function createOwnerListingRouter() {
     if (!isValidPan(pan)) return bad(res, 'PAN format is invalid (e.g. ABCDE1234F)');
     if (st().users.some(x => x.id !== u.id && x.panNumber && normPan(x.panNumber) === pan)) return bad(res, 'This PAN is already linked to another GENZ account.', 409, 'PAN_IN_USE');
     u.panNumber = pan; db.save();
-    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'OWNER_PAN_ADDED', `${u.name} added PAN …${pan.slice(-4)}`);
+    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'OWNER_PAN_ADDED', `${u.name} added PAN ${maskPan(pan)}`);
     res.json({ success: true });
   });
   r.get('/mine', needs('property:read'), (_req, res) => {

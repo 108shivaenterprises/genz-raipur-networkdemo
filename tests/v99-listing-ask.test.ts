@@ -63,7 +63,7 @@ describe('reading answers', () => {
   });
   it('KEEP only works when there is a price to keep', () => {
     expect(applyAnswer(flat, 'price', { chip: 'KEEP' }).ok).toBe(false);
-    const f = run({ ...flat, askingPrice: 5000000 }, [['price', { chip: 'KEEP' }]]); expect(f.priceConfirmed).toBe(true); expect(f.ownerApprovedNetPrice).toBe(5000000);
+    const f = run({ ...flat, askingPrice: 5000000 }, [['price', { chip: 'KEEP' }]]); expect(f.priceConfirmed).toBe(true); expect(f.ownerApprovedNetPrice).toBeUndefined();   // D11: net price stays pending until the owner confirms it
   });
   it('the address refuses a phone number; ptype can be typed in Hindi or English', () => {
     expect(applyAnswer(flat, 'address', { text: 'near temple 9876543210' }).ok).toBe(false);

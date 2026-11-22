@@ -6,7 +6,7 @@ import { useUI } from '../lib/ui.js';
 import { isValidIndianPhone, sanitizePhone } from '../lib/validate.js';
 import { PROPERTY_TYPES } from '../shared/india.js';
 import { formatINR } from '../lib/utils.js';
-import { enqueue, flushQueue, isNetworkError, pendingCount, type PendingOp } from '../lib/offline.js';
+import { setQueueUser, enqueue, flushQueue, isNetworkError, pendingCount, type PendingOp } from '../lib/offline.js';
 import type { UserProfile } from '../types/index.js';
 
 const STAGES = ['NEW', 'CONTACTED', 'SITE_VISIT', 'NEGOTIATION', 'DEAL', 'LOST'] as const;
@@ -33,6 +33,7 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
   const [stage, setStage] = useState<string>('ALL');
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<any | null>(null);
+  setQueueUser(currentUser.id);
   const [pending, setPending] = useState(pendingCount());
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [tpl, setTpl] = useState(() => { try { return { ...DEFAULT_TPL, ...JSON.parse(localStorage.getItem(TPL_KEY) || '{}') }; } catch { return DEFAULT_TPL; } });
@@ -99,7 +100,7 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
       {(!online || pending > 0) && (
         <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" role="status">
           {online ? <RefreshCw className="h-4 w-4" aria-hidden /> : <WifiOff className="h-4 w-4" aria-hidden />}
-          <span className="flex-1">{!online ? tx('You are offline. Changes are saved on this phone and will sync automatically.', 'आप ऑफ़लाइन हैं। बदलाव इस फ़ोन में सेव हैं और नेट आते ही अपने-आप सिंक होंगे।') : tx(`${pending} change(s) waiting to sync`, `${pending} बदलाव सिंक होने बाकी`)}</span>
+          <span className="flex-1">{!online ? tx('You are offline. Changes are saved on this phone and will sync automatically.', 'आप ऑफ़लाइन हैं। बदलाव इस फ़ोन में सेव हैं और नेट आते ही अपने-आप सिंक होंगे।') + (pending > 0 ? tx(` ${pending} pending, will send when online.`, ` ${pending} बाकी, नेट आते ही भेजी जाएँगी।`) : '') : tx(`${pending} pending, will send when online`, `${pending} बाकी, नेट आते ही भेजी जाएँगी`)}</span>
           {online && pending > 0 && <button onClick={sync} className="rounded-lg bg-amber-600 px-3 py-1.5 font-semibold text-white">{tx('Sync now', 'अभी सिंक करें')}</button>}
         </div>
       )}
@@ -134,11 +135,11 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
           <button onClick={() => setAdding(true)} className="mt-4 min-h-12 rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white">{tx('Add your first client', 'पहला क्लाइंट जोड़ें')}</button>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {shown.map(c => {
             const idx = STAGES.indexOf(c.stage); const next = idx >= 0 && idx < 3 ? STAGES[idx + 1] : c.stage === 'NEGOTIATION' ? 'DEAL' : null;
             return (
-              <div key={c.id} className="rounded-xl border border-slate-200 bg-white p-3.5">
+              <div key={c.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5">
                 <div className="flex items-start justify-between gap-2">
                   <button className="min-w-0 text-left" onClick={() => setOpen(c)}>
                     <div className="truncate text-sm font-bold text-slate-900">{c.name}</div>

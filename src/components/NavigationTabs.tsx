@@ -1,4 +1,5 @@
 import { goto } from '../lib/goto.js';
+import { useBackClose } from '../lib/backStack.js';
 import { chatHome } from '../lib/goto.js';
 import React, { useEffect, useState } from 'react';
 import {
@@ -265,6 +266,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const simple = role === 'BROKER' || role === 'BUYER_TENANT' || role === 'PROPERTY_OWNER' || tabs.length > 6;   // v137 — owner / buyer keep their own bottom bar even with few tabs
   const [more, setMore] = useState(false);
   const [moreFilter, setMoreFilter] = useState('');
+  useBackClose(more, () => { setMore(false); setMoreFilter(''); });   // v178: Back / Escape close the More sheet
   // v44: the first id that exists wins (so “Deals” opens the deal pipeline; Deal Desk stays one tap away in More)
   const pick = (ids: string[]) => ids.map(id => tabs.find(x => x.id === id)).find(Boolean);
   const HOME = { ids: ['dashboard'], key: 'nav.home', en: 'Home' };

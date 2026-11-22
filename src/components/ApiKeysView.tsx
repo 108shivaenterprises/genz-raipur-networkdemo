@@ -43,12 +43,13 @@ export const ApiKeysView: React.FC = () => {
     <section className="space-y-4" data-testid="api-keys">
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
         <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><KeyRound className="h-5 w-5 text-amber-500" />{tx('API Keys', 'API कीज़')}</h2>
-        <p className="mt-1 text-sm text-slate-600">{tx('A key saved here is used at once by every part of the app (SMS, OTP, calls). Leave it empty to use the server setting. A saved secret is never shown again — only its last 4 characters.',
-          'यहाँ सेव की गई key तुरंत पूरे ऐप में लगती है (SMS, OTP, कॉल)। खाली छोड़ें तो सर्वर सेटिंग वाली चलेगी। सेव होने के बाद पूरी key दोबारा नहीं दिखती — सिर्फ़ आख़िरी 4 अक्षर।')}</p>
+        <p className="mt-1 text-sm text-slate-600">{tx('A key saved here is used at once by every part of the app. Leave it empty to use the server setting. A saved secret is never shown again — only its last 4 characters.',
+          'यहाँ सेव की गई key तुरंत पूरे ऐप में लगती है। खाली छोड़ें तो सर्वर सेटिंग वाली चलेगी। सेव होने के बाद पूरी key दोबारा नहीं दिखती — सिर्फ़ आख़िरी 4 अक्षर।')}</p>
         {!vault && <p role="alert" className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 p-2 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{tx('The server vault key is missing, so keys cannot be stored here safely.', 'सर्वर की वॉल्ट key नहीं है, इसलिए यहाँ keys सुरक्षित नहीं रखी जा सकतीं।')}</p>}
         {msg && <p role="status" className={`mt-2 rounded-lg p-2 text-sm ${msg.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}>{msg.text}</p>}
       </div>
       {keys === null && <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />{tx('Loading…', 'लोड हो रहा है…')}</p>}
+      {keys !== null && groups.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{tx('No keys are needed right now: codes go by WhatsApp and voice is off.', 'अभी कोई key ज़रूरी नहीं: कोड WhatsApp से जाते हैं और वॉइस बंद है।')}</p>}
       {groups.map(g => (
         <div key={g} className="rounded-2xl border border-slate-200 bg-white p-4">
           <h3 className="mb-3 text-sm font-semibold text-slate-900">{g}</h3>

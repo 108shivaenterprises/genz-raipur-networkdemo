@@ -56,7 +56,7 @@ const lead = async (last4: string) => (await list()).leads.find((l: any) => l.ph
 const chat = async (tok: string) => (await fetch(`${B}/q/chat/${tok}`)).text();
 const say = (tok: string, text: string) => form(undefined, `/q/chat/${tok}/msg`, { text });
 const tap = (tok: string, k: string) => form(undefined, `/q/chat/${tok}/quick`, { k });
-const bots = (l: any) => l.chat.msgs.filter((m: any) => m.by === 'BOT');
+const bots = (l: any) => l.chat.msgs.filter((m: any) => m.by === 'BOT' && !m.text.includes('broker तक पहुँच गया'));   // v179 (B7): the short "reached the broker" bubble is not an answer
 const lastBot = (l: any) => bots(l).at(-1);
 
 describe('GENZ सहायक — buyer chat from the QR to a visit', { timeout: 90000 }, () => {
@@ -154,7 +154,7 @@ describe('GENZ सहायक — buyer chat from the QR to a visit', { timeout
     for (const h of homes) { const r = await call(jar.BRK1, 'POST', `/api/listings/${h}/status`, { status: 'withdrawn' }); if (r.status === 200) { gone = h; break; } }   // a home with a live deal cannot be withdrawn — his own new one can
     expect(gone).not.toBe('');
     const ex = await (await fetch(`${B}/q/chat/${tok}/explore`)).text(); expect(ex).not.toContain(`data-testid="ex-${gone}"`);
-    await tap(tok, 'AVAIL'); const l = await lead('9701'); expect(bots(l).some((m: any) => /अब लिस्ट में नहीं|अभी उपलब्ध नहीं|बिक चुका/.test(m.text))).toBe(true);
+    await tap(tok, 'AVAIL'); const l = await lead('9701'); expect(bots(l).some((m: any) => /अब लिस्ट में नहीं|अभी उपलब्ध नहीं|बिक चुका|लिस्ट से हट गया/.test(m.text))).toBe(true);
   });
   it('Explore lists live homes that fit; 👍 shows one to the broker; wrong tokens / unconfirmed leads get nothing', async () => {
     const ex = await (await fetch(`${B}/q/chat/${tok}/explore`)).text(); expect(ex).toContain('Explore'); expect(ex).toContain('data-testid="ex-');
@@ -195,6 +195,7 @@ describe('GENZ सहायक — switches, quiet time, no-match, owners', { ti
     const l = await lead('9704'); expect((await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/chat`, { text: 'Namaste, main dekh raha hoon' })).status).toBe(200);
     expect((await lead('9704')).bot.quiet).toBe(true);
     const n = bots(await lead('9704')).length; await say(t, 'hello'); expect(bots(await lead('9704')).length).toBe(n);
+    expect((await lead('9704')).chat.msgs.some((m: any) => m.by === 'BOT' && m.text.includes('broker तक पहुँच गया'))).toBe(true);   // v179: but he is told it reached the broker
     expect(l0).toBeTruthy();
   });
   it('the broker switches the bot off for one chat: no answers, and the manual ask works as before', async () => {

@@ -29,13 +29,20 @@ const HI: Record<string, string> = {
   'priv.title': 'मेरा डेटा और प्राइवेसी', 'priv.export': 'मेरा डेटा डाउनलोड करें (JSON)', 'priv.erase': 'मेरा खाता मिटाने का अनुरोध', 'priv.grievance': 'शिकायत / सुधार का अनुरोध',
 };
 
+/** saved choice first; with none saved, a Hindi browser (hi*) starts in Hindi (v178) */
+export function readLang(): Lang {
+  try {
+    const saved = localStorage.getItem('genz_lang');
+    if (saved) return saved === 'hi' ? 'hi' : 'en';
+    return /^hi/i.test(navigator.language || '') ? 'hi' : 'en';
+  } catch { return 'en'; }
+}
+
 interface Ctx { lang: Lang; setLang: (l: Lang) => void; t: (key: string, fallback: string) => string }
 const I18n = createContext<Ctx>({ lang: 'en', setLang: () => {}, t: (_k, f) => f });
 
 export const LangProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [lang, setLangState] = useState<Lang>(() => {
-    try { return (localStorage.getItem('genz_lang') as Lang) === 'hi' ? 'hi' : 'en'; } catch { return 'en'; }
-  });
+  const [lang, setLangState] = useState<Lang>(readLang);
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
     try { localStorage.setItem('genz_lang', l); } catch { /* preference only */ }

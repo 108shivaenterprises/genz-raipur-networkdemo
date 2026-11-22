@@ -631,7 +631,7 @@ export interface PrivacyRequest {
   id: string;
   userId: string;
   userName: string;
-  type: 'ERASURE' | 'CORRECTION' | 'GRIEVANCE';
+  type: 'ERASURE' | 'CORRECTION' | 'GRIEVANCE' | 'CONSENT_WITHDRAWAL';
   details: string;
   status: 'OPEN' | 'COMPLETED' | 'REJECTED';
   createdAt: string;
@@ -658,7 +658,9 @@ export interface UserProfile {
   panNumber?: string;
   gstin?: string;
   /** DPDP: what the user agreed to and when */
-  consent?: { policyVersion: string; acceptedAt: string; ip?: string };
+  consent?: { policyVersion: string; acceptedAt: string; ip?: string; withdrawnAt?: string };
+  /** S8: a completed CONSENT_WITHDRAWAL request — marketing-style pushes (broadcast, digest, matches, community) stop; deal / consent / system alerts continue */
+  consentWithdrawnAt?: string;
   erasedAt?: string;
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | 'BLACKLISTED';
   verificationNotes?: string;
@@ -1573,6 +1575,8 @@ export interface LeadBot {
   roomLinked?: string; roomHomes?: string[];
   /** v120 — by when he wants it (one question after he confirms) */
   timeline?: 'NOW' | 'SOON' | 'LOOK'; askedTimeline?: boolean;
+  /** B7 — when the customer last saw the short "your message reached the broker" bubble (at most once per 10 min) */
+  lastAckAt?: string;
 }
 export interface PartnerLead {
   id: string;                      // PLD-xxxxxxxxxx

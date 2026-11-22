@@ -13,6 +13,8 @@ import {
   CollaborationOffer,
   OwnerMandate,
 } from './types/index.js';
+import { setQueueUser, pendingCount, flushQueue, type PendingOp } from './lib/offline.js';
+import { pushTabEntry } from './lib/backStack.js';
 import { api, setUnauthorizedHandler, type PropertyFacets } from './lib/api.js';
 import { hasPerm } from './lib/permissions.js';
 import { CallHost } from './components/calls/CallHost.js';
@@ -135,8 +137,18 @@ export default function App() {
   });
   // v78: the menu's "My profile & reviews" lands on My profile; the Profiles tab in the bar lands on Find
   const [peopleStart, setPeopleStart] = useState<'find' | 'mine'>('find');
-  const setActiveTab = (t: TabType) => { setActiveTabRaw(t); if (t !== 'people') setPeopleStart('find'); try { sessionStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ } };
+  const tabRef = useRef(activeTab); tabRef.current = activeTab;
+  const setActiveTab = (t: TabType) => { if (t !== tabRef.current) pushTabEntry(t); setActiveTabRaw(t); if (t !== 'people') setPeopleStart('find'); try { sessionStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ } };
   const chatBadge = useChatBadge(permissions, activeTab);
+  // v178: Back walks back through the tabs the person opened instead of leaving the app
+  useEffect(() => {
+    try { window.history.replaceState({ ...(window.history.state || {}), genzTab: tabRef.current }, ''); } catch { /* old browser */ }
+    const pop = (e: PopStateEvent) => {
+      const t = e.state?.genzTab as TabType | undefined;
+      if (t && ALL_TABS.includes(t) && t !== tabRef.current) { setActiveTabRaw(t); try { sessionStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ } }
+    };
+    window.addEventListener('popstate', pop); return () => window.removeEventListener('popstate', pop);
+  }, []);
   // v23: a screen can ask to open another tab ("Open Plans & Fees")
   useEffect(() => {
     const go = (e: Event) => { const t = (e as CustomEvent).detail as TabType; if (ALL_TABS.includes(t)) setActiveTab(t); };
@@ -338,6 +350,12 @@ export default function App() {
     await loadData();
   };
 
+  // v181: the signed-in user's own unsent offline entries go out as soon as he signs in (never while "viewing as" someone)
+  useEffect(() => {
+    if (!currentUser?.id || impersonatedBy) return;
+    setQueueUser(currentUser.id);
+    if (pendingCount() > 0) void flushQueue((op: PendingOp) => (op.kind === 'add' ? api.clientAdd(op.body) : api.clientStage(op.id, op.body))).catch(() => { /* still offline: ClientsView retries */ });
+  }, [currentUser?.id, impersonatedBy?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // v59 — this phone's alerts follow the person signed in on it (never while "viewing as" someone), in the language of his app
   const { lang } = useI18n();
   useEffect(() => { if (currentUser?.id && !impersonatedBy) void syncPush(currentUser.id); }, [currentUser?.id, impersonatedBy?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -347,15 +365,19 @@ export default function App() {
   }, [currentUser?.id, impersonatedBy?.id, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
+    // S6: try to send offline work first; whatever is still unsent is named in the confirm text (it is lost on sign-out)
+    if (currentUser?.id) { setQueueUser(currentUser.id); if (pendingCount() > 0) { try { await flushQueue((op: PendingOp) => (op.kind === 'add' ? api.clientAdd(op.body) : api.clientStage(op.id, op.body))); } catch { /* still offline */ } } }
+    const unsent = currentUser?.id ? pendingCount() : 0;
     const ok = await confirm(
       tx('Sign Out', 'साइन आउट'),
-      tx('Are you sure you want to sign out?', 'क्या आप वाकई साइन आउट करना चाहते हैं?'),
+      tx('Are you sure you want to sign out?', 'क्या आप वाकई साइन आउट करना चाहते हैं?') + (unsent ? tx(` ${unsent} entries are not sent yet. They stay on this phone and send when you sign in again with internet.`, ` ${unsent} एंट्री अभी भेजी नहीं गई हैं। वे इस फ़ोन में रहेंगी और इंटरनेट के साथ दोबारा साइन इन करने पर भेज दी जाएँगी।`) : ''),
       { confirmLabel: tx('Sign Out', 'साइन आउट'), cancelLabel: tx('Cancel', 'रद्द करें') }
     );
     if (!ok) return;
     // v59 — signing out also stops this person's alerts on this phone (a shared office phone carries nobody's alerts after it)
     if (!impersonatedBy) { try { await disablePush(); } catch { /* the browser refused: the server copy goes after failed sends */ } }
     try { await api.logout(); } catch { /* ignore */ }
+    // v181: the queue stays under this user's own key (genz.pending.v1.<id>); only the same user's next sign-in flushes it
     setCurrentUser(null);
     setPermissions([]);
     setProperties([]); setRequirements([]); setDeals([]); setOffers([]); setDisputes([]); setConstructionLeads([]);
@@ -758,7 +780,7 @@ export default function App() {
         </div>
       </footer>
 
-      {showPrivacy && <PrivacyCenter role={currentUser?.role} onClose={() => setShowPrivacy(false)} />}
+      {showPrivacy && <PrivacyCenter role={currentUser?.role} otpOnly={!!(currentUser as { selfSignup?: boolean } | null)?.selfSignup} onClose={() => setShowPrivacy(false)} />}
 
       {/* Interactive Modals (downloaded the first time one is opened) */}
       <TabErrorBoundary area="modal">

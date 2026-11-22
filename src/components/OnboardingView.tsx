@@ -542,7 +542,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                           </button>
                         </>
                       )}
-                      {u.verificationStatus === 'VERIFIED' && u.role !== 'SUPERADMIN' && (
+                      {u.verificationStatus === 'VERIFIED' && isSuperAdmin && u.role !== 'SUPERADMIN' && u.id !== currentUser.id && (
                         <button
                           onClick={() => handleReviewUser(u.id, 'BLACKLIST')}
                           className="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"

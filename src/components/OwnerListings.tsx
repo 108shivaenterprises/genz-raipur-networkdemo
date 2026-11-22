@@ -16,15 +16,22 @@ const inp = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 te
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50';
 const ghost = 'inline-flex min-h-11 items-center justify-center gap-1 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-800 disabled:opacity-50';
 
+/** v178: the code request survives a reload (same tab) — a reload used to lose the ref and burn another of the 3 daily codes */
+const OTP_KEEP = 'genz.ownerotp';
+const keptOtp = (): { phone: string; otpV: OtpReq; tok: string; sentAt: number } | null => {
+  try { const k = JSON.parse(sessionStorage.getItem(OTP_KEEP) || 'null'); return k && k.sentAt + (k.otpV?.expiresInSec ?? 600) * 1000 > Date.now() ? k : null; } catch { return null; }
+};
+
 export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () => void }> = ({ onLoggedIn, onBack }) => {
   const tx = useTx();
+  const kept = useRef(keptOtp()).current;
   /** v80 — useTx() returns a NEW function on every render. `detect` used to depend on it, so every re-render made a "new" detect, the effect ran again, asked the phone for its location again and
    *  set state again — an endless loop (the flicker, and the city never settling). Now the latest tx sits in a ref and detect is created once. */
   const txRef = useRef(tx); txRef.current = tx;
-  const [phone, setPhone] = useState(''); const [step, setStep] = useState<'phone' | 'code'>('phone'); const [code, setCode] = useState('');
+  const [phone, setPhone] = useState(kept?.phone || ''); const [step, setStep] = useState<'phone' | 'code'>(kept ? 'code' : 'phone'); const [code, setCode] = useState('');
   const [name, setName] = useState(''); const [city, setCity] = useState(''); const [stateName, setStateName] = useState(''); const [country, setCountry] = useState('India'); const [ok, setOk] = useState(false);
   const [locNote, setLocNote] = useState(''); const [locBusy, setLocBusy] = useState(false); const touched = useRef(false); const autoRan = useRef(false); const alive = useRef(true);
-  const [otpV, setOtpV] = useState<OtpReq | null>(null); const [sentAt, setSentAt] = useState(0); const [errObj, setErrObj] = useState<OtpErr | null>(null); const [tok, setTok] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [otpV, setOtpV] = useState<OtpReq | null>(kept?.otpV || null); const [sentAt, setSentAt] = useState(kept?.sentAt || 0); const [errObj, setErrObj] = useState<OtpErr | null>(null); const [tok, setTok] = useState(kept?.tok || ''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   /** put a place into the form — only while the owner has not typed or chosen anything himself */
   const apply = useCallback((r: { state?: string; city?: string; country?: string }) => {
@@ -59,7 +66,7 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
   }, [apply]);
   // ONCE, the first time a new owner reaches the code step (never again on a re-render)
   useEffect(() => { if (step === 'code' && !autoRan.current) { autoRan.current = true; detect(); } }, [step, detect]);
-  const sendCode = async () => { const r = await api.ownerOtp(phone.replace(/\D/g, '')); setOtpV(r); setSentAt(Date.now()); setTok(r.otpToken || ''); setCode(''); };
+  const sendCode = async () => { const p10 = phone.replace(/\D/g, ''); const r = await api.ownerOtp(p10); const at = Date.now(); setOtpV(r); setSentAt(at); setTok(r.otpToken || ''); setCode(''); try { sessionStorage.setItem(OTP_KEEP, JSON.stringify({ phone: p10, otpV: { ...r, devCode: undefined }, tok: r.otpToken || '', sentAt: at })); } catch { /* private mode */ } };
   const go = async (fn: () => Promise<void>) => { setBusy(true); setErr(''); setErrObj(null); try { await fn(); } catch (e: any) { setErr(e.message); setErrObj(e); } finally { setBusy(false); } };
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-10">
@@ -74,8 +81,8 @@ export const OwnerSignIn: React.FC<{ onLoggedIn: (s: any) => void; onBack: () =>
             <button className={btn + ' w-full'} disabled={busy || phone.length !== 10} data-testid="owner-send">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Send code', 'कोड भेजें')}</button>
           </form>
         ) : (
-          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { const r = await api.ownerVerify({ phone, code: code.replace(/\D/g, ''), otpToken: tok || undefined, name: name.trim() || undefined, city: city || undefined, state: stateName || undefined, consent: ok || undefined }); void r; onLoggedIn(await api.getMe()); }); }}>
-            {otpV && <OtpSent v={otpV} sentAt={sentAt} onResend={() => void go(sendCode)} busy={busy} />}
+          <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void go(async () => { const r = await api.ownerVerify({ phone, code: code.replace(/\D/g, ''), otpToken: tok || undefined, name: name.trim() || undefined, city: city || undefined, state: stateName || undefined, consent: ok || undefined }); void r; try { sessionStorage.removeItem(OTP_KEEP); } catch { /* ignore */ } onLoggedIn(await api.getMe()); }); }}>
+            {otpV && <OtpSent v={otpV} sentAt={sentAt} onResend={() => void go(sendCode)} busy={busy} locked={errObj?.body?.code === 'LOCKED'} />}
             <input className={inp + ' text-center font-mono text-xl tracking-widest'} inputMode="numeric" maxLength={6} autoFocus autoComplete="one-time-code" placeholder="••••••" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} data-testid="owner-code" />
             <p className="text-[11px] font-semibold text-slate-700">{tx('First time here? Fill these in. Returning owners can skip them.', 'पहली बार हैं? ये भरें। पुराने मालिक छोड़ सकते हैं।')}</p>
             <>

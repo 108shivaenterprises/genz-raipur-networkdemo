@@ -23,6 +23,7 @@ import {
   PlatformActivityEvent,
   OwnerMandate,
 } from '../types/index.js';
+import { readLang } from './i18n.js';
 import type { CrmLead, CrmBooking } from '../types/crm.js';
 
 /** v20 — drop-down values for a partial (paged) listing list */
@@ -49,7 +50,13 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     ...(options.headers || {}),
   };
 
-  const res = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+  let res: Response;
+  try { res = await fetch(url, { ...options, headers, credentials: 'same-origin' }); }
+  catch {
+    // v178: a dead network is not "Failed to fetch"
+    const en = 'No network — check your connection and try again.', hi = 'नेटवर्क नहीं है — कनेक्शन देखकर फिर कोशिश करें।';
+    throw new ApiError(readLang() === 'hi' ? hi : en, 0, 'OFFLINE', { error: en, errorHi: hi });
+  }
   let data: any = {};
   try {
     data = await res.json();
@@ -59,7 +66,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     if (res.status === 401 && !url.startsWith('/api/auth/login')) onUnauthorized?.();
-    throw new ApiError(data.error || (res.status === 413 ? 'The file or photos are too large — use a smaller file or a link.' : res.status >= 500 ? 'Server problem — please try again in a minute.' : 'Request failed — please try again.'), res.status, data.code, data);
+    throw new ApiError((readLang() === 'hi' && (data.errorHi || (typeof data.hi === 'string' && data.hi))) || data.error || (res.status === 413 ? 'The file or photos are too large — use a smaller file or a link.' : res.status >= 500 ? 'Server problem — please try again in a minute.' : 'Request failed — please try again.'), res.status, data.code, data);
   }
 
   return data;

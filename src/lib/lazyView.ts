@@ -15,7 +15,8 @@ export function lazyView<M extends Record<string, any>, K extends keyof M & stri
     } catch (e) {
       let last = 0;
       try { last = Number(sessionStorage.getItem(KEY) || 0); } catch { /* storage blocked */ }
-      if (Date.now() - last > 30_000) {
+      // offline: a reload would only show the browser's error page — let the retry card appear instead
+      if (Date.now() - last > 30_000 && !(typeof navigator !== 'undefined' && navigator.onLine === false)) {
         try { sessionStorage.setItem(KEY, String(Date.now())); } catch { /* ignore */ }
         window.location.reload();
         return new Promise<never>(() => { /* page is reloading */ });

@@ -59,12 +59,12 @@ export const CheckinModal: React.FC<{ leadId?: string; defaultLabel?: string; on
         role="dialog"
         aria-modal="true"
         aria-labelledby="checkin-modal-title"
-        className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-4 text-xs"
+        className="max-h-[96dvh] w-full max-w-sm space-y-3 overflow-y-auto rounded-2xl bg-white p-4 text-xs"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <div id="checkin-modal-title" className="text-sm font-bold">{tx('Site check-in', 'साइट चेक-इन')}</div>
-          <button onClick={onClose} aria-label={tx('Close', 'बंद करें')}><X className="h-4 w-4" /></button>
+          <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center" aria-label={tx('Close', 'बंद करें')}><X className="h-4 w-4" /></button>
         </div>
         {done ? <div className="rounded-lg bg-emerald-50 p-3 font-medium text-emerald-800">{tx('Checked in. Your employer will see the location and selfie.','चेक-इन हो गया। आपके नियोक्ता को लोकेशन और सेल्फ़ी दिखेगी।')}</div> : (<>
           <input value={label} onChange={e => setLabel(e.target.value)} placeholder={tx("Site / project name","साइट / प्रोजेक्ट का नाम")} className="w-full rounded border border-slate-300 px-2 py-2" />
@@ -73,7 +73,7 @@ export const CheckinModal: React.FC<{ leadId?: string; defaultLabel?: string; on
           <button onClick={() => fileRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 py-2 font-semibold"><Camera className="h-4 w-4" /> {selfie ? tx('Selfie taken — retake','सेल्फ़ी ली — बदलें') : tx('Take a selfie with the client','ग्राहक के साथ सेल्फ़ी लें')}</button>
           {selfie && <img src={selfie} alt="selfie" className="mx-auto h-28 rounded-lg object-cover" />}
           {err && <div className="rounded bg-red-50 px-2 py-1.5 text-red-700">{err}</div>}
-          <button disabled={busy || !pos || !selfie || label.trim().length < 2} onClick={submit} className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-2.5 font-semibold text-white disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />} Check in</button>
+          <button disabled={busy || !pos || !selfie || label.trim().length < 2} onClick={submit} className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-2.5 font-semibold text-white disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />} {tx("Check in", "चेक-इन करें")}</button>
           <p className="text-[10px] text-slate-500">{tx('Location and selfie are visible only to your employer, are recorded in the audit trail, and are not used anywhere else.','लोकेशन और सेल्फ़ी केवल आपके नियोक्ता को दिखती हैं, ऑडिट ट्रेल में दर्ज होती हैं, और इस सुविधा के अलावा कहीं उपयोग नहीं होतीं।')}</p>
         </>)}
       </div>

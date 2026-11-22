@@ -1,4 +1,5 @@
 import './server/bootstrap.js';
+import { hindiErrors } from './server/errorHi.js';
 import { alert, inr as rupees, once, firstName } from './server/alerts.js';
 import express, { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
@@ -188,7 +189,7 @@ import { PAPER_KEYS } from './src/shared/paperRules.js';
 import { DATE_KEYS, DATE_WORDS, checkDates, type KeyDates } from './src/shared/keyDates.js';
 import { pushTo } from './server/webpush.js';
 import { createPrivacyRouter, legalConfig, POLICY_VERSION } from './server/privacy.js';
-import { normPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
+import { maskKycFor, normPan, maskPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
 import compression from 'compression';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -214,7 +215,10 @@ class HttpError extends Error {
 
 app.disable('x-powered-by');
 app.use(compression());
-if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
+app.use(hindiErrors);
+const TRUST_PROXY = (process.env.TRUST_PROXY || '').trim();   // S5: trimmed once; the boot check below uses the same value
+if (TRUST_PROXY) app.set('trust proxy', TRUST_PROXY === 'true' ? 1 : TRUST_PROXY === 'false' ? false : /^\d+$/.test(TRUST_PROXY) ? Number(TRUST_PROXY) : TRUST_PROXY);
+if (/^\d+$/.test(TRUST_PROXY) && Number(TRUST_PROXY) > 2) console.warn(`[config] TRUST_PROXY=${TRUST_PROXY} trusts ${TRUST_PROXY} proxy hops; unless that many really sit in front of the app, visitors can fake their IP and dodge rate limits.`);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -427,6 +431,7 @@ function enrichUserWithTrustScore(user: UserProfile, state = db.getState()): Use
   return publicUser(enrichRaw(user, state)) as UserProfile;
 }
 
+const enrichFor = (u: UserProfile, viewer: { role: string }, state = db.getState()) => maskKycFor(enrichUserWithTrustScore(u, state), viewer);
 
 // "View as" sessions are strictly read-only, and accounts flagged mustChangePassword can only reach /api/auth/*.
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
@@ -456,7 +461,7 @@ function directoryEntry(u: UserProfile, state = db.getState()) {
 
 /** A party on someone else's offer/deal: the full profile only for yourself or an admin; otherwise the directory card (no email / phone / PAN / GSTIN). */
 function partyCard(u: UserProfile, viewer: UserProfile, state = db.getState()) {
-  return u.id === viewer.id || isAdmin(viewer) ? enrichUserWithTrustScore(u, state) : directoryEntry(u, state);
+  return u.id === viewer.id ? enrichUserWithTrustScore(u, state) : isAdmin(viewer) ? enrichFor(u, viewer, state) : directoryEntry(u, state);
 }
 
 function getClientIp(req: Request) {
@@ -616,7 +621,7 @@ function slimCard(u: UserProfile, state: DatabaseState) {
   return out;
 }
 let dirCache: { v: number; kind: string; body: any[] } | null = null;
-let dirCacheAdmin: { v: number; body: any[] } | null = null;
+let dirCacheAdmin: { v: number; sa: boolean; body: any[] } | null = null; // keyed by SUPERADMIN vs masked view
 function sendCached(req: Request, res: Response, payload: unknown) {
   const body = JSON.stringify(payload);
   const tag = 'W/"' + sha256(body).slice(0, 27) + '"';
@@ -641,7 +646,8 @@ app.get('/api/auth/users', requireAuth, (req: Request, res: Response) => {
       users.push(...state.users.filter(u => (u.role === 'BROKER' || u.role === 'CONTRACTOR') && u.verificationStatus === 'VERIFIED').map(u => slimCard(u, state)));
     }
   } else if (can(me, 'users:list')) {
-    if (!dirCacheAdmin || dirCacheAdmin.v !== db.version) dirCacheAdmin = { v: db.version, body: state.users.map(u => enrichUserWithTrustScore(u, state)) };
+    const sa = me.role === 'SUPERADMIN';
+    if (!dirCacheAdmin || dirCacheAdmin.v !== db.version || dirCacheAdmin.sa !== sa) dirCacheAdmin = { v: db.version, sa, body: state.users.map(u => enrichFor(u, me, state)) };
     // contains e-mail / phone: never stored by the browser (no-store stays), only the server-side build is cached
     return res.json({ success: true, users: dirCacheAdmin.body, activeUserId: me.id });
   } else {
@@ -672,7 +678,7 @@ app.post('/api/auth/impersonate', needs('users:impersonate'), (req: Request, res
   }
   db.appendAuditEvent(c.user.id, c.user.role, 'SYSTEM', target.id, 'IMPERSONATION_STARTED', `${c.user.name} started a read-only "view as" session for ${target.name} (${target.role})`);
   setSessionCookie(req, res, signSession(target.id, target.sessionVersion || 1, { imp: c.user.id }), 30 * 60_000);
-  res.json({ success: true, user: enrichUserWithTrustScore(target, db.getState()) });
+  res.json({ success: true, user: enrichFor(target, c.user, db.getState()) });
 });
 
 app.post('/api/auth/impersonate/stop', requireAuth, (req: Request, res: Response) => {
@@ -807,7 +813,7 @@ app.get('/api/invitations/validate/:code', rateLimit('invite-validate', 20, 10 *
       prefill: (() => {
         const s = db.getState(); const a = invite.tier2AppId ? s.tier2Applications.find(x => x.id === invite.tier2AppId) : undefined;
         if (!a) return null;
-        return { name: a.name, city: a.city, companyName: a.companyName || '', panNumber: a.panNumber || '', aadhaarLast4: a.aadhaarLast4 || '', docs: docsOfApplication(s, a.id).map(d => d.kind) };
+        return { name: a.name, city: a.city, companyName: a.companyName || '', panNumber: maskPan(a.panNumber) || '', hasPan: !!a.panNumber, aadhaarLast4: a.aadhaarLast4 || '', docs: docsOfApplication(s, a.id).map(d => d.kind) };
       })(),
     },
   });
@@ -828,7 +834,11 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   const { code, name, phone, companyName, password } = parsed.data;
   let email = parsed.data.email || '';
   const reraNumber = normRera(parsed.data.reraNumber);
-  const panNumber = normPan(parsed.data.panNumber);
+  // F1: the invite lookup shows a MASKED sponsor-typed PAN; a blank or still-masked field means "use the stored one" (a fully typed PAN is validated below as before)
+  const inv0 = db.getState().invitations.find(i => i.code.trim().toUpperCase() === code.trim().toUpperCase());
+  const storedPan = normPan(inv0?.tier2AppId ? db.byId('tier2Applications', inv0.tier2AppId)?.panNumber : '');
+  let panNumber = normPan(parsed.data.panNumber);
+  if (storedPan && (!panNumber || panNumber === normPan(maskPan(storedPan)))) panNumber = storedPan;
   const gstin = normGstin(parsed.data.gstin);
   // v18: Aadhaar is checked here once and only its last 4 digits are ever kept. Never logged, audited or returned.
   const aadhaarRaw = normAadhaar(parsed.data.aadhaarNumber);
@@ -838,7 +848,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   // v141 — mobile OTP (when given): a wrong code stops here; a right one + a valid unused PAN makes the account live at once
   let otpOk = false;
   if (parsed.data.otpToken) {
-    const e = checkOtpToken(parsed.data.otpToken, String(phone || '').replace(/\D/g, '').slice(-10), parsed.data.otpCode || '', false);   // looked at now, spent only when the account is made
+    const e = checkOtpToken(parsed.data.otpToken, String(phone || '').replace(/\D/g, '').slice(-10), parsed.data.otpCode || '', false, req.ip);   // looked at now, spent only when the account is made
     if (e) return res.status(400).json({ error: e, code: 'OTP' });
     otpOk = true;
   }
@@ -962,7 +972,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     newUser.verificationStatus = 'VERIFIED'; newUser.autoVerifiedAt = now; newUser.autoVerifiedBy = 'OTP_PAN';
     newUser.verificationNotes = 'Live at sign-up: mobile OTP + a valid PAN no other account has (no staff check; 3 member reports suspend).';
     onVerified(newUser); assignBrokerId(newUser); autoVerified = true;
-    db.appendAuditEvent(userId, newUser.role, 'VERIFICATION', userId, 'USER_AUTO_VERIFIED', `${name} is live at sign-up: mobile OTP + PAN …${panNumber.slice(-4)}`);
+    db.appendAuditEvent(userId, newUser.role, 'VERIFICATION', userId, 'USER_AUTO_VERIFIED', `${name} is live at sign-up: mobile OTP + PAN ${maskPan(panNumber)}`);
   }
   const gl = invite.growthLeadId ? db.byId('growthLeads', invite.growthLeadId) : undefined;
   if (gl) { gl.status = 'JOINED'; gl.userId = userId; gl.updatedAt = now; }
@@ -1086,7 +1096,9 @@ app.post('/api/verifications/:userId/review', needs('users:review'), (req: Reque
     `Admin ${currentUser.name} applied ${action} on ${targetUser.name} (${targetUser.brokerId || targetUser.role}). Notes: ${notes || 'N/A'}`
   );
 
-  res.json({ success: true, user: publicUser(targetUser) });
+  const outU: any = publicUser(targetUser);
+  if (currentUser.role !== 'SUPERADMIN' && outU.panNumber) outU.panNumber = maskPan(outU.panNumber); // v178: ADMIN never gets the full PAN back
+  res.json({ success: true, user: outU });
 });
 
 // ==========================================
@@ -2687,6 +2699,8 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   }
 
   const { dealRoomId, propertyId, customerName, customerPhone, scheduledTime, notes, scanAt, clientRoomId, clientRoomItemId, clientRoomRequestId } = parseResult.data;
+  // v178: a visit cannot be booked in the past (15 min of slack for a slow phone clock)
+  if (Date.parse(scheduledTime) < Date.now() - 15 * 60_000) return res.status(400).json({ error: 'The visit time is in the past — pick a date and time from now on.', errorHi: 'विज़िट का समय बीत चुका है — अब से आगे की तारीख़ और समय चुनें।', code: 'VISIT_PAST' });
   const state = db.getState();
   // v40 — booked from a Client Room: it must be the broker's own room, a home in it, and the client's own mobile
   let roomLink: { room: any; item: any } | null = null;
@@ -2855,7 +2869,16 @@ function loadVerifiableVisit(req: Request, res: Response, user: UserProfile) {
     EXPIRED: 'Verification window has expired. The broker who booked it can set a new time — then it opens again.',
     LOCKED: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.',
   };
-  res.status(g.status).json({ error: errors[g.code] || 'This visit cannot be confirmed now', code: g.code === 'MAKER_CHECKER' || g.code === 'PROPERTY_SIDE_ONLY' || g.code === 'ACK_REQUIRED' ? g.code : g.code });
+  const errorsHi: Record<string, string> = {
+    MAKER_CHECKER: 'यह विज़िट आपने तय की थी, इसलिए आप इसे ख़ुद वेरिफ़ाई नहीं कर सकते। मालिक या लिस्टिंग ब्रोकर मौक़े पर इसे कन्फ़र्म करता है (ग्राहक उन्हें QR / कोड दिखाता है)।',
+    PROPERTY_SIDE_ONLY: g.selfDeal ? 'लिस्टिंग ब्रोकर ख़ुद अपना ग्राहक लाया है — इस विज़िट को सिर्फ़ प्रॉपर्टी का मालिक वेरिफ़ाई कर सकता है' : 'इस विज़िट को सिर्फ़ प्रॉपर्टी की तरफ़ का व्यक्ति (मालिक या लिस्टिंग ब्रोकर) वेरिफ़ाई कर सकता है',
+    DONE: 'यह साइट विज़िट पहले ही वेरिफ़ाई हो चुकी है',
+    ACK_REQUIRED: 'खरीदार ने अभी “सीधा सौदा नहीं” की पुष्टि नहीं की है',
+    TOO_EARLY: 'अभी जल्दी है: विज़िट तय समय से 6 घंटे पहले से वेरिफ़ाई हो सकती है। समय बदल गया हो तो विज़िट बुक करने वाला ब्रोकर उसे आगे-पीछे कर सकता है।',
+    EXPIRED: 'वेरिफ़ाई करने की अवधि ख़त्म हो गई। विज़िट बुक करने वाला ब्रोकर नया समय डाल दे — तब यह फिर खुलेगी।',
+    LOCKED: 'बहुत ग़लत कोशिशें — यह विज़िट लॉक है। GENZ ऑपरेशंस से संपर्क करें।',
+  };
+  res.status(g.status).json({ error: errors[g.code] || 'This visit cannot be confirmed now', errorHi: errorsHi[g.code] || 'यह विज़िट अभी कन्फ़र्म नहीं हो सकती', code: g.code === 'MAKER_CHECKER' || g.code === 'PROPERTY_SIDE_ONLY' || g.code === 'ACK_REQUIRED' ? g.code : g.code });
   return null;
 }
 
@@ -2964,7 +2987,7 @@ app.post('/api/site-visits/:id/checkin-qr', needs('sitevisit:verify'), rateLimit
 // v79 — the broker who booked a visit cannot confirm it himself (maker ≠ checker), so he gets two ways forward instead of a dead end:
 //   remind     tell the property side (owner + listing broker) to confirm it on the spot (at most one reminder every 30 minutes)
 //   reschedule the pass window has closed (or the slot moved): a new time re-opens the SAME pass; the property side is told
-const visitWhen = (iso: string) => { try { return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
+const visitWhen = (iso: string) => { try { return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
 function ownVisit(req: Request, res: Response, user: UserProfile) {
   const visit = db.byId('siteVisits', req.params.id);
   if (!visit) { res.status(404).json({ error: 'Site visit record not found' }); return null; }
@@ -2997,6 +3020,7 @@ app.post('/api/site-visits/:id/reschedule', needs('sitevisit:create'), rateLimit
   const scheduledTime = String(req.body?.scheduledTime || '');
   const bad = rescheduleError(scheduledTime, Date.now());
   if (bad) return res.status(400).json({ error: bad, code: 'BAD_TIME' });
+  if (Date.parse(scheduledTime) < Date.now() - 15 * 60_000) return res.status(400).json({ error: 'The visit time is in the past — pick a date and time from now on.', errorHi: 'विज़िट का समय बीत चुका है — अब से आगे की तारीख़ और समय चुनें।', code: 'VISIT_PAST' });   // S7: same rule as booking
   if ((visit.otpAttempts || 0) >= 5) return res.status(429).json({ error: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.', code: 'LOCKED' });
   const before = visit.scheduledTime;
   visit.scheduledTime = new Date(scheduledTime).toISOString();
@@ -3806,7 +3830,7 @@ app.get('/api/builder/associates', needs('builder:associates_read', 'builder:my_
     brokers = state.users
       .filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED')
       // v20: the same short card as the people directory (all fields the builder screen uses; 10k brokers ≈ 2.5 MB → was 5 MB)
-      .map(b => (isAdmin(currentUser) ? enrichUserWithTrustScore(b, state) : slimCard(b, state)));
+      .map(b => (isAdmin(currentUser) ? enrichFor(b, currentUser, state) : slimCard(b, state)));
   }
 
   res.json({ success: true, brokers, mandates, projects });
@@ -5720,7 +5744,7 @@ function ensureVisitCards(state: any, dealId: string): boolean {
     if (state.dealMessages.some((m: any) => m.dealRoomId === dealId && m.kind === 'VISIT' && m.refId === v.id)) continue;
     const u: any = db.byId('users', v.brokerId);
     let when = '';
-    try { when = new Date(v.scheduledTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { /* */ }
+    try { when = new Date(v.scheduledTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { /* */ }
     state.dealMessages.push({ id: `MSG-${dealId}-${v.id}`, dealRoomId: dealId, senderId: v.brokerId, senderName: u?.name || 'Broker', senderRole: u?.role || 'BROKER', text: `Site visit${when ? ` on ${when}` : ''}`, audience: 'ALL', kind: 'VISIT', refId: v.id, auto: true, timestamp: v.createdAt || new Date().toISOString() } as any);
     added = true;
   }
@@ -6006,6 +6030,7 @@ function assertProductionConfig() {
   // a real network (not the fake-data public demo) must know its own address (links in SMS / QR / inlets) and decide about the KYC vault key
   if (process.env.PUBLIC_DEMO !== 'true') {
     if (!/^https?:\/\/[^/\s]+/i.test(process.env.PUBLIC_URL || '')) problems.push('PUBLIC_URL must be set to the public https address (links sent to people are built from it, never from the request Host header)');
+    if (!/^(\d+|false)$/.test(TRUST_PROXY)) problems.push('TRUST_PROXY must be set explicitly: the NUMBER of proxy hops in front of the app (1 behind one nginx / load balancer) or false for none. Unset makes every user share one IP for rate limits; too high lets visitors fake their IP (see docs/DEPLOY_INDIA.md)');
     if (process.env.KYC_VAULT_DISABLED !== 'true') {
       if (!process.env.KYC_VAULT_KEY?.trim() && !process.env.KYC_VAULT_KEY_FILE?.trim()) problems.push('KYC_VAULT_KEY (or KYC_VAULT_KEY_FILE outside data/) must be set, or say KYC_VAULT_DISABLED=true to run with the vault off on purpose');
       else if (!vaultKey()) problems.push(vaultKeyProblem() || 'the KYC vault key could not be loaded'); // malformed key, or key file inside data/

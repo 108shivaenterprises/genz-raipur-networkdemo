@@ -67,7 +67,7 @@ export function checkCard(i: {
       const v = i.visits.find(x => x.id === ref && x.dealRoomId === deal.id);
       if (!v) return bad(404, 'CARD_NOT_FOUND', 'That site visit is not part of this deal room.');
       if (v.brokerId !== i.userId && !i.isBroker) return bad(403, 'CARD_NOT_YOURS', 'Only the broker who set up the visit (or a deal broker) can share it.');
-      const when = (() => { try { return new Date(v.scheduledTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch { return ''; } })();
+      const when = (() => { try { return new Date(v.scheduledTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return ''; } })();
       return { ok: true, refId: v.id, auto: `Site visit${when ? ` on ${when}` : ''}` };
     }
     case 'OFFER': {

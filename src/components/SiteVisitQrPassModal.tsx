@@ -86,7 +86,7 @@ export const VisitGateNotice: React.FC<{ visit: SiteVisit; onFresh: (v: SiteVisi
       {g.iAmBooker && (moveOpen ? (
         <div className="space-y-1.5 rounded-lg bg-white/70 p-2" data-testid="visit-move">
           <label className="block text-[11px] font-semibold text-slate-700">{tx('New visit time', 'विज़िट का नया समय')}
-            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900" data-testid="visit-move-time" />
+            <input type="datetime-local" min={toLocalInput(Date.now())} value={when} onChange={(e) => setWhen(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900" data-testid="visit-move-time" />
           </label>
           <button type="button" onClick={move} disabled={busy === 'move' || !when} data-testid="visit-move-save" className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white disabled:opacity-50">
             <CalendarClock className="h-4 w-4" aria-hidden />{busy === 'move' ? tx('Saving…', 'सेव हो रहा है…') : tx('Save the new time', 'नया समय सेव करें')}
@@ -233,8 +233,8 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="w-full max-w-lg max-h-[92vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
+      <div className="w-full max-w-lg max-h-[96dvh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto">
         {/* Sticky Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-900 text-white rounded-t-2xl shrink-0">
           <div className="flex items-center gap-2.5">

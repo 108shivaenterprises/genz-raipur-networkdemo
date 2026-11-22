@@ -77,6 +77,14 @@ function storeDoc(owner: { userId?: string; appId?: string }, kind: string, file
 }
 
 /** DPDP erasure + withdrawn requests: delete scans from disk and from the database. */
+const panSeen = new Map<string, number>();
+/** S8: one PAN_REVEALED event per actor + member per 10 minutes (a refresh must not flood the audit log). true = write it now */
+function panSeenOnce(actor: string, user: string, now = Date.now()) {
+  const k = `${actor}|${user}`; if ((panSeen.get(k) || 0) > now - 600_000) return false;
+  if (panSeen.size > 2000) for (const [x, t] of panSeen) if (t < now - 600_000) panSeen.delete(x);
+  panSeen.set(k, now); return true;
+}
+
 export function purgeUserIdDocs(s: DatabaseState, userId: string): number {
   const doomed = s.idDocs.filter(d => d.subjectUserId === userId || (d.uploadedBy === 'SELF' && d.uploaderId === userId));
   for (const d of doomed) eraseFile(d.id);
@@ -364,14 +372,18 @@ export function createIdReviewRouter() {
     const u = s.users.find(x => x.id === t.userId); if (!u) return bad(res, 'Member not found', 404);
     const app = s.tier2Applications.find(a => a.userId === u.id);
     const row = taskRow(s, t);
+    // v178: full PAN only for SUPERADMIN, and every full-PAN view is audited; ADMIN sees it masked
+    const full = me().role === 'SUPERADMIN';
+    const showPan = (p?: string) => (p ? (full ? p : maskPan(p)) : '');
+    if (full && (u.panNumber || app?.panNumber) && panSeenOnce(me().id, u.id)) db.appendAuditEvent(me().id, me().role, 'VERIFICATION', u.id, 'PAN_REVEALED', `${me().name} opened the full PAN of ${u.name} in the ID review`);
     res.json({
       success: true,
       task: { ...row, _mismatch: undefined },
       // the reviewer is about to compare the card with the number — the full PAN and a phone for the video call are shown here (and only here)
       detail: {
         vault: { on: vaultOn(), ...kycFlags(u.id), canReveal: can(me(), 'kyc:reveal') },
-        panFull: u.panNumber || '', phone: u.phone || '', email: u.email.endsWith('@phone.genz.local') ? '' : u.email, reraNumber: u.reraNumber || '',
-        sponsorGave: app ? { companyName: app.companyName || '', pan: app.panNumber || '', aadhaarLast4: app.aadhaarLast4 || '', docs: docsOfUser(s, u.id).filter(d => d.uploadedBy === 'SPONSOR').map(d => d.kind) } : null,
+        panFull: showPan(u.panNumber), panIsMasked: !full, phone: u.phone || '', email: u.email.endsWith('@phone.genz.local') ? '' : u.email, reraNumber: u.reraNumber || '',
+        sponsorGave: app ? { companyName: app.companyName || '', pan: showPan(app.panNumber), aadhaarLast4: app.aadhaarLast4 || '', docs: docsOfUser(s, u.id).filter(d => d.uploadedBy === 'SPONSOR').map(d => d.kind) } : null,
         mismatch: row._mismatch,
         history: t.history.slice().reverse().map(h => ({ at: h.at, by: h.by === 'system' ? 'system' : nameOf(s, h.by), action: h.action, note: h.note || '' })),
       },
@@ -445,6 +457,8 @@ export function createIdReviewRouter() {
 
   r.put('/settings', review, (req: Request, res: Response) => {
     const a = me(); const s = st(); const set = s.settings;
+    // v178: auto-verify skips human review, so only SUPERADMIN may flip it (ADMIN may still set the default reviewer)
+    if (req.body && typeof req.body === 'object' && 'autoVerify' in req.body && a.role !== 'SUPERADMIN') return res.status(403).json({ success: false, error: 'Only the superadmin can change auto-verify', errorHi: 'ऑटो-वेरिफ़ाई सिर्फ़ सुपरएडमिन बदल सकता है' });
     const b = z.object({ autoVerify: z.boolean().optional(), defaultAssigneeId: z.string().max(80).nullable().optional() }).safeParse(req.body);
     if (!b.success) return bad(res, 'Invalid setting');
     const changes: string[] = [];

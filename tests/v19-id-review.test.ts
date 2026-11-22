@@ -148,7 +148,7 @@ describe('the sponsor adds the person\'s ID details and copies at invite time', 
 describe('the sign-up comes PREFILLED and the sponsor\'s copies become the member\'s', () => {
   it('the invitation check returns what the sponsor filled (never an Aadhaar number, only the last 4)', async () => {
     const v = await j(await fetch(B + `/api/invitations/validate/${tApp.code}`));
-    expect(v.invitation.prefill).toEqual({ name: 'Tarun Sahu', city: 'Raipur', companyName: 'Sahu Realty', panNumber: sponsorPan, aadhaarLast4: sponsorLast4, docs: expect.arrayContaining(['PAN', 'AADHAAR']) });
+    expect(v.invitation.prefill).toEqual({ name: 'Tarun Sahu', city: 'Raipur', companyName: 'Sahu Realty', panNumber: `${sponsorPan.slice(0, 2)}•••••${sponsorPan.slice(-2)}`, hasPan: true, aadhaarLast4: sponsorLast4, docs: expect.arrayContaining(['PAN', 'AADHAAR']) });
     expect(v.invitation.sponsorName).toBe('Sponsor Sunil19');
   });
   it('a plain admin-issued invitation has no prefill', async () => {
@@ -278,7 +278,8 @@ describe('the switch: auto-verify people registered by a RERA broker', () => {
   it('a plain ADMIN can turn it on (and choose the default reviewer); it is audit-logged with who and when; a non-reviewer cannot', async () => {
     adminId = (await usersList()).find(u => u.id === acct('USR-ADMIN-1').id).id;
     expect((await call(jar.ADMIN, 'PUT', '/api/id-review/settings', { defaultAssigneeId: acct('USR-BRK-001').id })).status).toBe(400);
-    const r = await call(jar.ADMIN, 'PUT', '/api/id-review/settings', { autoVerify: true, defaultAssigneeId: adminId }); expect(r.status).toBe(200);
+    expect((await call(jar.ADMIN, 'PUT', '/api/id-review/settings', { autoVerify: true })).status).toBe(403);   // v178: only the superadmin flips auto-verify
+    const r = await call(jar.SUP, 'PUT', '/api/id-review/settings', { autoVerify: true, defaultAssigneeId: adminId }); expect(r.status).toBe(200);
     const s = await j(await call(jar.SUP, 'GET', '/api/id-review/settings'));
     expect(s.autoVerify).toBe(true); expect(s.changedBy).toBeTruthy(); expect(s.changedAt).toBeTruthy(); expect(s.defaultAssigneeId).toBe(adminId); expect(s.reviewers.length).toBeGreaterThanOrEqual(2);
     const audit = (await j(await call(jar.SUP, 'GET', '/api/audit-logs'))).events as any[];

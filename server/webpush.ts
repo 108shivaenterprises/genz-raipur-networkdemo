@@ -240,6 +240,7 @@ export async function pushTo(userId: string, msg: PushMsg): Promise<number> {
     if (!who || who.verificationStatus === 'SUSPENDED' || who.verificationStatus === 'BLACKLISTED') return 0; // v59 — a closed account's phone hears nothing more
     if (who.verificationStatus !== 'VERIFIED' && msg.kind !== 'system') return 0; // pending / not approved: only GENZ's word about the account
     // v77 — the bell keeps every alert that is for this person, whatever his phone settings say (those decide only what may interrupt him)
+    if (who.consentWithdrawnAt && ['broadcast', 'digest', 'matches', 'community'].includes(msg.kind)) return 0;   // S8/F5: consent withdrawn — marketing kinds never reach the bell either (checked BEFORE recordInbox)
     recordInbox(userId, msg);
     const subs = s.pushSubs.filter(x => x.userId === userId);
     const p = prefsOf(userId);

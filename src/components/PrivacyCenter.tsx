@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Download, Trash2, MessageSquareWarning, KeyRound } from 'lucide-react';
-import { useI18n, useTx } from '../lib/i18n.js';
+import { useI18n, useTx, readLang } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
 import { AlertsCard } from './AlertsCard.js';
@@ -11,7 +11,7 @@ interface Req { id: string; type: string; status: string; createdAt: string; det
 async function j(url: string, init?: RequestInit) {
   const r = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...init });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || 'Request failed');
+  if (!r.ok) throw new Error((readLang() === 'hi' && d.errorHi) || d.error || 'Request failed');
   return d;
 }
 
@@ -58,7 +58,7 @@ const PasswordSection: React.FC = () => {
   );
 };
 
-export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string }> = ({ onClose, role }) => {
+export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string; otpOnly?: boolean }> = ({ onClose, role, otpOnly }) => {
   const { t } = useI18n();
   const tx = useTx();
   const label = useLabel();
@@ -68,7 +68,7 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string }> = (
   const load = () => j('/api/privacy/requests').then(d => setReqs(d.requests)).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  const file = async (type: 'ERASURE' | 'GRIEVANCE' | 'CORRECTION') => {
+  const file = async (type: 'ERASURE' | 'GRIEVANCE' | 'CORRECTION' | 'CONSENT_WITHDRAWAL') => {
     try {
       if (type === 'ERASURE' && !confirm(tx('Request deletion of your account? Records required by law are retained in anonymised form. If you gave GENZ KYC (face photo, ID, Aadhaar), it is kept sealed for 3 years for fraud / legal checks and then deleted.', 'अपना अकाउंट हटाने का अनुरोध करें? क़ानून के लिए ज़रूरी रिकॉर्ड गुमनाम रूप में रखे जाते हैं। अगर आपने GENZ को KYC (फ़ोटो, ID, आधार) दिया है तो वह धोखाधड़ी / क़ानूनी जाँच के लिए 3 साल सील करके रखा जाता है, फिर मिटा दिया जाता है।'))) return;
       await j('/api/privacy/requests', { method: 'POST', body: JSON.stringify({ type, details: text }) });
@@ -77,11 +77,11 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string }> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center" onClick={onClose}>
+      <div className="my-auto max-h-[96dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900">{t('priv.title', 'My data & privacy')}</h3>
-          <button onClick={onClose} aria-label={tx('Close', 'बंद करें')}><X className="h-5 w-5 text-slate-500" /></button>
+          <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center" aria-label={tx('Close', 'बंद करें')}><X className="h-5 w-5 text-slate-500" /></button>
         </div>
         <a href="/api/privacy/export" className="mt-4 flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:border-slate-900">
           <Download className="h-4 w-4" /> {t('priv.export', 'Download my data (JSON)')}
@@ -89,11 +89,14 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string }> = (
         <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder={role === 'TEAM_MEMBER' ? tx('Describe your correction / grievance', 'अपना सुधार / शिकायत लिखें') : tx('Describe your correction / grievance (optional for erasure)', 'अपना सुधार / शिकायत लिखें (अकाउंट हटाने के लिए ज़रूरी नहीं)')} className="mt-4 w-full rounded-lg border border-slate-300 p-2 text-sm" />
         <div className="mt-2 flex flex-wrap gap-2">
           <button onClick={() => file('GRIEVANCE')} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"><MessageSquareWarning className="h-3.5 w-3.5" /> {t('priv.grievance', 'Grievance / correction')}</button>
+          <button onClick={() => file('CONSENT_WITHDRAWAL')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800" data-testid="priv-withdraw">{tx('Withdraw my consent', 'मेरी सहमति वापस लें')}</button>
           {role !== 'TEAM_MEMBER' && <button onClick={() => file('ERASURE')} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"><Trash2 className="h-3.5 w-3.5" /> {t('priv.erase', 'Request account erasure')}</button>}
         </div>
         {role === 'TEAM_MEMBER' && <p className="mt-2 text-[11px] text-slate-500" data-testid="member-no-erase">{tx('Your attendance, leave, pay and expense records are kept by your employer, so they cannot be deleted from here. Your download holds your work profile and your own HR record only. For a correction or a complaint, use the button above.', 'आपकी हाज़िरी, छुट्टी, वेतन और ख़र्चे का रिकॉर्ड आपके नियोक्ता के पास रहता है, इसलिए यहाँ से मिटाया नहीं जा सकता। आपकी डाउनलोड फ़ाइल में सिर्फ़ आपकी काम की प्रोफ़ाइल और आपका अपना HR रिकॉर्ड है। सुधार या शिकायत के लिए ऊपर का बटन इस्तेमाल करें।')}</p>}
         {msg && <p className={`mt-3 text-xs font-medium ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>{msg.text}</p>}
-        <PasswordSection />
+        {otpOnly
+          ? <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700" data-testid="password-otp-only">{tx('You sign in with a mobile code, so this account has no password to change.', 'आप मोबाइल कोड से साइन-इन करते हैं, इसलिए इस अकाउंट में बदलने के लिए कोई पासवर्ड नहीं है।')}</p>
+          : <PasswordSection />}
         <TwoFactorCard />
         <div className="mt-4"><AlertsCard role={role} /></div>
         <ul className="mt-4 space-y-1.5">
@@ -120,7 +123,8 @@ export const PrivacyQueue: React.FC = () => {
   useEffect(() => { load(); }, []);
   const resolve = async (id: string, decision: 'COMPLETE' | 'REJECT') => {
     try {
-      const note = decision === 'REJECT' ? prompt(tx('Reason for rejection', 'अस्वीकार करने का कारण')) || '' : '';
+      const needsNote = decision === 'REJECT' || reqs.find(r => r.id === id)?.type === 'CONSENT_WITHDRAWAL';
+      const note = needsNote ? prompt(decision === 'REJECT' ? tx('Reason for rejection', 'अस्वीकार करने का कारण') : tx('What was stopped? (the person sees this)', 'क्या बंद किया गया? (व्यक्ति को यह दिखेगा)')) || '' : '';
       await j(`/api/privacy/requests/${id}/resolve`, { method: 'POST', body: JSON.stringify({ decision, note }) });
       setErr(''); load();
     } catch (e: any) { setErr(e.message); }

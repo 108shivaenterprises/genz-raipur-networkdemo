@@ -23,7 +23,7 @@ const call = (cookie: string | undefined, method: string, url: string, body?: un
 const j = (r: Response) => r.json();
 const email = (id: string) => cfg.demoAccounts.find((a: any) => a.id === id).email;
 const PROJ = 'PROJ-RAI-02';
-const SELFIE = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2Q==';
+const SELFIE = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2Q==', 'base64'), Buffer.alloc(2000, 7)]).toString('base64');   // v178: a check-in selfie must look like a real photo (>= 1.5 KB, JPEG magic)
 
 beforeAll(async () => {
   dir = mkdtempSync(path.join(tmpdir(), 'genz-v8-'));
@@ -202,6 +202,7 @@ describe('team activity, GPS check-in and incentives', () => {
     expect((await call(jar.T1, 'POST', '/api/team/checkin', { ...body, lat: 51.5 })).status).toBe(400);
     expect((await call(jar.T1, 'POST', '/api/team/checkin', { ...body, selfie: '' })).status).toBe(400);
     expect((await call(jar.T1, 'POST', '/api/team/checkin', { ...body, selfie: 'data:text/html;base64,AAAA' })).status).toBe(400);
+    expect((await call(jar.T1, 'POST', '/api/team/checkin', { ...body, selfie: 'data:image/jpeg;base64,AAAA' })).status).toBe(400);   // v178: a placeholder is not a photo
     const others = (await j(await call(jar.B1, 'GET', '/api/crm/leads'))).leads.find((l: any) => l.assignedMemberId !== (mine.assignedMemberId));
     if (others) expect((await call(jar.T1, 'POST', '/api/team/checkin', { ...body, leadId: others.id })).status).toBe(404);
     const ok = await call(jar.T1, 'POST', '/api/team/checkin', body);

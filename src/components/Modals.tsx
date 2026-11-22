@@ -208,8 +208,8 @@ export const AddPropertyModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
+      <div className="w-full max-w-2xl max-h-[96dvh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto">
         {/* Sticky Modal Header */}
         <div className="flex shrink-0 items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80">
           <div>
@@ -218,7 +218,7 @@ export const AddPropertyModal: React.FC<{
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -842,8 +842,8 @@ export const AddRequirementModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
+      <div className="w-full max-w-2xl max-h-[96dvh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto">
         <div className="flex shrink-0 items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80">
           <div>
             <h3 className="text-base font-bold text-slate-900">{isBuyerUser ? (hi ? 'मेरी ज़रूरत दर्ज करें' : 'Add my requirement') : (hi ? 'ग्राहक की ज़रूरत दर्ज करें' : 'Register Buyer Requirement')}</h3>
@@ -852,7 +852,7 @@ export const AddRequirementModal: React.FC<{
           <button
             onClick={onClose}
             aria-label={hi ? 'बंद करें' : 'Close'}
-            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -1075,11 +1075,11 @@ export const CollaborationModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-slate-950/40 backdrop-blur-xs p-4">
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-2xl">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <h3 className="text-base font-bold text-slate-900">{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+          <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1381,8 +1381,8 @@ export const ScheduleVisitModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl transition-all">
+    <div className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+      <div className="my-auto w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl transition-all">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
@@ -1402,7 +1402,7 @@ export const ScheduleVisitModal: React.FC<{
           </div>
           <button
             onClick={handleClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -1612,6 +1612,7 @@ export const ScheduleVisitModal: React.FC<{
                 <input
                   type="datetime-local"
                   required
+                  min={toLocal(new Date().toISOString())}
                   value={scheduledTime}
                   onChange={(e) => setScheduledTime(e.target.value)}
                   className="w-full rounded-lg border border-slate-300 p-2 pl-8 text-xs text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
@@ -1717,8 +1718,8 @@ export const VerifyVisitOtpModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl transition-all">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+      <div className="my-auto w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl transition-all">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 font-bold">
@@ -1729,7 +1730,7 @@ export const VerifyVisitOtpModal: React.FC<{
               <p className="text-xs text-slate-500">{tx('Confirm physical client presence', 'क्लाइंट की साइट पर मौजूदगी पक्की करें')}</p>
             </div>
           </div>
-          <button onClick={handleClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+          <button onClick={handleClose} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1899,14 +1900,14 @@ export const FileDisputeModal: React.FC<{
 
   const field = 'mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900';
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
-      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-slate-950/40 backdrop-blur-xs p-4">
+      <div className="max-h-[96dvh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-2xl">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <h3 className="text-base font-bold text-red-900 flex items-center gap-1.5">
             <AlertTriangle className="h-4 w-4 text-red-600" />
             {tx('File a dispute / bypass notice', 'विवाद / बायपास नोटिस दर्ज करें')}
           </h3>
-          <button onClick={onClose} aria-label={tx('Close', 'बंद करें')} className="text-slate-400 hover:text-slate-700">
+          <button onClick={onClose} aria-label={tx('Close', 'बंद करें')} className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -2035,8 +2036,8 @@ export const AddConstructionLeadModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto">
+      <div className="w-full max-w-2xl max-h-[96dvh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto">
         {/* Sticky Header */}
         <div className="flex shrink-0 items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80">
           <div>
@@ -2045,7 +2046,7 @@ export const AddConstructionLeadModal: React.FC<{
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>

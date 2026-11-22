@@ -95,7 +95,7 @@ const HI = {
     CRITICAL: 'गंभीर', HIGH: 'ऊँचा', MEDIUM: 'मध्यम', LOW: 'कम', INFORMATIONAL: 'सूचना', REOPENED: 'दोबारा खुला',
     VERIFIED: 'वेरिफ़ाइड', SUSPENDED: 'सस्पेंड', BLACKLISTED: 'ब्लैकलिस्ट',
     SITE_VISIT_COORD: 'साइट विज़िट कोऑर्डिनेशन', PAPERWORK: 'कागज़ी काम', LAUNCH_DAY: 'लॉन्च डे', OTHER: 'अन्य',
-    ACCESS: 'डेटा की कॉपी', CORRECTION: 'सुधार', ERASURE: 'डेटा हटाना', GRIEVANCE: 'शिकायत',
+    ACCESS: 'डेटा की कॉपी', CORRECTION: 'सुधार', ERASURE: 'डेटा हटाना', GRIEVANCE: 'शिकायत', CONSENT_WITHDRAWAL: 'सहमति वापस लेना',
     BROKER_BROKER: 'ब्रोकर–ब्रोकर', BUILDER_BROKER: 'बिल्डर–ब्रोकर',
     CALL: 'कॉल', WHATSAPP: 'WhatsApp', MEETING: 'मीटिंग', SITE_VISIT: 'साइट विज़िट', NOTE: 'नोट', EMAIL: 'ईमेल', SMS: 'SMS',
   },

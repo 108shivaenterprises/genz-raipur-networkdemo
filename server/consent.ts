@@ -282,7 +282,7 @@ export function createConsentRouter() {
         title: it.title, description: stripContacts(it.raw).slice(0, 1500), propertyType: it.propertyType || '', transactionType: it.transactionType || '',
         state: it.state || (city === homeCity && u.state ? u.state : stateFor('', city)), city, locality: it.locality || '', addressHidden: '',
         areaSqft: it.areaSqft ?? null, bhk: it.bhk ?? null, askingPrice: it.price ?? null, ownerApprovedNetPrice: null,
-        ownerName: '', ownerPhone: '', tags: it.tags, phonesFound: it.phones,
+        ownerName: it.ownerName || '', ownerPhone: it.ownerPhone || '', tags: it.tags, phonesFound: it.phones,
       };
       const d: ListingDraft = { id: nextId('LD', s.listingDrafts), brokerId: u.id, status: 'DRAFT', raw: it.raw, fields, createdAt: nowIso(), updatedAt: nowIso() };
       out.push(d);
@@ -653,7 +653,8 @@ ${c.ownerReport ? `<div class="card warn"><p class="t">आपकी शिका
 ${c.otpHash ? `<label>SMS में आया कोड / Code from SMS</label><input type="text" name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required>` : ''}
 <div class="chk"><input type="checkbox" name="ok" value="1" id="ok" required><label for="ok" style="margin:0;font-weight:500">मैंने ऊपर लिखा पढ़ लिया है और मैं सहमत हूँ। / I have read the above and I agree.</label></div>
 <div class="btns"><button class="yes" type="submit">हाँ, सहमत हूँ / Yes</button></div></form><script src="/oc/sign.js" defer></script>
-<form method="post" action="/oc/${tok}"><input type="hidden" name="action" value="decline"><div class="btns"><button class="no" type="submit">नहीं / No</button></div></form></div>
+<details class="decl" style="margin-top:12px"><summary class="no" style="list-style:none;cursor:pointer;text-align:center;padding:14px;border-radius:12px;font-weight:700">नहीं / No</summary>
+<form method="post" action="/oc/${tok}"><input type="hidden" name="action" value="decline"><p class="t" style="margin-top:10px">क्या आप पक्का मना करना चाहते हैं? इसके बाद यह लिस्टिंग आपकी सहमति के बिना प्रकाशित नहीं होगी।<br><small>Are you sure you want to decline? The listing will not go live without your consent.</small></p><div class="btns"><button class="no" type="submit" data-testid="oc-decline-confirm">हाँ, मना करें / Yes, decline</button></div></form></details></div>
 <p class="small">यह लिंक सिर्फ़ प्रॉपर्टी मालिक के लिए है। GENZ आपसे कोई पैसा या OTP फ़ोन पर नहीं माँगता।<br>This link is only for the property owner. GENZ never asks you for money.</p>`));
   };
 

@@ -35,6 +35,9 @@ export interface ParsedListing {
   price?: number;
   pricePerSqft?: number;
   phones: string[];
+  /** v178: "Owner Ramesh Patel 9876543210" in the pasted text */
+  ownerName?: string;
+  ownerPhone?: string;
   tags: string[];
   /** fields still needed before the owner can be asked for consent */
   missing: string[];
@@ -45,6 +48,25 @@ export interface ParsedListing {
 const WA_HEADER = /^\s*\[?\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?\s?m\.?)?\]?\s*(?:-\s*)?[^:\n]{1,40}:\s?/im;
 const SEPARATOR = /^\s*(?:[-–—_=*~•.]{3,}|#{2,}|\d{1,2}[).]\s*$)\s*$/m;
 
+/** "Owner Ramesh Patel 98765 43210" / "Owner: Ramesh - 9876543210" / "मालिक रमेश 9876543210" → name + 10-digit mobile */
+export function findOwnerContact(t: string): { name: string | null; phone: string } | null {
+  // S2: collapse whitespace first (no adjacent \s* runs to backtrack over) and only look at a short window after each "owner" word.
+  const flat = String(t ?? '').replace(/\s+/g, ' ');
+  const re = /(?:\bowner|मालिक)/gi;
+  let k: RegExpExecArray | null; let tries = 0;
+  while ((k = re.exec(flat)) && tries++ < 5) {
+    const w = flat.slice(k.index, k.index + 160);
+    const m = w.match(/^(?:owner|मालिक) ?(?:name|नाम)? ?[:\-–,]? ?((?:[A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F.]{0,30} ){0,3}[A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F.]{0,30}) ?[:\-–,]? ?(?:(?:ph|phone|mob|mobile|no|number|contact|नंबर)\.? ?[:\-]? ?)?(?:\+?91[ -]?|0)?([6-9]\d{4}[ -]?\d{5})(?!\d)/i);
+    if (!m) continue;
+    const name = m[1].trim().split(' ').filter(x => !LABEL_WORDS.test(x)).join(' ');   // "Ramesh ph" -> Ramesh
+    if (/^(?:is|are|was|will|has|have|not|no|ka|ki|ke|hai|se|ne|to|in|at|of|the)\b/i.test(name)) return null;   // a sentence, not a name
+    // S3: "Owner contact: 98.." has only label words -> keep the phone, no name
+    return { name: name.length < 2 ? null : name, phone: m[2].replace(/\D/g, '') };
+  }
+  return null;
+}
+const LABEL_WORDS = /^(?:ph|phone|mob|mobile|no|number|contact|direct|deal|नंबर)\.?$/i;
+
 /** WhatsApp *bold* _italic_ ~strike~ and invisible characters out; emoji kept as spaces. */
 export function cleanWa(t: string): string {
   return String(t ?? '')
@@ -52,7 +74,8 @@ export function cleanWa(t: string): string {
     .replace(/[​-‏‪-‮⁠﻿]/g, '')
     .replace(/(^|\s)[*_~]+(?=\S)|(?<=\S)[*_~]+(?=\s|$|[.,!?:;])/g, '$1')
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu, ' ')
-    .replace(/\r\n?/g, '\n');
+    .replace(/\r\n?/g, '\n')
+    .replace(/(?<![ \t])[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');   // F2: no long newline / blank-line runs for the ^\s* line-start regexes (lookbehind: linear on a long space run)
 }
 
 const MONEY_HINT = /(\d)\s*(?:cr|crore|करोड़|l\b|lac|lacs|lakh|lakhs|lk\b|लाख|k\b|हज़ार|hazar|thousand)|₹|rs\.?|inr|price|rate|demand|asking|rent|kiraya|किराया|कीमत/i;
@@ -81,7 +104,7 @@ export function splitMessages(text: string): string[] {
     parts = t.split(/\n\s*\n+/);
   }
   const out: string[] = [];
-  for (const p of parts.map(x => x.trim()).filter(Boolean)) {
+  for (const p of parts.slice(0, 300).map(x => x.trim()).filter(Boolean)) {
     if (!looksListing(p) && out.length) out[out.length - 1] += `\n${p}`; // a stray line ("Contact: …") belongs to the message above
     else out.push(p);
   }
@@ -108,7 +131,7 @@ export function stripPhones(t: string): string {
 /** v100 — a pasted forward also carries e-mails, links, @handles and "insta: x" lines: none of them may reach a description other people read */
 export function stripContacts(t: string): string {
   return stripPhones(t)
-    .replace(/[a-z0-9._%+-]{2,}\s?(?:@|\(at\)|\[at\])\s?[a-z0-9-]{2,}(?:\.[a-z0-9-]{2,})*/gi, '')
+    .replace(/(?<![a-z0-9._%+-])[a-z0-9._%+-]{2,}\s?(?:@|\(at\)|\[at\])\s?[a-z0-9-]{2,}(?:\.[a-z0-9-]{2,})*/gi, '')
     .replace(/(?:https?:\/\/|www\.)\S+/gi, '')
     .replace(/\b(?:wa\.me|t\.me|telegram\.(?:me|dog)|instagram\.com|ig\.me|facebook\.com|fb\.(?:me|com)|linkedin\.com|linktr\.ee|bit\.ly|tinyurl\.com|goo\.gl)\/?\S*/gi, '')
     .replace(/(?<![\w@.])@[a-z][a-z0-9_.]{3,}/gi, '')
@@ -120,12 +143,12 @@ export function stripContacts(t: string): string {
 const withoutPhones = (t: string) => t.replace(/(?<![\d])(?:\+?91[\s-]?|0)?(?:[6-9]\d{2}[\s-]?\d{2}[\s-]?\d{5}|[6-9]\d{4}[\s-]?\d{5})(?![\d])/g, ' ');
 
 const AREA_UNITS: { re: RegExp; f: number }[] = [
-  { re: /(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*(?:ft|feet|fit)|sqft|sq\.?ft|sft|square\s*(?:feet|ft)|वर्ग\s*फ़?फ़ीट|वर्ग\s*फुट|वर्गफुट)/i, f: 1 },
-  { re: /(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*(?:yd|yards?)|sqyd|gaj|गज)/i, f: 9 },
-  { re: /(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*m(?:tr|eter|etre)?s?\b|sqm\b)/i, f: 10.7639 },
-  { re: /(\d[\d,]*(?:\.\d+)?)\s*(?:acres?|एकड़)/i, f: 43560 },
-  { re: /(\d[\d,]*(?:\.\d+)?)\s*(?:hectares?|हेक्टेयर)/i, f: 107639 },
-  { re: /(\d[\d,]*(?:\.\d+)?)\s*(?:decimals?|dismil|डिसमिल)/i, f: 435.6 },
+  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:sq\.?\s*(?:ft|feet|fit)|sqft|sq\.?ft|sft|square\s*(?:feet|ft)|वर्ग\s*फ़?फ़ीट|वर्ग\s*फुट|वर्गफुट)/i, f: 1 },
+  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:sq\.?\s*(?:yd|yards?)|sqyd|gaj|गज)/i, f: 9 },
+  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:sq\.?\s*m(?:tr|eter|etre)?s?\b|sqm\b)/i, f: 10.7639 },
+  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:acres?|एकड़)/i, f: 43560 },
+  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:hectares?|हेक्टेयर)/i, f: 107639 },
+  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:decimals?|dismil|डिसमिल)/i, f: 435.6 },
 ];
 
 export function findArea(t: string): { sqft?: number; dimensions?: string } {
@@ -141,14 +164,14 @@ export function findArea(t: string): { sqft?: number; dimensions?: string } {
 
 /** total price in ₹ and/or a per-sq-ft rate */
 export function findPrice(t: string): { price?: number; perSqft?: number; monthly?: boolean } {
-  const s = withoutPhones(t).replace(/(\d)\s*\/\s*-/g, '$1');
+  const s = withoutPhones(t).replace(/\s{2,}/g, ' ').replace(/(?<=\d) ?\/ ?-/g, ''); // S2/F2: collapse whitespace runs (quadratic lookups); "45000/-" -> 45000
   const out: { price?: number; perSqft?: number; monthly?: boolean } = {};
-  const per = s.match(/(?:₹|rs\.?|@|rate)?\s*(\d[\d,]*(?:\.\d+)?)\s*(?:\/|per|प्रति)\s*(?:-\s*)?(?:sq\.?\s*ft|sqft|sft|square\s*feet|वर्ग\s*फ़?ुट|fit)/i)
-    || s.match(/rate\s*[:\-]?\s*(?:₹|rs\.?)?\s*(\d[\d,]*)\b(?!\s*(?:cr|crore|l\b|lac|lakh|लाख|k\b))/i);
+  const per = s.match(/(?:₹|rs\.?|@|rate)?\s*(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:\/|per|प्रति)\s*(?:-\s*)?(?:sq\.?\s*ft|sqft|sft|square\s*feet|वर्ग\s*फ़?ुट|fit)/i)
+    || s.match(/rate\s*[:\-]?\s*(?:₹|rs\.?)?\s*(?<![\d,])(\d[\d,]{0,15})\b(?!\s*(?:cr|crore|l\b|lac|lakh|लाख|k\b))/i);
   if (per) { const v = num(per[1]); if (v >= 50 && v <= 500_000) out.perSqft = v; }
-  const cr = s.match(/(\d+(?:\.\d+)?)\s*(?:cr\b|crs?\b|crore|करोड़)/i);
-  const lakh = s.match(/(\d+(?:\.\d+)?)\s*(?:l\b|lac\b|lacs\b|lakh|lakhs|lk\b|लाख)/i);
-  const k = s.match(/(\d+(?:\.\d+)?)\s*(?:k\b|हज़ार|hazar|thousand)/i);
+  const cr = s.match(/(?<![\d,])(\d{1,15}(?:\.\d{1,6})?)\s*(?:cr\b|crs?\b|crore|करोड़)/i);
+  const lakh = s.match(/(?<![\d,])(\d{1,15}(?:\.\d{1,6})?)\s*(?:l\b|lac\b|lacs\b|lakh|lakhs|lk\b|लाख)/i);
+  const k = s.match(/(?<![\d,])(\d{1,15}(?:\.\d{1,6})?)\s*(?:k\b|हज़ार|hazar|thousand)/i);
   const full = s.match(/(?:₹|rs\.?|inr|price|rent|kiraya|किराया|demand)\s*[:\-]?\s*(\d{1,3}(?:,\d{2,3})+|\d{4,9})(?![\d,])/i)
     || s.match(/(?<![\d,.])(\d{1,3}(?:,\d{2}){1,3},\d{3})(?![\d,])/);
   if (cr) out.price = Math.round(num(cr[1]) * 1e7);
@@ -324,7 +347,9 @@ export function parseOne(raw: string, idx = 0): ParsedListing {
   if (!city) out.missing.push('city');
   if (!locality) out.missing.push('locality');
   if (!price) out.missing.push('price');
-  out.missing.push('ownerName', 'ownerPhone', 'address');
+  const oc = findOwnerContact(t);
+  if (oc) { if (oc.name) out.ownerName = oc.name; out.ownerPhone = oc.phone; }
+  out.missing.push(...(oc ? (oc.name ? [] : ['ownerName']) : ['ownerName', 'ownerPhone']), 'address');
   const found = [propertyType, transactionType, city, locality, price, area.sqft].filter(Boolean).length;
   out.confidence = Math.round((found / 6) * 100) / 100;
   return out;
@@ -332,10 +357,10 @@ export function parseOne(raw: string, idx = 0): ParsedListing {
 
 /** budget for a requirement: "40-50 L", "40 se 50 lakh", "1.2 to 1.5 cr", "50 L tak", "upto 1 cr", "budget 45 lakh", "15-20k rent" */
 export function findBudget(t: string): { min?: number; max?: number } {
-  const s = withoutPhones(t).replace(/(\d),(?=\d)/g, '$1');
+  const s = withoutPhones(t).replace(/(\d),(?=\d)/g, '$1').replace(/\s+/g, ' '); // S2: collapse runs so the adjacent \s* in the range regex cannot go quadratic
   const unit = (u: string) => /^(?:cr|crs|crore|करोड़)/i.test(u) ? 1e7 : /^(?:l|lac|lacs|lakh|lakhs|lk|लाख)/i.test(u) ? 1e5 : /^(?:k|हज़ार|hazar|thousand)/i.test(u) ? 1e3 : 1;
   const U = '(cr\\b|crs?\\b|crore|करोड़|l\\b|lac\\b|lacs\\b|lakhs?|lk\\b|लाख|k\\b|हज़ार|hazar|thousand)';
-  const range = s.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${U}?\\s*(?:-|–|to|se|से|tak\\s+se)\\s*(\\d+(?:\\.\\d+)?)\\s*${U}`, 'i'));
+  const range = s.match(new RegExp(`(?<![\\d,])(\\d{1,15}(?:\\.\\d{1,6})?)\\s*${U}?\\s*(?:-|–|to|se|से|tak\\s+se)\\s*(\\d{1,15}(?:\\.\\d{1,6})?)\\s*${U}`, 'i'));
   if (range) {
     const u2 = unit(range[4]); const u1 = range[2] ? unit(range[2]) : u2;
     const a = Math.round(Number(range[1]) * u1), b = Math.round(Number(range[3]) * u2);

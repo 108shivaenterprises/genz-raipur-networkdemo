@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useBackClose } from '../lib/backStack.js';
 import { UserProfile } from '../types/index.js';
 import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, MessageCircle, LogOut, ShieldCheck, ChevronDown, Star, Search } from 'lucide-react';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
@@ -51,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const tx = useTx();
   const label = useLabel();
   const [menu, setMenu] = useState(false);
+  useBackClose(menu, () => setMenu(false));   // v178
   const status = currentUser.verificationStatus;
   const iconBtn = 'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-slate-700 transition-colors';
   return (

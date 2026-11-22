@@ -33,7 +33,12 @@ export function isPlausibleRera(r: string): boolean {
   return /^[A-Z0-9][A-Z0-9\-\/.]{6,28}[A-Z0-9]$/.test(r) && /[A-Z]/.test(r) && /\d/.test(r);
 }
 
-export const maskPan = (p?: string) => (p ? `${p.slice(0, 2)}•••••${p.slice(-2)}` : p);
+export const maskPan = (p?: string) => { const s = String(p ?? '').trim(); return !s ? p : s.length < 6 ? '•••••' : `${s.slice(0, 2)}•••••${s.slice(-2)}`; };   // F4: a short value is never echoed
 export const maskGstin = (g?: string) => (g ? `${g.slice(0, 2)}•••••••••${g.slice(-3)}` : g);
 
 export const RERA_PORTAL_CG = 'https://rera.cgstate.gov.in';
+
+/** S1: only SUPERADMIN (audited ID-review / KYC-vault paths aside) sees another member's full PAN; everyone else gets it masked. */
+export function maskKycFor<T extends { panNumber?: string }>(u: T, viewer: { role: string }): T {
+  return viewer.role === 'SUPERADMIN' || !u.panNumber ? u : { ...u, panNumber: maskPan(u.panNumber) };
+}

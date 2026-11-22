@@ -20,7 +20,8 @@ export const DealSimple: React.FC<{
   onOpen: (door: SimpleDoor | 'full') => void;
   onBookVisit?: () => void;         // only passed when this person may create a site visit
   phone?: string;                   // the other broker's number — the two brokers of a deal already see it in the chat header
-}> = ({ item, doors, onOpen, phone, onBookVisit }) => {
+  pending?: { id: string; en: string; hi: string; go: () => void }[];   // v178: what the Full room shows as "Pending" for this person (owner's mandate, visit OTP) — never "nothing" while Full says otherwise
+}> = ({ item, doors, onOpen, phone, onBookVisit, pending = [] }) => {
   const tx = useTx(); const th = useTemplateHi();
   // the live cost sheet this broker already made for this deal's project (matched by project name; hidden when none / no access)
   const [sheet, setSheet] = useState<string>('');
@@ -91,6 +92,16 @@ export const DealSimple: React.FC<{
             </div>
           ))}
         </dl>
+      )}
+      {pending.length > 0 && (
+        <section className="space-y-1.5 rounded-[20px] border border-amber-300 bg-amber-50 p-3" data-testid="deal-simple-pending" aria-label={tx('Waiting for you', 'आपका इंतज़ार')}>
+          <h3 className="text-xs font-bold uppercase tracking-wide text-amber-900">{tx('Waiting for you', 'आपका इंतज़ार')}</h3>
+          {pending.map(p => (
+            <button key={p.id} type="button" onClick={p.go} data-testid={`deal-pending-${p.id}`} className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-white px-3 text-left text-sm font-semibold text-slate-900 active:bg-paper">
+              <span className="min-w-0 flex-1">{tx(p.en, p.hi)}</span><ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+            </button>
+          ))}
+        </section>
       )}
       <div className="flex justify-between gap-1" data-testid="deal-simple-doors">
         {onBookVisit && <button type="button" onClick={onBookVisit} className={round} data-testid="deal-book-visit"><span className="flex h-14 w-14 items-center justify-center rounded-full border border-money bg-money text-white shadow-card"><CalendarCheck className="h-5 w-5" aria-hidden /></span>{tx('Book visit', 'विज़िट तय करें')}</button>}

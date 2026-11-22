@@ -2,6 +2,7 @@
  * DPDP Act 2023 (India) — data-principal rights: access/portability, correction, erasure, grievance.
  * Template implementation: have counsel review the retention periods and wording before launch.
  */
+import crypto from 'node:crypto';
 import { Router, Request, Response } from 'express';
 import { db, PrivacyRequest } from './db.js';
 import { ctx, needs, requireAuth, rateLimit, unusablePasswordHash } from './auth.js';
@@ -92,21 +93,21 @@ export function createPrivacyRouter() {
     res.json(bundle);
   });
 
-  // Correction / erasure / grievance requests are queued for the Grievance Officer (admin).
+  // Correction / erasure / grievance / consent-withdrawal requests are queued for the Grievance Officer (admin).
   r.post('/requests', requireAuth, rateLimit('privreq', 10, 24 * 60 * 60_000), (req: Request, res: Response) => {
     const u = me();
     const { type, details } = req.body || {};
-    if (!['ERASURE', 'CORRECTION', 'GRIEVANCE'].includes(type)) return res.status(400).json({ error: 'Invalid request type' });
+    if (!['ERASURE', 'CORRECTION', 'GRIEVANCE', 'CONSENT_WITHDRAWAL'].includes(type)) return res.status(400).json({ error: 'Invalid request type' });
     // v76b — a team member cannot delete his data: his attendance, leave, pay and expense records are his employer's books. He can still ask for a correction or write a grievance.
     if (type === 'ERASURE' && u.role === 'TEAM_MEMBER') return res.status(403).json({ error: 'Your work records (attendance, leave, pay, expenses) are kept by your employer, so you cannot delete them yourself. You can ask for a correction or write a grievance here — or speak to your employer.', hi: 'आपका काम का रिकॉर्ड (हाज़िरी, छुट्टी, वेतन, ख़र्चा) आपके नियोक्ता के पास रहता है, इसलिए आप इसे ख़ुद नहीं मिटा सकते। सुधार या शिकायत यहाँ से कर सकते हैं — या अपने नियोक्ता से बात करें।', code: 'TEAM_MEMBER_NO_ERASE' });
     const text = String(details || '').trim().slice(0, 2000);
-    if (type !== 'ERASURE' && text.length < 5) return res.status(400).json({ error: 'Please describe your request' });
+    if (type !== 'ERASURE' && text.length < 5) return res.status(400).json({ error: 'Please describe your request', errorHi: 'कृपया अपना अनुरोध लिखें' });
     const s = db.getState();
     if (s.privacyRequests.some(p => p.userId === u.id && p.type === type && p.status === 'OPEN')) {
       return res.status(409).json({ error: 'You already have an open request of this type' });
     }
     const pr: PrivacyRequest = {
-      id: `PRV-${Date.now().toString(36).toUpperCase()}`,
+      id: `PRV-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
       userId: u.id, userName: u.name, type, details: text, status: 'OPEN', createdAt: new Date().toISOString(),
     };
     s.privacyRequests.unshift(pr);
@@ -128,9 +129,12 @@ export function createPrivacyRouter() {
     const pr = s.privacyRequests.find(p => p.id === req.params.id);
     if (!pr) return res.status(404).json({ error: 'Request not found' });
     if (pr.status !== 'OPEN') return res.status(409).json({ error: 'Already resolved' });
+    if (actor.id === pr.userId) return res.status(403).json({ error: 'You cannot resolve your own request — another administrator must.', errorHi: 'आप अपना ही अनुरोध ख़ुद पूरा नहीं कर सकते — दूसरा एडमिन करेगा।', code: 'SELF_RESOLVE' });
     const { decision, note } = req.body || {};
     if (!['COMPLETE', 'REJECT'].includes(decision)) return res.status(400).json({ error: 'decision must be COMPLETE or REJECT' });
     if (decision === 'REJECT' && String(note || '').trim().length < 5) return res.status(400).json({ error: 'A reason is required to reject' });
+    // v178: a withdrawal of consent is closed only once somebody says what was stopped (the person is told by this note)
+    if (decision === 'COMPLETE' && pr.type === 'CONSENT_WITHDRAWAL' && String(note || '').trim().length < 5) return res.status(400).json({ error: 'Write what was stopped (min 5 characters) to complete a consent withdrawal', errorHi: 'सहमति वापसी पूरी करने के लिए लिखें कि क्या बंद किया गया (कम से कम 5 अक्षर)' });
 
     if (decision === 'COMPLETE' && pr.type === 'ERASURE') {
       const target = s.users.find(u => u.id === pr.userId);
@@ -184,12 +188,16 @@ export function createPrivacyRouter() {
         if (m.card?.kind === 'PHOTO' && gone.has(m.card.refId)) { m.card = undefined; m.text = m.text || '(photo removed)'; }
       }
     }
+    if (decision === 'COMPLETE' && pr.type === 'CONSENT_WITHDRAWAL') {   // S8: the app stops marketing-style pushes (webpush.pushTo) and the consent record says so
+      const t = s.users.find(u => u.id === pr.userId); const at = new Date().toISOString();
+      if (t) { t.consentWithdrawnAt = at; if (t.consent) t.consent.withdrawnAt = at; }
+    }
     pr.status = decision === 'COMPLETE' ? 'COMPLETED' : 'REJECTED';
     pr.resolvedAt = new Date().toISOString();
     pr.resolvedBy = actor.id;
     pr.resolutionNote = String(note || '').slice(0, 500);
     db.save();
-    db.appendAuditEvent(actor.id, actor.role, 'SYSTEM', pr.id, 'PRIVACY_REQUEST_RESOLVED', `${pr.type} request ${pr.status.toLowerCase()} for ${pr.userId}`);
+    db.appendAuditEvent(actor.id, actor.role, 'SYSTEM', pr.id, 'PRIVACY_REQUEST_RESOLVED', `${pr.type} request ${pr.status.toLowerCase()} for ${pr.userId}${pr.status === 'COMPLETED' && pr.type === 'CONSENT_WITHDRAWAL' ? ` — stopped: marketing pushes + inbox (broadcast, digest, matches, community); consentWithdrawnAt set. Note: ${pr.resolutionNote}` : ''}`);
     res.json({ success: true, request: pr });
   });
 

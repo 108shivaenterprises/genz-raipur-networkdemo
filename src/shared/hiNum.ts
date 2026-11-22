@@ -10,6 +10,7 @@ const WORDS: Record<string, string> = {
   chhe: '6', cheh: '6', छह: '6', छः: '6', saat: '7', सात: '7', aath: '8', आठ: '8', nau: '9', नौ: '9', das: '10', दस: '10',
   barah: '12', pandrah: '15', पंद्रह: '15', bees: '20', बीस: '20', pachees: '25', पच्चीस: '25', tees: '30', तीस: '30', chalis: '40', चालीस: '40',
   pachas: '50', pachaas: '50', पचास: '50', saath: '60', साठ: '60', sattar: '70', सत्तर: '70', assi: '80', अस्सी: '80', nabbe: '90', नब्बे: '90',
+  one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10', twenty: '20', thirty: '30', forty: '40', fifty: '50', sixty: '60', seventy: '70', eighty: '80', ninety: '90',
   dedh: '1.5', डेढ़: '1.5', dhai: '2.5', dhaai: '2.5', adhai: '2.5', ढाई: '2.5',
 };
 const UNIT = /(lakh|lac|lakhs|लाख|crore|cr|करोड़|करोड|karod|hazar|hazaar|हज़ार|हजार|bhk|बीएचके|बी\s*एच\s*के|bedroom)/i;

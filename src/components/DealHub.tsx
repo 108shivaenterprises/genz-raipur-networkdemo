@@ -82,11 +82,13 @@ export function nextText(n: { kind: string; n: number; title?: string }, idleDay
  * v52 — ONE "Next step" card instead of a stack of coloured bars. The most urgent item (the server already sorts them) is shown big;
  * the rest sit behind "+N more", so the top of the deal room is calm. Every item still routes to the same deal-room tab with the same test-id.
  */
-export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string) => void }> = ({ item, onGo }) => {
+/** quiet: the owner's own "Waiting for you" card is showing, so the green "nothing waiting" card must not render */
+export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string) => void; quiet?: boolean }> = ({ item, onGo, quiet }) => {
   const tx = useTx(); const th = useTemplateHi();
   const [more, setMore] = useState(false);
   if (!item) return null;
   const list: any[] = item.next || [];
+  if (!list.length && quiet) return null;
   if (!list.length) return (
     <div className="flex items-center gap-2 rounded-2xl border border-edge bg-money-bg px-3.5 py-3 text-[13px] font-semibold text-money" data-testid="next-steps-clear">
       <CheckCircle2 className="h-4 w-4" />{tx('Nothing waiting on you in this deal right now.', 'इस डील में अभी आपके लिए कुछ बाकी नहीं।')}

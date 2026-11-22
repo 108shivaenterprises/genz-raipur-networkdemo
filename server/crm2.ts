@@ -34,6 +34,7 @@ import { parseSource, callStats, callOutcome, UNCALLED_HOURS, FORWARD_UNSEEN_HOU
 import type { CrmLead, CrmBooking, CrmLeadStage } from '../src/types/crm.js';
 
 const DAY = 86400_000;
+const maskEmail = (e?: string) => (e ? e.replace(/^(.).*(@.*)$/, '$1•••$2') : '');
 const bad = (res: Response, error: string, status = 400, code?: string) => res.status(status).json(code ? { error, code } : { error });
 const me = currentUser;
 const stateOf = () => db.getState();
@@ -146,6 +147,7 @@ export function createCrmPlusRouter() {
 
   r.post('/leads/:id/optout', needs('crm:lead_manage'), (req: Request, res: Response) => {
     const u = me(); const lead = loadLead(req, res); if (!lead) return;
+    if (u.role === 'TEAM_MEMBER') return bad(res, 'Ask your employer to record an opt-out', 403);
     if (lead.optedOutAt) return bad(res, 'Already opted out', 409);
     if (lead.stage === 'BOOKED' || lead.stage === 'BOOKING_REQUESTED') return bad(res, 'This customer already has a booking — manage contact preferences with the builder', 409);
     lead.optedOutAt = nowIso(); lead.stage = 'LOST'; lead.lostCode = 'NOT_INTERESTED'; lead.lostReason = 'Customer asked not to be contacted';
@@ -234,7 +236,7 @@ export function createCrmPlusRouter() {
     const full = req.query.full === '1' && !isAdmin(u as any);
     const leads = leadsForUser(u).filter(l => !l.erasedAt && (!req.query.projectId || l.projectId === String(req.query.projectId)));
     const head = ['id', 'project', 'name', 'phone', 'email', 'source', 'source_detail', 'stage', 'temperature', 'tags', 'lost_reason', 'created', 'last_activity', 'next_followup', 'associate', 'protected_until'];
-    const lines = [head.join(',')].concat(leads.map(l => [l.id, l.projectName, l.name, full ? l.phone : maskPhoneNumber(l.phone), l.email || '', l.source, l.sourceDetail || '', l.stage, l.temperature || '', (l.tags || []).join('|'), l.lostCode || '', l.createdAt.slice(0, 10), lastActivityAt(l).slice(0, 10), (l.nextFollowUpAt || '').slice(0, 10), l.associateName, l.protectedUntil.slice(0, 10)].map(csvCell).join(',')));
+    const lines = [head.join(',')].concat(leads.map(l => [l.id, l.projectName, l.name, full ? l.phone : maskPhoneNumber(l.phone), isAdmin(u as any) ? maskEmail(l.email) : (l.email || ''), l.source, l.sourceDetail || '', l.stage, l.temperature || '', (l.tags || []).join('|'), l.lostCode || '', l.createdAt.slice(0, 10), lastActivityAt(l).slice(0, 10), (l.nextFollowUpAt || '').slice(0, 10), l.associateName, l.protectedUntil.slice(0, 10)].map(csvCell).join(',')));
     auditCrm('CRM_LEADS_EXPORTED', 'EXPORT', `${u.name} exported ${leads.length} leads (${full ? 'full phone numbers' : 'masked phone numbers'})`);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="genz-leads-${nowIso().slice(0, 10)}.csv"`); res.setHeader('Cache-Control', 'no-store');
     res.send('﻿' + lines.join('\n'));
