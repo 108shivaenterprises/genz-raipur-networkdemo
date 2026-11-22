@@ -187,7 +187,22 @@ const PanCard: React.FC<{ onDone: () => void }> = ({ onDone }) => {
   );
 };
 
-export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = ({ onNew, refreshKey }) => {
+/** v182 — first-run for a new owner: one big button + 3 steps. Gone for good once he has a listing (server data) or taps close. */
+const OwnerStart: React.FC<{ onNew: () => void; userId?: string }> = ({ onNew, userId }) => {
+  const tx = useTx();
+  const [gone, setGone] = useState(() => { try { return localStorage.getItem(`genz.ownerguide.${userId}`) === '1'; } catch { return false; } });
+  if (gone) return null;
+  const steps: [string, string][] = [['Add your property', 'अपनी प्रॉपर्टी जोड़ें'], ['Wait for broker interest — we tell you here', 'ब्रोकर की रुचि का इंतज़ार करें — यहीं बताएँगे'], ['Confirm the visit with the code', 'कोड से विज़िट कन्फर्म करें']];
+  return (
+    <section className="space-y-3 rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4" data-testid="owner-start">
+      <button type="button" onClick={onNew} data-testid="owner-add-big" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-base font-bold text-white"><Plus className="h-5 w-5" />{tx('Add your property', 'अपनी प्रॉपर्टी जोड़ें')}</button>
+      <ol className="space-y-1.5 text-sm text-emerald-950">{steps.map((x, i) => <li key={i} className="flex items-center gap-2"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold">{i + 1}</span>{tx(x[0], x[1])}</li>)}</ol>
+      <button type="button" onClick={() => { try { localStorage.setItem(`genz.ownerguide.${userId}`, '1'); } catch { /* storage blocked */ } setGone(true); }} className="min-h-11 text-xs font-semibold text-emerald-800 underline">{tx('Hide this guide', 'यह गाइड छुपाएँ')}</button>
+    </section>
+  );
+};
+
+export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number; userId?: string }> = ({ onNew, refreshKey, userId }) => {
   const tx = useTx(); const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const [ref, setRef] = useState<Record<string, string>>({}); const [nd, setNd] = useState<Record<string, boolean>>({});
   const load = useCallback(() => api.olMine().then(setD).catch(e => setErr(e.message)), []);
@@ -200,6 +215,7 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number }> = 
         <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Two ways: pay GENZ’s plan and go live for all brokers, or choose one broker free from your city’s Top 10 and go live after his mandate.', 'दो रास्ते: GENZ का प्लान देकर सभी ब्रोकरों के लिए लाइव, या अपने शहर के टॉप 10 में से एक ब्रोकर मुफ़्त चुनें और उसके मंडेट के बाद लाइव।')}</p></div>
         <button type="button" className={btn} onClick={onNew} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>
       </div>
+      {d.listings.length === 0 && <OwnerStart onNew={onNew} userId={userId} />}
       {d && !d.panSet && <PanCard onDone={load} />}
       <PlanCards onNew={onNew} />
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}

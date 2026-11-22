@@ -1166,7 +1166,7 @@ ${nwLine}${stepsLine}${homes.length && b ? homeCards(b, p, homes) : ''}
     noStore(res);
     if (!l || !l.chat) return res.status(404).send(shell('GENZ', `<div class="card"><p class="t">यह लिंक मान्य नहीं है।<br><small>This link is not valid.</small></p></div>`));
     const b = userOf(l.brokerId); const who = b?.name || 'ब्रोकर';
-    try { sahayak.follow(l); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); }   // v103 — opening the chat shows the homes as they are now
+    try { sahayak.follow(l, Date.now(), true); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); }   // v103 — opening the chat shows the homes as they are now
     l.chat.customerSeenAt = nowIso(); db.save();
     // v104 — under a home: a small (watermarked) photo and “see photos / video” — the page it opens is /q/chat/<link>/home/<id>
     const wmChat = `${b ? brandOf(b).displayName : 'GENZ'} · GENZ`; let anyThumb = false;

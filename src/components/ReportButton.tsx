@@ -23,7 +23,7 @@ export const ReportButton: React.FC<{ targetType: 'LISTING' | 'BROKER'; targetId
   };
   return (
     <>
-      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-slate-500 hover:bg-red-50 hover:text-red-700 ${compact ? '' : 'min-h-8'}`} aria-label={tx('Report', 'रिपोर्ट करें')}>
+      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-slate-500 hover:bg-red-50 hover:text-red-700 min-h-11`} aria-label={tx('Report', 'रिपोर्ट करें')}>
         <Flag className="h-3.5 w-3.5" aria-hidden /> {tx('Report', 'रिपोर्ट')}
       </button>
       {open && (

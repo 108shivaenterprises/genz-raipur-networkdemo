@@ -9,7 +9,7 @@
  */
 import { chatHome } from '../lib/goto.js';
 import React, { useEffect, useState } from 'react';
-import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, Clock, Loader2, Plus, HardHat, Globe } from 'lucide-react';
+import { Sparkles, MessageCircle, UserPlus, Bell, CheckCircle2, ChevronRight, Building2, Trophy, CalendarDays, Share2, Clock, Loader2, Plus, HardHat, Globe, Users } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { formatINR, greetName } from '../lib/utils.js';
@@ -68,7 +68,7 @@ const ShopQrTile: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
 
 export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequirement, user, onOpenAddProperty, onOpenAddLead, canGrow }) => {
   const tx = useTx();
-  const [showAlerts, setShowAlerts] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(false); const [dismissed, setDismissed] = useState(false);
   const [h, setH] = useState<any>(null);
   const [alertsOn, setAlertsOn] = useState<boolean | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
@@ -89,9 +89,13 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
   const steps = [
     { done: h.firstRun.listing, icon: MessageCircle, en: 'Put your first listing — paste it from WhatsApp', hi: 'पहली लिस्टिंग डालें — WhatsApp से पेस्ट करें', go: () => goto('properties', { drafts: '1' }, onNavigate), testId: 'step-listing' },
     { done: h.firstRun.client, icon: UserPlus, en: 'Add a client’s need — GENZ finds matches for you', hi: 'किसी क्लाइंट की ज़रूरत जोड़ें — GENZ मैच ढूँढेगा', go: onOpenAddRequirement, testId: 'step-client' },
-    { done: !!alertsOn, icon: Bell, en: 'Turn on phone alerts', hi: 'फ़ोन अलर्ट चालू करें', go: () => { setShowAlerts(true); window.setTimeout(() => document.getElementById('home-alerts')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }, testId: 'step-alerts' },
+    { done: !!h.firstRun.share, icon: Share2, en: 'Share 1 link or flyer with a client', hi: 'किसी क्लाइंट को 1 लिंक या फ़्लायर भेजें', go: () => onNavigate('share' as TabType), testId: 'step-share' },
+    { done: !!h.firstRun.invite, icon: Users, en: 'Invite 1 broker to GENZ', hi: '1 ब्रोकर को GENZ पर बुलाएँ', go: () => onNavigate('grow' as TabType), testId: 'step-invite' },
   ];
-  const left = steps.filter(s => !s.done).length;
+  const alertStep = { done: !!alertsOn, icon: Bell, en: 'Turn on phone alerts', hi: 'फ़ोन अलर्ट चालू करें', go: () => { setShowAlerts(true); window.setTimeout(() => document.getElementById('home-alerts')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }, testId: 'step-alerts' };
+  const allSteps = [...steps, alertStep]; const total = allSteps.length;
+  const left = allSteps.filter(s => !s.done).length;
+  const hideSteps = (() => { try { return localStorage.getItem(`genz.firststeps.${user?.id}`) === '1'; } catch { return false; } })() || dismissed;
   // v80 — the to-do counters live ONLY in the notification bell now (same list: src/shared/homeTodoRules.ts → server/homebell.ts). The Home no longer repeats them below.
   const cityName = String(h.city || '').trim(); // v98: the broker's own city — never a made-up default
   const reportUrl = `${window.location.origin}/report/${encodeURIComponent(cityName || 'India')}${h.refCode ? `?ref=${encodeURIComponent(h.refCode)}` : ''}`;
@@ -107,13 +111,14 @@ export const BrokerHome: React.FC<Props> = ({ name, onNavigate, onOpenAddRequire
       </div>
       {!chatHome.on() && <button type="button" onClick={() => { chatHome.set(true); onNavigate('chats' as any); }} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-3 text-sm font-bold text-slate-900" data-testid="chat-home-on">{tx('Try the new chat home', 'नया चैट होम आज़माएँ')}</button>}
 
-      {left > 0 && (
+      {left > 0 && !hideSteps && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="first-steps">
-          <p className="text-sm font-bold text-slate-900">{tx(`Get started — ${3 - left} of 3 done`, `शुरुआत — 3 में से ${3 - left} पूरे`)}</p>
-          <div className="mt-2 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${((3 - left) / 3) * 100}%` }} /></div>
+          <button type="button" onClick={() => { try { localStorage.setItem(`genz.firststeps.${user?.id}`, '1'); } catch { /* storage blocked */ } setDismissed(true); }} className="float-right -mr-2 -mt-2 inline-flex h-11 min-w-11 items-center justify-center text-xs font-semibold text-slate-500" aria-label={tx('Hide', 'छुपाएँ')} data-testid="first-steps-hide">{tx('Hide', 'छुपाएँ')}</button>
+          <p className="text-sm font-bold text-slate-900">{tx(`Get started — ${total - left} of ${total} done`, `शुरुआत — ${total} में से ${total - left} पूरे`)}</p>
+          <div className="mt-2 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${((total - left) / total) * 100}%` }} /></div>
           {/* v54 — only what is still to do; a finished step disappears instead of staying crossed out */}
           <ul className="mt-3 space-y-2">
-            {steps.filter(s => !s.done).map((s, i) => (
+            {allSteps.filter(s => !s.done).map((s, i) => (
               <li key={i}>
                 <button onClick={s.go} disabled={s.done} data-testid={s.testId} className={`flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 text-left text-sm ${s.done ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-900'}`}>
                   {s.done ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" /> : <s.icon className="h-5 w-5 shrink-0 text-slate-500" />}

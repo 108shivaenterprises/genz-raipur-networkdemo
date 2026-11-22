@@ -189,6 +189,7 @@ export interface Property {
   listingStatus: 'draft' | 'pending_verification' | 'active' | 'under_negotiation' | 'sold' | 'rented' | 'withdrawn' | 'suspended';
   verificationStatus: 'VERIFIED' | 'PENDING' | 'REJECTED';
   duplicateHash: string;
+  confirmedAt?: string;
   priceHistory: Array<{ price: number; changedAt: string; reason: string }>;
   images: string[];
   documents: Array<{ id: string; name: string; url: string; category: string }>;

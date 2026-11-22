@@ -140,6 +140,7 @@ export function setPushFetch(f: typeof fetch) { fetchImpl = f; }
 /** tests: PUSH_DRY_RUN=true answers every push with 201 instead of calling the real push service (a fake endpoint got a real 404 and was dropped — flaky) */
 if ((process.env.PUSH_DRY_RUN ?? '').toLowerCase() === 'true') fetchImpl = async () => new Response(null, { status: 201 });
 
+import { AUTO_PUSH_KINDS, isQuietHour } from '../src/shared/quietHours.js';
 const istHour = (d = new Date()) => (d.getUTCHours() + 5 + (d.getUTCMinutes() + 30 >= 60 ? 1 : 0)) % 24;
 const istDay = (d = new Date()) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 10);
 
@@ -245,6 +246,7 @@ export async function pushTo(userId: string, msg: PushMsg): Promise<number> {
     const subs = s.pushSubs.filter(x => x.userId === userId);
     const p = prefsOf(userId);
     if (msg.kind !== 'system' && (p as any)[msg.kind] === false) { db.save(); return 0; }
+    if (AUTO_PUSH_KINDS.includes(msg.kind) && isQuietHour(Date.now())) { db.save(); return 0; }   // v182 — skipped, not held: the bell above already keeps it; deal / consent / system alerts always go
     if (p.quiet && msg.kind !== 'consent' && msg.kind !== 'system') { const h = istHour(); if (h >= 22 || h < 7) { db.save(); return 0; } }
     const day = istDay();
     if (!p.sentToday || p.sentToday.day !== day) p.sentToday = { day, n: 0 };

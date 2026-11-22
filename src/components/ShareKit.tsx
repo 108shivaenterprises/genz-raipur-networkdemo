@@ -7,7 +7,8 @@ import { drawBrandLogo } from '../lib/brandQr.js';
 import { LANG_LABELS, TEMPLATE_LABELS, TEMPLATE_LABELS_HI, renderTemplate, waLink, type TemplateKind, type TemplateLang } from '../shared/templates.js';
 
 interface Brand { displayName: string; company: string; tagline: string; reraId: string; logo: string; phone: string; city: string }
-interface Source { kind: 'PROJECT' | 'PROPERTY'; id: string; title: string; sub: string; price: string; lines: string[] }
+import { ConfirmChip } from './ListingTrust.js';
+interface Source { kind: 'PROJECT' | 'PROPERTY'; id: string; title: string; sub: string; price: string; lines: string[]; confirmedAt?: string }
 
 function shrinkLogo(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -183,6 +184,7 @@ export const ShareKit: React.FC = () => {
             {sources.length === 0 && <option value="">{tx('No project / property available to share','शेयर करने योग्य कोई प्रोजेक्ट / प्रॉपर्टी नहीं')}</option>}
             {sources.map(s => <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>{s.kind === 'PROJECT' ? '🏢' : '🏠'} {s.title} — {s.sub}</option>)}
           </select>
+          {src?.confirmedAt && <ConfirmChip p={{ confirmedAt: src.confirmedAt }} />}
           <div className="grid grid-cols-2 gap-2">
             <input className={inputCls} value={client} onChange={e => setClient(e.target.value)} placeholder={tx("Client name (Dr. Verma)","ग्राहक का नाम (डॉ. वर्मा)")} />
             <select className={inputCls} value={lang} onChange={e => setLang(e.target.value as TemplateLang)}>{(Object.keys(LANG_LABELS) as TemplateLang[]).map(k => <option key={k} value={k}>{LANG_LABELS[k]}</option>)}</select>

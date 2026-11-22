@@ -75,6 +75,8 @@ const ProtectedDocsView = lazyView(() => import('./components/ProtectedDocsView.
 const CommunityView = lazyView(() => import('./components/CommunityView.js'), 'CommunityView');
 const CityLaunch = lazyView(() => import('./components/CityLaunch.js'), 'CityLaunch');
 const HomeInsights = lazyView(() => import('./components/HomeInsights.js'), 'HomeInsights');
+import { FirstRunStrip } from './components/FirstRunStrip.js';
+import { WhatsNewCard } from './components/WhatsNewCard.js';
 const TeamHome = lazyView(() => import('./components/TeamHome.js'), 'TeamHome');
 const DashboardView = lazyView(() => import('./components/DashboardView.js'), 'DashboardView');
 const BuilderLaunchpadView = lazyView(() => import('./components/BuilderLaunchpadView.js'), 'BuilderLaunchpadView');
@@ -339,6 +341,11 @@ export default function App() {
   useEffect(() => {
     if ((currentUser?.role !== 'BROKER' && currentUser?.role !== 'PROPERTY_OWNER') || activeTab !== 'dashboard' || !chatHome.on()) return;
     try { if (sessionStorage.getItem('genz.landed') === currentUser.id) return; sessionStorage.setItem('genz.landed', currentUser.id); } catch { return; }
+    // v182 — a brand-new owner (no listing of his own yet) lands where he can add his property, not on an empty Chat tab
+    if (currentUser.role === 'PROPERTY_OWNER' && Date.now() - Date.parse(currentUser.createdAt || '') < 7 * 86_400_000) {
+      api.olMine().then(d => setActiveTab(d?.listings?.length ? 'chats' : 'properties')).catch(() => setActiveTab('chats'));
+      return;
+    }
     setActiveTab('chats');
   }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -508,6 +515,8 @@ export default function App() {
 
         {/* v59 — every role gets its work alerts; the broker's home has this inside his first steps */}
         {activeTab === 'dashboard' && currentUser.role !== 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && <AlertsNudge role={currentUser.role} />}
+
+        {activeTab === 'dashboard' && ['BROKER', 'TEAM_MEMBER', 'PROPERTY_OWNER'].includes(currentUser.role) && <WhatsNewCard userId={currentUser.id} createdAt={currentUser.createdAt} />}
 
         {activeTab === 'dashboard' && currentUser.role === 'TEAM_MEMBER' && (
           <TeamHome currentUser={currentUser} deals={deals} onNavigate={setActiveTab} permissions={permissions} />
@@ -716,6 +725,8 @@ export default function App() {
         {activeTab === 'desk' && hasPerm(permissions, 'offer:make', 'offer:decide', 'listing:lifecycle') && <DealDesk currentUser={currentUser} permissions={permissions} />}
 
         {activeTab === 'clientroom' && hasPerm(permissions, 'clientroom:use') && <ClientRoomsTab />}
+        {activeTab === 'chats' && ['BROKER', 'TEAM_MEMBER', 'PROPERTY_OWNER'].includes(currentUser.role) && <WhatsNewCard userId={currentUser.id} createdAt={currentUser.createdAt} />}
+        {activeTab === 'chats' && currentUser.role === 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && <FirstRunStrip userId={currentUser.id} onNavigate={setActiveTab} onAddNeed={() => setShowAddRequirement(true)} />}
         {activeTab === 'chats' && hasPerm(permissions, 'deal:chat', 'clientroom:use', 'pchat:use') && <ChatsView meId={currentUser.id} permissions={permissions} />}
 
         {activeTab === 'partners' && hasPerm(permissions, 'partner:manage', 'partner:oversee') && <ShopPartnersView currentUser={currentUser} canManage={hasPerm(permissions, 'partner:manage')} canOversee={hasPerm(permissions, 'partner:oversee')} />}

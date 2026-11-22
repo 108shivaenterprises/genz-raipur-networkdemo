@@ -62,7 +62,7 @@ function sourcesFor(u: UserProfile) {
     .filter(p => p.status !== 'ARCHIVED').map(p => ({ kind: 'PROJECT' as const, id: p.id, title: p.projectName, sub: `${p.locality}, ${p.city}`, price: `From ${inr(p.priceStartingFrom)}`, lines: [p.projectType, ...(p.unitConfigurations || []).slice(0, 3), p.reraNumber ? `RERA ${p.reraNumber}` : ''].filter(Boolean) }));
   const props = u.role === 'BROKER'
     ? st.properties.filter(p => p.listingBrokerId === u.id && p.verificationStatus === 'VERIFIED' && ['active', 'under_negotiation'].includes(p.listingStatus))
-        .map(p => ({ kind: 'PROPERTY' as const, id: p.id, title: p.title, sub: `${p.locality}, ${p.city}`, price: inr(p.askingPrice), lines: [p.propertyType, p.transactionType, p.plotAreaSqFt ? `${p.plotAreaSqFt} sq ft` : ''].filter(Boolean) }))
+        .map(p => ({ kind: 'PROPERTY' as const, id: p.id, title: p.title, sub: `${p.locality}, ${p.city}`, price: inr(p.askingPrice), confirmedAt: p.confirmedAt || p.createdAt, lines: [p.propertyType, p.transactionType, p.plotAreaSqFt ? `${p.plotAreaSqFt} sq ft` : ''].filter(Boolean) }))
     : [];
   return [...projects, ...props];
 }

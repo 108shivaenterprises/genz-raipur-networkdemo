@@ -127,7 +127,7 @@ export function createHomeRouter() {
     const ranked = pool.map(x => ({ id: x.id, p: pts(x.id) })).sort((a, b) => b.p - a.p);
     res.json({
       success: true,
-      firstRun: { listing: myListings.length > 0 || s.properties.some(p => p.listingBrokerId === u.id), client: reqs.length > 0 || clients.length > 0, card: !!u.publicCard?.enabled },
+      firstRun: { listing: myListings.length > 0 || s.properties.some(p => p.listingBrokerId === u.id), client: reqs.length > 0 || clients.length > 0, card: !!u.publicCard?.enabled, share: s.shareLinks.some(l => l.ownerId === u.id), invite: s.users.some(x => x.invitedById === u.id) || s.growthLeads.some(l => l.nominatorId === u.id) },
       counts: brokerHomeCounts(u),
       reputation: reputationOf(u.id),
       page: u.role === 'BROKER' ? pageSummary(u) : null,

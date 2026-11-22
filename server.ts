@@ -1119,6 +1119,8 @@ function sanitizeProperty(p: any, user: UserProfile, state = db.getState()) {
   const out: any = { ...p };
   delete out.duplicateHash;
   delete out.ownerKeyHash;
+  if (isAdmin(user) || p.ownerId === user.id || p.listingBrokerId === user.id) out.quickReportCount = (p.quickReports || []).length;
+  delete out.quickReports; delete out.quickReportsClearedAt;   // v182 — reporter ids stay on the server
   // v73 — fee / payment / requests of a self-listed property are for its owner, the assigned broker and GENZ staff only
   if (p.ownerListing) {
     const mineL = isAdmin(user) || p.ownerId === user.id || p.listingBrokerId === user.id;

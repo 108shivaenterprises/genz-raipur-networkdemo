@@ -914,6 +914,7 @@ export const api = {
   confirmListing: (id: string) => request<any>(`/api/daily/listings/${id}/confirm`, { method: 'POST', body: '{}' }),
   trustBreakdown: () => request<any>('/api/daily/trust'),
   report: (b: any) => request<any>('/api/daily/report', { method: 'POST', body: JSON.stringify(b) }),
+  flagListing: (id: string, reason: string) => request<any>(`/api/daily/listings/${encodeURIComponent(id)}/flag`, { method: 'POST', body: JSON.stringify({ reason }) }),
   reports: () => request<any>('/api/daily/reports'),
   reportResolve: (id: string, action: 'UPHOLD' | 'DISMISS') => request<any>(`/api/daily/reports/${id}/resolve`, { method: 'POST', body: JSON.stringify({ action }) }),
   mapPins: (city?: string) => request<any>(`/api/daily/map${city ? `?city=${encodeURIComponent(city)}` : ''}`),

@@ -28,6 +28,8 @@ import { sameCity } from '../src/shared/india.js';
 import { policyOf, maskPhone } from '../src/shared/pcontrolRules.js';
 import { linkNeedForCard, syncBroker, needOfCard } from './clientlink.js';
 import { openRoomIdOf } from './clientroom.js';
+import { QUICK_REASONS, QUICK_REASON_WORDS, addQuickReport, hidesBy, MAX_HIDES_PER_REPORTER } from '../src/shared/listingTrust.js';
+import { pushTo } from './webpush.js';
 
 const nowIso = () => new Date().toISOString();
 const DAY = 86_400_000;
@@ -121,7 +123,7 @@ export function buildDigest(u: UserProfile, now = Date.now()) {
       out.push({
         key, sourceId: s.id, sourceKind: s.kind, clientName: s.name, score: ds.score, parts: ds.parts, reasons: m.reasons.slice(0, 3), status: pr.seen[key] || 'NEW',
         isNew: days(p.createdAt, now) <= 3,
-        property: { id: p.id, title: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType, transactionType: p.transactionType, askingPrice: p.askingPrice, image: p.images?.[0] || '', ageDays: Math.floor(days(p.createdAt, now)), daysLeft: Math.max(0, Math.ceil(FRESH_DAYS - days(p.confirmedAt, now))) },
+        property: { id: p.id, title: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType, transactionType: p.transactionType, askingPrice: p.askingPrice, image: p.images?.[0] || '', ageDays: Math.floor(days(p.createdAt, now)), confirmedAt: p.confirmedAt, createdAt: p.createdAt, daysLeft: Math.max(0, Math.ceil(FRESH_DAYS - days(p.confirmedAt, now))) },
         broker: broker ? { id: broker.id, name: broker.name, trustScore: broker.trustScore ?? null, verified: broker.verificationStatus === 'VERIFIED' } : null,
       });
     }
@@ -347,11 +349,33 @@ export function createDailyRouter() {
     if (!p || !isPropertyPrincipal(u, p)) return res.status(404).json({ error: 'Listing not found' });
     if (p.heldAt) return res.status(409).json({ error: 'This listing is on hold after reports. GENZ will review it.' });
     const wasStale = !!p.expiredAt;
-    p.confirmedAt = nowIso(); p.expiredAt = undefined; p.updatedAt = p.confirmedAt;
+    p.confirmedAt = nowIso(); p.expiredAt = undefined; p.quickReportsClearedAt = p.confirmedAt; p.updatedAt = p.confirmedAt;
     db.save();
     db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'LISTING_CONFIRMED', `Broker confirmed “still available”${wasStale ? ' (re-listed after expiry)' : ''}`);
     awardPoints(u.id, 'LISTING_CONFIRMED', `${p.id}:${p.confirmedAt!.slice(0, 7)}`, 5);
     res.json({ success: true, confirmedAt: p.confirmedAt });
+  });
+  // v182 — one tap from a broker who is NOT the lister: sold / rented / wrong price / wrong info / unreachable. Two different brokers → hidden until the lister taps “still available”.
+  r.post('/listings/:id/flag', needs('report:create'), rateLimit('qflag', 30, 24 * 60 * 60_000), (req: Request, res: Response) => {
+    const u = me(); const p = db.byId('properties', req.params.id);
+    const reason = QUICK_REASONS.find(x => x === req.body?.reason);
+    if (!reason) return res.status(400).json({ error: 'Choose a reason', hi: 'कारण चुनें' });
+    if (!p || !canBrowseProperty(u, p)) return res.status(404).json({ error: 'Listing not found' });
+    if (isPropertyPrincipal(u, p) || p.listingBrokerId === u.id) return res.status(400).json({ error: 'You cannot report your own listing.', hi: 'आप अपनी ही लिस्टिंग रिपोर्ट नहीं कर सकते।' });
+    // the same team / brokerage as the lister cannot hide his listing
+    const lister = db.byId('users', p.listingBrokerId) as UserProfile | undefined; const team = (x: UserProfile) => x.employerId || x.id; const co = (x: UserProfile) => (x.companyName || '').trim().toLowerCase();
+    if (lister && (team(lister) === team(u) || (co(u) && co(u) === co(lister)))) return res.status(400).json({ error: 'You work with this lister, so you cannot report this listing.', hi: 'आप इस लिस्टर के साथ काम करते हैं, इसलिए रिपोर्ट नहीं कर सकते।' });
+    const r = addQuickReport(p.quickReports, u.id, reason, Date.now(), p.quickReportsClearedAt);
+    if (r.result === 'FLAGGED' && hidesBy(db.getState().properties.map(x => x.quickReports), u.id) >= MAX_HIDES_PER_REPORTER) return res.status(429).json({ error: 'Too many reports that hid listings this week. Please try again later.', hi: 'इस हफ़्ते आपकी कई रिपोर्ट से लिस्टिंग छुपी हैं। कुछ दिन बाद कोशिश करें।' });
+    p.quickReports = r.list;
+    if (r.result === 'DUPLICATE') { db.save(); return res.json({ success: true, duplicate: true, message: 'You already reported this one. Thank you.', hi: 'आप इसे पहले ही रिपोर्ट कर चुके हैं। धन्यवाद।' }); }
+    if (r.result === 'FLAGGED') p.expiredAt = nowIso();   // the existing “needs re-confirm” state: hidden until the lister taps “still available”
+    db.save();
+    db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'LISTING_QUICK_REPORT', `Quick report: ${reason}${r.result === 'FLAGGED' ? ' — 2 brokers reported, hidden until re-confirmed' : ''}`);   // reporter id only; no owner identity, phone or net price
+    const w = QUICK_REASON_WORDS[reason];
+    if (p.listingBrokerId) void pushTo(p.listingBrokerId, { kind: 'deals', title: `A broker reports: ${w[0]} — ${p.title}`.slice(0, 80), body: r.result === 'FLAGGED' ? 'Hidden from the network until you tap “still available”.' : 'Please check the listing and tap “still available” if it is right.', url: '/?tab=daily',
+      hi: { title: `ब्रोकर की रिपोर्ट: ${w[1]} — ${p.title}`.slice(0, 80), body: r.result === 'FLAGGED' ? 'जब तक आप “अभी भी उपलब्ध” नहीं दबाते, यह नेटवर्क से छुपी रहेगी।' : 'लिस्टिंग देख लें; सही हो तो “अभी भी उपलब्ध” दबाएँ।' } });
+    res.json({ success: true, flagged: r.result === 'FLAGGED', message: 'Thank you. The lister has been told.', hi: 'धन्यवाद। लिस्टर को बता दिया गया है।' });
   });
   r.get('/trust', needs('daily:use'), (_req, res) => res.json({ success: true, ...trustBreakdown(me()) }));
 

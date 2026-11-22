@@ -15,6 +15,7 @@ import { hasPerm } from '../lib/permissions.js';
 import { openPapersFor } from '../lib/paperFile.js';
 import type { OwnerMandate } from '../types/index.js';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
+import { ConfirmChip, QuickFlag } from './ListingTrust.js';
 import { ReportButton } from './ReportButton.js';
 import { EditPropertyModal } from './EditPropertyModal.js';
 import { ListingDrafts } from './ListingDrafts.js';
@@ -212,7 +213,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
       {sendFor && <SendToClient home={sendFor} onClose={() => setSendFor(null)} />}
       {postFor && <PostMaker home={{ title: postFor.title, propertyType: postFor.propertyType, transactionType: postFor.transactionType as 'Sale' | 'Rent' | 'Lease', city: postFor.city, locality: postFor.locality, askingPrice: postFor.askingPrice, builtUpAreaSqFt: postFor.builtUpAreaSqFt, plotAreaSqFt: postFor.plotAreaSqFt, tags: postFor.tags }} broker={currentUser.name} phone={currentUser.phone} link={decodeURIComponent(getPropertyWhatsAppShareUrl(postFor).split('text=')[1] || '').split('\n').find(l => l.startsWith('http'))} onClose={() => setPostFor(null)} />}
       {may('property:moderate') && <ConsentQueue />}
-      {isOwner && <OwnerPanel onNew={onOpenAddProperty} refreshKey={properties.length} />}
+      {isOwner && <OwnerPanel onNew={onOpenAddProperty} refreshKey={properties.length} userId={currentUser.id} />}
       {isBroker && <OwnerRequests />}
       {isBroker && <BrokerBoardLine city={currentUser.city} userId={currentUser.id} />}
       {/* Header and Controls */}
@@ -586,7 +587,8 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                             <MapPin className="h-3 w-3" /><span>{tx('Map', 'नक्शा')}</span>
                           </a>
                         )}
-                        {canReport && <span className="ml-auto"><ReportButton targetType="LISTING" targetId={p.id} /></span>}
+                        <ConfirmChip p={p} />
+                        {canReport && <span className="ml-auto flex items-center gap-1"><QuickFlag id={p.id} /><ReportButton targetType="LISTING" targetId={p.id} /></span>}
                       </div>
                       {moreActions.length > 0 && (
                         <div className="flex flex-wrap gap-2">

@@ -11,6 +11,7 @@ import { EditPropertyModal } from './EditPropertyModal.js';
 import { ListingBuyers } from './ListingBuyers.js';
 // Leaflet is ~150 KB: only downloaded when a broker opens the Map tab (keeps first load light on slow networks)
 const MapView = lazy(() => import('./MapView.js').then(m => ({ default: m.MapView })));
+import { ConfirmChip, QuickFlag } from './ListingTrust.js';
 import { ReportButton } from './ReportButton.js';
 import type { UserProfile } from '../types/index.js';
 
@@ -107,6 +108,7 @@ const Digest: React.FC<{ onGoClients: () => void }> = ({ onGoClients }) => {
                 <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-900">{m.property.title}</div><div className="truncate text-xs text-slate-500">{m.property.locality}, {m.property.city} · {label('propertyType', m.property.propertyType)}</div></div>
                 <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">{m.score}%</span>
               </div>
+              <div className="mt-1"><ConfirmChip p={m.property} /></div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs"><b>{formatINR(m.property.askingPrice)}</b><span className="text-slate-500">{tx('for', 'के लिए')} {m.clientName}</span>{m.isNew && <span className="rounded bg-blue-100 px-1.5 text-[10px] font-bold text-blue-800">{tx('NEW', 'नया')}</span>}</div>
               <button onClick={() => { setOpen(open === m.key ? null : m.key); if (m.status === 'NEW') fb(m, 'OPENED'); }} className="mt-1 text-[11px] font-semibold text-slate-600 underline">{open === m.key ? tx('Hide details', 'विवरण छुपाएँ') : tx('Why this match?', 'यह मैच क्यों?')}</button>
               {open === m.key && (
@@ -121,7 +123,7 @@ const Digest: React.FC<{ onGoClients: () => void }> = ({ onGoClients }) => {
                 <button onClick={() => share(m)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"><Share2 className="h-4 w-4" aria-hidden />{tx('Share', 'शेयर')}</button>
                 <button onClick={() => fb(m, 'SHORTLISTED')} className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border px-2.5 ${m.status === 'SHORTLISTED' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-300 text-slate-600'}`} aria-label={tx('Shortlist', 'शॉर्टलिस्ट')}><Star className="h-4 w-4" /></button>
                 <button onClick={() => fb(m, 'DISMISSED')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-300 px-2.5 text-slate-600" aria-label={tx('Not interested', 'रुचि नहीं')}><ThumbsDown className="h-4 w-4" /></button>
-                <span className="ml-auto"><ReportButton targetType="LISTING" targetId={m.property.id} compact /></span>
+                <span className="ml-auto"><QuickFlag id={m.property.id} compact /></span>
               </div>
             </div>
           </div>

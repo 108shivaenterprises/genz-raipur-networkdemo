@@ -12,6 +12,7 @@
  */
 import { visitNudge } from '../src/shared/leadBrief.js';
 import crypto from 'crypto';
+import { isQuietHour, istDayOf, autoFollowAllowed } from '../src/shared/quietHours.js';
 import { db } from './db.js';
 import type { PartnerLead, Property, UserProfile, LeadMsg, LeadVisitReq, LeadBot } from './db.js';
 import { readIntent, readNeedChange, readWhen, WHEN_CHIPS, BOT_LIMITS, BOT_WATCH, GONE_WORDS, goneKind, type GoneKind, type NeedChange, type When } from '../src/shared/sahayak.js';
@@ -373,7 +374,7 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
   /** v105 — whenever the chat is looked after (a listing changed, he opened the chat, the hourly sweep) his room is brought level with the chat too — even when the assistant is off or quiet */
   /** v123 — visit reminder (customer + broker) and one follow-up after the visit time; called by the hourly sweep */
   function remindVisits(l: PartnerLead, now = Date.now()): number {
-    if (off(l) || l.status === 'LOST' || l.won) return 0; let n = 0;
+    if (off(l) || l.status === 'LOST' || l.won || isQuietHour(now)) return 0; let n = 0;   // v182 — held for the next hourly sweep after quiet hours
     for (const v of botOf(l).visits || []) {
       const k = visitNudge(v, now); if (!k) continue; n++;
       const when = v.counter || v.preferred;
@@ -389,12 +390,14 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
     }
     return n;
   }
-  function follow(l: PartnerLead, now = Date.now()): number {
+  /** v182 — `initiated` = the customer opened his chat (never held). Otherwise nothing goes out in quiet hours (the hourly sweep does it after 08:00); the “new homes” push is also capped at one per client per IST day (a “this home is gone” line is not a push of new homes and is never capped). */
+  function follow(l: PartnerLead, now = Date.now(), initiated = false): number {
     let n = 0;
-    try { n = followChat(l, now); } finally { try { syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); } }
+    try { if (initiated || !isQuietHour(now)) n = followChat(l, now, !initiated && !autoFollowAllowed(now, botOf(l).autoFollowDay)); }
+    finally { try { syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); } }
     return n;
   }
-  function followChat(l: PartnerLead, now = Date.now()): number {
+  function followChat(l: PartnerLead, now = Date.now(), dayCapped = false): number {
     if (!l.chat || off(l) || d.ownerSide(l) || !confirmed(l) || l.status === 'WON' || l.status === 'LOST') return 0;
     const b = botOf(l); const gone = (b.gone ||= {}); const ids = sentIds(l);
     if (!b.followedAt) {   // a chat from before v103: what is already gone would be old news — it is only noted; from here on he is followed
@@ -439,14 +442,14 @@ const rsHi = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} करोड
       d.hist(l, `The assistant told him: ${names} available again`); d.ping(l, 'MSG'); return 1;
     }
     // 3 · a NEW home fits his need
-    if (b.awaiting || d.ownerSide(l) || botSpoke(l, 3600_000) >= BOT_LIMITS.perHour) return 0;   // a plain “gone / back” line above is never held back; a PUSH of new homes is (never a wall of bot talk)
+    if (dayCapped || b.awaiting || d.ownerSide(l) || botSpoke(l, 3600_000) >= BOT_LIMITS.perHour) return 0;   // a plain “gone / back” line above is never held back; a PUSH of new homes is (never a wall of bot talk)
     const w = (b.watch ||= { pushes: 0 });
     if (w.pushes >= BOT_WATCH.maxPushes || (w.lastPushAt && now - Date.parse(w.lastPushAt) < BOT_WATCH.gapHours * 3600_000)) return 0;
     const known = new Set(b.seen || []);
     const pick = d.matchesFor(l).filter(h => !sent.has(h.id) && !known.has(h.id)).slice(0, BOT_LIMITS.autoHomes);
     if (!pick.length) return 0;
     const wasOpen = showMore(pick); const n = pick.length;
-    w.pushes++; w.lastPushAt = nowIso(); b.seen = [...known, ...pick.map(h => h.id)];
+    w.pushes++; w.lastPushAt = nowIso(); b.autoFollowDay = istDayOf(now); b.seen = [...known, ...pick.map(h => h.id)];
     const on = overNote(l, pick);
     say(l, `🆕 आपकी ज़रूरत से मेल खाता ${n === 1 ? 'नया घर' : `${n} नए घर`} आया है — ऊपर भेजा है। पसंद आए तो 📅 विज़िट दबाएँ।${on.hi}`,
       `🆕 ${n === 1 ? 'A new home' : `${n} new homes`} that fit${n === 1 ? 's' : ''} your need just came — I have sent ${n === 1 ? 'it' : 'them'} above. If you like ${n === 1 ? 'it' : 'one'}, choose 📅 visit.${on.en}`, menu(l));

@@ -21,7 +21,7 @@ interface Srv { B: string; proc: ChildProcess; dir: string; cfg: any; out: strin
 async function start(env: Record<string, string>, dir = mkdtempSync(path.join(tmpdir(), 'genz-v93-')), wait = true): Promise<Srv> {
   if (!existsSync(path.join(dir, 'data'))) mkdirSync(path.join(dir, 'data'));
   const port = await freePort(); const B = `http://127.0.0.1:${port}`; const out: string[] = [];
-  const proc = spawn(TSX, [path.join(ROOT, 'server.ts')], { cwd: dir, env: { ...process.env, ...BASE_ENV, PORT: String(port), ...env } });
+  const proc = spawn(TSX, [path.join(ROOT, 'server.ts')], { cwd: dir, env: { ...process.env, QUIET_HOURS: 'off', ...BASE_ENV, PORT: String(port), ...env } });
   proc.stdout?.on('data', d => out.push(String(d))); proc.stderr?.on('data', d => out.push(String(d)));
   const exit = new Promise<number | null>(r => proc.on('exit', c => r(c)));
   let cfg: any;

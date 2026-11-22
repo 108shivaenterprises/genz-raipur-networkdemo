@@ -810,6 +810,9 @@ export interface Property {
   /** last time the listing broker confirmed "still available"; listings unconfirmed for 30 days expire */
   confirmedAt?: string;
   expiredAt?: string;
+  /** v182 — one-tap “wrong info / sold” reports by other brokers (reporter ids stay server-side) */
+  quickReports?: { by: string; reason: 'SOLD' | 'RENTED' | 'WRONG_PRICE' | 'WRONG_INFO' | 'UNREACHABLE'; at: string; hid?: boolean }[];
+  quickReportsClearedAt?: string;
   /** v14 — sold / rented bookkeeping (soldPrice & soldNote are private to the owner and listing broker) */
   soldAt?: string;
   soldVia?: 'NETWORK' | 'OUTSIDE';
@@ -1568,7 +1571,7 @@ export interface LeadBot {
   /** v101 — he was asked once to write his budget (so the network search can run) */
   askedBudget?: boolean;
   /** v103 — the chat follows the homes: when it first did, the homes it already told him are gone (home id → why), and how many new-home pushes it made */
-  followedAt?: string; seen?: string[]; gone?: Record<string, string>; watch?: { lastPushAt?: string; pushes: number };
+  autoFollowDay?: string; followedAt?: string; seen?: string[]; gone?: Record<string, string>; watch?: { lastPushAt?: string; pushes: number };
   /** v104 — the homes whose photos / video he opened in the chat (the broker is told once per home) */
   viewed?: string[];
   /** v105 — the broker's own open room for his number that the assistant feeds (no link of ours to show), and the homes already offered to his room (a home the broker removed is not put back) */
