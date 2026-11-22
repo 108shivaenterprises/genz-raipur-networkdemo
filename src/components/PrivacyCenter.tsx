@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Download, Trash2, MessageSquareWarning, KeyRound } from 'lucide-react';
+import { useUI } from '../lib/ui.js';
 import { useI18n, useTx, readLang } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
@@ -117,6 +118,9 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string; otpOn
 export const PrivacyQueue: React.FC<{ askOnly?: boolean }> = ({ askOnly }) => {   // askOnly: the "Ask GENZ" questions about a deal (shown at the top of Disputes)
   const tx = useTx();
   const label = useLabel();
+  const ui = useUI();
+  const kind = (t: string, dealQ: boolean) => dealQ ? tx('Question about a deal', 'डील के बारे में सवाल') : ({ ACCESS: tx('Data copy', 'डेटा की कॉपी'), CORRECTION: tx('Correction', 'सुधार'), ERASURE: tx('Account deletion', 'अकाउंट हटाना'), GRIEVANCE: tx('Complaint', 'शिकायत'), CONSENT_WITHDRAWAL: tx('Consent withdrawal', 'सहमति वापस लेना') } as Record<string, string>)[t] || t;
+  const stat = (s: string) => ({ OPEN: tx('Waiting for reply', 'जवाब बाकी'), COMPLETED: tx('Done', 'पूरा'), REJECTED: tx('Rejected', 'अस्वीकृत') } as Record<string, string>)[s] || s;
   const [reqs, setReqs] = useState<(Req & { userName: string; userId: string })[]>([]);
   const [err, setErr] = useState('');
   const load = () => j('/api/privacy/requests').then(d => setReqs(d.requests)).catch(() => {});
@@ -124,7 +128,12 @@ export const PrivacyQueue: React.FC<{ askOnly?: boolean }> = ({ askOnly }) => { 
   const resolve = async (id: string, decision: 'COMPLETE' | 'REJECT') => {
     try {
       const cur = reqs.find(r => r.id === id); const needsNote = decision === 'REJECT' || cur?.type === 'CONSENT_WITHDRAWAL' || !!cur?.dealRoomId;
-      const note = needsNote ? prompt(decision === 'COMPLETE' && cur?.dealRoomId ? tx('Your reply to the broker (they will see this)', 'ब्रोकर के लिए आपका जवाब (उन्हें दिखेगा)') : decision === 'REJECT' ? tx('Reason for rejection', 'अस्वीकार करने का कारण') : tx('What was stopped? (the person sees this)', 'क्या बंद किया गया? (व्यक्ति को यह दिखेगा)')) || '' : '';
+      let note = '';
+      if (needsNote) {
+        const got = await ui.prompt(decision === 'COMPLETE' && cur?.dealRoomId ? tx('Your reply to the broker (they will see this)', 'ब्रोकर के लिए आपका जवाब (उन्हें दिखेगा)') : decision === 'REJECT' ? tx('Reason for rejection', 'अस्वीकार करने का कारण') : tx('What was stopped? (the person sees this)', 'क्या बंद किया गया? (व्यक्ति को यह दिखेगा)'), { required: true, confirmLabel: tx('Send', 'भेजें'), cancelLabel: tx('Cancel', 'रद्द करें') });
+        if (got === null) return;
+        note = got;
+      }
       await j(`/api/privacy/requests/${id}/resolve`, { method: 'POST', body: JSON.stringify({ decision, note }) });
       setErr(''); load();
     } catch (e: any) { setErr(e.message); }
@@ -139,11 +148,11 @@ export const PrivacyQueue: React.FC<{ askOnly?: boolean }> = ({ askOnly }) => { 
       <ul className="mt-3 space-y-2">
         {shown.slice(0, 20).map(r => (
           <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 p-2 text-xs">
-            <span><b>{label('status', r.type)}</b> · {r.userName} · {new Date(r.createdAt).toLocaleDateString('en-IN')} · {label('status', r.status)}{r.dealRoomId ? ` · ${r.dealRoomId}` : ''}{r.details ? ` — ${r.details}` : ''}</span>
+            <span><b>{kind(r.type, !!r.dealRoomId)}</b> · {r.userName} · {new Date(r.createdAt).toLocaleDateString('en-IN')} · {stat(r.status)}{r.dealRoomId ? ` · ${r.dealRoomId}` : ''}{r.details ? ` — ${r.details}` : ''}</span>
             {r.status === 'OPEN' && (
               <span className="flex gap-1.5">
-                <button onClick={() => resolve(r.id, 'COMPLETE')} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white">{tx('Complete', 'पूरा करें')}</button>
-                <button onClick={() => resolve(r.id, 'REJECT')} className="rounded bg-slate-200 px-2 py-1 font-semibold text-slate-800">{tx('Reject', 'अस्वीकार')}</button>
+                <button onClick={() => resolve(r.id, 'COMPLETE')} className="min-h-11 rounded bg-emerald-600 px-3 py-1 font-semibold text-white">{tx('Complete', 'पूरा करें')}</button>
+                <button onClick={() => resolve(r.id, 'REJECT')} className="min-h-11 rounded bg-slate-200 px-3 py-1 font-semibold text-slate-800">{tx('Reject', 'अस्वीकार')}</button>
               </span>
             )}
           </li>

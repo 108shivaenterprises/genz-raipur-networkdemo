@@ -310,6 +310,7 @@ export function createIdReviewRouter() {
     const b = uploadBody.safeParse(req.body); if (!b.success) return bad(res, 'Choose the file and what it is (PAN, Aadhaar or RERA).');
     const out = storeDoc({ userId: t.id }, b.data.kind, b.data.fileName, b.data.data, 'ADMIN', a.id);
     if ('error' in out) return bad(res, out.error, out.status);
+    if (t.basicTier && t.idCheckedAt) recordIdTick(t, a, false, '');   // v191 (S6): a changed ID must be seen again, also when staff attached it
     db.save();
     db.appendAuditEvent(a.id, a.role, 'VERIFICATION', t.id, 'IDDOC_ADDED_BY_ADMIN', `${a.name} attached a ${KIND_WORD[b.data.kind]} copy for ${t.name} (SHA-256 ${out.doc.sha256.slice(0, 12)}…)`);
     res.json({ success: true, doc: docMeta(out.doc), docs: docsOfUser(s, t.id).map(docMeta) });

@@ -1,3 +1,4 @@
+import { previewLine, useBasicPreview } from './BasicBanner.js';
 import React, { useCallback, useEffect, useState } from 'react';
 import { BadgeCheck, CheckCircle2, Circle, Clock, Loader2, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -18,7 +19,7 @@ const Row: React.FC<{ ok: boolean; wait?: boolean; en: string; hi: string }> = (
 };
 
 export const KycDesk: React.FC = () => {
-  const tx = useTx();
+  const tx = useTx(); const previewN = useBasicPreview();
   const [id, setId] = useState<any>(null); const [rera, setRera] = useState<any>(null); const [mine, setMine] = useState<any>(null);
   const [f, setF] = useState({ pan: '', aadhaar: '', consent: false, rera: '' });
   const [busy, setBusy] = useState(''); const [msg, setMsg] = useState(''); const [err, setErr] = useState(''); const [loaded, setLoaded] = useState(false);
@@ -55,6 +56,7 @@ export const KycDesk: React.FC = () => {
     <section className="space-y-4" data-testid="kyc-desk">
       <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
         <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-900"><ShieldCheck className="h-4 w-4 text-emerald-600" />{tx('Verify your KYC', 'अपना KYC वेरिफ़ाई करें')}</h3>
+        <p className="mt-1 text-xs font-semibold text-slate-800" data-testid="kyc-preview-line">{previewLine(tx, previewN)}</p>
         <p className="mt-1 text-xs text-slate-700">{tx('Give your PAN and Aadhaar, add a copy of the cards (and your RERA certificate if you have one). No RERA? You can still be verified as a Tier 2 associate; add RERA later to move to Tier 1. The GENZ team checks them and then unlocks deals, offers and visits.', 'अपना PAN और आधार दें, कार्ड की कॉपी (और RERA सर्टिफ़िकेट हो तो वह) जोड़ें। RERA नहीं है? फिर भी Tier 2 एसोसिएट के रूप में वेरिफ़ाई हो सकते हैं; RERA बाद में जोड़कर Tier 1 बनें। GENZ टीम जाँचकर डील, ऑफ़र और विज़िट खोल देगी।')}</p>
         {asked && <p role="alert" className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800"><b>{tx('The GENZ team asks:', 'GENZ टीम ने कहा:')}</b> {mine.review.note}</p>}
       </div>

@@ -182,9 +182,11 @@ export function hubItem(d: DealRoom, u: UserProfile, s: DatabaseState, open: Set
 export function sweepPaymentDue(now = Date.now()): number {
   if (isQuietHour(now)) return 0;
   const st = db.getState(); let n = 0;
+  const latest = new Map<string, (typeof st.commissionAgreements)[number]>();   // v191 (D2): the newest agreement of every deal, built once per tick (not a scan per deal)
+  for (const a of st.commissionAgreements) { const c = latest.get(a.dealId); if (!c || a.version > c.version) latest.set(a.dealId, a); }
   for (const d of st.dealRooms) {
     if (isClosed(d) || d.stage === 'Settled' || isOwnSide(d) || (d.paymentNudgedAt && now - Date.parse(d.paymentNudgedAt) < 3 * DAY)) continue;
-    const ag = st.commissionAgreements.filter(a => a.dealId === d.id).sort((a, b) => b.version - a.version)[0];
+    const ag = latest.get(d.id);
     if (!paymentDue(ag, now) || st.disputes.some(x => x.dealRoomId === d.id && LIVE_DISPUTE.has(x.status))) continue;
     d.paymentNudgedAt = new Date(now).toISOString(); n++;
     for (const id of new Set([d.introducingBrokerId, d.closingBrokerId].filter(Boolean))) void pushTo(id, { kind: 'deals', title: `Commission still unpaid — ${d.id}`.slice(0, 80), body: 'A commission share has been unpaid for over 7 days. Write down the payment or ask the other broker.', url: '/?tab=deals', hi: { title: `कमीशन अभी बाकी — ${d.id}`.slice(0, 80), body: 'कमीशन का एक हिस्सा 7 दिन से ज़्यादा से बाकी है। भुगतान दर्ज करें या दूसरे ब्रोकर से पूछें।' } });

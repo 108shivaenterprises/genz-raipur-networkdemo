@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ShieldCheck, X } from 'lucide-react';
 import { useTx } from '../lib/i18n.js';
+import { previewLine, useBasicPreview } from './BasicBanner.js';
 
 /** v185 (D15) — a Basic (open sign-up) account tapped something that needs KYC: say what is locked and why, and point to the ID step. Opened by the `genz:kyc-locked` event the API layer fires on ACCOUNT_NOT_VERIFIED + basic. */
 let quietUntil = 0;   // v188: right after the button is tapped the sheet must not come back on the same tab
 export const KycLockedSheet: React.FC = () => {
-  const tx = useTx(); const [open, setOpen] = useState(false);
+  const tx = useTx(); const previewN = useBasicPreview(); const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null); const from = useRef<HTMLElement | null>(null);
   useEffect(() => { const h = () => { if (Date.now() > quietUntil) setOpen(true); }; window.addEventListener('genz:kyc-locked', h); return () => window.removeEventListener('genz:kyc-locked', h); }, []);
   // any later tap (another tab, logout…) ends the quiet period; Esc closes; focus goes into the dialog and back to what opened it
@@ -26,7 +27,7 @@ export const KycLockedSheet: React.FC = () => {
           <h2 className="min-w-0 flex-1 text-base font-bold text-slate-900">{tx('Verify your KYC to unlock this', 'इसे खोलने के लिए KYC वेरिफ़ाई करें')}</h2>
           <button type="button" onClick={() => setOpen(false)} aria-label={tx('Close', 'बंद करें')} className="inline-flex min-h-11 min-w-11 items-center justify-center"><X className="h-4 w-4" /></button>
         </div>
-        <p className="mt-2 text-sm text-slate-700">{tx('You can chat and keep your own listings and clients. Network listings and these stay locked until your PAN / RERA is checked:', 'आप चैट कर सकते हैं और अपनी लिस्टिंग व क्लाइंट रख सकते हैं। नेटवर्क की लिस्टिंग और ये तब तक बंद रहेंगे जब तक आपका PAN / RERA जाँचा न जाए:')}</p>
+        <p className="mt-2 text-sm text-slate-700">{previewLine(tx, previewN)} {tx('Your own listings, clients and chat always work. These stay locked until your PAN / RERA is checked:', 'आपकी अपनी लिस्टिंग, क्लाइंट और चैट हमेशा चलते हैं। ये तब तक बंद रहेंगे जब तक आपका PAN / RERA जाँचा न जाए:')}</p>
         <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-slate-700">
           <li>{tx('Co-broke deals, commission agreements and payments', 'को-ब्रोक डील, कमीशन एग्रीमेंट और पेमेंट')}</li>
           <li>{tx('Offers, site visits and owner / client numbers', 'ऑफ़र, साइट विज़िट और मालिक / क्लाइंट के नंबर')}</li>

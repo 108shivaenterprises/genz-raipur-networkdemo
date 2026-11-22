@@ -41,7 +41,7 @@ import {
   authenticate,
   needs,
   needsKyc,
-  basicQuota,
+  basicQuota, BASIC_ROWS_PER_DAY,
   requireAuth,
   ctx,
   rateLimit,
@@ -106,7 +106,7 @@ import { createTeamRouter, createTeamLimitsRouter } from './server/team.js';
 import { createHrRouter, sweepHr } from './server/hr.js';
 import { createCallsRouter, sweepCalls } from './server/calls.js';
 import { voiceOn, otpMode, signupMode } from './server/features.js';
-import { createOpenSignupRouter, migrateBasicTier, migrateReraSetting } from './server/openSignup.js';
+import { createOpenSignupRouter, migrateBasicTier, migrateReraSetting, pruneSignupCounters } from './server/openSignup.js';
 import { createInventoryRouter, sweepHolds } from './server/inventory.js';
 import { createInventoryDeskRouter } from './server/inventory2.js';
 import { createLaunchRouter } from './server/launch.js';
@@ -484,7 +484,7 @@ app.get('/api/auth/config', (_req: Request, res: Response) => {
         .filter(u => u.verificationStatus !== 'BLACKLISTED')
         .map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, companyName: u.companyName, verificationStatus: u.verificationStatus }))
     : [];
-  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts, voice: voiceOn(), otpMode: otpMode(), signupMode: signupMode(), ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL.trim().replace(/\/+$/, '') } : {}) });
+  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts, voice: voiceOn(), otpMode: otpMode(), signupMode: signupMode(), basicPreviewPerDay: BASIC_ROWS_PER_DAY(), ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL.trim().replace(/\/+$/, '') } : {}) });
 });
 
 app.post('/api/auth/login', (req: Request, res: Response) => {
@@ -3058,7 +3058,8 @@ app.post('/api/site-visits/:id/owner-answer', needs('sitevisit:read'), rateLimit
   const v = state.siteVisits.find(x => x.id === req.params.id);
   const prop = v ? db.byId('properties', v.propertyId) : undefined;
   if (!v || !prop || prop.ownerId !== currentUser.id) return res.status(404).json({ error: 'Visit not found', code: 'NOT_FOUND' });   // only the owner of THAT property
-  if (v.isVerified || Date.parse(v.scheduledTime) < Date.now()) return res.status(409).json({ error: 'This visit is already over or verified', code: 'VISIT_CLOSED' });
+  const vdeal = visitDeal(state, v);
+  if (v.isVerified || Date.parse(v.scheduledTime) < Date.now() || vdeal?.closure?.status === 'CLOSED' || vdeal?.stage === 'Settled') return res.status(409).json({ error: 'This visit is already over, verified or its deal is closed', code: 'VISIT_CLOSED' });   // v191 (S5)
   const answer = req.body?.answer === 'NO' ? 'NO' : 'YES';
   if (v.ownerOk?.answer === answer) return res.json({ success: true, already: true, ownerOk: v.ownerOk });   // a second tap sends nothing again
   v.ownerOk = { answer, at: new Date().toISOString() }; db.save();
@@ -6191,7 +6192,7 @@ async function startServer() {
   }
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['paymentDue', sweepPaymentDue], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['sahayak', sweepSahayak], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['paymentDue', sweepPaymentDue], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['sahayak', sweepSahayak], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)], ['signupPrune', pruneSignupCounters]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

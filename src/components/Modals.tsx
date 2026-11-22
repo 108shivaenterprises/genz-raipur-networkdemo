@@ -188,7 +188,7 @@ export const AddPropertyModal: React.FC<{
       });
       const rn = created?.resaleNotice;
       const approval = created?.ownerApproval?.draftId as string | undefined;
-      toast((isOwnerUser && created?.property?.ownerListing?.feeStatus === 'WAIVED_BROKER' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में आपका ब्रोकर अपनी ब्रोकरेज बताएगा; आप दोनों के मानने पर आप मंडेट साइन करेंगे और लिस्टिंग लाइव होगी।' : 'Listing saved. In “My Property” your broker will tell his brokerage; when you both agree you sign the mandate and the listing goes live.') : isOwnerUser && created?.property?.ownerListing?.feeStatus === 'PENDING' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में लिस्टिंग फ़ीस UPI से दें और UTR लिखें — GENZ पक्का करेगा, फिर लिस्टिंग लाइव होगी।' : 'Listing saved. Now pay the listing fee by UPI in “My Property” and write the UTR — GENZ confirms it and the listing goes live.') : (hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.')) + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
+      toast((isOwnerUser && created?.property?.ownerListing?.feeStatus === 'WAIVED_BROKER' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में आपका ब्रोकर अपनी ब्रोकरेज बताएगा; आप दोनों के मानने पर आप मंडेट साइन करेंगे और लिस्टिंग लाइव होगी।' : 'Listing saved. In “My Property” your broker will tell his brokerage; when you both agree you sign the mandate and the listing goes live.') : isOwnerUser && created?.property?.ownerListing?.feeStatus === 'PENDING' ? (hi ? 'लिस्टिंग सेव हुई। अब "मेरी प्रॉपर्टी" में (PAN जोड़कर) लिस्टिंग फ़ीस UPI से दें और UTR लिखें — लिस्टिंग तुरंत लाइव होगी; GENZ बाद में बैंक से UTR मिलाएगा और ग़लत होने पर हटा सकता है।' : 'Listing saved. Now (with your PAN added) pay the listing fee by UPI in “My Property” and write the UTR — the listing goes live at once; GENZ matches the UTR with the bank later and can take it down if the money did not come.') : (hi ? 'प्रॉपर्टी सफलतापूर्वक दर्ज हुई।' : 'Property listed successfully.')) + (rn ? `\n\n${typeof rn === 'string' ? rn : (hi ? rn.hi : rn.en) || rn.message || ''}` : '')
         + (approval ? (hi ? '\n\nअब मालिक को WhatsApp पर अप्रूवल भेजें — मालिक की हाँ से बायपास सुरक्षा शुरू होती है।' : '\n\nNow send the owner the approval on WhatsApp — his yes starts your bypass protection.') : ''), 'success');
       onSuccess();
       onClose();
@@ -1029,7 +1029,7 @@ export const AddRequirementModal: React.FC<{
 
 export const CollaborationModal: React.FC<{
   isOpen: boolean;
-  data: { propertyId: string; requirementId?: string; receivingBrokerId: string };
+  data: { propertyId: string; requirementId?: string; receivingBrokerId: string; receivingBrokerName?: string };
   onClose: () => void;
   onSuccess: () => void;
 }> = ({ isOpen, data, onClose, onSuccess }) => {
@@ -1099,7 +1099,7 @@ export const CollaborationModal: React.FC<{
             <div className="flex justify-between items-center text-[11px]">
               <span className="text-slate-500">{tx('Proposal Recipient:', 'प्रस्ताव प्राप्तकर्ता:')}</span>
               <span className="font-bold text-slate-800">
-                {tx('Listing Broker', 'लिस्टिंग ब्रोकर')} ({data.receivingBrokerId || tx('Primary Listing Broker', 'प्राथमिक लिस्टिंग ब्रोकर')})
+                {tx('Listing Broker', 'लिस्टिंग ब्रोकर')} ({data.receivingBrokerName || tx('the listing broker', 'लिस्टिंग ब्रोकर')})
               </span>
             </div>
           </div>

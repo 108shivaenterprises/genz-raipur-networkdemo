@@ -100,6 +100,8 @@ export const api = {
       voice?: boolean;
       otpMode?: 'manual' | 'sms' | 'demo';
       signupMode?: 'open' | 'invite';
+      /** v191 — how many network rows a Basic account may preview a day */
+      basicPreviewPerDay?: number;
       publicUrl?: string;
       demoPassword?: string;
       demoAccounts: { id: string; name: string; email: string; role: string; companyName?: string; verificationStatus: string }[];
@@ -188,7 +190,7 @@ export const api = {
     if (filters?.scope) params.append('scope', filters.scope);
     if (filters?.limit) params.append('limit', String(filters.limit));
     if (filters?.offset) params.append('offset', String(filters.offset));
-    return request<{ success: boolean; properties: Property[]; total?: number; scoped?: boolean; hasMore?: boolean; facets?: PropertyFacets }>(`/api/properties?${params.toString()}`);
+    return request<{ success: boolean; properties: Property[]; total?: number; scoped?: boolean; hasMore?: boolean; facets?: PropertyFacets; limited?: boolean; limitedNote?: string; limitedNoteHi?: string; basicPreview?: number }>(`/api/properties?${params.toString()}`);
   },
   getProperty: (id: string) => request<{ success: boolean; property: Property }>(`/api/properties/${id}`),
   createProperty: (payload: any) =>

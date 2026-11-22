@@ -178,7 +178,7 @@ const PanCard: React.FC<{ onDone: () => void; need?: boolean }> = ({ onDone, nee
     <div className={`space-y-2 rounded-xl border p-3 ${need ? 'border-red-300 bg-red-50' : 'border-amber-200 bg-amber-50'}`} data-testid="owner-pan">
       <div className="text-sm font-bold text-slate-900">{tx('Your PAN', 'आपका PAN')}</div>
       {need && <p role="alert" className="text-xs font-semibold text-red-800" data-testid="owner-pan-need">{tx('Add your PAN first — then you can list your property.', 'पहले अपना PAN जोड़ें — फिर अपनी प्रॉपर्टी लिस्ट कर पाएँगे।')}</p>}
-      <p className="text-[11px] text-slate-600">{tx('Needed once to list on your own. Your listing goes live by itself — no waiting for GENZ. One PAN, one account.', 'ख़ुद लिस्ट करने के लिए एक बार चाहिए। आपकी लिस्टिंग अपने आप लाइव होगी — GENZ का इंतज़ार नहीं। एक PAN, एक अकाउंट।')}</p>
+      <p className="text-[11px] text-slate-600">{tx('Needed once to list on your own. After it, your listing goes live at once (a paid plan: once you write the UTR; GENZ matches the payment later and can take it down). One PAN, one account.', 'ख़ुद लिस्ट करने के लिए एक बार चाहिए। इसके बाद लिस्टिंग तुरंत लाइव होती है (पेड प्लान: UTR लिखते ही; GENZ बाद में पेमेंट मिलाता है और ग़लत होने पर हटा सकता है)। एक PAN, एक अकाउंट।')}</p>
       <div className="flex gap-2">
         <input className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 font-mono text-sm uppercase" placeholder="ABCDE1234F" maxLength={10} autoComplete="off" value={pan} onChange={e => setPan(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} aria-label={tx('PAN', 'पैन')} data-testid="owner-pan-input" />
         <button type="button" disabled={!ok || busy} onClick={() => void save()} className="min-h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40" data-testid="owner-pan-save">{tx('Save', 'सेव')}</button>
@@ -196,7 +196,7 @@ const OwnerStart: React.FC<{ onNew: () => void; userId?: string }> = ({ onNew, u
   const steps: [string, string][] = [['Add your property', 'अपनी प्रॉपर्टी जोड़ें'], ['Wait for broker interest — we tell you here', 'ब्रोकर की रुचि का इंतज़ार करें — यहीं बताएँगे'], ['Confirm the visit with the code', 'कोड से विज़िट कन्फर्म करें']];
   return (
     <section className="space-y-3 rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4" data-testid="owner-start">
-      <button type="button" onClick={onNew} data-testid="owner-add-big" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-base font-bold text-white"><Plus className="h-5 w-5" />{tx('Add your property', 'अपनी प्रॉपर्टी जोड़ें')}</button>
+      <button type="button" onClick={onNew} data-testid="owner-add-big" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-base font-bold text-white"><Plus className="h-5 w-5" />{tx('+ Add your property', '+ अपनी प्रॉपर्टी जोड़ें')}</button>
       <ol className="space-y-1.5 text-sm text-emerald-950">{steps.map((x, i) => <li key={i} className="flex items-center gap-2"><span className="w-5 shrink-0 text-sm font-bold text-emerald-800">{i + 1}.</span>{tx(x[0], x[1])}</li>)}</ol>
       <button type="button" onClick={() => { try { localStorage.setItem(`genz.ownerguide.${userId}`, '1'); } catch { /* storage blocked */ } setGone(true); }} className="min-h-11 text-xs font-semibold text-emerald-800 underline">{tx('Hide this guide', 'यह गाइड छुपाएँ')}</button>
     </section>
@@ -217,7 +217,7 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number; user
     <div className="space-y-3" data-testid="owner-listings">
       <div className="flex items-center justify-between gap-2">
         <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Two ways: pay GENZ’s plan and go live for all brokers, or choose one broker free from your city’s Top 10 and go live after his mandate.', 'दो रास्ते: GENZ का प्लान देकर सभी ब्रोकरों के लिए लाइव, या अपने शहर के टॉप 10 में से एक ब्रोकर मुफ़्त चुनें और उसके मंडेट के बाद लाइव।')}</p></div>
-        {d.listings.length > 0 && <button type="button" className={btn} onClick={start} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>}
+        {d.listings.length > 0 && <button type="button" className={btn} onClick={start} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('+ Add another property', '+ एक और प्रॉपर्टी जोड़ें')}</button>}
       </div>
       {!d.panSet && <PanCard onDone={() => { setNeedPan(false); void load(); }} need={needPan} />}
       {d.listings.length === 0 && <OwnerStart onNew={start} userId={userId} />}
@@ -228,7 +228,7 @@ export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number; user
       })()}
       <PlanCards onNew={start} />
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
-      {d.listings.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No listing of your own yet — homes a broker listed for you are under “My properties” below. To list one yourself, pick a plan above and tap “New listing”.', 'अभी आपकी अपनी कोई लिस्टिंग नहीं — ब्रोकर ने आपके लिए जो घर डाले वे नीचे “मेरी प्रॉपर्टी” में हैं। ख़ुद डालने के लिए ऊपर प्लान चुनें और “नई लिस्टिंग” दबाएँ।')}</p>}
+      {d.listings.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No listing of your own yet — homes a broker listed for you are under “My properties” below. To list one yourself, pick a plan above and tap “List with this plan”.', 'अभी आपकी अपनी कोई लिस्टिंग नहीं — ब्रोकर ने आपके लिए जो घर डाले वे नीचे “मेरी प्रॉपर्टी” में हैं। ख़ुद डालने के लिए ऊपर प्लान चुनें और “इस प्लान से लिस्ट करें” दबाएँ।')}</p>}
       {d.listings.map((l: any) => {
         const s = STATUS[l.feeStatus] || ['', '', ''];
         return (

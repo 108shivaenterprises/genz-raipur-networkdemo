@@ -28,6 +28,8 @@ const DAY = 86400_000;
 /** signups made per IP in the last day (counted when an account is made, not when it is tried) */
 const made = new Map<string, number[]>();
 export const ipSignupCap = () => { const n = Number(process.env.SIGNUP_IP_DAILY_CAP); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 10; };
+/** v191 (D3): hourly — forget IPs whose signups are all older than a day (the map would only ever grow) */
+export function pruneSignupCounters(now = Date.now()): number { let n = 0; for (const [ip, a] of made) if (!a.some(t => t > now - DAY)) { made.delete(ip); n++; } return n; }
 const ipCount = (ip: string, now = Date.now()) => { const a = (made.get(ip) || []).filter(t => t > now - DAY); if (a.length) made.set(ip, a); else made.delete(ip); return a.length; };   // single server instance (the Docker prod path): counters live in memory like every other limiter
 let lastDigestAt = 0;
 /** the text the person agreed to; its hash is stored with the consent so we can show which notice was accepted */

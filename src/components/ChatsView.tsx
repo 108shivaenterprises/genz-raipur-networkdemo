@@ -80,7 +80,12 @@ const DealChatPane: React.FC<{ row: Row; meId: string; perms: string[]; onBack: 
   const others = new Set((msgs || []).filter(m => m.senderId !== meId).map(m => m.senderId));
   const send = (text: string) => sendBody({ text, audience: kit.audience });
   // v152 — the "next step" card at the bottom of a deal chat: what to do at this stage, one tap to the right part of the deal room
-  const nextStep = ({ Lead: { text: tx('Fix a site visit', 'विज़िट तय करें'), sub: 'overview' }, Introduction: { text: tx('Fix a site visit', 'विज़िट तय करें'), sub: 'overview' }, 'Site Visit Done': { text: tx('Get the client\'s offer / final rate', 'क्लाइंट का ऑफ़र / फ़ाइनल रेट लें'), sub: 'overview' }, Negotiation: { text: tx('Settle the rate, then write the agreement', 'रेट तय करें, फिर एग्रीमेंट लिखें'), sub: 'commission_agreement' }, Agreement: { text: tx('Open the agreement and commission', 'एग्रीमेंट और कमीशन खोलें'), sub: 'commission_agreement' }, Handover: { text: tx('Check papers and the commission payment', 'काग़ज़ और कमीशन का भुगतान देखें'), sub: 'commission_agreement' } } as Record<string, { text: string; sub: string }>)[row.deal?.stage || ''];
+  const nextStep0 = ({ Lead: { text: tx('Fix a site visit', 'विज़िट तय करें'), sub: 'overview' }, Introduction: { text: tx('Fix a site visit', 'विज़िट तय करें'), sub: 'overview' }, 'Site Visit Done': { text: tx('Get the client\'s offer / final rate', 'क्लाइंट का ऑफ़र / फ़ाइनल रेट लें'), sub: 'overview' }, Negotiation: { text: tx('Settle the rate, then write the agreement', 'रेट तय करें, फिर एग्रीमेंट लिखें'), sub: 'commission_agreement' }, Agreement: { text: tx('Open the agreement and commission', 'एग्रीमेंट और कमीशन खोलें'), sub: 'commission_agreement' }, Handover: { text: tx('Check papers and the commission payment', 'काग़ज़ और कमीशन का भुगतान देखें'), sub: 'commission_agreement' } } as Record<string, { text: string; sub: string }>)[row.deal?.stage || ''];
+  // v191 (C6): once a visit is booked / confirmed by the owner, "Fix a site visit" is done — the next step says what is waiting
+  const upcoming = (kit.data?.visits || []).find((v: any) => !v.isVerified && Date.parse(v.scheduledTime) > Date.now());
+  const nextStep = nextStep0 && upcoming && ['Lead', 'Introduction'].includes(row.deal?.stage || '')
+    ? { sub: 'overview', text: upcoming.ownerOk?.answer === 'YES' ? tx('Visit confirmed — on the day, check the visitor in with the QR', 'विज़िट कन्फ़र्म — उस दिन QR से विज़िटर को चेक-इन करें') : tx('Visit booked — waiting for the owner to confirm', 'विज़िट तय — मालिक की हामी का इंतज़ार') }
+    : nextStep0;
   return (
     <ChatShell
       onBack={onBack} testId="deal-chat"

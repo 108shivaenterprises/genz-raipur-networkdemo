@@ -222,7 +222,7 @@ export function needsKyc(_req: Request, res: Response, next: NextFunction) {
 /** v186 (D16) — a Basic account may read only so many rows of a network list per day (per account and per IP): a throw-away account cannot scrape the board. Rows past the quota are cut off with a friendly note. In memory: one server instance (the Docker prod path), same as the other limiters. */
 const quotaBook = new Map<string, { n: number; reset: number }>();
 export const BASIC_ROWS_PER_DAY = () => { const n = Number(process.env.BASIC_ROWS_PER_DAY); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 200; };
-export const BASIC_IP_ROWS_PER_DAY = () => { const n = Number(process.env.BASIC_IP_ROWS_PER_DAY); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1000; };
+export const BASIC_IP_ROWS_PER_DAY = () => { const n = Number(process.env.BASIC_IP_ROWS_PER_DAY); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3000; };   // v191 (C1d): 3000 so one shared mobile (CGNAT) address is not used up by a few accounts
 /** a row the account itself listed / owns / was assigned / created: never counted, never trimmed (v186b) */
 const ownRow = (r: any, id: string) => !!r && [r.listingBrokerId, r.ownerId, r.assignedBrokerId, r.createdBy, r.buyerId].includes(id);
 export function basicQuota(key: 'properties' | 'requirements' | 'property') {
@@ -249,7 +249,7 @@ export function basicQuota(key: 'properties' | 'requirements' | 'property') {
         const own = rows.filter(r => ownRow(r, user.id)), others = rows.filter(r => !ownRow(r, user.id));
         // a list never turns into an error: the account's own rows are always returned, the rest is trimmed to what is left today
         const kept = others.slice(0, left); mine.b.n += kept.length; ipS.b.n += kept.length;
-        body = { ...body, [key]: [...own, ...kept], ...(kept.length < others.length ? { limited: true, limitedNote: 'Basic account daily limit — your own rows are always shown; verify KYC to see more', limitedNoteHi: 'बेसिक अकाउंट की रोज़ की सीमा — आपकी अपनी लिस्टिंग हमेशा दिखती हैं; और देखने के लिए KYC वेरिफ़ाई करें' } : {}) };
+        body = { ...body, basicPreview: cap, [key]: [...own, ...kept], ...(kept.length < others.length ? { limited: true, limitedNote: 'Today\'s preview limit reached — verify KYC for full access', limitedNoteHi: 'आज की प्रीव्यू सीमा पूरी हो गई — पूरी पहुँच के लिए KYC वेरिफ़ाई करें' } : {}) };
       }
       return json(body);
     };

@@ -1,3 +1,4 @@
+import { previewLine, useBasicPreview } from './BasicBanner.js';
 import React, { useEffect, useState } from 'react';
 import { bilingualInvalid } from '../lib/validate.js';
 import { Loader2, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
@@ -21,6 +22,7 @@ const input = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2
 
 /** Public sign-up with an invitation code (no login needed). The account then waits for admin KYC verification. */
 export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJoined?: () => void }> = ({ onBack, onOwner, onJoined }) => {
+  const previewN = useBasicPreview();
   const { lang } = useI18n();
   const hi = lang === 'hi';
   const [code, setCode] = useState('');
@@ -119,7 +121,7 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
       try {
         await api.openSignup({ role, name, phone: phone.replace(/\D/g, '').slice(-10), otpToken: otpTok, otpCode, password, consent: true, panConsent: role !== 'GENZ_CONNECTOR' ? panConsent : undefined, panNumber: pan ? normPan(pan) : undefined, state: loc.state || undefined, city: loc.city || undefined, locality: loc.locality || undefined, companyName: company || undefined,
           ...(role === 'GENZ_CONNECTOR' ? { shopType, shopName, payoutUpi: upi || undefined } : {}) });
-        setAutoVerified(true); setDone(`${hi ? 'मोबाइल नंबर से साइन इन करें' : 'Sign in with your mobile number'} ${phone}.`);
+        setAutoVerified(true); setBasicDone(true); setDone(`${hi ? 'मोबाइल नंबर से साइन इन करें' : 'Sign in with your mobile number'} ${phone}.`);
       } catch (err: any) { setError(err.message || (hi ? 'साइन-अप नहीं हो पाया' : 'Sign-up failed')); }
       finally { setBusy(false); }
       return;
@@ -155,7 +157,7 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
           <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
             <CheckCircle2 className="mb-1 h-5 w-5 text-emerald-600" />
             <p className="font-semibold" data-testid="join-done">{open || basicDone ? (hi ? 'आपका अकाउंट चालू है (बेसिक)!' : 'Your account is live (Basic)!') : autoVerified ? (hi ? 'आप वेरिफ़ाइड हैं!' : 'You are verified!') : (hi ? 'आवेदन जमा हो गया!' : 'Application submitted!')}</p>
-            <p className="mt-1 text-xs">{open || basicDone ? (hi ? 'अभी आप अपनी लिस्टिंग और क्लाइंट जोड़ सकते हैं और चैट कर सकते हैं। नेटवर्क की लिस्टिंग, डील, कमीशन, पेमेंट और ब्रॉडकास्ट KYC वेरिफ़ाई होने पर खुलेंगे — RERA नहीं है तो Tier 2 एसोसिएट के रूप में वेरिफ़ाई हो सकते हैं, RERA बाद में जोड़कर Tier 1 बनें। साइन इन के बाद “KYC वेरिफ़ाई करें” चुनें।' : 'For now you can add your own listings and clients and chat. Network listings, deals, commission, payments and broadcasts open once your KYC is verified — no RERA? You can still be verified as a Tier 2 associate; add RERA later to move to Tier 1. After signing in, pick “Verify KYC”.') : autoVerified
+            <p className="mt-1 text-xs">{open || basicDone ? (previewLine((en, h) => hi ? h : en, previewN) + ' ' + (hi ? 'अपनी लिस्टिंग और क्लाइंट जोड़ सकते हैं और चैट कर सकते हैं। RERA नहीं है तो Tier 2 एसोसिएट के रूप में वेरिफ़ाई हो सकते हैं, RERA बाद में जोड़कर Tier 1 बनें। साइन इन के बाद “KYC वेरिफ़ाई करें” चुनें।' : 'You can add your own listings and clients and chat. No RERA? You can still be verified as a Tier 2 associate; add RERA later to move to Tier 1. After signing in, pick “Verify KYC”.')) : autoVerified
               ? (hi ? `आपके मोबाइल OTP और PAN से आप तुरंत वेरिफ़ाई हो गए। GENZ टीम आपकी PAN / आधार ID बाद में देखेगी — ज़रूरत हो तो वह आपसे संपर्क करेगी।` : `You were verified straight away through your mobile OTP and PAN. The GENZ team will check your PAN / Aadhaar ID afterwards and will contact you if anything is needed.`)
               : (hi ? 'GENZ टीम आपके विवरण की जाँच करेगी। मंज़ूरी के बाद आप साइन इन कर पाएँगे।' : 'The GENZ team will verify your details. You can sign in once you are approved.')} {done}</p>
             {uploadNote && <p role="alert" className="mt-2 text-xs font-medium text-red-700">{uploadNote}</p>}

@@ -347,6 +347,8 @@ export function createNetworkRouter() {
   });
 
   /** GENZ ops: set the tier explicitly (e.g. a Tier 2 associate has now got a RERA registration). */
+  /** v191 (S3): another KYC-approved broker already holds this RERA number */
+  const reraHeldByOther = (s: ReturnType<typeof st>, t: { id: string }, rera: string) => s.users.some(x => x.id !== t.id && x.role === 'BROKER' && !x.basicTier && x.reraNumber && normRera(x.reraNumber) === rera);
   r.post('/tier/:userId', needs('users:review'), (req: Request, res: Response) => {
     const s = st(); const t = s.users.find(x => x.id === req.params.userId);
     if (!t || t.role !== 'BROKER') return bad(res, 'Broker not found', 404);
@@ -355,6 +357,7 @@ export function createNetworkRouter() {
     if (tier === 'TIER1') {
       const rera = normRera(req.body?.reraNumber || (t.reraClaim?.status === 'PENDING' ? t.reraClaim.number : '') || t.reraNumber);
       if (!rera || !isPlausibleRera(rera)) return bad(res, 'A valid RERA registration number is required for Tier 1');
+      if (reraHeldByOther(s, t, rera)) return bad(res, 'Another KYC-approved account already holds this RERA number — resolve the conflict first.', 409, 'RERA_CONFLICT');
       t.reraNumber = rera; t.tier = 'TIER1'; t.probationUntil = undefined;
       if (t.reraClaim?.status === 'PENDING') t.reraClaim = { ...t.reraClaim, status: 'APPROVED', decidedAt: nowIso(), decidedBy: me().id };
     } else { t.tier = 'TIER2'; }
@@ -378,9 +381,9 @@ export function createNetworkRouter() {
     if (taken) return bad(res, 'This RERA number is already linked to another GENZ account', 409);
     // v141 — no GENZ desk at India scale: a well-formed, unused RERA number gives Tier 1 at once; members' reports take it back (daily.ts)
     const at = nowIso();
-    if (u.basicTier) {   // v186 (D16): a Basic account's RERA is only a CLAIM for the admin queue — no tier, no number on the profile, and it is not proof for the KYC approval
+    if (u.basicTier || tierOf(u) === 'TIER2') {   // v186 (D16) + v191 (S1): a Basic account — or a Tier 2 associate — only files a CLAIM for the admin queue — no tier, no number on the profile, and it is not proof for the KYC approval
       u.reraClaim = { number: rera, at, status: 'PENDING' };
-      db.save(); audit('VERIFICATION', u.id, 'RERA_CLAIM_BASIC', `${u.name} (Basic) claimed RERA ${rera} — waiting in the admin RERA queue`);
+      db.save(); audit('VERIFICATION', u.id, u.basicTier ? 'RERA_CLAIM_BASIC' : 'RERA_CLAIM_TIER2', `${u.name} (${u.basicTier ? 'Basic' : 'Tier 2'}) claimed RERA ${rera} — waiting in the admin RERA queue`);
       return res.json({ success: true, tier: tierOf(u), claim: u.reraClaim, pending: true });
     }
     u.reraClaim = { number: rera, at, status: 'APPROVED', decidedAt: at, decidedBy: 'AUTO' };
@@ -399,9 +402,10 @@ export function createNetworkRouter() {
     const a = me(); const t = st().users.find(x => x.id === req.params.userId);
     if (!t || t.role !== 'BROKER' || t.reraClaim?.status !== 'PENDING') return bad(res, 'No RERA waiting for a check', 404);
     if (t.id === a.id) return bad(res, 'You cannot check your own RERA', 403);
+    if (!['PENDING', 'VERIFIED'].includes(t.verificationStatus)) return bad(res, 'This account is suspended / closed — its RERA cannot be approved', 409, 'ACCOUNT_NOT_ACTIVE');   // v191 (S2)
     const at = nowIso();
     if (req.body?.approve === true) {
-      if (st().users.some(x => x.id !== t.id && x.role === 'BROKER' && !x.basicTier && x.reraNumber && normRera(x.reraNumber) === normRera(t.reraClaim!.number))) return bad(res, 'Another KYC-approved account already holds this RERA number — resolve the conflict first.', 409, 'RERA_CONFLICT');
+      if (reraHeldByOther(st(), t, normRera(t.reraClaim!.number))) return bad(res, 'Another KYC-approved account already holds this RERA number — resolve the conflict first.', 409, 'RERA_CONFLICT');
       t.reraNumber = t.reraClaim.number; t.tier = 'TIER1'; t.probationUntil = undefined;
       t.reraClaim = { ...t.reraClaim, status: 'APPROVED', decidedAt: at, decidedBy: a.id };
       db.save(); audit('VERIFICATION', t.id, 'RERA_APPROVED', `${a.name} checked RERA ${t.reraNumber} of ${t.name} — now Tier 1`);

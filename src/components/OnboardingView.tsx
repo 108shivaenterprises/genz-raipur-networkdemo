@@ -426,7 +426,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              All Participants ({users.length})
+              {tx('All participants', 'सभी सदस्य')} ({users.length})
             </button>
             <button
               onClick={() => setUserRoleFilter('BROKER')}
@@ -436,7 +436,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
               }`}
             >
-              <span>Verified Brokers ({users.filter(u => u.role === 'BROKER').length})</span>
+              <span>{tx('Brokers', 'ब्रोकर')} ({users.filter(u => u.role === 'BROKER').length})</span>
             </button>
             <button
               onClick={() => setUserRoleFilter('PENDING')}
@@ -446,7 +446,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
               }`}
             >
-              <span>Pending KYC ({users.filter(u => u.verificationStatus === 'PENDING').length})</span>
+              <span>{tx('Pending KYC', 'KYC बाकी')} ({users.filter(u => u.verificationStatus === 'PENDING').length})</span>
             </button>
             <button
               onClick={() => setUserRoleFilter('BASIC')} data-testid="basic-filter"
@@ -462,7 +462,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
               }`}
             >
-              <span>Developers & Builders ({users.filter(u => u.role === 'DEVELOPER_BUILDER').length})</span>
+              <span>{tx('Developers & builders', 'डेवलपर और बिल्डर')} ({users.filter(u => u.role === 'DEVELOPER_BUILDER').length})</span>
             </button>
             <button
               onClick={() => setUserRoleFilter('OWNER')}
@@ -472,7 +472,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   : 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100'
               }`}
             >
-              <span>Property Owners ({users.filter(u => u.role === 'PROPERTY_OWNER').length})</span>
+              <span>{tx('Property owners', 'प्रॉपर्टी मालिक')} ({users.filter(u => u.role === 'PROPERTY_OWNER').length})</span>
             </button>
           </div>
 
@@ -528,7 +528,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                     </td>
                     <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3 text-slate-600">
                       <div>{u.phone}</div>
-                      <div className="text-[11px] text-slate-500">{u.email}</div>
+                      <div className="text-[11px] text-slate-500">{/@phone\.genz\.local$/i.test(u.email || '') ? (u.phone || '') : u.email}</div>
                     </td>
                     <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3">
                       <span
@@ -574,13 +574,13 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                       )}
                       {u.basicTier && u.verificationStatus === 'VERIFIED' && u.id !== currentUser.id && (
                         <>
-                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">{tx('Basic · not KYC verified', 'बेसिक · KYC नहीं')}</span>
                           {(u.role === 'BROKER' ? !!(u.panNumber || u.aadhaarLast4 || u.reraClaim) : true) && (
                             <button onClick={() => handleIdSeen(u)} className={`min-h-11 rounded border px-2 py-1 text-[11px] font-semibold ${u.idCheckedAt ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'}`} data-testid="basic-id-seen">{u.idCheckedAt ? tx('✓ ID seen (undo)', '✓ ID देखी (हटाएँ)') : tx('I have seen the ID', 'मैंने ID देख ली')}</button>
                           )}
-                          <button onClick={() => handleReviewUser(u.id, 'APPROVE')} className="min-h-11 rounded bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700" data-testid="basic-approve">{u.role !== 'BROKER' ? tx('KYC verified — unlock', 'KYC सही — खोलें') : (u.reraClaim?.status === 'APPROVED' && u.reraClaim.decidedBy && u.reraClaim.decidedBy !== 'AUTO') ? tx('Approve (Tier 1 — RERA verified)', 'मंज़ूर (Tier 1 — RERA वेरिफ़ाइड)') : tx('Approve (Tier 2 — no RERA)', 'मंज़ूर (Tier 2 — बिना RERA)')}</button>
+                          <button onClick={() => handleReviewUser(u.id, 'APPROVE')} disabled={!u.idCheckedAt} title={!u.idCheckedAt ? tx('Tick “I have seen the ID” first', 'पहले “मैंने ID देख ली” दबाएँ') : undefined} className="min-h-11 rounded bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40" data-testid="basic-approve">{u.role !== 'BROKER' ? tx('KYC verified — unlock', 'KYC सही — खोलें') : (u.reraClaim?.status === 'APPROVED' && u.reraClaim.decidedBy && u.reraClaim.decidedBy !== 'AUTO') ? tx('Approve (Tier 1 — RERA verified)', 'मंज़ूर (Tier 1 — RERA वेरिफ़ाइड)') : tx('Approve (Tier 2 — no RERA)', 'मंज़ूर (Tier 2 — बिना RERA)')}</button>
                           <button onClick={() => handleReviewUser(u.id, 'SUSPEND')} className="min-h-11 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100" data-testid="basic-suspend">{tx('Suspend', 'सस्पेंड करें')}</button>
                           <div className="mt-2 space-y-1.5 text-left" data-testid="basic-row-extra">
+                            {!u.idCheckedAt && <p className="text-[11px] text-amber-800" data-testid="basic-approve-why">{tx('Approve opens after you tick “I have seen the ID” (PAN or a card copy is enough).', '“मैंने ID देख ली” दबाने के बाद ही मंज़ूर होगा (PAN या कार्ड की कॉपी काफ़ी है)।')}</p>}
                             {u.reraClaim && (
                               <div className="rounded border border-sky-200 bg-sky-50 p-2 text-[11px] text-sky-900">
                                 <b>{tx('RERA claim', 'RERA दावा')}:</b> <span className="font-mono">{u.reraClaim.number}</span> · {u.reraClaim.status === 'PENDING' ? tx('waiting for you', 'आपके फ़ैसले का इंतज़ार') : u.reraClaim.status === 'APPROVED' ? tx('approved', 'मंज़ूर') : tx('not accepted', 'मंज़ूर नहीं')}

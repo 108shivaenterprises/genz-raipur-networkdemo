@@ -171,7 +171,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   const serverMode = !!scope?.scoped;
   const [browseAll, setBrowseAll] = useState(false);
   const wantsRemote = serverMode && ownershipFilter !== 'my' && (browseAll || selectedState !== 'All' || selectedCity !== 'All' || selectedTag !== 'All' || selectedType !== 'All' || !!searchQuery.trim());
-  const [remote, setRemote] = useState<{ list: Property[]; total: number; hasMore: boolean; loading: boolean; err: string } | null>(null);
+  const [remote, setRemote] = useState<{ list: Property[]; total: number; hasMore: boolean; loading: boolean; err: string; limited?: { en: string; hi: string } } | null>(null);
   const reqSeq = useRef(0);
   const remoteFilters = () => ({
     state: selectedState !== 'All' ? selectedState : undefined, city: selectedCity !== 'All' ? selectedCity : undefined,
@@ -183,7 +183,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
     try {
       const r = await api.getProperties({ ...remoteFilters(), limit: 60, offset });
       if (my !== reqSeq.current) return;
-      setRemote(prev => ({ list: [...(more && prev ? prev.list : []), ...r.properties], total: r.total ?? r.properties.length, hasMore: !!r.hasMore, loading: false, err: '' }));
+      setRemote(prev => ({ list: [...(more && prev ? prev.list : []), ...r.properties], total: r.total ?? r.properties.length, hasMore: !!r.hasMore, loading: false, err: '', limited: r.limited ? { en: r.limitedNote || '', hi: r.limitedNoteHi || r.limitedNote || '' } : undefined }));
     } catch (e: any) {
       if (my === reqSeq.current) setRemote(prev => ({ list: prev?.list || [], total: prev?.total || 0, hasMore: false, loading: false, err: e?.message || 'Could not load' }));
     }
@@ -280,11 +280,11 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
             }`}
           >
-            <span>{currentUser.basicTier ? tx('Network (after KYC)', 'नेटवर्क (KYC के बाद)') : tx('All network', 'पूरा नेटवर्क')}</span>
+            <span>{currentUser.basicTier ? tx('Network preview', 'नेटवर्क प्रीव्यू') : tx('All network', 'पूरा नेटवर्क')}</span>
             <span className={`rounded-full px-1.5 py-0.5 text-xs ${
               ownershipFilter === 'all' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-slate-100 text-slate-700'
             }`}>
-              {currentUser.basicTier ? '🔒' : <>{liveAll}{serverMode || remote ? '' : ` (${formatINR(totalValuation)})`}</>}
+              {currentUser.basicTier ? null : <>{liveAll}{serverMode || remote ? '' : ` (${formatINR(totalValuation)})`}</>}
             </span>
           </button>
 
@@ -358,7 +358,8 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
       {remote?.loading && remote.list.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-500">{tx('Searching the network…', 'नेटवर्क में खोज रहे हैं…')}</p>}
 
       {/* Properties Cards Grid */}
-      {shownList.length === 0 && !remote?.loading && currentUser.basicTier && ownershipFilter !== 'my' ? <BasicNetworkLocked what="listings" /> : shownList.length === 0 && !remote?.loading ? (
+      {shownList.length > 0 && currentUser.basicTier && remote?.limited && <p role="status" className="mb-2 rounded-lg bg-amber-50 p-2 text-xs font-medium text-amber-900" data-testid="basic-limit-strip">{tx(remote.limited.en, remote.limited.hi)}</p>}
+      {shownList.length === 0 && !remote?.loading && currentUser.basicTier && ownershipFilter !== 'my' ? <BasicNetworkLocked what="listings" limited={remote?.limited} /> : shownList.length === 0 && !remote?.loading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-xs">
           <Building2 className="mx-auto h-10 w-10 text-slate-300" />
           <h3 className="mt-3 text-sm font-semibold text-slate-900">
@@ -446,8 +447,8 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                 <Clock className="h-3.5 w-3.5 text-emerald-600" /><span>{tx('Book visit', 'विज़िट तय करें')}</span>
               </button>) });
             if (isBroker && !isClosed && may('clientroom:use')) actions.push({ key: 'send', node: (   // v166 — straight into his client's room
-              <button onClick={() => setSendFor(p)} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`} data-testid={`send-${p.id}`}>
-                <Share2 className="h-3.5 w-3.5" /><span>{tx('Send to client', 'क्लाइंट को भेजें')}</span>
+              <button onClick={() => (currentUser.basicTier && !isMyListing) ? window.dispatchEvent(new CustomEvent('genz:kyc-locked')) : setSendFor(p)} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`} data-testid={`send-${p.id}`}>
+                <Share2 className="h-3.5 w-3.5" /><span>{tx('Send to client', 'क्लाइंट को भेजें')}{currentUser.basicTier && !isMyListing ? ' 🔒' : ''}</span>
               </button>) });
             if (isMyListing && !isClosed) actions.push({ key: 'post', node: (
               <button onClick={() => setPostFor(p)} className={`${btn} border border-pink-300 bg-pink-50/70 text-pink-800 hover:bg-pink-100`} data-testid={`post-${p.id}`}>

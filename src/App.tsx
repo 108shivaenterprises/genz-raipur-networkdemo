@@ -77,7 +77,7 @@ const CityLaunch = lazyView(() => import('./components/CityLaunch.js'), 'CityLau
 const HomeInsights = lazyView(() => import('./components/HomeInsights.js'), 'HomeInsights');
 import { FirstRunStrip } from './components/FirstRunStrip.js';
 import { KycLockedSheet } from './components/KycLockedSheet.js';
-import { BasicBanner } from './components/BasicBanner.js';
+import { BasicBanner, BasicDealsLocked } from './components/BasicBanner.js';
 import { WhatsNewCard } from './components/WhatsNewCard.js';
 const TeamHome = lazyView(() => import('./components/TeamHome.js'), 'TeamHome');
 const DashboardView = lazyView(() => import('./components/DashboardView.js'), 'DashboardView');
@@ -571,7 +571,7 @@ export default function App() {
           />
         )}
 
-        {(['properties', 'requirements', 'desk'] as string[]).includes(activeTab) && currentUser.role === 'BROKER' && currentUser.basicTier && currentUser.verificationStatus === 'VERIFIED' && <BasicBanner />}
+        {(['properties', 'requirements', 'desk', 'deals'] as string[]).includes(activeTab) && currentUser.role === 'BROKER' && currentUser.basicTier && currentUser.verificationStatus === 'VERIFIED' && <BasicBanner />}
         {activeTab === 'properties' && (
           <PropertiesView
             permissions={permissions}
@@ -643,7 +643,8 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'deals' && (
+        {activeTab === 'deals' && currentUser.basicTier && deals.length === 0 && <BasicDealsLocked />}
+        {activeTab === 'deals' && !(currentUser.basicTier && deals.length === 0) && (
           <DealRoomsView
             deals={deals}
             permissions={permissions}
@@ -831,6 +832,7 @@ export default function App() {
             propertyId: collaborationTarget.propertyId,
             requirementId: collaborationTarget.requirementId,
             receivingBrokerId: collaborationTarget.receivingBrokerId,
+            receivingBrokerName: users.find(x => x.id === collaborationTarget.receivingBrokerId)?.name,
           }}
           onClose={() => setCollaborationTarget(null)}
           onSuccess={loadData}

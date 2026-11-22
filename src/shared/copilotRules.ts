@@ -17,6 +17,7 @@ export type CpPlan =
   | { kind: 'NOTE'; hi: string; en: string; clientId: string; text: string; noteKind: 'NOTE' | 'CONTACT' | 'FOLLOWUP'; followUpAt?: string }
   | { kind: 'CONFIRM_LISTING'; hi: string; en: string; listingId: string }
   | { kind: 'SHOW_DUE' | 'SHOW_BRIEF' | 'SHOW_STALE'; hi: string; en: string }
+  | { kind: 'SHOW_CLIENT'; hi: string; en: string; clientId: string; topic?: 'budget' | 'status' | 'follow' | 'next' }
   | { kind: 'ASK'; hi: string; en: string; choices?: { id: string; label: string }[] }
   | { kind: 'INFO'; hi: string; en: string }
   | { kind: 'UNKNOWN'; hi: string; en: string };
@@ -27,13 +28,23 @@ export const COPILOT_HELP = {
 };
 
 const low = (s: string) => normNum(String(s || '')).toLowerCase().replace(/\s+/g, ' ').trim();
-const first = (s: string) => String(s || '').trim().split(/\s+/)[0] || '';
-const words = (s: string) => low(s).replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
+const TITLE = /^(dr|mr|mrs|ms|shri|shree|smt|er|ca|adv)\.?$/;
+/** first word of a name, ignoring a title (Dr. / Er. / Shri …) */
+const first = (s: string) => { const w = String(s || '').trim().split(/\s+/).filter(Boolean); return (w.length > 1 && TITLE.test(w[0].toLowerCase()) ? w[1] : w[0]) || ''; };
+// Devanagari → Latin, only so a Hindi-typed query can match a Latin-spelled client name (approximate, no dependency)
+const DEV: Record<string, string> = { 'अ': 'a', 'आ': 'a', 'इ': 'i', 'ई': 'i', 'उ': 'u', 'ऊ': 'u', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'u', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n', 'ँ': 'n', 'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n', 'प': 'p', 'फ': 'f', 'ब': 'b', 'भ': 'bh', 'म': 'm', 'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h' };
+const CONS = /[कखगघचछजझटठडढतथदधनपफबभमयरलवशषसह]/;
+export const translit = (s: string) => String(s || '').replace(/[ऀ-ॿ]+/g, w => {
+  let o = ''; const cs = [...w];
+  cs.forEach((ch, i) => { if (ch === '्') { o = o.slice(0, -1); return; } o += DEV[ch] ?? ''; if (CONS.test(ch) && !/[ािीुूेैोौ्]/.test(cs[i + 1] || '') && i < cs.length - 1) o += 'a'; });
+  return o;
+});
+const words = (s: string) => low(translit(s)).replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim();
 
 /** clients whose name is mentioned in the line (whole-word, first name or full name); a full-name hit beats a first-name hit */
 export function findClients(text: string, clients: CpClient[]): CpClient[] {
   const t = ' ' + words(text) + ' ';
-  const hit = clients.filter(c => { const n = words(c.name); return n.length >= 2 && (t.includes(' ' + n + ' ') || t.includes(' ' + first(n) + ' ')); });
+  const hit = clients.filter(c => { const n = words(c.name); return n.length >= 2 && (t.includes(' ' + n + ' ') || t.includes(' ' + words(first(c.name)) + ' ') || t.includes(' ' + words(c.name.replace(/^\S+\s+/, '')) + ' ') && TITLE.test(c.name.split(/\s+/)[0].toLowerCase())); });
   const full = hit.filter(c => t.includes(' ' + words(c.name) + ' '));
   return full.length ? full : hit;
 }
@@ -49,6 +60,7 @@ const RX = {
   contact: /(call kiya|baat hui|baat ki|phone kiya|whatsapp kiya|msg kiya|message kiya|spoke|called|talked|met|mila|milke)/,
   follow: /(follow.?up|yaad dila|remind|dobara|phir (call|baat)|call back|callback)/,
   confirm: /(still available|abhi bhi (available|hai)|available hai|confirm|taaza|refresh|re.?list)/,
+  about: /(baare|bare|batao|bata do|dikhao|status|details?|info\b|kya hai|kaisa|about|tell me|history|show|what|when|kab|kitna|\?|हाल|बारे|बताओ|बताइए|दिखाओ|स्टेटस)/,
   phone: /(?<!\d)[6-9]\d{9}(?!\d)/,
 };
 const squeeze = (s: string) => s.replace(/(\d)[\s-](?=\d)/g, '$1');
@@ -111,6 +123,9 @@ function lostReasonOf(raw: string, name: string): string {
     .replace(/^[\s,.\-:]+|[\s,.\-:]+$/g, '').slice(0, 120);
 }
 
+/** read-only “tell me about this client” plan; the panel answers it from the client it already loaded */
+export const showClientPlan = (c: CpClient, topic?: 'budget' | 'status' | 'follow' | 'next'): CpPlan => ({ kind: 'SHOW_CLIENT', clientId: c.id, ...(topic ? { topic } : {}), hi: `${c.name} की जानकारी`, en: `About ${c.name}` });
+
 /** one line → one plan */
 export function planCommand(raw: string, ctx: CpCtx): CpPlan {
   const text = String(raw || '').trim().slice(0, 600);
@@ -137,7 +152,19 @@ export function planCommand(raw: string, ctx: CpCtx): CpPlan {
   const wantsContact = RX.contact.test(t);
   const w = readWhen(text, now);
   const wantsFollow = RX.follow.test(t) || (wantsContact && !!w);
-  if (!wantsStage && !wantsContact && !wantsFollow) return { kind: 'UNKNOWN', ...COPILOT_HELP };
+  const asks = RX.about.test(t) || /budget|bajet|next|agla|pending|बजट/.test(t);
+  const topic = /budget|bajet|बजट/.test(t) ? 'budget' : /follow|pending|फॉलो/.test(t) ? 'follow' : /next|agla/.test(t) ? 'next' : /status|stage|स्टेटस/.test(t) ? 'status' : undefined;
+  // a question about a client (or just his name) is a READ, never a write
+  const readOnly = !wantsStage && !wantsContact && (!wantsFollow || (asks && !w?.iso));
+  if (who.length && readOnly && (asks || !wantsFollow) && (asks || words(text).split(' ').length <= words(who[0].name).split(' ').length + 1)) {
+    if (who.length > 1) return { kind: 'ASK', hi: 'कई क्लाइंट मिले — कौन-सा?', en: 'More than one client matches — which one?', choices: who.slice(0, 5).map(c => ({ id: c.id, label: `${c.name} · ${c.stage}` })) };
+    return showClientPlan(who[0], topic);
+  }
+  if (!wantsStage && !wantsContact && !wantsFollow) {
+    if (who.length) return { kind: 'UNKNOWN', hi: `${who[0].name} मिला, पर क्या करना है समझ नहीं आया — लिखें: status / call kiya / follow-up kal`, en: `I found ${who[0].name} but not what to do — try: status / call kiya / follow-up kal` };
+    if (/[ऀ-ॿ]/.test(text)) return { kind: 'UNKNOWN', hi: 'यह नाम आपकी लिस्ट में नहीं मिला — क्लाइंट का नाम अंग्रेज़ी (Latin) अक्षरों में लिखकर देखें।', en: 'I could not match that name — try the client’s name in Latin letters (e.g. Rupesh).' };
+    return { kind: 'UNKNOWN', ...COPILOT_HELP };
+  }
 
   if (who.length === 0) return { kind: 'ASK', hi: 'कौन-सा क्लाइंट? नाम लिखिए (आपकी लिस्ट में नहीं मिला)।', en: 'Which client? Write the name (not found in your list).' };
   if (who.length > 1) return { kind: 'ASK', hi: 'कई क्लाइंट मिले — कौन-सा?', en: 'More than one client matches — which one?', choices: who.slice(0, 5).map(c => ({ id: c.id, label: `${c.name} · ${c.stage}` })) };

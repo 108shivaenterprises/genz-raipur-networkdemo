@@ -38,7 +38,7 @@ export const MyReraCard: React.FC = () => {
         </button>
         {t1 && <button type="button" className={`${btn} border border-slate-300 bg-white text-slate-700`} onClick={() => setEdit(false)}>{tx('Cancel', 'रद्द')}</button>}
       </div>
-      <p className="text-xs text-slate-500">{tx('Write it exactly as on your RERA certificate. Tier 1 opens at once; a wrong number reported by members takes it back and suspends the account.', 'RERA सर्टिफ़िकेट पर जैसा लिखा है वैसा ही लिखें। Tier 1 तुरंत खुलता है; गलत नंबर की सदस्य रिपोर्ट करें तो वापस हो जाता है और अकाउंट रुक जाता है।')}</p>
+      <p className="text-xs text-slate-500">{tx('Write it exactly as on your RERA certificate. It is sent for a GENZ check; Tier 1 opens once GENZ has approved it.', 'RERA सर्टिफ़िकेट जैसा ही लिखें। यह GENZ की जाँच के लिए जाता है; GENZ के मंज़ूर करने पर Tier 1 खुलता है।')}</p>
     </div>
   );
   return (
@@ -55,7 +55,7 @@ export const MyReraCard: React.FC = () => {
           <p className="mt-0.5 text-xs text-slate-600">
             {t1
               ? tx('You can work builder (RERA) projects too: partner on a project, block units and book — plus resale, rental and land.', 'आप बिल्डर (RERA) प्रोजेक्ट पर भी काम कर सकते हैं: पार्टनर बनें, यूनिट ब्लॉक और बुक करें — साथ में रीसेल, किराया और ज़मीन।')
-              : tx('You work resale, rental, land and local property. Got your RERA registration? Add it — builder projects open at once.', 'आप रीसेल, किराया, ज़मीन और लोकल प्रॉपर्टी पर काम करते हैं। RERA रजिस्ट्रेशन मिल गया? यहाँ जोड़ें — बिल्डर प्रोजेक्ट तुरंत खुलेंगे।')}
+              : tx('You work resale, rental, land and local property. Got your RERA registration? Add it — it is checked by GENZ, then builder projects open.', 'आप रीसेल, किराया, ज़मीन और लोकल प्रॉपर्टी पर काम करते हैं। RERA रजिस्ट्रेशन मिल गया? यहाँ जोड़ें — बिल्डर प्रोजेक्ट तुरंत खुलेंगे।')}
           </p>
           {t1 && d.rera && <p className="mt-1 font-mono text-xs font-semibold text-emerald-800">RERA {d.rera}</p>}
         </div>

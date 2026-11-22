@@ -868,6 +868,8 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     if (!room.otpHash || !room.otpExpires || Date.parse(room.otpExpires) < Date.now()) return gate(res, room, req.params.token, 'कोड की मियाद ख़त्म — नया कोड मँगाएँ। / The code has expired — ask for a new one.');
     if ((room.otpTries || 0) >= L.otpTries) { room.otpHash = undefined; room.otpPrevHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, 'बहुत बार ग़लत कोड — नया कोड मँगाएँ। / Too many wrong codes — ask for a new one.'); }
+    // v191 (S4): asking for a new code resets the per-code tries, so the TOTAL guesses per room are capped per hour as well
+    if (hit(`cr-guess:${room.id}`, 15, 3600_000, 3600_000) > 0) { room.otpHash = undefined; room.otpPrevHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, 'बहुत बार कोशिश हो चुकी। एक घंटे बाद फिर करें। / Too many tries — please wait an hour.', 'phone', 429); }
     const code = String(req.body?.code || '').trim();
     const guess = hmac('cr-otp', `${room.id}|${code}`);
     const prevOk = !!room.otpPrevHash && !!room.otpPrevExpires && Date.parse(room.otpPrevExpires) > Date.now() && safeEqual(room.otpPrevHash, guess);

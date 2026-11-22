@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../lib/api.js';
 import { ShieldAlert } from 'lucide-react';
 import { useTx } from '../lib/i18n.js';
 
@@ -14,15 +15,41 @@ export const BasicBanner: React.FC = () => {
   );
 };
 
-/** v189 — the honest empty state for a Basic account: the network is not shown until KYC (never "adjust your search"). */
-export const BasicNetworkLocked: React.FC<{ what: 'listings' | 'needs' }> = ({ what }) => {
-  const tx = useTx();
+let previewMemo: Promise<number> | null = null;
+/** how many network rows a Basic account may preview a day (from the server, asked once) */
+export const useBasicPreview = (): number => {
+  const [n, setN] = useState(0);
+  useEffect(() => { previewMemo ||= api.authConfig().then(c => Number(c.basicPreviewPerDay) || 0).catch(() => 0); void previewMemo.then(setN); }, []);
+  return n;
+};
+/** "Preview: up to N network listings a day. Full network, sharing and deals after KYC" — one sentence, used everywhere a Basic account is told what it gets */
+export const previewLine = (tx: (en: string, hi: string) => string, n: number, what: 'listings' | 'needs' = 'listings'): string =>
+  what === 'listings'
+    ? tx(`Preview: up to ${n || 'a few'} network listings a day. Full network, sharing and deals after KYC.`, `प्रीव्यू: रोज़ ${n || 'कुछ'} तक नेटवर्क लिस्टिंग। पूरा नेटवर्क, शेयरिंग और डील KYC के बाद।`)
+    : tx(`Preview: up to ${n || 'a few'} network buyer needs a day. Full network and deals after KYC.`, `प्रीव्यू: रोज़ ${n || 'कुछ'} तक नेटवर्क खरीदार ज़रूरतें। पूरा नेटवर्क और डील KYC के बाद।`);
+
+/** v189/v191 — the honest empty state for a Basic account: a limited daily preview, and what happens when it is used up (never "adjust your search") */
+export const BasicNetworkLocked: React.FC<{ what: 'listings' | 'needs'; limited?: { en: string; hi: string } | null }> = ({ what, limited }) => {
+  const tx = useTx(); const n = useBasicPreview();
   return (
     <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-8 text-center" data-testid="basic-network-locked">
       <ShieldAlert className="mx-auto h-8 w-8 text-amber-600" aria-hidden />
-      <h3 className="mt-2 text-sm font-semibold text-slate-900">{what === 'listings' ? tx('Network listings open after KYC', 'नेटवर्क की लिस्टिंग KYC के बाद खुलती हैं') : tx('Network buyer needs open after KYC', 'नेटवर्क की खरीदार ज़रूरतें KYC के बाद खुलती हैं')}</h3>
-      <p className="mx-auto mt-1 max-w-md text-xs text-slate-600">{tx('Add your PAN / RERA and the GENZ team will check it. Your own listings and clients work meanwhile.', 'अपना PAN / RERA जोड़ें, GENZ टीम जाँचेगी। तब तक आपकी अपनी लिस्टिंग और क्लाइंट चलते रहेंगे।')}</p>
+      <h3 className="mt-2 text-sm font-semibold text-slate-900" data-testid={limited ? 'basic-limit-note' : undefined}>{limited ? tx(limited.en, limited.hi) : tx('Network preview', 'नेटवर्क प्रीव्यू')}</h3>
+      <p className="mx-auto mt-1 max-w-md text-xs text-slate-600">{previewLine(tx, n, what)}</p>
       <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'network' }))} className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white" data-testid="basic-network-locked-go">{tx('Verify KYC', 'KYC वेरिफ़ाई करें')}</button>
+    </div>
+  );
+};
+
+/** v191 — the Deals tab for a Basic account with no deal of its own */
+export const BasicDealsLocked: React.FC = () => {
+  const tx = useTx();
+  return (
+    <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-8 text-center" data-testid="basic-deals-locked">
+      <ShieldAlert className="mx-auto h-8 w-8 text-amber-600" aria-hidden />
+      <h3 className="mt-2 text-sm font-semibold text-slate-900">{tx('Deals open after KYC', 'डील KYC के बाद खुलती हैं')}</h3>
+      <p className="mx-auto mt-1 max-w-md text-xs text-slate-600">{tx('Co-broking, offers, site visits and commission agreements need a verified account. Add your PAN / RERA and the GENZ team will check it.', 'को-ब्रोकिंग, ऑफ़र, साइट विज़िट और कमीशन एग्रीमेंट के लिए वेरिफ़ाइड अकाउंट चाहिए। अपना PAN / RERA जोड़ें, GENZ टीम जाँचेगी।')}</p>
+      <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'network' }))} className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white" data-testid="basic-deals-locked-go">{tx('Verify KYC', 'KYC वेरिफ़ाई करें')}</button>
     </div>
   );
 };
