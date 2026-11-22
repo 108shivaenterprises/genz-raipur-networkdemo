@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { bilingualInvalid } from '../lib/validate.js';
 import { Loader2, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { OtpSent, OtpAlert, type OtpReq, type OtpErr } from './OtpStep.js';
 import { api } from '../lib/api.js';
@@ -16,14 +17,21 @@ const ROLE_LABEL: Record<string, string> = {
   BROKER: 'Real-estate Broker', PROPERTY_OWNER: 'Property Owner', BUYER_TENANT: 'Buyer / Tenant', CONTRACTOR: 'Contractor',
   DEVELOPER_BUILDER: 'Developer / Builder', LEGAL_COUNSEL: 'Legal Counsel', ADMIN: 'Administrator', GENZ_CONNECTOR: 'GENZ Connector (local partner)',
 };
-const input = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none';
+const input = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none';
 
 /** Public sign-up with an invitation code (no login needed). The account then waits for admin KYC verification. */
-export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJoined?: () => void }> = ({ onBack, onOwner, onJoined }) => {
   const { lang } = useI18n();
   const hi = lang === 'hi';
   const [code, setCode] = useState('');
-  const [inv, setInv] = useState<{ targetRole: string; invitedPhone: string; invitedEmail: string } | null>(null);
+  // v185 (D15): SIGNUP_MODE=open (default) → no invitation code: role → mobile OTP → name, city, PAN → live in the Basic tier. 'invite' (or "I have a code") = the old flow.
+  const [mode, setMode] = useState<'open' | 'invite' | ''>('');
+  const [useCode, setUseCode] = useState(false);
+  const [openRole, setOpenRole] = useState('');
+  useEffect(() => { api.authConfig().then(c => setMode(c.signupMode === 'invite' ? 'invite' : 'open')).catch(() => setMode('invite')); }, []);
+  const isOpen = mode === 'open' && !useCode;
+  const [inv0, setInv] = useState<{ targetRole: string; invitedPhone: string; invitedEmail: string } | null>(null);
+  const inv = inv0 || (isOpen && openRole ? { targetRole: openRole, invitedPhone: '', invitedEmail: 'open@phone.genz.local', open: true } : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
@@ -34,7 +42,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [otpTok, setOtpTok] = useState(''); const [otpCode, setOtpCode] = useState(''); const [otpV, setOtpV] = useState<OtpReq | null>(null); const [otpErr, setOtpErr] = useState<OtpErr | null>(null); const [otpAt, setOtpAt] = useState(0); const [otpBusy, setOtpBusy] = useState(false);
   const sendOtp = async () => {
     setOtpBusy(true); setOtpErr(null);
-    try { const r = await api.registerOtp(code.trim(), phone.replace(/\D/g, '').slice(-10)); setOtpTok(r.otpToken); setOtpV(r); setOtpAt(Date.now()); setOtpCode(''); }
+    try { const p10 = phone.replace(/\D/g, '').slice(-10); const r = isOpen ? await api.signupOtp(p10) : await api.registerOtp(code.trim(), p10); setOtpTok(r.otpToken); setOtpV(r); setOtpAt(Date.now()); setOtpCode(''); }
     catch (e: any) { setOtpTok(''); setOtpV(null); setOtpErr(e); } finally { setOtpBusy(false); }
   };
   const [email, setEmail] = useState('');
@@ -57,15 +65,17 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [pf, setPf] = useState<{ name: string; city: string; companyName: string; panNumber: string; hasPan?: boolean; aadhaarLast4: string; docs: string[] } | null>(null);
   const [files, setFiles] = useState<{ PAN?: PreparedIdFile; AADHAAR?: PreparedIdFile }>({});
   const [autoVerified, setAutoVerified] = useState(false);
+  const [basicDone, setBasicDone] = useState(false); const [panConsent, setPanConsent] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
 
   const role = inv?.targetRole;
   const phoneOnly = !!inv?.invitedEmail?.endsWith('@phone.genz.local');
   const tier2 = !!(inv as any)?.tier2;
   const sponsorName: string = (inv as any)?.sponsorName || '';
-  const needsRera = (role === 'BROKER' || role === 'DEVELOPER_BUILDER') && !tier2;
+  const open = !!(inv as any)?.open;
+  const needsRera = (role === 'BROKER' || role === 'DEVELOPER_BUILDER') && !tier2 && !open;
   // v18: every broker gives PAN + Aadhaar (only the last 4 digits are kept)
-  const brokerId = role === 'BROKER';
+  const brokerId = role === 'BROKER' && !open;
   const aadhaarDigits = normAadhaar(aadhaar);
   const panMasked = !!pf?.hasPan && pan === pf.panNumber;   // F1: the sponsor's PAN arrives masked; the server keeps using the stored one
   const panIssue = panMasked ? null : panProblem(pan);
@@ -100,7 +110,20 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       if (addrIssue || pinIssue) { const w = addrIssue || pinIssue!; setError(hi ? w.hi : w.en); return; }
       if (!idConsent) { setError(hi ? 'PAN, आधार नंबर और पता रखने की सहमति दें' : 'Please agree to GENZ keeping your PAN, Aadhaar number and address'); return; }
     }
-    if (!loc.city.trim()) { setError(hi ? 'अपना शहर चुनें — GENZ क्लाइंट और घर शहर के हिसाब से मिलाता है।' : 'Choose your city — GENZ matches clients and homes city by city.'); return; }
+    if (!loc.city.trim() && !(open && role === 'GENZ_CONNECTOR')) { setError(hi ? 'अपना शहर चुनें — GENZ क्लाइंट और घर शहर के हिसाब से मिलाता है।' : 'Choose your city — GENZ matches clients and homes city by city.'); return; }
+    if (open) {
+      if (!otpTok || otpCode.length !== 6) { setError(hi ? 'पहले मोबाइल पर कोड भेजें और उसे यहाँ डालें।' : 'Send the code to your mobile first and enter it here.'); return; }
+      if (role !== 'GENZ_CONNECTOR' && !panConsent) { setError(hi ? 'PAN रखने की सहमति दें (नीचे टिक करें)।' : 'Please tick that GENZ may keep your PAN to check your KYC.'); return; }
+      if (role !== 'GENZ_CONNECTOR' && !isValidPan(normPan(pan))) { const w = panProblem(pan); setError(w ? (hi ? w.hi : w.en) : (hi ? 'PAN डालें (जैसे ABCPD1234E)' : 'Enter your PAN (e.g. ABCPD1234E)')); return; }
+      setBusy(true);
+      try {
+        await api.openSignup({ role, name, phone: phone.replace(/\D/g, '').slice(-10), otpToken: otpTok, otpCode, password, consent: true, panConsent: role !== 'GENZ_CONNECTOR' ? panConsent : undefined, panNumber: pan ? normPan(pan) : undefined, state: loc.state || undefined, city: loc.city || undefined, locality: loc.locality || undefined, companyName: company || undefined,
+          ...(role === 'GENZ_CONNECTOR' ? { shopType, shopName, payoutUpi: upi || undefined } : {}) });
+        setAutoVerified(true); setDone(`${hi ? 'मोबाइल नंबर से साइन इन करें' : 'Sign in with your mobile number'} ${phone}.`);
+      } catch (err: any) { setError(err.message || (hi ? 'साइन-अप नहीं हो पाया' : 'Sign-up failed')); }
+      finally { setBusy(false); }
+      return;
+    }
     setBusy(true);
     try {
       const reg = await api.registerInvite({
@@ -116,7 +139,7 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       const failed: string[] = [];
       for (const k of ['PAN', 'AADHAAR'] as const) { const f = files[k]; if (f) { try { await api.idMineUpload({ kind: k, fileName: f.fileName, data: f.data }); } catch (e: any) { failed.push(`${k}: ${e.message}`); } } }
       setUploadNote(failed.length ? (hi ? `आपका आवेदन जमा हो गया, पर एक कॉपी अपलोड नहीं हुई (${failed.join('; ')}). साइन-इन के बाद नेटवर्क → रजिस्टर और ID में दोबारा डालें।` : `Your application is in, but a copy was not uploaded (${failed.join('; ')}). After signing in add it under Network → Register & ID.`) : '');
-      setAutoVerified(!!reg.autoVerified);
+      setAutoVerified(!!reg.autoVerified); setBasicDone(!!(reg as any).basic);
       setDone(phoneOnly ? `Sign in later with your mobile number ${phone}.` : `Sign in later with ${email}.`);
     } catch (err: any) { setError(err.message || 'Registration failed'); }
     finally { setBusy(false); }
@@ -126,40 +149,51 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-900"><ArrowLeft className="h-3.5 w-3.5" /> {hi ? 'साइन इन पर वापस' : 'Back to sign in'}</button>
-        <h1 className="flex items-center gap-2 text-base font-bold text-slate-900"><KeyRound className="h-4 w-4 text-amber-500" /> {hi ? 'आमंत्रण कोड से जुड़ें' : 'Join with your invitation code'}</h1>
+        <h1 className="flex items-center gap-2 text-base font-bold text-slate-900"><KeyRound className="h-4 w-4 text-amber-500" /> {isOpen ? (hi ? 'GENZ से जुड़ें — मुफ़्त' : 'Join GENZ — free') : (hi ? 'आमंत्रण कोड से जुड़ें' : 'Join with your invitation code')}</h1>
 
         {done ? (
           <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
             <CheckCircle2 className="mb-1 h-5 w-5 text-emerald-600" />
-            <p className="font-semibold">{autoVerified ? (hi ? 'आप वेरिफ़ाइड हैं!' : 'You are verified!') : (hi ? 'आवेदन जमा हो गया!' : 'Application submitted!')}</p>
-            <p className="mt-1 text-xs">{autoVerified
+            <p className="font-semibold" data-testid="join-done">{open || basicDone ? (hi ? 'आपका अकाउंट चालू है (बेसिक)!' : 'Your account is live (Basic)!') : autoVerified ? (hi ? 'आप वेरिफ़ाइड हैं!' : 'You are verified!') : (hi ? 'आवेदन जमा हो गया!' : 'Application submitted!')}</p>
+            <p className="mt-1 text-xs">{open || basicDone ? (hi ? 'अभी आप अपनी लिस्टिंग और क्लाइंट जोड़ सकते हैं और चैट कर सकते हैं। नेटवर्क की लिस्टिंग, डील, कमीशन, पेमेंट और ब्रॉडकास्ट KYC वेरिफ़ाई होने पर खुलेंगे — RERA नहीं है तो Tier 2 एसोसिएट के रूप में वेरिफ़ाई हो सकते हैं, RERA बाद में जोड़कर Tier 1 बनें। साइन इन के बाद “KYC वेरिफ़ाई करें” चुनें।' : 'For now you can add your own listings and clients and chat. Network listings, deals, commission, payments and broadcasts open once your KYC is verified — no RERA? You can still be verified as a Tier 2 associate; add RERA later to move to Tier 1. After signing in, pick “Verify KYC”.') : autoVerified
               ? (hi ? `आपके मोबाइल OTP और PAN से आप तुरंत वेरिफ़ाई हो गए। GENZ टीम आपकी PAN / आधार ID बाद में देखेगी — ज़रूरत हो तो वह आपसे संपर्क करेगी।` : `You were verified straight away through your mobile OTP and PAN. The GENZ team will check your PAN / Aadhaar ID afterwards and will contact you if anything is needed.`)
               : (hi ? 'GENZ टीम आपके विवरण की जाँच करेगी। मंज़ूरी के बाद आप साइन इन कर पाएँगे।' : 'The GENZ team will verify your details. You can sign in once you are approved.')} {done}</p>
             {uploadNote && <p role="alert" className="mt-2 text-xs font-medium text-red-700">{uploadNote}</p>}
-            <button onClick={onBack} className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white">{hi ? 'साइन इन पेज' : 'Go to sign in'}</button>
+            {basicDone && onJoined && <button onClick={onJoined} className="mt-3 mr-2 inline-flex min-h-11 items-center rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white" data-testid="join-continue">{hi ? 'GENZ में आगे बढ़ें' : 'Continue to GENZ'}</button>}
+            <button onClick={onBack} className={`mt-3 inline-flex min-h-11 items-center rounded-lg px-4 text-xs font-semibold ${basicDone && onJoined ? 'border border-slate-300 bg-white text-slate-700' : 'bg-slate-900 text-white'}`}>{hi ? 'साइन इन पेज' : 'Go to sign in'}</button>
+          </div>
+        ) : mode === '' ? (
+          <p className="mt-4 flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> {hi ? 'लोड हो रहा है…' : 'Loading…'}</p>
+        ) : isOpen && !inv ? (
+          <div className="mt-4 space-y-2" data-testid="join-roles">
+            <p className="text-xs text-slate-600">{hi ? 'आप कौन हैं? चुनें — आगे मोबाइल कोड, फिर नाम, शहर और PAN।' : 'Who are you? Choose one — next a mobile code, then your name, city and PAN.'}</p>
+            {([['BROKER', 'Real-estate broker', 'रियल एस्टेट ब्रोकर'], ['PROPERTY_OWNER', 'Property owner', 'प्रॉपर्टी मालिक'], ['DEVELOPER_BUILDER', 'Builder / developer partner', 'बिल्डर / डेवलपर पार्टनर'], ['GENZ_CONNECTOR', 'Shop partner', 'दुकान पार्टनर']] as const).map(([k, en, h]) => (
+              <button key={k} type="button" data-testid={`join-role-${k}`} onClick={() => { if (k === 'PROPERTY_OWNER' && onOwner) onOwner(); else setOpenRole(k); }} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-left text-sm font-semibold text-slate-900 hover:border-slate-900">{hi ? h : en}<span aria-hidden>›</span></button>
+            ))}
+            <button type="button" onClick={() => setUseCode(true)} className="min-h-11 w-full text-xs font-semibold text-blue-700 underline" data-testid="join-have-code">{hi ? 'आमंत्रण कोड है? यहाँ से जुड़ें' : 'Have an invitation code? Join here'}</button>
           </div>
         ) : !inv ? (
-          <form onSubmit={check} className="mt-4">
+          <form onSubmit={check} className="mt-4" {...bilingualInvalid(hi)}>
             <p className="text-xs text-slate-500">{hi ? 'GENZ टीम से मिला कोड यहाँ डालें।' : 'Enter the code you received from the GENZ team.'}</p>
             <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="GZ-XXX-XXXXXXXXXXXX" className={input + ' font-mono tracking-wide'} />
             {error && <p className="mt-2 text-xs font-medium text-red-700">{error}</p>}
             <button disabled={busy} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy && <Loader2 className="h-4 w-4 animate-spin" />} {hi ? 'कोड जाँचें' : 'Check code'}</button>
           </form>
         ) : (
-          <form onSubmit={submit} className="mt-4 space-y-3">
+          <form onSubmit={submit} className="mt-4 space-y-3" {...bilingualInvalid(hi)}>
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{hi ? 'आप जुड़ रहे हैं:' : 'You are joining as:'} <b className="text-slate-900">{ROLE_LABEL[role!] || role}</b></p>
             {pf && <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">{hi ? `आपके स्पॉन्सर ${sponsorName || ''} ने आपकी कुछ जानकारी पहले से भर दी है। उसे देख लें और कुछ ग़लत हो तो सुधार दें।` : `Your sponsor${sponsorName ? ` ${sponsorName}` : ''} has already filled in some of your details. Please check them and correct anything that is wrong.`}</p>}
             <div><label className="text-xs font-semibold text-slate-700">{hi ? 'पूरा नाम' : 'Full name'} *{chip(name, pf?.name)}</label><input required value={name} onChange={(e) => setName(e.target.value)} className={input} /></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><label className="text-xs font-semibold text-slate-700">{hi ? 'मोबाइल नंबर' : 'Mobile number'} *</label><input required value={phone} onChange={(e) => { setPhone(e.target.value); setOtpTok(''); setOtpV(null); }} inputMode="tel" placeholder="9XXXXXXXXX" className={input} />
-                {role !== 'GENZ_CONNECTOR' && <div className="mt-1.5 space-y-1" data-testid="join-otp">
+                {(role !== 'GENZ_CONNECTOR' || open) && <div className="mt-1.5 space-y-1" data-testid="join-otp">
                   {!otpV && <button type="button" onClick={() => void sendOtp()} disabled={otpBusy || !/^[6-9]\d{9}$/.test(phone.replace(/\D/g, '').slice(-10))} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold disabled:opacity-40" data-testid="join-otp-send">{hi ? 'कोड भेजें' : 'Send code'}</button>}
                   {otpV && <OtpSent v={otpV} sentAt={otpAt} onResend={() => void sendOtp()} busy={otpBusy} />}
                   {otpTok && <input value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder={hi ? '6 अंक का कोड' : '6-digit code'} className={input + ' font-mono'} aria-label={hi ? 'कोड' : 'Code'} data-testid="join-otp-code" />}
                   <OtpAlert err={otpErr} />
-                  <p className="text-[11px] text-slate-500">{hi ? 'मोबाइल कोड + PAN = अकाउंट तुरंत चालू। बिना कोड के GENZ ID जाँचेगा।' : 'Mobile code + PAN = your account is live at once. Without the code GENZ checks your ID.'}</p>
+                  <p className="text-[11px] text-slate-500">{open ? (hi ? 'कोड ज़रूरी है — सही कोड डालते ही आपका अकाउंट चालू हो जाएगा।' : 'The code is required — your account goes live as soon as it is right.') : (hi ? 'मोबाइल कोड + PAN = अकाउंट तुरंत चालू। बिना कोड के GENZ ID जाँचेगा।' : 'Mobile code + PAN = your account is live at once. Without the code GENZ checks your ID.')}</p>
                 </div>}</div>
-              {!phoneOnly && <div><label className="text-xs font-semibold text-slate-700">Email *</label><input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></div>}
+              {!phoneOnly && <div><label className="text-xs font-semibold text-slate-700" htmlFor="join-email">{hi ? 'ईमेल' : 'Email'} *</label><input id="join-email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></div>}
             </div>
             <LocationFields value={loc} onChange={setLoc} showLocality showPincode={false} required />
             {role !== 'GENZ_CONNECTOR' && (
@@ -168,6 +202,11 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 hint={hi ? 'शहर में बहुत इलाके होते हैं — इससे नेटवर्क को पता चलता है कि कौन कहाँ का है और सही क्लाइंट/घर आपको मिलते हैं।' : 'A city has many areas — this tells the network who covers where, so the right clients and homes reach you.'} />
             )}
 
+            {open && role !== 'GENZ_CONNECTOR' && (
+              <div><label className="text-xs font-semibold text-slate-700" htmlFor="join-pan-input">PAN *</label><input id="join-pan-input" required maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().replace(/\s/g, ''))} className={input + ' font-mono'} aria-invalid={!!panIssue} data-testid="join-pan" placeholder="ABCPD1234E" />{panIssue && pan && <p role="alert" className="mt-1 text-[11px] font-medium text-red-700">{hi ? panIssue.hi : panIssue.en}</p>}
+                <label className="mt-1 flex min-h-11 items-start gap-2 text-xs text-slate-600"><input type="checkbox" checked={panConsent} onChange={(e) => setPanConsent(e.target.checked)} className="mt-0.5" data-testid="join-pan-consent" /><span>{hi ? 'मैं सहमत हूँ कि GENZ मेरा PAN सिर्फ़ KYC जाँचने के लिए रखे। 180 दिन तक KYC न करूँ तो PAN मिटा दिया जाएगा।' : 'I agree GENZ keeps my PAN only to check my KYC. If I do no KYC for 180 days it is deleted.'}</span></label>
+                <p className="mt-1 text-[11px] text-slate-500">{hi ? 'आधार अभी नहीं चाहिए। RERA नहीं है? फिर भी आप Tier 2 एसोसिएट के रूप में वेरिफ़ाई हो सकते हैं; RERA बाद में जोड़कर Tier 1 बनें।' : 'No Aadhaar needed now. No RERA? You can still be verified as a Tier 2 associate; add RERA later to move to Tier 1.'}</p></div>
+            )}
             {role === 'GENZ_CONNECTOR' && (
               <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -190,17 +229,17 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <div><label className="text-xs font-semibold text-slate-700">{hi ? 'फ़र्म / ऑफ़िस का नाम' : 'Firm / office name'}{chip(company, pf?.companyName)}</label><input value={company} onChange={(e) => setCompany(e.target.value)} className={input} /></div>
                   <div><label className="text-xs font-semibold text-slate-700">RERA no. ({hi ? 'हो तो' : 'if you have one'})</label><input value={rera} onChange={(e) => setRera(e.target.value)} className={input + ' font-mono'} /></div>
                 </div>
-                <div><label className="text-xs font-semibold text-slate-700">PAN *{chip(pan, pf?.panNumber)}</label><input required maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().replace(/\s/g, ''))} className={input + ' font-mono'} aria-invalid={!!panIssue} />{panIssue && <p role="alert" className="mt-1 text-[11px] font-medium text-red-700">{hi ? panIssue.hi : panIssue.en}</p>}</div>
+                <div><label className="text-xs font-semibold text-slate-700" htmlFor="join-pan-input">PAN *{chip(pan, pf?.panNumber)}</label><input id="join-pan-input" required maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().replace(/\s/g, ''))} className={input + ' font-mono'} aria-invalid={!!panIssue} />{panIssue && <p role="alert" className="mt-1 text-[11px] font-medium text-red-700">{hi ? panIssue.hi : panIssue.en}</p>}</div>
               </>
             )}
             {needsRera && (
               <>
-                <div><label className="text-xs font-semibold text-slate-700">Company / firm {role === 'BROKER' ? (hi ? '(हो तो)' : '(if you have one)') : '*'}</label><input required={role !== 'BROKER'} value={company} onChange={(e) => setCompany(e.target.value)} className={input} /></div>
+                <div><label className="text-xs font-semibold text-slate-700" htmlFor="join-company">{hi ? 'कंपनी / फ़र्म' : 'Company / firm'} {role === 'BROKER' ? (hi ? '(हो तो)' : '(if you have one)') : '*'}</label><input id="join-company" required={role !== 'BROKER'} value={company} onChange={(e) => setCompany(e.target.value)} className={input} /></div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div><label className="text-xs font-semibold text-slate-700">RERA no. {role === 'BROKER' ? (hi ? '(हो तो)' : '(if you have one)') : '*'}</label><input required={role !== 'BROKER'} value={rera} onChange={(e) => setRera(e.target.value)} className={input + ' font-mono'} data-testid="join-rera" />
                     {role === 'BROKER' && <p className="mt-1 text-[11px] text-slate-500">{hi ? 'RERA के बिना भी जुड़ सकते हैं — “Non-RERA” बैज मिलेगा। बिल्डर / RERA प्रोजेक्ट में काम RERA नंबर जोड़ने के बाद खुलेगा।' : 'You can join without RERA — you get a “Non-RERA” badge. Builder / RERA projects open once you add your RERA number.'}</p>}</div>
-                  <div><label className="text-xs font-semibold text-slate-700">PAN *</label><input required maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().replace(/\s/g, ''))} className={input + ' font-mono'} aria-invalid={!!panIssue} />{panIssue && <p role="alert" className="mt-1 text-[11px] font-medium text-red-700">{hi ? panIssue.hi : panIssue.en}</p>}</div>
-                  <div><label className="text-xs font-semibold text-slate-700">GSTIN</label><input maxLength={15} value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} className={input + ' font-mono'} /></div>
+                  <div><label className="text-xs font-semibold text-slate-700" htmlFor="join-pan-input">PAN *</label><input id="join-pan-input" required maxLength={10} value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().replace(/\s/g, ''))} className={input + ' font-mono'} aria-invalid={!!panIssue} />{panIssue && <p role="alert" className="mt-1 text-[11px] font-medium text-red-700">{hi ? panIssue.hi : panIssue.en}</p>}</div>
+                  <div><label className="text-xs font-semibold text-slate-700" htmlFor="join-gstin">GSTIN {hi ? '(हो तो)' : '(if any)'}</label><input id="join-gstin" maxLength={15} value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} className={input + ' font-mono'} /></div>
                 </div>
               </>
             )}
@@ -239,10 +278,14 @@ export const JoinView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div><label className="text-xs font-semibold text-slate-700">{hi ? 'पासवर्ड चुनें (10+ अक्षर, बड़ा, छोटा, अंक)' : 'Choose a password (10+ chars, upper, lower, number)'} *</label><input required type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={input} /></div>
             <label className="flex items-start gap-2 text-xs text-slate-600">
               <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" />
-              <span>{hi ? 'मैंने प्राइवेसी पॉलिसी और नियम पढ़ लिए हैं और डेटा के उपयोग की सहमति देता/देती हूँ।' : 'I have read the Privacy Policy and Terms and consent to the processing of my personal data.'} <a href="#/privacy" className="text-blue-700 underline" target="_blank" rel="noreferrer">Privacy</a> · <a href="#/terms" className="text-blue-700 underline" target="_blank" rel="noreferrer">Terms</a></span>
+              <span>{hi ? 'मैं GENZ को अपना अकाउंट चलाने के लिए अपनी जानकारी इस्तेमाल करने की सहमति देता/देती हूँ।' : 'I agree to GENZ using my details to run my account.'}</span>
             </label>
+            <details className="rounded-lg border border-slate-200 px-3 text-xs text-slate-600" data-testid="join-full-notice">
+              <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-slate-800">{hi ? 'पूरी सूचना पढ़ें' : 'Read full notice'}</summary>
+              <p className="pb-2">{hi ? 'मैंने प्राइवेसी पॉलिसी और नियम पढ़ लिए हैं और डेटा के उपयोग की सहमति देता/देती हूँ।' : 'I have read the Privacy Policy and Terms and consent to the processing of my personal data.'} <a href="#/privacy" className="inline-flex min-h-11 items-center text-blue-700 underline" target="_blank" rel="noreferrer">{hi ? 'प्राइवेसी' : 'Privacy'}</a> · <a href="#/terms" className="inline-flex min-h-11 items-center text-blue-700 underline" target="_blank" rel="noreferrer">{hi ? 'नियम' : 'Terms'}</a></p>
+            </details>
             {error && <p className="text-xs font-medium text-red-700">{error}</p>}
-            <button disabled={busy || !consent} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy && <Loader2 className="h-4 w-4 animate-spin" />} {hi ? 'आवेदन जमा करें' : 'Submit application'}</button>
+            <button disabled={busy || !consent} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" data-testid="join-submit">{busy && <Loader2 className="h-4 w-4 animate-spin" />} {open ? (hi ? 'अकाउंट बनाएँ' : 'Create my account') : (hi ? 'आवेदन जमा करें' : 'Submit application')}</button>
           </form>
         )}
       </div>

@@ -7,6 +7,7 @@
  * (22:00–07:00 IST, except consent / system) and the daily cap — and an alert never blocks or fails the action that caused it.
  */
 import { pushTo, type PushKind } from './webpush.js';
+import { isVerifiedFull } from './permissions.js';
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
 
@@ -33,7 +34,7 @@ export const inr = (n: number) => '₹' + Math.round(Number(n) || 0).toLocaleStr
 /** an employer's active staff who have a given switch on */
 export function staffWith(employerId: Who, pred: (m: UserProfile) => boolean): string[] {
   if (!employerId) return [];
-  return db.getState().users.filter(m => m.role === 'TEAM_MEMBER' && m.employerId === employerId && m.verificationStatus === 'VERIFIED' && !m.teamPolicy?.onLeave && pred(m)).map(m => m.id);
+  return db.getState().users.filter(m => m.role === 'TEAM_MEMBER' && m.employerId === employerId && isVerifiedFull(m) && !m.teamPolicy?.onLeave && pred(m)).map(m => m.id);
 }
 /** the builder and his staff allowed to accept / reject partner leads */
 export const builderVerifiers = (builderId: Who) => [builderId, ...staffWith(builderId, m => !!m.teamPolicy?.canVerify)];

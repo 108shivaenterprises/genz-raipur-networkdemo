@@ -8,6 +8,7 @@ import { api } from '../lib/api.js';
 import { MessageSquare, ListTodo, FileCheck2, FolderLock, ShieldCheck, IndianRupee, LayoutList, ChevronRight, CalendarCheck, Users, Clock, Shield, Phone, MessageCircle, Receipt } from 'lucide-react';
 import { useTemplateHi } from '../lib/templateHi.js';
 import { useTx } from '../lib/i18n.js';
+import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 
 export type SimpleDoor = 'chat_call' | 'responsibilities' | 'commission_agreement' | 'media_vault' | 'due_diligence' | 'money';
@@ -19,18 +20,20 @@ export const DealSimple: React.FC<{
   doors: SimpleDoor[];              // the sections THIS person may open (the parent decides, from the same permissions as the tab bar)
   onOpen: (door: SimpleDoor | 'full') => void;
   onBookVisit?: () => void;         // only passed when this person may create a site visit
+  meId?: string;                    // v183 — whose ticket to show (an admin must not see other people's)
+  canCostSheet?: boolean;           // v183 — only roles that may open Share / cost sheets call that endpoint (others used to get a 403)
   phone?: string;                   // the other broker's number — the two brokers of a deal already see it in the chat header
   pending?: { id: string; en: string; hi: string; go: () => void }[];   // v178: what the Full room shows as "Pending" for this person (owner's mandate, visit OTP) — never "nothing" while Full says otherwise
-}> = ({ item, doors, onOpen, phone, onBookVisit, pending = [] }) => {
-  const tx = useTx(); const th = useTemplateHi();
+}> = ({ item, doors, onOpen, phone, onBookVisit, pending = [], canCostSheet = false, meId = '' }) => {
+  const tx = useTx(); const th = useTemplateHi(); const label = useLabel();
   // the live cost sheet this broker already made for this deal's project (matched by project name; hidden when none / no access)
   const [sheet, setSheet] = useState<string>('');
   useEffect(() => {
-    const t = String(item?.propertyTitle || '').trim().toLowerCase(); if (!t) { setSheet(''); return; }
+    const t = String(item?.propertyTitle || '').trim().toLowerCase(); if (!t || !canCostSheet) { setSheet(''); return; }
     let live = true;
     api.costSheets().then((r: any) => { const m = (r.sheets || []).find((x: any) => !x.revoked && !x.expired && (String(x.projectName).toLowerCase().includes(t) || t.includes(String(x.projectName).toLowerCase()))); if (live) setSheet(m?.token || ''); }).catch(() => { if (live) setSheet(''); });
     return () => { live = false; };
-  }, [item?.propertyTitle]);
+  }, [item?.propertyTitle, canCostSheet]);
   const ago = (iso?: string) => { const d = agoDays(iso); return d < 0 ? '' : d === 0 ? tx('today', 'आज') : d === 1 ? tx('yesterday', 'कल') : tx(`${d} days ago`, `${d} दिन पहले`); };
   const next: any[] = item?.next || [];
   const dot = (tab: string) => next.some(n => n.tab === tab && n.kind !== 'STALLED');
@@ -64,25 +67,37 @@ export const DealSimple: React.FC<{
     <button key={id} type="button" onClick={() => onOpen(id)} data-testid={`deal-door-${id}`}
       className={`relative flex items-center gap-3 rounded-[18px] border border-edge bg-white text-left active:bg-paper ${small ? 'min-h-12 px-3' : 'min-h-16 p-3 shadow-card'}`}>
       <Icon className="h-5 w-5 shrink-0 text-slate-700" aria-hidden />
-      <span className="min-w-0 flex-1"><span className="block text-sm font-bold leading-tight text-slate-900">{d.label}</span>{!small && <span className="block truncate text-xs text-slate-500">{d.hint}</span>}</span>
+      <span className="min-w-0 flex-1"><span className="block break-words text-sm font-bold leading-tight text-slate-900">{d.label}</span>{!small && <span className="block truncate text-xs text-slate-500">{d.hint}</span>}</span>
       {dot(d.tab) && id !== 'money' ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" aria-label={tx('needs you', 'आपका काम बाकी')} /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />}
     </button>
   ); };
   // v147 — laid out like a CRM deal screen (Pipedrive / Bigin): numbers, round quick actions, the history, then the sections
   const tel = (phone || '').replace(/\D/g, '').slice(-10);
-  const round = 'flex min-h-11 w-[68px] shrink-0 flex-col items-center gap-1.5 text-center text-xs font-semibold text-ink active:scale-[.97] motion-safe:transition-transform';
+  const round = 'flex min-h-11 min-w-0 flex-1 flex-col items-center gap-1.5 break-words text-center text-xs font-semibold leading-tight text-ink active:scale-[.97] motion-safe:transition-transform';
   const ring = 'flex h-14 w-14 items-center justify-center rounded-full border border-edge bg-white shadow-card';
   const histText = (h: { k: string; t?: string }) => ({
     CREATED: tx('Deal started', 'डील शुरू हुई'), VISIT_DONE: tx('Site visit done', 'साइट विज़िट हुई'), VISIT_BOOKED: tx('Site visit booked', 'साइट विज़िट तय हुई'),
     TASK_DONE: tx(`Done: ${th(h.t || 'a task')}`, `पूरा: ${th(h.t || 'एक काम')}`), AGREEMENT_ACTIVE: tx('Agreement in force', 'समझौता लागू'), AGREEMENT_SENT: tx('Agreement sent', 'समझौता भेजा गया'),
+    STAGE: tx(`Moved to ${h.t || 'next stage'}`, `अगले चरण पर: ${label('dealStage', h.t || '') || h.t || ''}`), PAY_ENTERED: tx('Commission payment written down', 'कमीशन भुगतान दर्ज हुआ'), PAY_CONFIRMED: tx('Commission payment confirmed', 'कमीशन भुगतान पक्का हुआ'),
+    DISPUTE_RAISED: tx('Dispute raised', 'विवाद दर्ज हुआ'), DISPUTE_RESOLVED: tx('Dispute resolved', 'विवाद सुलझा'), CLOSE_ASKED: tx('Close asked', 'डील बंद करने का अनुरोध'), CLOSED: tx('Deal room closed', 'डील रूम बंद'), REOPENED: tx('Deal room reopened', 'डील रूम फिर खुला'),
     MSG_ME: tx('You wrote in chat', 'आपने चैट में लिखा'), MSG_OTHER: tx(`${item?.counterpartName || 'They'} wrote in chat`, `${item?.counterpartName || 'उन्होंने'} चैट में लिखा`),
   } as Record<string, string>)[h.k] || h.k;
   const BOTTOM: SimpleDoor[] = ['responsibilities', 'commission_agreement', 'money'];
   const bottom = doors.filter(d => BOTTOM.includes(d)); const extra = doors.filter(d => d === 'due_diligence');
   const history: { at: string; k: string; t?: string }[] = item?.history || [];
+  const [allHist, setAllHist] = useState(false);
+  const [help, setHelp] = useState<any>(null); const [helpOpen, setHelpOpen] = useState(false); const [helpText, setHelpText] = useState(''); const [helpErr, setHelpErr] = useState(''); const [helpBusy, setHelpBusy] = useState(false);
+  const [replyDays, setReplyDays] = useState(0); const [helpFail, setHelpFail] = useState(false); const [helpTick, setHelpTick] = useState(0);
+  useEffect(() => {
+    if (!item?.id) return; let live = true; setHelp(null); setHelpFail(false);
+    api.myRequests().then(r => { if (live) setHelp((r.requests || []).filter((x: any) => x.dealRoomId === item.id && x.userId === meId).sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt))[0] || null); }).catch(() => { if (live) setHelpFail(true); });
+    return () => { live = false; };
+  }, [item?.id, meId, helpTick]);
+  const loadHelp = () => setHelpTick(t => t + 1);
 
   return (
     <div className="space-y-3" data-testid="deal-simple">
+      {item?.settledElsewhere && <div role="status" data-testid="deal-settled-elsewhere" className="rounded-[20px] border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{tx('This property was settled in another deal. New offers on it are blocked.', 'यह प्रॉपर्टी दूसरी डील में पूरी हो चुकी है। इस पर नए ऑफ़र बंद हैं।')}</div>}
       {top.length > 0 && (
         <dl aria-label={tx('The deal at a glance', 'डील एक नज़र में')} className="flex divide-x divide-edge rounded-[20px] border border-edge bg-white py-3 text-center shadow-card" data-testid="deal-simple-facts">
           {top.map(f => (
@@ -115,12 +130,13 @@ export const DealSimple: React.FC<{
         <section data-testid="deal-history">
           <div className="rounded-[20px] border border-edge bg-white p-3.5 shadow-card"><h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-mute">{tx('History', 'अब तक क्या हुआ')}</h3>
           <ol>
-            {history.slice(0, 4).map((h, i) => (
+            {(allHist ? history : history.slice(0, 4)).map((h, i) => (
               <li key={i} className="flex items-center gap-3 py-2 text-sm">
                 <span className="h-2 w-2 shrink-0 rounded-full bg-gold-500" aria-hidden="true" /><span className="w-20 shrink-0 text-xs text-mute">{ago(h.at)}</span><span className="min-w-0 flex-1 font-medium text-ink">{histText(h)}</span>
               </li>
             ))}
-          </ol></div>
+          </ol>
+          {history.length > 4 && <button type="button" onClick={() => setAllHist(v => !v)} data-testid="deal-history-all" className="mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-money">{allHist ? tx('Show less', 'कम दिखाएँ') : tx(`See all (${history.length})`, `सब देखें (${history.length})`)}</button>}</div>
         </section>
       )}
       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${bottom.length || 1}, minmax(0, 1fr))` }}>{bottom.map(id => { const d = all[id]; const Icon = d.icon; return (
@@ -129,6 +145,24 @@ export const DealSimple: React.FC<{
           {dot(d.tab) && id !== 'money' && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" aria-label={tx('needs you', 'आपका काम बाकी')} />}
         </button>
       ); })}</div>
+      {item?.id && !item.summaryOnly && (
+        <section className="rounded-[18px] border border-edge bg-white p-3 shadow-card" data-testid="deal-help">
+          {help && help.status === 'OPEN' && replyDays > 0 && <p className="mb-1 text-xs text-slate-600" data-testid="deal-help-sla">{tx(`GENZ replies within ${replyDays} days.`, `GENZ ${replyDays} दिन के अंदर जवाब देता है।`)}</p>}
+          {help && <p className="mb-2 text-sm" data-testid="deal-help-status"><b>{help.status === 'OPEN' ? tx('Your question to GENZ: Open', 'GENZ से आपका सवाल: खुला') : help.status === 'REJECTED' ? tx('Your question to GENZ: Closed', 'GENZ से आपका सवाल: बंद') : tx('Your question to GENZ: Answered', 'GENZ से आपका सवाल: जवाब आ गया')}</b><span className="block break-words text-xs text-mute" data-testid="deal-help-echo">{tx('You wrote', 'आपने लिखा')}: “{String(help.details || '').replace(/^\[[^\]]*\]\s*/, '')}”</span><span className="block text-xs text-mute" data-testid="deal-help-id">{tx('Ticket', 'टिकट')} {help.id}{help.status === 'OPEN' ? tx(' · GENZ will reply here', ' · GENZ जवाब यहीं देगा') : ''}</span>{help.resolutionNote ? <span className="block break-words text-xs text-ink">{tx('GENZ replied', 'GENZ का जवाब')}: {help.resolutionNote}</span> : null}</p>}
+          {helpFail && <button type="button" onClick={loadHelp} data-testid="deal-help-retry" className="flex min-h-11 w-full items-center justify-center rounded-xl border border-edge px-3 text-sm font-semibold text-ink">{tx('Could not check your GENZ question — tap to retry', 'GENZ वाला सवाल देख नहीं पाए — फिर कोशिश करें')}</button>}
+          {!helpFail && (!help || help.status !== 'OPEN') && !helpOpen && <button type="button" onClick={() => setHelpOpen(true)} data-testid="deal-help-open" className="flex min-h-11 w-full items-center justify-center rounded-xl border border-edge px-3 text-sm font-bold text-ink">{tx('Problem with this deal? Ask GENZ', 'इस डील में दिक्कत? GENZ से पूछें')}</button>}
+          {helpOpen && (
+            <div className="space-y-2">
+              <textarea value={helpText} onChange={e => setHelpText(e.target.value)} maxLength={500} rows={3} data-testid="deal-help-text" placeholder={tx('What is the problem? (min 5 characters). This does not freeze any payment.', 'क्या दिक्कत है? (कम से कम 5 अक्षर)। इससे कोई भुगतान नहीं रुकता।')} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              {helpErr && <p className="text-xs text-red-700" role="alert">{helpErr}</p>}
+              <div className="flex gap-2">
+                <button type="button" disabled={helpBusy || helpText.trim().length < 5} data-testid="deal-help-send" onClick={async () => { setHelpBusy(true); setHelpErr(''); try { const sent = await api.dealHelp(item.id, helpText.trim()); setReplyDays(Number(sent?.respondWithinDays) || 0); setHelpOpen(false); setHelpText(''); loadHelp(); } catch (e: any) { setHelpErr(e?.message || tx('Could not send. Try again.', 'भेज नहीं पाए। फिर कोशिश करें।')); } finally { setHelpBusy(false); } }} className="min-h-11 flex-1 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-50">{tx('Send to GENZ', 'GENZ को भेजें')}</button>
+                <button type="button" onClick={() => setHelpOpen(false)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold">{tx('Cancel', 'रद्द करें')}</button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
       <details className="rounded-[18px] border border-edge bg-white shadow-card" data-testid="deal-simple-more">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-mute">{tx('More', 'और')}<ChevronRight className="h-4 w-4 rotate-90 opacity-60" aria-hidden /></summary>
         <div className="grid gap-2 p-2 pt-0">

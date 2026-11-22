@@ -3,6 +3,7 @@
  * Route-level permissions live in permissions.ts; these helpers add ownership / participation checks.
  */
 import { inPool } from '../src/shared/ownerListRules.js';
+import { isVerifiedFull } from './permissions.js';
 import type { DatabaseState, UserProfile, DealRoom, Property } from './db.js';
 import { digits } from './auth.js';
 import { SOLD_VISIBLE_DAYS } from '../src/shared/dealRules.js';
@@ -26,7 +27,7 @@ export function isDealParticipant(u: U, deal: Pick<DealRoom, 'introducingBrokerI
 export interface Assignee { id: string; name: string; role: string; group: 'PARTICIPANT' | 'TEAM' | 'LEGAL' | 'DESK'; title?: string; employerName?: string }
 export function dealAssignees(state: DatabaseState, deal: DealRoom): Assignee[] {
   const out = new Map<string, Assignee>();
-  const ok = (x?: UserProfile) => !!x && x.verificationStatus === 'VERIFIED';
+  const ok = (x?: UserProfile) => !!x && isVerifiedFull(x);
   for (const id of [deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId]) {
     const x = state.users.find(u => u.id === id);
     if (ok(x) && !out.has(x!.id)) out.set(x!.id, { id: x!.id, name: x!.name, role: x!.role, group: 'PARTICIPANT' });
@@ -105,7 +106,7 @@ export function canBrowseProperty(u: U, p: Pick<Property, 'ownerId' | 'listingBr
   if (p.ownerId === u.id || p.listingBrokerId === u.id) return true;
   if (u.role === 'PROPERTY_OWNER') return false;
   if (p.expiredAt || p.heldAt) return false; // stale or reported listings stay hidden from the network until refreshed / reviewed
-  if (u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' && inPool(p as any)) return true; // v73 — an owner's own listing sits in the pool: seen, never matched
+  if (u.role === 'BROKER' && isVerifiedFull(u) && inPool(p as any)) return true; // v73 — an owner's own listing sits in the pool: seen, never matched
   return p.verificationStatus === 'VERIFIED' && (p.listingStatus === 'active' || p.listingStatus === 'under_negotiation');
 }
 
@@ -130,7 +131,7 @@ export function isPropertyPrincipal(u: U, p: Pick<Property, 'ownerId' | 'listing
 const visitMemo = new WeakMap<object, { arr: unknown; len: number; at: number; set: Set<string> }>();
 export function canSeeProtectedPropertyData(state: DatabaseState, u: U, p: Property) {
   if (isAdmin(u) || p.ownerId === u.id || p.listingBrokerId === u.id) return true;
-  if (u.role === 'LEGAL_COUNSEL') return true; // legal review needs the title/address
+  if (u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u)) return true; // legal review needs the title/address
   // v58 — a broker's office staff with "listings + address" may take clients to HIS EMPLOYER's own listings (never another broker's)
   if (u.role === 'TEAM_MEMBER' && !!u.employerId && p.listingBrokerId === u.employerId && u.teamPolicy?.listings === 'ADDRESS') return true;
   const now = Date.now();
@@ -173,7 +174,7 @@ export function canSeeOwnerCommercials(u: U, p: Pick<Property, 'ownerId' | 'list
 
 /** Everyone who may legitimately work on a property's due diligence / vault. */
 export function canAccessPropertyWorkspace(state: DatabaseState, u: U, p: Property) {
-  if (isAdmin(u) || u.role === 'LEGAL_COUNSEL') return true;
+  if (isAdmin(u) || (u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u))) return true;
   if (p.ownerId === u.id || p.listingBrokerId === u.id) return true;
   return state.dealRooms.some(d => d.propertyId === p.id && isDealParticipant(u, d));
 }

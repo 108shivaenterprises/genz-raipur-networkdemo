@@ -16,11 +16,15 @@ export function formatArea(sqft?: number): string {
   return `${sqft.toLocaleString('en-IN')} sq.ft`;
 }
 
+/** v183 — dates follow the app language: Hindi UI → hi-IN */
+export function dateLocale(): string {
+  try { const l = localStorage.getItem('genz_lang'); if (l) return l === 'hi' ? 'hi-IN' : 'en-IN'; return /^hi/i.test(navigator.language || '') ? 'hi-IN' : 'en-IN'; } catch { return 'en-IN'; }
+}
 export function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-IN', {
+    const d = new Date(dateStr); if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(dateLocale(), {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -33,8 +37,8 @@ export function formatDate(dateStr: string): string {
 export function formatDateTime(dateStr: string): string {
   if (!dateStr) return '';
   try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-IN', {
+    const d = new Date(dateStr); if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(dateLocale(), {
       day: 'numeric',
       month: 'short',
       year: 'numeric',

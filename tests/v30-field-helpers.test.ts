@@ -99,7 +99,7 @@ describe('public page demand ticker', () => {
     const code = (await pr.json()).code as string; expect(code).toBeTruthy();
     const page = await (await fetch(`${B}/p/${code}`, { headers: { 'user-agent': 'Mozilla/5.0 (iPhone)' } })).text();
     expect(page).toContain('data-genz-demand');
-    expect(page).toMatch(/\d+ buyers are looking in/);
+    expect(page).toMatch(/\d+ open buyer needs in/);
     const ticker = page.match(/<div data-genz-demand[\s\S]*?<\/div>/)![0];
     expect(ticker).not.toContain('Ticker Buyer'); expect(ticker).not.toMatch(/\d{10}/); expect(page).not.toContain('Ticker Buyer');   // the broker's own call button is the only number on the page
   });

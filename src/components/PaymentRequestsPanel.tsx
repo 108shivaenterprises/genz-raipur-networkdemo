@@ -9,7 +9,7 @@ import { useI18n, useTx } from '../lib/i18n.js';
 import type { UserProfile } from '../types/index.js';
 
 const inp = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm';
-const btn = 'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-40';
+const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-40';
 const day = (d?: string) => (d ? new Date(d.length === 10 ? `${d}T00:00:00+05:30` : d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const plusDays = (n: number) => { const d = new Date(Date.now() + n * 86400_000); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const abs = (p: string) => `${window.location.origin}${p}`;

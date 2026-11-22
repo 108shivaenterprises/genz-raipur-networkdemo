@@ -44,7 +44,7 @@ export const OtpSent: React.FC<{ v: OtpReq; sentAt: number; onResend: () => void
       </>) : v.devCode
         ? <p className="text-xs font-semibold text-amber-800" data-testid="otp-demo">{tx('Demo code', 'डेमो कोड')}: <b className="font-mono">{v.devCode}</b></p>
         : <p className="text-xs font-semibold text-slate-800">{tx('Code sent to your phone.', 'कोड आपके फ़ोन पर भेजा गया।')}</p>}
-      <button type="button" onClick={onResend} disabled={busy || left > 0} className="min-h-11 text-xs font-semibold text-emerald-800 underline disabled:no-underline disabled:opacity-50" data-testid="otp-resend">
+      <button type="button" onClick={onResend} disabled={busy || left > 0} className={`min-h-11 text-xs font-semibold text-emerald-800 underline disabled:no-underline disabled:opacity-50 ${v.mode !== 'manual' ? '-mt-3' : ''}`} data-testid="otp-resend">
         {left > 0 ? `${tx('Ask again in', 'फिर माँगें')} ${mmss(left)}` : tx('Ask for a new code', 'नया कोड माँगें')}
       </button>
     </div>

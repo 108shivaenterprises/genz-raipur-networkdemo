@@ -58,3 +58,14 @@ export function isValidBudgetRange(min: number, max: number): boolean {
   return isPositiveNumber(min) && isPositiveNumber(max) && min <= max;
 }
 
+
+/** v184 — the browser's own “Please fill out this field” follows the PHONE's language; these handlers make it follow the APP's language (Hindi + English). Spread on a <form>. */
+export function bilingualInvalid(hi: boolean) {
+  return {
+    onInvalidCapture: (e: { target: EventTarget }) => {
+      const t = e.target as HTMLInputElement; const v = t.validity;
+      t.setCustomValidity(v.valueMissing ? (hi ? 'यह जानकारी भरना ज़रूरी है।' : 'Please fill in this field.') : v.typeMismatch || v.patternMismatch ? (hi ? 'सही जानकारी डालें।' : 'Please enter a valid value.') : v.tooShort ? (hi ? 'यह बहुत छोटा है।' : 'This is too short.') : (hi ? 'सही जानकारी डालें।' : 'Please check this value.'));
+    },
+    onInput: (e: { target: EventTarget }) => { (e.target as HTMLInputElement).setCustomValidity?.(''); },
+  };
+}

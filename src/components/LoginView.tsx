@@ -81,7 +81,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
     </div>
   );
 
-  if (joining) return <JoinView onBack={() => setJoining(false)} />;
+  if (joining) return <JoinView onJoined={() => onLoggedIn({ success: true } as any)} onBack={() => setJoining(false)} onOwner={() => { setJoining(false); setPanel('owner'); }} />;
   if (panel === 'owner') return <OwnerSignIn onLoggedIn={onLoggedIn as any} onBack={() => setPanel('')} />;
   if (panel === 'forgot') return <div className="px-4"><ForgotPassword onBack={() => setPanel('')} /></div>;
   if (panel) return <div className="mx-auto max-w-5xl px-4 py-10"><AccessRequest mode={panel} refCode={refParam} onBack={() => setPanel('')} /></div>;
@@ -97,7 +97,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
             <BrandMark className="h-10 w-10" />
             <div>
               <h1 className="text-base font-bold text-slate-900">GENZ BROKER NETWORK</h1>
-              <p className="text-xs text-slate-500">{t('login.tagline', 'Invite-only · India')}</p>
+              <p className="text-xs text-slate-500">{cfg?.signupMode === 'invite' ? t('login.tagline', 'Invite-only · India') : tx('Brokers · India', 'ब्रोकर नेटवर्क · भारत')}</p>
             </div>
             <LangToggle className="ml-auto" />
           </div>
@@ -113,7 +113,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />} {t('login.button', 'Sign in')}
           </button>
           <button type="button" onClick={() => setJoining(true)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:border-slate-900">
-            <KeyRound className="h-4 w-4 text-amber-500" /> {t('login.join', 'Have an invitation code? Join here')}
+            <KeyRound className="h-4 w-4 text-amber-500" /> {cfg?.signupMode === 'invite' ? t('login.join', 'Have an invitation code? Join here') : tx('New here? Join GENZ — free', 'नए हैं? GENZ से जुड़ें — मुफ़्त')}
           </button>
           <button type="button" onClick={() => setPanel('owner')} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900" data-testid="login-owner">🏠 {tx('I am a property owner — sign in with mobile', 'मैं प्रॉपर्टी मालिक हूँ — मोबाइल से साइन-इन')}</button>
           <p className="mt-3 flex justify-between text-[11px]">
@@ -121,7 +121,7 @@ export const LoginView: React.FC<Props> = ({ onLoggedIn, notice }) => {
             <button type="button" onClick={() => setPanel('forgot')} className="font-semibold text-blue-700 underline">{tx('Forgot password?', 'पासवर्ड भूल गए?')}</button>
           </p>
           <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> {t('login.invite', 'New member? Get an invitation code from the GENZ team.')}
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> {cfg?.signupMode === 'invite' ? t('login.invite', 'New member? Get an invitation code from the GENZ team.') : tx('Join with your mobile number — verify KYC later to unlock deals.', 'मोबाइल नंबर से जुड़ें — डील खोलने के लिए बाद में KYC करें।')}
           </p>
           <p className="mt-3 flex gap-4 text-[11px]">
             <a href="#/privacy" className="text-blue-700 underline">{t('login.privacy', 'Privacy Policy')}</a>

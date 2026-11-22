@@ -6,7 +6,7 @@ import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { UserProfile, Invitation } from '../types/index.js';
 import { api } from '../lib/api.js';
-import { formatDate } from '../lib/utils.js';
+import { formatDate, formatINR } from '../lib/utils.js';
 import { useUI } from '../lib/ui.js';
 import { isValidIndianPhone, sanitizePhone, isValidPAN, isValidGSTIN } from '../lib/validate.js';
 import {
@@ -22,6 +22,7 @@ import {
   FileSearch,
 } from 'lucide-react';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
+import { AdminIdUpload } from './AdminIdUpload.js';
 
 interface OnboardingViewProps {
   currentUser: UserProfile;
@@ -41,6 +42,10 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
   const tx = useTx();
   const label = useLabel();
   const { toast, confirm, prompt } = useUI();
+  const [reraBusy, setReraBusy] = useState<string>('');   // v188: one RERA decision at a time per row
+  const [openMode, setOpenMode] = useState(false);   // v188: sign-up is open (Basic accounts) vs invite-only
+  useEffect(() => { api.authConfig().then(c => setOpenMode(c.signupMode !== 'invite')).catch(() => setOpenMode(false)); }, []);
+  const [basicErr, setBasicErr] = useState<Record<string, string>>({});   // v188: why a Basic approval failed, kept in the row (a toast is gone in seconds)
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [invitedEmail, setInvitedEmail] = useState<string>('');
   const [invitedPhone, setInvitedPhone] = useState<string>('');
@@ -163,23 +168,41 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
   const filteredUsers = users.filter((u) => {
     if (userRoleFilter === 'BROKER') return u.role === 'BROKER';
     if (userRoleFilter === 'PENDING') return u.verificationStatus === 'PENDING';
+    if (userRoleFilter === 'BASIC') return !!u.basicTier;
     if (userRoleFilter === 'BUILDER') return u.role === 'DEVELOPER_BUILDER';
     if (userRoleFilter === 'OWNER') return u.role === 'PROPERTY_OWNER';
     return true;
   });
 
   const handleReviewUser = async (userId: string, action: string) => {
-    const reason = await prompt(tx(`Enter notes for ${action}:`, `${action} के लिए नोट लिखें:`), {
+    const basicRow = users.find(x => x.id === userId)?.basicTier;
+    const ACT: Record<string, [string, string]> = { APPROVE: ['approve', 'मंज़ूर'], REJECT: ['reject', 'अस्वीकार'], SUSPEND: ['suspend', 'सस्पेंड'], BLACKLIST: ['blacklist', 'ब्लैकलिस्ट'] };
+    const reason = await prompt(basicRow && action === 'APPROVE' ? tx('KYC checked — unlock this member. Note (what you checked):', 'KYC जाँच लिया — इस सदस्य को खोलें। नोट (क्या जाँचा):') : tx(`Note for this decision (${ACT[action]?.[0] || action.toLowerCase()}):`, `इस फ़ैसले का नोट (${ACT[action]?.[1] || action}):`), {
       confirmLabel: tx('Submit', 'सबमिट'),
       cancelLabel: tx('Cancel', 'रद्द करें'),
     });
     if (reason === null) return;
     try {
-      const res = await api.reviewVerification(userId, action, reason);
+      // v186: approving a Basic account — show what it has waiting and ask before publishing (max 10 per approval)
+      let publishIds: string[] = [];
+      const tgt = users.find(x => x.id === userId);
+      if (action === 'APPROVE' && tgt?.basicTier) {
+        const h = await api.heldListings(userId).catch(() => null);
+        if (h && h.total > 0) {
+          // the admin reads each held listing and types the ids to publish (max 10); blank = keep all held
+          const lines = h.listings.map(l => `${l.id} · ${l.propertyType || ''} ${l.transactionType || ''} · ${l.locality || ''}, ${l.city} · ${l.askingPrice != null ? formatINR(l.askingPrice) : '₹?'} · ${l.photos ?? 0} photo(s) · ${(l.description || '').slice(0, 120)}`).join('\n');
+          const ans = await prompt(tx(`${tgt.name} has ${h.total} private listing(s):\n${lines}\nType the ids to publish now (comma separated, max 10). Leave blank to keep them all held.`, `${tgt.name} की ${h.total} निजी लिस्टिंग:\n${lines}\nअभी प्रकाशित करने वाली आईडी लिखें (कॉमा से, अधिकतम 10)। सब रोकने के लिए खाली छोड़ें।`), { confirmLabel: tx('Approve', 'मंज़ूर करें'), cancelLabel: tx('Cancel', 'रद्द करें') });
+          if (ans === null) return;
+          publishIds = ans.split(/[\s,]+/).map(x => x.trim()).filter(x => h.listings.some(l => l.id === x)).slice(0, 10);
+        }
+      }
+      const res = await api.reviewVerification(userId, action, reason, publishIds);
       toast(tx(`User status updated to ${res.user.verificationStatus}. Broker ID: ${res.user.brokerId || 'N/A'}`, `यूज़र का स्टेटस ${res.user.verificationStatus} हो गया। ब्रोकर ID: ${res.user.brokerId || 'लागू नहीं'}`), 'success');
+      setBasicErr(m => ({ ...m, [userId]: '' }));
       onRefreshUsers();
     } catch (err: any) {
-      toast(err.message || tx('Failed to update status', 'स्टेटस अपडेट करने में विफल'), 'error');
+      setBasicErr(m => ({ ...m, [userId]: err.message || '' }));
+      if (!users.find(x => x.id === userId)?.basicTier) toast(err.message || tx('Failed to update status', 'स्टेटस अपडेट करने में विफल'), 'error');   // a Basic row shows the reason inline (once)
     }
   };
 
@@ -213,7 +236,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
           <span>{tx('RERA & KYC Compliance', 'RERA और KYC अनुपालन')}</span>
         </div>
         <h2 className="text-xl font-bold tracking-tight text-slate-900 mt-1">
-          {tx('Invite-Only Onboarding & Broker Verification Desk', 'सिर्फ़ इनवाइट से ऑनबोर्डिंग और ब्रोकर वेरिफ़िकेशन डेस्क')}
+          {openMode ? tx('Onboarding & Broker Verification Desk', 'ऑनबोर्डिंग और ब्रोकर वेरिफ़िकेशन डेस्क') : tx('Invite-Only Onboarding & Broker Verification Desk', 'सिर्फ़ इनवाइट से ऑनबोर्डिंग और ब्रोकर वेरिफ़िकेशन डेस्क')}
         </h2>
         <p className="text-xs text-slate-500 mt-0.5">
           {tx('GENZ BUILDCON enforces verified onboarding. Approved brokers receive permanent Broker IDs (e.g. GZ-BRK-XXXXX) backed by state RERA credentials.', 'GENZ BUILDCON वेरिफ़ाइड ऑनबोर्डिंग ही रखता है। मंज़ूर ब्रोकर को राज्य के RERA प्रमाणपत्र पर आधारित स्थायी ब्रोकर ID (जैसे GZ-BRK-XXXXX) मिलती है।')}
@@ -232,11 +255,12 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
             <KeyRound className="h-4 w-4 text-amber-500" />
             <h3 className="text-base font-bold text-slate-900">{tx('How new members join', 'नए सदस्य कैसे जुड़ते हैं')}</h3>
           </div>
-          <ol className="list-decimal pl-5 text-xs text-slate-600 space-y-1.5">
+          <details className="text-xs" data-testid="howto-toggle"><summary className="flex min-h-11 cursor-pointer items-center font-semibold text-slate-700">{tx('How this works', 'यह कैसे काम करता है')}</summary><ol className="list-decimal pl-5 text-xs text-slate-600 space-y-1.5">
             <li>{tx('Issue a single-use invitation code here (right side).', 'यहाँ (दाईं तरफ़) एक बार चलने वाला इनवाइट कोड बनाएँ।')}</li>
             <li>{lang === 'hi' ? <>कोड WhatsApp पर भेजें। सदस्य ऐप खोलकर साइन-इन पेज पर <b>“आमंत्रण कोड है? यहाँ जुड़ें”</b> दबाता है और फ़ॉर्म भरता है — लॉगिन की ज़रूरत नहीं।</> : <>Send the code on WhatsApp. The member opens the app, taps <b>“Have an invitation code? Join here”</b> on the sign-in page and fills the form — no login needed.</>}</li>
-            <li>{tx('The application appears in the verification queue below. Check KYC and approve — only then can they sign in.', 'आवेदन नीचे वेरिफ़िकेशन कतार में दिखेगा। KYC जाँचकर मंज़ूर करें — तभी वे साइन-इन कर पाएँगे।')}</li>
-          </ol>
+            {openMode && <li>{tx('Open sign-up is ON: anyone can join by phone code and goes live at once in Basic (not KYC verified). Check their KYC under the “Basic” filter below and unlock them.', 'ओपन साइन-अप चालू है: कोई भी फ़ोन कोड से जुड़ सकता है और तुरंत बेसिक में लाइव हो जाता है (KYC नहीं)। नीचे “बेसिक” फ़िल्टर में उनका KYC जाँचकर उन्हें खोलें।')}</li>}
+            <li>{tx(openMode ? 'Invite applications appear in the verification queue below. Check KYC and approve — only then can they sign in.' : 'The application appears in the verification queue below. Check KYC and approve — only then can they sign in.', 'आवेदन नीचे वेरिफ़िकेशन कतार में दिखेगा। KYC जाँचकर मंज़ूर करें — तभी वे साइन-इन कर पाएँगे।')}</li>
+          </ol></details>
           {lastInvite && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 space-y-2">
               <div>{tx('Last invitation code', 'आख़िरी इनवाइट कोड')}: <b className="font-mono">{lastInvite.code}</b> ({lastInvite.targetRole})</div>
@@ -425,6 +449,12 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
               <span>Pending KYC ({users.filter(u => u.verificationStatus === 'PENDING').length})</span>
             </button>
             <button
+              onClick={() => setUserRoleFilter('BASIC')} data-testid="basic-filter"
+              className={`max-sm:order-first flex min-h-11 items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${userRoleFilter === 'BASIC' ? 'bg-sky-700 text-white shadow-xs' : 'bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100'}`}
+            >
+              <span>{tx('New auto-live (Basic)', 'नए ऑटो-लाइव (बेसिक)')} ({users.filter(u => u.basicTier).length})</span>
+            </button>
+            <button
               onClick={() => setUserRoleFilter('BUILDER')}
               className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                 userRoleFilter === 'BUILDER'
@@ -447,8 +477,8 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
+            <table className="w-full text-left text-xs max-sm:block">
+              <thead className="max-sm:hidden bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="px-4 py-3">{tx('User & Organization', 'यूज़र और संस्था')}</th>
                   <th className="px-4 py-3">{tx('Role & Broker ID', 'भूमिका और ब्रोकर ID')}</th>
@@ -459,14 +489,14 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                   <th className="px-4 py-3 text-right">{tx('Admin Action', 'एडमिन कार्रवाई')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
+              <tbody className="divide-y divide-slate-100 text-slate-700 max-sm:block">
                 <ShowMore step={10} cols={12}>{filteredUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
+                  <tr key={u.id} className="hover:bg-slate-50/60 max-sm:block max-sm:py-2">
+                    <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3">
                       <div className="font-bold text-slate-900">{u.name}</div>
                       <div className="text-[11px] text-slate-500">{u.companyName || 'Independent'}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3">
                       <span className="font-semibold text-slate-800">{u.role}</span>
                       {u.brokerId && (
                         <div className="font-mono text-emerald-700 font-bold text-[11px]">
@@ -474,14 +504,14 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3">
                       {u.role === 'BROKER' ? (
                         <TrustScoreBadge user={u} variant="pill" />
                       ) : (
                         <span className="text-[11px] text-slate-400">N/A</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-slate-600">
+                    <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3 font-mono text-slate-600">
                       {u.reraNumber ? (
                         <a href="https://rera.gov.in" target="_blank" rel="noopener noreferrer" className="underline decoration-dotted" title={`Verify with ${reraAuthorityOf(u.state)}`}>{u.reraNumber}</a>
                       ) : '—'}
@@ -496,14 +526,14 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3 text-slate-600">
                       <div>{u.phone}</div>
                       <div className="text-[11px] text-slate-500">{u.email}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3">
                       <span
                         className={`inline-flex items-center gap-1 font-semibold ${
-                          u.verificationStatus === 'VERIFIED'
+                          u.verificationStatus === 'VERIFIED' && !u.basicTier
                             ? 'text-emerald-700'
                             : u.verificationStatus === 'BLACKLISTED'
                             ? 'text-red-700'
@@ -512,10 +542,10 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                       >
                         {u.verificationStatus === 'VERIFIED' && <CheckCircle2 className="h-3 w-3" />}
                         {u.verificationStatus === 'BLACKLISTED' && <AlertTriangle className="h-3 w-3" />}
-                        {u.verificationStatus}
+                        {u.basicTier && u.verificationStatus === 'VERIFIED' ? tx('Basic (not KYC verified)', 'बेसिक (KYC नहीं)') : u.verificationStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right space-x-1">
+                    <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3 text-right space-x-1">
                       {u.verificationStatus === 'PENDING' && (
                         <>
                           {u.role === 'BROKER' && u.panNumber && u.aadhaarLast4 && (
@@ -540,6 +570,31 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                           >
                             {tx('Reject', 'अस्वीकार करें')}
                           </button>
+                        </>
+                      )}
+                      {u.basicTier && u.verificationStatus === 'VERIFIED' && u.id !== currentUser.id && (
+                        <>
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">{tx('Basic · not KYC verified', 'बेसिक · KYC नहीं')}</span>
+                          {(u.role === 'BROKER' ? !!(u.panNumber || u.aadhaarLast4 || u.reraClaim) : true) && (
+                            <button onClick={() => handleIdSeen(u)} className={`min-h-11 rounded border px-2 py-1 text-[11px] font-semibold ${u.idCheckedAt ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'}`} data-testid="basic-id-seen">{u.idCheckedAt ? tx('✓ ID seen (undo)', '✓ ID देखी (हटाएँ)') : tx('I have seen the ID', 'मैंने ID देख ली')}</button>
+                          )}
+                          <button onClick={() => handleReviewUser(u.id, 'APPROVE')} className="min-h-11 rounded bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700" data-testid="basic-approve">{u.role !== 'BROKER' ? tx('KYC verified — unlock', 'KYC सही — खोलें') : (u.reraClaim?.status === 'APPROVED' && u.reraClaim.decidedBy && u.reraClaim.decidedBy !== 'AUTO') ? tx('Approve (Tier 1 — RERA verified)', 'मंज़ूर (Tier 1 — RERA वेरिफ़ाइड)') : tx('Approve (Tier 2 — no RERA)', 'मंज़ूर (Tier 2 — बिना RERA)')}</button>
+                          <button onClick={() => handleReviewUser(u.id, 'SUSPEND')} className="min-h-11 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100" data-testid="basic-suspend">{tx('Suspend', 'सस्पेंड करें')}</button>
+                          <div className="mt-2 space-y-1.5 text-left" data-testid="basic-row-extra">
+                            {u.reraClaim && (
+                              <div className="rounded border border-sky-200 bg-sky-50 p-2 text-[11px] text-sky-900">
+                                <b>{tx('RERA claim', 'RERA दावा')}:</b> <span className="font-mono">{u.reraClaim.number}</span> · {u.reraClaim.status === 'PENDING' ? tx('waiting for you', 'आपके फ़ैसले का इंतज़ार') : u.reraClaim.status === 'APPROVED' ? tx('approved', 'मंज़ूर') : tx('not accepted', 'मंज़ूर नहीं')}
+                                {u.reraClaim.status === 'PENDING' && (
+                                  <span className="ml-2 inline-flex gap-1.5">
+                                    <button className="min-h-11 rounded bg-sky-700 px-2 font-semibold text-white disabled:opacity-50" data-testid="basic-rera-approve" disabled={reraBusy === u.id} onClick={async () => { setReraBusy(u.id); try { await api.netReraDecide(u.id, true); toast(tx('RERA approved', 'RERA मंज़ूर'), 'info'); setBasicErr(m => ({ ...m, [u.id]: '' })); onRefreshUsers(); } catch (e: any) { toast(e.message, 'error'); } finally { setReraBusy(''); } }}>{tx('Approve RERA', 'RERA मंज़ूर करें')}</button>
+                                    <button className="min-h-11 rounded border border-slate-300 bg-white px-2 font-semibold text-slate-700 disabled:opacity-50" disabled={reraBusy === u.id} onClick={async () => { const n = await prompt(tx('Why can the RERA not be accepted? (at least 5 characters — the member sees this)', 'RERA क्यों मंज़ूर नहीं हो सकता? (कम से कम 5 अक्षर — सदस्य यह देखेगा)'), { confirmLabel: tx('Submit', 'सबमिट'), cancelLabel: tx('Cancel', 'रद्द करें') }); if (n === null) return; if (n.trim().length < 5) { toast(tx('Write the reason (at least 5 characters)', 'कारण लिखें (कम से कम 5 अक्षर)'), 'error'); return; } setReraBusy(u.id); try { await api.netReraDecide(u.id, false, n.trim()); toast(tx('RERA marked not accepted — the member is told', 'RERA मंज़ूर नहीं किया — सदस्य को बता दिया'), 'info'); onRefreshUsers(); } catch (e: any) { toast(e.message, 'error'); } finally { setReraBusy(''); } }}>{tx('Not accepted', 'मंज़ूर नहीं')}</button>
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {basicErr[u.id] && <p role="alert" className="rounded border border-red-200 bg-red-50 p-2 text-[11px] text-red-800" data-testid="basic-approve-error">{basicErr[u.id]}</p>}
+                            <AdminIdUpload userId={u.id} onDone={onRefreshUsers} />
+                          </div>
                         </>
                       )}
                       {u.verificationStatus === 'VERIFIED' && isSuperAdmin && u.role !== 'SUPERADMIN' && u.id !== currentUser.id && (

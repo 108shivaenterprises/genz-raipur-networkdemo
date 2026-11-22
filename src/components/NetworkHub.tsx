@@ -9,6 +9,7 @@ import { hasPerm } from '../lib/permissions.js';
 import { SCOPE_KINDS, SHARE_MIN, SHARE_MAX } from '../shared/networkRules.js';
 import { normPan, normAadhaar, panProblem, aadhaarProblem, isLast4, AADHAAR_NOTE, ID_DOC_NOTE } from '../shared/idRules.js';
 import { IdDocSlot } from './IdDocSlot.js';
+import { KycDesk } from './KycDesk.js';
 import { IdPhotoReader, type IdFill } from './IdPhotoReader.js';
 import { KYC_CONSENT, KYC_VAULT_NOTE, addressProblem, pinProblem, normAddress, normPin, REVEAL_PURPOSE_LABEL, type RevealPurpose } from '../shared/kycRules.js';
 import type { PreparedIdFile } from '../lib/idFile.js';
@@ -44,6 +45,8 @@ export const NetworkHub: React.FC<{ currentUser: UserProfile; permissions: strin
     try { await fn(); setToast({ ok: true, msg: ok }); setTick(t => t + 1); } catch (e: any) { setToast({ ok: false, msg: e.message }); }
     setTimeout(() => setToast(null), 6000);
   };
+  // v188: a Basic account has no profile / sponsor / tie-up data (403) — it gets the self-contained KYC screen only
+  if (currentUser.basicTier) return <div className="space-y-4"><h2 className="text-lg font-bold text-slate-900">{tx('Verify KYC', 'KYC वेरिफ़ाई')}</h2><KycDesk /></div>;
   return (
     <div className="space-y-4">
       <div><h2 className="text-lg font-bold text-slate-900">{tx('Network', 'नेटवर्क')}</h2>

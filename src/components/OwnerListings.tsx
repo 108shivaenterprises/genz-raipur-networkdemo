@@ -170,13 +170,14 @@ const DOC_LABEL: Record<string, [string, string]> = {
 
 
 /** v141 — the owner's PAN, once: with it (and the fee, if any) his own listing goes live by itself. One PAN = one account. */
-const PanCard: React.FC<{ onDone: () => void }> = ({ onDone }) => {
+const PanCard: React.FC<{ onDone: () => void; need?: boolean }> = ({ onDone, need }) => {
   const tx = useTx(); const [pan, setPan] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const ok = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
   const save = async () => { setBusy(true); setErr(''); try { await api.olPan(pan); onDone(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   return (
-    <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3" data-testid="owner-pan">
+    <div className={`space-y-2 rounded-xl border p-3 ${need ? 'border-red-300 bg-red-50' : 'border-amber-200 bg-amber-50'}`} data-testid="owner-pan">
       <div className="text-sm font-bold text-slate-900">{tx('Your PAN', 'आपका PAN')}</div>
+      {need && <p role="alert" className="text-xs font-semibold text-red-800" data-testid="owner-pan-need">{tx('Add your PAN first — then you can list your property.', 'पहले अपना PAN जोड़ें — फिर अपनी प्रॉपर्टी लिस्ट कर पाएँगे।')}</p>}
       <p className="text-[11px] text-slate-600">{tx('Needed once to list on your own. Your listing goes live by itself — no waiting for GENZ. One PAN, one account.', 'ख़ुद लिस्ट करने के लिए एक बार चाहिए। आपकी लिस्टिंग अपने आप लाइव होगी — GENZ का इंतज़ार नहीं। एक PAN, एक अकाउंट।')}</p>
       <div className="flex gap-2">
         <input className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 font-mono text-sm uppercase" placeholder="ABCDE1234F" maxLength={10} autoComplete="off" value={pan} onChange={e => setPan(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} aria-label={tx('PAN', 'पैन')} data-testid="owner-pan-input" />
@@ -196,7 +197,7 @@ const OwnerStart: React.FC<{ onNew: () => void; userId?: string }> = ({ onNew, u
   return (
     <section className="space-y-3 rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4" data-testid="owner-start">
       <button type="button" onClick={onNew} data-testid="owner-add-big" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-base font-bold text-white"><Plus className="h-5 w-5" />{tx('Add your property', 'अपनी प्रॉपर्टी जोड़ें')}</button>
-      <ol className="space-y-1.5 text-sm text-emerald-950">{steps.map((x, i) => <li key={i} className="flex items-center gap-2"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold">{i + 1}</span>{tx(x[0], x[1])}</li>)}</ol>
+      <ol className="space-y-1.5 text-sm text-emerald-950">{steps.map((x, i) => <li key={i} className="flex items-center gap-2"><span className="w-5 shrink-0 text-sm font-bold text-emerald-800">{i + 1}.</span>{tx(x[0], x[1])}</li>)}</ol>
       <button type="button" onClick={() => { try { localStorage.setItem(`genz.ownerguide.${userId}`, '1'); } catch { /* storage blocked */ } setGone(true); }} className="min-h-11 text-xs font-semibold text-emerald-800 underline">{tx('Hide this guide', 'यह गाइड छुपाएँ')}</button>
     </section>
   );
@@ -205,19 +206,27 @@ const OwnerStart: React.FC<{ onNew: () => void; userId?: string }> = ({ onNew, u
 export const OwnerPanel: React.FC<{ onNew: () => void; refreshKey?: number; userId?: string }> = ({ onNew, refreshKey, userId }) => {
   const tx = useTx(); const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const [ref, setRef] = useState<Record<string, string>>({}); const [nd, setNd] = useState<Record<string, boolean>>({});
+  const [needPan, setNeedPan] = useState(false);
   const load = useCallback(() => api.olMine().then(setD).catch(e => setErr(e.message)), []);
   useEffect(() => { void load(); }, [load, refreshKey]);
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); await load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   if (!d) return err ? <p className="text-xs text-red-700">{err}</p> : <Loader2 className="h-4 w-4 animate-spin" />;
+  // v189: the PAN is asked BEFORE the form opens, right here (not after the form is filled)
+  const start = () => { if (d && !d.panSet) { setNeedPan(true); return; } onNew(); };
   return (
     <div className="space-y-3" data-testid="owner-listings">
       <div className="flex items-center justify-between gap-2">
         <div><h2 className="text-base font-bold text-slate-900">{tx('My listings', 'मेरी लिस्टिंग')}</h2><p className="text-[11px] text-slate-500">{tx('Two ways: pay GENZ’s plan and go live for all brokers, or choose one broker free from your city’s Top 10 and go live after his mandate.', 'दो रास्ते: GENZ का प्लान देकर सभी ब्रोकरों के लिए लाइव, या अपने शहर के टॉप 10 में से एक ब्रोकर मुफ़्त चुनें और उसके मंडेट के बाद लाइव।')}</p></div>
-        <button type="button" className={btn} onClick={onNew} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>
+        {d.listings.length > 0 && <button type="button" className={btn} onClick={start} data-testid="owner-new"><Plus className="h-4 w-4" />{tx('New listing', 'नई लिस्टिंग')}</button>}
       </div>
-      {d.listings.length === 0 && <OwnerStart onNew={onNew} userId={userId} />}
-      {d && !d.panSet && <PanCard onDone={load} />}
-      <PlanCards onNew={onNew} />
+      {!d.panSet && <PanCard onDone={() => { setNeedPan(false); void load(); }} need={needPan} />}
+      {d.listings.length === 0 && <OwnerStart onNew={start} userId={userId} />}
+      {d.listings.length > 0 && (() => {
+        const live = d.listings.filter((l: any) => l.feeStatus === 'PAID' || l.inPool).length;
+        const waiting = d.listings.filter((l: any) => ['PENDING', 'REJECTED', 'EXPIRED'].includes(l.feeStatus)).length;
+        return <p className="rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-bold text-white" data-testid="owner-status-strip">{tx(`${live} listing${live === 1 ? '' : 's'} live · ${waiting} waiting for you`, `${live} लिस्टिंग लाइव · ${waiting} आपके इंतज़ार में`)}</p>;
+      })()}
+      <PlanCards onNew={start} />
       {err && <p className="rounded-lg bg-red-50 p-2 text-xs text-red-700" role="alert">{err}</p>}
       {d.listings.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{tx('No listing of your own yet — homes a broker listed for you are under “My properties” below. To list one yourself, pick a plan above and tap “New listing”.', 'अभी आपकी अपनी कोई लिस्टिंग नहीं — ब्रोकर ने आपके लिए जो घर डाले वे नीचे “मेरी प्रॉपर्टी” में हैं। ख़ुद डालने के लिए ऊपर प्लान चुनें और “नई लिस्टिंग” दबाएँ।')}</p>}
       {d.listings.map((l: any) => {

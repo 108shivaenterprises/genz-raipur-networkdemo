@@ -9,6 +9,7 @@
  * A broker sees only his own master-CP earnings (GET /api/revenue/mine).
  */
 import { Router, Request, Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { db, type DatabaseState, type UserProfile } from './db.js';
@@ -93,10 +94,10 @@ export function buildValueReport(now = Date.now()) {
 export function networkStrength(city = '', now = Date.now()) {
   const s = st();
   const inCity = (c?: string) => !city || sameCity(c, city);
-  const brokers = s.users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' && inCity(u.city));
+  const brokers = s.users.filter(u => u.role === 'BROKER' && isVerifiedFull(u) && inCity(u.city));
   const ids = new Set(brokers.map(u => u.id));
   const tier1 = brokers.filter(u => u.reraNumber && u.tier !== 'TIER2').length;
-  const team = s.users.filter(u => u.role === 'TEAM_MEMBER' && u.verificationStatus === 'VERIFIED' && u.employerId && ids.has(u.employerId)).length;
+  const team = s.users.filter(u => u.role === 'TEAM_MEMBER' && isVerifiedFull(u) && u.employerId && ids.has(u.employerId)).length;
   const since30 = now - 30 * 86_400_000; const active = new Set<string>();
   for (const d of s.activityDays || []) if (Date.parse(d.day) >= since30) for (const id of d.seen) if (ids.has(id)) active.add(id);
   const liveListings = s.properties.filter(p => p.verificationStatus === 'VERIFIED' && (p.listingStatus === 'active' || p.listingStatus === 'under_negotiation') && !p.expiredAt && !p.heldAt && inCity(p.city));
@@ -399,7 +400,7 @@ export function createRevenueRouter() {
     const days = Math.min(365, Math.max(7, Number(req.query.days) || 60));
     res.json({ success: true, pilot: pilotFunnel({
       now,
-      brokers: s.users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED').map(u => ({ id: u.id, createdAt: u.createdAt, city: u.city })),
+      brokers: s.users.filter(u => u.role === 'BROKER' && isVerifiedFull(u)).map(u => ({ id: u.id, createdAt: u.createdAt, city: u.city })),
       firstListingAt: first(s.properties.map(p => [p.listingBrokerId, p.createdAt])),
       firstClientAt: first([...s.clientCards.map(c => [c.brokerId, c.createdAt] as [string, string]), ...s.requirements.map(r => [r.assignedBrokerId, r.createdAt] as [string, string])]),
       firstConsentAt: first(s.ownerConsents.filter(c => c.acceptedAt).map(c => [c.brokerId, c.acceptedAt])),
@@ -419,7 +420,7 @@ export function createRevenueRouter() {
 
   // network strength (builder pitch)
   r.get('/strength', admin, (req, res) => {
-    const cities = [...new Set(st().users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' && u.city).map(u => u.city!.trim()))].sort();
+    const cities = [...new Set(st().users.filter(u => u.role === 'BROKER' && isVerifiedFull(u) && u.city).map(u => u.city!.trim()))].sort();
     res.json({ success: true, strength: networkStrength(String(req.query.city || '').trim()), cities });
   });
   r.get('/strength/links', admin, (_req, res) => {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Phone, MessageCircle, ChevronRight, Trash2, X, Clock, WifiOff, RefreshCw, Sparkles } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
+import { useLabel } from '../lib/labels.js';
 import { useUI } from '../lib/ui.js';
 import { isValidIndianPhone, sanitizePhone } from '../lib/validate.js';
 import { PROPERTY_TYPES } from '../shared/india.js';
@@ -25,7 +26,7 @@ const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (
 const lakh = (v: string) => Math.round((parseFloat(v) || 0) * 100000);
 
 export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => {
-  const tx = useTx();
+  const tx = useTx(); const label = useLabel();
   const { confirm, prompt } = useUI();
   const { lang } = useI18n();
   const [list, setList] = useState<any[] | null>(null);
@@ -143,7 +144,7 @@ export const ClientsView: React.FC<{ currentUser: UserProfile }> = ({ currentUse
                 <div className="flex items-start justify-between gap-2">
                   <button className="min-w-0 text-left" onClick={() => setOpen(c)}>
                     <div className="truncate text-sm font-bold text-slate-900">{c.name}</div>
-                    <div className="truncate text-xs text-slate-500">{c.budgetMax ? `${formatINR(c.budgetMin)}–${formatINR(c.budgetMax)}` : tx('Budget not set', 'बजट तय नहीं')} · {c.propertyType} · {(c.areas || []).join(', ') || c.city}</div>
+                    <div className="truncate text-xs text-slate-500">{c.budgetMax ? `${formatINR(c.budgetMin)}–${formatINR(c.budgetMax)}` : tx('Budget not set', 'बजट तय नहीं')} · {label('propertyType', c.propertyType)} · {(c.areas || []).join(', ') || c.city}</div>
                   </button>
                   <span title={(c.lead?.reasons || []).map((r: any) => tx(r.en, r.hi)).join(' • ')} className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${LEAD_STYLE[c.lead?.label || 'COLD']}`}>{tx(...LEAD_LABEL[c.lead?.label || 'COLD'])} {c.lead?.score ?? 0}</span>
                 </div>

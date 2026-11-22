@@ -16,11 +16,12 @@
  * text; searches are rate-limited and the exact-mobile / code ones are written to the audit trail; the reviewed person can reply and report; staff can hide.
  */
 import { DEMO_CITY_BROKERS } from './demoCities.js';
+import { isVerifiedFull } from './permissions.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import { db } from './db.js';
 import type { ProfileReview, UserProfile, DatabaseState } from './db.js';
-import { ctx, needs, hit, digits, secret, safeEqual } from './auth.js';
+import { ctx, needs, hit, kycLocked, digits, secret, safeEqual } from './auth.js';
 import { alert, firstName } from './alerts.js';
 import { reputationOf } from './reputation.js';
 import { tierOf } from '../src/shared/networkRules.js';
@@ -37,7 +38,7 @@ const DAY = 86_400_000;
 const uid = () => `RV-${Date.now().toString(36).toUpperCase()}${crypto.randomInt(100, 999)}`;
 const userOf = (id: string) => st().users.find(u => u.id === id);
 const live = (u?: UserProfile) => !!u && !u.erasedAt;
-const verified = (u?: UserProfile) => live(u) && u!.verificationStatus === 'VERIFIED';
+const verified = (u?: UserProfile) => live(u) && isVerifiedFull(u);
 
 /** a short-lived pass the search gives out with a private person's card (a customer / an owner): it is what lets the same searcher open that profile, so ids cannot be walked through */
 const TICKET_MS = 30 * 60_000;
@@ -234,11 +235,12 @@ export function createProfilesRouter() {
     const u = me(); const s = st();
     // v117 — a shop connector keeps his own profile but gets no people directory (his leads go through GENZ)
     if (u.role === 'GENZ_CONNECTOR') return bad(res, 'Shop partners keep their own profile here. Searching people is for brokers and builders.', 403, { hi: 'दुकान पार्टनर यहाँ अपनी प्रोफ़ाइल रखते हैं। लोगों को खोजना ब्रोकर और बिल्डर के लिए है।' });
+    if (u.basicTier) return kycLocked(res);   // v186: no people / phone-number search for a Basic account (a lookup oracle)
     if (slow('prof-search-h', 40, 3600_000, res) || slow('prof-search-d', 200, 86_400_000, res)) return;
     const { kind, q } = searchKind(req.query.q);
     if (kind === 'TOO_SHORT') return res.json({ success: true, kind, results: [], hint: 'Type at least 3 letters, a GZ code, or a full 10-digit mobile number.', hi: 'कम से कम 3 अक्षर, GZ कोड या पूरा 10 अंकों का मोबाइल नंबर लिखें।' });
     const seeker = u.role;
-    const seen = (x: UserProfile) => !!groupOfRole(x.role) && ['VERIFIED', 'SUSPENDED', 'BLACKLISTED'].includes(x.verificationStatus);
+    const seen = (x: UserProfile) => !!groupOfRole(x.role) && (isVerifiedFull(x) || ['SUSPENDED', 'BLACKLISTED'].includes(x.verificationStatus));
     let hits: UserProfile[] = [];
     if (kind === 'PHONE') hits = s.users.filter(x => live(x) && seen(x) && digits(x.phone).slice(-10) === q);
     else if (kind === 'CODE') hits = s.users.filter(x => live(x) && seen(x) && x.brokerId?.toUpperCase() === q);
@@ -292,6 +294,7 @@ export function createProfilesRouter() {
   // ── one profile ──
   r.get('/u/:id', (req: Request, res: Response) => {
     const u = me(); const s = st();
+    if (u.basicTier && req.params.id !== u.id) return kycLocked(res);   // v186b: a Basic account opens only its own profile
     if (slow('prof-open', 120, 3600_000, res)) return;
     const t = userOf(String(req.params.id));
     if (!t || !live(t) || !groupOfRole(t.role) || !(verified(t) || t.verificationStatus === 'SUSPENDED' || t.verificationStatus === 'BLACKLISTED')) return bad(res, 'Profile not found', 404);

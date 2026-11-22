@@ -13,6 +13,7 @@
  * phone. An answer shows the answering broker and his listing; the two brokers then talk through the normal offer flow.
  */
 import { inferCity, canonPlace } from '../src/shared/places.js';
+import { isVerifiedFull } from './permissions.js';
 import { sameCity } from '../src/shared/india.js';
 import { alert } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
@@ -20,7 +21,7 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { Broadcast, BuyerRequirement, Property, UserProfile } from './db.js';
-import { ctx, needs, rateLimit } from './auth.js';
+import { ctx, needs, needsKyc, rateLimit } from './auth.js';
 import { calculatePropertyMatch } from './matching.js';
 import { pushTo, prefsOf, istHour, istDay } from './webpush.js';
 import { buildDigest } from './daily.js';
@@ -35,7 +36,7 @@ export const BROADCAST_MAX_RECIPIENTS = 80;
 const MATCH_MIN = 60;
 const inr = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${+(n / 1e5).toFixed(1)} L` : `₹${Math.round(n).toLocaleString('en-IN')}`;
 const live = (p: Property) => p.verificationStatus === 'VERIFIED' && ['active', 'under_negotiation'].includes(p.listingStatus) && !(p as any).heldAt && !(p as any).expiredAt;
-const verifiedBroker = (u?: UserProfile) => !!u && u.role === 'BROKER' && u.verificationStatus === 'VERIFIED';
+const verifiedBroker = (u?: UserProfile) => !!u && u.role === 'BROKER' && isVerifiedFull(u);
 const ck = (s?: string) => String(s || '').trim().toLowerCase();
 
 function summaryOf(r: BuyerRequirement): Broadcast['summary'] {
@@ -59,6 +60,7 @@ function fits(r: BuyerRequirement, excludeBrokerId: string) {
 
 /** v90 — what the NETWORK (other brokers' live, verified listings) holds for this need, right now. Shown to the broker the moment a need arrives. */
 export function networkMatchesFor(r: BuyerRequirement, brokerId: string) {
+  if ((db.byId('users', brokerId) as UserProfile | undefined)?.basicTier) return { count: 0, top: [] as any[] };   // v186b: nothing about the network for a Basic account
   const all = fits(r, brokerId);
   return {
     count: all.length,
@@ -143,7 +145,7 @@ export function createBroadcastRouter() {
   });
 
   // v115 — my listing → the other brokers who have a client for it (count, the needs without any client detail, and one "tell them" a day)
-  r.get('/listing/:pid', needs('requirement:create'), (req: Request, res: Response) => {
+  r.get('/listing/:pid', needs('requirement:create'), needsKyc, (req: Request, res: Response) => {
     const u = me(); const p = st().properties.find(x => x.id === req.params.pid);
     if (!p || p.listingBrokerId !== u.id) return bad(res, 'Listing not found', 404);
     const all = live(p) ? needsForListing(p, u.id) : [];
@@ -157,7 +159,7 @@ export function createBroadcastRouter() {
       }),
     });
   });
-  r.post('/listing/:pid/tell', needs('requirement:create'), rateLimit('listing-tell', 20, 3600_000), (req: Request, res: Response) => {
+  r.post('/listing/:pid/tell', needs('requirement:create'), needsKyc, rateLimit('listing-tell', 20, 3600_000), (req: Request, res: Response) => {
     const u = me(); const p = st().properties.find(x => x.id === req.params.pid);
     if (!p || p.listingBrokerId !== u.id) return bad(res, 'Listing not found', 404);
     if (!live(p)) return bad(res, 'Only a live, verified listing can be sent', 409);
@@ -171,7 +173,7 @@ export function createBroadcastRouter() {
     db.appendAuditEvent(u.id, u.role, 'PROPERTY', p.id, 'LISTING_TOLD_NEEDS', `${u.name} told ${to.length} broker(s) with matching client needs about ${p.id}`);
     res.json({ success: true, sentTo: to.length });
   });
-  r.get('/demand-supply', needs('requirement:create'), (req: Request, res: Response) => {
+  r.get('/demand-supply', needs('requirement:create'), needsKyc, (req: Request, res: Response) => {
     const u = me(); const q = req.query;
     const city = String(q.city || u.city || '').trim().slice(0, 60);
     if (!city) return bad(res, 'Pick a city');
@@ -180,7 +182,7 @@ export function createBroadcastRouter() {
     res.json({ success: true, ...demandSupply(city, deal, seg) });
   });
 
-  r.post('/', needs('requirement:create'), rateLimit('broadcast', 20, 3600_000), (req: Request, res: Response) => {
+  r.post('/', needs('requirement:create'), needsKyc, rateLimit('broadcast', 20, 3600_000), (req: Request, res: Response) => {
     const u = me(); const s = st();
     const rq = s.requirements.find(x => x.id === String(req.body?.requirementId || ''));
     if (!rq || rq.assignedBrokerId !== u.id) return bad(res, 'Requirement not found', 404);
@@ -304,7 +306,7 @@ export async function sweepDigestPush(now = new Date()) {
   const withDevices = new Set(s.pushSubs.map(x => x.userId));
   for (const id of withDevices) {
     const u = db.byId('users', id) as UserProfile | undefined;
-    if (!u || u.verificationStatus !== 'VERIFIED') continue;
+    if (!u || !isVerifiedFull(u)) continue;
     const p = prefsOf(id);
     if (!p.digest || p.lastDigestDay === day) continue;
     p.lastDigestDay = day;

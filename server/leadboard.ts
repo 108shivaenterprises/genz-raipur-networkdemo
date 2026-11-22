@@ -4,6 +4,7 @@
  * rank, the FIRST name and the photo — no phone, no company. `boardFor(city)` is also what the server checks when an owner names a broker.
  */
 import { Router } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
 import { needs, rateLimit, ctx } from './auth.js';
@@ -18,7 +19,7 @@ export function boardFor(city: string, now = Date.now()): BoardRow[] {
   const pts = new Map<string, number>();
   for (const e of s.pointEvents) if (e.points > 0 && Date.parse(e.at) >= since) pts.set(e.userId, (pts.get(e.userId) || 0) + e.points);
   return s.users
-    .filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' && !u.erasedAt && !!u.avatarUrl && sameCity(u.city, city))
+    .filter(u => u.role === 'BROKER' && isVerifiedFull(u) && !u.erasedAt && !!u.avatarUrl && sameCity(u.city, city))
     .map(u => ({ u, p: pts.get(u.id) || 0 }))
     .sort((a, b) => b.p - a.p || a.u.createdAt.localeCompare(b.u.createdAt) || a.u.id.localeCompare(b.u.id))
     .slice(0, BOARD_SIZE)

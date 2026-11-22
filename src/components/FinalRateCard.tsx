@@ -36,12 +36,12 @@ export default function FinalRateCard({ f, dealId, onChanged }: { f: any; dealId
         <div className="space-y-1.5 pt-1">
           <div className="flex gap-2">
             <label className="relative flex-1"><IndianRupee className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-slate-400" aria-hidden />
-              <input value={val} onChange={e => setVal(e.target.value.replace(/[^\d,]/g, ''))} inputMode="numeric" placeholder={tx('Final rate agreed', 'तय हुआ फ़ाइनल रेट')} aria-label={tx('Final rate in rupees', 'फ़ाइनल रेट रुपये में')} className="min-h-10 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" data-testid="final-rate-input" /></label>
-            <button type="button" onClick={save} disabled={busy || !(n > 0)} className="min-h-10 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50" data-testid="final-rate-save">{tx('Set rate', 'रेट सेट करें')}</button>
+              <input value={val} onChange={e => setVal(e.target.value.replace(/[^\d,]/g, ''))} inputMode="numeric" placeholder={tx('Final rate agreed', 'तय हुआ फ़ाइनल रेट')} aria-label={tx('Final rate in rupees', 'फ़ाइनल रेट रुपये में')} className="min-h-11 w-full rounded-lg border border-slate-300 pl-8 pr-3 text-sm" data-testid="final-rate-input" /></label>
+            <button type="button" onClick={save} disabled={busy || !(n > 0)} className="min-h-11 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50" data-testid="final-rate-save">{tx('Set rate', 'रेट सेट करें')}</button>
           </div>
           {n > 0 && <p className="text-xs text-slate-500" data-testid="final-rate-preview">= {formatINR(n)}</p>}
           {/* v83 — the optional “how it was agreed” line appears once a rate is being typed (it was a second, always-open box) */}
-          {(n > 0 || !!note) && <input value={note} onChange={e => setNote(e.target.value)} maxLength={120} placeholder={tx('How it was agreed (optional) — e.g. “at the visit, buyer and owner”', 'कैसे तय हुआ (वैकल्पिक) — जैसे “विज़िट पर, खरीदार और मालिक के बीच”')} className="min-h-10 w-full rounded-lg border border-slate-300 px-3 text-xs" data-testid="final-rate-note" />}
+          {(n > 0 || !!note) && <input value={note} onChange={e => setNote(e.target.value)} maxLength={120} placeholder={tx('How it was agreed (optional) — e.g. “at the visit, buyer and owner”', 'कैसे तय हुआ (वैकल्पिक) — जैसे “विज़िट पर, खरीदार और मालिक के बीच”')} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-xs" data-testid="final-rate-note" />}
           {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
           {done && <p className="text-xs font-semibold text-emerald-700" role="status" data-testid="final-rate-done">{tx('Saved — the other side is told.', 'सेव हो गया — दूसरी तरफ़ को बता दिया गया।')}</p>}
         </div>

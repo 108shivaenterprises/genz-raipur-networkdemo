@@ -13,12 +13,13 @@
  * Messages are kept while the room is open; a closed room's chat is erased after 90 days.
  */
 import { firebaseOn, otpUrl } from './phoneOtp.js';
+import { isVerifiedFull } from './permissions.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { ClientRoom, UserProfile, Property } from './db.js';
-import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, setSessionCookie as _unused, DEMO_MODE } from './auth.js';
+import { ctx, needs, rateLimit, secret, hit, secureOtp, safeEqual, parseCookies, setSessionCookie as _unused, kycLocked, DEMO_MODE } from './auth.js';
 import { sendSms, smsGateway } from './notify.js';
 import fs from 'fs';
 import path from 'path';
@@ -27,8 +28,7 @@ import { sniffMime } from '../src/shared/propDocs.js';
 import { DOC_KINDS, DOC_LIMITS, FULL_AADHAAR_DAYS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
 import { ackFor, ackLinkFor, ackBlock } from './visitack.js';
 import { stripPhones } from '../src/shared/waParse.js';
-import { ROOM_KINDS, ROOM_LIMITS as L, contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
-import { joinFooter } from './publicFooter.js';
+import { CLIENT_STEPS, clientStepOf, ROOM_KINDS, ROOM_LIMITS as L, contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
 import { partyBlock, partyCaution } from './partywatch.js';
 import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId, pubMediaUrl } from '../src/shared/roomMedia.js';
 import { clientPaperState, viewerPages, logDocOpen } from './propdocs.js';
@@ -127,7 +127,7 @@ const isStaff = (u: UserProfile) => u.role === 'TEAM_MEMBER';
 const actingAs = () => ({ id: roomOwnerOf(me()) });
 const mine = (req: Request) => st().clientRooms.find(r => r.id === req.params.id && r.brokerId === roomOwnerOf(me()) && !r.held);   // v119 — a held room is not the broker's yet
 /** the employer's staff who may read his rooms (the client is told the office team can read the chat) */
-export const roomTeam = (brokerId: string) => st().users.filter(m => m.role === 'TEAM_MEMBER' && m.employerId === brokerId && m.verificationStatus === 'VERIFIED' && !!m.teamPolicy?.rooms);
+export const roomTeam = (brokerId: string) => st().users.filter(m => m.role === 'TEAM_MEMBER' && m.employerId === brokerId && isVerifiedFull(m) && !!m.teamPolicy?.rooms);
 const unread = (r: ClientRoom) => r.messages.filter(m => m.from === 'CLIENT' && (!r.lastBrokerSeenAt || m.at > r.lastBrokerSeenAt)).length;
 const openVisits = (r: ClientRoom) => r.items.reduce((n, i) => n + i.visitRequests.filter(v => v.status === 'REQUESTED').length, 0);
 
@@ -408,6 +408,7 @@ export function createClientRoomRouter() {
     if (room.status !== 'ACTIVE') return bad(res, 'This room is closed', 409);
     const p = st().properties.find(x => x.id === String(req.body?.propertyId || ''));
     if (!p || !live(p)) return bad(res, 'That property is not available to share', 404);
+    if (me().basicTier && p.listingBrokerId !== me().id) return kycLocked(res);   // v186b: a Basic account shares only its own listings with a client
     if (room.items.some(i => i.propertyId === p.id)) return bad(res, 'Already shared in this room', 409);
     if (room.items.length >= L.items) return bad(res, `A room can hold ${L.items} properties`);
     const note = stripPhones(String(req.body?.note || '').trim()).slice(0, 200) || undefined;
@@ -487,7 +488,7 @@ export function createClientRoomRouter() {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     if (room.status !== 'ACTIVE') return bad(res, 'This room is closed', 409);
     const token = newToken();
-    room.tokenHash = sha(token); room.sessVersion += 1; room.otpHash = undefined; room.otpPlain = undefined; room.otpExpires = undefined;
+    room.tokenHash = sha(token); room.sessVersion += 1; room.otpHash = undefined; room.otpPrevHash = undefined; room.otpPlain = undefined; room.otpExpires = undefined;
     room.devices = []; room.linkAt = nowIso(); dropRoomPush(room.id); // the old link is dead — so are the alerts that opened it
     room.expiresAt = new Date(Date.now() + L.linkDays * 86400_000).toISOString();
     ev(room, 'New link made — the old link stopped working'); db.save();
@@ -604,7 +605,7 @@ export function createClientRoomRouter() {
   r.post('/:id/close', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     if (isStaff(me())) return bad(res, 'Only the broker can close a client room', 403, { code: 'STAFF_CANNOT_CLOSE' });
-    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPlain = undefined; room.phoneSealed = undefined; eraseRoomFiles(room);
+    room.status = 'CLOSED'; room.closedAt = nowIso(); room.tokenHash = sha(crypto.randomBytes(8).toString('hex')); room.sessVersion += 1; room.devices = []; room.otpHash = undefined; room.otpPrevHash = undefined; room.otpPlain = undefined; room.phoneSealed = undefined; eraseRoomFiles(room);
     ev(room, 'Room closed'); db.save();
     db.appendAuditEvent(me().id, me().role, 'LEAD', room.id, 'CLIENT_ROOM_CLOSED', 'Client room closed');
     res.json({ success: true, room: detail(room) });
@@ -729,9 +730,10 @@ if(bp)bp.style.display=st==='ask'?'inline-block':'none';if(bl)bl.style.display=s
 if(ih)ih.style.display=st==='ios'?'block':'none';if(bi&&(on||st==='ios'||standalone())&&!dip)bi.style.display='none';
 if(st==='on'){t.textContent='🔔 अलर्ट चालू हैं ✔ / Alerts are on';s2.textContent='ब्रोकर का संदेश आते ही इस फ़ोन पर अलर्ट आएगा — लिंक बार-बार खोलना नहीं पड़ेगा। / You will get an alert on this phone the moment your broker writes.'}
 else if(st==='ios'){t.textContent='🔔 iPhone पर अलर्ट पाने के लिए पहले होम स्क्रीन पर जोड़ें / On iPhone, add this to your home screen first';s2.textContent='iPhone में अलर्ट सिर्फ़ होम स्क्रीन वाले ऐप में आते हैं (iOS 16.4+)। / On iPhone, alerts work only in the home-screen app (iOS 16.4 or newer).'}
-else if(st==='denied'){t.textContent='🔕 अलर्ट रुके हुए हैं / Alerts are blocked';s2.textContent='फ़ोन की सेटिंग → ब्राउज़र/ऐप → Notifications में “Allow” करें, फिर यह पेज दोबारा खोलें। / Allow notifications for this page in the phone settings, then open it again.'}
-else if(st==='none'){t.textContent='🔕 इस ब्राउज़र में अलर्ट नहीं चलते / Alerts do not work in this browser';s2.textContent='Chrome (Android) या Safari-होम-स्क्रीन ऐप (iPhone) में खोलें। / Open this page in Chrome (Android) or the Safari home-screen app (iPhone).'}
+else if(st==='denied'){t.textContent='🔔 अलर्ट चालू करना चाहें तो / Want phone alerts?';s2.textContent='अभी बंद हैं। चाहें तो फ़ोन की सेटिंग → ब्राउज़र/ऐप → Notifications में “Allow” करें, फिर यह पेज दोबारा खोलें। / They are off for now. If you want them, allow notifications for this page in the phone settings, then open it again.'}
+else if(st==='none'){t.textContent='🔔 इस ब्राउज़र में अलर्ट नहीं चलते / Alerts are not available in this browser';s2.textContent='Chrome (Android) या Safari-होम-स्क्रीन ऐप (iPhone) में खोलें। / Open this page in Chrome (Android) or the Safari home-screen app (iPhone).'}
 else{t.textContent='🔔 ब्रोकर का जवाब सीधे फ़ोन पर पाएँ / Get your broker’s replies on your phone';s2.textContent='लिंक बार-बार खोलना नहीं पड़ेगा — ब्रोकर के लिखते ही फ़ोन पर अलर्ट आएगा। एक बार नीचे का बटन दबाएँ। / No need to open the link again and again — tap the button once and you are alerted when your broker writes.'}
+if(st==='denied'||st==='none'){c.style.padding='4px 10px';c.style.border='1px solid #e2e8f0';c.style.background='#f8fafc';t.style.fontSize='12px';t.style.margin='0';if(s2)s2.style.display='none';if(!$('app-x')){var x=document.createElement('button');x.id='app-x';x.type='button';x.textContent='\u2715';x.setAttribute('aria-label','बंद / Close');x.style.cssText='float:right;min-height:44px;min-width:44px;border:0;background:none;font-size:16px';x.onclick=function(){c.style.display='none'};c.insertBefore(x,c.firstChild)}}
 }
 function setup(){var c=$('app-card');if(!c)return;
 var bi=$('app-install');if(bi)bi.addEventListener('click',function(){if(dip){dip.prompt();dip=null;bi.style.display='none'}});
@@ -823,7 +825,7 @@ export function createClientRoomPageRouter() {
 ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
 <div class="card">${step === 'phone' ? `<p class="h">यह रूम सिर्फ़ आपके लिए है। अपना मोबाइल नंबर डालें — आपको एक कोड मिलेगा।</p><p class="t">This room is only for you. Enter your mobile number to get a code.</p>
 <form method="post" action="/r/${esc(tok)}/otp"><label>मोबाइल नंबर / Mobile number</label><input type="tel" name="phone" inputmode="numeric" maxlength="14" required autocomplete="tel-national" placeholder="98XXXXXXXX"><div class="row"><button class="g" type="submit">कोड भेजें / Send code</button></div></form>`
- : `<p class="h">${smsOn() ? 'SMS में आया 6 अंकों का कोड डालें।' : 'आपके ब्रोकर आपको 6 अंकों का कोड बताएँगे — वह यहाँ डालें।'}</p><p class="t">${smsOn() ? 'Enter the 6-digit code sent by SMS.' : 'Your broker will tell you a 6-digit code — enter it here.'}</p>
+ : `<p class="h">${smsOn() ? 'SMS में आया 6 अंकों का कोड डालें (10 मिनट तक चलेगा)।' : 'अपने ब्रोकर से 6 अंकों का कोड माँगें (10 मिनट तक चलेगा) — वह यहाँ डालें।'}</p><p class="t">${smsOn() ? 'Enter the 6-digit code sent by SMS (valid 10 minutes).' : 'Ask your broker for the 6-digit code (valid 10 minutes) and enter it here.'} A new code does not cancel the earlier one. / नया कोड माँगने पर पिछला कोड भी चलता रहेगा।</p>
 <form method="post" action="/r/${esc(tok)}/verify"><label>कोड / Code</label><input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"><div class="row"><button class="g" type="submit">खोलें / Open</button></div></form>
 <div class="row"><a class="btn l" href="/r/${esc(tok)}">दोबारा कोड / Send again</a></div>`}</div>
 <p class="small" style="margin:12px 4px">GENZ आपसे कोई पैसा नहीं माँगता और कोड फ़ोन पर किसी को न बताएँ (अपने ब्रोकर को छोड़कर, इस रूम के लिए)।<br>GENZ never asks you for money. Share this code with no one except your own broker for this room.</p>`));
@@ -849,6 +851,7 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     if (!knownDevice(req, room) && (room.devices || []).length >= L.devices) return gate(res, room, req.params.token, FULL_DEVICES, 'phone', 403);
     if (!smsOn() && !DEMO_MODE) return gate(res, room, req.params.token, NO_SMS, 'phone', 503);
     const otp = secureOtp();
+    if (room.otpHash && room.otpExpires && Date.parse(room.otpExpires) > Date.now()) { room.otpPrevHash = room.otpHash; room.otpPrevExpires = room.otpExpires; }   // v184 — “send again” keeps the earlier code valid (the latest 2)
     room.otpHash = hmac('cr-otp', `${room.id}|${otp}`); room.otpExpires = new Date(Date.now() + L.otpMinutes * 60_000).toISOString(); room.otpTries = 0;
     room.otpPlain = brokerReads() ? otp : undefined;
     if (smsOn()) await sendSms(`+91${phone}`, `GENZ: your code to open your private property room is ${otp}. Valid ${L.otpMinutes} minutes. Do not share it.`);
@@ -864,9 +867,11 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     headers(res);
     const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     if (!room.otpHash || !room.otpExpires || Date.parse(room.otpExpires) < Date.now()) return gate(res, room, req.params.token, 'कोड की मियाद ख़त्म — नया कोड मँगाएँ। / The code has expired — ask for a new one.');
-    if ((room.otpTries || 0) >= L.otpTries) { room.otpHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, 'बहुत बार ग़लत कोड — नया कोड मँगाएँ। / Too many wrong codes — ask for a new one.'); }
+    if ((room.otpTries || 0) >= L.otpTries) { room.otpHash = undefined; room.otpPrevHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, 'बहुत बार ग़लत कोड — नया कोड मँगाएँ। / Too many wrong codes — ask for a new one.'); }
     const code = String(req.body?.code || '').trim();
-    if (!safeEqual(room.otpHash, hmac('cr-otp', `${room.id}|${code}`))) {
+    const guess = hmac('cr-otp', `${room.id}|${code}`);
+    const prevOk = !!room.otpPrevHash && !!room.otpPrevExpires && Date.parse(room.otpPrevExpires) > Date.now() && safeEqual(room.otpPrevHash, guess);
+    if (!safeEqual(room.otpHash, guess) && !prevOk) {
       room.otpTries = (room.otpTries || 0) + 1; db.save();
       return gate(res, room, req.params.token, 'कोड सही नहीं है। / The code is not correct.', 'code');
     }
@@ -875,12 +880,12 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     const devices = room.devices || (room.devices = []);
     let fresh = false;
     if (!dev) {
-      if (devices.length >= L.devices) { room.otpHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, FULL_DEVICES, 'phone', 403); }
+      if (devices.length >= L.devices) { room.otpHash = undefined; room.otpPrevHash = undefined; room.otpPlain = undefined; db.save(); return gate(res, room, req.params.token, FULL_DEVICES, 'phone', 403); }
       dev = crypto.randomBytes(6).toString('hex');
       devices.push({ id: dev, label: deviceLabel(req.headers['user-agent']), firstAt: nowIso(), lastAt: nowIso() });
       fresh = true;
     }
-    room.otpHash = undefined; room.otpPlain = undefined; room.otpExpires = undefined; room.otpTries = 0;
+    room.otpHash = undefined; room.otpPrevHash = undefined; room.otpPlain = undefined; room.otpExpires = undefined; room.otpTries = 0;
     room.lastClientSeenAt = nowIso();
     const label = devices.find(d => d.id === dev)!.label;
     ev(room, fresh ? `Client opened the room on a new phone (${label}) — mobile verified` : `Client signed in again on the same phone (${label})`);
@@ -1118,6 +1123,18 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     res.redirect(303, `/r/${req.params.token}#visits`);
   });
 
+  /** v183 — Visit › Offer › Deal for THIS client: deal rooms reached through the visits he asked for or whose visit carries his mobile. Only the step and the stage word; nothing else. */
+  function stepLine(room: ClientRoom): string {
+    if (room.kind === 'OWNER') return '';
+    const s = st(); const mine = new Set(s.dealRooms.filter(d => (d.introducingBrokerId === room.brokerId || d.closingBrokerId === room.brokerId) && d.closure?.status !== 'CLOSED').map(d => d.id));
+    const ids = new Set<string>();
+    for (const it of room.items) for (const v of it.visitRequests) { const sv = v.visitId && s.siteVisits.find(x => x.id === v.visitId); if (sv && mine.has(sv.dealRoomId)) ids.add(sv.dealRoomId); }
+    for (const sv of s.siteVisits) if (mine.has(sv.dealRoomId) && sv.customerPhone && safeEqual(hmac('cr-phone', phone10(sv.customerPhone)), room.phoneKey)) ids.add(sv.dealRoomId);
+    const deals = s.dealRooms.filter(d => ids.has(d.id));
+    if (!deals.length) return '';
+    const best = deals.reduce((m, d) => Math.max(m, clientStepOf(d.stage)), 0); const done = deals.some(d => d.stage === 'Settled');
+    return `<div class="card" data-testid="client-steps"><p class="h">आपकी प्रगति · Your progress</p><p class="small">${CLIENT_STEPS.map(([en, hi], i) => `<b style="${i === best ? 'color:#0f766e' : i < best ? '' : 'opacity:.5'}">${i < best || (i === best && done) ? '✔ ' : i === best ? '● ' : ''}${hi} / ${en}</b>`).join(' › ')}</p></div>`;
+  }
   function render(req: Request, res: Response, room: ClientRoom, msg = '') {
     const b = st().users.find(u => u.id === room.brokerId);
     room.lastClientSeenAt = nowIso();
@@ -1144,7 +1161,7 @@ ${gallery}${vids}
 ${i.note ? `<p class="t"><b>ब्रोकर का नोट:</b> ${esc(i.note)}</p>` : ''}${pub.tags.length ? `<div>${pub.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
 ${pub.description ? `<details><summary>ब्यौरा / Details</summary><p class="t">${esc(pub.description)}</p></details>` : ''}
 <p class="small">पूरा पता और मालिक का नंबर वेरिफ़ाइड विज़िट के बाद मिलता है। / Exact address and owner\'s number are shared only after a verified visit.</p>
-${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"><input type="hidden" name="item" value="${esc(i.id)}"><button class="${i.reaction === 'LIKE' ? 'g' : 'l'}" name="r" value="LIKE" type="submit">👍 पसंद${i.reaction === 'LIKE' ? ' ✔' : ''}</button> <button class="l" name="r" value="PASS" type="submit">${i.reaction === 'PASS' ? '👎 नहीं ✔' : '👎 नहीं'}</button></form></div>
+${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"><input type="hidden" name="item" value="${esc(i.id)}"><button class="${i.reaction === 'LIKE' ? 'g' : 'l'}" name="r" value="LIKE" type="submit">👍 पसंद / Like${i.reaction === 'LIKE' ? ' ✔' : ''}</button> <button class="l" name="r" value="PASS" type="submit">${i.reaction === 'PASS' ? '👎 नहीं / No ✔' : '👎 नहीं / No'}</button></form></div>
 <details${sent ? '' : ''}><summary>🗓 देखने जाना है / Ask for a visit${sent ? ' — अनुरोध भेजा गया ✔' : ''}</summary><form method="post" action="/r/${tok}/visit"><input type="hidden" name="item" value="${esc(i.id)}"><label>कब? / When?</label><input type="datetime-local" name="when" required><label>कुछ बताना है? / Anything to add? (वैकल्पिक)</label><input type="text" name="note" maxlength="200"><div class="row"><button class="g" type="submit">अनुरोध भेजें / Send request</button></div></form></details>`
  : `<p class="t"><b>अब उपलब्ध नहीं (${esc(pub.status)}).</b> / No longer available.</p>`}</div>`;
     }).join('');
@@ -1182,7 +1199,7 @@ ${offersHtml}${visitsHtml}<h2 id="scan">📷 विज़िट पक्की 
     const mark = esc(`${room.clientName} ••${room.phoneLast4} · ${b?.name || 'GENZ'}`);
     const wm = `<div class="wm" aria-hidden="true">${Array.from({ length: 18 }, () => `<span>${mark}</span>`).join('')}</div>`;
     res.send(shell('Your private room', `${wm}<div class="top"><h1>नमस्ते ${esc(room.clientName.split(' ')[0])} 🙏</h1><p>${room.kind === 'OWNER' ? `${esc(b?.name || 'आपके ब्रोकर')} के साथ आपकी प्रॉपर्टी का रूम · Your property room` : `${esc(b?.name || 'आपके ब्रोकर')} ने आपके लिए ये प्रॉपर्टी चुनी हैं · Properties picked for you`}</p></div>
-<div class="card" id="app-card" style="display:none;border:2px solid #0f766e;background:#ecfdf5"><p class="h" id="app-title"></p>
+${stepLine(room)}<div class="card" id="app-card" style="display:none;border:2px solid #0f766e;background:#ecfdf5"><p class="h" id="app-title"></p>
 <p class="small" id="app-sub"></p>
 <div class="row"><button type="button" class="g" id="app-push" style="display:none;font-size:17px;padding:14px 20px">🔔 अलर्ट चालू करें / Turn on alerts</button> <button type="button" class="l" id="app-later" style="display:none">बाद में / Later</button> <button type="button" class="l" id="app-install" style="display:none">📲 होम स्क्रीन पर जोड़ें / Add to Home</button></div>
 <p class="small" id="app-ios" style="display:none"><b>1.</b> Safari में नीचे Share (⬆) दबाएँ / tap Share (⬆) &nbsp;<b>2.</b> “Add to Home Screen” &nbsp;<b>3.</b> होम स्क्रीन के आइकन से खोलें और अलर्ट चालू करें / open it from the home-screen icon and turn on alerts.</p>
@@ -1208,8 +1225,7 @@ ${(() => {
 <div class="chat" id="chat-box">${chat || '<small>अभी कोई संदेश नहीं। / No messages yet.</small>'}</div>
 <form method="post" action="/r/${tok}/msg"><textarea name="text" id="msgtext" rows="2" maxlength="${L.textChars}" placeholder="संदेश लिखें / Write a message" required></textarea>
 ${room.items.length ? `<label>किस प्रॉपर्टी के बारे में? (वैकल्पिक) / About which property?</label><select name="item" style="width:100%;padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px"><option value="">—</option>${room.items.map(i => `<option value="${esc(i.id)}">${esc(props.find(x => x.id === i.propertyId)?.title || i.propertyId)}</option>`).join('')}</select>` : ''}<div class="row"><button class="g" type="submit">भेजें / Send</button></div></form></div>
-<p class="small" style="margin:12px 4px">GENZ एक न्यूट्रल प्लेटफ़ॉर्म है; कीमत और शर्तें आपके, मालिक और ब्रोकर के बीच तय होती हैं। GENZ आपसे पैसा नहीं माँगता। आपका मोबाइल नंबर सिर्फ़ इस रूम को खोलने के लिए जाँचा गया है और सुरक्षित रूप (hash) में रखा जाता है।<br>GENZ is a neutral platform; price and terms are between you, the owner and the broker. GENZ never asks you for money. Your mobile number is only used to open this room and is stored in a one-way hashed form.</p>
-${joinFooter(b, b?.city)}`, 'hi', `<link rel="manifest" href="/r/${tok}/manifest.webmanifest" crossorigin="use-credentials"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="मेरा रूम"><link rel="apple-touch-icon" href="/icon-192.png">`).replace('<body>', '<body data-live="1">'));
+<p class="small" style="margin:12px 4px">GENZ एक न्यूट्रल प्लेटफ़ॉर्म है; कीमत और शर्तें आपके, मालिक और ब्रोकर के बीच तय होती हैं। GENZ आपसे पैसा नहीं माँगता। आपका मोबाइल नंबर सिर्फ़ इस रूम को खोलने के लिए जाँचा गया है और सुरक्षित रूप (hash) में रखा जाता है।<br>GENZ is a neutral platform; price and terms are between you, the owner and the broker. GENZ never asks you for money. Your mobile number is only used to open this room and is stored in a one-way hashed form.</p>`, 'hi', `<link rel="manifest" href="/r/${tok}/manifest.webmanifest" crossorigin="use-credentials"><meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="मेरा रूम"><link rel="apple-touch-icon" href="/icon-192.png">`).replace('<body>', '<body data-live="1">'));
   }
   return r;
 }

@@ -13,6 +13,7 @@
  *  • No cash, no paid third party; everything is audited in the hash-chained trail.
  */
 import { maskPhoneNumber } from './validation.js';
+import { isVerifiedFull } from './permissions.js';
 import { alert, firstName } from './alerts.js';
 import { savePhoto, photoById, sendPhoto, erasePhoto } from './workphotos.js';
 import express from 'express';
@@ -339,7 +340,7 @@ export function createPcontrolRouter() {
     const { action, commissionPct, quota, dailyLeadCap, validUntil, note } = req.body || {};
     const broker = state().users.find(x => x.id === m.brokerId);
     if (action === 'APPROVE') {
-      if (!broker || broker.verificationStatus !== 'VERIFIED') return bad(res, 'Only KYC-verified brokers can be appointed');
+      if (!broker || !isVerifiedFull(broker)) return bad(res, 'Only KYC-verified brokers can be appointed');
       if (tierOf(broker) === 'TIER2') return bad(res, 'This broker is a Tier 2 local associate (no RERA). Builder projects need a RERA-verified (Tier 1) broker.', 409);
       const pct = commissionPct === undefined || commissionPct === '' ? p.channelPartnerCommissionPct : Number(commissionPct);
       if (!pctOk(pct)) return bad(res, 'Commission must be between 0.1% and 10%');
@@ -421,7 +422,7 @@ export function createPcontrolRouter() {
   // ── lead verification (builder or builder staff with canVerify) ──
   const canVerify = (u: UserProfile, l: CrmLead): boolean => {
     if (isSuper(u) || (u.role === 'DEVELOPER_BUILDER' && l.builderId === u.id)) return true;
-    if (u.role === 'TEAM_MEMBER' && u.employerId === l.builderId && u.verificationStatus === 'VERIFIED') {
+    if (u.role === 'TEAM_MEMBER' && u.employerId === l.builderId && isVerifiedFull(u)) {
       const pol = policyOf(u);
       return pol.canVerify && (pol.projectIds.length === 0 || pol.projectIds.includes(l.projectId));
     }
@@ -539,7 +540,7 @@ export function createPcontrolRouter() {
     const u = me(); const st = state();
     const p = db.byId('builderProjects', req.params.id);
     if (!p || !visibleTo(p, u.id)) return bad(res, 'Project not found', 404);
-    if (u.verificationStatus !== 'VERIFIED') return bad(res, 'Your account must be KYC-verified to apply', 403);
+    if (!isVerifiedFull(u)) return bad(res, 'Your account must be KYC-verified to apply', 403);
     if (!VISIBLE_STATUS.includes(p.status)) return bad(res, 'This project is not taking new partners', 409);
     if ((p.access || 'OPEN_APPLY') === 'INVITE_ONLY') return bad(res, 'This project is invite-only', 403);
     const note = String(req.body?.note || '').trim().slice(0, 300);
@@ -694,7 +695,7 @@ export function createPcontrolRouter() {
     const u = me(); const from = myMember(String(req.body?.fromMemberId || ''));
     if (!from) return bad(res, 'Team member not found', 404);
     const toId = req.body?.toMemberId ? String(req.body.toMemberId) : null;
-    if (toId && !membersOf(u.id).some(m => m.id === toId && m.verificationStatus === 'VERIFIED' && m.id !== from.id)) return bad(res, 'Pick another active team member');
+    if (toId && !membersOf(u.id).some(m => m.id === toId && isVerifiedFull(m) && m.id !== from.id)) return bad(res, 'Pick another active team member');
     const n = releaseMemberLeads(u, from, u.id, u.name, toId);
     db.save();
     audit('LEAD', from.id, 'LEADS_HANDED_OVER', `${u.name} handed ${n} open lead(s) of ${from.name} to ${toId ? membersOf(u.id).find(m => m.id === toId)?.name : 'the pool / routing'}`);
@@ -707,7 +708,7 @@ export function createPcontrolRouter() {
     if (!ids.length) return bad(res, 'Select at least one lead');
     const memberId = req.body?.memberId ? String(req.body.memberId) : '';
     const to = memberId ? myMember(memberId) : undefined;
-    if (memberId && (!to || to.verificationStatus !== 'VERIFIED')) return bad(res, 'Pick one of your active team members');
+    if (memberId && (!to || !isVerifiedFull(to))) return bad(res, 'Pick one of your active team members');
     let n = 0;
     for (const l of st.crmLeads.filter(x => ids.includes(x.id) && ownerIdOf(x) === u.id && isOpen(x) && x.stage !== 'BOOKING_REQUESTED')) {
       const prev = l.assignedMemberName;

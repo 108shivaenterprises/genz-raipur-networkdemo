@@ -38,6 +38,9 @@ export interface ParsedListing {
   /** v178: "Owner Ramesh Patel 9876543210" in the pasted text */
   ownerName?: string;
   ownerPhone?: string;
+  /** v184 — "3rd floor" / "ground floor" (ground = 0) and "client Rakesh" / "customer: Rakesh Verma" */
+  floor?: number;
+  customerName?: string;
   tags: string[];
   /** fields still needed before the owner can be asked for consent */
   missing: string[];
@@ -316,6 +319,21 @@ export function findTags(t: string): string[] {
 
 const inrShort = (n: number) => n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${+(n / 1e5).toFixed(2)} L` : `₹${n.toLocaleString('en-IN')}`;
 
+const FLOOR_WORDS: Record<string, number> = { ground: 0, first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10 };
+/** v184 — every quantifier is capped and the number is not part of a longer digit run (same ReDoS rules as the rest of this file) */
+export function findFloor(t: string): number | undefined {
+  const w = /\b(ground|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s{0,3}(?:floor|flr)\b/i.exec(t);
+  if (w) return FLOOR_WORDS[w[1].toLowerCase()];
+  const n = /(?<![\d.,])(\d{1,2})\s{0,3}(?:st|nd|rd|th)?\s{0,3}(?:floor|flr)\b/i.exec(t) || /\bfloor\s{0,3}(?:(?:no\.?|number)\s{0,3}[:\-–]?|[:\-–])\s{0,3}(\d{1,2})(?!\d)/i.exec(t);
+  return n && Number(n[1]) <= 60 ? Number(n[1]) : undefined;
+}
+const NAME_STOP = /^(?:is|are|was|will|has|have|not|no|ka|ki|ke|hai|se|ne|to|in|at|of|the|needs?|wants?|looking|budget|for|from|ne|who|ko)$/i;
+export function findClientName(t: string): string | undefined {
+  const m = /(?:\b[Cc]lient|\b[Cc]ustomer|\b[Bb]uyer|\b[Pp]arty|ग्राहक)(?:\s{0,3}[Nn]ame)?\s{0,3}[:\-–]?\s{0,3}([A-Z\u0900-\u097F][A-Za-z\u0900-\u097F.]{1,30}(?: [A-Z\u0900-\u097F][A-Za-z\u0900-\u097F.]{1,30}){0,2})/.exec(t);
+  const name = m?.[1].trim();
+  return name && !NAME_STOP.test(name.split(' ')[0]) ? name : undefined;
+}
+
 export function parseOne(raw: string, idx = 0): ParsedListing {
   const t = cleanWa(raw).trim();
   const phones = findPhones(t);
@@ -347,6 +365,7 @@ export function parseOne(raw: string, idx = 0): ParsedListing {
   if (!city) out.missing.push('city');
   if (!locality) out.missing.push('locality');
   if (!price) out.missing.push('price');
+  const fl = findFloor(t); if (fl !== undefined) out.floor = fl;
   const oc = findOwnerContact(t);
   if (oc) { if (oc.name) out.ownerName = oc.name; out.ownerPhone = oc.phone; }
   out.missing.push(...(oc ? (oc.name ? [] : ['ownerName']) : ['ownerName', 'ownerPhone']), 'address');
@@ -397,10 +416,11 @@ export function parseNeed(raw: string, idx = 0): ParsedListing {
   if (!base.city) missing.push('city');
   if (!localities.length) missing.push('localities');
   if (!b.max) missing.push('budget');
-  missing.push('customerName', 'customerPhone');
+  const cn = findClientName(t);
+  missing.push(...(cn ? [] : ['customerName']), 'customerPhone');
   const found = [base.propertyType, base.city, localities.length, b.max].filter(Boolean).length;
   return {
-    ...base, kind: 'NEED', transactionType: tx, budgetMin: b.min, budgetMax: b.max, localities, locality: localities[0], price: undefined,
+    ...base, customerName: cn, kind: 'NEED', transactionType: tx, budgetMin: b.min, budgetMax: b.max, localities, locality: localities[0], price: undefined,
     title: `${typeWord} wanted${tx === 'Rent' ? ' on rent' : ''}${localities[0] ? ` in ${localities[0]}` : ''}${base.city ? `, ${base.city}` : ''}`.slice(0, 150),
     missing, confidence: Math.round((found / 4) * 100) / 100,
   };

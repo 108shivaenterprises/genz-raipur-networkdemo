@@ -6,6 +6,7 @@
  * GENZ never fetches any government site — the red flags are only as good as what was entered.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { z } from 'zod';
 import { db } from './db.js';
 import type { LandRecord, UserProfile } from './db.js';
@@ -46,11 +47,11 @@ export function createLandRecordsRouter() {
   r.use(needs('landrecord:manage'));
 
   const canSee = (u: UserProfile, rec: LandRecord) => {
-    if (isAdmin(u) || u.role === 'LEGAL_COUNSEL' || rec.createdBy === u.id) return true;
+    if (isAdmin(u) || (u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u)) || rec.createdBy === u.id) return true;
     const prop = rec.propertyId && db.byId('properties', rec.propertyId);
     return !!prop && (prop.listingBrokerId === u.id || prop.ownerId === u.id);
   };
-  const canEdit = (u: UserProfile, rec: LandRecord) => isAdmin(u) || u.role === 'LEGAL_COUNSEL' || rec.createdBy === u.id;
+  const canEdit = (u: UserProfile, rec: LandRecord) => isAdmin(u) || (u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u)) || rec.createdBy === u.id;
   const view = (rec: LandRecord) => ({ ...rec, scan: scanRedFlags(rec.fields) });
   const audit = (id: string, action: string, details: string) => { const u = me(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', id, action, details); };
 
@@ -62,7 +63,7 @@ export function createLandRecordsRouter() {
   /** Properties the caller may link a record to. */
   r.get('/properties', (_req, res) => {
     const u = me();
-    const list = db.getState().properties.filter(p => isAdmin(u) || u.role === 'LEGAL_COUNSEL' || p.listingBrokerId === u.id || p.ownerId === u.id)
+    const list = db.getState().properties.filter(p => isAdmin(u) || (u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u)) || p.listingBrokerId === u.id || p.ownerId === u.id)
       .map(p => ({ id: p.id, title: p.title, locality: p.locality, city: p.city }));
     res.json({ success: true, properties: list });
   });
@@ -74,7 +75,7 @@ export function createLandRecordsRouter() {
     const d = p.data; const st = db.getState();
     if (d.propertyId) {
       const prop = db.byId('properties', d.propertyId);
-      if (!prop || !(isAdmin(u) || u.role === 'LEGAL_COUNSEL' || prop.listingBrokerId === u.id || prop.ownerId === u.id)) return res.status(404).json({ error: 'Property not found' });
+      if (!prop || !(isAdmin(u) || (u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u)) || prop.listingBrokerId === u.id || prop.ownerId === u.id)) return res.status(404).json({ error: 'Property not found' });
     }
     if (st.landRecords.filter(x => x.createdBy === u.id).length >= 500) return res.status(409).json({ error: 'Record limit reached' });
     const now = new Date().toISOString();

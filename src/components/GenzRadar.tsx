@@ -4,12 +4,13 @@ import { api } from '../lib/api.js';
 import { BuyerRequirement, UserProfile } from '../types/index.js';
 import { formatINR } from '../lib/utils.js';
 import { PROPERTY_TYPES } from '../shared/india.js';
+import { useLabel } from '../lib/labels.js';
 import { useTx } from '../lib/i18n.js';
 
 /** v119 — GENZ Radar: the real client needs of the network, by default only the ones around the broker's own city;
  *  "Advanced search" opens any city / area / type. Same data and masking as the Needs list (the server does both). */
 export const GenzRadar: React.FC<{ currentUser: UserProfile; onMatch: (r: BuyerRequirement) => void }> = ({ currentUser, onMatch }) => {
-  const tx = useTx();
+  const tx = useTx(); const label = useLabel();
   const home = (currentUser.city || '').trim();
   const [adv, setAdv] = useState(false);
   const [city, setCity] = useState(home);
@@ -77,7 +78,7 @@ export const GenzRadar: React.FC<{ currentUser: UserProfile; onMatch: (r: BuyerR
         {live.slice(0, 20).map(r => (
           <li key={r.id} className="w-60 shrink-0 rounded-xl border border-white/15 bg-white/10 p-2.5 text-xs">
             {near(r) && <p className="mb-0.5 text-[10px] font-bold uppercase text-emerald-300">📍 {tx('Your area', 'आपका इलाका')}</p>}
-            <p className="font-semibold">{r.propertyType} · {r.transactionType === 'Sale' ? tx('Buy', 'खरीद') : r.transactionType === 'Rent' ? tx('Rent', 'किराया') : tx('Lease', 'लीज़')}</p>
+            <p className="font-semibold">{label('propertyType', r.propertyType)} · {r.transactionType === 'Sale' ? tx('Buy', 'खरीद') : r.transactionType === 'Rent' ? tx('Rent', 'किराया') : tx('Lease', 'लीज़')}</p>
             <p className="mt-0.5 text-slate-300">{[...(r.preferredLocalities || []).slice(0, 2), r.city].filter(Boolean).join(', ') || '—'}</p>
             <p className="mt-0.5 font-mono text-emerald-300">{formatINR(r.budgetMin)} – {formatINR(r.budgetMax)}</p>
             <button type="button" onClick={() => onMatch(r)} className="mt-2 inline-flex min-h-9 w-full items-center justify-center gap-1 rounded-lg bg-indigo-500 font-semibold hover:bg-indigo-400"><Sparkles className="h-3.5 w-3.5 text-amber-300" />{tx('Match homes', 'घर मिलाएँ')}</button>

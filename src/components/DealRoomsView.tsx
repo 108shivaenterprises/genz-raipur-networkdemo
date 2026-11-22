@@ -1,3 +1,4 @@
+import { agreementStatusWord } from '../lib/agreementWords.js';
 import BrokerageAtPrice from './BrokerageAtPrice.js';
 import FinalRateCard from './FinalRateCard.js';
 import { DealHisaab } from './DealHisaab.js';
@@ -117,10 +118,9 @@ const TASK_CAT_HI: Record<string, string> = {
 const ACCEPT_HI: Record<string, string> = { PENDING_ACCEPTANCE: 'स्वीकृति बाकी', ACCEPTED: 'स्वीकार', REJECTED: 'अस्वीकार' };
 const TASK_STATUS_HI: Record<string, string> = { NOT_STARTED: 'शुरू नहीं', IN_PROGRESS: 'चल रहा', COMPLETED: 'पूरा', BLOCKED: 'रुका हुआ', WAIVED: 'छूट दी गई' };
 const TASK_VERIFY_HI: Record<string, string> = { UNVERIFIED: 'जाँच बाकी', UNDER_REVIEW: 'जाँच चल रही', VERIFIED: 'जाँचा हुआ', REJECTED: 'अस्वीकृत' };
-const AGR_STATUS_HI: Record<string, string> = {
-  DRAFT: 'ड्राफ़्ट', SENT_TO_PARTICIPANTS: 'मंज़ूरी के लिए भेजा', ACCEPTED: 'स्वीकृत', ACTIVE: 'चालू', AMENDED: 'संशोधित', COMPLETED: 'पूरा', CANCELLED: 'रद्द', DISPUTED: 'विवाद में',
-};
 const ENTITLEMENT_HI: Record<string, string> = { AGREED: 'तय', EARNED: 'अर्जित', RECEIVABLE: 'मिलना बाकी', PAID: 'चुकाया', DISPUTED: 'विवाद में' };
+const PAYER_PLAIN: Record<string, [string, string]> = { SELLER: ['The seller pays the whole fee', 'पूरी फ़ीस विक्रेता देगा'], BUYER: ['The buyer pays the whole fee', 'पूरी फ़ीस खरीदार देगा'], SPLIT_EQUAL: ['Buyer and seller each pay half of the fee', 'खरीदार और विक्रेता फ़ीस आधी-आधी देंगे'], BUILDER_DEVELOPER: ['The builder pays the fee', 'फ़ीस बिल्डर देगा'] };
+const STAGE_RANK = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'];
 const PAYER_HI: Record<string, string> = { SELLER: 'विक्रेता', BUYER: 'खरीदार', SPLIT_EQUAL: 'खरीदार-विक्रेता आधा-आधा', BUILDER_DEVELOPER: 'बिल्डर / डेवलपर' };
 const AUTH_METHOD_HI: Record<string, string> = { COMPLIANT_E_SIGN_PKEY: 'डिजिटल मंज़ूरी', AADHAAR_ESIGN_GATEWAY: 'आधार e-Sign', DIGITAL_SEAL: 'डिजिटल सील' };
 
@@ -210,6 +210,9 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
     try { window.history.replaceState({ ...(window.history.state || {}), gdr: { mode: mainMode, deal: selectedDealId } }, ''); window.history.pushState({ gdr: { mode: m, deal: selectedDealId } }, ''); } catch { /* old browser */ }
     setModeRaw(m);
   };
+  // v183 — tapping the bottom “Deals” tab while inside a room goes back to the pipeline
+  const modeRef = useRef(mainMode); modeRef.current = mainMode;
+  useEffect(() => { const h = () => { if (modeRef.current !== 'PIPELINE') setModeRaw('PIPELINE'); }; window.addEventListener('genz:deals-home', h); return () => window.removeEventListener('genz:deals-home', h); }, []);
   useEffect(() => {
     const back = (e: PopStateEvent) => { const g = e.state?.gdr; if (!g) return; setModeRaw(g.mode); if (g.deal) setSelectedDealId(g.deal); try { window.scrollTo({ top: 0 }); } catch { /* old browser */ } };
     window.addEventListener('popstate', back); return () => window.removeEventListener('popstate', back);
@@ -1038,7 +1041,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 </div>
               )}
               {showSimple && (
-                <DealSimple pending={[
+                <DealSimple key={activeDeal.id} meId={currentUser.id} canCostSheet={perm('inventory:share')} pending={[
                   ...(isOwnerViewer && !activeDeal.ownerRemunerationConfirmed && perm('mandate:read') ? [{ id: 'mandate', en: 'Confirm your brokerage terms (mandate)', hi: 'अपनी ब्रोकरेज शर्तें (मैंडेट) कन्फ़र्म करें', go: () => setMainMode('MANDATES') }] : []),
                   ...(isOwnerViewer ? activeVisits.filter((v: SiteVisit) => !v.isVerified).slice(0, 3) : []).map((v: SiteVisit) => ({ id: `visit-${v.id}`, en: `Visit ${v.id} (${v.customerName}): code not entered yet`, hi: `विज़िट ${v.id} (${v.customerName}): OTP अभी नहीं डाला`, go: () => pickView(false) })),
                 ]} item={hubItemOf(activeDeal.id)} onBookVisit={perm('sitevisit:create') && !activeDeal.closed && activeDeal.stage !== 'Settled' ? () => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId) : undefined} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
@@ -1190,7 +1193,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       {/* v45 — the owner's terms and my client rooms for this property, one tap away */}
                       <div className="flex flex-wrap gap-1.5 pt-2" data-testid="deal-links">
                         {perm('mandate:read') && (
-                          <button type="button" onClick={() => setMainMode('MANDATES')} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 hover:border-slate-900" data-testid="deal-owner-terms">
+                          <button type="button" onClick={() => setMainMode('MANDATES')} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 hover:border-slate-900" data-testid="deal-owner-terms">
                             <FileSignature className="h-3.5 w-3.5" />{tx('Owner’s brokerage', 'मालिक की ब्रोकरेज')}
                           </button>
                         )}
@@ -1249,7 +1252,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                       {perm('sitevisit:create') && (
                       <button
                         onClick={() => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId)}
-                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+                        className="min-h-11 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
                         data-testid="deal-schedule-visit"
                       >
                         <Clock className="h-3.5 w-3.5" />
@@ -1298,7 +1301,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             <div className="flex items-center gap-2 shrink-0">
                               <button
                                 onClick={() => setSelectedVisitForQrPass(visit)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs shrink-0 shadow-2xs"
+                                className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs shrink-0 shadow-2xs"
                                 title={tx('Open digital visit QR pass & check-in scanner', 'डिजिटल विज़िट QR पास और चेक-इन स्कैनर खोलें')}
                               >
                                 <QrCode className="h-3.5 w-3.5" />
@@ -1431,8 +1434,8 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
                           {tx(
-                            "Milestones, price changes and agreements are written to a hash-chained activity log, so later edits show up. Filing a dispute marks the commission record 'on hold' until an admin reviews it.",
-                            "माइलस्टोन, कीमत के बदलाव और समझौते हैश-चेन वाले एक्टिविटी लॉग में लिखे जाते हैं, इसलिए बाद में हुआ बदलाव पकड़ में आता है। विवाद दर्ज होते ही एडमिन की समीक्षा तक कमीशन रिकॉर्ड 'होल्ड' पर रहता है।",
+                            "Milestones, price changes and agreements are written to a tamper-evident activity log, so later edits show up. Filing a dispute marks the commission record 'on hold' until an admin reviews it.",
+                            "माइलस्टोन, कीमत के बदलाव और समझौते छेड़छाड़ पकड़ने वाले एक्टिविटी लॉग में लिखे जाते हैं, इसलिए बाद में हुआ बदलाव पकड़ में आता है। विवाद दर्ज होते ही एडमिन की समीक्षा तक कमीशन रिकॉर्ड 'होल्ड' पर रहता है।",
                           )}
                         </p>
                       </div>
@@ -2134,7 +2137,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                             }`}
                           >
-                            {tx('Version', 'वर्ज़न')} {agr.version} ({enumLabel(AGR_STATUS_HI, agr.status)})
+                            {tx('Version', 'वर्ज़न')} {agr.version} ({agreementStatusWord(agr.status, hi)})
                           </button>
                         ))}
                       </div>
@@ -2178,14 +2181,17 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
 
                   {currentAgreement && (
                     <div className="space-y-4">
+                      {currentAgreement.requiredApprovals.some((ap: any) => ap.userId === currentUser.id && !ap.hasAccepted) && (
+                        <button type="button" onClick={() => setShowESignModal(true)} data-testid="agreement-approve-top" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-emerald-700">
+                          <ShieldCheck className="h-4 w-4" />{tx('Approve agreement', 'मंज़ूरी दें')}
+                        </button>
+                      )}
                       {/* Agreement Meta Summary Card */}
                       <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
                           <div>
                             <div className="flex items-center gap-2 text-xs text-amber-400 font-mono">
-                              <span>{currentAgreement.id}</span>
-                              <span>·</span>
-                              <span>{tx('Status', 'स्थिति')}: {enumLabel(AGR_STATUS_HI, currentAgreement.status)}</span>
+                              <span>{tx('Status', 'स्थिति')}: {agreementStatusWord(currentAgreement.status, hi)}</span>
                             </div>
                             <h3 className="text-base font-bold text-white mt-0.5">
                               {th(currentAgreement.contractualBasis)}
@@ -2202,18 +2208,19 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                             <div className="text-xl font-bold text-emerald-400">
                               {formatINR(currentAgreement.totalAgreedBrokerage)}
                             </div>
-                            <div className="text-xs text-slate-400">{tx('Payer', 'भुगतान करने वाला')}: {enumLabel(PAYER_HI, currentAgreement.payer)}</div>
+                            <div className="text-xs text-slate-400" data-testid="agreement-payer">{tx(PAYER_PLAIN[currentAgreement.payer]?.[0] || `Payer: ${String(currentAgreement.payer).replace(/_/g, ' ')}`, PAYER_PLAIN[currentAgreement.payer]?.[1] || `भुगतान करने वाला: ${enumLabel(PAYER_HI, currentAgreement.payer)}`)}</div>
                           </div>
                         </div>
 
-                        {/* Record hash */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400 gap-2 font-mono">
-                          <div className="hidden items-center gap-1.5 truncate sm:flex">
-                            <Shield className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                            <span className="truncate">{tx('SHA-256 record hash', 'SHA-256 रिकॉर्ड हैश')}: {currentAgreement.cryptoSealHash}</span>
+                        {/* Record hash — technical, collapsed */}
+                        <details className="text-xs text-slate-400" data-testid="agreement-tech">
+                          <summary className="min-h-11 cursor-pointer py-3">{tx('Technical details', 'तकनीकी जानकारी')}</summary>
+                          <div className="space-y-1 font-mono">
+                            <div>{tx('Agreement no.', 'समझौता नं.')}: {currentAgreement.id}</div>
+                            <div className="break-all">{tx('SHA-256 record hash', 'SHA-256 रिकॉर्ड हैश')}: {currentAgreement.cryptoSealHash}</div>
+                            <div>{formatDateTime(currentAgreement.updatedAt)}</div>
                           </div>
-                          <span className="shrink-0">{formatDateTime(currentAgreement.updatedAt)}</span>
-                        </div>
+                        </details>
                       </div>
 
                       {/* Participant Allocations Table */}
@@ -2238,7 +2245,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                       : 'bg-blue-100 text-blue-800'
                                   }`}
                                 >
-                                  {enumLabel(ENTITLEMENT_HI, alloc.entitlementStatus)}
+                                  {alloc.entitlementStatus === 'AGREED' && currentAgreement.status !== 'ACTIVE' && currentAgreement.requiredApprovals.some((a: any) => !a.hasAccepted) ? tx('Waiting for approval', 'मंज़ूरी का इंतज़ार') : enumLabel(ENTITLEMENT_HI, alloc.entitlementStatus)}
                                 </span>
                               </div>
 
@@ -2285,7 +2292,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           {tx('When payment is due — stage milestones', 'भुगतान कब देय — स्टेज माइलस्टोन')}
                         </div>
                         <div className="space-y-2">
-                          {currentAgreement.paymentTriggers.map((trig) => (
+                          {[...currentAgreement.paymentTriggers].sort((x: any, y: any) => STAGE_RANK.indexOf(x.stage) - STAGE_RANK.indexOf(y.stage)).map((trig: any) => (
                             <div
                               key={trig.triggerId}
                               className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs"
@@ -2349,17 +2356,16 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                                   </span>
                                 </div>
                                 {ap.signatureAuditTrail && (
-                                  <div className="text-xs text-slate-500 font-mono mt-1">
-                                    {tx('Method', 'तरीका')}: {enumLabel(AUTH_METHOD_HI, ap.signatureAuditTrail.authMethod)} · {tx('Time', 'समय')}: {formatDateTime(ap.signatureAuditTrail.timestamp)}
-                                  </div>
+                                  <details className="mt-1 text-xs text-slate-500" data-testid="approval-tech">
+                                    <summary className="min-h-11 cursor-pointer py-3">{tx('Technical details', 'तकनीकी जानकारी')}</summary>
+                                    <div className="space-y-1 font-mono">
+                                      <div>{tx('Time', 'समय')}: {formatDateTime(ap.signatureAuditTrail.timestamp)}</div>
+                                      <div>{tx('Method', 'तरीका')}: {enumLabel(AUTH_METHOD_HI, ap.signatureAuditTrail.authMethod)}</div>
+                                      <div className="break-all">{tx('Hash', 'हैश')}: {ap.signatureAuditTrail.cryptoHash}</div>
+                                    </div>
+                                  </details>
                                 )}
                               </div>
-
-                              {ap.hasAccepted && ap.signatureAuditTrail && (
-                                <div className="text-xs text-slate-400 font-mono truncate max-w-xs">
-                                  {tx('Hash', 'हैश')}: {ap.signatureAuditTrail.cryptoHash.slice(0, 24)}...
-                                </div>
-                              )}
                             </div>
                           ))}
                         </div>
@@ -3289,7 +3295,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 <div className="text-xs uppercase font-semibold text-slate-500 tracking-wider">{tx('Signer Profile & Audit Metadata', 'मंज़ूर करने वाले की जानकारी')}</div>
                 <div className="font-bold text-slate-900">{currentUser.name}</div>
                 <div className="text-xs text-slate-500">{currentUser.email} · {tx('Role', 'भूमिका')}: {label('role', currentUser.role)}</div>
-                <div className="text-xs text-emerald-700 font-mono">{tx('Method: digital approval (SHA-256 hash-chained)', 'तरीका: डिजिटल मंज़ूरी (SHA-256 हैश-चेन)')}</div>
+                <div className="text-xs text-emerald-700 font-mono">{tx('Method: digital approval, saved as a tamper-evident record', 'तरीका: डिजिटल मंज़ूरी, छेड़छाड़ पकड़ने वाले रिकॉर्ड में दर्ज')}</div>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 text-xs">

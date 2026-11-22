@@ -58,7 +58,7 @@ export const IdDocSlot: React.FC<{
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{doc || pending ? tx('Replace', 'बदलें') : tx('Choose photo / PDF', 'फ़ोटो / PDF चुनें')}
         </button>
         <button type="button" className={btn} disabled={disabled || busy} onClick={() => setScan(true)} data-testid={`id-scan-${kind}`}><Camera className="h-4 w-4" />{tx('Photo → PDF', 'फ़ोटो → PDF')}</button>
-        {scan && <ScanToPdf title={kind === 'AADHAAR' ? 'Masked Aadhaar' : 'PAN card'} maxBytes={ID_DOC_MAX_BYTES} maxPages={2}
+        {scan && <ScanToPdf title={kind === 'AADHAAR' ? 'Masked Aadhaar' : kind === 'RERA' ? 'RERA certificate' : 'PAN card'} maxBytes={ID_DOC_MAX_BYTES} maxPages={2}
           hint={kind === 'AADHAAR' ? { en: 'Masked Aadhaar only: cover the first 8 digits with paper before you take the photo (front and back = 2 pages).', hi: 'सिर्फ़ मास्क्ड आधार: फ़ोटो लेने से पहले पहले 8 अंक काग़ज़ से ढक दीजिए (आगे और पीछे = 2 पेज)।' } : { en: 'Front of the PAN card; keep all four corners in the photo.', hi: 'PAN कार्ड का आगे का हिस्सा; फ़ोटो में चारों कोने आने चाहिए।' }}
           onClose={() => setScan(false)} onDone={f => { setScan(false); void pick(f); }} />}
         {doc && !pending && canOpen && <a className={btn} href={api.idDocUrl(doc.id)} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" />{tx('Open', 'खोलें')}</a>}

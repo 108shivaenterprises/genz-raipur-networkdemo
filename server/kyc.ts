@@ -42,3 +42,7 @@ export const RERA_PORTAL_CG = 'https://rera.cgstate.gov.in';
 export function maskKycFor<T extends { panNumber?: string }>(u: T, viewer: { role: string }): T {
   return viewer.role === 'SUPERADMIN' || !u.panNumber ? u : { ...u, panNumber: maskPan(u.panNumber) };
 }
+
+/** v187 (D16) — is this PAN held by a KYC-approved, non-Basic, non-owner account? Only such a holder blocks another claimant (a Basic claim or an owner's PAN never does). */
+export const panHeldByApproved = (users: { id: string; role: string; panNumber?: string; verificationStatus?: string; basicTier?: boolean }[], pan: string, exceptId = ''): boolean =>
+  !!pan && users.some(u => u.id !== exceptId && u.role !== 'PROPERTY_OWNER' && !!u.panNumber && normPan(u.panNumber) === pan && !u.basicTier && (u.verificationStatus === 'VERIFIED' || u.verificationStatus === 'PENDING'));

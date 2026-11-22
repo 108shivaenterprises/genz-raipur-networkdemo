@@ -7,6 +7,7 @@
  * "N deals closed on GENZ · confirmed by M brokers" (counts only — no deal, client or money detail). Points-only reward.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { DealRoom, PeerConfirm, UserProfile } from './db.js';
@@ -122,7 +123,7 @@ export function createHomeRouter() {
     const chapter = u.chapterId ? s.chapters.find(c => c.id === u.chapterId) : undefined;
     const nextMeet = chapter ? s.chapterMeets.filter(m => m.chapterId === chapter.id && Date.parse(m.at) >= now - 3 * 3600_000).sort((a, b) => a.at.localeCompare(b.at))[0] : undefined;
     const month = nowIso().slice(0, 7);
-    const pool = s.users.filter(x => x.role === 'BROKER' && x.verificationStatus === 'VERIFIED' && (u.chapterId ? x.chapterId === u.chapterId : String(x.city || '').toLowerCase() === String(u.city || '').toLowerCase()));
+    const pool = s.users.filter(x => x.role === 'BROKER' && isVerifiedFull(x) && (u.chapterId ? x.chapterId === u.chapterId : String(x.city || '').toLowerCase() === String(u.city || '').toLowerCase()));
     const pts = (id: string) => s.pointEvents.filter(e => e.userId === id && e.points > 0 && e.at.startsWith(month)).reduce((a, e) => a + e.points, 0);
     const ranked = pool.map(x => ({ id: x.id, p: pts(x.id) })).sort((a, b) => b.p - a.p);
     res.json({
@@ -133,7 +134,7 @@ export function createHomeRouter() {
       page: u.role === 'BROKER' ? pageSummary(u) : null,
       chapter: chapter ? { id: chapter.id, name: chapter.name, captain: (db.byId('users', chapter.captainId) as UserProfile | undefined)?.name || null, isCaptain: chapter.captainId === u.id, nextMeet: nextMeet ? { title: nextMeet.title, at: nextMeet.at, venue: nextMeet.venue } : null } : null,
       rank: { month, position: ranked.findIndex(x => x.id === u.id) + 1 || null, of: ranked.length, points: pts(u.id) },
-      refCode: u.role === 'BROKER' && u.verificationStatus === 'VERIFIED' ? ensureReferralCode(u) : null, city: u.city || '',
+      refCode: u.role === 'BROKER' && isVerifiedFull(u) ? ensureReferralCode(u) : null, city: u.city || '',
     });
   });
   return r;

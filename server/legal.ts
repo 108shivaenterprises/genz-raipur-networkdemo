@@ -13,6 +13,7 @@
  *  GENZ takes a flat fee / membership, never a share of the advocate's fee (Bar Council fee-sharing rules).
  */
 import { alert } from './alerts.js';
+import { isVerifiedFull } from './permissions.js';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { db, type DatabaseState, type UserProfile, type LegalRequest, type LegalProfile } from './db.js';
@@ -52,7 +53,7 @@ export function profileOf(u: UserProfile): LegalProfile {
 export function memberUntil(counsellorId: string, now = Date.now()): string | null { return activeMembership(counsellorId, now)?.validTo || null; }
 const feeOverdue = (counsellorId: string, now = Date.now()) => overdue(counsellorId, 'LEGAL_CASE', now);
 const panelBlock = (u: UserProfile, p: LegalProfile): string | null => {
-  if (u.verificationStatus !== 'VERIFIED') return 'Your account is not verified yet.';
+  if (!isVerifiedFull(u)) return 'Your account is not verified yet.';
   if (p.removed) return 'You have been taken off the GENZ legal panel.';
   if (feeOverdue(u.id)) return `A GENZ platform fee has been unpaid for more than ${FEE_GRACE_DAYS} days — pay it (or ask the GENZ team) to claim new cases.`;
   return gateBlock(u, 'LEGAL_CLAIM');
@@ -211,7 +212,7 @@ export function createLegalRouter() {
     s.legalRequests.push(row);
     // v59 — the state's counsellors hear of a new case (no names, no deal: first come, first served)
     // (a counsellor who has not opened the desk yet still works his home state — profileOf() gives it, as the desk would)
-    alert(s.users.filter(c => c.role === 'LEGAL_COUNSEL' && c.verificationStatus === 'VERIFIED').filter(c => { const pp = profileOf(c); return pp.states.includes(state) && !pp.removed; }).map(c => c.id), 'deals', `New legal help request · ${state}`, `${helpTypeInfo(d.helpType)?.en || 'Legal help'} — the first counsellor to take it gets it`, '/?tab=legal', { not: u.id, tag: `lgl-${row.id}`, hi: [`नई क़ानूनी मदद की माँग · ${state}`, `${helpTypeInfo(d.helpType)?.hi || 'क़ानूनी मदद'} — जो काउंसलर पहले लेगा, केस उसका`] });
+    alert(s.users.filter(c => c.role === 'LEGAL_COUNSEL' && isVerifiedFull(c)).filter(c => { const pp = profileOf(c); return pp.states.includes(state) && !pp.removed; }).map(c => c.id), 'deals', `New legal help request · ${state}`, `${helpTypeInfo(d.helpType)?.en || 'Legal help'} — the first counsellor to take it gets it`, '/?tab=legal', { not: u.id, tag: `lgl-${row.id}`, hi: [`नई क़ानूनी मदद की माँग · ${state}`, `${helpTypeInfo(d.helpType)?.hi || 'क़ानूनी मदद'} — जो काउंसलर पहले लेगा, केस उसका`] });
     audit(row.id, 'LEGAL_REQUEST_RAISED', `${helpTypeInfo(d.helpType)?.en} · ${state} · ${docIds.length} paper(s) offered`);
     db.save();
     res.json({ success: true, request: shape(row, u), phoneMasked: m.masked });
@@ -374,7 +375,7 @@ export function createLegalRouter() {
     const counsellors = s.users.filter(x => x.role === 'LEGAL_COUNSEL').map(c => {
       const p = profileOf(c); const until = memberUntil(c.id, now);
       const cases = s.legalRequests.filter(x => x.counsellorId === c.id);
-      return { id: c.id, name: c.name, company: c.companyName, verified: c.verificationStatus === 'VERIFIED', states: p.states, strikes: p.strikes, removed: !!p.removed, removedReason: p.removedReason,
+      return { id: c.id, name: c.name, company: c.companyName, verified: isVerifiedFull(c), basic: !!c.basicTier, states: p.states, strikes: p.strikes, removed: !!p.removed, removedReason: p.removedReason,
         member: !!until, memberUntil: until, openCases: cases.filter(x => ['CLAIMED', 'QUOTED', 'ACCEPTED'].includes(x.status)).length, doneCases: cases.filter(x => x.status === 'COMPLETED').length, feeOverdue: feeOverdue(c.id, now) };
     });
     const legalFees = s.billingLedger.filter(e => e.event === 'LEGAL_CASE' || (e.kind === 'MEMBERSHIP' && e.payerSegment === 'LEGAL_COUNSEL'));

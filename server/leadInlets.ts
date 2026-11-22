@@ -12,6 +12,7 @@
  * form will not send without a ticked box.
  */
 import { publicBase } from './features.js';
+import { isVerifiedFull } from './permissions.js';
 import express, { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
@@ -35,7 +36,7 @@ const origin = (req: Request) => publicBase(req);
 const byToken = (t: string) => /^[A-Za-z0-9_-]{20,64}$/.test(String(t)) ? db.getState().leadInlets.find(i => i.token === t) : undefined;
 
 /** an inlet belongs to the broker / builder account itself — never to an employee, never to an admin */
-const isOwnerRole = (u: UserProfile | undefined) => !!u && (u.role === 'BROKER' || u.role === 'DEVELOPER_BUILDER') && u.verificationStatus === 'VERIFIED';
+const isOwnerRole = (u: UserProfile | undefined) => !!u && (u.role === 'BROKER' || u.role === 'DEVELOPER_BUILDER') && isVerifiedFull(u);
 
 /** the projects an owner may point an inlet at: a builder's own, a broker's with a live mandate */
 function projectsFor(u: UserProfile) {

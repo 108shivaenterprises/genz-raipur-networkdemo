@@ -1,3 +1,4 @@
+import { dateLocale } from '../lib/utils.js';
 /**
  * v53 — the "+" menu of the deal chat, and the cards it puts in the chat.
  *
@@ -14,7 +15,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Building2, QrCode, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, ExternalLink, FileText, Flag, IndianRupee, Loader2, Lock, MapPin } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { useTx } from '../lib/i18n.js';
+import { useTx, useI18n } from '../lib/i18n.js';
+import { agreementStatusWord } from '../lib/agreementWords.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { isClosed } from '../shared/dealClose.js';
@@ -45,7 +47,7 @@ const CATEGORY: Record<string, [string, string]> = {
   OTHER_ATTACHMENT: ['Attachment', 'संलग्न फ़ाइल'], PHOTOGRAPH: ['Photo', 'फ़ोटो'],
 };
 
-const when = (iso?: string) => { try { return iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; } catch { return ''; } };
+const when = (iso?: string) => { try { return iso ? new Date(iso).toLocaleString(dateLocale(), { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; } catch { return ''; } };
 
 /** v153 — an offer in the chat: the amount, the state, and Accept for the one who may decide (counter / reject stay in the Deal Desk) */
 const OfferChatCard: React.FC<{ id: string }> = ({ id }) => {
@@ -79,11 +81,11 @@ const OfferChatCard: React.FC<{ id: string }> = ({ id }) => {
 
 /** v153 — the commission agreement in the chat: version, state and the agreed total, one tap to the agreement itself */
 const AgreementChatCard: React.FC<{ id: string; dealId?: string; onOpen: (tab: string) => void }> = ({ id, dealId, onOpen }) => {
-  const tx = useTx(); const [a, setA] = useState<any>(null);
+  const tx = useTx(); const { lang } = useI18n(); const [a, setA] = useState<any>(null);
   useEffect(() => { if (dealId) api.getDealCommissionAgreements(dealId).then((r) => setA((r.agreements || []).find((x: any) => x.id === id) || null)).catch(() => setA(null)); }, [id, dealId]);
   return (
     <button type="button" onClick={() => onOpen('commission_agreement')} className={`${box} !border-emerald-300 !bg-emerald-50`} data-testid="chat-card-AGREEMENT">
-      <span className="block text-[10px] font-bold text-slate-500">{tx('COMMISSION AGREEMENT', 'कमीशन एग्रीमेंट')}{a ? ` · v${a.version} · ${a.status}` : ''}</span>
+      <span className="block text-[10px] font-bold text-slate-500">{tx('COMMISSION AGREEMENT', 'कमीशन एग्रीमेंट')}{a ? ` · v${a.version} · ${agreementStatusWord(a.status, lang === 'hi')}` : ''}</span>
       <span className="block text-base font-bold text-emerald-800">{a ? formatINR(a.totalAgreedBrokerage) : tx('Open the agreement', 'एग्रीमेंट खोलें')}</span>
     </button>
   );
@@ -91,6 +93,30 @@ const AgreementChatCard: React.FC<{ id: string; dealId?: string; onOpen: (tab: s
 
 // ───────────── the card inside a bubble ─────────────
 const box = 'block w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-left hover:bg-slate-100';
+
+const VisitOwnerReply: React.FC<{ v: any; reply: (text: string) => Promise<boolean>; when: string; reload?: () => void }> = ({ v, reply, when, reload }) => {
+  const tx = useTx(); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const done = v.ownerOk?.answer as 'YES' | 'NO' | undefined;
+  const go = async (answer: 'YES' | 'NO') => {
+    if (busy || done === answer) return;
+    setBusy(true); setErr('');
+    try {
+      await api.visitOwnerAnswer(v.id, answer);
+      await reply(answer === 'YES' ? tx(`OK, please bring them: ${when}`, `ठीक है, आने दीजिए: ${when}`) : tx('Please suggest another time for the visit.', 'कृपया विज़िट के लिए दूसरा समय बताइए।'));
+      reload?.();
+    } catch (e: any) { setErr(e.message || tx('Could not save', 'सेव नहीं हुआ')); } finally { setBusy(false); }
+  };
+  if (done === 'YES') return <p className="mt-1.5 text-xs font-bold text-emerald-700" data-testid="visit-confirmed">{tx('Visit confirmed — the broker has been told. The visitor shows the QR at the gate.', 'विज़िट कन्फ़र्म — ब्रोकर को बता दिया। विज़िटर गेट पर QR दिखाएगा।')}</p>;
+  return (
+    <div className="mt-1.5" data-testid="visit-owner-reply">
+      <div className="flex gap-1.5">
+        <button type="button" disabled={busy} onClick={() => void go('YES')} className="inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-50" data-testid="visit-owner-ok">{tx('Yes, let them come', 'हाँ, आने दो')}</button>
+        <button type="button" disabled={busy || done === 'NO'} onClick={() => void go('NO')} className="inline-flex min-h-11 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 disabled:opacity-50" data-testid="visit-owner-other">{done === 'NO' ? tx('Asked for another time', 'दूसरा समय माँगा') : tx('Other time', 'दूसरा समय')}</button>
+      </div>
+      {err && <p role="alert" className="mt-1 text-[11px] text-red-700">{err}</p>}
+    </div>
+  );
+};
 
 export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: string) => void; reload?: () => void; reply?: (text: string) => Promise<boolean>; viewerIsBroker?: boolean }> = ({ m, data, onOpen, reload, reply, viewerIsBroker }) => {
   const tx = useTx(); const label = useLabel();
@@ -169,11 +195,8 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
           </button>
           {v && viewerIsBroker && <div className="mt-1"><VisitJoint v={v} /></div>}
           {v && reply && !viewerIsBroker && !v.isVerified && Date.parse(v.scheduledTime) > Date.now() && (
-            // v153 — the owner answers the visit in one tap; it is a chat reply (the visit itself needs no owner approval)
-            <div className="mt-1.5 flex gap-1.5" data-testid="visit-owner-reply">
-              <button type="button" onClick={() => void reply(tx(`OK, please bring them: ${when(v.scheduledTime)}`, `ठीक है, आने दीजिए: ${when(v.scheduledTime)}`))} className="inline-flex min-h-9 items-center rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" data-testid="visit-owner-ok">{tx('Yes, let them come', 'हाँ, आने दो')}</button>
-              <button type="button" onClick={() => void reply(tx('Please suggest another time for the visit.', 'कृपया विज़िट के लिए दूसरा समय बताइए।'))} className="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700" data-testid="visit-owner-other">{tx('Other time', 'दूसरा समय')}</button>
-            </div>
+            // v189 — "yes" now records the owner's answer on the visit itself (the broker is told, the card shows it), then says it in the chat
+            <VisitOwnerReply v={v} reply={reply} when={when(v.scheduledTime)} reload={reload} />
           )}
           <div className="flex flex-wrap gap-1.5">
             {v && <button type="button" onClick={open(`visit:${v.id}`)} className="mt-1.5 inline-flex min-h-9 items-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white" data-testid="chat-card-visit-qr"><QrCode className="h-3.5 w-3.5" aria-hidden />{v.isVerified ? tx('Visit pass', 'विज़िट पास') : tx('Visit QR Pass', 'विज़िट QR पास')}</button>}

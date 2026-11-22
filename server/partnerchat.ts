@@ -13,6 +13,7 @@
  * these chats. A new message alerts the other side's phone (one alert per person per thread every 3 minutes).
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import express from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
@@ -36,7 +37,7 @@ const MAX_MSGS = 2000;
 type Side = { side: 'BUILDER'; builderId: string } | { side: 'PARTNER'; brokerId: string };
 /** which side of the chat this person speaks for (or none) */
 export function sideOf(u: UserProfile): Side | null {
-  if (u.verificationStatus !== 'VERIFIED') return null;
+  if (!isVerifiedFull(u)) return null;
   if (u.role === 'DEVELOPER_BUILDER') return { side: 'BUILDER', builderId: u.id };
   if (u.role === 'BROKER') return { side: 'PARTNER', brokerId: u.id };
   if (u.role === 'TEAM_MEMBER' && u.employerRole === 'DEVELOPER_BUILDER' && u.employerId && u.teamPolicy?.canVerify && !u.teamPolicy?.onLeave) return { side: 'BUILDER', builderId: u.employerId };

@@ -9,19 +9,20 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { db } from './db.js';
-import { ctx, needs, rateLimit, hit, secret, safeEqual, secureOtp, hashPassword, passwordPolicyError, digits, DEMO_MODE } from './auth.js';
+import { ctx, needs, rateLimit, hit, ipKey, secret, safeEqual, secureOtp, hashPassword, passwordPolicyError, digits, DEMO_MODE } from './auth.js';
 import { sendSms, smsGateway } from './notify.js';
 import { otpMode } from './features.js';
 import { effectivePermissions } from './permissions.js';
 
-export type OtpPurpose = 'signup' | 'owner' | 'reset';
+/** v186: 'open' = open sign-up codes, with a budget of their own so a sign-up flood can never use up the codes that existing members need to sign in */
+export type OtpPurpose = 'signup' | 'owner' | 'reset' | 'open';
 interface Rec { id: string; phone: string; purpose: OtpPurpose; hash: string; enc: string; exp: number; createdAt: number; tries: number; used?: boolean; locked?: boolean; lockedUntil?: number; sent?: string[]; viewedBy?: string[]; ip?: string }
 export const OTP_TTL_MS = 10 * 60_000, COOLDOWN_S = 60, PER_PHONE_DAY = 3, PER_PHONE_DAY_ANY = 10, MAX_TRIES = 5, LOCK_MS = 15 * 60_000, DAY = 86400_000;
 const PHONE_RE = /^[6-9]\d{9}$/;
 export const dailyCap = () => { const n = Number(process.env.OTP_DAILY_CAP); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 300; };
 
 const capEnv = (name: string, d: number) => { const n = Number(process.env[name]); return Number.isFinite(n) && n > 0 ? Math.floor(n) : d; };
-export const purposeCap = (p: OtpPurpose) => p === 'reset' ? capEnv('OTP_CAP_RESET', 150) : p === 'owner' ? capEnv('OTP_CAP_OWNER', 100) : capEnv('OTP_CAP_SIGNUP', 50);
+export const purposeCap = (p: OtpPurpose) => p === 'reset' ? capEnv('OTP_CAP_RESET', 150) : p === 'owner' ? capEnv('OTP_CAP_OWNER', 100) : p === 'open' ? capEnv('OTP_CAP_OPEN', 150) : capEnv('OTP_CAP_SIGNUP', 50);
 const book = (): Record<string, Rec> => {
   const s = db.getState() as any; const b: Record<string, Rec> = (s.manualOtp ||= {}); const t = Date.now(); const old = t - DAY;
   for (const k of Object.keys(b)) { if (b[k].createdAt < old) delete b[k]; else if (b[k].enc && b[k].exp < t) b[k].enc = ''; }   // an expired code's sealed copy is wiped
@@ -43,6 +44,7 @@ export function isStaffPhone(phone: string): boolean {
 const ipSeen = new Map<string, number>();
 /** per-IP: at most 10 distinct phones asked for a code in 24 h (the same phone again is not a new one). null = allowed */
 export function ipPhoneGate(ip: string | undefined, phone: string, now = Date.now()): OtpFail | null {
+  ip = ipKey(ip);
   const k = `${ip || '?'}|${phone}`; if ((ipSeen.get(k) || 0) > now) return null;
   const wait = hit(`otp-ip-phones:${ip || '?'}`, 10, DAY);
   if (wait) return fail(429, 'IP_PHONES', 'Too many different numbers from this device today. Try again tomorrow.', 'आज इस डिवाइस से बहुत सारे अलग नंबर आज़माए गए। कल कोशिश करें।', wait);
@@ -59,6 +61,7 @@ export function waLink(ref: string): string | null {
 /** Make a code for any phone (account or not). Returns the reference + the code (the caller decides who may see it: admin screen / SMS / demo). */
 export function issueOtp(phone: string, purpose: OtpPurpose, now = Date.now(), ip?: string): (OtpView & { ok: true; code: string }) | OtpFail {
   if (!PHONE_RE.test(phone)) return fail(400, 'BAD_PHONE', 'Enter your 10-digit mobile number', '10 अंकों का मोबाइल नंबर लिखें');
+  if (ip) ip = ipKey(ip);   // v186: an IPv6 client owns a whole /64 — one device
   const b = book(); const all = Object.values(b);
   const mine = all.filter(r => r.phone === phone);
   // v178: no phone-wide lock (a stranger could lock a victim out by guessing wrong on purpose). Each wrong-guessed code is locked on its own; this caps how many such codes one number can burn per day.
@@ -71,8 +74,8 @@ export function issueOtp(phone: string, purpose: OtpPurpose, now = Date.now(), i
   const unlocked = mine.filter(r => !r.locked), fromHere = unlocked.filter(r => r.ip === ip);
   const capped = fromHere.length >= PER_PHONE_DAY ? fromHere : unlocked.length >= PER_PHONE_DAY_ANY ? unlocked : null;
   if (capped) { const w = Math.ceil((Math.min(...capped.map(r => r.createdAt)) + DAY - now) / 1000); return fail(429, 'PHONE_DAY', 'Too many codes for this number today. Try again tomorrow.', 'आज इस नंबर के लिए बहुत कोड माँगे जा चुके। कल कोशिश करें।', w); }
-  const live = all.filter(r => !r.used && r.exp >= now);   // used (successful / locked) and expired codes do not eat the budget
-  if (live.length >= dailyCap() || live.filter(r => r.purpose === purpose).length >= purposeCap(purpose)) return fail(503, 'DAILY_CAP', 'Codes are busy right now. Please try again later.', 'अभी कोड भेजने की सीमा पूरी हो गई है। कृपया बाद में कोशिश करें।', 3600);
+  const live = all.filter(r => !r.used && r.exp >= now && (purpose === 'open' ? r.purpose === 'open' : r.purpose !== 'open'));   // used / expired codes do not eat the budget; open sign-up codes have their own bucket (v186)
+  if ((purpose !== 'open' && live.length >= dailyCap()) || live.filter(r => r.purpose === purpose).length >= purposeCap(purpose)) return fail(503, 'DAILY_CAP', 'Codes are busy right now. Please try again later.', 'अभी कोड भेजने की सीमा पूरी हो गई है। कृपया बाद में कोशिश करें।', 3600);
   const code = secureOtp(); let id = ''; do id = crypto.randomBytes(4).toString('hex').toUpperCase(); while (b[id]);   // never overwrite another code's record
   const rec: Rec = { id, phone, purpose, hash: '', enc: sealCode(code, id), exp: now + OTP_TTL_MS, createdAt: now, tries: 0, ...(ip ? { ip } : {}) };
   rec.hash = hm(rec, code); b[id] = rec; db.save();
@@ -90,6 +93,7 @@ const ipWrongCount = (ip: string | undefined, now: number) => {
 };
 /** Check a code. consume=false lets the caller finish its own checks first, then call useOtp(). */
 export function checkOtp(ref: unknown, phone: string, purpose: OtpPurpose, code: unknown, now = Date.now(), consume = true, ip?: string): { ok: true } | OtpFail {
+  if (ip) ip = ipKey(ip);
   const ipw = ipWrongWait(ip, now);
   if (ipw) return fail(429, 'IP_WRONG', 'Too many wrong codes from this device. Try again later.', 'इस डिवाइस से बहुत ग़लत कोड आज़माए गए। बाद में कोशिश करें।', ipw);
   const rec = typeof ref === 'string' ? book()[ref] : undefined;

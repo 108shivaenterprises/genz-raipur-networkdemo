@@ -155,7 +155,7 @@ const TaskCard: React.FC<{ t: any; reviewers: { id: string; name: string; role: 
             <span className="break-words text-sm font-bold">{u.name}</span>
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusChip(u.status)}`}>{u.status}</span>
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${u.tier === 'TIER1' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'}`}>{u.tier === 'TIER1' ? 'Tier 1 · RERA' : 'Tier 2'}</span>
-            {t.autoVerified && <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-800"><BadgeCheck className="h-3 w-3" />{tx('Auto-verified', 'ऑटो-वेरिफ़ाइड')}</span>}
+            {t.autoVerified && <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-800"><BadgeCheck className="h-3 w-3" />{u?.basic ? tx('Basic (not KYC verified)', 'बेसिक (KYC नहीं)') : tx('Auto-verified', 'ऑटो-वेरिफ़ाइड')}</span>}
             {t.mismatch && <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-800"><ShieldAlert className="h-3 w-3" />{tx('Differs from sponsor’s details', 'स्पॉन्सर की जानकारी से अलग')}</span>}
             {t.status === 'CHANGES_ASKED' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{tx('Waiting for member', 'सदस्य से इंतज़ार')}</span>}
             {t.status === 'DONE' && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">{tx('ID seen', 'ID देखी')} · {d0(t.doneAt)}</span>}
@@ -168,6 +168,7 @@ const TaskCard: React.FC<{ t: any; reviewers: { id: string; name: string; role: 
             <span>{tx('Aadhaar', 'आधार')}: <b className="font-mono">{info.aadhaar || tx('not given', 'नहीं दिया')}</b></span>
             <span className={hasKind('PAN') ? 'font-semibold text-emerald-700' : 'text-slate-400'}>{hasKind('PAN') ? '✓' : '—'} {tx('PAN copy', 'PAN कॉपी')}</span>
             <span className={hasKind('AADHAAR') ? 'font-semibold text-emerald-700' : 'text-slate-400'}>{hasKind('AADHAAR') ? '✓' : '—'} {tx('Aadhaar copy', 'आधार कॉपी')}</span>
+            {hasKind('RERA') && <span className="font-semibold text-emerald-700">✓ {tx('RERA copy', 'RERA कॉपी')}</span>}
           </div>
         </div>
       </div>

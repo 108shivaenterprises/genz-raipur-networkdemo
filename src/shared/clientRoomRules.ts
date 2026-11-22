@@ -132,3 +132,7 @@ export const isKycKind = (k: unknown) => DOC_KINDS.some(d => d.id === k && d.kyc
 /** v70 — the full-Aadhaar kind is off unless the server switch is on AND the broker asked this client; such a file is erased after this many days */
 export const FULL_AADHAAR_DAYS = 7;
 export const DOC_LIMITS = { maxBytes: 2_500_000, perRoom: 12 } as const;
+
+/** v183 — the client's read-only step line: Visit › Offer › Deal. A deal stage maps to the furthest step reached (0 visit, 1 offer, 2 deal); no money, no other party. */
+export const CLIENT_STEPS = [['Visit', 'विज़िट'], ['Offer', 'ऑफ़र'], ['Deal', 'डील']] as const;
+export const clientStepOf = (stage: string): number => (['Agreement', 'Handover', 'Settled'].includes(stage) ? 2 : stage === 'Negotiation' ? 1 : 0);

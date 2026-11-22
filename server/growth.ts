@@ -10,6 +10,7 @@
  *  - "Forgot password" requests (public, no account enumeration) land in an ops queue; ops issue a one-time password.
  */
 import { nextNudge } from '../src/shared/rescueRules.js';
+import { isVerifiedFull } from './permissions.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import crypto from 'node:crypto';
@@ -31,7 +32,7 @@ export const PRO_ROLES = ['BROKER', 'DEVELOPER_BUILDER', 'CONTRACTOR', 'LEGAL_CO
 const JOIN_ROLES = [...PRO_ROLES, 'PROPERTY_OWNER'] as const;
 const ROLE_LABEL: Record<string, string> = { BROKER: 'Broker', DEVELOPER_BUILDER: 'Builder / Developer', CONTRACTOR: 'Contractor', LEGAL_COUNSEL: 'Legal counsel', PROPERTY_OWNER: 'Property owner' };
 const isPro = (u: UserProfile) => (PRO_ROLES as readonly string[]).includes(u.role);
-const isVerified = (u: UserProfile) => u.verificationStatus === 'VERIFIED';
+const isVerified = (u: UserProfile) => isVerifiedFull(u);
 
 const nominateSchema = z.object({
   name: z.string().trim().min(2, 'Name is required').max(80),
@@ -231,7 +232,7 @@ export function createGrowthRouter() {
   r.get('/stalled', needs('growth:manage'), (_req: Request, res: Response) => {
     const st = db.getState(); const now = Date.now();
     const listed = new Set(st.properties.map(p => p.listingBrokerId)); const hasLead = new Set(st.crmLeads.map(l => l.associateId).filter(Boolean));
-    const rows = st.users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED').flatMap(u => {
+    const rows = st.users.filter(u => u.role === 'BROKER' && isVerifiedFull(u)).flatMap(u => {
       const n = nextNudge({ createdAt: u.createdAt, lastLoginAt: u.lastLoginAt, hasListing: listed.has(u.id), hasClient: hasLead.has(u.id), nudgedKind: (u as any).nudgedKind, nudgedAt: (u as any).nudgedAt }, u.name, now);
       return n ? [{ userId: u.id, name: u.name, phone: u.phone, kind: n.kind, days: n.days, en: n.en, hi: n.hi }] : [];
     }).sort((a, b) => b.days - a.days).slice(0, 200);

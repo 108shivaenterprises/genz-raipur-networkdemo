@@ -50,8 +50,8 @@ export const aadhaarLast4 = (n: string) => n.slice(-4);
 export const maskAadhaar = (last4?: string) => (last4 && /^\d{4}$/.test(last4) ? `XXXX XXXX ${last4}` : '');
 
 /** Who may register (sponsor) a local associate: a verified broker whose RERA registration is on file (Tier 1). */
-export function isSponsorEligible(u: { role?: string; tier?: string; reraNumber?: string; verificationStatus?: string } | undefined | null): boolean {
-  if (!u || u.role !== 'BROKER' || u.verificationStatus !== 'VERIFIED') return false;
+export function isSponsorEligible(u: { role?: string; tier?: string; reraNumber?: string; verificationStatus?: string; basicTier?: boolean } | undefined | null): boolean {
+  if (!u || u.role !== 'BROKER' || u.verificationStatus !== 'VERIFIED' || u.basicTier) return false;   // v186: a Basic account cannot sponsor
   const tier = u.tier === 'TIER1' || u.tier === 'TIER2' ? u.tier : (u.reraNumber ? 'TIER1' : 'TIER2');
   return tier === 'TIER1';
 }
@@ -92,7 +92,7 @@ export function aadhaarProblem(raw: unknown): IdProblem | null {
 export const isLast4 = (v: unknown) => /^\d{4}$/.test(String(v ?? '').trim());
 
 // ── scanned ID copies (PAN card / masked Aadhaar) ──
-export const ID_DOC_KINDS = ['PAN', 'AADHAAR'] as const;
+export const ID_DOC_KINDS = ['PAN', 'AADHAAR', 'RERA'] as const;
 export type IdDocKind = (typeof ID_DOC_KINDS)[number];
 export const ID_DOC_MAX_BYTES = 3 * 1024 * 1024;
 /** a scan is deleted this many days after the GENZ team has decided on it (kept only as long as it is needed for the check) */
@@ -102,6 +102,7 @@ export const ID_DOC_ORPHAN_DAYS = 14;
 export const ID_DOC_LABEL: Record<IdDocKind, { en: string; hi: string }> = {
   PAN: { en: 'PAN card (photo / PDF)', hi: 'PAN कार्ड (फ़ोटो / PDF)' },
   AADHAAR: { en: 'Aadhaar card — MASKED copy (photo / PDF)', hi: 'आधार कार्ड — मास्क्ड कॉपी (फ़ोटो / PDF)' },
+  RERA: { en: 'RERA certificate (photo / PDF)', hi: 'RERA सर्टिफ़िकेट (फ़ोटो / PDF)' },
 };
 export const ID_DOC_NOTE = {
   en: 'Upload the MASKED Aadhaar (first 8 digits hidden — download “Masked Aadhaar” from myAadhaar.uidai.gov.in, or cover the number with paper before the photo). Only the GENZ ID-review team can open these copies, every opening is logged, and they are deleted 90 days after the check or when you ask.',

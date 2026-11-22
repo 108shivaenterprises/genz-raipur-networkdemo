@@ -338,7 +338,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
             {bottom.map(b => {
               const Icon = b.tab!.icon; const on = activeTab === b.tab!.id;
               return (
-                <button key={b.tab!.id} onClick={() => { setMore(false); onChangeTab(b.tab!.id as TabType); }} data-testid={`bottom-${b.tab!.id}`}
+                <button key={b.tab!.id} onClick={() => { setMore(false); if (b.tab!.id === activeTab && activeTab === 'deals') window.dispatchEvent(new Event('genz:deals-home')); else onChangeTab(b.tab!.id as TabType); }} data-testid={`bottom-${b.tab!.id}`}
                   className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${on ? 'text-slate-900' : 'text-slate-500'}`}>
                   <Icon className={`h-5 w-5 ${on ? 'text-amber-500' : ''}`} />{b.label}
                   {Boolean(b.tab!.badge && b.tab!.badge > 0) && <span className="absolute right-3 top-1.5 h-2 w-2 rounded-full bg-red-500" />}

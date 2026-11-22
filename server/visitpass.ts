@@ -8,6 +8,7 @@
  * Pass is single-use, time-boxed, tied to one lead; the scanner sees who is expected and confirms an ID check.
  */
 import { brandedQrSvg } from './brandlogo.js';
+import { isVerifiedFull } from './permissions.js';
 import { alert } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
@@ -38,7 +39,7 @@ export function canIssueFor(u: UserProfile, l: CrmLead): boolean {
   if (u.role === 'DEVELOPER_BUILDER') return l.builderId === u.id && !l.associateId;
   if (u.role === 'TEAM_MEMBER') {
     const emp = profile(u.employerId || '');
-    if (!emp || emp.verificationStatus !== 'VERIFIED') return false;
+    if (!emp || !isVerifiedFull(emp)) return false;
     if (emp.role === 'BROKER') return l.associateId === emp.id && l.assignedMemberId === u.id;
     if (emp.role === 'DEVELOPER_BUILDER') return l.builderId === emp.id && !l.associateId && leadsForMember(u).some(x => x.id === l.id);
   }
@@ -47,10 +48,10 @@ export function canIssueFor(u: UserProfile, l: CrmLead): boolean {
 
 /** Can this user scan passes of this builder (and project)? (builder side only). */
 export function canScanFor(u: UserProfile, builderId: string, projectId?: string): boolean {
-  if (u.role === 'DEVELOPER_BUILDER') return u.id === builderId && u.verificationStatus === 'VERIFIED';
-  if (u.role !== 'TEAM_MEMBER' || u.verificationStatus !== 'VERIFIED' || u.employerId !== builderId) return false;
+  if (u.role === 'DEVELOPER_BUILDER') return u.id === builderId && isVerifiedFull(u);
+  if (u.role !== 'TEAM_MEMBER' || !isVerifiedFull(u) || u.employerId !== builderId) return false;
   const emp = profile(builderId);
-  if (!emp || emp.role !== 'DEVELOPER_BUILDER' || emp.verificationStatus !== 'VERIFIED') return false;
+  if (!emp || emp.role !== 'DEVELOPER_BUILDER' || !isVerifiedFull(emp)) return false;
   const p = policyOf(u);
   if (!p.canScanVisits || p.onLeave) return false;
   return !projectId || p.projectIds.length === 0 || p.projectIds.includes(projectId);

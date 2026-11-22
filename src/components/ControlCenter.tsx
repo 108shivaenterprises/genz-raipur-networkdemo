@@ -67,7 +67,7 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [q, setQ] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-  const [form, setForm] = useState({ maintenanceMode: false, requireReraForBrokerApproval: true, ownerConsentRequired: false, defaultConstructionCommissionPct: 2 });
+  const [form, setForm] = useState({ maintenanceMode: false, requireReraForBrokerApproval: false, ownerConsentRequired: false, defaultConstructionCommissionPct: 2 });
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -78,7 +78,7 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
       const s = c.settings || {};
       setForm({
         maintenanceMode: !!s.maintenanceMode,
-        requireReraForBrokerApproval: s.requireReraForBrokerApproval !== false,
+        requireReraForBrokerApproval: s.requireReraForBrokerApproval === true,
         ownerConsentRequired: !!s.ownerConsentRequired,
         defaultConstructionCommissionPct: Number(s.defaultConstructionCommissionPct ?? 2),
       });
@@ -165,9 +165,9 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
             <span>{tx('Maintenance mode (blocks everyone except admins)', 'मेंटेनेंस मोड (एडमिन के अलावा सबके लिए बंद)')}</span>
             <input type="checkbox" checked={form.maintenanceMode} onChange={(e) => setForm({ ...form, maintenanceMode: e.target.checked })} />
           </label>
-          <label className="mb-2 flex items-center justify-between text-xs text-slate-700">
-            <span>{tx('Require RERA number to approve brokers', 'ब्रोकर मंज़ूर करने के लिए RERA नंबर ज़रूरी')}</span>
-            <input type="checkbox" checked={form.requireReraForBrokerApproval} onChange={(e) => setForm({ ...form, requireReraForBrokerApproval: e.target.checked })} />
+          <label className="mb-2 flex min-h-11 items-center justify-between text-xs text-slate-700">
+            <span>{tx('Block approving brokers without RERA (OFF = they are approved as Tier 2 associates)', 'बिना RERA के ब्रोकर की मंज़ूरी रोकें (बंद = वे Tier 2 एसोसिएट के रूप में मंज़ूर होते हैं)')}</span>
+            <input type="checkbox" className="h-5 w-5" checked={form.requireReraForBrokerApproval} onChange={(e) => setForm({ ...form, requireReraForBrokerApproval: e.target.checked })} />
           </label>
           <label className="mb-2 flex items-center justify-between gap-3 text-xs text-slate-700">
             <span>{tx('Every new broker listing needs the owner’s consent first (link or signed form)', 'हर नई ब्रोकर लिस्टिंग से पहले मालिक की सहमति ज़रूरी (लिंक या साइन किया फ़ॉर्म)')}</span>

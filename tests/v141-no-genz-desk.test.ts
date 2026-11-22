@@ -52,11 +52,12 @@ describe('v141 · no GENZ desk', { timeout: 180_000 }, () => {
     const n = await j(await call(undefined, 'POST', '/api/auth/register-invite', body(c2, 'No Otp', '9826170142', 'nootp.broker@test.genz.example', { panNumber: 'ABCPO1420F' })));
     expect(n.autoVerified).toBe(false); expect(n.user.verificationStatus).toBe('PENDING');
   });
-  it('a broker adds his RERA: Tier 1 at once, no staff check; a number already taken is refused', async () => {
-    const me = await login('otp.broker@test.genz.example', PASS);
-    const r = await call(me, 'POST', '/api/network/my-rera', { reraNumber: 'CGRERA010224A0141' });
-    const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(200); expect(b.tier).toBe('TIER1'); expect(b.claim.status).toBe('APPROVED');
-    expect((await call(BRK[1], 'POST', '/api/network/my-rera', { reraNumber: 'CGRERA010224A0141' })).status).toBe(409);
+  it('a broker adds his RERA: a verified broker gets Tier 1 at once; a Basic account only files a claim (v186); a number held by another account is refused', async () => {
+    expect((await j(await call(BRK[0], 'POST', '/api/network/my-rera', { reraNumber: 'CGRERA010224A0141' }))).tier).toBe('TIER1');
+    const me = await login('otp.broker@test.genz.example', PASS);   // signed up by OTP + PAN = Basic since v186
+    const taken = await call(me, 'POST', '/api/network/my-rera', { reraNumber: 'CGRERA010224A0141' }); expect(taken.status).toBe(409);
+    const r = await call(me, 'POST', '/api/network/my-rera', { reraNumber: 'CGRERA010224A0142' });
+    const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(200); expect(b.pending).toBe(true); expect(b.tier).toBe('TIER2'); expect(b.claim.status).toBe('PENDING');
   });
   it('three different verified members report a member → suspended at once, his self-added RERA goes', async () => {
     for (let i = 0; i < 3; i++) { const r = await call(BRK[i], 'POST', '/api/daily/report', { targetType: 'BROKER', targetId: NEW_ID, reason: 'FAKE', note: 'not a real broker' }); expect(r.status, await r.clone().text()).toBe(200); }

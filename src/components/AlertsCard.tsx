@@ -63,7 +63,7 @@ export const AlertsCard: React.FC<{ compact?: boolean; role?: string; onState?: 
       <div className="flex items-center gap-2">
         {on ? <Bell className="h-4 w-4 text-emerald-600" /> : <BellOff className="h-4 w-4 text-amber-600" />}
         <p className="flex-1 text-sm font-semibold text-slate-900">{on ? tx('Phone alerts are on', 'फ़ोन अलर्ट चालू हैं') : tx('Turn on phone alerts', 'फ़ोन अलर्ट चालू करें')}</p>
-        {state !== 'unsupported' && <button onClick={toggle} disabled={busy} className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 ${on ? 'bg-slate-500' : 'bg-emerald-600'}`} data-testid="alerts-toggle">
+        {state !== 'unsupported' && <button onClick={toggle} disabled={busy} className={`min-h-11 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 ${on ? 'bg-slate-500' : 'bg-emerald-600'}`} data-testid="alerts-toggle">
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : on ? tx('Turn off', 'बंद करें') : tx('Turn on', 'चालू करें')}
         </button>}
       </div>
@@ -94,7 +94,7 @@ export const AlertsNudge: React.FC<{ role: string }> = ({ role }) => {
     <div className="mb-4" data-testid="alerts-nudge">
       <AlertsCard role={role} />
       <div className="mt-1 text-right">
-        <button onClick={later} className="inline-flex items-center gap-0.5 px-1 py-0.5 text-[11px] font-medium text-slate-500 hover:text-slate-800" data-testid="alerts-nudge-later">
+        <button onClick={later} className="inline-flex min-h-11 items-center gap-0.5 px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:text-slate-800" data-testid="alerts-nudge-later">
           <X className="h-3 w-3" /> {tx('Not now', 'अभी नहीं')}
         </button>
       </div>

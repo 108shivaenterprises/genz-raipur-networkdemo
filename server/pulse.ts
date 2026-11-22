@@ -9,6 +9,7 @@
  * For the days before that record existed, the audit trail gives the people who did something.
  */
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { db } from './db.js';
 import { ctx, needs } from './auth.js';
 import { collectedPct } from './crm.js';
@@ -113,10 +114,10 @@ export function createPulseRouter() {
       activity: { windows: win, signups, series },
       network: {
         people: people.length,
-        verifiedPeople: people.filter(u => u.verificationStatus === 'VERIFIED').length,
+        verifiedPeople: people.filter(u => isVerifiedFull(u)).length,
         pendingPeople: people.filter(u => u.verificationStatus === 'PENDING').length,
         byRole: people.reduce<Record<string, number>>((m, u) => { m[u.role] = (m[u.role] || 0) + 1; return m; }, {}),
-        brokers: { total: brokers.length, verified: brokers.filter(u => u.verificationStatus === 'VERIFIED').length, rera: brokers.filter(u => !!u.reraNumber).length },
+        brokers: { total: brokers.length, verified: brokers.filter(u => isVerifiedFull(u)).length, rera: brokers.filter(u => !!u.reraNumber).length },
       },
       projects: projectStats(st.builderProjects || []),
       bookings: bk,

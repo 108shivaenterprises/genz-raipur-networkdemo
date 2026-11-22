@@ -4,9 +4,10 @@
  * "you have N homes for it". Non-RERA (local associate) brokers appear exactly like others, with their level.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { db } from './db.js';
 import type { UserProfile, Property } from './db.js';
-import { ctx, needs } from './auth.js';
+import { ctx, needs, needsKyc } from './auth.js';
 import { calculatePropertyMatch } from './matching.js';
 import { inferCity } from '../src/shared/places.js';
 import { brokerLevel } from '../src/shared/brokerLevel.js';
@@ -17,14 +18,14 @@ const ck = (s?: string) => String(s || '').trim().toLowerCase();
 const liveP = (p: Property) => p.verificationStatus === 'VERIFIED' && ['active', 'under_negotiation'].includes(p.listingStatus) && !(p as any).heldAt && !(p as any).expiredAt && !(p as any).purgedAt;
 const who = (id: string) => {
   const u = db.byId('users', id) as UserProfile | undefined;
-  if (!u || u.verificationStatus !== 'VERIFIED') return null;
+  if (!u || !isVerifiedFull(u)) return null;
   const lv = brokerLevel(u);
   return { id: u.id, name: u.name, company: u.companyName || '', level: lv.code, levelEn: lv.en, levelHi: lv.hi, rera: lv.rera };
 };
 
 export function createFeedRouter() {
   const r = Router();
-  r.get('/', needs('property:read'), (req: Request, res: Response) => {
+  r.get('/', needs('property:read'), needsKyc, (req: Request, res: Response) => {
     const me = ctx().user as UserProfile; const s = db.getState(); const since = Date.now() - DAYS * 86400_000;
     if (me.role === 'BUYER_TENANT' || me.role === 'PROPERTY_OWNER') return res.status(403).json({ error: 'The network feed is for GENZ members' });   // v137
     const kind = String(req.query.kind || 'all');

@@ -84,10 +84,10 @@ export function findBlockingBond(p: { ownerPhone: string; city: string; locality
   return st().ownerConsents.find(c => c.id !== exceptConsentId && c.brokerId !== brokerId && c.looseKeyHash === key && bondActive(c) && sameArea(c.snapshot.areaSqft, p.areaSqft));
 }
 /** what the blocked broker may see: when the protection ends and (if the listing is live) which listing to co-broke on */
-export function blockedAnswer(c: OwnerConsent) {
+export function blockedAnswer(c: OwnerConsent, basic = false) {
   const prop = c.propertyId ? db.byId('properties', c.propertyId) as Property | undefined : undefined;
   const live = prop && prop.verificationStatus === 'VERIFIED' && ['active', 'under_negotiation'].includes(prop.listingStatus);
-  return { error: TAKEN_MSG.en, hi: TAKEN_MSG.hi, code: 'CONSENT_TAKEN', protectedUntil: c.expiresAt, coBrokePropertyId: live ? prop!.id : undefined };
+  return { error: TAKEN_MSG.en, hi: TAKEN_MSG.hi, code: 'CONSENT_TAKEN', protectedUntil: c.expiresAt, coBrokePropertyId: live && !basic ? prop!.id : undefined };   // v186b: a Basic account is never pointed at another broker's listing
 }
 
 /** POST /api/properties with consentId → the consent if this broker may publish this property with it */
@@ -272,7 +272,7 @@ export function createConsentRouter() {
         const nf: Record<string, any> = {
           title: it.title, description: stripContacts(it.raw).slice(0, 1500), propertyType: it.propertyType || '', transactionType: it.transactionType || 'Sale',
           state: it.state || (city === homeCity && u.state ? u.state : stateFor('', city)), city, localities: it.localities || [], budgetMin: it.budgetMin ?? null, budgetMax: it.budgetMax ?? null,
-          minAreaSqFt: it.areaSqft ?? null, bhk: it.bhk ?? null, customerName: '', customerPhone: '', tags: it.tags, phonesFound: it.phones,
+          minAreaSqFt: it.areaSqft ?? null, bhk: it.bhk ?? null, customerName: it.customerName || '', customerPhone: '', tags: it.tags, phonesFound: it.phones,
           purpose: 'Self-use', urgency: 'Moderate (1-3 months)',
         };
         out.push({ id: nextId('LD', s.listingDrafts), brokerId: u.id, kind: 'NEED', status: 'DRAFT', raw: it.raw, fields: nf, createdAt: nowIso(), updatedAt: nowIso() });
@@ -281,7 +281,7 @@ export function createConsentRouter() {
       const fields: Record<string, any> = {
         title: it.title, description: stripContacts(it.raw).slice(0, 1500), propertyType: it.propertyType || '', transactionType: it.transactionType || '',
         state: it.state || (city === homeCity && u.state ? u.state : stateFor('', city)), city, locality: it.locality || '', addressHidden: '',
-        areaSqft: it.areaSqft ?? null, bhk: it.bhk ?? null, askingPrice: it.price ?? null, ownerApprovedNetPrice: null,
+        areaSqft: it.areaSqft ?? null, floor: it.floor ?? null, bhk: it.bhk ?? null, askingPrice: it.price ?? null, ownerApprovedNetPrice: null,
         ownerName: it.ownerName || '', ownerPhone: it.ownerPhone || '', tags: it.tags, phonesFound: it.phones,
       };
       const d: ListingDraft = { id: nextId('LD', s.listingDrafts), brokerId: u.id, status: 'DRAFT', raw: it.raw, fields, createdAt: nowIso(), updatedAt: nowIso() };
@@ -345,7 +345,7 @@ export function createConsentRouter() {
     const f = d.fields;
     if (!PHONE_RE.test(phone10(f.ownerPhone)) || !f.city || !f.locality || !f.propertyType) return res.json({ success: true, state: 'INCOMPLETE' });
     const b = findBlockingBond({ ownerPhone: f.ownerPhone, city: f.city, locality: f.locality, propertyType: f.propertyType, areaSqft: f.areaSqft }, d.brokerId);
-    if (b) return res.json({ success: true, state: 'TAKEN', ...blockedAnswer(b) });
+    if (b) return res.json({ success: true, state: 'TAKEN', ...blockedAnswer(b, !!db.byId('users', d.brokerId)?.basicTier) });
     res.json({ success: true, state: 'FREE' });
   });
 
@@ -363,7 +363,7 @@ export function createConsentRouter() {
     const f = d.fields;
     { const pb = partyBlock(f.ownerPhone, 'owner'); if (pb) { res.status(403).json(pb); return null; } } // v35 — Network Watch
     const b = findBlockingBond({ ownerPhone: f.ownerPhone, city: f.city, locality: f.locality, propertyType: f.propertyType, areaSqft: f.areaSqft }, d.brokerId);
-    if (b) { res.status(409).json(blockedAnswer(b)); return null; }
+    if (b) { res.status(409).json(blockedAnswer(b, !!db.byId('users', d.brokerId)?.basicTier)); return null; }
     // v27/v28 — brokerage: the broker (already signed in) confirms the terms with a tick; the owner signs them with his yes.
     // (v27 asked for the password here; browsers auto-filled a saved superadmin password into it, so it is a tick now.)
     const tt = termsOf(f);

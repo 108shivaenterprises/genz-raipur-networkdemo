@@ -158,7 +158,7 @@ export const MandateModal: React.FC<Props> = ({ property, mandates, currentUser,
             <div className="text-xs font-semibold text-slate-800">{hi ? 'पहले अपना लिस्टिंग ब्रोकर चुनें' : 'First choose your listing broker'}</div>
             <select value={brokerPick} onChange={(e) => setBrokerPick(e.target.value)} className="w-full rounded-lg border border-slate-300 p-2 text-xs">
               <option value="">{hi ? '— सत्यापित ब्रोकर —' : '— Verified broker —'}</option>
-              {brokers.filter((b) => b.verificationStatus === 'VERIFIED').map((b) => (
+              {brokers.filter((b) => b.verificationStatus === 'VERIFIED' && !b.basicTier).map((b) => (
                 <option key={b.id} value={b.id}>{b.name}{b.companyName ? ` — ${b.companyName}` : ''}</option>
               ))}
             </select>

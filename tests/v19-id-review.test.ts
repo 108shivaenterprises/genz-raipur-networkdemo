@@ -110,7 +110,7 @@ describe('the sponsor adds the person\'s ID details and copies at invite time', 
     expect(bad.status).toBe(400); expect((await j(bad)).error).toContain('“D”');
     expect((await call(S.cookie, 'POST', '/api/network/tier2/applications', mkApp('Tarun', { aadhaarLast4: '12' }))).status).toBe(400);
     const dup = await call(S.cookie, 'POST', '/api/network/tier2/applications', mkApp('Tarun', { panNumber: S.pan })); // the sponsor's own PAN is already an account
-    expect(dup.status).toBe(409); expect((await j(dup)).code).toBe('PAN_IN_USE');
+    expect(dup.status).toBe(409); expect((await j(dup)).code).toBe('CANNOT_REGISTER');
   });
 
   it('firm, PAN and Aadhaar last-4 are kept on the request; the request card shows only yes / no', async () => {

@@ -44,7 +44,12 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
   onUnauthorized = fn;
 }
 
+// v188: the KYC sheet opens only because of a tap — a background load that gets 403 stays quiet
+let lastTap = 0;
+if (typeof window !== 'undefined') for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => { lastTap = Date.now(); }, true);
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const tapped = Date.now() - lastTap < 2500;   // at SEND time: was this call caused by a tap?
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -66,6 +71,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     if (res.status === 401 && !url.startsWith('/api/auth/login')) onUnauthorized?.();
+    if (res.status === 403 && data?.code === 'ACCOUNT_NOT_VERIFIED' && data?.basic && tapped) { try { window.dispatchEvent(new CustomEvent('genz:kyc-locked')); } catch { /* no window */ } }   // v185: Basic account → friendly KYC sheet
     throw new ApiError((readLang() === 'hi' && (data.errorHi || (typeof data.hi === 'string' && data.hi))) || data.error || (res.status === 413 ? 'The file or photos are too large — use a smaller file or a link.' : res.status >= 500 ? 'Server problem — please try again in a minute.' : 'Request failed — please try again.'), res.status, data.code, data);
   }
 
@@ -93,6 +99,7 @@ export const api = {
       demoMode: boolean;
       voice?: boolean;
       otpMode?: 'manual' | 'sms' | 'demo';
+      signupMode?: 'open' | 'invite';
       publicUrl?: string;
       demoPassword?: string;
       demoAccounts: { id: string; name: string; email: string; role: string; companyName?: string; verificationStatus: string }[];
@@ -120,6 +127,9 @@ export const api = {
   revokeInvitation: (id: string) =>
     request<{ success: boolean }>(`/api/invitations/${id}/revoke`, { method: 'POST', body: '{}' }),
   registerOtp: (code: string, phone: string) => request<{ success: boolean; otpToken: string } & import('../components/OtpStep.js').OtpReq>('/api/auth/register-otp', { method: 'POST', body: JSON.stringify({ code, phone }) }),
+  /** v185 (D15) — open sign-up: no invitation code */
+  signupOtp: (phone: string) => request<{ success: boolean; otpToken: string } & import('../components/OtpStep.js').OtpReq>('/api/auth/signup-otp', { method: 'POST', body: JSON.stringify({ phone }) }),
+  openSignup: (payload: Record<string, unknown>) => request<{ success: boolean; basic: boolean; user: UserProfile; permissions: string[] }>('/api/auth/signup', { method: 'POST', body: JSON.stringify(payload) }),
   registerInvite: (payload: {
     code: string;
     name: string;
@@ -156,11 +166,12 @@ export const api = {
   validateInvite: (code: string) =>
     request<{ valid: boolean; invitation?: Invitation; error?: string }>(`/api/invitations/validate/${encodeURIComponent(code)}`),
 
+  heldListings: (userId: string) => request<{ success: boolean; total: number; willPublish: number; listings: { id: string; title: string; city: string; locality?: string; propertyType?: string; transactionType?: string; askingPrice?: number; description?: string; photos?: number }[] }>(`/api/verifications/${userId}/held`),
   // Verification Review
-  reviewVerification: (userId: string, action: string, notes?: string) =>
-    request<{ success: boolean; user: UserProfile }>(`/api/verifications/${userId}/review`, {
+  reviewVerification: (userId: string, action: string, notes?: string, publishIds?: string[]) =>
+    request<{ success: boolean; user: UserProfile; publishedHeld?: number; heldLeft?: number }>(`/api/verifications/${userId}/review`, {
       method: 'POST',
-      body: JSON.stringify({ action, notes }),
+      body: JSON.stringify({ action, notes, ...(publishIds?.length ? { publishIds } : {}) }),
     }),
 
   // Properties
@@ -625,6 +636,7 @@ export const api = {
   crFullAadhaar: (id: string, ask: boolean) => request<any>(`/api/client-rooms/${id}/full-aadhaar`, { method: 'POST', body: JSON.stringify({ ask }) }),
   crDocDel: (id: string, docId: string) => request<any>(`/api/client-rooms/${id}/docs/${docId}`, { method: 'DELETE' }),
   crRead: (id: string) => request<any>(`/api/client-rooms/${id}/read`, { method: 'POST' }),
+  visitOwnerAnswer: (id: string, answer: 'YES' | 'NO') => request<any>(`/api/site-visits/${encodeURIComponent(id)}/owner-answer`, { method: 'POST', body: JSON.stringify({ answer }) }),
   crVisitHandled: (id: string, itemId: string, vid: string) => request<any>(`/api/client-rooms/${id}/visit/${itemId}/${vid}/handled`, { method: 'POST' }),
   // v40 — photos & video shown to the client
   crItemMedia: (id: string, itemId: string) => request<{ success: boolean; available: { photos: string[]; videos: { url: string; kind: 'YOUTUBE' | 'FILE' | 'LINK' }[] }; chosen: { photos: string[]; videos: string[] }; limits: { maxPhotos: number; maxVideos: number } }>(`/api/client-rooms/${id}/items/${itemId}/media`),
@@ -687,6 +699,8 @@ export const api = {
   invCharges: (id: string, payload: any) => request<{ success: boolean; charges: any }>(`/api/inventory/projects/${id}/charges`, { method: 'PUT', body: JSON.stringify(payload) }),
   costPreview: (payload: { unitId: string; qty: Record<string, number> }) => request<{ success: boolean; out: any; options: { id: string; label: string; maxQty: number; amount: number; mode: string }[]; validDays: number; note: string; blocked: string }>('/api/invdesk/cost-sheets/preview', { method: 'POST', body: JSON.stringify(payload) }),
   costCreate: (payload: any) => request<{ success: boolean; token: string; path: string; validUntil: string; out: any }>('/api/invdesk/cost-sheets', { method: 'POST', body: JSON.stringify(payload) }),
+  dealHelp: (dealId: string, details: string) => request<any>('/api/privacy/requests', { method: 'POST', body: JSON.stringify({ type: 'GRIEVANCE', dealId, details }) }),
+  myRequests: () => request<{ requests: any[] }>('/api/privacy/requests'),
   costSheets: () => request<{ success: boolean; sheets: any[] }>('/api/invdesk/cost-sheets'),
   costRevoke: (token: string) => request<{ success: boolean }>(`/api/invdesk/cost-sheets/${token}/revoke`, { method: 'POST', body: '{}' }),
   // v107 — lead addresses (website form / webhook): the owner's side
@@ -1191,6 +1205,7 @@ export const api = {
   // v19 — ID copies (PAN card / masked Aadhaar) and the ID-review desk
   idMine: () => request<any>('/api/id-review/mine'),
   idMineUpload: (b: { kind: string; fileName: string; data: string }) => request<any>('/api/id-review/mine/docs', { method: 'POST', body: JSON.stringify(b) }),
+  idAdminUpload: (userId: string, b: { kind: string; fileName: string; data: string }) => request<any>(`/api/id-review/users/${encodeURIComponent(userId)}/docs`, { method: 'POST', body: JSON.stringify(b) }),
   idMineDelete: (id: string) => request<any>(`/api/id-review/mine/docs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   idAppDocs: (appId: string) => request<any>(`/api/id-review/applications/${encodeURIComponent(appId)}/docs`),
   idAppUpload: (appId: string, b: { kind: string; fileName: string; data: string }) => request<any>(`/api/id-review/applications/${encodeURIComponent(appId)}/docs`, { method: 'POST', body: JSON.stringify(b) }),

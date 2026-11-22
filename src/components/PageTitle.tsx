@@ -24,7 +24,7 @@ export const PageTitle: React.FC<{
         {hasMeta && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{meta}</span>}
         {help && (
           <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-label={tx('About this page', 'इस पेज के बारे में')} data-testid="page-help"
-            className="-m-1.5 inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            className="-m-1.5 inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">
             <Info className="h-4 w-4" aria-hidden="true" />
           </button>
         )}

@@ -52,7 +52,7 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
             <div key={p.id} className="rounded-lg border border-slate-100 p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div><div className="text-sm font-semibold text-slate-900">{p.title}</div><div className="text-xs text-slate-500">{formatINR(p.askingPrice)} · {tx(`${p.days} days listed`, `${p.days} दिन से लिस्टेड`)} · {p.status.replace('_', ' ')}</div></div>
-                {p.canMarkSold && <button type="button" onClick={() => goto('desk', { sub: 'listings' }, onNavigate)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800" data-testid={`owner-sold-${p.id}`}>{tx('Mark sold / rented', 'बिकी / किराए पर दर्ज करें')}</button>}
+                {p.canMarkSold && <button type="button" onClick={() => goto('desk', { sub: 'listings' }, onNavigate)} className="min-h-11 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800" data-testid={`owner-sold-${p.id}`}>{tx('Mark sold / rented', 'बिकी / किराए पर दर्ज करें')}</button>}
               </div>
               {p.demand > 0 && <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-900" data-testid={`owner-demand-${p.id}`}><Users className="h-4 w-4 shrink-0" aria-hidden />{tx(`${p.demand} buyer${p.demand > 1 ? 's' : ''} on GENZ ${p.demand > 1 ? 'are' : 'is'} looking for a home like this — brokers can show it to them`, `GENZ पर ${p.demand} खरीदार इस जैसी प्रॉपर्टी ढूँढ रहे हैं — ब्रोकर उन्हें दिखा सकते हैं`)}</p>}
               <div className="mt-2 grid grid-cols-4 gap-2 text-center text-xs">

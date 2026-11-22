@@ -16,6 +16,7 @@
  *  5. Scope — a builder sees only own projects; an associate sees only own leads/bookings; admins see all (phones masked).
  */
 import { advanceClient } from './clientlink.js';
+import { isVerifiedFull } from './permissions.js';
 import { alert, builderVerifiers, firstName, inr } from './alerts.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -316,7 +317,7 @@ export function registerLead(worker: UserProfile, d: z.infer<typeof leadCreateSc
   const fail = (status: number, error: string, code?: string) => ({ status, body: { error, ...(code ? { code } : {}) } });
   const state = db.getState();
   const emp = worker.role === 'TEAM_MEMBER' ? db.byId('users', worker.employerId) : worker;
-  const user = (worker.role === 'TEAM_MEMBER' ? (emp && emp.verificationStatus === 'VERIFIED' ? emp : worker) : worker) as UserProfile; // an employee registers leads under the employer's name
+  const user = (worker.role === 'TEAM_MEMBER' ? (emp && isVerifiedFull(emp) ? emp : worker) : worker) as UserProfile; // an employee registers leads under the employer's name
   if (worker.role === 'TEAM_MEMBER' && user.id === worker.id) return fail(403, 'Your employer account is not active');
   if (d.budgetMin && d.budgetMax && d.budgetMax < d.budgetMin) return fail(400, 'Maximum budget must be ≥ minimum budget');
   const project = db.byId('builderProjects', d.projectId);
@@ -491,7 +492,7 @@ export function createCrmRouter() {
   const employerOf = (user: ReturnType<typeof me>) => {
     if (user.role !== 'TEAM_MEMBER') return user;
     const emp = db.getState().users.find(x => x.id === (db.byId('users', user.id)?.employerId));
-    return emp && emp.verificationStatus === 'VERIFIED' ? (emp as unknown as ReturnType<typeof me>) : user;
+    return emp && isVerifiedFull(emp) ? (emp as unknown as ReturnType<typeof me>) : user;
   };
 
   r.use(needs('crm:read'));

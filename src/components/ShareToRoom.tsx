@@ -21,7 +21,7 @@ export const ShareToRoom: React.FC<{ propertyId: string; className?: string }> =
   };
   return (
     <span className="relative inline-block">
-      <button type="button" onClick={() => setOpen(o => !o)} className={className || 'flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900'} data-testid="share-to-room">
+      <button type="button" onClick={() => setOpen(o => !o)} className={className || 'flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white min-h-11 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900'} data-testid="share-to-room">
         <Send className="h-3.5 w-3.5" /><span>{tx('Send to client room', 'क्लाइंट रूम में भेजें')}</span>
       </button>
       {open && (

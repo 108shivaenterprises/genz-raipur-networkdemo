@@ -52,12 +52,27 @@ export const DailyView: React.FC<{ currentUser: UserProfile; onNavigate: (t: any
             <details className="rounded-xl border border-slate-200 bg-white"><summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold text-slate-600">{tx('Or type it yourself', 'या खुद लिखें')}</summary><div className="p-2"><CopilotPanel /></div></details>
           </div>
         : <CopilotPanel />)}
-      {sub === 'today' && <Digest onGoClients={() => setSub('clients')} />}
+      {sub === 'today' && (currentUser.basicTier ? <BasicDigest onGoClients={() => setSub('clients')} /> : <Digest onGoClients={() => setSub('clients')} />)}
       {sub === 'clients' && <ClientsView currentUser={currentUser} />}
       {sub === 'map' && <Suspense fallback={<div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>}><MapView /></Suspense>}
       {sub === 'listings' && <Listings currentUser={currentUser} />}
       {sub === 'rates' && <Rates city={currentUser.city} />}
-      {sub === 'points' && <Points />}
+      {sub === 'points' && <Points basic={!!currentUser.basicTier} />}
+    </div>
+  );
+};
+
+// v188: the digest is for verified members (403 for Basic) — no call is made; say so and point at the next step
+const BasicDigest: React.FC<{ onGoClients: () => void }> = ({ onGoClients }) => {
+  const tx = useTx();
+  return (
+    <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-6 text-center" data-testid="basic-digest">
+      <p className="text-sm font-semibold text-slate-800">{tx('Daily matches open after KYC', 'डेली मैच KYC के बाद खुलते हैं')}</p>
+      <p className="mt-1 text-xs text-slate-600">{tx('Add your PAN / RERA document. Meanwhile you can add clients and list your own properties.', 'अपना PAN / RERA दस्तावेज़ जोड़ें। तब तक आप क्लाइंट और अपनी प्रॉपर्टी जोड़ सकते हैं।')}</p>
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <button onClick={() => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'network' }))} className="min-h-11 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">{tx('Verify KYC', 'KYC वेरिफ़ाई करें')}</button>
+        <button onClick={onGoClients} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800">{tx('Add a client', 'क्लाइंट जोड़ें')}</button>
+      </div>
     </div>
   );
 };
@@ -193,10 +208,10 @@ const Rates: React.FC<{ city: string }> = ({ city }) => {
 };
 
 // ───────── F13 points ─────────
-const Points: React.FC = () => {
+const Points: React.FC<{ basic?: boolean }> = ({ basic }) => {
   const tx = useTx();
   const [p, setP] = useState<any>(null); const [lb, setLb] = useState<any>(null); const [msg, setMsg] = useState('');
-  const load = useCallback(() => { api.points().then(setP).catch(() => undefined); api.leaderboard().then(setLb).catch(() => undefined); }, []);
+  const load = useCallback(() => { api.points().then(setP).catch(() => undefined); if (!basic) api.leaderboard().then(setLb).catch(() => undefined); }, [basic]);   // v188: the leaderboard lists other members (403 for Basic)
   useEffect(() => { load(); }, [load]);
   const redeem = async () => { try { await api.pointsRedeem(); setMsg(tx('Profile boost is on for 7 days.', '7 दिन के लिए प्रोफ़ाइल बूस्ट चालू।')); load(); } catch (e: any) { setMsg(e.message); } };
   if (!p) return <Loader2 className="h-5 w-5 animate-spin text-slate-400" />;

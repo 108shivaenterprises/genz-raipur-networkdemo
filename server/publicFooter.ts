@@ -4,6 +4,7 @@
  * so every share is also an invitation (the sharer gets the credit through the normal nomination flow).
  */
 import { db } from './db.js';
+import { isVerifiedFull } from './permissions.js';
 import type { UserProfile } from './db.js';
 import { ensureReferralCode } from './growth.js';
 import { reputationLine } from './reputation.js';
@@ -29,15 +30,15 @@ export function demandHtml(city?: string): string {
   const c = String(city || '').trim(); if (!c) return '';
   let n; try { n = demandNumbers(c); } catch { return ''; }
   const parts: string[] = []; const hi: string[] = [];
-  if (n.buyers >= 3) { parts.push(`${n.buyers} buyers are looking in ${esc(c)} right now`); hi.push(`${esc(c)} में अभी ${n.buyers} खरीदार ढूँढ रहे हैं`); }
+  if (n.buyers >= 3) { parts.push(`${n.buyers} open buyer needs in ${esc(c)} on GENZ (real count)`); hi.push(`${esc(c)} में GENZ पर ${n.buyers} खरीदार की ज़रूरतें खुली हैं (असली गिनती)`); }
   if (n.visits >= 3) { parts.push(`${n.visits} site visits verified this week`); hi.push(`इस हफ़्ते ${n.visits} साइट विज़िट पक्की हुईं`); }
   if (!parts.length) return '';
-  return `<div data-genz-demand style="margin:12px 0 0;padding:10px 12px;border-radius:12px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:12px;line-height:1.5">🔥 ${parts.join(' · ')}<br><span style="opacity:.85">${hi.join(' · ')}</span></div>`;
+  return `<div data-genz-demand style="margin:12px 0 0;padding:10px 12px;border-radius:12px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:12px;line-height:1.5">${parts.join(' · ')}<br><span style="opacity:.85">${hi.join(' · ')}</span></div>`;
 }
 
 export function joinFooter(sharer?: UserProfile | null, city?: string): string {
   let code = '';
-  try { if (sharer && sharer.role === 'BROKER' && sharer.verificationStatus === 'VERIFIED') code = ensureReferralCode(sharer); } catch { /* a page never fails over its footer */ }
+  try { if (sharer && sharer.role === 'BROKER' && isVerifiedFull(sharer)) code = ensureReferralCode(sharer); } catch { /* a page never fails over its footer */ }
   const href = code ? `/?ref=${encodeURIComponent(code)}` : '/';
   return `${demandHtml(city || sharer?.city)}<a href="${esc(href)}" data-genz-join style="display:block;margin:14px 0 4px;padding:12px 14px;border-radius:12px;background:#14213d;color:#fff;text-decoration:none;font-size:13px;line-height:1.45">
 <b>Made on GENZ Broker Network</b> · ब्रोकर हैं? अपनी लिस्टिंग का ऐसा पेज मुफ़्त बनाइए, सौदे शेयर कीजिए — GENZ से जुड़िए →<br><span style="opacity:.8">Broker? Make pages like this free and co-broke with verified brokers — request access →</span></a>`;

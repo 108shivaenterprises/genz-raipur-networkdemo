@@ -193,6 +193,7 @@ export function needs(...perms: Permission[]) {
     const { user } = ctx();
     if (!user) return res.status(401).json({ error: 'Authentication required' });
     if (perms.length === 0 || perms.some(p => can(user, p))) return next();
+    if (user.basicTier && user.verificationStatus === 'VERIFIED' && perms.some(p => effectivePermissions({ ...user, basicTier: false }).includes(p))) return kycLocked(res);
     if (user.verificationStatus !== 'VERIFIED' && perms.some(p => effectivePermissions({ ...user, verificationStatus: 'VERIFIED' }).includes(p))) {
       return res.status(403).json({
         error: `Your account is ${String(user.verificationStatus).toLowerCase()}. This action unlocks after admin KYC verification.`,
@@ -201,6 +202,68 @@ export function needs(...perms: Permission[]) {
     }
     return res.status(403).json({ error: `Forbidden: your role (${user.role}) is not permitted to do this.`, code: 'FORBIDDEN' });
   };
+}
+
+/** v185 (D15) — the one friendly answer for a Basic account that touches a KYC-only action (the app turns `basic: true` into a "Verify KYC to unlock" sheet) */
+export function kycLocked(res: Response) {
+  return res.status(403).json({
+    error: 'Verify your KYC to unlock this. Deals, commission, payments, site visits, broadcasts and inviting others open after your PAN / RERA document is checked.',
+    errorHi: 'इसे खोलने के लिए KYC वेरिफ़ाई करें। डील, कमीशन, पेमेंट, साइट विज़िट, ब्रॉडकास्ट और दूसरों को बुलाना आपका PAN / RERA दस्तावेज़ जाँचने के बाद खुलता है।',
+    code: 'ACCOUNT_NOT_VERIFIED', basic: true,
+  });
+}
+/** gate for actions that are not a permission of their own (broadcast to the network) */
+export function needsKyc(_req: Request, res: Response, next: NextFunction) {
+  const { user } = ctx();
+  if (user?.basicTier && user.verificationStatus === 'VERIFIED') return kycLocked(res);
+  next();
+}
+
+/** v186 (D16) — a Basic account may read only so many rows of a network list per day (per account and per IP): a throw-away account cannot scrape the board. Rows past the quota are cut off with a friendly note. In memory: one server instance (the Docker prod path), same as the other limiters. */
+const quotaBook = new Map<string, { n: number; reset: number }>();
+export const BASIC_ROWS_PER_DAY = () => { const n = Number(process.env.BASIC_ROWS_PER_DAY); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 200; };
+export const BASIC_IP_ROWS_PER_DAY = () => { const n = Number(process.env.BASIC_IP_ROWS_PER_DAY); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1000; };
+/** a row the account itself listed / owns / was assigned / created: never counted, never trimmed (v186b) */
+const ownRow = (r: any, id: string) => !!r && [r.listingBrokerId, r.ownerId, r.assignedBrokerId, r.createdBy, r.buyerId].includes(id);
+export function basicQuota(key: 'properties' | 'requirements' | 'property') {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const { user } = ctx();
+    if (!user?.basicTier) return next();
+    const day = 86400_000, now = Date.now(), cap = BASIC_ROWS_PER_DAY(), ipCap = BASIC_IP_ROWS_PER_DAY();
+    const slot = (k: string, limit: number) => { let b = quotaBook.get(k); if (!b || b.reset < now) { b = { n: 0, reset: now + day }; quotaBook.set(k, b); } return { b, left: Math.max(0, limit - b.n) }; };
+    if (quotaBook.size > 5000) for (const [k, v] of quotaBook) if (v.reset < now) quotaBook.delete(k);
+    const bucket = key === 'requirements' ? 'requirements' : 'properties';   // one pool for listings, single reads included
+    const mine = slot(`${bucket}:u:${user.id}`, cap), ipS = slot(`${bucket}:ip:${ipKey(req.ip)}`, ipCap);
+    const left = Math.min(mine.left, ipS.left);
+    const deny = () => res.status(429).json(mine.left <= 0
+      ? { error: 'You have seen today\'s limit of listings / needs for a Basic account. Your own listings are always open. Verify your KYC to see more, or come back tomorrow.', errorHi: 'बेसिक अकाउंट की आज की सीमा पूरी हो गई। आपकी अपनी लिस्टिंग हमेशा खुली हैं। और देखने के लिए KYC वेरिफ़ाई करें, या कल आएँ।', code: 'BASIC_QUOTA', basic: true }
+      : { error: 'Many Basic accounts on your network have read a lot today. Verify your KYC to continue, or try again tomorrow.', errorHi: 'आपके नेटवर्क से आज बहुत ज़्यादा पढ़ा गया है। जारी रखने के लिए KYC वेरिफ़ाई करें, या कल कोशिश करें।', code: 'BASIC_QUOTA_IP', basic: true });
+    const json = res.json.bind(res);
+    res.json = (body: any) => {
+      if (key === 'property') {
+        if (body?.property && !ownRow(body.property, user.id)) { if (left <= 0) { res.json = json; return deny(); } mine.b.n += 1; ipS.b.n += 1; }
+        return json(body);
+      }
+      const rows: any[] | null = Array.isArray(body?.[key]) ? body[key] : null;
+      if (rows) {
+        const own = rows.filter(r => ownRow(r, user.id)), others = rows.filter(r => !ownRow(r, user.id));
+        // a list never turns into an error: the account's own rows are always returned, the rest is trimmed to what is left today
+        const kept = others.slice(0, left); mine.b.n += kept.length; ipS.b.n += kept.length;
+        body = { ...body, [key]: [...own, ...kept], ...(kept.length < others.length ? { limited: true, limitedNote: 'Basic account daily limit — your own rows are always shown; verify KYC to see more', limitedNoteHi: 'बेसिक अकाउंट की रोज़ की सीमा — आपकी अपनी लिस्टिंग हमेशा दिखती हैं; और देखने के लिए KYC वेरिफ़ाई करें' } : {}) };
+      }
+      return json(body);
+    };
+    next();
+  };
+}
+
+/** one key for an address: an IPv6 client owns a whole /64, so it counts as one device; IPv4 as is (v186) */
+export function ipKey(ip?: string): string {
+  const a = String(ip || '?').replace(/^::ffff:/, '');
+  if (!a.includes(':')) return a;
+  const full = a.split('::'); const head = full[0].split(':').filter(Boolean); const tail = (full[1] || '').split(':').filter(Boolean);
+  const groups = [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill('0'), ...tail];
+  return groups.slice(0, 4).map(g => g.toLowerCase().replace(/^0+(?=.)/, '')).join(':') + '::/64';
 }
 
 export function requireAuth(_req: Request, res: Response, next: NextFunction) {
@@ -239,7 +302,7 @@ setInterval(() => {
 export function rateLimit(name: string, limit: number, windowMs: number) {
   return (req: Request, res: Response, next: NextFunction) => {
     // signed-in members are counted one by one: many brokers share one office / mobile-carrier IP and must not lock each other out
-    const u = ctx().user; const who = u?.id ? `u:${u.id}` : req.ip;
+    const u = ctx().user; const who = u?.id ? `u:${u.id}` : ipKey(req.ip);
     const wait = hit(`${name}:${who}`, limit, windowMs);
     if (wait) {
       res.setHeader('Retry-After', String(wait));

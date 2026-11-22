@@ -49,7 +49,7 @@ export function valueReport(inp: ValueInput, monthsBack = 6) {
   const recorded = (m: string) => !!firstDay && m >= firstDay.slice(0, 7);
 
   const signupsIn = (m: string) => brokers.filter(u => monthOf(u.createdAt) === m).length;
-  const verifiedBy = (m: string) => brokers.filter(u => u.verificationStatus === 'VERIFIED' && monthOf(u.createdAt) <= m).length;
+  const verifiedBy = (m: string) => brokers.filter(u => u.verificationStatus === 'VERIFIED' && !(u as any).basicTier && monthOf(u.createdAt) <= m).length;
   const approved = inp.bookings.filter(b => b.status === 'APPROVED');
   const monthly = months.map(m => {
     const net = approved.filter(b => !b.direct && monthOf(b.decidedAt || b.createdAt) === m);
@@ -101,7 +101,7 @@ export function valueReport(inp: ValueInput, monthsBack = 6) {
   const since30 = inp.now - 30 * 86_400_000;
   const active30 = new Set<string>(); for (const d of inp.days) if (Date.parse(d.day) >= since30) for (const id of d.seen) active30.add(id);
   const byCity = new Map<string, { verified: number; active30: number }>();
-  for (const u of brokers) if (u.verificationStatus === 'VERIFIED') {
+  for (const u of brokers) if (u.verificationStatus === 'VERIFIED' && !(u as any).basicTier) {
     const c = (u.city || '—').trim() || '—'; const x = byCity.get(c) || byCity.set(c, { verified: 0, active30: 0 }).get(c)!;
     x.verified++; if (active30.has(u.id)) x.active30++;
   }
@@ -129,7 +129,7 @@ export function valueReport(inp: ValueInput, monthsBack = 6) {
     networkTakeRatePct: gmv12 ? Math.round((genzNet12 / gmv12) * 10000) / 100 : null,
   };
 
-  const verifiedNow = brokers.filter(u => u.verificationStatus === 'VERIFIED').length;
+  const verifiedNow = brokers.filter(u => u.verificationStatus === 'VERIFIED' && !(u as any).basicTier).length;
   return {
     generatedAt: new Date(inp.now).toISOString(),
     recordedSince: firstDay || null,

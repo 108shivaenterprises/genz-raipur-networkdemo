@@ -11,6 +11,7 @@
  * Alerts are shown inside the app (Share Kit tab). Push alerts on WhatsApp would need the WhatsApp Business API.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { joinFooter } from './publicFooter.js';
@@ -208,13 +209,13 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
     const lang = (l?.lang || 'en') as 'en' | 'hi';
     const t = T[lang];
     const gone = () => res.status(404).send(pageShell('Link inactive', '', undefined, `<div class="card"><p>${esc(t.unavailable)}</p></div>`));
-    if (!l || l.revoked || !owner || owner.verificationStatus !== 'VERIFIED') return gone();
+    if (!l || l.revoked || !owner || !isVerifiedFull(owner)) return gone();
     // an employee's link carries the employer's card, and dies when the employer stops it (switch off, leave, suspension)
     let card: UserProfile = owner;
     if (owner.role === 'TEAM_MEMBER') {
       const emp = db.byId('users', owner.employerId);
       const pol = policyOf(owner);
-      if (!emp || emp.verificationStatus !== 'VERIFIED' || pol.invMode === 'OFF' || !pol.invShareOut || pol.onLeave) return gone();
+      if (!emp || !isVerifiedFull(emp) || pol.invMode === 'OFF' || !pol.invShareOut || pol.onLeave) return gone();
       card = emp;
     }
 

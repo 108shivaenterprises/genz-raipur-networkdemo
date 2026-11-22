@@ -3,6 +3,7 @@
  * Shared by crm.ts (lead lists, registration), team.ts (suspend → hand-over) and pcontrol.ts.
  */
 import { db } from './db.js';
+import { isVerifiedFull } from './permissions.js';
 import type { UserProfile } from './db.js';
 import type { CrmLead } from '../src/types/crm.js';
 import { policyOf, pickAssignee, maskPhone } from '../src/shared/pcontrolRules.js';
@@ -53,7 +54,7 @@ export function maskLeadForViewer<T extends { phone: string }>(l: T, viewer: { r
 export function autoAssign(owner: UserProfile, lead: CrmLead, byName = 'Lead routing'): boolean {
   const mode = owner.leadRouting?.mode || 'OFF';
   if (mode === 'OFF' || lead.assignedMemberId) return false;
-  const staff = membersOf(owner.id).filter(m => m.verificationStatus === 'VERIFIED');
+  const staff = membersOf(owner.id).filter(m => isVerifiedFull(m));
   const cand = staff.map(m => { const p = policyOf(m); return { id: m.id, openLeads: openLoad(m.id), onLeave: p.onLeave, maxOpenLeads: p.maxOpenLeads, projectIds: p.projectIds, canRegister: p.canRegister }; });
   const pick = pickAssignee(cand, mode, owner.leadRouting?.cursor || 0, lead.projectId);
   if (!pick) return false;
@@ -73,7 +74,7 @@ export function releaseMemberLeads(owner: UserProfile, member: UserProfile, acto
     l.assignedMemberId = undefined; l.assignedMemberName = undefined;
     let note = `Taken back from ${prev || 'team'} (hand-over)`;
     if (toMemberId) {
-      const to = membersOf(owner.id).find(m => m.id === toMemberId && m.verificationStatus === 'VERIFIED');
+      const to = membersOf(owner.id).find(m => m.id === toMemberId && isVerifiedFull(m));
       if (to) { l.assignedMemberId = to.id; l.assignedMemberName = to.name; note = `Allotted to ${to.name} (hand-over from ${prev || 'team'})`; }
     } else if (autoAssign(owner, l, actorName)) { n++; l.updatedAt = nowIso(); continue; }
     l.activities.unshift({ id: `A-${Date.now().toString(36)}-h${n}`, type: 'SYSTEM', note, byUserId: actorId, byName: actorName, at: nowIso() });

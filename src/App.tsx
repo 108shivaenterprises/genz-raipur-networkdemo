@@ -76,6 +76,8 @@ const CommunityView = lazyView(() => import('./components/CommunityView.js'), 'C
 const CityLaunch = lazyView(() => import('./components/CityLaunch.js'), 'CityLaunch');
 const HomeInsights = lazyView(() => import('./components/HomeInsights.js'), 'HomeInsights');
 import { FirstRunStrip } from './components/FirstRunStrip.js';
+import { KycLockedSheet } from './components/KycLockedSheet.js';
+import { BasicBanner } from './components/BasicBanner.js';
 import { WhatsNewCard } from './components/WhatsNewCard.js';
 const TeamHome = lazyView(() => import('./components/TeamHome.js'), 'TeamHome');
 const DashboardView = lazyView(() => import('./components/DashboardView.js'), 'DashboardView');
@@ -462,6 +464,7 @@ export default function App() {
   return (
     <CallHost enabled={hasPerm(permissions, 'call:use') && !impersonatedBy}>
     <div className="min-h-screen flex flex-col bg-slate-50/70 text-slate-900">
+      <KycLockedSheet />
       {/* Top Header Navbar */}
       {impersonatedBy && (
         <div className="flex items-center justify-center gap-3 bg-amber-400 px-4 py-1.5 text-xs font-semibold text-slate-900">
@@ -516,7 +519,8 @@ export default function App() {
         {/* v59 — every role gets its work alerts; the broker's home has this inside his first steps */}
         {activeTab === 'dashboard' && currentUser.role !== 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && <AlertsNudge role={currentUser.role} />}
 
-        {activeTab === 'dashboard' && ['BROKER', 'TEAM_MEMBER', 'PROPERTY_OWNER'].includes(currentUser.role) && <WhatsNewCard userId={currentUser.id} createdAt={currentUser.createdAt} />}
+        {activeTab === 'dashboard' && currentUser.role === 'BROKER' && currentUser.basicTier && currentUser.verificationStatus === 'VERIFIED' && <BasicBanner />}
+        {activeTab === 'dashboard' && ['BROKER', 'TEAM_MEMBER', 'PROPERTY_OWNER'].includes(currentUser.role) && <WhatsNewCard userId={currentUser.id} createdAt={currentUser.createdAt} role={currentUser.role} />}
 
         {activeTab === 'dashboard' && currentUser.role === 'TEAM_MEMBER' && (
           <TeamHome currentUser={currentUser} deals={deals} onNavigate={setActiveTab} permissions={permissions} />
@@ -567,6 +571,7 @@ export default function App() {
           />
         )}
 
+        {(['properties', 'requirements', 'desk'] as string[]).includes(activeTab) && currentUser.role === 'BROKER' && currentUser.basicTier && currentUser.verificationStatus === 'VERIFIED' && <BasicBanner />}
         {activeTab === 'properties' && (
           <PropertiesView
             permissions={permissions}
@@ -679,6 +684,7 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'disputes' && hasPerm(permissions, 'users:review') && <PrivacyQueue askOnly />}
         {activeTab === 'disputes' && (
           <DisputesView
             disputes={disputes}
@@ -725,8 +731,9 @@ export default function App() {
         {activeTab === 'desk' && hasPerm(permissions, 'offer:make', 'offer:decide', 'listing:lifecycle') && <DealDesk currentUser={currentUser} permissions={permissions} />}
 
         {activeTab === 'clientroom' && hasPerm(permissions, 'clientroom:use') && <ClientRoomsTab />}
-        {activeTab === 'chats' && ['BROKER', 'TEAM_MEMBER', 'PROPERTY_OWNER'].includes(currentUser.role) && <WhatsNewCard userId={currentUser.id} createdAt={currentUser.createdAt} />}
-        {activeTab === 'chats' && currentUser.role === 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && <FirstRunStrip userId={currentUser.id} onNavigate={setActiveTab} onAddNeed={() => setShowAddRequirement(true)} />}
+        {activeTab === 'chats' && currentUser.role === 'BROKER' && currentUser.basicTier && currentUser.verificationStatus === 'VERIFIED' && <BasicBanner />}
+        {activeTab === 'chats' && ['BROKER', 'TEAM_MEMBER', 'PROPERTY_OWNER'].includes(currentUser.role) && <WhatsNewCard userId={currentUser.id} createdAt={currentUser.createdAt} role={currentUser.role} />}
+        {activeTab === 'chats' && currentUser.role === 'BROKER' && currentUser.verificationStatus === 'VERIFIED' && <FirstRunStrip basic={!!currentUser.basicTier} userId={currentUser.id} onNavigate={setActiveTab} onAddNeed={() => setShowAddRequirement(true)} />}
         {activeTab === 'chats' && hasPerm(permissions, 'deal:chat', 'clientroom:use', 'pchat:use') && <ChatsView meId={currentUser.id} permissions={permissions} />}
 
         {activeTab === 'partners' && hasPerm(permissions, 'partner:manage', 'partner:oversee') && <ShopPartnersView currentUser={currentUser} canManage={hasPerm(permissions, 'partner:manage')} canOversee={hasPerm(permissions, 'partner:oversee')} />}

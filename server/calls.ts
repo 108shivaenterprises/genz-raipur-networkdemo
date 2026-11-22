@@ -11,6 +11,7 @@
  *   not here       GENZ admins never read or hear calls (same as deal-room chats); no number, no surname-less customer, no GPS.
  */
 import fs from 'node:fs';
+import { isVerifiedFull } from './permissions.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import express, { Router, type Request, type Response } from 'express';
@@ -33,7 +34,7 @@ const bad = (res: Response, error: string, status = 400, code?: string) => res.s
 const userById = (id?: string) => (id ? S().users.find(u => u.id === id) : undefined);
 const isStaff = (u: UserProfile) => u.role === 'TEAM_MEMBER';
 const employerIdOf = (u: UserProfile) => (isStaff(u) ? u.employerId : undefined);
-const callable = (u?: UserProfile): u is UserProfile => !!u && u.verificationStatus === 'VERIFIED' && can(u, 'call:use');
+const callable = (u?: UserProfile): u is UserProfile => !!u && isVerifiedFull(u) && can(u, 'call:use');
 const audit = (u: { id: string; role: any }, c: CallRecord, action: string, details: string) =>
   db.appendAuditEvent(u.id, u.role, c.context === 'DEAL' ? 'DEAL' : 'VERIFICATION', c.contextId || c.id, action, details);
 

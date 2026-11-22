@@ -206,7 +206,7 @@ const ReferralRow: React.FC<{ r: any; manage: boolean; full: boolean; canPay: bo
   const noNumber = r.contactMode === 'CONNECTOR_INTRODUCES' && !r.customerPhone;
   const cPhone = String(r.connectorPhone || '').replace(/\D/g, '').slice(-10);
   const wantsContractor = r.type === 'CONSTRUCTION';
-  const pool = useMemo(() => users.filter(u => u.verificationStatus === 'VERIFIED' && u.role === (wantsContractor ? 'CONTRACTOR' : 'BROKER')), [users, wantsContractor]);
+  const pool = useMemo(() => users.filter(u => u.verificationStatus === 'VERIFIED' && !u.basicTier && u.role === (wantsContractor ? 'CONTRACTOR' : 'BROKER')), [users, wantsContractor]);
   const moves = STATUS_FLOW[r.status as keyof typeof STATUS_FLOW].filter(s => manage || !['DUPLICATE', 'REJECTED'].includes(s));
   const phone = String(r.customerPhone || '').replace(/\D/g, '').slice(-10);
   return (

@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { Router, Request, Response } from 'express';
 import { db, PrivacyRequest } from './db.js';
 import { ctx, needs, requireAuth, rateLimit, unusablePasswordHash } from './auth.js';
-import { isSuper } from './access.js';
+import { isSuper, canViewDeal } from './access.js';
 import { sha256 } from './db.js';
 import { purgeUserDocs } from './propdocs.js';
 import { purgeUserIdDocs } from './idreview.js';
@@ -100,15 +100,18 @@ export function createPrivacyRouter() {
     if (!['ERASURE', 'CORRECTION', 'GRIEVANCE', 'CONSENT_WITHDRAWAL'].includes(type)) return res.status(400).json({ error: 'Invalid request type' });
     // v76b — a team member cannot delete his data: his attendance, leave, pay and expense records are his employer's books. He can still ask for a correction or write a grievance.
     if (type === 'ERASURE' && u.role === 'TEAM_MEMBER') return res.status(403).json({ error: 'Your work records (attendance, leave, pay, expenses) are kept by your employer, so you cannot delete them yourself. You can ask for a correction or write a grievance here — or speak to your employer.', hi: 'आपका काम का रिकॉर्ड (हाज़िरी, छुट्टी, वेतन, ख़र्चा) आपके नियोक्ता के पास रहता है, इसलिए आप इसे ख़ुद नहीं मिटा सकते। सुधार या शिकायत यहाँ से कर सकते हैं — या अपने नियोक्ता से बात करें।', code: 'TEAM_MEMBER_NO_ERASE' });
-    const text = String(details || '').trim().slice(0, 2000);
-    if (type !== 'ERASURE' && text.length < 5) return res.status(400).json({ error: 'Please describe your request', errorHi: 'कृपया अपना अनुरोध लिखें' });
+    const body = String(details || '').trim().slice(0, 2000);
+    const text = (req.body?.dealId && type === 'GRIEVANCE' ? `[${String(req.body.dealId).slice(0, 40)}] ` : '') + body;
+    if (type !== 'ERASURE' && body.length < 5) return res.status(400).json({ error: 'Please describe your request', errorHi: 'कृपया अपना अनुरोध लिखें' });
     const s = db.getState();
-    if (s.privacyRequests.some(p => p.userId === u.id && p.type === type && p.status === 'OPEN')) {
+    const dealId = type === 'GRIEVANCE' && req.body?.dealId ? String(req.body.dealId).slice(0, 40) : '';
+    if (dealId) { const dr = s.dealRooms.find(x => x.id === dealId); if (!dr || !canViewDeal(u, dr)) return res.status(404).json({ error: 'Deal room not found', errorHi: 'डील रूम नहीं मिला' }); }
+    if (s.privacyRequests.some(p => p.userId === u.id && p.type === type && p.status === 'OPEN' && (p.dealRoomId || '') === dealId)) {
       return res.status(409).json({ error: 'You already have an open request of this type' });
     }
     const pr: PrivacyRequest = {
       id: `PRV-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
-      userId: u.id, userName: u.name, type, details: text, status: 'OPEN', createdAt: new Date().toISOString(),
+      userId: u.id, userName: u.name, type, ...(dealId ? { dealRoomId: dealId } : {}), details: text, status: 'OPEN', createdAt: new Date().toISOString(),
     };
     s.privacyRequests.unshift(pr);
     db.save();
@@ -134,6 +137,7 @@ export function createPrivacyRouter() {
     if (!['COMPLETE', 'REJECT'].includes(decision)) return res.status(400).json({ error: 'decision must be COMPLETE or REJECT' });
     if (decision === 'REJECT' && String(note || '').trim().length < 5) return res.status(400).json({ error: 'A reason is required to reject' });
     // v178: a withdrawal of consent is closed only once somebody says what was stopped (the person is told by this note)
+    if (decision === 'COMPLETE' && pr.dealRoomId && String(note || '').trim().length < 5) return res.status(400).json({ error: 'Write your answer to the broker (min 5 characters)', errorHi: 'ब्रोकर के लिए अपना जवाब लिखें (कम से कम 5 अक्षर)' });
     if (decision === 'COMPLETE' && pr.type === 'CONSENT_WITHDRAWAL' && String(note || '').trim().length < 5) return res.status(400).json({ error: 'Write what was stopped (min 5 characters) to complete a consent withdrawal', errorHi: 'सहमति वापसी पूरी करने के लिए लिखें कि क्या बंद किया गया (कम से कम 5 अक्षर)' });
 
     if (decision === 'COMPLETE' && pr.type === 'ERASURE') {

@@ -1,3 +1,4 @@
+import { BasicNetworkLocked } from './BasicBanner.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { PageTitle } from './PageTitle.js';
 import { api } from '../lib/api.js';
@@ -117,7 +118,7 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <PageTitle title={isBuyer ? tx('Your needs', 'आपकी ज़रूरतें') : tx('Buyer & tenant needs', 'खरीदार और किरायेदार की ज़रूरतें')} meta={remote ? tx(`${remote.list.length} of ${remote.total} shown`, `${remote.total} में से ${remote.list.length} दिख रही हैं`) : displayedRequirements.length} help={isBuyer
+          <PageTitle title={isBuyer ? tx('Your needs', 'आपकी ज़रूरतें') : tx('Buyer & tenant needs', 'खरीदार और किरायेदार की ज़रूरतें')} meta={isBuyer ? displayedRequirements.length : remote ? tx(`${remote.list.length} of ${remote.total} shown · ${view === 'mine' ? 'my clients' : 'whole network'}`, `${remote.total} में से ${remote.list.length} दिख रही हैं · ${view === 'mine' ? 'मेरे क्लाइंट' : 'पूरा नेटवर्क'}`) : tx(`${displayedRequirements.length} · ${view === 'mine' ? 'my clients' : 'whole network'}`, `${displayedRequirements.length} · ${view === 'mine' ? 'मेरे क्लाइंट' : 'पूरा नेटवर्क'}`)} help={isBuyer
               ? tx('Tell us what you are looking for. Verified brokers can pick it up, and your best matches show in Magic Match.', 'बताइए आप क्या ढूँढ रहे हैं। वेरिफ़ाइड ब्रोकर इसे उठा सकते हैं, और आपके सबसे अच्छे मैच मैजिक मैच में दिखते हैं।')
               : tx('Customer entities are persistent. Deal protection is deal-scoped, allowing multiple independent requirements.', 'ग्राहक की पहचान स्थायी रहती है। डील सुरक्षा हर डील के लिए अलग है, इसलिए कई स्वतंत्र ज़रूरतें हो सकती हैं।')} />
           {searchReqId && <p className="mt-1 text-xs font-medium text-amber-700">{tx('Filtered by', 'फ़िल्टर')}: {searchReqId}</p>}
@@ -169,7 +170,8 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
       </div>
       {!isBuyer && view === 'network' && <p className="text-[11px] text-slate-500">{tx('Other brokers’ clients show by initials only — talk to their broker through a co-broking offer.', 'दूसरे ब्रोकर के क्लाइंट सिर्फ़ नाम के पहले अक्षरों से दिखते हैं — उनके ब्रोकर से को-ब्रोकिंग ऑफ़र से बात करें।')}</p>}
       {remote?.err && <p role="alert" className="rounded-lg bg-red-50 p-2 text-xs text-red-800">{remote.err}</p>}
-      {displayedRequirements.length === 0 && !remote?.loading && (
+      {displayedRequirements.length === 0 && !remote?.loading && currentUser.basicTier && view === 'network' && <BasicNetworkLocked what="needs" />}
+      {displayedRequirements.length === 0 && !remote?.loading && !(currentUser.basicTier && view === 'network') && (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">{view === 'mine' && !isBuyer ? tx('No client needs of yours yet — add one, or look at the network needs.', 'अभी आपके किसी क्लाइंट की ज़रूरत नहीं — जोड़ें, या नेटवर्क की ज़रूरतें देखें।') : tx('Nothing matches this search.', 'इस खोज से कुछ नहीं मिला।')}</p>
       )}
 

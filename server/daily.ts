@@ -12,10 +12,11 @@
  * the only booster is a non-cash "profile boost" a broker redeems with points (see community.ts).
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { z } from 'zod';
 import { db, CLIENT_STAGES } from './db.js';
 import type { UserProfile, ClientCard, ClientStage, Property, BuyerRequirement, DigestPref, ListingReport, DatabaseState } from './db.js';
-import { ctx, needs, rateLimit, digits } from './auth.js';
+import { ctx, needs, needsKyc, rateLimit, digits } from './auth.js';
 import { phoneSchema } from './validation.js';
 import { canBrowseProperty, isPropertyPrincipal } from './access.js';
 import { calculatePropertyMatch } from './matching.js';
@@ -124,7 +125,7 @@ export function buildDigest(u: UserProfile, now = Date.now()) {
         key, sourceId: s.id, sourceKind: s.kind, clientName: s.name, score: ds.score, parts: ds.parts, reasons: m.reasons.slice(0, 3), status: pr.seen[key] || 'NEW',
         isNew: days(p.createdAt, now) <= 3,
         property: { id: p.id, title: p.title, locality: p.locality, city: p.city, propertyType: p.propertyType, transactionType: p.transactionType, askingPrice: p.askingPrice, image: p.images?.[0] || '', ageDays: Math.floor(days(p.createdAt, now)), confirmedAt: p.confirmedAt, createdAt: p.createdAt, daysLeft: Math.max(0, Math.ceil(FRESH_DAYS - days(p.confirmedAt, now))) },
-        broker: broker ? { id: broker.id, name: broker.name, trustScore: broker.trustScore ?? null, verified: broker.verificationStatus === 'VERIFIED' } : null,
+        broker: broker ? { id: broker.id, name: broker.name, trustScore: broker.trustScore ?? null, verified: isVerifiedFull(broker) } : null,
       });
     }
   }
@@ -165,7 +166,7 @@ export function trustBreakdown(u: UserProfile, st = db.getState(), now = Date.no
   const upheld = st.listingReports.filter(r => r.status === 'UPHELD' && ((r.targetType === 'BROKER' && r.targetId === u.id) || (r.targetType === 'LISTING' && db.byId('properties', r.targetId)?.listingBrokerId === u.id))).length;
   const openBy = new Set(st.listingReports.filter(r => r.status === 'OPEN' && r.targetType === 'BROKER' && r.targetId === u.id).map(r => r.reporterId)).size;
   const parts = [
-    { id: 'kyc', max: 30, pts: (u.verificationStatus === 'VERIFIED' ? 25 : 0) + (u.reraNumber ? 5 : 0), en: 'KYC verified + RERA number on profile', hi: 'KYC सत्यापित + प्रोफ़ाइल पर RERA नंबर', tip: { en: 'Complete KYC and add your RERA number.', hi: 'KYC पूरा करें और RERA नंबर जोड़ें।' } },
+    { id: 'kyc', max: 30, pts: (isVerifiedFull(u) ? 25 : 0) + (u.reraNumber ? 5 : 0), en: 'KYC verified + RERA number on profile', hi: 'KYC सत्यापित + प्रोफ़ाइल पर RERA नंबर', tip: { en: 'Complete KYC and add your RERA number.', hi: 'KYC पूरा करें और RERA नंबर जोड़ें।' } },
     { id: 'deals', max: 20, pts: Math.min(20, settled * 5), en: `Deals settled with a counter-party (${settled})`, hi: `काउंटर-पार्टी के साथ पूरी हुई डील (${settled})`, tip: { en: 'Close deals through the deal room — each settled deal adds 5.', hi: 'डील रूम से डील पूरी करें — हर पूरी डील पर 5।' } },
     { id: 'visits', max: 10, pts: Math.min(10, visits * 2), en: `Verified site visits (${visits})`, hi: `सत्यापित साइट विज़िट (${visits})`, tip: { en: 'Use the QR / OTP check-in on every site visit.', hi: 'हर साइट विज़िट पर QR / OTP चेक-इन करें।' } },
     { id: 'fresh', max: 15, pts: mine.length ? Math.round(15 * fresh / mine.length) : 7, en: `Listings confirmed in the last 30 days (${fresh}/${mine.length})`, hi: `पिछले 30 दिनों में कन्फर्म लिस्टिंग (${fresh}/${mine.length})`, tip: { en: 'Tap “Still available” on each listing once a month.', hi: 'हर लिस्टिंग पर महीने में एक बार “अभी भी उपलब्ध” दबाएँ।' } },
@@ -220,7 +221,7 @@ export function createDailyRouter() {
   });
 
   // ── F1 digest ──
-  r.get('/digest', needs('daily:use'), (_req, res) => {
+  r.get('/digest', needs('daily:use'), needsKyc, (_req, res) => {
     const u = me();
     const d = buildDigest(u);
     const p = pref(db.getState(), u.id);
@@ -408,7 +409,7 @@ export function createDailyRouter() {
       // v141 — the same rule for a member: three different verified members report him → suspended at once, his photo and
       // self-added RERA badge go with it; no GENZ desk needed (GENZ can still lift it)
       const who = new Set(st.listingReports.filter(x => x.targetType === 'BROKER' && x.targetId === d.targetId && x.status === 'OPEN')
-        .map(x => x.reporterId).filter(id => db.byId('users', id)?.verificationStatus === 'VERIFIED'));
+        .map(x => x.reporterId).filter(id => { const r = db.byId('users', id); return isVerifiedFull(r); }));   // v185: a Basic (not KYC-verified) account's report never counts toward an auto-suspend (sock-puppet guard)
       const t = db.byId('users', d.targetId)!;
       if (who.size >= 3 && t.verificationStatus === 'VERIFIED') {
         t.verificationStatus = 'SUSPENDED'; t.verificationNotes = `Suspended automatically after reports from ${who.size} members (${nowIso().slice(0, 10)}).`;
@@ -459,7 +460,9 @@ export function createDailyRouter() {
       const pt = approxPoint(q.city || '', loc, undefined, undefined, q.state);
       return { kind: 'REQUIREMENT', id: q.id, title: `${q.propertyType} wanted`, locality: loc || (q.city || ''), city: q.city || '', propertyType: q.propertyType, transactionType: q.transactionType, price: q.budgetMax, priceMin: q.budgetMin, mine: q.assignedBrokerId === u.id, lat: pt.lat, lng: pt.lng };
     }));
-    const all = [...listings, ...reqs];
+    // v186b: a Basic account sees only its OWN pins + a count (no network-wide pins / needs)
+    const everything = [...listings, ...reqs];
+    const all = u.basicTier ? everything.filter((p: any) => p.mine || (p.kind === 'REQUIREMENT' && st.requirements.find(q => q.id === p.id)?.assignedBrokerId === u.id)) : everything;
     // v20 — one city at a time (all of India was one 15 MB answer). Default: my city, else the busiest one; mine always included.
     const counts = new Map<string, number>();
     for (const p of all) if (p.city) counts.set(p.city, (counts.get(p.city) || 0) + 1);
@@ -469,7 +472,7 @@ export function createDailyRouter() {
     const CAP = 2500;
     const inCity = city === 'ALL' ? all : all.filter(p => p.mine || sameCity(p.city, city));
     const pins = inCity.length > CAP ? [...inCity.filter(p => p.mine), ...inCity.filter(p => !p.mine).slice(0, CAP)] : inCity;
-    res.json({ success: true, city, cities, total: all.length, capped: inCity.length > pins.length, pins, note: 'Locations are approximate (locality level). Exact address is shown only after a verified site visit.' });
+    res.json({ success: true, city, cities, total: all.length, ...(u.basicTier ? { networkCount: everything.length - all.length, basicLimited: true } : {}), capped: inCity.length > pins.length, pins, note: 'Locations are approximate (locality level). Exact address is shown only after a verified site visit.' });
   });
 
   // ── F17 rate card ──

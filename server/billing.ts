@@ -12,6 +12,7 @@
  *  A charge is worked out once, when the event happens, and keeps that calculation (rule changes are never retroactive).
  */
 import { Router, Request, Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { z } from 'zod';
 import { db, type DatabaseState, type UserProfile, type BillingEntry } from './db.js';
 import { ctx, needs } from './auth.js';
@@ -35,7 +36,7 @@ const audit = (id: string, action: string, details: string) => { const u = ctx()
 const todayIst = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
 // ───────────────────────────── who is paying ─────────────────────────────
-const activeStaff = (employerId: string) => st().users.filter(x => x.role === 'TEAM_MEMBER' && x.employerId === employerId && x.verificationStatus === 'VERIFIED').length;
+const activeStaff = (employerId: string) => st().users.filter(x => x.role === 'TEAM_MEMBER' && x.employerId === employerId && isVerifiedFull(x)).length;
 export const segmentOfUser = (u: UserProfile): PayerSegment | null => payerSegmentOf(u, u.role === 'BROKER' ? activeStaff(u.id) : 0);
 export function payerOf(u: UserProfile, state?: string): PayerCtx | null {
   const segment = segmentOfUser(u); if (!segment) return null;

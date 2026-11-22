@@ -13,6 +13,7 @@
  * carries only the label the sender typed ("Mr Sharma") — never a phone number.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { db } from './db.js';
@@ -46,7 +47,7 @@ export function docEmployerOf(u: UserProfile): UserProfile | null {
   if (u.role === 'TEAM_MEMBER') { const e = db.byId('users', u.employerId); return e && e.role === 'BROKER' ? e : null; }
   return null;
 }
-const working = (u: UserProfile | undefined | null) => !!u && u.verificationStatus === 'VERIFIED';
+const working = (u: UserProfile | undefined | null) => !!u && isVerifiedFull(u);
 
 /** may this person (a broker, or a member of one) open this paper because of a post — and may he send it to a client? Used by the routes AND by the public client page. */
 export function docAccessFor(u: UserProfile, project: BuilderProject, doc: ProjectCollateral): { open: boolean; client: boolean; via: 'BROKER' | 'POST' | null } {
@@ -93,7 +94,7 @@ export function createProjDocsRouter() {
           docs.push(view(p, c, { personal: c.audience === 'SELECTED', canTeam: brokerMayPass(c, u.id, 'ACTIVE', 'TEAM'), canClient: brokerMayPass(c, u.id, 'ACTIVE', 'CLIENT'), shownTo: live.length }));
         }
       }
-      const team = teamOf(u.id).filter(m => m.verificationStatus === 'VERIFIED').map(m => { const pol = policyOf(m); return { id: m.id, name: m.name, title: m.teamTitle, canSee: pol.invMode !== 'OFF' && !pol.onLeave, canSend: pol.invShareOut }; });
+      const team = teamOf(u.id).filter(m => isVerifiedFull(m)).map(m => { const pol = policyOf(m); return { id: m.id, name: m.name, title: m.teamTitle, canSee: pol.invMode !== 'OFF' && !pol.onLeave, canSend: pol.invShareOut }; });
       const posts = st.docPosts.filter(x => x.employerId === u.id && x.active && (!only || x.projectId === only)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50).map(x => ({
         id: x.id, projectId: x.projectId, allowClient: x.allowClient, note: x.note, createdAt: x.createdAt,
         titles: x.docIds.map(id => (db.byId('builderProjects', x.projectId)?.collateral || []).find(c => c.id === id)?.title).filter(Boolean),
@@ -136,7 +137,7 @@ export function createProjDocsRouter() {
     }
     const mine = new Map(teamOf(u.id).map(m => [m.id, m]));
     if (d.memberIds.some(id => !mine.has(id))) return bad(res, 'Pick only your own team members');
-    const who = (d.memberIds.length ? d.memberIds : [...mine.keys()]).filter(id => { const m = mine.get(id)!; return m.verificationStatus === 'VERIFIED' && policyOf(m).invMode !== 'OFF'; });
+    const who = (d.memberIds.length ? d.memberIds : [...mine.keys()]).filter(id => { const m = mine.get(id)!; return isVerifiedFull(m) && policyOf(m).invMode !== 'OFF'; });
     if (!who.length) return bad(res, 'None of these people can open project papers yet — turn on their Inventory access in Team first', 409);
     if (st.docPosts.filter(x => x.employerId === u.id && x.active).length >= MAX_DOC_POSTS) return bad(res, `You can keep ${MAX_DOC_POSTS} live posts — end an old one first`, 409);
     const post: DocPost = { id: uid('DPOST'), employerId: u.id, projectId: p.id, docIds: [...new Set(d.docIds)], memberIds: [...new Set(d.memberIds)], allowClient: d.allowClient, note: d.note, createdBy: u.id, createdByName: u.name, createdAt: nowIso(), active: true };

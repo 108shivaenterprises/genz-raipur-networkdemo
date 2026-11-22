@@ -88,6 +88,19 @@ const relistSchema = z.object({
   addressHidden: z.string().trim().min(5).max(300).optional(),
 });
 
+/** v183 — a Settled deal closes its listing with the same safeguards as the manual mark-sold: a held token blocks it (nothing is flipped), live offers are closed, buyer bonds are told. */
+export function settleListingFromDeal(p: Property, deal: { id: string; introducingBrokerId: string; closingBrokerId: string }, u: { id: string; name: string }): { ok: boolean; reason?: 'TOKEN_LOCK' | 'NOT_OPEN' } {
+  if (!['active', 'under_negotiation'].includes(p.listingStatus)) return { ok: false, reason: 'NOT_OPEN' };
+  const s = db.getState(); const ts = nowIso(); const offers = s.propertyOffers.filter(o => o.propertyId === p.id);
+  if (offers.some(o => o.status === 'TOKEN_HELD')) return { ok: false, reason: 'TOKEN_LOCK' };
+  const status = closedStatusFor(p.transactionType);
+  for (const o of offers.filter(o => isLiveOffer(o.status))) { o.status = 'CLOSED'; o.reason = 'Property sold'; o.history.push({ at: ts, byId: u.id, byName: u.name, text: 'Closed — the deal on this property was settled' }); o.updatedAt = ts; }
+  p.resaleKey = p.resaleKey || resaleKeyOf(p);
+  p.prevStatus = p.listingStatus; p.listingStatus = status; p.soldAt = ts; p.soldVia = 'NETWORK'; p.soldDealRoomId = deal.id; p.updatedAt = ts;
+  onPropertyClosed(p, status, 'NETWORK', [u.id, p.listingBrokerId, deal.introducingBrokerId, deal.closingBrokerId].filter(Boolean) as string[]);
+  return { ok: true };
+}
+
 export function createListingsRouter() {
   const r = Router();
   const me = () => ctx().user as UserProfile;
@@ -156,7 +169,7 @@ export function createListingsRouter() {
     }
     if (winner) advanceClient(winner.brokerId, winner.buyerName, winner.buyerPhoneKey, 'DEAL', `${d.status} through GENZ: ${p.title}`);   // v114 — the winning buyer's card and need close as a deal
     p.resaleKey = p.resaleKey || resaleKeyOf(p);
-    p.prevStatus = p.listingStatus; p.listingStatus = d.status; p.soldAt = ts; p.soldVia = d.soldVia; p.soldPrice = d.soldPrice ?? winner?.amount; p.soldNote = d.soldNote; p.soldOfferId = winner?.id; p.updatedAt = ts;
+    p.prevStatus = p.listingStatus; p.listingStatus = d.status; p.soldAt = ts; p.soldDealRoomId = d.soldVia === 'NETWORK' ? d.dealRoomId : undefined; p.soldVia = d.soldVia; p.soldPrice = d.soldPrice ?? winner?.amount; p.soldNote = d.soldNote; p.soldOfferId = winner?.id; p.updatedAt = ts;
     { // v29 — buyer bonds of OTHER brokers on this property: alert them (the closing side is not alerted about itself)
       const dr = d.dealRoomId ? s.dealRooms.find(x => x.id === d.dealRoomId) : undefined;
       onPropertyClosed(p, d.status, d.soldVia, [u.id, p.listingBrokerId, winner?.brokerId, dr?.introducingBrokerId, dr?.closingBrokerId].filter(Boolean) as string[]);
@@ -174,7 +187,7 @@ export function createListingsRouter() {
     const w = st().propertyOffers.find(o => o.id === p.soldOfferId);
     if (w && w.status === 'CLOSED') { w.status = w.token ? 'TOKEN_HELD' : 'ACCEPTED'; if (w.token) { w.token.outcome = undefined; w.token.outcomeAt = undefined; w.token.outcomeNote = undefined; } w.history.push({ at: ts, byId: u.id, byName: u.name, text: 'Sale undone — offer is live again' }); w.updatedAt = ts; }
     p.listingStatus = p.prevStatus && ['active', 'under_negotiation'].includes(p.prevStatus) ? p.prevStatus : 'active';
-    p.soldAt = p.soldVia = p.soldPrice = p.soldNote = p.soldOfferId = undefined as any; p.prevStatus = undefined; p.updatedAt = ts;
+    p.soldAt = p.soldVia = p.soldPrice = p.soldNote = p.soldOfferId = undefined as any; p.soldDealRoomId = undefined; p.prevStatus = undefined; p.updatedAt = ts;
     db.save(); audit(u, p, 'LISTING_CLOSE_UNDONE', `${u.name} undid the sold / rented mark on ${p.id}`);
     res.json({ success: true, note: 'Other offers that were closed stay closed — ask buyers to re-submit.' });
   });
@@ -196,7 +209,7 @@ export function createListingsRouter() {
       listingBrokerId: p.listingBrokerId || (u.role === 'BROKER' ? u.id : ''), listingStatus: 'active', verificationStatus: 'PENDING',
       priceHistory: [{ price: d.askingPrice, changedAt: ts, reason: `Relisted (resale of ${p.id})` }],
       duplicateHash: crypto.createHash('sha256').update(`${p.city}:${p.locality}:${p.propertyType}:${p.plotAreaSqFt || p.builtUpAreaSqFt || 0}:${d.askingPrice}:${id}`).digest('hex'),
-      soldAt: undefined, soldVia: undefined, soldPrice: undefined, soldNote: undefined, soldOfferId: undefined, prevStatus: undefined, purgedAt: undefined, posterCode: undefined, posterViews: 0,
+      soldAt: undefined, soldDealRoomId: undefined, soldVia: undefined, soldPrice: undefined, soldNote: undefined, soldOfferId: undefined, prevStatus: undefined, purgedAt: undefined, posterCode: undefined, posterViews: 0,
       resaleOf: p.id, resaleKey: resaleKeyOf(p), confirmedAt: ts, expiredAt: undefined, heldAt: undefined, createdAt: ts, updatedAt: ts, documents: [],
     };
     s.properties.unshift(np); db.save();

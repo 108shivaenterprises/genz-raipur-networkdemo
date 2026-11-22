@@ -13,6 +13,7 @@
  *  5. Everything is in the hash-chained audit trail.
  */
 import { alert, firstName } from './alerts.js';
+import { isVerifiedFull } from './permissions.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { db } from './db.js';
@@ -204,7 +205,7 @@ export function createTeamRouter() {
 
   r.post('/', rateLimit('team-create', 60, 60 * 60_000), (req: Request, res: Response) => {
     const u = me();
-    if (u.verificationStatus !== 'VERIFIED') return res.status(403).json({ error: 'Your account must be verified first' });
+    if (!isVerifiedFull(u)) return res.status(403).json({ error: 'Your account must be verified first' });
     const p = createSchema.safeParse(req.body);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || 'Invalid details' });
     if (!p.data.title && !p.data.role) return res.status(400).json({ error: 'Job title is required (e.g. Telecaller)' });
@@ -302,7 +303,7 @@ export function createTeamRouter() {
     let to: UserProfile | undefined;
     if (memberId) {
       to = member(memberId, u.id);
-      if (!to || to.verificationStatus !== 'VERIFIED') return res.status(400).json({ error: 'Pick one of your active team members' });
+      if (!to || !isVerifiedFull(to)) return res.status(400).json({ error: 'Pick one of your active team members' });
     }
     const prev = lead.assignedMemberName;
     lead.assignedMemberId = to?.id; lead.assignedMemberName = to?.name;
@@ -322,7 +323,7 @@ export function createTeamRouter() {
     if (!deal || !isDealBroker(u, deal)) return res.status(404).json({ error: 'Deal room not found' });
     const ids: string[] = Array.isArray(req.body?.memberIds) ? req.body.memberIds.map(String) : [];
     const mineIds = new Set(mine(u.id).map(m => m.id));
-    if (ids.some(id => !mineIds.has(id) || member(id, u.id)?.verificationStatus !== 'VERIFIED')) return res.status(400).json({ error: 'Pick only your own active team members' });
+    if (ids.some(id => !mineIds.has(id) || !isVerifiedFull(member(id, u.id)))) return res.status(400).json({ error: 'Pick only your own active team members' });
     const others = (deal.teamMemberIds || []).filter(id => !mineIds.has(id)); // the other broker's employees stay untouched
     const before = new Set(deal.teamMemberIds || []);
     deal.teamMemberIds = [...new Set([...others, ...ids])];

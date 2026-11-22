@@ -34,6 +34,7 @@ export function openInboxUrl(url: string | undefined) {
 export const NotificationBell: React.FC = () => {
   const tx = useTx(); const { lang } = useI18n(); const hi = lang === 'hi';
   const [unread, setUnread] = useState(0);
+  useEffect(() => { try { window.dispatchEvent(new CustomEvent('genz:bell', { detail: unread })); } catch { /* old browser */ } }, [unread]);
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,12 +89,12 @@ export const NotificationBell: React.FC = () => {
             className="fixed left-2 right-2 top-16 z-50 max-h-[75vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-13 sm:w-96">
             <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
               <h2 className="text-sm font-bold text-slate-900">{tx('Notifications', 'सूचनाएँ')}{unread > 0 && <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[11px] font-bold text-rose-700">{unread}</span>}</h2>
-              <button type="button" onClick={() => setOpen(false)} aria-label={tx('Close', 'बंद करें')} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setOpen(false)} aria-label={tx('Close', 'बंद करें')} className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
             {rows && rows.length > 0 && (
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
-                <button type="button" disabled={busy || unread === 0} onClick={markAll} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-700 hover:bg-white disabled:opacity-40" data-testid="bell-mark-all"><CheckCheck className="h-4 w-4" />{tx('Mark all read', 'सब पढ़ा हुआ')}</button>
-                <button type="button" disabled={busy} onClick={clearAll} className={`inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-semibold disabled:opacity-40 ${sure ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-white'}`} data-testid="bell-clear-all"><Trash2 className="h-4 w-4" />{sure ? tx('Tap again to clear all', 'सब हटाने के लिए फिर दबाएँ') : tx('Clear all', 'सब हटाएँ')}</button>
+                <button type="button" disabled={busy || unread === 0} onClick={markAll} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-700 hover:bg-white disabled:opacity-40" data-testid="bell-mark-all"><CheckCheck className="h-4 w-4" />{tx('Mark all read', 'सब पढ़ा हुआ')}</button>
+                <button type="button" disabled={busy} onClick={clearAll} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-semibold disabled:opacity-40 ${sure ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-white'}`} data-testid="bell-clear-all"><Trash2 className="h-4 w-4" />{sure ? tx('Tap again to clear all', 'सब हटाने के लिए फिर दबाएँ') : tx('Clear all', 'सब हटाएँ')}</button>
               </div>
             )}
             <div className="max-h-[58vh] overflow-y-auto">
@@ -107,12 +108,12 @@ export const NotificationBell: React.FC = () => {
                       <button type="button" onClick={() => tap(x)} className="flex min-h-14 min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-left">
                         <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${x.read ? 'bg-transparent' : 'bg-rose-500'}`} aria-hidden />
                         <span className="min-w-0 flex-1">
-                          <span className={`block text-[13px] leading-snug text-slate-900 ${x.read ? 'font-medium' : 'font-bold'}`}>{x.todo && <span className="mr-1.5 inline-block rounded bg-slate-900 px-1.5 py-px align-middle text-[10px] font-bold uppercase tracking-wide text-white" data-testid="bell-todo-chip">{tx('To do', 'करना है')}{x.n ? ` · ${x.n}` : ''}</span>}{x.title}</span>
+                          <span className={`block text-[13px] leading-snug text-slate-900 ${x.read ? 'font-medium' : 'font-bold'}`}>{x.todo && <span className="mr-1.5 inline-block rounded bg-slate-900 px-1.5 py-px align-middle text-xs font-bold uppercase tracking-wide text-white" data-testid="bell-todo-chip">{tx('To do', 'करना है')}{x.n ? ` · ${x.n}` : ''}</span>}{x.title}</span>
                           {x.body && <span className="mt-0.5 block break-words text-xs leading-snug text-slate-600">{x.body}</span>}
-                          <span className="mt-1 block text-[11px] text-slate-400">{agoLabel(x.at, now, hi)}</span>
+                          <span className="mt-1 block text-xs text-slate-400">{agoLabel(x.at, now, hi)}</span>
                         </span>
                       </button>
-                      <button type="button" disabled={busy} onClick={() => remove(x)} aria-label={tx('Remove this notification', 'यह सूचना हटाएँ')} className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40" data-testid="bell-remove"><X className="h-4 w-4" /></button>
+                      <button type="button" disabled={busy} onClick={() => remove(x)} aria-label={tx('Remove this notification', 'यह सूचना हटाएँ')} className="mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40" data-testid="bell-remove"><X className="h-4 w-4" /></button>
                     </li>
                   ))}
                 </ul>

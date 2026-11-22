@@ -9,7 +9,7 @@ import { Router, type Request, type Response } from 'express';
 import crypto from 'node:crypto';
 import { db } from './db.js';
 import type { UserProfile, Property } from './db.js';
-import { ctx, needs, rateLimit } from './auth.js';
+import { ctx, needs, needsKyc, rateLimit } from './auth.js';
 
 const MAX_SAVED = 100;
 const me = () => ctx().user as UserProfile;
@@ -27,7 +27,7 @@ export function createSavedRouter() {
     const saved = mine.map(x => { const p = s.properties.find(q => q.id === x.propertyId); return p && p.verificationStatus === 'VERIFIED' ? { ...card(p), savedAt: x.at } : null; }).filter(Boolean);
     res.json({ success: true, ids: mine.map(x => x.propertyId), saved });
   });
-  r.post('/:propertyId', needs('property:read'), rateLimit('saved', 200, 3600_000), (req: Request, res: Response) => {
+  r.post('/:propertyId', needs('property:read'), needsKyc, rateLimit('saved', 200, 3600_000), (req: Request, res: Response) => {
     const u = me(); const s = db.getState();
     const list = (s.savedProperties ||= []);
     const i = list.findIndex(x => x.userId === u.id && x.propertyId === req.params.propertyId);

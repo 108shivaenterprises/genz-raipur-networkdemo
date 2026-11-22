@@ -406,7 +406,19 @@ export function memberPermissions(employerRole?: UserRole, sw?: StaffSwitches): 
   }
 }
 
+/** v185 (D15) — what a Basic (open sign-up, not KYC-verified) account cannot do: co-broke deals, commission, money, token holds, visits, invites, outside referrals. */
+export const BASIC_LOCKED: Permission[] = [
+  'collab:propose', 'collab:respond', 'deal:update_stage', 'deal:commission', 'agreement:propose', 'agreement:sign', 'agreement:record_payment',
+  'offer:make', 'offer:decide', 'inventory:hold', 'crm:booking_request', 'crm:money_collect', 'crm:money_confirm', 'mandate:broker_respond', 'lead:settle',
+  'sitevisit:create', 'sitevisit:verify', 'visit:pass', 'pcontrol:partner', 'partner:manage', 'legal:request', 'loan:submit', 'team:manage', 'call:use',
+  'tier2:vouch', 'tieup:manage', 'growth:nominate', 'connector:sponsor', 'builder:project_create', 'builder:appoint_associate', 'builder:record_sale',
+  // v186 (D16): anything that lets a throw-away account act on, or look at, other people
+  'report:create', 'partywatch:report', 'lead:create', 'connector:refer', 'matching:run', 'pdoc:use', 'propdoc:use',
+  // v186b: lists / feeds that return other members' rows
+  'chapter:read', 'lead:read', 'builder:projects_read',
+];
 export interface AccountLike {
+  basicTier?: boolean;
   role: UserRole;
   employerRole?: UserRole;
   teamPolicy?: StaffSwitches;
@@ -417,7 +429,7 @@ export interface AccountLike {
 export function effectivePermissions(user: AccountLike): Permission[] {
   const raw = user.role === 'TEAM_MEMBER' ? memberPermissions(user.employerRole, user.teamPolicy) : permissionsForRole(user.role);
   const all = voiceOn() ? raw : raw.filter(p => p !== 'call:use'); // D1: voice off => call:use is not effective
-  if (user.verificationStatus === 'VERIFIED') return all;
+  if (user.verificationStatus === 'VERIFIED') return user.basicTier ? all.filter(p => !BASIC_LOCKED.includes(p)) : all;
   if (user.verificationStatus === 'PENDING' || user.verificationStatus === 'SUSPENDED') {
     return all.filter(p => UNVERIFIED_ALLOWED.includes(p));
   }
@@ -437,3 +449,6 @@ export function permissionMatrix() {
     roles: ALL_ROLES.filter(r => roleHas(r, p)),
   }));
 }
+
+/** v186 (D16) — the ONE trust check: signed up, KYC-approved, not a Basic (open sign-up) account. Use it wherever "verified" gives visibility, standing or ability; plain `verificationStatus === 'VERIFIED'` only means "may sign in / see own data". */
+export const isVerifiedFull = (u?: { verificationStatus?: string; basicTier?: boolean } | null): boolean => !!u && u.verificationStatus === 'VERIFIED' && !u.basicTier;

@@ -112,7 +112,10 @@ export interface UserProfile {
   sponsorId?: string;
   aadhaarLast4?: string;
   idCheckedAt?: string;
+  /** v185 — open sign-up: live but not KYC-verified (Basic) */
+  basicTier?: boolean;
   idCheckNote?: string;
+  reraClaim?: { number: string; at: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string; decidedBy?: string };
   consent?: { policyVersion: string; acceptedAt: string };
   /** TEAM_MEMBER only */
   employerId?: string;

@@ -53,7 +53,8 @@ export const LangProvider: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 export const useI18n = () => useContext(I18n);
-export const useTx = () => { const { lang } = useI18n(); return (en: string, hi: string) => (lang === 'hi' ? hi : en); };
+// v189: a STABLE function per language — an unstable one in a hook's deps made effects re-run on every render (fetch loops)
+export const useTx = () => { const { lang } = useI18n(); return useCallback((en: string, hi: string) => (lang === 'hi' ? hi : en), [lang]); };
 
 export const LangToggle: React.FC<{ className?: string }> = ({ className = '' }) => {
   const { lang, setLang } = useI18n();

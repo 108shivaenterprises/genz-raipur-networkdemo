@@ -16,6 +16,7 @@
  * Other roles (builder, contractor, lawyer) keep the plain visiting card of server/growth.ts.
  */
 import { DEMO_CITY_PAGES, type PageDemo } from './demoCities.js';
+import { isVerifiedFull } from './permissions.js';
 import express, { Router, type Request, type Response, type NextFunction } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
@@ -45,7 +46,7 @@ const bad = (res: Response, error: string, status = 400, extra: Record<string, u
 export function pageLive(p?: Property | null): p is Property {
   if (!p || p.verificationStatus !== 'VERIFIED' || !LIVE.includes(p.listingStatus) || p.expiredAt || p.heldAt || p.purgedAt) return false;
   const lb = db.byId('users', p.listingBrokerId) as UserProfile | undefined;
-  return !!lb && lb.role === 'BROKER' && lb.verificationStatus === 'VERIFIED';
+  return !!lb && lb.role === 'BROKER' && isVerifiedFull(lb);
 }
 /** may this broker show this home? his own live listing, or another broker's live listing its listing broker opened to pages */
 export function canShow(u: Pick<UserProfile, 'id'>, p?: Property | null): 'OWN' | 'NETWORK' | null {
@@ -311,7 +312,7 @@ const thumb = (p: Property) => ({
 
 export function pageOverview(u: UserProfile) {
   const s = st(); const card = u.publicCard;
-  const code = u.verificationStatus === 'VERIFIED' ? ensureReferralCode(u) : '';
+  const code = isVerifiedFull(u) ? ensureReferralCode(u) : '';
   const shown = shownHomes(u); const chosen = new Set(shown.map(p => p.id));
   // how many OTHER brokers' pages show each of my listings (one pass over the users)
   const showing = new Map<string, number>();
@@ -330,7 +331,7 @@ export function pageOverview(u: UserProfile) {
     return { ...e, home: e.propertyId ? { id: e.propertyId, title: p?.title || e.propertyId, deal: p?.transactionType || '', live: pageLive(p), own: p ? p.listingBrokerId === u.id : false, listingBroker: lb ? lb.name : '' } : null };
   });
   return {
-    card: { enabled: !!card?.enabled, showPhone: !!card?.showPhone, headline: card?.headline || '', areas: card?.areas || [], views: card?.views || 0, path: code ? `/c/${code}` : '', ownerOk: !!card?.ownerOkAt, verified: u.verificationStatus === 'VERIFIED' },
+    card: { enabled: !!card?.enabled, showPhone: !!card?.showPhone, headline: card?.headline || '', areas: card?.areas || [], views: card?.views || 0, path: code ? `/c/${code}` : '', ownerOk: !!card?.ownerOkAt, verified: isVerifiedFull(u) },
     homes: { chosen: shown.map(p => p.id), max: L.homes },
     own, network, enquiries,
     counts: { new: enquiries.filter(e => e.status === 'NEW').length, homes: shown.length },
@@ -350,7 +351,7 @@ export function createPublicPageRouter() {
 
   r.put('/settings', (req: Request, res: Response) => {
     const u = self();
-    if (u.verificationStatus !== 'VERIFIED') return bad(res, 'Your account must be verified first', 403);
+    if (!isVerifiedFull(u)) return bad(res, 'Your account must be verified first', 403);
     const p = settingsSchema.safeParse(req.body || {});
     if (!p.success) return bad(res, p.error.issues[0]?.message || 'Invalid');
     const card = ensureCard(u); const was = card.enabled;
@@ -365,7 +366,7 @@ export function createPublicPageRouter() {
 
   r.put('/homes', (req: Request, res: Response) => {
     const u = self();
-    if (u.verificationStatus !== 'VERIFIED') return bad(res, 'Your account must be verified first', 403);
+    if (!isVerifiedFull(u)) return bad(res, 'Your account must be verified first', 403);
     const p = homesSchema.safeParse(req.body || {});
     if (!p.success) return bad(res, p.error.issues[0]?.message || 'Invalid');
     const ids = [...new Set(p.data.ids)];
@@ -461,7 +462,7 @@ export function seedDemoPage() {
 function seedPageFor(d: PageDemo) {
   const s = st();
   const u = db.byId('users', d.brokerId) as UserProfile | undefined;
-  if (!u || u.verificationStatus !== 'VERIFIED' || (u.publicCard?.homes || []).length || s.pageEnquiries.some(e => e.brokerId === u.id)) return;
+  if (!u || !isVerifiedFull(u) || (u.publicCard?.homes || []).length || s.pageEnquiries.some(e => e.brokerId === u.id)) return;
   const own = s.properties.filter(p => p.listingBrokerId === u.id && pageLive(p)).slice(0, 5);
   const theirs = s.properties.filter(p => p.listingBrokerId === d.colleagueId && pageLive(p)).slice(0, 2);
   const at = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();

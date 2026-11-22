@@ -278,10 +278,12 @@ const ClientPhone: React.FC<{ r: any; id: string; onRoom: (r: any) => void }> = 
     <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 text-sm" data-testid="room-phone">
       {phone ? (
         <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1 whitespace-nowrap">
           <span className="font-mono text-sm font-bold text-slate-900" data-testid="room-phone-num">+91 {fmt(phone)}</span>
+          <button type="button" className={light} aria-label={tx('Copy number', 'नंबर कॉपी')} onClick={() => navigator.clipboard?.writeText(phone)}><Copy className="h-4 w-4" /></button>
+          </span>
           <a className={light} href={`tel:+91${phone}`} data-testid="room-call"><Phone className="h-4 w-4" />{tx('Call', 'कॉल')}</a>
           <a className={light} target="_blank" rel="noreferrer" href={wa}><MessageCircle className="h-4 w-4" />WhatsApp</a>
-          <button type="button" className={light} aria-label={tx('Copy number', 'नंबर कॉपी')} onClick={() => navigator.clipboard?.writeText(phone)}><Copy className="h-4 w-4" /></button>
         </div>
       ) : r.phoneSaved && r.phoneAccess === 'REVEAL' ? (
         <button type="button" disabled={busy} className={light} data-testid="room-reveal" onClick={() => act(async () => { const x = await api.crPhoneReveal(id); setShown(x.phone); })}><Eye className="h-4 w-4" />{tx(`Show number (••${r.phoneLast4})`, `नंबर देखें (••${r.phoneLast4})`)}</button>

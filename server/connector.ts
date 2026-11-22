@@ -15,6 +15,7 @@
  *  6. Everything is written to the hash-chained audit trail.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { z } from 'zod';
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
@@ -234,7 +235,7 @@ export function createConnectorRouter() {
     };
     push(ref, u, 'SUBMITTED');
     const sponsor = u.connector?.sponsorId ? state.users.find(x => x.id === u.connector!.sponsorId) : undefined;
-    if (sponsor && sponsor.role === 'BROKER' && sponsor.verificationStatus === 'VERIFIED') {
+    if (sponsor && sponsor.role === 'BROKER' && isVerifiedFull(sponsor)) {
       // partner belongs to a broker's own network → the broker works it directly and rewards the partner
       ref.sponsorId = sponsor.id; ref.sponsorName = sponsor.name;
       ref.assignedToId = sponsor.id; ref.assignedToName = sponsor.name; ref.assignedToRole = sponsor.role;
@@ -281,7 +282,7 @@ export function createConnectorRouter() {
     if (!x) return res.status(404).json({ error: 'Referral not found' });
     if (['CLOSED_WON', 'DUPLICATE', 'REJECTED'].includes(x.status)) return res.status(409).json({ error: `Referral is ${x.status.toLowerCase().replace('_', ' ')}` });
     const to = state.users.find(v => v.id === String(req.body?.assigneeId || ''));
-    if (!to || to.verificationStatus !== 'VERIFIED' || !(to.role === 'BROKER' || to.role === 'CONTRACTOR')) {
+    if (!to || !isVerifiedFull(to) || !(to.role === 'BROKER' || to.role === 'CONTRACTOR')) {
       return res.status(400).json({ error: 'Pick a verified broker or contractor' });
     }
     if (x.type === 'CONSTRUCTION' && to.role !== 'CONTRACTOR') return res.status(400).json({ error: 'Construction referrals go to a contractor' });
@@ -511,7 +512,7 @@ export function createConnectorRouter() {
   /** A broker invites a local partner; an admin still approves the account (KYC) before it can submit referrals. */
   r.post('/my-partners/invite', needs('connector:sponsor'), rateLimit('sponsor-invite', 30, 24 * 60 * 60_000), (req: Request, res: Response) => {
     const u = ctx().user as UserProfile;
-    if (u.verificationStatus !== 'VERIFIED') return res.status(403).json({ error: 'Your account must be verified first' });
+    if (!isVerifiedFull(u)) return res.status(403).json({ error: 'Your account must be verified first' });
     const p = phoneSchema.safeParse(req.body?.phone);
     if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message || 'Valid 10-digit mobile number required' });
     const state = db.getState();

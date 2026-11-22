@@ -13,15 +13,16 @@
  *  - GENZ desk = coordination (site visits, paperwork, launch day) on a builder's request. GENZ never sells to a buyer.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { db } from './db.js';
 import type { UserProfile, Tier2Application, Tieup, DeskRequest } from './db.js';
-import { ctx, needs, rateLimit, digits, secureCode } from './auth.js';
+import { ctx, needs, needsKyc, rateLimit, digits, secureCode } from './auth.js';
 import { can } from './permissions.js';
 import { phoneSchema } from './validation.js';
 import { normCity } from '../src/shared/cities.js';
-import { normRera, isPlausibleRera, normPan, isValidPan, maskPan } from './kyc.js';
+import { normRera, isPlausibleRera, normPan, isValidPan, maskPan, panHeldByApproved } from './kyc.js';
 import { sponsorOf } from './tiers.js';
 import { storeKyc, readKycBody, kycFlags, vaultOn } from './kycvault.js';
 import { normAadhaar, isValidAadhaar, aadhaarLast4, maskAadhaar, isSponsorEligible, panProblem, aadhaarProblem, isLast4 } from '../src/shared/idRules.js';
@@ -39,7 +40,7 @@ const me = () => ctx().user as UserProfile;
 const bad = (res: Response, error: string, status = 400, code?: string) => res.status(status).json(code ? { error, code } : { error });
 const audit = (entityType: 'SYSTEM' | 'DEAL' | 'VERIFICATION', id: string, action: string, details: string) => { const u = me(); db.appendAuditEvent(u.id, u.role, entityType, id, action, details); };
 const mask = (phone?: string) => { const d = digits(phone); return d ? `XXXXXX${d.slice(-4)}` : ''; };
-const isVerifiedBroker = (u?: UserProfile) => !!u && u.role === 'BROKER' && u.verificationStatus === 'VERIFIED';
+const isVerifiedBroker = (u?: UserProfile) => !!u && u.role === 'BROKER' && isVerifiedFull(u);
 const phoneKnown = (phone: string) => st().users.some(u => digits(u.phone).slice(-10) === digits(phone).slice(-10));
 const seq = (prefix: string, list: { id: string }[]) => `${prefix}-${String(list.reduce((m, r) => Math.max(m, Number(r.id.split('-').pop()) || 0), 0) + 1).padStart(4, '0')}`;
 
@@ -164,14 +165,16 @@ export function createNetworkRouter() {
     const aad = normAadhaar(req.body?.aadhaarNumber);
     if (req.body?.consent !== true) return bad(res, 'Please agree to GENZ keeping your PAN and the last 4 digits of your Aadhaar for verification', 400, 'ID_CONSENT_REQUIRED');
     if (!pan || !isValidPan(pan)) return bad(res, `PAN: ${panProblem(pan)?.en || 'enter your 10-character PAN (e.g. ABCPD1234E)'}`, 400, 'PAN_INVALID');
-    if (!aad || !isValidAadhaar(aad)) return bad(res, `Aadhaar: ${aadhaarProblem(aad)?.en || 'enter all 12 digits'}`, 400, 'AADHAAR_INVALID');
-    if (s.users.some(x => x.id !== u.id && x.role === 'BROKER' && x.panNumber && normPan(x.panNumber) === pan)) return bad(res, 'This PAN is already linked to another GENZ account.', 409, 'PAN_IN_USE');
+    const keepAad = !aad && !!u.aadhaarLast4;   // v188: PAN-only correction keeps the Aadhaar already on file
+    if (!keepAad && (!aad || !isValidAadhaar(aad))) return bad(res, `Aadhaar: ${aadhaarProblem(aad)?.en || 'enter all 12 digits'}`, 400, 'AADHAAR_INVALID');
+    if (panHeldByApproved(s.users, pan, u.id)) return bad(res, 'We could not use these details. Check them, or contact GENZ.', 409, 'CANNOT_REGISTER');   // v187: the same generic answer as sign-up — not a PAN oracle
     // v25 — optional address (+ PIN); the FULL Aadhaar and the address go into the encrypted vault when the member ticked the KYC agreement
     const kyc = readKycBody(req.body);
     if ('error' in kyc) return bad(res, kyc.error, 400, kyc.code);
-    const changed = pan !== u.panNumber || aadhaarLast4(aad) !== u.aadhaarLast4;
-    u.panNumber = pan; u.aadhaarLast4 = aadhaarLast4(aad); u.idConsentAt = nowIso();
-    const vault = kyc.consent ? storeKyc(u, { aadhaar: aad, address: kyc.address, pincode: kyc.pincode, source: kyc.source }) : { stored: false as const };
+    const last4 = keepAad ? u.aadhaarLast4! : aadhaarLast4(aad);
+    const changed = pan !== u.panNumber || last4 !== u.aadhaarLast4;
+    u.panNumber = pan; u.aadhaarLast4 = last4; u.idConsentAt = nowIso();
+    const vault = kyc.consent && !keepAad ? storeKyc(u, { aadhaar: aad, address: kyc.address, pincode: kyc.pincode, source: kyc.source }) : { stored: false as const };
     if (changed) { u.idCheckedAt = undefined; u.idCheckedBy = undefined; u.idCheckNote = undefined; }
     openIdTask(u.id, changed ? 'ID_CHANGED' : 'NEW_FILE', { by: u.id, autoVerified: !!u.autoVerifiedAt });
     db.save();
@@ -183,11 +186,12 @@ export function createNetworkRouter() {
   r.post('/id-check/:userId', needs('users:review'), (req: Request, res: Response) => {
     const a = me(); const s = st();
     const t = s.users.find(x => x.id === req.params.userId);
-    if (!t || t.role !== 'BROKER') return bad(res, 'Broker not found', 404);
+    if (!t || !['BROKER', 'DEVELOPER_BUILDER', 'GENZ_CONNECTOR', 'CONTRACTOR', 'LEGAL_COUNSEL'].includes(t.role)) return bad(res, 'Member not found', 404);
     if (t.id === a.id) return bad(res, 'You cannot check your own ID', 403);
     const checked = req.body?.checked !== false;
     const note = String(req.body?.note || '').trim().slice(0, 200);
-    if (checked && (!t.panNumber || !t.aadhaarLast4)) return bad(res, 'PAN and Aadhaar are not on file yet — ask the member to add them first', 409, 'ID_MISSING');
+    if (checked && t.role === 'BROKER' && (t.basicTier ? !(t.panNumber || s.idDocs.some(d => d.subjectUserId === t.id)) : (!t.panNumber || !t.aadhaarLast4))) return bad(res, 'No PAN (or ID copy) is on file yet — ask the member to add it first', 409, 'ID_MISSING');   // v188: a Basic broker signed up with a PAN; the card copy is the evidence
+    if (checked && t.role !== 'BROKER' && !s.idDocs.some(d => d.subjectUserId === t.id)) return bad(res, 'No ID copy is on file yet — the member (or you, on his behalf) must add one first', 409, 'ID_MISSING');   // v186b
     recordIdTick(t, a, checked, note); // sets / clears the tick AND closes / reopens the ID-review task
     db.save();
     audit('VERIFICATION', t.id, checked ? 'ID_CHECKED' : 'ID_CHECK_CLEARED', `${a.name} ${checked ? 'saw the PAN card and Aadhaar card of' : 'cleared the "ID seen" tick of'} ${t.name}${note ? `: ${note}` : ''}`);
@@ -282,7 +286,7 @@ export function createNetworkRouter() {
     const pan = d.panNumber ? normPan(d.panNumber) : '';
     if (pan) {
       const why = panProblem(pan); if (why) return bad(res, `PAN: ${why.en}`, 400, 'PAN_INVALID');
-      if (s.users.some(x => x.role === 'BROKER' && x.panNumber && normPan(x.panNumber) === pan)) return bad(res, 'This PAN is already linked to a GENZ account.', 409, 'PAN_IN_USE');
+      if (s.users.some(x => x.role === 'BROKER' && x.panNumber && normPan(x.panNumber) === pan)) return bad(res, 'We could not use these details. Check them, or contact GENZ.', 409, 'CANNOT_REGISTER');
     }
     if (d.aadhaarLast4 && !isLast4(d.aadhaarLast4)) return bad(res, 'Aadhaar: give exactly the last 4 digits (the full number is never taken here)', 400, 'AADHAAR_INVALID');
     const a: Tier2Application = {
@@ -370,10 +374,15 @@ export function createNetworkRouter() {
     const rera = normRera(req.body?.reraNumber);
     if (!rera || !isPlausibleRera(rera)) return bad(res, 'Write your RERA registration number exactly as it is on the certificate');
     if (tierOf(u) === 'TIER1' && normRera(u.reraNumber) === rera) return bad(res, 'This RERA number is already on your profile', 409);
-    const taken = s.users.some(x => x.id !== u.id && x.role === 'BROKER' && ((x.reraNumber && normRera(x.reraNumber) === rera) || (x.reraClaim?.status === 'PENDING' && x.reraClaim.number === rera)));
+    const taken = s.users.some(x => x.id !== u.id && x.role === 'BROKER' && ((x.reraNumber && !x.basicTier && normRera(x.reraNumber) === rera) || (x.reraClaim?.status === 'PENDING' && x.reraClaim.number === rera && !x.basicTier)));   // v186: a Basic account's pending claim does not block the real holder
     if (taken) return bad(res, 'This RERA number is already linked to another GENZ account', 409);
     // v141 — no GENZ desk at India scale: a well-formed, unused RERA number gives Tier 1 at once; members' reports take it back (daily.ts)
     const at = nowIso();
+    if (u.basicTier) {   // v186 (D16): a Basic account's RERA is only a CLAIM for the admin queue — no tier, no number on the profile, and it is not proof for the KYC approval
+      u.reraClaim = { number: rera, at, status: 'PENDING' };
+      db.save(); audit('VERIFICATION', u.id, 'RERA_CLAIM_BASIC', `${u.name} (Basic) claimed RERA ${rera} — waiting in the admin RERA queue`);
+      return res.json({ success: true, tier: tierOf(u), claim: u.reraClaim, pending: true });
+    }
     u.reraClaim = { number: rera, at, status: 'APPROVED', decidedAt: at, decidedBy: 'AUTO' };
     u.reraNumber = rera; u.tier = 'TIER1'; u.probationUntil = undefined;
     db.save();
@@ -392,6 +401,7 @@ export function createNetworkRouter() {
     if (t.id === a.id) return bad(res, 'You cannot check your own RERA', 403);
     const at = nowIso();
     if (req.body?.approve === true) {
+      if (st().users.some(x => x.id !== t.id && x.role === 'BROKER' && !x.basicTier && x.reraNumber && normRera(x.reraNumber) === normRera(t.reraClaim!.number))) return bad(res, 'Another KYC-approved account already holds this RERA number — resolve the conflict first.', 409, 'RERA_CONFLICT');
       t.reraNumber = t.reraClaim.number; t.tier = 'TIER1'; t.probationUntil = undefined;
       t.reraClaim = { ...t.reraClaim, status: 'APPROVED', decidedAt: at, decidedBy: a.id };
       db.save(); audit('VERIFICATION', t.id, 'RERA_APPROVED', `${a.name} checked RERA ${t.reraNumber} of ${t.name} — now Tier 1`);
@@ -428,7 +438,7 @@ export function createNetworkRouter() {
     const chapters = captainChapters(u);
     if (!chapters.length) return res.json({ success: true, isCaptain: false });
     const cities = new Set(chapters.map(c => normCity(c.city)));
-    const members = s.users.filter(x => x.role === 'BROKER' && x.verificationStatus === 'VERIFIED' && cities.has(normCity(x.city)));
+    const members = s.users.filter(x => x.role === 'BROKER' && isVerifiedFull(x) && cities.has(normCity(x.city)));
     res.json({
       success: true, isCaptain: true, chapters: chapters.map(c => ({ id: c.id, name: c.name, city: c.city })),
       members: { total: members.length, tier1: members.filter(x => tierOf(x) === 'TIER1').length, tier2: members.filter(x => tierOf(x) === 'TIER2').length, onProbation: members.filter(x => inProbation(x)).length },
@@ -440,7 +450,7 @@ export function createNetworkRouter() {
 
   r.get('/admin/overview', needs('growth:manage'), (_req, res) => {
     const s = st();
-    const brokers = s.users.filter(x => x.role === 'BROKER' && x.verificationStatus === 'VERIFIED');
+    const brokers = s.users.filter(x => x.role === 'BROKER' && isVerifiedFull(x));
     const byCity = new Map<string, { city: string; tier1: number; tier2: number }>();
     for (const b of brokers) { const c = normCity(b.city) || 'Unknown'; const row = byCity.get(c) || { city: c, tier1: 0, tier2: 0 }; if (tierOf(b) === 'TIER1') row.tier1++; else row.tier2++; byCity.set(c, row); }
     const cities = [...byCity.values()].map(x => ({ ...x, total: x.tier1 + x.tier2, target: CITY_TARGET_ACTIVE, pct: Math.min(100, Math.round(((x.tier1 + x.tier2) / CITY_TARGET_ACTIVE) * 100)) })).sort((a, b) => b.total - a.total);
@@ -467,9 +477,9 @@ export function createNetworkRouter() {
   });
 
   // ── trust profile ("GENZ Verified" card) ──
-  r.get('/profile/:id', needs('network:use', 'growth:manage'), rateLimit('net-profile', 200, 3600_000), (req, res) => {
+  r.get('/profile/:id', needs('network:use', 'growth:manage'), rateLimit('net-profile', 200, 3600_000), needsKyc, (req, res) => {
     const s = st(); const t = s.users.find(x => x.id === req.params.id);
-    if (!t || !['BROKER', 'DEVELOPER_BUILDER'].includes(t.role) || t.verificationStatus !== 'VERIFIED') return bad(res, 'Member not found', 404);
+    if (!t || !['BROKER', 'DEVELOPER_BUILDER'].includes(t.role) || !isVerifiedFull(t)) return bad(res, 'Member not found', 404);
     res.json({ success: true, profile: trustProfile(t) });
   });
 
@@ -538,7 +548,7 @@ export function trustProfile(t: UserProfile) {
     id: t.id, name: t.name, company: t.companyName || '', role: t.role, city: t.city,
     tier, tierLabel: tier ? TIER_LABEL[tier] : null,
     reraVerified: tier === 'TIER1', memberSince: t.createdAt.slice(0, 10),
-    stats: { settledDeals: settled, verifiedVisits: visits, activeTieups: tieups, builderPartnerships: mandates, vouchesReceived: (t.vouchedBy || []).length, membersBrought: s.users.filter(x => x.invitedById === t.id && x.verificationStatus === 'VERIFIED').length },
+    stats: { settledDeals: settled, verifiedVisits: visits, activeTieups: tieups, builderPartnerships: mandates, vouchesReceived: (t.vouchedBy || []).length, membersBrought: s.users.filter(x => x.invitedById === t.id && isVerifiedFull(x)).length },
     trustScore: t.trustScore ?? null, onProbation: inProbation(t),
     note: tier === 'TIER2' ? `Local associate registered by ${(() => { const sp = sponsorOf(t); return (sp && s.users.find(x => x.id === sp)?.name) || 'a RERA-registered member'; })()} — RERA registration not verified by GENZ.` : undefined,
   };

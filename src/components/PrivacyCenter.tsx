@@ -6,7 +6,7 @@ import { TwoFactorCard } from './TwoFactorCard.js';
 import { AlertsCard } from './AlertsCard.js';
 import { api } from '../lib/api.js';
 
-interface Req { id: string; type: string; status: string; createdAt: string; details: string; resolutionNote?: string }
+interface Req { id: string; type: string; status: string; createdAt: string; details: string; resolutionNote?: string; dealRoomId?: string }
 
 async function j(url: string, init?: RequestInit) {
   const r = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...init });
@@ -114,7 +114,7 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string; otpOn
 };
 
 /** Admin / Grievance Officer queue (DPDP requests must be answered within the published SLA). */
-export const PrivacyQueue: React.FC = () => {
+export const PrivacyQueue: React.FC<{ askOnly?: boolean }> = ({ askOnly }) => {   // askOnly: the "Ask GENZ" questions about a deal (shown at the top of Disputes)
   const tx = useTx();
   const label = useLabel();
   const [reqs, setReqs] = useState<(Req & { userName: string; userId: string })[]>([]);
@@ -123,21 +123,23 @@ export const PrivacyQueue: React.FC = () => {
   useEffect(() => { load(); }, []);
   const resolve = async (id: string, decision: 'COMPLETE' | 'REJECT') => {
     try {
-      const needsNote = decision === 'REJECT' || reqs.find(r => r.id === id)?.type === 'CONSENT_WITHDRAWAL';
-      const note = needsNote ? prompt(decision === 'REJECT' ? tx('Reason for rejection', 'अस्वीकार करने का कारण') : tx('What was stopped? (the person sees this)', 'क्या बंद किया गया? (व्यक्ति को यह दिखेगा)')) || '' : '';
+      const cur = reqs.find(r => r.id === id); const needsNote = decision === 'REJECT' || cur?.type === 'CONSENT_WITHDRAWAL' || !!cur?.dealRoomId;
+      const note = needsNote ? prompt(decision === 'COMPLETE' && cur?.dealRoomId ? tx('Your reply to the broker (they will see this)', 'ब्रोकर के लिए आपका जवाब (उन्हें दिखेगा)') : decision === 'REJECT' ? tx('Reason for rejection', 'अस्वीकार करने का कारण') : tx('What was stopped? (the person sees this)', 'क्या बंद किया गया? (व्यक्ति को यह दिखेगा)')) || '' : '';
       await j(`/api/privacy/requests/${id}/resolve`, { method: 'POST', body: JSON.stringify({ decision, note }) });
       setErr(''); load();
     } catch (e: any) { setErr(e.message); }
   };
-  const open = reqs.filter(r => r.status === 'OPEN');
+  const shown = askOnly ? reqs.filter(r => r.type === 'GRIEVANCE' && r.dealRoomId) : reqs;
+  const open = shown.filter(r => r.status === 'OPEN');
+  if (askOnly && shown.length === 0) return null;
   return (
     <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-      <h3 className="text-sm font-bold text-slate-900">{tx('Privacy requests (DPDP)', 'प्राइवेसी अनुरोध (DPDP)')} — {open.length} {tx('open', 'खुले')}</h3>
+      <h3 className="text-sm font-bold text-slate-900">{askOnly ? tx('Ask GENZ — questions from members', 'GENZ से पूछे सवाल — सदस्यों के') : tx('Privacy requests (DPDP)', 'प्राइवेसी अनुरोध (DPDP)')} — {open.length} {tx('open', 'खुले')}</h3>
       {err && <p className="mt-2 text-xs font-medium text-red-700">{err}</p>}
       <ul className="mt-3 space-y-2">
-        {reqs.slice(0, 20).map(r => (
+        {shown.slice(0, 20).map(r => (
           <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 p-2 text-xs">
-            <span><b>{label('status', r.type)}</b> · {r.userName} · {new Date(r.createdAt).toLocaleDateString('en-IN')} · {label('status', r.status)}{r.details ? ` — ${r.details}` : ''}</span>
+            <span><b>{label('status', r.type)}</b> · {r.userName} · {new Date(r.createdAt).toLocaleDateString('en-IN')} · {label('status', r.status)}{r.dealRoomId ? ` · ${r.dealRoomId}` : ''}{r.details ? ` — ${r.details}` : ''}</span>
             {r.status === 'OPEN' && (
               <span className="flex gap-1.5">
                 <button onClick={() => resolve(r.id, 'COMPLETE')} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white">{tx('Complete', 'पूरा करें')}</button>

@@ -6,11 +6,12 @@
  * with a daily cap and no points for deals between brokers who share a company or phone.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { z } from 'zod';
 import { pushTo } from './webpush.js';
 import { db } from './db.js';
 import type { UserProfile, Chapter, ChapterMeet, LoanReferral, LoanStatus, DatabaseState } from './db.js';
-import { ctx, needs, rateLimit, digits } from './auth.js';
+import { ctx, needs, needsKyc, rateLimit, digits } from './auth.js';
 import { phoneSchema } from './validation.js';
 import { normCity } from '../src/shared/cities.js';
 import { LESSONS } from '../src/shared/academy.js';
@@ -49,7 +50,7 @@ export function syncPoints(u: UserProfile, st: DatabaseState = db.getState()) {
     awardPoints(u.id, 'DEAL_SETTLED', d.id, 25);
   }
   for (const v of st.siteVisits) if (v.brokerId === u.id && v.isVerified) awardPoints(u.id, 'VISIT_VERIFIED', v.id, 3);
-  for (const x of st.users) if (x.invitedById === u.id && x.verificationStatus === 'VERIFIED' && !sameParty(u, x)) awardPoints(u.id, 'REFERRAL_VERIFIED', x.id, 15);
+  for (const x of st.users) if (x.invitedById === u.id && isVerifiedFull(x) && !sameParty(u, x)) awardPoints(u.id, 'REFERRAL_VERIFIED', x.id, 15);
 }
 
 export function pointsSummary(u: UserProfile, st: DatabaseState = db.getState()) {
@@ -66,7 +67,7 @@ export function pointsSummary(u: UserProfile, st: DatabaseState = db.getState())
 }
 
 const chapterView = (st: DatabaseState, c: Chapter, u: UserProfile) => {
-  const members = st.users.filter(x => x.chapterId === c.id && x.verificationStatus === 'VERIFIED');
+  const members = st.users.filter(x => x.chapterId === c.id && isVerifiedFull(x));
   const next = st.chapterMeets.filter(m => m.chapterId === c.id && new Date(m.at).getTime() >= Date.now() - 6 * 3600_000).sort((a, b) => a.at.localeCompare(b.at))[0];
   return { id: c.id, name: c.name, city: c.city, zone: c.zone, captain: db.byId('users', c.captainId)?.name || null, members: members.length, isMember: u.chapterId === c.id, isCaptain: c.captainId === u.id, nextMeet: next ? { id: next.id, title: next.title, at: next.at } : null };
 };
@@ -90,9 +91,9 @@ export function createCommunityRouter() {
     db.save(); audit('POINTS_REDEEMED', u.id, `7-day profile boost redeemed for ${BOOST_COST} points (non-cash)`);
     res.json({ success: true, boostUntil: stored.boostUntil });
   });
-  r.get('/leaderboard', needs('daily:use'), (_req, res) => {
+  r.get('/leaderboard', needs('daily:use'), needsKyc, (_req, res) => {
     const u = me(); const st = db.getState(); const month = nowIso().slice(0, 7);
-    const pool = st.users.filter(x => x.role === 'BROKER' && x.verificationStatus === 'VERIFIED' && (u.chapterId ? x.chapterId === u.chapterId : normCity(x.city) === normCity(u.city)));
+    const pool = st.users.filter(x => x.role === 'BROKER' && isVerifiedFull(x) && (u.chapterId ? x.chapterId === u.chapterId : normCity(x.city) === normCity(u.city)));
     const rows = pool.map(x => ({ id: x.id, name: x.name, company: x.companyName || '', points: st.pointEvents.filter(e => e.userId === x.id && e.points > 0 && e.at.startsWith(month)).reduce((a, e) => a + e.points, 0) }))
       .filter(x => x.points > 0).sort((a, b) => b.points - a.points).slice(0, 10);
     res.json({ success: true, scope: u.chapterId ? 'CHAPTER' : 'CITY', month, rows, me: rows.findIndex(x => x.id === u.id) + 1 || null });
@@ -109,7 +110,7 @@ export function createCommunityRouter() {
     const st = db.getState();
     const b = z.object({ name: z.string().trim().min(3).max(80), city: z.string().trim().min(2).max(60), zone: z.string().trim().max(60).default(''), captainId: z.string().optional() }).safeParse(req.body);
     if (!b.success) return res.status(400).json({ error: 'Chapter name and city are required' });
-    if (b.data.captainId && !st.users.some(x => x.id === b.data.captainId && x.role === 'BROKER' && x.verificationStatus === 'VERIFIED')) return res.status(400).json({ error: 'Captain must be a verified broker' });
+    if (b.data.captainId && !st.users.some(x => x.id === b.data.captainId && x.role === 'BROKER' && isVerifiedFull(x))) return res.status(400).json({ error: 'Captain must be a verified broker' });
     const c: Chapter = { id: `CH-${pad(st.chapters.length + 1)}`, name: b.data.name, city: normCity(b.data.city), zone: b.data.zone, captainId: b.data.captainId, createdAt: nowIso(), posts: [] };
     st.chapters.push(c); db.save(); audit('CHAPTER_CREATED', c.id, `${c.name} (${c.city})`);
     res.json({ success: true, chapter: chapterView(st, c, me()) });
@@ -117,7 +118,7 @@ export function createCommunityRouter() {
   r.put('/chapters/:id/captain', needs('chapter:manage'), (req: Request, res: Response) => {
     const st = db.getState(); const c = st.chapters.find(x => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: 'Chapter not found' });
-    const cap = st.users.find(x => x.id === req.body?.captainId && x.role === 'BROKER' && x.verificationStatus === 'VERIFIED');
+    const cap = st.users.find(x => x.id === req.body?.captainId && x.role === 'BROKER' && isVerifiedFull(x));
     if (!cap) return res.status(400).json({ error: 'Captain must be a verified broker' });
     c.captainId = cap.id; cap.chapterId = c.id; db.save(); audit('CHAPTER_CAPTAIN_SET', c.id, `Captain: ${cap.name}`);
     res.json({ success: true });
@@ -141,7 +142,7 @@ export function createCommunityRouter() {
       return { id: m.id, title: m.title, at: m.at, venue: m.venue, going: m.rsvps.filter(x => x.going).length, myRsvp: m.rsvps.find(x => x.userId === u.id)?.going ?? null,
         attendees: new Date(m.at).getTime() < Date.now() && attended ? m.attended.map(id => db.byId('users', id)).filter(Boolean).map(x => person(x!)) : undefined };
     });
-    res.json({ success: true, chapter: chapterView(st, c, u), members: st.users.filter(x => x.chapterId === c.id && x.verificationStatus === 'VERIFIED').map(person), posts: c.posts.slice(-20).reverse().map(p => ({ ...p, by: db.byId('users', p.by)?.name || 'Captain' })), meets, canRun: canRunChapter(u, c) });
+    res.json({ success: true, chapter: chapterView(st, c, u), members: st.users.filter(x => x.chapterId === c.id && isVerifiedFull(x)).map(person), posts: c.posts.slice(-20).reverse().map(p => ({ ...p, by: db.byId('users', p.by)?.name || 'Captain' })), meets, canRun: canRunChapter(u, c) });
   });
   r.post('/chapters/:id/posts', needs('chapter:read'), rateLimit('chpost', 30, 60 * 60_000), (req: Request, res: Response) => {
     const u = me(); const c = db.getState().chapters.find(x => x.id === req.params.id);
@@ -161,7 +162,7 @@ export function createCommunityRouter() {
     st.chapterMeets.push(m); db.save(); res.json({ success: true, meet: m });
     // v26 — every member of the chapter hears about the meet on the phone
     const when = new Date(m.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-    for (const x of st.users) if (x.chapterId === c.id && x.id !== u.id && x.verificationStatus === 'VERIFIED') void pushTo(x.id, { kind: 'community', title: `${c.name}: ${m.title}`, body: `${when} · ${m.venue}`, url: '/?tab=community', tag: m.id });
+    for (const x of st.users) if (x.chapterId === c.id && x.id !== u.id && isVerifiedFull(x)) void pushTo(x.id, { kind: 'community', title: `${c.name}: ${m.title}`, body: `${when} · ${m.venue}`, url: '/?tab=community', tag: m.id });
   });
   r.post('/meets/:id/rsvp', needs('chapter:read'), (req: Request, res: Response) => {
     const u = me(); const st = db.getState(); const m = st.chapterMeets.find(x => x.id === req.params.id);

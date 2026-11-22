@@ -13,6 +13,7 @@
  * An employer sees only his own people; a member sees only himself. Everything that changes a person's record is in the audit trail.
  */
 import fs from 'node:fs';
+import { isVerifiedFull } from './permissions.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { Router, type Request, type Response, type NextFunction } from 'express';
@@ -38,7 +39,7 @@ const userById = (id: string) => S().users.find(u => u.id === id);
 
 // ───────────────────────── people & settings ─────────────────────────
 /** an employer's own people. `all` also returns suspended ones (their old records still matter) */
-const staff = (employerId: string, all = false) => S().users.filter(u => u.role === 'TEAM_MEMBER' && u.employerId === employerId && (all ? u.verificationStatus !== 'REJECTED' : u.verificationStatus === 'VERIFIED'));
+const staff = (employerId: string, all = false) => S().users.filter(u => u.role === 'TEAM_MEMBER' && u.employerId === employerId && (all ? u.verificationStatus !== 'REJECTED' : isVerifiedFull(u)));
 const staffOne = (employerId: string, id: string) => staff(employerId, true).find(m => m.id === id);
 const joinedOf = (m: UserProfile) => { const t = Date.parse(m.createdAt); return Number.isNaN(t) ? undefined : H.istParts(t).date; };
 const who = (m: UserProfile) => ({ id: m.id, name: m.name, teamTitle: m.teamTitle || '', teamRole: inferTeamRole(m.teamTitle, m.teamRole) });
@@ -157,7 +158,7 @@ export function createHrRouter() {
     const u = me();
     if (u.role !== 'TEAM_MEMBER' || !u.employerId) return bad(res, 'These tools are for team members', 403);
     const emp = userById(u.employerId);
-    if (!emp || emp.verificationStatus !== 'VERIFIED') return bad(res, 'Your employer\'s account is not active', 403);
+    if (!emp || !isVerifiedFull(emp)) return bad(res, 'Your employer\'s account is not active', 403);
     const feats = H.hrFeaturesFor(u.employerRole);
     if (!feats.length || (feature && !feats.includes(feature))) return bad(res, 'This tool is not available for your employer', 403);
     next();
@@ -215,7 +216,7 @@ export function createHrRouter() {
     const recs = S().hrAttendance.filter(a => a.employerId === u.id && a.date.slice(0, 7) === month);
     const rows = staff(u.id, true).map(m => {
       const codes = H.monthCodes(st, month, recs.filter(a => a.userId === m.id), leavesOf(m.id), today, joinedOf(m));
-      return { ...who(m), active: m.verificationStatus === 'VERIFIED', codes: charOf(codes), summary: H.summarize(codes.map(c => c.code)) };
+      return { ...who(m), active: isVerifiedFull(m), codes: charOf(codes), summary: H.summarize(codes.map(c => c.code)) };
     });
     res.json({ success: true, month, from, days, today, rows, legend: H.DAY_LABEL });
   });

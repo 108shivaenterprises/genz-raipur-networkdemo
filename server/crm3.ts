@@ -12,6 +12,7 @@
  * A team member only ever works leads their employer allotted to them; forwarding stays inside the same employer's team.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
 import { needs } from './auth.js';
@@ -129,7 +130,7 @@ export function createCrmSalesRouter() {
   r.get('/leads/:id/forward-targets', (req: Request, res: Response) => {
     const u = me(); const lead = loadLead(req, res); if (!lead) return;
     const ownerId = ownerIdOf(lead);
-    const out = membersOf(ownerId).filter(m => m.verificationStatus === 'VERIFIED' && m.id !== lead.assignedMemberId).map(m => {
+    const out = membersOf(ownerId).filter(m => isVerifiedFull(m) && m.id !== lead.assignedMemberId).map(m => {
       const p = policyOf(m);
       const blocked = p.onLeave ? 'on leave' : (p.maxOpenLeads && openLoad(m.id) >= p.maxOpenLeads) ? 'open-lead limit reached' : (p.projectIds.length && !p.projectIds.includes(lead.projectId)) ? 'not on this project' : '';
       return { id: m.id, name: m.name, title: m.teamTitle || '', role: inferTeamRole(m.teamTitle, m.teamRole), openLeads: openLoad(m.id), blocked };
@@ -158,7 +159,7 @@ export function createCrmSalesRouter() {
     const b = req.body || {};
     const to = db.getState().users.find(x => x.id === String(b.toMemberId || ''));
     const ownerId = ownerIdOf(lead);
-    if (!to || to.role !== 'TEAM_MEMBER' || to.employerId !== ownerId || to.verificationStatus !== 'VERIFIED') return bad(res, 'Pick an active member of the same team');
+    if (!to || to.role !== 'TEAM_MEMBER' || to.employerId !== ownerId || !isVerifiedFull(to)) return bad(res, 'Pick an active member of the same team');
     if (to.id === lead.assignedMemberId) return bad(res, 'The lead is already with this person', 409);
     const purpose = FORWARD_PURPOSE_IDS.includes(b.purpose) ? b.purpose : 'FOLLOW_UP';
     const note = String(b.note ?? '').replace(/\s+/g, ' ').trim();

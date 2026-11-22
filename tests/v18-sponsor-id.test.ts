@@ -201,7 +201,7 @@ describe('older brokers add their own PAN + Aadhaar; a pending associate can too
     expect((await post({ panNumber: 'BAD', aadhaarNumber: aad, consent: true })).status).toBe(400);
     expect((await post({ panNumber: pan, aadhaarNumber: '234567890123', consent: true })).status).toBe(400);                  // bad checksum
     expect((await post({ panNumber: pan, consent: true })).status).toBe(400);                                                 // no Aadhaar
-    const clash = await post({ panNumber: S.pan, aadhaarNumber: aad, consent: true }); expect(clash.status).toBe(409); expect((await clash.json()).code).toBe('PAN_IN_USE');
+    const clash = await post({ panNumber: S.pan, aadhaarNumber: aad, consent: true }); expect(clash.status).toBe(409); expect((await clash.json()).code).toBe('CANNOT_REGISTER');
     const ok = await post({ panNumber: pan, aadhaarNumber: aad, consent: true }); expect(ok.status).toBe(200);
     const body = await ok.text(); expect(body).not.toContain(aad); const id = JSON.parse(body).id;
     expect(id).toMatchObject({ hasPan: true, hasAadhaar: true, aadhaar: `XXXX XXXX ${aad.slice(-4)}`, checked: false }); expect(id.pan).toMatch(/^QR•+/);

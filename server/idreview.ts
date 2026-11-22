@@ -12,6 +12,7 @@
  *  • Scans are deleted 90 days after the decision, 14 days after a request that never became an account ended, and on DPDP erasure.
  */
 import { alert } from './alerts.js';
+import { isVerifiedFull } from './permissions.js';
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import crypto from 'node:crypto';
@@ -22,6 +23,7 @@ import { db } from './db.js';
 import type { UserProfile, IdDoc, IdReviewTask, DatabaseState } from './db.js';
 import { ctx, needs, rateLimit } from './auth.js';
 import { can } from './permissions.js';
+import { basicPanDays } from './features.js';
 import { maskPan } from './kyc.js';
 import { kycFlags, vaultOn } from './kycvault.js';
 import { sponsorOf } from './tiers.js';
@@ -43,6 +45,7 @@ const nameOf = (s: DatabaseState, id?: string) => (id ? s.users.find(x => x.id =
 const eraseFile = (id: string) => { try { fs.unlinkSync(fileOf(id)); } catch { /* already gone */ } };
 const removeDoc = (s: DatabaseState, d: IdDoc) => { eraseFile(d.id); s.idDocs = s.idDocs.filter(x => x !== d); };
 
+const KIND_WORD: Record<string, string> = { PAN: 'PAN card', AADHAAR: 'masked Aadhaar', RERA: 'RERA certificate' };
 const docMeta = (d: IdDoc) => ({ id: d.id, kind: d.kind, uploadedBy: d.uploadedBy, fileName: d.fileName, mime: d.mime, size: d.size, createdAt: d.createdAt });
 
 /** Docs that belong to a person: attached to his account, or still attached to the sponsor's request that became his account. */
@@ -50,9 +53,9 @@ export const docsOfUser = (s: DatabaseState, userId: string) => s.idDocs.filter(
 export const docsOfApplication = (s: DatabaseState, appId: string) => s.idDocs.filter(d => d.applicationId === appId && !d.subjectUserId);
 
 /** Validate + store one scan; a new scan of the same kind replaces the old one. Returns the record or an error. */
-function storeDoc(owner: { userId?: string; appId?: string }, kind: string, fileName: string, data: string, uploadedBy: 'SPONSOR' | 'SELF', uploaderId: string): { doc: IdDoc } | { error: string; status: number } {
+function storeDoc(owner: { userId?: string; appId?: string }, kind: string, fileName: string, data: string, uploadedBy: 'SPONSOR' | 'SELF' | 'ADMIN', uploaderId: string): { doc: IdDoc } | { error: string; status: number } {
   const s = st();
-  if (!(ID_DOC_KINDS as readonly string[]).includes(kind)) return { error: 'Choose PAN or Aadhaar', status: 400 };
+  if (!(ID_DOC_KINDS as readonly string[]).includes(kind)) return { error: 'Choose PAN, Aadhaar or RERA certificate', status: 400 };
   const raw = data.replace(/^data:[^;]+;base64,/, '');
   if (!/^[A-Za-z0-9+/=\r\n]+$/.test(raw)) return { error: 'The file could not be read. Please choose it again.', status: 400 };
   const buf = Buffer.from(raw, 'base64');
@@ -99,7 +102,22 @@ export function purgeApplicationDocs(appId: string): number {
   return doomed.length;
 }
 /** Hourly: scans of a decided check go after ID_DOC_RETENTION_DAYS; scans of a request that never became an account after ID_DOC_ORPHAN_DAYS. */
+/** v186 (D16) — DPDP retention: a Basic account that did no KYC step for N days (180) loses its stored PAN and PAN consent. BASIC_PAN_RETENTION=off turns it off. */
+export function sweepBasicPan(now = Date.now()): number {
+  const days = basicPanDays(); if (!days) return 0;
+  const s = st(); let n = 0;
+  for (const u of s.users) {
+    if (!u.basicTier || !u.panNumber || ['SUSPENDED', 'BLACKLISTED'].includes(u.verificationStatus)) continue;   // a closed account is a matter for GENZ, not this sweep
+    if (Math.max(Date.parse(u.createdAt) || 0, Date.parse(u.lastLoginAt || '') || 0) + days * 86400_000 > now) continue;   // counted from the last sign-in
+    if (u.aadhaarLast4 || u.idCheckedAt || u.reraClaim || s.idDocs.some(d => d.subjectUserId === u.id)) continue;   // some KYC activity: keep
+    u.panNumber = undefined; u.idConsentAt = undefined; n++;
+    db.appendAuditEvent('system', 'SUPERADMIN', 'VERIFICATION', u.id, 'BASIC_PAN_CLEARED', `PAN of ${u.name} cleared: no KYC activity for ${days} days (retention rule)`);
+  }
+  if (n) db.save();
+  return n;
+}
 export function sweepIdDocs() {
+  sweepBasicPan();
   const s = st(); const now = Date.now(); let changed = false;
   for (const d of [...s.idDocs]) {
     const decided = d.reviewedAt && Date.parse(d.reviewedAt) + ID_DOC_RETENTION_DAYS * 86400_000 < now;
@@ -118,7 +136,7 @@ const push = (t: IdReviewTask, by: string, action: string, note?: string) => {
 };
 
 /** Someone who may do ID checks right now (verified, holds users:review). */
-export const isReviewer = (u?: UserProfile) => !!u && u.verificationStatus === 'VERIFIED' && can(u, 'users:review');
+export const isReviewer = (u?: UserProfile) => !!u && isVerifiedFull(u) && can(u, 'users:review');
 const reviewerList = (s: DatabaseState) => s.users.filter(isReviewer).map(u => ({ id: u.id, name: u.name, role: u.role })).sort((a, b) => a.name.localeCompare(b.name));
 
 function defaultAssignee(s: DatabaseState, subjectId: string): string | undefined {
@@ -130,7 +148,7 @@ function defaultAssignee(s: DatabaseState, subjectId: string): string | undefine
 /** Open (or reopen) the ID check of a broker. Safe to call again and again. */
 export function openIdTask(userId: string, source: IdReviewTask['source'], opts: { autoVerified?: boolean; note?: string; by?: string } = {}): IdReviewTask | null {
   const s = st(); const u = s.users.find(x => x.id === userId);
-  if (!u || u.role !== 'BROKER') return null;
+  if (!u || !['BROKER', 'DEVELOPER_BUILDER', 'GENZ_CONNECTOR', 'CONTRACTOR', 'LEGAL_COUNSEL'].includes(u.role)) return null;   // v187: every role that can give an ID has a review task
   const by = opts.by || 'system'; const at = nowIso();
   let t = s.idReviewTasks.find(x => x.userId === userId);
   if (t) {
@@ -217,7 +235,7 @@ function taskRow(s: DatabaseState, t: IdReviewTask) {
     assignee: t.assigneeId ? { id: t.assigneeId, name: nameOf(s, t.assigneeId) } : null,
     user: u ? {
       id: u.id, name: u.name, city: u.city || '', company: u.companyName || '', tier: tierOf(u), status: u.verificationStatus, joinedAt: u.createdAt,
-      probation: inProbation(u), autoVerifiedAt: u.autoVerifiedAt || null,
+      probation: inProbation(u), autoVerifiedAt: u.autoVerifiedAt || null, basic: !!u.basicTier,
     } : null,
     sponsor: sp ? { id: sp.id, name: sp.name, company: sp.companyName || '', city: sp.city || '', rera: sp.reraNumber || '', strikes: sp.vouchStrikes || 0 } : null,
     idInfo: {
@@ -258,9 +276,11 @@ export function createIdReviewRouter() {
   const uploadBody = z.object({ kind: z.enum(ID_DOC_KINDS), fileName: z.string().trim().min(1).max(160), data: z.string().min(8) });
 
   // ── the member's own side (also while PENDING) ──
+  // v186b: brokers, builders and shop partners can all give an ID copy (an open-sign-up builder / connector could never be approved otherwise)
+  const ID_ROLES = ['BROKER', 'DEVELOPER_BUILDER', 'GENZ_CONNECTOR', 'CONTRACTOR', 'LEGAL_COUNSEL'];
   r.get('/mine', needs('self:read'), (_req, res) => {
     const u = me(); const s = st();
-    if (u.role !== 'BROKER') return bad(res, 'Only brokers give an ID here', 403);
+    if (!ID_ROLES.includes(u.role)) return bad(res, 'Only brokers, builders and shop partners give an ID here', 403);
     const t = s.idReviewTasks.find(x => x.userId === u.id);
     res.json({
       success: true, docs: docsOfUser(s, u.id).map(docMeta), maxBytes: ID_DOC_MAX_BYTES, retentionDays: ID_DOC_RETENTION_DAYS,
@@ -270,15 +290,29 @@ export function createIdReviewRouter() {
 
   r.post('/mine/docs', needs('self:update'), rateLimit('iddoc-up', 40, 3600_000), big, (req: Request, res: Response) => {
     const u = me(); const s = st();
-    if (u.role !== 'BROKER') return bad(res, 'Only brokers give an ID here', 403);
+    if (!ID_ROLES.includes(u.role)) return bad(res, 'Only brokers, builders and shop partners give an ID here', 403);
     if (!['PENDING', 'VERIFIED'].includes(u.verificationStatus)) return bad(res, 'Your account cannot add ID copies right now', 403);
-    const b = uploadBody.safeParse(req.body); if (!b.success) return bad(res, 'Choose the file and what it is (PAN or Aadhaar).');
+    const b = uploadBody.safeParse(req.body); if (!b.success) return bad(res, 'Choose the file and what it is (PAN, Aadhaar or RERA).');
     const out = storeDoc({ userId: u.id }, b.data.kind, b.data.fileName, b.data.data, 'SELF', u.id);
     if ('error' in out) return bad(res, out.error, out.status);
+    if (u.basicTier && u.idCheckedAt) recordIdTick(u, u, false, '');   // v187: a replaced ID must be seen again
     openIdTask(u.id, 'NEW_FILE', { by: u.id });
     db.save();
-    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'IDDOC_UPLOADED', `${u.name} added a ${b.data.kind === 'PAN' ? 'PAN card' : 'masked Aadhaar'} copy (${(out.doc.size / 1024).toFixed(0)} KB, SHA-256 ${out.doc.sha256.slice(0, 16)}…)`);
+    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'IDDOC_UPLOADED', `${u.name} added a ${KIND_WORD[b.data.kind]} copy (${(out.doc.size / 1024).toFixed(0)} KB, SHA-256 ${out.doc.sha256.slice(0, 16)}…)`);
     res.json({ success: true, doc: docMeta(out.doc), docs: docsOfUser(s, u.id).map(docMeta) });
+  });
+
+  /** v186b: an admin attaches the evidence on behalf of a member (e.g. a card seen on a video call / in the office) */
+  r.post('/users/:userId/docs', needs('users:review'), rateLimit('iddoc-admin', 60, 3600_000), big, (req: Request, res: Response) => {
+    const a = me(); const s = st(); const t = s.users.find(x => x.id === req.params.userId);
+    if (!t || !ID_ROLES.includes(t.role)) return bad(res, 'Member not found', 404);
+    if (t.id === a.id) return bad(res, 'You cannot add evidence to your own account', 403);
+    const b = uploadBody.safeParse(req.body); if (!b.success) return bad(res, 'Choose the file and what it is (PAN, Aadhaar or RERA).');
+    const out = storeDoc({ userId: t.id }, b.data.kind, b.data.fileName, b.data.data, 'ADMIN', a.id);
+    if ('error' in out) return bad(res, out.error, out.status);
+    db.save();
+    db.appendAuditEvent(a.id, a.role, 'VERIFICATION', t.id, 'IDDOC_ADDED_BY_ADMIN', `${a.name} attached a ${KIND_WORD[b.data.kind]} copy for ${t.name} (SHA-256 ${out.doc.sha256.slice(0, 12)}…)`);
+    res.json({ success: true, doc: docMeta(out.doc), docs: docsOfUser(s, t.id).map(docMeta) });
   });
 
   r.delete('/mine/docs/:id', needs('self:update'), (req: Request, res: Response) => {
@@ -286,7 +320,7 @@ export function createIdReviewRouter() {
     const d = s.idDocs.find(x => x.id === req.params.id && x.subjectUserId === u.id);
     if (!d) return bad(res, 'Copy not found', 404);
     removeDoc(s, d); db.save();
-    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'IDDOC_DELETED', `${u.name} deleted a ${d.kind === 'PAN' ? 'PAN card' : 'masked Aadhaar'} copy`);
+    db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'IDDOC_DELETED', `${u.name} deleted a ${KIND_WORD[d.kind]} copy`);
     res.json({ success: true, docs: docsOfUser(s, u.id).map(docMeta) });
   });
 
@@ -304,11 +338,11 @@ export function createIdReviewRouter() {
   });
   r.post('/applications/:appId/docs', needs('tier2:vouch'), rateLimit('iddoc-up', 40, 3600_000), big, (req: Request, res: Response) => {
     const x = myApp(req, res); if (!x) return;
-    const b = uploadBody.safeParse(req.body); if (!b.success) return bad(res, 'Choose the file and what it is (PAN or Aadhaar).');
+    const b = uploadBody.safeParse(req.body); if (!b.success) return bad(res, 'Choose the file and what it is (PAN, Aadhaar or RERA).');
     const out = storeDoc({ appId: x.a.id }, b.data.kind, b.data.fileName, b.data.data, 'SPONSOR', x.u.id);
     if ('error' in out) return bad(res, out.error, out.status);
     x.a.updatedAt = nowIso(); db.save();
-    db.appendAuditEvent(x.u.id, x.u.role, 'SYSTEM', x.a.id, 'IDDOC_UPLOADED', `${x.u.name} attached a ${b.data.kind === 'PAN' ? 'PAN card' : 'masked Aadhaar'} copy to the request for ${x.a.name} (${(out.doc.size / 1024).toFixed(0)} KB, SHA-256 ${out.doc.sha256.slice(0, 16)}…)`);
+    db.appendAuditEvent(x.u.id, x.u.role, 'SYSTEM', x.a.id, 'IDDOC_UPLOADED', `${x.u.name} attached a ${KIND_WORD[b.data.kind]} copy to the request for ${x.a.name} (${(out.doc.size / 1024).toFixed(0)} KB, SHA-256 ${out.doc.sha256.slice(0, 16)}…)`);
     res.json({ success: true, doc: docMeta(out.doc), docs: docsOfApplication(x.s, x.a.id).map(docMeta) });
   });
   r.delete('/applications/:appId/docs/:id', needs('tier2:vouch'), (req: Request, res: Response) => {
@@ -330,7 +364,7 @@ export function createIdReviewRouter() {
     try { buf = fs.readFileSync(fileOf(d.id)); } catch { return bad(res, 'The file is missing on the server. Please upload it again.', 404); }
     if (reviewer && !own) {
       const who = d.subjectUserId ? nameOf(s, d.subjectUserId) : `request ${d.applicationId}`;
-      db.appendAuditEvent(u.id, u.role, 'VERIFICATION', d.subjectUserId || d.applicationId || d.id, 'IDDOC_VIEWED', `${u.name} opened the ${d.kind === 'PAN' ? 'PAN card' : 'masked Aadhaar'} copy of ${who}`);
+      db.appendAuditEvent(u.id, u.role, 'VERIFICATION', d.subjectUserId || d.applicationId || d.id, 'IDDOC_VIEWED', `${u.name} opened the ${KIND_WORD[d.kind]} copy of ${who}`);
     }
     const safe = d.fileName.replace(/[^\w.\- ]+/g, '_');
     res.setHeader('Content-Type', d.mime);

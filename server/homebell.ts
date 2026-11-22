@@ -9,6 +9,7 @@
  * Only a verified broker has such a Home. They are the bell's own lines: no phone push is sent for them (a counter is not an event).
  */
 import crypto from 'node:crypto';
+import { isVerifiedFull } from './permissions.js';
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
 import { brokerHomeCounts } from './reputation.js';
@@ -19,7 +20,7 @@ const SYNC_MS = 20_000;
 
 export function syncHomeBell(u: UserProfile, force = false): boolean {
   try {
-    if (u.role !== 'BROKER' || u.verificationStatus !== 'VERIFIED') return false;
+    if (u.role !== 'BROKER' || !isVerifiedFull(u)) return false;
     const now = Date.now();
     if (!force && now - (lastSync.get(u.id) || 0) < SYNC_MS) return false;
     lastSync.set(u.id, now);

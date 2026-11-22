@@ -632,6 +632,8 @@ export interface PrivacyRequest {
   userId: string;
   userName: string;
   type: 'ERASURE' | 'CORRECTION' | 'GRIEVANCE' | 'CONSENT_WITHDRAWAL';
+  /** v183 — a “problem with this deal” ticket from a deal room (a grievance; it freezes nothing) */
+  dealRoomId?: string;
   details: string;
   status: 'OPEN' | 'COMPLETED' | 'REJECTED';
   createdAt: string;
@@ -658,7 +660,7 @@ export interface UserProfile {
   panNumber?: string;
   gstin?: string;
   /** DPDP: what the user agreed to and when */
-  consent?: { policyVersion: string; acceptedAt: string; ip?: string; withdrawnAt?: string };
+  consent?: { policyVersion: string; acceptedAt: string; ip?: string; ua?: string; noticeHash?: string; withdrawnAt?: string };
   /** S8: a completed CONSENT_WITHDRAWAL request — marketing-style pushes (broadcast, digest, matches, community) stop; deal / consent / system alerts continue */
   consentWithdrawnAt?: string;
   erasedAt?: string;
@@ -745,6 +747,10 @@ export interface UserProfile {
   /** v19 — registered by a RERA broker while the "auto-verify RERA referrals" switch was ON: verified at sign-up, ID still to be checked by the GENZ ID-review team */
   autoVerifiedAt?: string;
   autoVerifiedBy?: string;
+  /** v185 (D15) — open sign-up: live with OTP + PAN but NOT KYC-verified. Deals / money / broadcasts / invites stay locked until an admin approves; listings stay private (basicHold). */
+  basicTier?: boolean;
+  /** v185 — who invited this person (code), kept for the audit trail only */
+  signupMode?: 'open' | 'invite';
 }
 
 export interface Invitation {
@@ -813,6 +819,8 @@ export interface Property {
   /** v182 — one-tap “wrong info / sold” reports by other brokers (reporter ids stay server-side) */
   quickReports?: { by: string; reason: 'SOLD' | 'RENTED' | 'WRONG_PRICE' | 'WRONG_INFO' | 'UNREACHABLE'; at: string; hid?: boolean }[];
   quickReportsClearedAt?: string;
+  /** v183 — the deal room whose settlement marked this listing sold / rented */
+  soldDealRoomId?: string;
   /** v14 — sold / rented bookkeeping (soldPrice & soldNote are private to the owner and listing broker) */
   soldAt?: string;
   soldVia?: 'NETWORK' | 'OUTSIDE';
@@ -833,6 +841,8 @@ export interface Property {
   purgedAt?: string;
   /** set automatically when several members report the listing; hidden until GENZ reviews it */
   heldAt?: string;
+  /** v185 — listed by a Basic (not KYC-verified) account: private to the lister until the account is KYC-approved */
+  basicHold?: boolean;
   /** v57 — the listing broker allows other GENZ brokers to show this home on their public pages (default: no) */
   publicShareOk?: boolean;
   publicShareAt?: string;
@@ -909,6 +919,8 @@ export interface CollaborationOffer {
 }
 
 export interface DealRoom {
+  /** v183 — when both brokers were last nudged that an unpaid commission share is due */
+  paymentNudgedAt?: string;
   /** v158 — token / agreement / registry / possession dates, set by the deal brokers */
   keyDates?: import('../src/shared/keyDates.js').KeyDates;
   /** v156 — the brokers' own tick list of papers (key → who ticked, when); GENZ does not verify it */
@@ -1125,6 +1137,8 @@ export interface SystemSettings {
   defaultProtectionPeriodDays: number;
   defaultConstructionCommissionPct: number;
   requireReraForBrokerApproval: boolean;
+  /** v190 (D17): set once the old default (RERA required = ON) was reset to the new default (OFF = Tier 2 approval); after that the admin's choice stands */
+  reraTier2Default?: boolean;
   maintenanceMode: boolean;
   /** GENZ Connector programme: on/off + reward (INR) suggested per referral type; admins can override per referral */
   connectorProgramEnabled?: boolean;
@@ -1220,12 +1234,12 @@ export interface Tier2Application {
 }
 /** v19 — a scanned copy of a PAN card / MASKED Aadhaar. The bytes sit in data/iddocs/<id>.bin; only the ID-review team (and the owner) can open it. */
 export interface IdDoc {
-  id: string; kind: 'PAN' | 'AADHAAR';
+  id: string; kind: 'PAN' | 'AADHAAR' | 'RERA';
   /** the person it belongs to, once he has an account */
   subjectUserId?: string;
   /** the sponsor's request it was uploaded against (before the account existed) */
   applicationId?: string;
-  uploadedBy: 'SPONSOR' | 'SELF'; uploaderId: string;
+  uploadedBy: 'SPONSOR' | 'SELF' | 'ADMIN'; uploaderId: string;
   fileName: string; mime: string; size: number; sha256: string;
   createdAt: string;
   /** when the GENZ team decided on this person's ID — the clock for deleting the scan starts here */
@@ -1410,6 +1424,8 @@ export interface ClientRoom {
   status: 'ACTIVE' | 'CLOSED';
   createdAt: string; updatedAt: string; expiresAt: string; closedAt?: string;
   /** a pending sign-in code (HMAC) and, when no SMS gateway is set, the plain code the BROKER reads out to his client */
+  /** v184 — the code before the latest one stays valid until its own expiry (“send again” does not kill it) */
+  otpPrevHash?: string; otpPrevExpires?: string;
   otpHash?: string; otpExpires?: string; otpTries?: number; otpPlain?: string;
   lastClientSeenAt?: string; lastBrokerSeenAt?: string;
   /** v46 — the client's phones signed in to this room (at most ROOM_LIMITS.devices); the broker can remove one */
@@ -2647,7 +2663,7 @@ function getInitialSeedData(): DatabaseState {
     state: 'Chhattisgarh',
     defaultProtectionPeriodDays: 180,   // v137 — owner rule
     defaultConstructionCommissionPct: 1,
-    requireReraForBrokerApproval: true,
+    requireReraForBrokerApproval: false,   // v190 (D17): default = a broker without RERA is approved as Tier 2; ON = RERA must be proven first
     maintenanceMode: false,
     connectorProgramEnabled: true,
     connectorRewards: { ...DEFAULT_REWARDS },

@@ -13,21 +13,23 @@ export const ConfirmChip: React.FC<{ p: { confirmedAt?: string; createdAt?: stri
 /** v182 — one tap: Wrong info / already sold. Shows only the five reasons; never the owner, phone or net price. */
 export const QuickFlag: React.FC<{ id: string; compact?: boolean }> = ({ id, compact }) => {
   const tx = useTx(); const [open, setOpen] = useState(false); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
+  const [chosen, setChosen] = useState(''); const [done, setDone] = useState('');
   const send = async (reason: string) => {
-    setBusy(true);
-    try { const r = await api.flagListing(id, reason); setMsg(tx(r.message, r.hi)); setTimeout(() => setOpen(false), 1500); }
-    catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
+    setBusy(true); setChosen(reason);
+    try { const r = await api.flagListing(id, reason); setMsg(tx(r.message, r.hi)); setTimeout(() => { setOpen(false); setDone(tx('Reported ✓ — thank you', 'रिपोर्ट हो गई ✓ — धन्यवाद')); }, 1200); }
+    catch (e: any) { setChosen(''); setMsg(e.message); } finally { setBusy(false); }
   };
   return (
     <>
-      <button type="button" data-testid="quick-flag" onClick={(e) => { e.stopPropagation(); setMsg(''); setOpen(true); }} className={`inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-50`}>
+      <button type="button" data-testid="quick-flag" onClick={(e) => { e.stopPropagation(); setMsg(''); setChosen(''); setOpen(true); }} className={`inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-50`}>
         <Flag className="h-3.5 w-3.5" aria-hidden />{tx('Wrong info / already sold', 'गलत जानकारी या बिक चुकी')}
       </button>
+      {done && <span className="text-xs font-semibold text-emerald-700" role="status" data-testid="quick-flag-done">{done}</span>}
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-3 sm:items-center" role="dialog" aria-modal="true" onClick={() => setOpen(false)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">{tx('What is wrong?', 'क्या गलत है?')}</h3><button type="button" onClick={() => setOpen(false)} className="inline-flex h-11 w-11 items-center justify-center" aria-label={tx('Close', 'बंद')}><X className="h-4 w-4" /></button></div>
-            <div className="mt-2 space-y-1.5">{QUICK_REASONS.map(r => <button key={r} type="button" disabled={busy || !!msg} onClick={() => void send(r)} className="flex min-h-11 w-full items-center rounded-lg border border-slate-200 px-3 text-left text-sm font-medium disabled:opacity-60">{tx(QUICK_REASON_WORDS[r][0], QUICK_REASON_WORDS[r][1])}</button>)}</div>
+            <div className="mt-2 space-y-1.5">{QUICK_REASONS.map(r => <button key={r} type="button" disabled={busy || !!msg} onClick={() => void send(r)} className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 text-left text-sm font-medium disabled:opacity-60 ${chosen === r ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200'}`}>{chosen === r && <span aria-hidden>✓ </span>}{tx(QUICK_REASON_WORDS[r][0], QUICK_REASON_WORDS[r][1])}</button>)}</div>
             {msg && <p className="mt-2 text-xs font-medium text-slate-700" role="status">{msg}</p>}
           </div>
         </div>

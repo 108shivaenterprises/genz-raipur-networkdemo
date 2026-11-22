@@ -12,6 +12,7 @@
  * GENZ never holds this money: the broker pays the shop himself; GENZ records paid / received / not received.
  */
 import { publicBase } from './features.js';
+import { isVerifiedFull } from './permissions.js';
 import { firebaseOn, otpUrl } from './phoneOtp.js';
 import { leadBrief } from '../src/shared/leadBrief.js';
 import { linkNeedForCard } from './clientlink.js';
@@ -690,7 +691,7 @@ export function createShopPartnerRouter() {
     const mineLeads = st().partnerLeads.filter(l => l.brokerId === u.id);
     const leads = mineLeads.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
     // v84 — how many homes the customer will SEE on this broker's QR pages (they show only while the broker is verified and his public page is ON) — so a broker is told when the QR shows none
-    const verified = u.verificationStatus === 'VERIFIED'; const pageOn = !!u.publicCard?.enabled;
+    const verified = isVerifiedFull(u); const pageOn = !!u.publicCard?.enabled;
     const homes = { shown: verified && pageOn ? shownHomes(u).length : 0, verified, pageOn };
     res.json({ success: true, partners: partners.map(partnerView), leads, limits: L, record: payRecord(mineLeads), homes });
   });
@@ -1024,7 +1025,7 @@ export function createPartnerQrRouter() {
 
   /** the homes on this broker's public page (his own + other brokers' that opened theirs to pages) — only when his page is ON */
   /** v98 — only homes of the shop's own city (a broker who works in two cities must not show Pune homes at a Raipur shop); a shop with no city shows all */
-  const homesOf = (b: UserProfile | undefined, p?: ShopPartner) => (b && b.role === 'BROKER' && b.verificationStatus === 'VERIFIED' && b.publicCard?.enabled ? shownHomes(b).filter(h => !p?.city || !h.city || normCity(h.city) === normCity(p.city)) : []);
+  const homesOf = (b: UserProfile | undefined, p?: ShopPartner) => (b && b.role === 'BROKER' && isVerifiedFull(b) && b.publicCard?.enabled ? shownHomes(b).filter(h => !p?.city || !h.city || normCity(h.city) === normCity(p.city)) : []);
   const homeCards = (b: UserProfile, p: ShopPartner, homes: ReturnType<typeof shownHomes>) => {
     const wm = `${brandOf(b).displayName} · GENZ`;
     const one = (h: ReturnType<typeof shownHomes>[number]) => {

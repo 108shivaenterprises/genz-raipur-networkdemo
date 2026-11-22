@@ -1,4 +1,5 @@
 import './server/bootstrap.js';
+import { isVerifiedFull } from './server/permissions.js';
 import { hindiErrors } from './server/errorHi.js';
 import { alert, inr as rupees, once, firstName } from './server/alerts.js';
 import express, { Request, Response, NextFunction } from 'express';
@@ -39,6 +40,8 @@ import { sendSms } from './server/notify.js';
 import {
   authenticate,
   needs,
+  needsKyc,
+  basicQuota,
   requireAuth,
   ctx,
   rateLimit,
@@ -102,7 +105,8 @@ import { createPulseRouter, activityMiddleware, recordActivity } from './server/
 import { createTeamRouter, createTeamLimitsRouter } from './server/team.js';
 import { createHrRouter, sweepHr } from './server/hr.js';
 import { createCallsRouter, sweepCalls } from './server/calls.js';
-import { voiceOn, otpMode } from './server/features.js';
+import { voiceOn, otpMode, signupMode } from './server/features.js';
+import { createOpenSignupRouter, migrateBasicTier, migrateReraSetting } from './server/openSignup.js';
 import { createInventoryRouter, sweepHolds } from './server/inventory.js';
 import { createInventoryDeskRouter } from './server/inventory2.js';
 import { createLaunchRouter } from './server/launch.js';
@@ -129,7 +133,7 @@ import { createProfilePhotoRouter, healPhotoChecks } from './server/profilephoto
 import { createOwnerMediaRouter, createPublicMediaRouter } from './server/ownermedia.js';
 import { createLeadBoardRouter } from './server/leadboard.js';
 import { createKycRetainRouter, sweepKycHolds } from './server/kycretain.js';
-import { createDealHubRouter } from './server/dealhub.js';
+import { sweepPaymentDue, createDealHubRouter } from './server/dealhub.js';
 import { createChatsRouter } from './server/chats.js';
 import { createSavedRouter } from './server/saved.js';
 import { createPublicPageRouter, createBrokerPagePublicRouter, sweepPageEnquiries, seedDemoPage } from './server/publicPage.js';
@@ -158,7 +162,7 @@ import { createIdReviewRouter, openIdTask, autoVerifyDecision, closeIdTaskOnAdve
 import { normAadhaar, isValidAadhaar, aadhaarLast4 as aadhaarTail, isSponsorEligible } from './src/shared/idRules.js';
 import { PROBATION_LIVE_LISTINGS, inProbation as inProbationT, tierOf as tierOfT } from './src/shared/networkRules.js';
 import { createOffersRouter, sweepOffers } from './server/offers.js';
-import { createListingsRouter, createPublicPosterRouter, sweepSoldPurge } from './server/listings.js';
+import { createListingsRouter, createPublicPosterRouter, sweepSoldPurge, settleListingFromDeal } from './server/listings.js';
 import { createVisitRouter, createPublicVisitRouter, sweepVisitPasses } from './server/visitpass.js';
 import { filterMessage, isFlood, newAccountCap } from './server/spam.js';
 import { contactKind, recentOwn } from './src/shared/clientRoomRules.js';
@@ -189,7 +193,7 @@ import { PAPER_KEYS } from './src/shared/paperRules.js';
 import { DATE_KEYS, DATE_WORDS, checkDates, type KeyDates } from './src/shared/keyDates.js';
 import { pushTo } from './server/webpush.js';
 import { createPrivacyRouter, legalConfig, POLICY_VERSION } from './server/privacy.js';
-import { maskKycFor, normPan, maskPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
+import { maskKycFor, panHeldByApproved, normPan, maskPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
 import compression from 'compression';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -360,7 +364,7 @@ function trustCounts(state: DatabaseState): Map<string, TrustCounts> {
 
 function enrichRaw(user: UserProfile, state = db.getState()): UserProfile {
   if (user.role !== 'BROKER') {
-    const isVerified = user.verificationStatus === 'VERIFIED';
+    const isVerified = isVerifiedFull(user);
     return {
       ...user,
       trustScore: isVerified ? 85 : 30,
@@ -374,7 +378,7 @@ function enrichRaw(user: UserProfile, state = db.getState()): UserProfile {
   const verifiedVisits = tc?.visits || 0;
 
   let basePoints = 0;
-  if (user.verificationStatus === 'VERIFIED') {
+  if (isVerifiedFull(user)) {
     basePoints = user.reraNumber ? 50 : 40;
   } else if (user.verificationStatus === 'PENDING') {
     basePoints = 20;
@@ -480,7 +484,7 @@ app.get('/api/auth/config', (_req: Request, res: Response) => {
         .filter(u => u.verificationStatus !== 'BLACKLISTED')
         .map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, companyName: u.companyName, verificationStatus: u.verificationStatus }))
     : [];
-  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts, voice: voiceOn(), otpMode: otpMode(), ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL.trim().replace(/\/+$/, '') } : {}) });
+  res.json({ success: true, demoMode: DEMO_MODE, demoPassword: DEMO_MODE ? DEMO_PASSWORD : undefined, demoAccounts, voice: voiceOn(), otpMode: otpMode(), signupMode: signupMode(), ...(process.env.PUBLIC_URL ? { publicUrl: process.env.PUBLIC_URL.trim().replace(/\/+$/, '') } : {}) });
 });
 
 app.post('/api/auth/login', (req: Request, res: Response) => {
@@ -635,7 +639,7 @@ app.get('/api/auth/users', requireAuth, (req: Request, res: Response) => {
   const c = ctx();
   const state = db.getState();
   const me = c.user as UserProfile;
-  if (me.verificationStatus !== 'VERIFIED') {
+  if (me.verificationStatus !== 'VERIFIED' || me.basicTier) {   // v186b: a Basic account gets itself only — no member directory
     return res.json({ success: true, users: [enrichUserWithTrustScore(me, state)], activeUserId: me.id });
   }
   let users: any[];
@@ -643,7 +647,7 @@ app.get('/api/auth/users', requireAuth, (req: Request, res: Response) => {
     const emp = db.byId('users', me.employerId);
     users = [enrichUserWithTrustScore(me, state), ...(emp ? [directoryEntry(emp, state)] : [])];
     if (can(me, 'connector:desk')) { // ops staff need the broker / contractor pool to assign referrals
-      users.push(...state.users.filter(u => (u.role === 'BROKER' || u.role === 'CONTRACTOR') && u.verificationStatus === 'VERIFIED').map(u => slimCard(u, state)));
+      users.push(...state.users.filter(u => (u.role === 'BROKER' || u.role === 'CONTRACTOR') && isVerifiedFull(u)).map(u => slimCard(u, state)));
     }
   } else if (can(me, 'users:list')) {
     const sa = me.role === 'SUPERADMIN';
@@ -653,7 +657,7 @@ app.get('/api/auth/users', requireAuth, (req: Request, res: Response) => {
   } else {
     const visibleRoles: UserRole[] = ['BROKER', 'DEVELOPER_BUILDER', 'LEGAL_COUNSEL', 'ADMIN', 'SUPERADMIN'];
     if (!dirCache || dirCache.v !== db.version) {
-      dirCache = { v: db.version, kind: 'members', body: state.users.filter(u => u.verificationStatus === 'VERIFIED' && visibleRoles.includes(u.role)).map(u => slimCard(u, state)) };
+      dirCache = { v: db.version, kind: 'members', body: state.users.filter(u => u.verificationStatus === 'VERIFIED' && !u.basicTier && visibleRoles.includes(u.role)).map(u => slimCard(u, state)) };
     }
     // owners are visible to their own brokers/deals only through deal-room endpoints (never in the global directory)
     users = [enrichUserWithTrustScore(me, state), ...dirCache.body.filter(u => u.id !== me.id)];
@@ -908,7 +912,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     if (!aadhaarRaw) return res.status(400).json({ error: 'Aadhaar number is required for brokers (only the last 4 digits are kept)', code: 'AADHAAR_REQUIRED' });
     if (parsed.data.idConsent !== true) return res.status(400).json({ error: 'Please agree to GENZ keeping your PAN and the last 4 digits of your Aadhaar for verification', code: 'ID_CONSENT_REQUIRED' });
     // one PAN = one GENZ account: stops a removed broker coming back under a new name / number
-    if (state.users.some(u => u.role === 'BROKER' && u.panNumber && normPan(u.panNumber) === panNumber)) {
+    if (panHeldByApproved(state.users, panNumber)) {   // v187: only a KYC-approved holder blocks; a Basic claim or an owner's PAN never does
       return res.status(400).json({ error: 'We could not create an account with these details. Check them, or use "Forgot password" on the sign-in page if you already joined.', code: 'CANNOT_REGISTER' });   // same answer as a taken mobile / e-mail
     }
     if (t2app) {
@@ -963,15 +967,15 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
     if (dec.apply && sponsor) {
       newUser.verificationStatus = 'VERIFIED'; newUser.autoVerifiedAt = now; newUser.autoVerifiedBy = sponsor.id;
       newUser.verificationNotes = `Auto-verified at sign-up: registered by RERA-registered ${sponsor.name}. The GENZ ID check (PAN + Aadhaar) follows under ID Review.`;
-      onVerified(newUser); assignBrokerId(newUser); autoVerified = true;
+      onVerified(newUser); assignBrokerId(newUser); autoVerified = true;   // v186: unchanged on purpose — an admin-switched, sponsor-accountable path (RERA sponsor gets strikes); only OTP+PAN (below) is Basic
     }
   }
   // v141 — no GENZ desk at India scale: mobile OTP + a valid PAN that no other account has = live at once (Non-RERA unless his RERA is on file)
-  if (!autoVerified && otpOk && panNumber && isValidPan(panNumber) && newUser.role !== 'GENZ_CONNECTOR'
-    && !state.users.some(u => u.id !== userId && u.panNumber && normPan(u.panNumber) === panNumber)) {
+  if (!autoVerified && otpOk && panNumber && isValidPan(panNumber) && newUser.role !== 'GENZ_CONNECTOR' && (newUser.role === 'BROKER' || parsed.data.idConsent === true)   // v186b: builders / counsel give the PAN-purpose consent too, else they wait for GENZ as before
+    && !panHeldByApproved(state.users, panNumber, userId)) {
     newUser.verificationStatus = 'VERIFIED'; newUser.autoVerifiedAt = now; newUser.autoVerifiedBy = 'OTP_PAN';
-    newUser.verificationNotes = 'Live at sign-up: mobile OTP + a valid PAN no other account has (no staff check; 3 member reports suspend).';
-    onVerified(newUser); assignBrokerId(newUser); autoVerified = true;
+    newUser.verificationNotes = 'Live at sign-up (Basic): mobile OTP + a valid PAN. Not KYC-verified until an admin approves.';
+    newUser.basicTier = true; autoVerified = true; newUser.idConsentAt = newUser.idConsentAt || now;   // v186 (D16): Basic, same rule as open sign-up
     db.appendAuditEvent(userId, newUser.role, 'VERIFICATION', userId, 'USER_AUTO_VERIFIED', `${name} is live at sign-up: mobile OTP + PAN ${maskPan(panNumber)}`);
   }
   const gl = invite.growthLeadId ? db.byId('growthLeads', invite.growthLeadId) : undefined;
@@ -1006,7 +1010,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   alert([invite.nominatedBy, invite.sponsorId, sponsor?.id], 'deals', `${name} joined GENZ ✔`, newUser.verificationStatus === 'VERIFIED' ? 'Verified already — say hello and share your first deal.' : 'GENZ is checking the ID — you will see them in the network once verified.', '/?tab=grow', { not: userId, tag: `join-${userId}`, hi: [`${name} GENZ से जुड़े ✔`, newUser.verificationStatus === 'VERIFIED' ? 'वेरिफ़ाई हो चुके — नमस्ते कहें और पहली डील शेयर करें।' : 'GENZ ID जाँच रहा है — वेरिफ़ाई होते ही वे नेटवर्क में दिखेंगे।'] });
 
   setSessionCookie(req, res, signSession(userId, 1));
-  res.json({ success: true, autoVerified, vaultStored, user: publicUser(newUser), permissions: effectivePermissions(newUser) });
+  res.json({ success: true, autoVerified, basic: !!newUser.basicTier, vaultStored, user: publicUser(newUser), permissions: effectivePermissions(newUser) });
 });
 
 // Admin Review of Pending Broker / Contractor Verification
@@ -1040,10 +1044,15 @@ app.post('/api/verifications/:userId/review', needs('users:review'), (req: Reque
     return res.status(400).json({ error: 'Notes are too long' });
   }
 
+  let publishedHeld = 0; let heldLeft = 0;
   if (action === 'APPROVE') {
-    const needsRera = (targetUser.role === 'BROKER' || targetUser.role === 'DEVELOPER_BUILDER') && state.settings.requireReraForBrokerApproval && targetUser.tier !== 'TIER2';
-    if (needsRera && !targetUser.reraNumber) {
-      return res.status(400).json({ error: 'A RERA registration number is required before approving a broker / builder (platform setting).' });
+    // v186b: for a Basic account a typed RERA number is never evidence — only a claim an admin approved (decidedBy a person, not AUTO) counts
+    const reraProven = !targetUser.basicTier ? !!targetUser.reraNumber : !!targetUser.reraNumber && targetUser.reraClaim?.status === 'APPROVED' && !!targetUser.reraClaim.decidedBy && targetUser.reraClaim.decidedBy !== 'AUTO';
+    // v190 (D17, owner decision 22 Nov): a broker WITHOUT proven RERA is approved as a Tier 2 associate. Setting "Require RERA to approve" = ON restores the old block (fail-safe).
+    // A builder is always RERA-registered business, so a builder still needs it whatever the setting says.
+    const needsRera = (targetUser.role === 'DEVELOPER_BUILDER' || (targetUser.role === 'BROKER' && state.settings.requireReraForBrokerApproval === true)) && targetUser.tier !== 'TIER2';
+    if (needsRera && !reraProven) {
+      return res.status(400).json({ error: 'RERA is required to approve this member (the "Require RERA" setting is ON). Next step: approve the member\'s RERA claim first (shown in this row / ID Review → RERA claims), or switch the setting off in Control Center to approve a Tier 2 associate.', errorHi: 'इस सदस्य को मंज़ूर करने के लिए RERA ज़रूरी है ("RERA ज़रूरी" सेटिंग चालू है)। अगला कदम: पहले सदस्य का RERA दावा मंज़ूर करें (इसी पंक्ति में / ID Review → RERA दावे), या Control Center में सेटिंग बंद करके Tier 2 एसोसिएट मंज़ूर करें।', code: 'RERA_REQUIRED' });
     }
     // v18 — a local associate (no RERA) is approved only after PAN + Aadhaar are on file AND a GENZ admin has seen the originals.
     if (targetUser.role === 'BROKER' && targetUser.tier === 'TIER2' && targetUser.verificationStatus === 'PENDING') {
@@ -1054,7 +1063,32 @@ app.post('/api/verifications/:userId/review', needs('users:review'), (req: Reque
         return res.status(400).json({ error: 'Check the PAN card and the Aadhaar card (video call / office) and tick "ID seen" first. A local associate (no RERA) cannot be approved without it.', code: 'ID_CHECK_PENDING' });
       }
     }
+    if (targetUser.role === 'BROKER' && !reraProven) targetUser.tier = 'TIER2';   // associate: probation starts in onVerified
+    if (targetUser.basicTier) {   // v186 (D16): lifting Basic needs KYC EVIDENCE — a typed RERA number or the user's own say-so is not proof
+      // a human must have SEEN the card (idCheckedAt) — for a builder / shop partner on top of an uploaded copy
+      const hasDoc = state.idDocs.some(d => d.subjectUserId === targetUser.id);
+      if (!targetUser.idCheckedAt || (targetUser.role !== 'BROKER' && !hasDoc)) {
+        return res.status(400).json({ error: targetUser.role === 'BROKER' ? 'This is a Basic account. Check the PAN card and the Aadhaar card (ID Review / video call) and tick "ID seen" first — PAN and Aadhaar (last 4) must be on file under Network → My ID.' : 'This is a Basic account. An ID copy must be on file (the member uploads it, or you attach it) and you must tick "ID seen" first.', code: 'KYC_EVIDENCE_MISSING' });
+      }
+      const pan = normPan(targetUser.panNumber);
+      if (panHeldByApproved(state.users, pan, targetUser.id)) return res.status(409).json({ error: 'Another KYC-approved account already holds this PAN — resolve the conflict first.', code: 'PAN_CONFLICT' });
+      // other Basic accounts claiming the same PAN are NOT silently cleared: the conflict is recorded, the admins are told, the loser is told, and the claim stays until an admin resolves it
+      if (pan) for (const u of state.users) if (u.id !== targetUser.id && u.basicTier && u.panNumber && normPan(u.panNumber) === pan) {
+        db.appendAuditEvent(currentUser.id, currentUser.role, 'VERIFICATION', u.id, 'PAN_CLAIM_CONFLICT', `PAN ${maskPan(pan)} claimed by ${u.name} and ${targetUser.name}; ${targetUser.name} reached KYC approval first — an admin must resolve the other claim`);
+        alert(state.users.filter(a => (a.role === 'ADMIN' || a.role === 'SUPERADMIN') && isVerifiedFull(a)).slice(0, 20).map(a => a.id), 'deals', 'PAN claimed twice', `${u.name} and ${targetUser.name} gave the same PAN — resolve in Invite & KYC`, '/?tab=onboarding', { tag: `pan-conflict-${u.id}`, hi: ['एक ही PAN दो ने दिया', `${u.name} और ${targetUser.name} ने एक ही PAN दिया — Invite & KYC में सुलझाएँ`] });
+        alert(u.id, 'system', 'Your PAN is claimed by another account', 'Another member was verified with this PAN. Add your own ID under Network → My ID, or contact GENZ.', '/?tab=network', { tag: `pan-conflict-${u.id}`, hi: ['आपका PAN किसी और अकाउंट ने भी दिया है', 'इस PAN से दूसरा सदस्य वेरिफ़ाई हुआ है। नेटवर्क → My ID में अपनी ID जोड़ें, या GENZ से संपर्क करें।'] });
+      }
+    }
     targetUser.verificationStatus = 'VERIFIED';
+    if (targetUser.basicTier) {   // KYC approved — the Basic limits lift. Held listings go live only on the admin's explicit "publish" (max 10 per approval); the rest stay held for review.
+      targetUser.basicTier = undefined;
+      const held = state.properties.filter(p => p.basicHold && p.listingBrokerId === targetUser.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      // only the listings the admin ticked (after reading them) go live; at most 10 per approval; the rest stay held
+      const tick = new Set(Array.isArray(req.body?.publishIds) ? (req.body.publishIds as unknown[]).map(String) : []);
+      for (const p of held.filter(x => tick.has(x.id)).slice(0, 10)) { p.basicHold = undefined; if (p.verificationStatus === 'PENDING' && !p.resaleOf) p.verificationStatus = 'VERIFIED'; publishedHeld++; }
+      heldLeft = held.length - publishedHeld;
+      db.appendAuditEvent(currentUser.id, currentUser.role, 'VERIFICATION', targetUser.id, 'BASIC_KYC_APPROVED', `${targetUser.name} KYC-approved: Basic limits lifted; ${publishedHeld} held listing(s) published, ${heldLeft} left for review; tier ${targetUser.tier || 'n/a'}`);
+    }
     onVerified(targetUser);
     assignBrokerId(targetUser);
     targetUser.verificationNotes = notes || 'Verified after verifying RERA credential and address records.';
@@ -1098,7 +1132,13 @@ app.post('/api/verifications/:userId/review', needs('users:review'), (req: Reque
 
   const outU: any = publicUser(targetUser);
   if (currentUser.role !== 'SUPERADMIN' && outU.panNumber) outU.panNumber = maskPan(outU.panNumber); // v178: ADMIN never gets the full PAN back
-  res.json({ success: true, user: outU });
+  res.json({ success: true, user: outU, publishedHeld, heldLeft });
+});
+
+// v186 (D16) — what a Basic account has waiting (private) so the admin can confirm "publish N held listings" while approving
+app.get('/api/verifications/:userId/held', needs('users:review'), (req: Request, res: Response) => {
+  const held = db.getState().properties.filter(p => p.basicHold && p.listingBrokerId === req.params.userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  res.json({ success: true, total: held.length, willPublish: Math.min(10, held.length), listings: held.slice(0, 30).map(p => ({ id: p.id, title: p.title, city: p.city, locality: p.locality, propertyType: p.propertyType, transactionType: p.transactionType, askingPrice: p.askingPrice, description: String(p.description || '').slice(0, 300), photos: (p.images || []).length })) });
 });
 
 // ==========================================
@@ -1169,7 +1209,7 @@ function nextSeq(ids: string[], re: RegExp, floor = 0) {
   return ids.reduce((m, id) => Math.max(m, Number(re.exec(id)?.[1] ?? 0)), floor) + 1;
 }
 
-app.get('/api/properties', needs('property:read'), (req: Request, res: Response) => {
+app.get('/api/properties', needs('property:read'), basicQuota('properties'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { locality, propertyType, transactionType, maxPrice } = req.query;
   const qState = req.query.state ? String(req.query.state) : '';
@@ -1248,7 +1288,7 @@ function propertyFacets(list: { state?: string; city?: string; tags?: string[] }
   };
 }
 
-app.get('/api/properties/:id', needs('property:read'), (req: Request, res: Response) => {
+app.get('/api/properties/:id', needs('property:read'), basicQuota('property'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { id } = req.params;
   const state = db.getState();
@@ -1279,11 +1319,11 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
   let ownerId = '';
   const asBroker = (id?: string) => {
     const b = id ? db.byId('users', id) : undefined;
-    return b && b.role === 'BROKER' && b.verificationStatus === 'VERIFIED' ? b.id : null;
+    return b && b.role === 'BROKER' && isVerifiedFull(b) ? b.id : null;
   };
   const asOwner = (id?: string) => {
     const o = id ? db.byId('users', id) : undefined;
-    return o && o.role === 'PROPERTY_OWNER' && o.verificationStatus === 'VERIFIED' ? o.id : null;
+    return o && o.role === 'PROPERTY_OWNER' && isVerifiedFull(o) ? o.id : null;
   };
   if (currentUser.role === 'BROKER') {
     listingBrokerId = currentUser.id;
@@ -1325,7 +1365,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
   const consentId = typeof req.body?.consentId === 'string' ? req.body.consentId.slice(0, 40) : '';
   const principalBroker = listingBrokerId || currentUser.id;
   const bond = findBlockingBond({ ownerPhone: data.ownerPhone, city: data.city, locality: data.locality, propertyType: data.propertyType, areaSqft: data.plotAreaSqFt || data.builtUpAreaSqFt }, principalBroker, consentId);
-  if (bond) return res.status(409).json(blockedAnswer(bond));
+  if (bond) return res.status(409).json(blockedAnswer(bond, !!currentUser.basicTier));
   let usedConsent: any = null;
   if (consentId) {
     const c = consentForPublish(consentId, principalBroker, data);
@@ -1337,7 +1377,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
 
   // Duplicate Property Detection check
   const duplicateHash = sha256(`${data.city}:${data.locality}:${data.propertyType}:${data.plotAreaSqFt || data.builtUpAreaSqFt || 0}:${data.askingPrice}`);
-  const duplicate = state.properties.find(p => p.duplicateHash === duplicateHash && p.listingStatus === 'active');
+  const duplicate = state.properties.find(p => p.duplicateHash === duplicateHash && p.listingStatus === 'active' && !p.basicHold && !db.byId('users', p.listingBrokerId)?.basicTier);   // v186b: a held / Basic listing cannot block (or be probed by) a real broker
   if (duplicate) {
     // Never reveal someone else's listing (id / title) to the person trying to list it.
     const mine = isAdmin(currentUser) || duplicate.ownerId === currentUser.id || duplicate.listingBrokerId === currentUser.id;
@@ -1388,7 +1428,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
     ownerName: data.ownerName,
     ownerPhone: data.ownerPhone,
     listingStatus: 'active',
-    verificationStatus: earlier ? 'PENDING' : 'VERIFIED', // a resale of a closed listing needs ownership re-verification; otherwise the creator is a KYC-verified member and admins can still moderate via /moderate
+    verificationStatus: earlier || currentUser.basicTier ? 'PENDING' : 'VERIFIED', ...(currentUser.basicTier ? { basicHold: true } : {}), // v185: a Basic account's listing stays private to him until KYC; a resale of a closed listing needs ownership re-verification; otherwise the creator is a KYC-verified member and admins can still moderate via /moderate
     duplicateHash,
     resaleKey,
     ...(earlier ? { resaleOf: earlier.id } : {}),
@@ -1701,7 +1741,7 @@ app.post('/api/properties/:id/moderate', needs('property:moderate'), (req: Reque
 // 4. BUYER REQUIREMENTS & CUSTOMER PERSISTENCE
 // ==========================================
 
-app.get('/api/requirements', needs('requirement:read'), (req: Request, res: Response) => {
+app.get('/api/requirements', needs('requirement:read'), basicQuota('requirements'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const state = db.getState();
 
@@ -1770,7 +1810,7 @@ app.post('/api/requirements', needs('requirement:create'), newAccountCap('requir
   const requestedBroker = (req.body as any)?.assignedBrokerId;
   if (requestedBroker && currentUser.role !== 'BROKER') {
     const b = db.byId('users', requestedBroker);
-    if (!b || b.role !== 'BROKER' || b.verificationStatus !== 'VERIFIED') {
+    if (!b || b.role !== 'BROKER' || !isVerifiedFull(b)) {
       return res.status(400).json({ error: 'assignedBrokerId must be a verified broker' });
     }
     assignedBrokerId = b.id;
@@ -1820,7 +1860,7 @@ app.post('/api/requirements', needs('requirement:create'), newAccountCap('requir
 });
 
 // A verified broker claims an unassigned buyer enquiry.
-app.post('/api/requirements/:id/claim', needs('requirement:create'), (req: Request, res: Response) => {
+app.post('/api/requirements/:id/claim', needs('requirement:create'), needsKyc, (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   if (currentUser.role !== 'BROKER') return res.status(403).json({ error: 'Only brokers can claim enquiries' });
   const r = db.byId('requirements', req.params.id);
@@ -2011,7 +2051,7 @@ app.get('/api/matching/matrix', needs('matching:run'), (_req: Request, res: Resp
 
 function isActiveBroker(id: string | undefined) {
   const u = id ? db.byId('users', id) : undefined;
-  return !!u && u.role === 'BROKER' && u.verificationStatus === 'VERIFIED';
+  return !!u && u.role === 'BROKER' && isVerifiedFull(u);
 }
 
 function nextDealId(state = db.getState()) {
@@ -2531,7 +2571,22 @@ app.post('/api/deals/:id/stage', needs('deal:update_stage'), (req: Request, res:
     }
   }
 
+  if (deal.stage === stage) return res.json({ success: true, unchanged: true, deal: shapeDealFor(deal, currentUser, state) });   // v183 — the same stage again changes nothing and leaves no history line
+  const prevStage = deal.stage;
   deal.stage = stage as any;
+  let listingNote = '';
+  { // v183 (D13) — a settled deal takes its property off the market (same safeguards as the manual mark-sold); moving the deal back out of Settled restores it ONLY while it is still the sale this deal made. Other open deals on the property are left alone (they show a banner).
+    const prop = db.byId('properties', deal.propertyId);
+    if (prop && stage === 'Settled' && prevStage !== 'Settled') {
+      const r = settleListingFromDeal(prop, deal, currentUser);
+      if (r.ok) db.appendAuditEvent(currentUser.id, currentUser.role, 'PROPERTY', prop.id, 'LISTING_CLOSED_BY_DEAL', `Deal ${deal.id} settled — listing marked ${prop.listingStatus}`);
+      else if (r.reason === 'TOKEN_LOCK') { listingNote = 'TOKEN_LOCK'; db.appendAuditEvent(currentUser.id, currentUser.role, 'PROPERTY', prop.id, 'LISTING_NOT_CLOSED_TOKEN_HELD', `Deal ${deal.id} settled but a token is held on ${prop.id}, so the listing was not marked sold — close the token first`); }
+    } else if (prop && prevStage === 'Settled' && stage !== 'Settled' && prop.soldDealRoomId === deal.id && ['sold', 'rented'].includes(prop.listingStatus) && !prop.purgedAt) {
+      prop.listingStatus = prop.prevStatus && ['active', 'under_negotiation'].includes(prop.prevStatus) ? prop.prevStatus : 'active';
+      prop.soldAt = prop.soldVia = prop.soldPrice = prop.soldNote = prop.soldOfferId = undefined as any; prop.soldDealRoomId = undefined; prop.prevStatus = undefined; prop.updatedAt = new Date().toISOString();
+      db.appendAuditEvent(currentUser.id, currentUser.role, 'PROPERTY', prop.id, 'LISTING_REOPENED_BY_DEAL', `Deal ${deal.id} moved out of Settled — listing active again`);
+    }
+  }
   const cleanNotes = String(notes || '').slice(0, 500);
   deal.notes = cleanNotes ? `${deal.notes}\n[${new Date().toLocaleDateString('en-IN')}] Stage changed to ${stage}: ${cleanNotes}` : deal.notes;
   if (stage === 'Settled') deal.settlementStatus = 'PAID';
@@ -2548,7 +2603,7 @@ app.post('/api/deals/:id/stage', needs('deal:update_stage'), (req: Request, res:
     `Deal stage transitioned to ${stage}`
   );
 
-  res.json({ success: true, deal: shapeDealFor(deal, currentUser, state) });
+  res.json({ success: true, deal: shapeDealFor(deal, currentUser, state), ...(listingNote ? { listingNote, listingNoteText: 'The listing was not marked sold because a token is held on it. Close the token first.' } : {}) });
 });
 
 // Server-side strict Commission Split Validation (pre-agreement quick split; once an agreement is ACTIVE use versioned amendments)
@@ -2997,6 +3052,21 @@ function ownVisit(req: Request, res: Response, user: UserProfile) {
   if (visit.isVerified) { res.status(409).json({ error: 'This site visit is already verified', code: 'DONE' }); return null; }
   return visit;
 }
+/** v189 — the property owner (a logged-in account) answers an upcoming visit: YES = "let them come", NO = "other time". Same field the owner-room link sets (ownerOk), so the visit card and joint state follow. */
+app.post('/api/site-visits/:id/owner-answer', needs('sitevisit:read'), rateLimit('visit-owner-ok', 40, 3600_000), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser(); const state = db.getState();
+  const v = state.siteVisits.find(x => x.id === req.params.id);
+  const prop = v ? db.byId('properties', v.propertyId) : undefined;
+  if (!v || !prop || prop.ownerId !== currentUser.id) return res.status(404).json({ error: 'Visit not found', code: 'NOT_FOUND' });   // only the owner of THAT property
+  if (v.isVerified || Date.parse(v.scheduledTime) < Date.now()) return res.status(409).json({ error: 'This visit is already over or verified', code: 'VISIT_CLOSED' });
+  const answer = req.body?.answer === 'NO' ? 'NO' : 'YES';
+  if (v.ownerOk?.answer === answer) return res.json({ success: true, already: true, ownerOk: v.ownerOk });   // a second tap sends nothing again
+  v.ownerOk = { answer, at: new Date().toISOString() }; db.save();
+  alert(v.brokerId, 'deals', answer === 'YES' ? `Owner is fine with visit ${v.id}` : `Owner asks to change visit ${v.id}`, `${prop.title} · ${visitWhen(v.scheduledTime)}`, `/?tab=deals&deal=${v.dealRoomId}`, { tag: `visit-owner-${v.id}`, hi: [answer === 'YES' ? `मालिक विज़िट ${v.id} के लिए तैयार हैं` : `मालिक विज़िट ${v.id} का समय बदलवाना चाहते हैं`, `${prop.title} · ${visitWhen(v.scheduledTime)}`] });
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'VISIT', v.id, 'VISIT_OWNER_ANSWER', `Owner said ${answer} to visit ${v.id}`);
+  res.json({ success: true, ownerOk: v.ownerOk });
+});
+
 app.post('/api/site-visits/:id/remind', needs('sitevisit:create'), rateLimit('visitremind', 30, 3600_000), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const visit = ownVisit(req, res, currentUser); if (!visit) return;
@@ -3149,7 +3219,7 @@ app.post('/api/owner-mandates', needs('mandate:owner_create'), (req: Request, re
     return res.status(400).json({ error: 'The fixed brokerage must be lower than the advertised price' });
   }
   const broker = db.byId('users', prop.listingBrokerId);
-  if (!prop.listingBrokerId || !broker || broker.role !== 'BROKER' || broker.verificationStatus !== 'VERIFIED') {
+  if (!prop.listingBrokerId || !broker || broker.role !== 'BROKER' || !isVerifiedFull(broker)) {
     return res.status(400).json({ error: 'Appoint a verified listing broker for this property before drafting the mandate' });
   }
   if (state.ownerMandates.some(m => m.propertyId === propertyId && m.status === 'PENDING_BROKER')) {
@@ -3275,7 +3345,7 @@ app.post('/api/properties/:id/appoint-broker', needs('property:update'), (req: R
   const prop = db.byId('properties', req.params.id);
   if (!prop || (prop.ownerId !== currentUser.id && !isAdmin(currentUser))) return res.status(404).json({ error: 'Property not found' });
   const broker = db.byId('users', req.body?.brokerId);
-  if (!broker || broker.role !== 'BROKER' || broker.verificationStatus !== 'VERIFIED') {
+  if (!broker || broker.role !== 'BROKER' || !isVerifiedFull(broker)) {
     return res.status(400).json({ error: 'Choose a verified broker from the network' });
   }
   if (prop.listingBrokerId === broker.id) return res.json({ success: true, property: sanitizeProperty(prop, currentUser, state) });
@@ -3367,7 +3437,7 @@ app.post('/api/construction-leads', needs('lead:create'), (req: Request, res: Re
   state.constructionLeads.unshift(newLead);
   db.save();
   // v59 — the city's verified contractors hear of it (first to accept the referral terms gets the customer's contact)
-  alert(state.users.filter(c => c.role === 'CONTRACTOR' && c.verificationStatus === 'VERIFIED' && (!c.city || !currentUser.city || c.city === currentUser.city)).slice(0, 100).map(c => c.id),
+  alert(state.users.filter(c => c.role === 'CONTRACTOR' && isVerifiedFull(c) && (!c.city || !currentUser.city || c.city === currentUser.city)).slice(0, 100).map(c => c.id),
     'deals', `New construction lead · ${data.projectType}`, `${data.approximateLocation} · budget ${rupees(data.estimatedBudget)} — the first to accept the ${newLead.referralCommissionPct}% referral gets the contact`, '/?tab=construction', { not: currentUser.id, tag: `cl-${leadId}`, hi: [`नई कंस्ट्रक्शन लीड · ${data.projectType}`, `${data.approximateLocation} · बजट ${rupees(data.estimatedBudget)} — ${newLead.referralCommissionPct}% रेफ़रल पहले मानने वाले को ग्राहक का संपर्क`] });
 
   db.appendAuditEvent(
@@ -3748,7 +3818,7 @@ app.post('/api/builder/projects', needs('builder:project_create'), (req: Request
 
   let builder: UserProfile | undefined = currentUser.role === 'DEVELOPER_BUILDER' ? currentUser : undefined;
   if (!builder) {
-    builder = state.users.find(u => u.id === (req.body as any)?.builderId && u.role === 'DEVELOPER_BUILDER' && u.verificationStatus === 'VERIFIED');
+    builder = state.users.find(u => u.id === (req.body as any)?.builderId && u.role === 'DEVELOPER_BUILDER' && isVerifiedFull(u));
     if (!builder) return res.status(400).json({ error: 'Name the verified builder account (builderId) this project belongs to' });
   }
 
@@ -3830,7 +3900,7 @@ app.get('/api/builder/associates', needs('builder:associates_read', 'builder:my_
   // Only builders / admins may browse the associate directory — and only as contact-free partner cards.
   if (can(currentUser, 'builder:associates_read')) {
     brokers = state.users
-      .filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED')
+      .filter(u => u.role === 'BROKER' && isVerifiedFull(u))
       // v20: the same short card as the people directory (all fields the builder screen uses; 10k brokers ≈ 2.5 MB → was 5 MB)
       .map(b => (isAdmin(currentUser) ? enrichFor(b, currentUser, state) : slimCard(b, state)));
   }
@@ -3855,7 +3925,7 @@ app.post('/api/builder/associates/mandate', needs('builder:appoint_associate'), 
   if (!broker || broker.role !== 'BROKER') {
     return res.status(404).json({ error: 'Broker not found' });
   }
-  if (broker.verificationStatus !== 'VERIFIED') {
+  if (!isVerifiedFull(broker)) {
     return res.status(400).json({ error: 'Only KYC-verified brokers can be appointed as sales associates' });
   }
 
@@ -4100,8 +4170,8 @@ app.get('/api/admin/metrics', needs('metrics:own'), (_req: Request, res: Respons
   const visibleProps = canSeeInventory ? state.properties.filter(p => canBrowseProperty(currentUser, p)) : [];
   const myDeals = state.dealRooms.filter(d => isAdmin(currentUser) || isDealParticipant(currentUser, d));
 
-  const totalUsers = global ? state.users.length : state.users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED').length;
-  const verifiedBrokers = state.users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED').length;
+  const totalUsers = global ? state.users.length : state.users.filter(u => u.role === 'BROKER' && isVerifiedFull(u)).length;
+  const verifiedBrokers = state.users.filter(u => u.role === 'BROKER' && isVerifiedFull(u)).length;
   const pendingVerifications = global ? state.users.filter(u => u.verificationStatus === 'PENDING').length : 0;
   const activeProperties = visibleProps.filter(p => p.listingStatus === 'active').length;
   const totalPropertyInventoryValue = visibleProps.reduce((acc, p) => acc + p.askingPrice, 0);
@@ -4347,7 +4417,7 @@ app.get('/api/activity-feed', needs('activity:read'), (_req: Request, res: Respo
 
   res.json({
     success: true,
-    activities: activities.slice(0, 40),
+    activities: currentUser.basicTier ? [] : activities.slice(0, 40),   // v186b: no network activity for a Basic account
   });
 });
 
@@ -4357,12 +4427,12 @@ app.get('/api/activity-feed', needs('activity:read'), (_req: Request, res: Respo
 
 /** The platform desk that acts as default reviewer / verifier: a verified ADMIN, else the SUPERADMIN. */
 function platformDesk(state = db.getState()) {
-  return state.users.find(u => u.role === 'ADMIN' && u.verificationStatus === 'VERIFIED')
+  return state.users.find(u => u.role === 'ADMIN' && isVerifiedFull(u))
     || state.users.find(u => u.role === 'SUPERADMIN')!;
 }
 
 function readinessContext(state: ReturnType<typeof db.getState>, deal: { closingBrokerId?: string; introducingBrokerId?: string }) {
-  const l = state.users.find(u => u.role === 'LEGAL_COUNSEL' && u.verificationStatus === 'VERIFIED');
+  const l = state.users.find(u => u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u));
   const c = state.users.find(u => u.id === (deal.closingBrokerId || deal.introducingBrokerId));
   return {
     legal: l ? { name: l.name, barRegistration: l.reraNumber } : undefined,
@@ -4402,8 +4472,8 @@ app.get('/api/deals/:id/tasks', needs('task:read'), (req: Request, res: Response
     const introBroker = db.byId('users', deal.introducingBrokerId);
     const closeBroker = db.byId('users', deal.closingBrokerId);
     const owner = db.byId('users', deal.ownerId);
-    const legal = state.users.find(u => u.role === 'LEGAL_COUNSEL' && u.verificationStatus === 'VERIFIED');
-    const contractor = state.users.find(u => u.role === 'CONTRACTOR' && u.verificationStatus === 'VERIFIED');
+    const legal = state.users.find(u => u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u));
+    const contractor = state.users.find(u => u.role === 'CONTRACTOR' && isVerifiedFull(u));
 
     // v21: no GENZ desk in a broker-to-broker deal room — duties nobody else can take go to the brokers, who review each other's work
     tasks = generateDealTasks(deal.id, {
@@ -5047,7 +5117,7 @@ app.get('/api/due-diligence/property/:propertyId', needs('dd:read'), (req: Reque
 
   let items = state.dueDiligenceItems.filter(i => i.propertyId === property.id);
   if (items.length === 0) {
-    const legal = state.users.find(u => u.role === 'LEGAL_COUNSEL' && u.verificationStatus === 'VERIFIED');
+    const legal = state.users.find(u => u.role === 'LEGAL_COUNSEL' && isVerifiedFull(u));
     const desk = platformDesk(state);
     items = generateDueDiligenceItems(property.id, property.propertyType, {
       verifierId: legal?.id || desk.id,
@@ -5114,7 +5184,7 @@ app.post('/api/due-diligence/items/:itemId/evidence', needs('dd:upload'), (req: 
     libDoc.visibility = newEv.accessScope === 'DEAL_PARTICIPANTS_ONLY' ? 'DEAL_PARTICIPANTS' : newEv.accessScope === 'ALL_VERIFIED_BROKERS' && !newEv.isConfidential ? 'VERIFIED_BROKERS' : 'PRIVATE';
     if (newEv.accessScope === 'CUSTOM_BROKERS') {
       for (const uid of newEv.sharedBrokerIds) {
-        const t = state.users.find(x => x.id === uid && x.verificationStatus === 'VERIFIED' && can(x, 'propdoc:use'));
+        const t = state.users.find(x => x.id === uid && isVerifiedFull(x) && can(x, 'propdoc:use'));
         if (t && !libDoc.shares.some(sh => sh.userId === uid && !sh.revoked)) libDoc.shares.push({ userId: uid, grantedBy: currentUser.id, grantedAt: now });
       }
     }
@@ -5416,7 +5486,8 @@ const MEDIA_SENSITIVITIES = ['PUBLIC', 'CONFIDENTIAL', 'RESTRICTED', 'HIGHLY_CON
 function loadVaultProperty(user: UserProfile, id: string) {
   const state = db.getState();
   const property = db.byId('properties', id);
-  if (!property) throw new HttpError(404, 'Property not found');
+  // v186b: the vault is not a side door — a held / hidden / not-yet-verified listing is 404 to everyone who could not browse it (deal-room parties keep their access)
+  if (!property || !(canBrowseProperty(user, property) || canSeeClosedProperty(user, property) || state.dealRooms.some(d => d.propertyId === id && isDealParticipant(user, d)))) throw new HttpError(404, 'Property not found');
   return { state, property };
 }
 
@@ -5431,7 +5502,7 @@ function visibleVaultAssets(state: ReturnType<typeof db.getState>, currentUser: 
     if (g.propertyId !== id || g.isRevoked) return false;
     if (g.expiresAt && new Date(g.expiresAt).getTime() < Date.now()) return false;
     return g.recipientId === currentUser.id ||
-      (g.recipientId === 'VERIFIED_ALL' && currentUser.verificationStatus === 'VERIFIED') ||
+      (g.recipientId === 'VERIFIED_ALL' && isVerifiedFull(currentUser)) ||
       (g.recipientType === 'DEAL_ROOM_PARTICIPANTS' && userDealRoomIds.includes(g.recipientId));
   });
   const granted = new Set<string>();
@@ -5448,6 +5519,8 @@ function visibleVaultAssets(state: ReturnType<typeof db.getState>, currentUser: 
 app.get('/api/properties/:id/vault/assets', needs('property:read'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { state, property } = loadVaultProperty(currentUser, req.params.id);
+  // v187: a Basic account reads the vault of its own listing or of a deal it is in — never a network listing's public media
+  if (currentUser.basicTier && !isPropertyPrincipal(currentUser, property) && !state.dealRooms.some(d => d.propertyId === property.id && isDealParticipant(currentUser, d))) return res.status(404).json({ error: 'Property not found' });
   const { assets, isOwnerOrListingBroker, activeGrantsCount } = visibleVaultAssets(state, currentUser, property);
   res.json({ success: true, assets, isOwnerOrListingBroker, activeGrantsCount });
 });
@@ -5544,7 +5617,7 @@ app.post('/api/properties/:id/vault/grants', needs('vault:manage'), rateLimit('v
     if (b.recipientId !== 'VERIFIED_ALL') return res.status(400).json({ error: 'Invalid group' });
     recipientName = 'All verified members';
   } else {
-    const ru = state.users.find(u => u.id === b.recipientId && u.verificationStatus === 'VERIFIED');
+    const ru = state.users.find(u => u.id === b.recipientId && isVerifiedFull(u));
     if (!ru) return res.status(400).json({ error: 'Recipient must be a verified member' });
     recipientName = ru.name;
   }
@@ -5904,6 +5977,7 @@ app.use('/api/kyc-vault', createKycVaultRouter());
 app.use('/api/protection', createProtectionRouter());
 app.use('/api/admin/api-keys', createApiKeysRouter());   // v135 — superadmin types API keys; every flow reads them
 app.use('/api/auth/2fa', createTwoFactorRouter());
+app.use('/api/auth', createOpenSignupRouter());   // v185 (D15) — open sign-up (SIGNUP_MODE)
 app.use('/api/auth/forgot', createForgotRouter());   // v175 — forgot password: mobile code, then a new password
 app.use('/api/admin/otp-pending', createOtpAdminRouter());   // v175 — manual OTP mode: staff relay the code on WhatsApp
 app.use('/api/owner', createOwnerAuthRouter());
@@ -6109,15 +6183,15 @@ async function startServer() {
     ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs],
     ['photoChecks', healPhotoChecks], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms],
     ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch],
-    ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls],
+    ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['paymentDue', sweepPaymentDue], ['hr', sweepHr], ['calls', sweepCalls],
     ['ownerPlans', ensureOwnerPlans], ['ownerListings', sweepOwnerListings], ['idTasks', ensureIdTasks],
-    ['shopPartners', sweepShopPartners], ['sahayak', sweepSahayak],
+    ['shopPartners', sweepShopPartners], ['sahayak', sweepSahayak], ['basicMigration', migrateBasicTier], ['reraSetting', migrateReraSetting],
   ] as [string, () => unknown][]) {
     try { fn(); } catch (e: any) { console.error(`[BOOT SWEEP] ${name} failed:`, e?.message || e); }
   }
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['sahayak', sweepSahayak], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['paymentDue', sweepPaymentDue], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['sahayak', sweepSahayak], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

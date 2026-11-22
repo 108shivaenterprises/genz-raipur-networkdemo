@@ -11,6 +11,7 @@
  * Files live under data/ownermedia and data/ownerdocs (synced to the shared DB by fileSync like every other upload).
  */
 import express, { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -205,7 +206,7 @@ export function createOwnerMediaRouter() {
     s.ownerDocs.push({ id, userId: u.id, propertyId, kind, name: String(b.name || '').slice(0, 80) || DOC_KINDS[kind].en, mime, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), createdAt: nowIso(), status: 'PENDING' });
     db.save();
     db.appendAuditEvent(u.id, u.role, 'VERIFICATION', id, 'OWNER_DOC_UPLOADED', `${u.name} uploaded ${kind}${propertyId ? ' for ' + propertyId : ''} for GENZ to check`);
-    for (const a of s.users.filter(x => (x.role === 'ADMIN' || x.role === 'SUPERADMIN') && x.verificationStatus === 'VERIFIED').slice(0, 20)) void pushTo(a.id, { kind: 'deals', title: 'An owner paper needs checking', body: `${u.name} — open Owner Listing Plans → Papers to check.`, url: '/' });
+    for (const a of s.users.filter(x => (x.role === 'ADMIN' || x.role === 'SUPERADMIN') && isVerifiedFull(x)).slice(0, 20)) void pushTo(a.id, { kind: 'deals', title: 'An owner paper needs checking', body: `${u.name} — open Owner Listing Plans → Papers to check.`, url: '/' });
     res.json({ success: true, doc: docView(s.ownerDocs[s.ownerDocs.length - 1]) });
   });
   r.get('/doc/:id/file', needs('self:read'), rateLimit('odoc-open', 300, 3600_000), (req, res) => {

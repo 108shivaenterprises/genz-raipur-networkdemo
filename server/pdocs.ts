@@ -13,6 +13,7 @@
  * so a leak points back to the person. A real screenshot block exists only in a native Android app (FLAG_SECURE).
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import express from 'express';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -79,7 +80,7 @@ export function createPdocsRouter() {
 
   r.get('/people', needs('pdoc:use'), (_req, res) => {
     const u = me(); const st = db.getState();
-    res.json({ success: true, people: st.users.filter(x => x.id !== u.id && x.verificationStatus === 'VERIFIED' && can(x, 'pdoc:use') && !['SUPERADMIN', 'ADMIN'].includes(x.role)).slice(0, 600).map(x => ({ id: x.id, name: x.name, role: x.role, company: x.companyName || '', city: x.city })) });
+    res.json({ success: true, people: st.users.filter(x => x.id !== u.id && isVerifiedFull(x) && can(x, 'pdoc:use') && !['SUPERADMIN', 'ADMIN'].includes(x.role)).slice(0, 600).map(x => ({ id: x.id, name: x.name, role: x.role, company: x.companyName || '', city: x.city })) });
   });
 
   r.post('/', needs('pdoc:use'), rateLimit('pdocup', 20, 60 * 60_000), big, (req: Request, res: Response) => {
@@ -119,7 +120,7 @@ export function createPdocsRouter() {
     if (!b.success) return res.status(400).json({ error: 'Choose who can view it (and optionally an expiry / view limit).' });
     let n = 0;
     for (const uid of new Set(b.data.userIds)) {
-      const t = st.users.find(x => x.id === uid && x.verificationStatus === 'VERIFIED' && can(x, 'pdoc:use') && uid !== d.ownerId);
+      const t = st.users.find(x => x.id === uid && isVerifiedFull(x) && can(x, 'pdoc:use') && uid !== d.ownerId);
       if (!t) continue;
       const exp = b.data.expiresInDays ? new Date(Date.now() + b.data.expiresInDays * 86_400_000).toISOString() : undefined;
       const ex = d.viewers.find(v => v.userId === uid);

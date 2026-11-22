@@ -12,6 +12,7 @@
  *    NOT the text inside the file (scans would need OCR). The owner's name is searchable only by people who may see it.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import express from 'express';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -70,7 +71,7 @@ export function docAccess(st: DatabaseState, u: Pick<UserProfile, 'id' | 'role' 
   if (isAdmin(u)) return { ok: true, level: 'MANAGE', via: 'ADMIN' };
   if (d.uploaderId === u.id) return { ok: true, level: 'MANAGE', via: 'UPLOADER' };
   if (prop && isPropertyPrincipal(u, prop)) return { ok: true, level: 'MANAGE', via: 'PRINCIPAL' };
-  if (u.verificationStatus !== 'VERIFIED') return { ok: false };
+  if (!isVerifiedFull(u)) return { ok: false };
   if (activeShare(d, u.id, now)) return { ok: true, level: 'VIEW', via: 'SHARED' };
   if (u.role === 'LEGAL_COUNSEL' && d.ddItemId) return { ok: true, level: 'VIEW', via: 'LEGAL_DD' };
   if (prop && d.visibility === 'DEAL_PARTICIPANTS' && u.role !== 'TEAM_MEMBER' && st.dealRooms.some(r => r.propertyId === prop.id && isDealParticipant(u, r))) return { ok: true, level: 'VIEW', via: 'DEAL' };
@@ -384,7 +385,7 @@ export function createPropDocsRouter() {
     const people = [...new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId])]
       .filter(id => id && id !== u.id)
       .map(id => st.users.find(x => x.id === id))
-      .filter((x): x is UserProfile => !!x && x.verificationStatus === 'VERIFIED' && can(x, 'propdoc:use') && !isAdmin(x))
+      .filter((x): x is UserProfile => !!x && isVerifiedFull(x) && can(x, 'propdoc:use') && !isAdmin(x))
       .map(x => ({ id: x.id, name: x.name, role: x.role }));
     res.json({ success: true, docs, people, canClientShare: can(u, 'clientroom:use') });
   });
@@ -406,7 +407,7 @@ export function createPropDocsRouter() {
     if (!deal || deal.propertyId !== d.propertyId || !isDealParticipant(u, deal)) return bad(res, 'This paper does not belong to that deal room.', 400);
     const inDeal = new Set([deal.introducingBrokerId, deal.closingBrokerId, deal.ownerId].filter(Boolean) as string[]);
     const targets = [...new Set(b.data.userIds)].map(id => st.users.find(p => p.id === id))
-      .filter((p): p is UserProfile => !!p && inDeal.has(p.id) && p.id !== u.id && p.verificationStatus === 'VERIFIED' && can(p, 'propdoc:use') && !isAdmin(p));
+      .filter((p): p is UserProfile => !!p && inDeal.has(p.id) && p.id !== u.id && isVerifiedFull(p) && can(p, 'propdoc:use') && !isAdmin(p));
     if (!targets.length) return bad(res, 'Choose someone of this deal room to share with.');
     if (!ensureProtected(d, u)) return res.status(400).json(NOT_SCANNED);
     const expiresAt = daysAhead(b.data.days);
@@ -508,7 +509,7 @@ export function createPropDocsRouter() {
     const inDeal = new Set<string>();
     for (const r2 of st.dealRooms.filter(r3 => r3.propertyId === d.propertyId)) for (const id of [r2.introducingBrokerId, r2.closingBrokerId, r2.ownerId]) if (id) inDeal.add(id);
     const people = st.users
-      .filter(p => p.id !== u.id && p.id !== d.uploaderId && p.verificationStatus === 'VERIFIED' && can(p, 'propdoc:use') && !isAdmin(p))
+      .filter(p => p.id !== u.id && p.id !== d.uploaderId && isVerifiedFull(p) && can(p, 'propdoc:use') && !isAdmin(p))
       .map(p => ({ id: p.id, name: p.name, role: p.role, company: p.companyName || '', city: p.city || '', inDeal: inDeal.has(p.id) }))
       .sort((a, b) => Number(b.inDeal) - Number(a.inDeal) || a.name.localeCompare(b.name))
       .slice(0, 500);
@@ -522,7 +523,7 @@ export function createPropDocsRouter() {
     if (!b.success) return bad(res, 'Choose who to share with (and optionally for how many days).');
     let n = 0;
     for (const uid of new Set(b.data.userIds)) {
-      const t = st.users.find(p => p.id === uid && p.verificationStatus === 'VERIFIED' && can(p, 'propdoc:use') && p.id !== d.uploaderId && !isAdmin(p));
+      const t = st.users.find(p => p.id === uid && isVerifiedFull(p) && can(p, 'propdoc:use') && p.id !== d.uploaderId && !isAdmin(p));
       if (!t) continue;
       const expiresAt = b.data.expiresInDays ? new Date(Date.now() + b.data.expiresInDays * 86_400_000).toISOString() : undefined;
       const ex = d.shares.find(s => s.userId === uid);

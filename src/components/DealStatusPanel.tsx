@@ -8,10 +8,11 @@ import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { CLOSE_AUTO_DAYS, CLOSE_REASONS, isClosed, reasonText } from '../shared/dealClose.js';
 import type { DealRoom, UserProfile } from '../types/index.js';
+import { dateLocale } from '../lib/utils.js';
 
-const inp = 'min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm';
-const btn = 'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-40';
-const day = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const inp = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm';
+const btn = 'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold disabled:opacity-40';
+const day = (iso?: string) => (iso && !Number.isNaN(Date.parse(iso)) ? new Date(iso).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const STAGES = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'Agreement', 'Handover', 'Settled'];
 
 export const DealStatusPanel: React.FC<{ deal: DealRoom; me: UserProfile; verifiedVisits: number; onChanged: () => void }> = ({ deal, me, verifiedVisits, onChanged }) => {

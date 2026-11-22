@@ -1,3 +1,4 @@
+import { BasicNetworkLocked } from './BasicBanner.js';
 import { OwnerPanel } from './OwnerListings.js';
 import { OwnerRequests, BrokerBoardLine } from './LeadBoard.js';
 import React, { useState, useEffect, useRef } from 'react';
@@ -192,7 +193,13 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
     const t = window.setTimeout(() => fetchRemote(false), searchQuery.trim() ? 350 : 0);
     return () => window.clearTimeout(t);
   }, [wantsRemote, selectedState, selectedCity, selectedTag, selectedType, searchQuery, browseAll]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shownList = remote ? remote.list : filteredProperties;
+  // v184 — sold / rented homes are counted and listed apart: the header, the tab chips and the cards all agree
+  const isClosedP = (p: Property) => ['sold', 'rented'].includes(p.listingStatus);
+  const [closedView, setClosedView] = useState(false);
+  const baseList = remote ? remote.list : filteredProperties;
+  const closedCount = baseList.filter(isClosedP).length;
+  const shownList = baseList.filter(p => closedView ? isClosedP(p) : !isClosedP(p));
+  const liveAll = remote ? `${baseList.length - closedCount}${remote.hasMore ? '+' : ''}` : serverMode ? String(scope!.total) : String(properties.filter(p => !isClosedP(p)).length);
   // long lists are drawn 30 cards at a time (phones choke on hundreds of image cards)
   const [visibleCount, setVisibleCount] = useState(20);
   useEffect(() => { setVisibleCount(20); }, [ownershipFilter, selectedState, selectedCity, selectedTag, selectedType, searchQuery, browseAll]);
@@ -225,17 +232,17 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               ? tx('My listings', 'मेरी लिस्टिंग')
               : isBuyer
               ? tx('Properties', 'प्रॉपर्टी')
-              : tx('Properties on the network', 'नेटवर्क की प्रॉपर्टी')} meta={remote ? tx(`${remote.list.length} of ${remote.total}`, `${remote.total} में से ${remote.list.length}`) : shownList.length} help={<>{tx('Total asking value of the properties shown', 'दिख रही प्रॉपर्टी का कुल मूल्य')}: {formatINR(shownList.reduce((s, p) => s + (p.askingPrice || 0), 0))}</>} /></div>
+              : tx('Properties on the network', 'नेटवर्क की प्रॉपर्टी')} meta={remote ? tx(`${shownList.length} of ${remote.total}`, `${remote.total} में से ${shownList.length}`) : shownList.length} help={<>{tx('Total asking value of the properties shown', 'दिख रही प्रॉपर्टी का कुल मूल्य')}: {formatINR(shownList.reduce((s, p) => s + (p.askingPrice || 0), 0))}</>} /></div>
 
         {may('property:create') && !isOwner && (
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
         {isBroker && <button onClick={() => setShowDrafts(true)} data-testid="open-wa-drafts"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700">
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 min-h-11 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700">
           <MessageCircle className="h-3.5 w-3.5" /> {tx('From WhatsApp', 'WhatsApp से डालें')}
         </button>}
         <button
           onClick={onOpenAddProperty}
-          className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 transition-colors"
+          className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-lg bg-slate-900 min-h-11 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 transition-colors"
         >
           <Building2 className="h-3.5 w-3.5 text-amber-400" />
           <span>{tx('+ New property', '+ नई प्रॉपर्टी')}</span>
@@ -249,36 +256,40 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
           <button
             type="button"
-            onClick={() => setOwnershipFilter('my')}
-            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+            onClick={() => { setOwnershipFilter('my'); setClosedView(false); }}
+            className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
               ownershipFilter === 'my'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
             }`}
           >
             <span>{tx('My listings', 'मेरी लिस्टिंग')}</span>
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+            <span className={`rounded-full px-1.5 py-0.5 text-xs ${
               ownershipFilter === 'my' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-slate-100 text-slate-700'
             }`}>
-              {myProperties.length} ({formatINR(myValuation)})
+              {myProperties.filter(p => !isClosedP(p)).length} ({formatINR(myValuation)})
             </span>
           </button>
 
           <button
             type="button"
-            onClick={() => setOwnershipFilter('all')}
-            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+            onClick={() => { setOwnershipFilter('all'); setClosedView(false); }}
+            className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
               ownershipFilter === 'all'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
             }`}
           >
-            <span>{tx('All network', 'पूरा नेटवर्क')}</span>
-            <span className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+            <span>{currentUser.basicTier ? tx('Network (after KYC)', 'नेटवर्क (KYC के बाद)') : tx('All network', 'पूरा नेटवर्क')}</span>
+            <span className={`rounded-full px-1.5 py-0.5 text-xs ${
               ownershipFilter === 'all' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-slate-100 text-slate-700'
             }`}>
-              {serverMode ? scope!.total : properties.length}{serverMode ? '' : ` (${formatINR(totalValuation)})`}
+              {currentUser.basicTier ? '🔒' : <>{liveAll}{serverMode || remote ? '' : ` (${formatINR(totalValuation)})`}</>}
             </span>
+          </button>
+
+          <button type="button" onClick={() => setClosedView(v => !v)} aria-pressed={closedView} data-testid="closed-chip" className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold ${closedView ? 'bg-slate-900 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}>
+            <span>{tx('Sold / rented', 'बिकी / किराये पर गई')}</span><span className={`rounded-full px-1.5 py-0.5 text-xs ${closedView ? 'bg-amber-400 font-bold text-slate-950' : 'bg-slate-100 text-slate-700'}`}>{closedCount}</span>
           </button>
         </div>
       )}
@@ -294,7 +305,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
           </div>
           <button
             onClick={onOpenAddProperty}
-            className="inline-flex items-center gap-1 self-start sm:self-auto rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shrink-0"
+            className="inline-flex items-center gap-1 self-start sm:self-auto rounded-lg bg-blue-600 min-h-11 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shrink-0"
           >
             <Building2 className="h-3.5 w-3.5" />
             <span>{tx('+ Add another', '+ एक और डालें')}</span>
@@ -307,30 +318,30 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
         <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
           {/* v146 — on a phone the four dropdowns open from one "Filters" button; search stays */}
           <div className="relative col-span-2 flex gap-2 lg:col-span-1">
-            <button type="button" onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters} className="order-2 inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 sm:hidden" data-testid="prop-filters">{hi ? 'फ़िल्टर' : 'Filters'}</button>
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <button type="button" onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters} className="order-2 inline-flex min-h-11 shrink-0 items-center rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 sm:hidden" data-testid="prop-filters">{hi ? 'फ़िल्टर' : 'Filters'}</button>
+            <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
               aria-label={hi ? 'प्रॉपर्टी खोजें' : 'Search properties'}
               placeholder={hi ? 'शीर्षक, इलाका, शहर, पिनकोड, ID...' : 'Title, locality, city, PIN or ID...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-900 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 min-h-11 pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-900 focus:outline-none"
             />
           </div>
-          <select aria-label={hi ? 'राज्य' : 'State'} value={selectedState} onChange={(e) => { setSelectedState(e.target.value); setSelectedCity('All'); }} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
+          <select aria-label={hi ? 'राज्य' : 'State'} value={selectedState} onChange={(e) => { setSelectedState(e.target.value); setSelectedCity('All'); }} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 min-h-11 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             <option value="All">{hi ? 'सभी राज्य' : 'All states'}</option>
             {statesInUse.map((st) => <option key={st} value={st}>{hi ? (INDIA_STATES.find((x) => x.name === st)?.hi || st) : st}</option>)}
           </select>
-          <select aria-label={hi ? 'शहर' : 'City'} value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
+          <select aria-label={hi ? 'शहर' : 'City'} value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 min-h-11 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             <option value="All">{hi ? 'सभी शहर' : 'All cities'}</option>
             {selectedCity !== 'All' && !citiesInUse.includes(selectedCity) && <option value={selectedCity}>{selectedCity}</option>}
             {citiesInUse.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select aria-label={hi ? 'प्रॉपर्टी का प्रकार' : 'Property type'} value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
+          <select aria-label={hi ? 'प्रॉपर्टी का प्रकार' : 'Property type'} value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 min-h-11 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             {propertyTypes.map((t) => <option key={t} value={t}>{t === 'All' ? (hi ? 'सभी प्रकार' : 'All property types') : label('propertyType', t)}</option>)}
           </select>
-          <select aria-label={hi ? 'टैग' : 'Tag'} value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
+          <select aria-label={hi ? 'टैग' : 'Tag'} value={selectedTag} onChange={(e) => setSelectedTag(e.target.value)} className={`${showFilters ? '' : 'hidden sm:block '}w-full rounded-lg border border-slate-300 min-h-11 px-3 py-1.5 text-xs text-slate-900 focus:border-slate-900 focus:outline-none`}>
             <option value="All">{hi ? 'सभी टैग' : 'Any tag'}</option>
             {tagsInUse.map((t) => <option key={t} value={t}>{label('tag', t)}</option>)}
           </select>
@@ -347,7 +358,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
       {remote?.loading && remote.list.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-xs text-slate-500">{tx('Searching the network…', 'नेटवर्क में खोज रहे हैं…')}</p>}
 
       {/* Properties Cards Grid */}
-      {shownList.length === 0 && !remote?.loading ? (
+      {shownList.length === 0 && !remote?.loading && currentUser.basicTier && ownershipFilter !== 'my' ? <BasicNetworkLocked what="listings" /> : shownList.length === 0 && !remote?.loading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-xs">
           <Building2 className="mx-auto h-10 w-10 text-slate-300" />
           <h3 className="mt-3 text-sm font-semibold text-slate-900">
@@ -383,7 +394,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
             <button
               type="button"
               onClick={onOpenAddProperty}
-              className="rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+              className="rounded-lg bg-slate-900 min-h-11 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
             >
               {tx('+ New property', '+ नई प्रॉपर्टी')}
             </button>
@@ -409,7 +420,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
             const showMandate = canSeeMandates && (isMyListing && !isAdmin ? true : isAdmin);
             const mandateNeedsMe = showMandate && ((isBroker && p.listingBrokerId === currentUser.id && !p.ownerId && !mandate) || (isBroker && mandate?.status === 'PENDING_BROKER' && p.listingBrokerId === currentUser.id) || (isOwner && (!mandate || mandate.status !== 'PENDING_BROKER' && mandate.status !== 'ACTIVE')));
             const listingBroker = users?.find((u) => u.id === p.listingBrokerId);
-            const btn = 'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors';
+            const btn = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors';
             const actions: { key: string; node: React.ReactNode }[] = [];
             if (isBuyer && !isClosed) actions.push({ key: 'save', node: (
               <button onClick={() => void toggleSave(p.id)} aria-pressed={saved.has(p.id)} className={`${btn} border ${saved.has(p.id) ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`} data-testid={`save-${p.id}`}>
@@ -469,17 +480,19 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                 <div className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${tone}`}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 font-semibold"><FileSignature className="h-3.5 w-3.5" />{isOwner ? (hi ? 'आपके ब्रोकर से ब्रोकरेज की शर्त' : 'Brokerage terms with your broker') : (hi ? 'मालिक से ब्रोकरेज की शर्त' : 'Brokerage terms with owner')}</div>
-                    <div className="truncate text-[11px] opacity-80">{mLabel}{m && m.status !== 'REJECTED' ? ` · ${m.remunerationBasis === 'PERCENTAGE' ? `${m.agreedCommissionPct}% ${hi ? 'कमीशन' : 'commission'}` : m.remunerationBasis === 'FIXED_FEE' ? `${formatINR(m.fixedFeeAmount || 0)} ${hi ? 'फिक्स्ड' : 'fixed fee'}` : `${formatINR(m.approvedNetPrice)} ${hi ? 'नेट' : 'net'}`}` : ''}</div>
+                    <div className="truncate text-xs opacity-80">{mLabel}{m && m.status !== 'REJECTED' ? ` · ${m.remunerationBasis === 'PERCENTAGE' ? `${m.agreedCommissionPct}% ${hi ? 'कमीशन' : 'commission'}` : m.remunerationBasis === 'FIXED_FEE' ? `${formatINR(m.fixedFeeAmount || 0)} ${hi ? 'फिक्स्ड' : 'fixed fee'}` : `${formatINR(m.approvedNetPrice)} ${hi ? 'नेट' : 'net'}`}` : ''}</div>
                   </div>
-                  <button type="button" onClick={() => setMandateFor(p)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold ${mandateNeedsMe ? 'bg-slate-900 text-white hover:bg-slate-800' : 'border border-current/30 bg-white/70 hover:bg-white'}`}>
+                  <button type="button" onClick={() => setMandateFor(p)} className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold ${mandateNeedsMe ? 'bg-slate-900 text-white hover:bg-slate-800' : 'border border-current/30 bg-white/70 hover:bg-white'}`}>
                     {isOwner ? (m?.status === 'ACTIVE' ? (hi ? 'देखें / बदलें' : 'View / revise') : (hi ? 'ब्रोकरेज तय करें' : 'Set brokerage terms')) : (m?.status === 'PENDING_BROKER' && isBroker ? (hi ? 'समीक्षा और हस्ताक्षर' : 'Review & sign') : (isBroker && !m && !p.ownerId ? (hi ? 'ब्रोकरेज तय करें' : 'Set brokerage') : (hi ? 'देखें' : 'View')))}
                   </button>
                 </div>
               );
             })() : null;
+            const approvalPending = currentUser.role !== 'PROPERTY_OWNER' && p.listingBrokerId === currentUser.id && !isClosed && !(p.protectionUntil && Date.parse(p.protectionUntil) > Date.now());   // v184 — one status line: waiting for the owner, or live
             const statusChip = isClosed
-              ? <span className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-extrabold tracking-wide text-white" data-testid="sold-badge">{closedWord}</span>
-              : <span className="flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800"><CheckCircle2 className="h-3 w-3 text-emerald-600" /><span>{tx('Live', 'लाइव')}</span></span>;
+              ? <span className="rounded bg-red-600 px-2 py-0.5 text-xs font-extrabold tracking-wide text-white" data-testid="sold-badge">{closedWord}</span>
+              : approvalPending ? <span className="flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900" data-testid="pending-chip">{currentUser.basicTier ? tx('Held until your KYC is verified', 'KYC वेरिफ़ाई होने तक रुकी है') : tx('Waiting for owner approval', 'मालिक की मंज़ूरी बाकी')}</span>
+              : <span className="flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-3 w-3 text-emerald-600" /><span>{tx('Live', 'लाइव')}</span></span>;
 
             return (
               <div
@@ -492,23 +505,23 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                 {p.images[0] && (
                   <div className="relative h-36 w-full cursor-pointer bg-slate-100 overflow-hidden" role="button" tabIndex={0} onClick={toggle} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }} aria-expanded={open} aria-label={tx('Open details', 'डिटेल खोलें')} data-testid={`open-photo-${p.id}`}>
                     <img src={p.images[0]} alt="" className="h-full w-full object-cover" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} />
-                    {p.videoUrl && <span className="absolute top-2 right-2 rounded bg-purple-900/90 px-2 py-0.5 text-[10px] font-semibold text-white">{tx('Video', 'वीडियो')}</span>}
+                    {p.videoUrl && <span className="absolute top-2 right-2 rounded bg-purple-900/90 px-2 py-0.5 text-xs font-semibold text-white">{tx('Video', 'वीडियो')}</span>}
                   </div>
                 )}
 
                 <div className="p-3.5 space-y-2.5">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600">{p.id}</span>
-                    {isMyListing && <span className="flex items-center gap-1 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white"><UserCheck className="h-3 w-3" />{tx('Your listing', 'आपकी लिस्टिंग')}</span>}
-                    {!p.images[0] && p.videoUrl && <span className="rounded bg-purple-900/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">{tx('Video', 'वीडियो')}</span>}
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-semibold text-slate-600">{p.id}</span>
+                    {isMyListing && <span className="flex items-center gap-1 rounded bg-blue-600 px-1.5 py-0.5 text-xs font-bold text-white"><UserCheck className="h-3 w-3" />{tx('Your listing', 'आपकी लिस्टिंग')}</span>}
+                    {!p.images[0] && p.videoUrl && <span className="rounded bg-purple-900/90 px-1.5 py-0.5 text-xs font-semibold text-white">{tx('Video', 'वीडियो')}</span>}
                     {!isClosed && (isMyListing || isAdmin) && <ProtectionPill left={daysUntil(p.protectionUntil)} />}
                     <span className="ml-auto">{statusChip}</span>
                   </div>
 
-                  {currentUser.role !== 'PROPERTY_OWNER' && p.listingBrokerId === currentUser.id && !isClosed && !(p.protectionUntil && Date.parse(p.protectionUntil) > Date.now()) && (
+                  {approvalPending && (
                     <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs" data-testid={`approval-${p.id}`}>
-                      <span className="font-semibold text-amber-900">{tx('Owner approval pending — no bypass protection yet', 'मालिक की अप्रूवल बाकी — अभी बायपास सुरक्षा नहीं')}</span>
-                      <button type="button" disabled={approvalBusy === p.id} onClick={() => openOwnerApproval(p.id)} className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50">{tx('Send to owner', 'मालिक को भेजें')}</button>
+                      <span className="font-semibold text-amber-900">{tx('No bypass protection until the owner approves', 'मालिक की मंज़ूरी तक बायपास सुरक्षा नहीं')}</span>
+                      <button type="button" disabled={approvalBusy === p.id} onClick={() => openOwnerApproval(p.id)} className="shrink-0 rounded-lg bg-emerald-600 min-h-11 px-2.5 py-1 text-xs font-bold text-white disabled:opacity-50">{tx('Send to owner', 'मालिक को भेजें')}</button>
                     </div>
                   )}
                   {isClosed && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800" role="status">{p.listingStatus === 'rented' ? tx('This property is rented out — no more offers or visits.', 'यह प्रॉपर्टी किराये पर जा चुकी है — अब ऑफ़र या विज़िट नहीं।') : tx('This property is sold — no more offers or visits.', 'यह प्रॉपर्टी बिक चुकी है — अब ऑफ़र या विज़िट नहीं।')}</div>}
@@ -522,7 +535,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                     <span className="text-xs text-slate-500">{formatArea(p.builtUpAreaSqFt || p.plotAreaSqFt)}</span>
                   </div>
                   {!isMyListing && listingBroker && (
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
                       <span className="truncate">{tx('Listed by', 'लिस्ट किया')}: <strong className="text-slate-700">{listingBroker.name}</strong></span>
                       <TrustScoreBadge user={listingBroker} variant="minimal" />
                     </div>
@@ -544,13 +557,13 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                           {p.images.map((u) => <img key={u} src={u} alt="" loading="lazy" className="h-24 w-32 shrink-0 rounded-lg bg-slate-100 object-cover" onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }} />)}
                         </div>
                       )}
-                      {p.videoUrl && <a href={p.videoUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center rounded-lg bg-purple-50 px-3 text-xs font-semibold text-purple-900">▶ {tx('Watch video', 'वीडियो देखें')}</a>}
+                      {p.videoUrl && <a href={p.videoUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-lg bg-purple-50 px-3 text-xs font-semibold text-purple-900">▶ {tx('Watch video', 'वीडियो देखें')}</a>}
                       <p className="text-xs leading-relaxed text-slate-600">{p.description}</p>
-                      <p className="text-[11px] text-slate-500">{p.locality}, {p.city}{p.state ? ` (${p.state})` : ''}{p.pincode ? ` – ${p.pincode}` : ''}</p>
+                      <p className="text-xs text-slate-500">{p.locality}, {p.city}{p.state ? ` (${p.state})` : ''}{p.pincode ? ` – ${p.pincode}` : ''}</p>
                       {p.tags && p.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {p.tags.map((t) => (
-                            <button key={t} type="button" onClick={() => setSelectedTag(t)} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-200">{label('tag', t)}</button>
+                            <button key={t} type="button" onClick={() => setSelectedTag(t)} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-200">{label('tag', t)}</button>
                           ))}
                         </div>
                       )}
@@ -559,11 +572,11 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                           <span className="flex items-center gap-1 text-slate-500"><Lock className="h-3 w-3 text-slate-400" /> {tx('Owner net price', 'मालिक का नेट प्राइस')}</span>
                           {isOwnerOrAdmin && p.ownerApprovedNetPrice
                             ? <span className="font-semibold text-purple-900">{formatINR(p.ownerApprovedNetPrice)} {tx('(private)', '(गोपनीय)')}</span>
-                            : <span className="text-[11px] italic text-slate-400">{tx('Only the owner and the listing broker see it', 'सिर्फ़ मालिक और लिस्टिंग ब्रोकर देखते हैं')}</span>}
+                            : <span className="text-xs italic text-slate-400">{tx('Only the owner and the listing broker see it', 'सिर्फ़ मालिक और लिस्टिंग ब्रोकर देखते हैं')}</span>}
                         </div>
                       )}
                       {isMyListing && listingBroker && (
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                        <div className="flex items-center justify-between text-xs text-slate-500">
                           <span className="truncate">{tx('Listed by', 'लिस्ट किया')}: <strong className="text-slate-700">{listingBroker.name}</strong></span>
                           <TrustScoreBadge user={listingBroker} variant="minimal" />
                         </div>
@@ -573,10 +586,10 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                           <span className="flex items-center gap-1 text-slate-500"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />{tx('Owner contact', 'मालिक का संपर्क')}</span>
                           <span className="flex items-center gap-1 font-mono text-slate-800"><Phone className="h-3 w-3 text-slate-400" />{p.ownerPhone}</span>
                         </div>
-                        <div className="truncate text-[11px] text-slate-500" title={p.addressHidden}>{p.addressHidden}</div>
+                        <div className="truncate text-xs text-slate-500" title={p.addressHidden}>{p.addressHidden}</div>
                       </div>
                       {!mandateNeedsMe && mandateBox}
-                      <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
                         {p.priceHistory && p.priceHistory.length > 0 && (
                           <button onClick={() => setSelectedPropHistory(p)} className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800">
                             <History className="h-3 w-3" /><span>{p.priceHistory.length} {tx('price change(s)', 'कीमत बदलाव')}</span>
@@ -635,9 +648,9 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                 <div key={idx} className="rounded-lg bg-slate-50 p-2.5 text-xs">
                   <div className="flex justify-between font-semibold text-slate-900">
                     <span>{formatINR(item.price)}</span>
-                    <span className="text-slate-500 text-[11px] font-normal">{new Date(item.changedAt).toLocaleDateString('en-IN')}</span>
+                    <span className="text-slate-500 text-xs font-normal">{new Date(item.changedAt).toLocaleDateString('en-IN')}</span>
                   </div>
-                  <div className="text-slate-600 text-[11px] mt-0.5">{item.reason}</div>
+                  <div className="text-slate-600 text-xs mt-0.5">{item.reason}</div>
                 </div>
               ))}
             </div>

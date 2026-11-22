@@ -34,7 +34,10 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
   const label = useLabel();
   const { toast } = useUI();
   const reasonText = (r: string) => { const l = label('disputeReason', r); return l === r ? r.replace(/_/g, ' ') : l; };
-  const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(disputes[0] || null);
+  const [showAll, setShowAll] = useState(false);   // v189: the list starts on what is still open
+  const isOpenD = (d: Dispute) => ['OPEN', 'UNDER_REVIEW', 'MEDIATION'].includes(d.status);
+  const listed = showAll ? disputes : disputes.filter(isOpenD);
+  const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(disputes.find(isOpenD) || disputes[0] || null);
   const [resolutionStatus, setResolutionStatus] = useState<string>('RESOLVED');
   const [notes, setNotes] = useState<string>('');
   const [liftHold, setLiftHold] = useState<boolean>(true);
@@ -88,7 +91,13 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
             {tx('Reported Case Files', 'दर्ज मामले')}
           </div>
           <div className="space-y-2">
-            {disputes.map((d) => {
+            <div className="flex gap-1.5" role="tablist" data-testid="dispute-filter">
+              {([[false, tx('Open', 'खुले'), disputes.filter(isOpenD).length], [true, tx('All', 'सभी'), disputes.length]] as [boolean, string, number][]).map(([all, name, n]) => (
+                <button key={String(all)} type="button" role="tab" aria-selected={showAll === all} onClick={() => setShowAll(all)} className={`min-h-11 rounded-full px-3 text-xs font-semibold ${showAll === all ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>{name} ({n})</button>
+              ))}
+            </div>
+            {listed.length === 0 && <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">{tx('No open disputes.', 'कोई खुला विवाद नहीं।')}</p>}
+            {listed.map((d) => {
               const isSelected = selectedDispute?.id === d.id;
               return (
                 <button

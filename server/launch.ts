@@ -11,6 +11,7 @@
  *  4. A partner who already has a mandate keeps it, whatever the launch plan says.
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import { z } from 'zod';
 import { db } from './db.js';
 import { hasFeature } from './billing.js';
@@ -26,7 +27,7 @@ const nowIso = () => new Date().toISOString();
 const VISIBLE_STATUS = ['ACTIVE_LAUNCH', 'PRE_BOOKING'];
 
 export const activeStaff = (employerId: string) =>
-  db.getState().users.filter(x => x.role === 'TEAM_MEMBER' && x.employerId === employerId && x.verificationStatus === 'VERIFIED').length;
+  db.getState().users.filter(x => x.role === 'TEAM_MEMBER' && x.employerId === employerId && isVerifiedFull(x)).length;
 export const segmentFor = (u: UserProfile): Segment | null => segmentOf(u, activeStaff(u.id));
 /** v23: an independent RERA broker whose plan includes "early access" sees launches in the big-firm wave (local associates never get a selling window) */
 const launchSegmentFor = (u: UserProfile): Segment | null => { const seg = segmentFor(u); return seg === 'INDEPENDENT' && hasFeature(u, 'LAUNCH_EARLY') ? 'BIG_FIRM' : seg; };
@@ -66,8 +67,8 @@ export function createLaunchRouter() {
   r.get('/admin/segments', needs('launch:manage'), (_req, res) => {
     // v20: staff counted once for everybody (it re-scanned all users for every broker)
     const staffOf = new Map<string, number>();
-    for (const x of st().users) if (x.role === 'TEAM_MEMBER' && x.employerId && x.verificationStatus === 'VERIFIED') staffOf.set(x.employerId, (staffOf.get(x.employerId) || 0) + 1);
-    const members = st().users.filter(u => u.role === 'BROKER' && u.verificationStatus === 'VERIFIED').map(u => {
+    for (const x of st().users) if (x.role === 'TEAM_MEMBER' && x.employerId && isVerifiedFull(x)) staffOf.set(x.employerId, (staffOf.get(x.employerId) || 0) + 1);
+    const members = st().users.filter(u => u.role === 'BROKER' && isVerifiedFull(u)).map(u => {
       const staff = staffOf.get(u.id) || 0;
       return { id: u.id, name: u.name, company: u.companyName || '', city: u.city, staff, segment: segmentOf(u, staff) as Segment, override: u.firmSegment, tier: tierOf(u) };
     });
@@ -180,7 +181,7 @@ export function createLaunchRouter() {
   /** Launches open to the caller's group right now (and what is coming). Local associates get the teaser board only. */
   r.get('/feed', needs('launch:read'), (_req, res) => {
     const u = me(); const seg = launchSegmentFor(u);
-    if (!seg || u.verificationStatus !== 'VERIFIED') return res.json({ success: true, segment: seg, items: [] });
+    if (!seg || !isVerifiedFull(u)) return res.json({ success: true, segment: seg, items: [] });
     const now = Date.now();
     const items: any[] = [];
     for (const p of st().builderProjects) {

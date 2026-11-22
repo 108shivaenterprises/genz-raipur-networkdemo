@@ -7,13 +7,14 @@ import { pushState } from '../lib/push.js';
 import type { TabType } from './NavigationTabs.js';
 
 /** v182 — the broker's first-run steps on the Chats home: one 44px line, opens to the steps. Same data and hide key as the Home card (it is mounted on one screen only). */
-export const FirstRunStrip: React.FC<{ userId: string; onNavigate: (t: TabType) => void; onAddNeed: () => void }> = ({ userId, onNavigate, onAddNeed }) => {
+export const FirstRunStrip: React.FC<{ basic?: boolean; userId: string; onNavigate: (t: TabType) => void; onAddNeed: () => void }> = ({ basic, userId, onNavigate, onAddNeed }) => {
   const tx = useTx(); const [h, setH] = useState<any>(null); const [alertsOn, setAlertsOn] = useState(false); const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(`genz.firststeps.${userId}`) === '1'; } catch { return false; } });
   useEffect(() => { if (hidden) return; api.homeBroker().then(setH).catch(() => setH(null)); pushState().then(s => setAlertsOn(s === 'on')).catch(() => {}); }, [hidden]);
   if (hidden || !h?.firstRun) return null;
   const f = h.firstRun;
   const steps = [
+    ...(basic ? [{ done: false, en: 'Verify your KYC to unlock deals', hi: 'डील खोलने के लिए KYC वेरिफ़ाई करें', go: () => window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'network' })) }] : []),
     { done: f.listing, en: 'Add 1 property', hi: '1 प्रॉपर्टी जोड़ें', go: () => goto('properties', { drafts: '1' }, onNavigate) },
     { done: f.client, en: 'Add 1 client or buyer need', hi: '1 क्लाइंट या खरीदार की ज़रूरत जोड़ें', go: onAddNeed },
     { done: !!f.share, en: 'Share 1 link or flyer', hi: '1 लिंक या फ़्लायर शेयर करें', go: () => onNavigate('share' as TabType) },

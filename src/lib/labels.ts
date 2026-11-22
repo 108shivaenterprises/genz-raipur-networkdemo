@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useI18n } from './i18n.js';
 
 /**
@@ -121,13 +122,14 @@ const ROLE_EN: Record<string, string> = {
 /** `const label = useLabel(); label('propertyType', p.propertyType)` → Hindi when the app is in Hindi, else the stored value. */
 export function useLabel() {
   const { lang } = useI18n();
-  return (kind: LabelKind, value: string | undefined | null): string => {
+  return useCallback((kind: LabelKind, value: string | undefined | null): string => {
     const v = value ?? '';
     if (kind === 'role' && lang !== 'hi') return ROLE_EN[v] ?? v.replace(/_/g, ' ');
+    if ((kind === 'disputeStatus' || kind === 'disputeReason') && lang !== 'hi') { const w = v.replace(/_/g, ' ').toLowerCase(); return w.charAt(0).toUpperCase() + w.slice(1); }   // v189: 'UNDER_REVIEW' -> 'Under review'
     if (kind === 'status' && lang !== 'hi') return v.replace(/_/g, ' ');
     if (kind === 'activityType' && lang !== 'hi') return ({ STAGE_CHANGE: 'Stage change', SYSTEM: 'System' } as Record<string, string>)[v] ?? v;
     return lang === 'hi' ? ((HI[kind] as Record<string, string>)[v] ?? v) : v;
-  };
+  }, [lang]);
 }
 
 /** The matching engine writes its "why this matched" lines in English; these patterns give the Hindi reading of each. */

@@ -49,16 +49,37 @@ export const StageRail: React.FC<{ idx: number; color?: string }> = ({ idx, colo
 const NEXT_ICON: Record<string, React.ElementType> = {
   CLOSE_TO_ANSWER: AlertTriangle, OFFLINE_VISIT_TO_CONFIRM: CalendarCheck, CLIENT_PAYMENT: IndianRupee,
   DISPUTE_OPEN: Scale, AGREEMENT_TO_SIGN: FileSignature, TASKS_TO_ACCEPT: ListTodo, VISITS_TO_VERIFY: CalendarCheck, TASKS_OVERDUE: AlertTriangle,
-  TASKS_TO_VERIFY: CheckCircle2, PAYMENTS_TO_CONFIRM: IndianRupee, NO_AGREEMENT: FileSignature, TASKS_TO_DO: ListTodo, STALLED: Hourglass,
+  TASKS_TO_VERIFY: CheckCircle2, PAYMENTS_TO_CONFIRM: IndianRupee, NO_AGREEMENT: FileSignature, TASKS_TO_DO: ListTodo, STALLED: Hourglass, PAYMENT_DUE: IndianRupee,
 };
 const NEXT_TONE: Record<string, string> = {
   CLOSE_TO_ANSWER: 'border-amber-300 bg-amber-50 text-amber-900', OFFLINE_VISIT_TO_CONFIRM: 'border-sky-300 bg-sky-50 text-sky-900', CLIENT_PAYMENT: 'border-emerald-300 bg-emerald-50 text-emerald-900',
   DISPUTE_OPEN: 'border-red-300 bg-red-50 text-red-800', AGREEMENT_TO_SIGN: 'border-amber-300 bg-amber-50 text-amber-900', TASKS_TO_ACCEPT: 'border-amber-300 bg-amber-50 text-amber-900',
   VISITS_TO_VERIFY: 'border-sky-300 bg-sky-50 text-sky-900', TASKS_OVERDUE: 'border-red-300 bg-red-50 text-red-800', TASKS_TO_VERIFY: 'border-sky-300 bg-sky-50 text-sky-900',
   PAYMENTS_TO_CONFIRM: 'border-emerald-300 bg-emerald-50 text-emerald-900', NO_AGREEMENT: 'border-slate-300 bg-slate-50 text-slate-800', TASKS_TO_DO: 'border-slate-300 bg-slate-50 text-slate-800',
-  STALLED: 'border-slate-300 bg-slate-50 text-slate-700',
+  STALLED: 'border-slate-300 bg-slate-50 text-slate-700', PAYMENT_DUE: 'border-amber-300 bg-amber-50 text-amber-900',
 };
-export function nextText(n: { kind: string; n: number; title?: string }, idleDays: number, tx: (a: string, b: string) => string, th: (s: string) => string = (x) => x) {
+/** v184 — what the button DOES, per next step (used by the Next-step card and the Today rows, both languages) */
+export function actionText(kind: string, tx: (a: string, b: string) => string): string {
+  switch (kind) {
+    case 'AGREEMENT_TO_SIGN': return tx('Approve agreement', 'मंज़ूरी दें');
+    case 'NO_AGREEMENT': return tx('Propose terms', 'प्रस्ताव भेजें');
+    case 'PAYMENTS_TO_CONFIRM': return tx('Confirm payment', 'भुगतान पक्का करें');
+    case 'PAYMENT_DUE': return tx('Record payment', 'भुगतान दर्ज करें');
+    case 'CLIENT_PAYMENT': return tx('Check bills', 'बिल देखें');
+    case 'CLOSE_TO_ANSWER': return tx('Answer', 'जवाब दें');
+    case 'OFFLINE_VISIT_TO_CONFIRM': return tx('Confirm visit', 'विज़िट पक्की करें');
+    case 'VISITS_TO_VERIFY': return tx('Verify visit', 'विज़िट वेरिफ़ाई करें');
+    case 'TASKS_TO_ACCEPT': case 'TASKS_OVERDUE': case 'TASKS_TO_VERIFY': case 'TASKS_TO_DO': return tx('Open tasks', 'काम खोलें');
+    case 'STALLED': return tx('Message', 'मैसेज करें');
+    default: return tx('Open', 'खोलें');
+  }
+}
+const sinceDays = (at?: string) => at ? Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 86400_000)) : -1;
+const sinceText = (at: string | undefined, tx: (a: string, b: string) => string) => { const d = sinceDays(at); return d < 0 ? '' : d === 0 ? tx(' · since today', ' · आज से') : tx(` · since ${d} day${d > 1 ? 's' : ''}`, ` · ${d} दिन से`); };
+export function nextText(n: { kind: string; n: number; title?: string; at?: string }, idleDays: number, tx: (a: string, b: string) => string, th: (s: string) => string = (x) => x) {
+  return nextWords(n, idleDays, tx, th) + (['STALLED', 'TASKS_TO_DO'].includes(n.kind) ? '' : sinceText(n.at, tx));
+}
+function nextWords(n: { kind: string; n: number; title?: string }, idleDays: number, tx: (a: string, b: string) => string, th: (s: string) => string) {
   const k = n.n;
   switch (n.kind) {
     case 'CLIENT_PAYMENT': return tx(`${k} brokerage bill${k > 1 ? 's' : ''} past due / to confirm — remind or mark received`, `${k} ब्रोकरेज बिल की तारीख़ निकली / पुष्टि बाकी — रिमाइंडर भेजें या “मिल गया” करें`);
@@ -71,6 +92,7 @@ export function nextText(n: { kind: string; n: number; title?: string }, idleDay
     case 'TASKS_OVERDUE': return tx(`${k} task${k > 1 ? 's' : ''} past the due date`, `${k} काम की तारीख़ निकल गई`);
     case 'TASKS_TO_VERIFY': return tx(`${k} finished task${k > 1 ? 's' : ''} to check`, `${k} पूरे हुए काम जाँचने हैं`);
     case 'PAYMENTS_TO_CONFIRM': return tx(`${k} commission payment${k > 1 ? 's' : ''} to confirm`, `${k} कमीशन भुगतान पक्का करना है`);
+    case 'PAYMENT_DUE': return tx('A commission share is unpaid for over 7 days — write down the payment or ask', 'कमीशन का एक हिस्सा 7 दिन से बाकी — भुगतान दर्ज करें या पूछें');
     case 'NO_AGREEMENT': return tx('No commission agreement yet — propose one', 'अभी कमीशन समझौता नहीं — प्रस्ताव भेजें');
     case 'TASKS_TO_DO': return n.title ? tx(`${th(n.title)}${k > 1 ? ` (+${k - 1} more)` : ''}`, `${th(n.title)}${k > 1 ? ` (+${k - 1} और)` : ''}`) : tx(`${k} task${k > 1 ? 's' : ''} to finish`, `${k} काम पूरे करने हैं`);
     case 'STALLED': return tx(`Nothing happened for ${idleDays} days — message the other side`, `${idleDays} दिन से कुछ नहीं हुआ — दूसरी तरफ़ को मैसेज करें`);
@@ -91,7 +113,9 @@ export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string)
   if (!list.length && quiet) return null;
   if (!list.length) return (
     <div className="flex items-center gap-2 rounded-2xl border border-edge bg-money-bg px-3.5 py-3 text-[13px] font-semibold text-money" data-testid="next-steps-clear">
-      <CheckCircle2 className="h-4 w-4" />{tx('Nothing waiting on you in this deal right now.', 'इस डील में अभी आपके लिए कुछ बाकी नहीं।')}
+      <CheckCircle2 className="h-4 w-4 shrink-0" />{item.agreement?.waitingOn > 0
+        ? tx(`Waiting on ${item.agreement.waitingName || 'the other side'}${item.agreement.waitingSince && !Number.isNaN(Date.parse(item.agreement.waitingSince)) ? ` since ${new Date(item.agreement.waitingSince).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}`, `${item.agreement.waitingName || 'दूसरी तरफ़'} का इंतज़ार${item.agreement.waitingSince && !Number.isNaN(Date.parse(item.agreement.waitingSince)) ? ` — ${new Date(item.agreement.waitingSince).toLocaleDateString('hi-IN', { day: 'numeric', month: 'short' })} से` : ''}`)
+        : tx('Nothing waiting on you in this deal right now.', 'इस डील में अभी आपके लिए कुछ बाकी नहीं।')}
     </div>
   );
   const row = (n: any) => {
@@ -111,7 +135,7 @@ export const NextSteps: React.FC<{ item: any; onGo: (tab: string, kind?: string)
       <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-warn"><Clock className="h-4 w-4" />{tx('Next step', 'अगला क़दम')}</div>
       <p className="text-[17px] font-bold leading-snug text-ink">{dispute ? tx('Open the holds and add your side', 'होल्ड खोलें और अपना पक्ष जोड़ें') : nextText(top, item.idleDays, tx, th)}</p>
       <button type="button" onClick={() => onGo(top.tab, top.kind)} className="flex h-12 w-full items-center justify-center gap-1.5 rounded-[14px] bg-navy-900 text-[15px] font-bold text-gold-500 active:scale-[.98] motion-safe:transition-transform focus-visible:ring-2 focus-visible:ring-gold-500 focus-visible:ring-offset-2" data-testid={`next-${top.kind}`}>
-        <TopIcon className="h-4 w-4" aria-hidden />{dispute ? tx('Open holds', 'होल्ड खोलें') : tx('Open', 'खोलें')}<ChevronRight className="h-4 w-4" aria-hidden />
+        <TopIcon className="h-4 w-4" aria-hidden />{dispute ? tx('Open holds', 'होल्ड खोलें') : actionText(top.kind, tx)}<ChevronRight className="h-4 w-4" aria-hidden />
       </button>
       {rest.length > 0 && (
         <>
@@ -251,7 +275,7 @@ export const StageStepper: React.FC<{ stage: string; canEdit: boolean; onChange:
           );
           return (
             <li key={s} className="flex shrink-0 items-center gap-1">
-              {canEdit && !now
+              {canEdit && cur >= 0 && i === cur + 1
                 ? <button type="button" title={tx(`Move the deal to “${s}”`, `डील को “${label('dealStage', s)}” पर ले जाएँ`)} onClick={() => { if (window.confirm(tx(`Move this deal to “${s}”?`, `इस डील को “${label('dealStage', s)}” पर ले जाएँ?`))) onChange(s); }}
                     className={`flex min-h-11 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold hover:border-slate-500 ${cls}`} data-testid={`stage-step-${i}`}>{body}</button>
                 : <span className={`flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold ${cls}`} aria-current={now ? 'step' : undefined} data-testid={`stage-step-${i}`}>{body}</span>}
@@ -410,7 +434,7 @@ export const DealPipeline: React.FC<{ hub: any; onOpen: (id: string, tab?: strin
         const signKind = (kd: string) => kd === 'AGREEMENT_TO_SIGN' || kd === 'NO_AGREEMENT';
         const rows: Row[] = [
           ...(disp.length ? [{ key: 'disp', tid: 'today-disputes', Icon: Scale, tint: 'bg-bad-bg text-bad', badge: tx('Urgent', 'ज़रूरी'), badgeTone: 'bg-bad-bg text-bad', title: tx(`Disputes (${disp.length})`, `विवाद (${disp.length})`), sub: tx('See the holds', 'होल्ड देखें'), go: () => { setFilter('disputes'); setStage(''); } }] : []),
-          ...todo.slice(0, 3).map(d => { const n = d.next[0]; return { key: d.id, tid: `today-${d.id}`, Icon: NEXT_ICON[n.kind] || ChevronRight, tint: signKind(n.kind) ? 'bg-sign-bg text-sign' : 'bg-warn-bg text-warn', badge: signKind(n.kind) ? tx('Sign', 'साइन') : tx('Today', 'आज'), badgeTone: signKind(n.kind) ? 'bg-sign-bg text-sign' : 'bg-warn-bg text-warn', title: `${d.propertyTitle || d.id}`, sub: nextText(n, d.idleDays, tx, th), go: () => onOpen(d.id, n.tab, n.kind) }; }),
+          ...todo.slice(0, 3).map(d => { const n = d.next[0]; return { key: d.id, tid: `today-${d.id}`, Icon: NEXT_ICON[n.kind] || ChevronRight, tint: signKind(n.kind) ? 'bg-sign-bg text-sign' : 'bg-warn-bg text-warn', badge: actionText(n.kind, tx), badgeTone: signKind(n.kind) ? 'bg-sign-bg text-sign' : 'bg-warn-bg text-warn', title: `${d.propertyTitle || d.id}`, sub: nextText(n, d.idleDays, tx, th), go: () => onOpen(d.id, n.tab, n.kind) }; }),
           ...ending.map(d => ({ key: `end-${d.id}`, tid: `ending-${d.id}`, Icon: ShieldCheck, tint: 'bg-gold-100 text-gold-800', badge: tx(`${d.protectionDaysLeft} days`, `${d.protectionDaysLeft} दिन`), badgeTone: 'bg-gold-100 text-gold-800', title: `${d.propertyTitle || d.id}`, sub: tx(`${d.protectionDaysLeft} days protection left`, `सुरक्षा के ${d.protectionDaysLeft} दिन बचे`), go: () => onOpen(d.id, 'antibypass_protocol') })),
         ];
         const shownRows = rows.slice(0, 3);
@@ -787,7 +811,8 @@ export const EarningsBoard: React.FC<{ hub: any; onOpen: (id: string) => void }>
                   <span className="block truncate text-xs text-mute">{label('dealStage', d.stage) || d.stage}{d.money.dealValue ? ` · ${short(d.money.dealValue)}` : ''}</span>
                   <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-track" aria-hidden="true"><span className="block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500" style={{ width: `${Math.max(4, Math.round((d.money.myShare || 0) / mx * 100))}%`, background: STAGE_COLOR[d.stage] || '#64748B' }} /></span>
                 </span>
-                <span className="shrink-0 text-base font-extrabold text-money">{short(d.money.myShare)}</span>
+                <span className="shrink-0 text-right"><span className="block text-base font-extrabold text-money">{short(d.money.myShare)}</span>
+                  <span data-testid={`earn-status-${d.id}`} className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${d.money.payStatus === 'PAID' ? 'bg-money-bg text-money' : d.money.payStatus === 'HOLD' ? 'bg-red-50 text-red-700' : 'bg-gold-100 text-warn'}`}>{d.money.payStatus === 'PAID' ? tx('Paid', 'मिला') : d.money.payStatus === 'HOLD' ? tx('On hold', 'रुका') : tx('Pending', 'बाकी')}</span></span>
               </button>
             </li>
           );

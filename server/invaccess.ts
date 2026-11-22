@@ -11,6 +11,7 @@
  * Phones, buyers and holds of other partners are never part of a unit shape.
  */
 import { db } from './db.js';
+import { isVerifiedFull } from './permissions.js';
 import type { BuilderProject, InventoryUnit, UserProfile } from './db.js';
 import { isAdmin } from './access.js';
 import { mandateIsActive, policyOf } from '../src/shared/pcontrolRules.js';
@@ -25,7 +26,7 @@ export type Actor =
   | { kind: 'PARTNER'; user: UserProfile }
   | { kind: 'MEMBER'; user: UserProfile; employer: UserProfile; policy: ReturnType<typeof policyOf>; viaPartner: boolean };
 
-const verified = (u?: UserProfile) => !!u && u.verificationStatus === 'VERIFIED';
+const verified = (u?: UserProfile) => !!u && isVerifiedFull(u);
 
 export function partnerHasMandate(brokerId: string, projectId: string): boolean {
   return db.getState().associateMandates.some(m => m.projectId === projectId && m.brokerId === brokerId && mandateIsActive(m));

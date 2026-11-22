@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import { tierOf } from '../shared/networkRules.js';
+import React, { useEffect, useState } from 'react';
 import { useBackClose } from '../lib/backStack.js';
 import { UserProfile } from '../types/index.js';
-import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, MessageCircle, LogOut, ShieldCheck, ChevronDown, Star, Search } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Building2, Users, QrCode, ScanLine, MessageCircle, LogOut, ShieldCheck, ShieldAlert, ChevronDown, Star, Search } from 'lucide-react';
 import { TrustScoreBadge } from './TrustScoreBadge.js';
 import { LangToggle, useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -52,6 +53,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   const tx = useTx();
   const label = useLabel();
   const [menu, setMenu] = useState(false);
+  // v184 — the bell and the chat icon must not both show the same number (one badge, not two '4's)
+  const [bellN, setBellN] = useState(0);
+  useEffect(() => { const h = (e: Event) => setBellN(Number((e as CustomEvent).detail) || 0); window.addEventListener('genz:bell', h); return () => window.removeEventListener('genz:bell', h); }, []);
   useBackClose(menu, () => setMenu(false));   // v178
   const status = currentUser.verificationStatus;
   const iconBtn = 'relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-slate-700 transition-colors';
@@ -101,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {onOpenChats && (
             <button type="button" onClick={onOpenChats} data-testid="header-chat" aria-label={chatCount > 0 ? tx(`Chats — ${chatCount} new`, `चैट — ${chatCount} नए`) : tx('Chats', 'चैट')} title={tx('Chats', 'चैट')} className={`${iconBtn} border-slate-200 bg-white hover:border-slate-900`}>
               <MessageCircle className="h-5 w-5" />
-              {chatCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[11px] font-bold text-white" data-testid="header-chat-badge">{chatCount > 99 ? '99+' : chatCount}</span>}
+              {chatCount > 0 && chatCount !== bellN && <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[11px] font-bold text-white" data-testid="header-chat-badge">{chatCount > 99 ? '99+' : chatCount}</span>}
             </button>
           )}
           {onOpenBrokerQrModal && (
@@ -135,12 +139,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div className="text-xs text-slate-500">{label('role', currentUser.role)}</div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                       {status === 'VERIFIED' ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{currentUser.brokerId || tx('Verified', 'सत्यापित')}</span>
+                        <span className={`inline-flex items-center gap-1 font-semibold ${currentUser.basicTier ? 'text-amber-700' : 'text-emerald-700'}`}>{currentUser.basicTier ? <ShieldAlert className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{currentUser.basicTier ? tx('Basic — add KYC to unlock deals', 'बेसिक — डील खोलने के लिए KYC जोड़ें') : (currentUser.brokerId || tx('Verified', 'सत्यापित'))}</span>
                       ) : status === 'BLACKLISTED' ? (
                         <span className="inline-flex items-center gap-1 font-semibold text-red-700"><AlertTriangle className="h-3.5 w-3.5" />{tx('Blacklisted', 'ब्लैकलिस्ट')}</span>
                       ) : (
                         <span className="inline-flex items-center gap-1 font-semibold text-amber-700"><Building2 className="h-3.5 w-3.5" />{tx('Pending Review', 'जाँच बाकी')}</span>
                       )}
+                      {currentUser.role === 'BROKER' && !currentUser.basicTier && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700" data-testid="tier-badge">{tierOf(currentUser) === 'TIER1' ? tx('Tier 1 · RERA', 'टियर 1 · RERA') : tx('Tier 2 · Associate', 'Tier 2 · एसोसिएट')}</span>}
                       {currentUser.role === 'BROKER' && <TrustScoreBadge user={currentUser} variant="compact" />}
                     </div>
                   </div>

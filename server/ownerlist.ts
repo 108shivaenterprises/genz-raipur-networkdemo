@@ -15,10 +15,11 @@
  *  GET/POST/PUT/DELETE /api/owner-listing/admin/*                                    (GENZ staff: master plan, config, confirm payments)
  */
 import { Router, type Request, type Response } from 'express';
+import { isVerifiedFull } from './permissions.js';
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { UserProfile, Property } from './db.js';
-import { ctx, needs, rateLimit, hit, resetHits, secureOtp, safeEqual, secret, signSession, setSessionCookie, DEMO_MODE } from './auth.js';
+import { ctx, needs, rateLimit, hit, ipKey, resetHits, secureOtp, safeEqual, secret, signSession, setSessionCookie, DEMO_MODE } from './auth.js';
 import { sendSms, smsGateway } from './notify.js';
 import { otpMode } from './features.js';
 import { issueOtp, checkOtp, useOtp, requestView, failBody, ipPhoneGate } from './otpManual.js';
@@ -29,7 +30,7 @@ import { boardFor } from './leadboard.js';
 import { findState } from '../src/shared/india.js';
 import { networkStrength } from './revenue.js';
 import { termsProblem } from '../src/shared/ownerListRules.js';
-import { normPan, isValidPan, maskPan } from './kyc.js';
+import { normPan, isValidPan, maskPan, panHeldByApproved } from './kyc.js';
 import { pickOwnerPlan, planProblem, inPool, expiryStep, type OwnerListPlan, type OwnerListingState } from '../src/shared/ownerListRules.js';
 
 const st = () => db.getState();
@@ -145,27 +146,32 @@ export function readOtpToken(tok: unknown, phone: string): { body: string; sig: 
   } catch { return null; }
 }
 /** v141 — check a signed OTP token (any server copy); one code opens one door, five tries. '' = right; else the error text */
-export function checkOtpToken(tok: unknown, phone: string, code: string, consume = true, ip?: string): string {
-  if (otpMode() === 'manual') { const c = checkOtp(tok, phone, 'signup', code, Date.now(), consume, ip); return c.ok ? '' : c.error; }
+export function checkOtpToken(tok: unknown, phone: string, code: string, consume = true, ip?: string, purpose: 'signup' | 'open' = 'signup'): string {
+  if (otpMode() === 'manual') { const c = checkOtp(tok, phone, purpose, code, Date.now(), consume, ip); return c.ok ? '' : c.error; }
   const t = readOtpToken(tok, phone); if (!t) return 'Ask for a code first.';
   if (t.e < Date.now()) return 'The code has expired — ask for a new one.';
   const book = otpBook(); const rec = (book[t.n] ||= { exp: t.e, tries: 0 });
   if (rec.used) return 'That code was already used — ask for a new one.';
   if (++rec.tries > 5) { rec.used = true; db.save(); return 'Too many wrong tries — ask for a new code.'; }
   if (!safeEqual(t.sig, tokSig(t.body, String(code).replace(/\D/g, '')))) { db.save(); return 'That code is not right.'; }
-  rec.used = true; db.save(); return '';
+  if (consume) rec.used = true;   // v186: consume=false really does not spend the code — finishSignupOtp does, once the account exists
+  db.save(); return '';
 }
 /** v176 — after a sign-up finished: spend the manual code that checkOtpToken(…, false) only looked at */
-export function finishSignupOtp(tok: unknown) { if (otpMode() === 'manual' && typeof tok === 'string') useOtp(tok); }
+export function finishSignupOtp(tok: unknown) {
+  if (typeof tok !== 'string') return;
+  if (otpMode() === 'manual') { useOtp(tok); return; }
+  try { const j = JSON.parse(Buffer.from(tok.split('.')[0], 'base64url').toString('utf8')); if (typeof j?.n === 'string') { const rec = otpBook()[j.n]; if (rec) { rec.used = true; db.save(); } } } catch { /* not a token */ }
+}
 /** v141 — send a sign-up code to a phone; returns the signed token (and the code itself only in a demo without SMS) */
-export async function sendSignupOtp(phone: string, ip?: string): Promise<({ otpToken: string; devCode?: string } & Partial<ReturnType<typeof requestView>>) | { error: string; errorHi?: string; wait?: number; status: number; code: string }> {
+export async function sendSignupOtp(phone: string, ip?: string, purpose: 'signup' | 'open' = 'signup'): Promise<({ otpToken: string; devCode?: string } & Partial<ReturnType<typeof requestView>>) | { error: string; errorHi?: string; wait?: number; status: number; code: string }> {
   if (!PHONE_RE.test(phone)) return { error: 'Enter your 10-digit mobile number', status: 400, code: 'BAD_PHONE' };
   const g = ipPhoneGate(ip, phone); if (g) return { error: g.error, errorHi: g.errorHi, wait: g.wait, status: g.status, code: g.code };
   if (otpMode() === 'manual') {   // D5: the code waits for an admin / the person's own WhatsApp message; the browser gets only a reference
-    const o = issueOtp(phone, 'signup', Date.now(), ip); if (!o.ok) return { error: o.error, errorHi: o.errorHi, wait: o.wait, status: o.status, code: o.code };
+    const o = issueOtp(phone, purpose, Date.now(), ip); if (!o.ok) return { error: o.error, errorHi: o.errorHi, wait: o.wait, status: o.status, code: o.code };
     const v = requestView(o, phone, 'signup'); return { ...v, otpToken: o.ref };
   }
-  if (hit(`signup-otp:${phone}`, 5, 3600_000, 3600_000) > 0) return { error: 'Too many codes for this number — try again in an hour.', status: 429, code: 'TOO_MANY' };
+  if (hit(`signup-otp:${ipKey(ip)}|${phone}`, 5, 3600_000, 3600_000) > 0) return { error: 'Too many codes for this number — try again in an hour.', status: 429, code: 'TOO_MANY' };
   const on = smsGateway();
   if (!on && !DEMO_MODE) return { error: 'SMS is not set up yet, so GENZ will check your ID instead.', status: 503, code: 'NO_SMS' };
   const code = secureOtp(); const exp = Date.now() + OTP_MS;
@@ -262,7 +268,7 @@ const mineProp = (req: Request, res: Response): Property | null => {
   if (!p || !p.ownerListing || p.ownerId !== u.id) { bad(res, 'Listing not found', 404); return null; }
   return p;
 };
-const staffAlert = (text: string, body: string) => alert(st().users.filter(a => (a.role === 'ADMIN' || a.role === 'SUPERADMIN') && a.verificationStatus === 'VERIFIED').slice(0, 20).map(a => a.id), 'deals', text, body, '/');
+const staffAlert = (text: string, body: string) => alert(st().users.filter(a => (a.role === 'ADMIN' || a.role === 'SUPERADMIN') && isVerifiedFull(a)).slice(0, 20).map(a => a.id), 'deals', text, body, '/');
 
 /** the hourly sweep also runs when someone opens the owner-listing screens (at most once a minute) — so the warnings work on a host with no timers too */
 let lastLazy = 0;
@@ -290,7 +296,7 @@ export function createOwnerListingRouter() {
     const u = me(); if (u.role !== 'PROPERTY_OWNER') return bad(res, 'Only an owner adds his PAN here', 403);
     const pan = normPan(String(req.body?.pan || ''));
     if (!isValidPan(pan)) return bad(res, 'PAN format is invalid (e.g. ABCDE1234F)');
-    if (st().users.some(x => x.id !== u.id && x.panNumber && normPan(x.panNumber) === pan)) return bad(res, 'This PAN is already linked to another GENZ account.', 409, 'PAN_IN_USE');
+    if (panHeldByApproved(st().users, pan, u.id)) return bad(res, 'We could not use these details. Check them, or contact GENZ.', 409, 'CANNOT_REGISTER');
     u.panNumber = pan; db.save();
     db.appendAuditEvent(u.id, u.role, 'VERIFICATION', u.id, 'OWNER_PAN_ADDED', `${u.name} added PAN ${maskPan(pan)}`);
     res.json({ success: true });

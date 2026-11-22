@@ -11,6 +11,7 @@
  * the customer, the unit, the amount, the stages — and only as far as the employer's two switches allow (collect money / confirm money).
  */
 import { alert, firstName, moneyConfirmers } from './alerts.js';
+import { isVerifiedFull } from './permissions.js';
 import { Router, type Request, type Response } from 'express';
 import { db } from './db.js';
 import type { UserProfile } from './db.js';
@@ -35,7 +36,7 @@ export function actorOn(u: { id: string; role: string; employerId?: string }, b:
   if (u.role === 'DEVELOPER_BUILDER') return b.builderId === u.id ? { id: u.id, side: 'BUILDER_OWNER', canCollect: true, canConfirm: true } : NO_ACTOR(u.id);
   if (u.role === 'TEAM_MEMBER') {
     const mu = db.byId('users', u.id);
-    if (!mu || mu.verificationStatus !== 'VERIFIED' || !mu.employerId) return NO_ACTOR(u.id);
+    if (!mu || !isVerifiedFull(mu) || !mu.employerId) return NO_ACTOR(u.id);
     const pol = policyOf(mu);
     const base = { id: u.id, canCollect: !!pol.canCollectMoney, canConfirm: !!pol.canConfirmMoney };
     if (b.associateId && mu.employerId === b.associateId) return { ...base, side: 'CP_STAFF' };

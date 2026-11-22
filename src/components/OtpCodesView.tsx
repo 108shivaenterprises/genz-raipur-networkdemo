@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { mmss } from './OtpStep.js';
 
-const PURPOSE: Record<string, [string, string]> = { signup: ['Sign-up', 'साइन-अप'], owner: ['Owner sign-in', 'मालिक साइन-इन'], reset: ['Forgot password', 'पासवर्ड रीसेट'] };
+const PURPOSE: Record<string, [string, string]> = { signup: ['Sign-up', 'साइन-अप'], open: ['Open sign-up', 'खुला साइन-अप'], owner: ['Owner sign-in', 'मालिक साइन-इन'], reset: ['Forgot password', 'पासवर्ड रीसेट'] };
 type Res = Awaited<ReturnType<typeof api.otpPending>>;
 type Row = Res['pending'][number] & { phone?: string; sendLink?: string; sent?: boolean };
 
