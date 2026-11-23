@@ -342,7 +342,7 @@ export const LeadCard: React.FC<{ l: any; onChange: () => void; noChat?: boolean
   const run = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); setMode(''); setVal(''); setReason(''); setReply(''); onChange(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   const pay = l.payout ? PAYOUT_LABEL[l.payout.status as keyof typeof PAYOUT_LABEL] : null;
   return (
-    <div className={`break-words [overflow-wrap:anywhere] space-y-1.5 rounded-xl border bg-white p-3 ${l.flags.length ? 'border-red-300' : 'border-slate-200'}`} data-testid={`sp-lead-${l.id}`}>
+    <div className={`min-w-0 max-w-full overflow-hidden break-words [overflow-wrap:anywhere] space-y-1.5 rounded-xl border bg-white p-3 ${l.flags.length ? 'border-red-300' : 'border-slate-200'}`} data-testid={`sp-lead-${l.id}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-slate-900">{l.name} <span className="ml-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">{hi ? kind.hi : kind.en}</span></p>
         <span className="text-xs text-slate-500">{tx('via', 'से')} <b>{l.shopName}</b> · {when(l.createdAt)}</span>
@@ -357,6 +357,7 @@ export const LeadCard: React.FC<{ l: any; onChange: () => void; noChat?: boolean
         <button type="button" className={dark + ' !min-h-10'} data-testid="sp-lead-room" onClick={() => {
           const kindOfRoom = l.kind === 'BUY' ? 'BUYER' : l.kind === 'RENT_IN' ? 'RENTER' : 'OTHER';
           // v123 — the room is already there (the assistant opened it): go to it, do not offer a second one
+          { const rl = l.links.find((x: any) => x.kind === 'ROOM'); if (rl?.id) try { sessionStorage.setItem('genz.openroom', rl.id); } catch { /* blocked */ } }   // go to THIS lead's room, not the list
           if (!l.links.some((x: any) => x.kind === 'ROOM')) try { sessionStorage.setItem('genz.newroom', JSON.stringify({ clientName: l.name, phone: l.phone, kind: kindOfRoom, note: `Shop QR lead ${l.id} · ${l.shopName}${l.homeTitle ? ` · ${l.homeTitle}` : ''}`.slice(0, 190), homeId: l.homeId || '', homeTitle: l.homeTitle || '' })); } catch { /* storage blocked: the form opens empty */ }
           window.dispatchEvent(new CustomEvent('genz:goto-tab', { detail: 'clientroom' }));
         }}><MessagesSquare className="h-4 w-4" />{l.links.some((x: any) => x.kind === 'ROOM') ? tx('Go to his client room', 'उनका क्लाइंट रूम देखें') : tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>

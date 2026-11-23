@@ -28,7 +28,7 @@ import { sniffMime } from '../src/shared/propDocs.js';
 import { DOC_KINDS, DOC_LIMITS, FULL_AADHAAR_DAYS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
 import { ackFor, ackLinkFor, ackBlock } from './visitack.js';
 import { stripPhones } from '../src/shared/waParse.js';
-import { CLIENT_STEPS, clientStepOf, ROOM_KINDS, ROOM_LIMITS as L, contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
+import { CLIENT_STEPS, clientStepOf, ROOM_KINDS, ROOM_LIMITS as L, contactKind, contactMsg, recentOwn, humanIso } from '../src/shared/clientRoomRules.js';
 import { partyBlock, partyCaution } from './partywatch.js';
 import { ROOM_MEDIA, okMediaUrl, videoKind, youtubeId, pubMediaUrl } from '../src/shared/roomMedia.js';
 import { clientPaperState, viewerPages, logDocOpen } from './propdocs.js';
@@ -338,7 +338,7 @@ function detail(r: ClientRoom) {
   const awaiting = brokerReads() && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
   return {
     ...summary(r), leadId: st().partnerLeads.find(l => l.brokerId === r.brokerId && (l.chat?.bot?.roomId === r.id || l.chat?.bot?.roomLinked === r.id))?.id,   // v195 — a QR customer's room: homes are shared through his lead (48h rule, number stays hidden)
-    note: r.note, messages: r.messages, events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
+    note: r.note, messages: r.messages.map(m => ({ ...m, text: humanIso(m.text) })), events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
     ...(r.kind === 'OWNER' ? { propertyId: r.propertyId, propertyTitle: st().properties.find(p => p.id === r.propertyId)?.title, ownerStats: ownerStats(r) } : {}),
     items: r.items.map(i => {
       const p = props.find(x => x.id === i.propertyId);
@@ -1195,7 +1195,7 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
     if (room.messages.length === 0) {
       if (seedRoomFromLeadOrRequirement(room)) db.save();
     }
-    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(m.text).replace(/\n/g, '<br>')}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? (m.byName.startsWith('GENZ') ? esc(m.byName) : `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)`) : esc(b?.name || 'Broker')} ·${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
+    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(humanIso(m.text)).replace(/\n/g, '<br>')}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? (m.byName.startsWith('GENZ') ? esc(m.byName) : `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)`) : esc(b?.name || 'Broker')} ·${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
     db.save();
     const sibs = st().clientRooms.filter(c => c.id !== room.id && c.status === 'ACTIVE' && c.phoneKey === room.phoneKey && sessionFor(req, c));
     const sibsHtml = sibs.length ? `<div class="card"><p class="small">मेरे दूसरे रूम / My other rooms</p><div class="row">${sibs.map(c => `<a class="btn l" href="/r/go-${esc(c.id)}">${c.kind === 'OWNER' ? `🏠 मेरी प्रॉपर्टी / My property${props.find(x => x.id === c.propertyId) ? ' — ' + esc(props.find(x => x.id === c.propertyId)!.title.slice(0, 28)) : ''}` : `🔍 ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')} के साथ मेरी तलाश / My search with ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')}`}</a>`).join('')}</div></div>` : '';

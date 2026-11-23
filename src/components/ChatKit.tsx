@@ -8,6 +8,7 @@
  * Both are presentation only: whoever uses them loads and sends the messages.
  */
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, Loader2, Lock, MessageSquare, Plus, Send, Zap } from 'lucide-react';
 import { useI18n, useTx } from '../lib/i18n.js';
 
@@ -184,7 +185,7 @@ export const ChatShell: React.FC<{
       try { if (!popped && window.history.state?.genzChat) window.history.back(); } catch { /* old browser */ }
     };
   }, []);
-  return (
+  const shell = (
     <div className="fixed inset-x-0 top-0 z-[55] flex h-screen h-[100dvh] max-h-[100dvh] flex-col bg-white lg:static lg:z-auto lg:h-[max(28rem,calc(100vh-19rem))] lg:overflow-hidden lg:rounded-xl lg:border lg:border-slate-200" role="dialog" aria-label={title} data-testid={testId || 'chat-shell'}
       style={vv ? { top: vv.t, height: vv.h, bottom: 'auto' } : undefined}>
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-2 py-2 pt-[calc(0.5rem+env(safe-area-inset-top))] lg:pt-2">
@@ -200,4 +201,6 @@ export const ChatShell: React.FC<{
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   );
+  // on a phone the chat is a full screen: mount it on <body> so no parent stacking context / transform puts the bottom nav above the message box
+  return typeof document !== 'undefined' && window.matchMedia?.('(max-width: 1023px)').matches ? createPortal(shell, document.body) : shell;
 };

@@ -21,7 +21,7 @@ function asciiDigits(t: string): string {
   });
 }
 const NUMBER_WORDS: Record<string, string> = {
-  zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+  ate: '8', zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
   shunya: '0', oh: '0', ek: '1', do: '2', teen: '3', char: '4', chaar: '4', paanch: '5', panch: '5', chhe: '6', chhah: '6', saat: '7', aath: '8', nau: '9',
   'शून्य': '0', 'एक': '1', 'दो': '2', 'तीन': '3', 'चार': '4', 'पांच': '5', 'पाँच': '5', 'छह': '6', 'छः': '6', 'सात': '7', 'आठ': '8', 'नौ': '9',
 };
@@ -140,3 +140,9 @@ export const DOC_LIMITS = { maxBytes: 2_500_000, perRoom: 12 } as const;
 /** v183 — the client's read-only step line: Visit › Offer › Deal. A deal stage maps to the furthest step reached (0 visit, 1 offer, 2 deal); no money, no other party. */
 export const CLIENT_STEPS = [['Visit', 'विज़िट'], ['Offer', 'ऑफ़र'], ['Deal', 'डील']] as const;
 export const clientStepOf = (stage: string): number => (['Agreement', 'Handover', 'Settled'].includes(stage) ? 2 : stage === 'Negotiation' ? 1 : 0);
+
+/** v196 — a raw ISO time inside chat text ("2026-11-24T18:53:20.110Z") → "24 Nov, 12:23 am" (India time) */
+export const humanIso = (text: string): string => String(text ?? '').replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/g, m => {
+  const t = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/.test(m) ? m : m + 'Z'); if (!Number.isFinite(t)) return m;
+  return new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+});

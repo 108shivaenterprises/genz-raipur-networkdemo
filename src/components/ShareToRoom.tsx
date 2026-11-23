@@ -7,25 +7,27 @@ import { useTx } from '../lib/i18n.js';
  * v40 — from a Deal Room (or anywhere a property is open): put this home into one of the broker's own Client Rooms,
  * with the listing's photos and video. The client then sees it in his room and can ask for a visit.
  */
-export const ShareToRoom: React.FC<{ propertyId: string; className?: string; label?: string }> = ({ propertyId, className, label }) => {
+export const ShareToRoom: React.FC<{ propertyId: string; className?: string; label?: string; roomId?: string }> = ({ propertyId, className, label, roomId }) => {
   const tx = useTx();
   const [open, setOpen] = useState(false);
   const [rooms, setRooms] = useState<any[] | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState('');
-  useEffect(() => { if (open && !rooms) api.crList().then(r => setRooms((r.rooms || []).filter((x: any) => x.status === 'ACTIVE'))).catch(e => setMsg({ ok: false, text: e.message })); }, [open, rooms]);
+  useEffect(() => { if (open && !rooms && !roomId) api.crList().then(r => setRooms((r.rooms || []).filter((x: any) => x.status === 'ACTIVE'))).catch(e => setMsg({ ok: false, text: e.message })); }, [open, rooms]);
+  useEffect(() => { if (!roomId || !msg) return; const t = setTimeout(() => setOpen(false), 3500); return () => clearTimeout(t); }, [roomId, msg]);
   const send = async (room: any) => {
-    setBusy(room.id); setMsg(null);
+    setBusy(room.id); setMsg(null); if (roomId) setOpen(true);
     try { await api.crAddItem(room.id, propertyId); setMsg({ ok: true, text: tx(`Shared in ${room.clientName}'s room with its photos & video`, `${room.clientName} के रूम में फ़ोटो-वीडियो के साथ भेज दी`) }); window.dispatchEvent(new Event('genz:rooms-changed')); }
     catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(''); }
   };
   return (
     <span className="relative inline-block">
-      <button type="button" onClick={() => setOpen(o => !o)} className={className || 'flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white min-h-11 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900'} data-testid="share-to-room">
+      <button type="button" onClick={() => roomId ? void send({ id: roomId, clientName: tx('your client', 'आपके क्लाइंट') }) : setOpen(o => !o)} className={className || 'flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white min-h-11 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900'} data-testid="share-to-room">
         <Send className="h-3.5 w-3.5" /><span>{label || tx('Send to client room', 'क्लाइंट रूम में भेजें')}</span>
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-2 text-xs shadow-xl" data-testid="share-to-room-list">
+        <div className="fixed inset-x-3 top-1/3 z-30 mt-1 rounded-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:w-72 rounded-xl border border-slate-200 bg-white p-2 text-xs shadow-xl" data-testid="share-to-room-list">
+          {!roomId && (<>
           <div className="mb-1 flex items-center justify-between"><b className="text-slate-800">{tx('Which client?', 'किस क्लाइंट को?')}</b><button type="button" onClick={() => setOpen(false)} aria-label={tx('Close', 'बंद')} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button></div>
           {!rooms && !msg && <Loader2 className="mx-auto my-2 h-4 w-4 animate-spin text-slate-400" />}
           {rooms && rooms.length === 0 && <p className="p-2 text-slate-500">{tx('No open client room yet — open one in Client Rooms.', 'अभी कोई खुला क्लाइंट रूम नहीं — Client Rooms में खोलें।')}</p>}
@@ -39,6 +41,7 @@ export const ShareToRoom: React.FC<{ propertyId: string; className?: string; lab
               </li>
             ))}
           </ul>
+          </>)}
           {msg && <p className={`mt-1 flex items-center gap-1 rounded px-2 py-1 ${msg.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`} role="status">{msg.ok && <Check className="h-3.5 w-3.5" />}{msg.text}</p>}
         </div>
       )}

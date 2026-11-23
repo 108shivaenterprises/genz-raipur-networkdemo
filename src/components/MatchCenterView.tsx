@@ -61,6 +61,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   const [matches, setMatches] = useState<any[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());   // v194 — homes my client 👍 (opens the co-broking offer)
   const [reqRoomId, setReqRoomId] = useState('');
+  const [shareMap, setShareMap] = useState<Record<string, { ok: boolean; code?: string; availableAt?: string }>>({});
   const [sharing, setSharing] = useState('');
   const [shared, setShared] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<boolean>(false);
@@ -108,7 +109,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
       setLoading(true);
       api.getMatchesForRequirement(activeReqId)
         .then((res) => {
-          setMatches(res.matches || []); setLikedIds(new Set(res.liked || [])); setReqRoomId(res.roomId || '');
+          setMatches(res.matches || []); setLikedIds(new Set(res.liked || [])); setReqRoomId(res.roomId || ''); setShareMap(res.share || {});
           setLoading(false);
         })
         .catch((err: any) => {
@@ -264,8 +265,8 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                     </span>
                   ))}
                 </div>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <button type="button" onClick={() => setWhy(open ? '' : key)} aria-expanded={open} className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50" data-testid="match-why">
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => setWhy(open ? '' : key)} aria-expanded={open} className="-ml-1 inline-flex shrink-0 whitespace-nowrap min-h-11 items-center gap-1 rounded-lg px-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50" data-testid="match-why">
                     {tx('Why this match', 'यह मैच क्यों')}<ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
                   </button>
                   {!canPropose && isPropMatch && (
@@ -283,11 +284,17 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                     const mineBuyer = !!meId && rq?.assignedBrokerId === meId; const nm = String(rq?.customerName || '').split(' ')[0] || tx('client', 'क्लाइंट');
                     const liked = isPropMatch ? likedIds.has(p.id) : !!r?.liked;
                     return (<>
-                      {mineBuyer && home?.id && (rq?.leadId ? (
-                        <button type="button" disabled={sharing === home.id || shared.has(home.id)} onClick={() => void shareToLead(rq.leadId, home.id, nm)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60" data-testid="match-share">
+                      {mineBuyer && home?.id && (rq?.leadId ? (() => {
+                        const sc = isPropMatch ? shareMap[p.id] : r?.share;
+                        if (sc && !sc.ok) {
+                          const at = sc.availableAt ? new Date(sc.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+                          const why = sc.code === 'TOO_NEW' ? tx(`This new listing can be shared from ${at}.`, `यह नई लिस्टिंग ${at} से शेयर हो सकेगी।`) : sc.code === 'HELD' ? tx('Another broker showed him this home first.', 'यह घर उन्हें पहले दूसरे ब्रोकर ने दिखाया है।') : sc.code === 'NOT_READY' ? tx('Ask him to confirm his need first.', 'पहले उनसे ज़रूरत पक्की करवाएँ।') : tx('Does not match his need, or is not on your page.', 'उनकी ज़रूरत से मेल नहीं, या आपके पेज पर नहीं।');
+                          return <span className="ml-auto max-w-[13rem] text-right text-xs leading-snug text-slate-500" data-testid="match-share-why">{why}</span>;
+                        }
+                        return (<button type="button" disabled={sharing === home.id || shared.has(home.id)} onClick={() => void shareToLead(rq.leadId, home.id, nm)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60" data-testid="match-share">
                           <Send className="h-4 w-4" />{shared.has(home.id) ? tx('Shared', 'भेज दिया') : tx(`Share with ${nm}`, `${nm} को भेजें`)}
-                        </button>
-                      ) : own ? <ShareToRoom propertyId={home.id} label={tx(`Share with ${nm}`, `${nm} को भेजें`)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800" /> : null)}
+                        </button>);
+                      })() : own && (isPropMatch ? reqRoomId : r?.roomId) ? <ShareToRoom propertyId={home.id} roomId={isPropMatch ? reqRoomId : r?.roomId} label={tx(`Share with ${nm}`, `${nm} को भेजें`)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800" /> : null)}
                       {own && !rq?.leadId && (() => { const roomId = isPropMatch ? reqRoomId : r?.roomId; return (
                         <button
                           onClick={() => {

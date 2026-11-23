@@ -228,7 +228,7 @@ export const api = {
 
   // Matching Engine
   getMatchesForRequirement: (reqId: string) =>
-    request<{ success: boolean; requirement: BuyerRequirement; matches: any[]; liked?: string[]; roomId?: string }>(`/api/matching/requirement/${reqId}`),
+    request<{ success: boolean; requirement: BuyerRequirement; matches: any[]; liked?: string[]; roomId?: string; share?: Record<string, { ok: boolean; code?: string; availableAt?: string }> }>(`/api/matching/requirement/${reqId}`),
   getMatchesForProperty: (propId: string) =>
     request<{ success: boolean; property: Property; matches: any[] }>(`/api/matching/property/${propId}`),
   getMatchingMatrix: () =>

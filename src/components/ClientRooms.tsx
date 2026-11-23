@@ -45,7 +45,7 @@ export const ClientRoomsTab: React.FC<{ tick?: number }> = ({ tick }) => {
   const tx = useTx();
   const hi = useI18n().lang === 'hi';
   const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
-  const [open, setOpen] = useState<string>(() => { try { return new URLSearchParams(window.location.search).get('room') || ''; } catch { return ''; } });
+  const [open, setOpen] = useState<string>(() => { try { const r = sessionStorage.getItem('genz.openroom'); if (r) { sessionStorage.removeItem('genz.openroom'); return r; } return new URLSearchParams(window.location.search).get('room') || ''; } catch { return ''; } });
   // v56 — "Open a client room" from a shop-QR lead fills the new-room form (handed over in this tab's session storage, never in the URL)
   // v57 — read here, removed only after the screen is really shown: a render React throws away and redoes must still find it
   const [prefill] = useState<any>(() => { try { const v = sessionStorage.getItem('genz.newroom'); if (v) return JSON.parse(v); } catch { /* blocked */ } return null; });

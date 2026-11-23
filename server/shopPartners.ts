@@ -47,7 +47,7 @@ import { alert as alertUsers, once } from './alerts.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
 import { shareableMedia } from './clientroom.js';
 import { videoKind, youtubeId } from '../src/shared/roomMedia.js';
-import { contactKind, contactMsg, recentOwn } from '../src/shared/clientRoomRules.js';
+import { contactKind, contactMsg, recentOwn, humanIso } from '../src/shared/clientRoomRules.js';
 import { brandOf } from './share.js';
 import { priceShort } from '../src/shared/publicPageRules.js';
 import { ackText, ACK_VERSION } from '../src/shared/visitAckRules.js';
@@ -126,7 +126,7 @@ const audit = (refId: string, action: string, text: string) => { const u = me();
 const revealed = (l: PartnerLead) => !l.chat || !!l.chat.revealedAt;
 const MSG_MAX = 600; const MSGS_KEEP = 300;
 const ownerSide = (l: PartnerLead) => l.kind === 'SELL' || l.kind === 'RENT_OUT';
-const addMsg = (l: PartnerLead, m: Omit<LeadMsg, 'at'>) => { if (!l.chat) return; l.chat.msgs.push({ at: nowIso(), ...m }); if (l.chat.msgs.length > MSGS_KEEP) l.chat.msgs.splice(0, l.chat.msgs.length - MSGS_KEEP); l.updatedAt = nowIso(); };
+const addMsg = (l: PartnerLead, m: Omit<LeadMsg, 'at'>) => { if (!l.chat) return; l.chat.msgs.push({ at: nowIso(), ...m, text: humanIso(m.text) }); if (l.chat.msgs.length > MSGS_KEEP) l.chat.msgs.splice(0, l.chat.msgs.length - MSGS_KEEP); l.updatedAt = nowIso(); };
 /** "40 lakh" / "1.2 cr" / "12,000 महीना" / "12k" → rupees, or null when it cannot be read (then the budget is not used to match) */
 /** B5: "sixty lakh" / "साठ लाख" / "50L" read like "60 lakh" (normNum); budgetRupees below is the one reader the form and the matcher share */
 export function parseMoney(t?: string): number | null {
@@ -186,6 +186,21 @@ function matchesFor(l: PartnerLead, withNet = false): Property[] {
   // v103 — the 48-hour wait (audit F3) only guards the moment the NUMBER opens; once it is open a new home can be shown at once
   // v127 — a home this customer was already shown / booked on by ANOTHER broker is not his to show (first broker to show holds the buyer on that home)
   return [...pool.values()].filter(h => (net.has(h.id) || homeFits(l, h)) && (!tooFreshFor(l, h) || !!l.chat?.revealedAt) && !buyerBondBlock({ id: b.id }, h.id, l.phone)).slice(0, 12);
+}
+/** v196 — the same rule as POST /leads/:id/offer, asked in advance so the Match screen can hide / explain "Share" instead of failing after the tap */
+export type ShareCheck = { ok: true } | { ok: false; code: 'NOT_READY' | 'HELD' | 'TOO_NEW' | 'NO_MATCH'; availableAt?: string };
+export function shareChecks(l: PartnerLead, homeIds: string[]): Record<string, ShareCheck> {
+  const out: Record<string, ShareCheck> = {};
+  if (!l.chat || ownerSide(l) || !l.chat.reqConfirmedAt) { for (const id of homeIds) out[id] = { ok: false, code: 'NOT_READY' }; return out; }
+  const pool = new Set(matchesFor(l, true).map(h => h.id));
+  for (const id of homeIds) {
+    if (pool.has(id)) { out[id] = { ok: true }; continue; }
+    const h = st().properties.find(x => x.id === id);
+    if (h && buyerBondBlock({ id: l.brokerId }, id, l.phone)) out[id] = { ok: false, code: 'HELD' };
+    else if (h && homeFits(l, h) && tooFreshFor(l, h)) out[id] = { ok: false, code: 'TOO_NEW', availableAt: new Date(Date.parse(String((h as any).createdAt || (h as any).listedAt)) + REVEAL_FRESH_LISTING_MS).toISOString() };
+    else out[id] = { ok: false, code: 'NO_MATCH' };
+  }
+  return out;
 }
 /** v127 — homes that fit him but that he is already seeing with another GENZ broker (count only; never which broker) */
 const heldElsewhere = (l: PartnerLead): number => st().properties.filter(h => pageLive(h) && homeFits(l, h) && !!buyerBondBlock({ id: l.brokerId }, h.id, l.phone)).length;

@@ -182,7 +182,7 @@ import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitT
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
 import { createForgotRouter, createOtpAdminRouter } from './server/otpManual.js';
 import { createApiKeysRouter } from './server/apiKeys.js';
-import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, watchShares, sweepShopPartners, leadVisitEvent, primeHomes, followHomes, sweepSahayak } from './server/shopPartners.js';
+import { createShopPartnerRouter, createPartnerQrRouter, createPartnerPageRouter, seedDemoPartners, setLeadShareEstimator, setLeadShareInfo, shareChecks, watchShares, sweepShopPartners, leadVisitEvent, primeHomes, followHomes, sweepSahayak } from './server/shopPartners.js';
 import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js';
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
 import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
@@ -1931,7 +1931,9 @@ app.get('/api/matching/requirement/:reqId', needs('matching:run'), (req: Request
 
   // v194 — 👍 from the customer (room or QR chat) = the trigger for a co-broking offer; only my own client's likes are looked at
   const liked = (requirement as any).assignedBrokerId === currentUser.id ? likedForReq(currentUser.id, requirement) : [];
-  res.json({ success: true, requirement: sanitizeRequirement(requirement, currentUser), matches, liked, roomId: (requirement as any).assignedBrokerId === currentUser.id ? roomIdByPhone(currentUser.id, phoneOfReq(requirement)) : undefined });
+  const ld = (requirement as any).assignedBrokerId === currentUser.id && (requirement as any).leadId ? state.partnerLeads.find(l => l.id === (requirement as any).leadId && l.brokerId === currentUser.id) : undefined;
+  const share = ld ? shareChecks(ld, matches.map(m => m.property.id)) : undefined;   // v196 — which homes the "Share" button may send (same rule as the server)
+  res.json({ success: true, requirement: sanitizeRequirement(requirement, currentUser), matches, liked, share, roomId: (requirement as any).assignedBrokerId === currentUser.id ? roomIdByPhone(currentUser.id, phoneOfReq(requirement)) : undefined });
 });
 
 app.get('/api/matching/property/:propId', needs('matching:run'), (req: Request, res: Response) => {
@@ -1964,6 +1966,7 @@ app.get('/api/matching/property/:propId', needs('matching:run'), (req: Request, 
         leadId: mine ? (reqItem as any).leadId : undefined,
         liked: mine && likedForReq(currentUser.id, reqItem).includes(property.id),
         roomId: mine ? roomIdByPhone(currentUser.id, phoneOfReq(reqItem)) : undefined,
+        share: mine && (reqItem as any).leadId ? (() => { const l2 = state.partnerLeads.find(l => l.id === (reqItem as any).leadId && l.brokerId === currentUser.id); return l2 ? shareChecks(l2, [property.id])[property.id] : undefined; })() : undefined,
       },
       ...matchResult,
     };

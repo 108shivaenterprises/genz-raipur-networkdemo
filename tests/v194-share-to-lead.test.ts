@@ -137,3 +137,26 @@ describe('v195 · room share + like data for a normal client', { timeout: 120000
     const d = (await j(await call(jar.BRK1, 'GET', `/api/client-rooms/${rm.id}`))).room; expect(d.leadId).toBe(l.id); expect(d.phoneLast4).toBe('9401');
   });
 });
+
+import { humanIso } from '../src/shared/clientRoomRules';
+describe('v196 · round 15 fixes', { timeout: 120000 }, () => {
+  it('humanIso turns a raw ISO time into an Indian-time date; plain text is untouched', () => {
+    const o = humanIso('Visit at 2026-11-24T18:53:20.110Z ok'); expect(o).not.toMatch(/T18:53/); expect(o).toMatch(/24 Nov|25 Nov/); expect(humanIso('Sunday 11 am')).toBe('Sunday 11 am');
+  });
+  it('run-together number words with "ate" are caught', () => { expect(contactKind('ninefour ninefour twoone seventhree eightate')).toBe('PHONE'); });
+  it('HTTP: matching says per home whether Share is allowed (same rule as /offer); rejected homes carry a reason', async () => {
+    const l = await lead('9401'); const q = ((await j(await call(jar.BRK1, 'GET', '/api/requirements'))).requirements || []).find((x: any) => x.leadId === l.id);
+    const m = await j(await call(jar.BRK1, 'GET', `/api/matching/requirement/${q.id}`)); expect(m.share).toBeTruthy();
+    for (const x of m.matches) { const c = m.share[x.property.id]; expect(c, x.property.id).toBeTruthy(); if (!c.ok) expect(['NOT_READY', 'HELD', 'TOO_NEW', 'NO_MATCH']).toContain(c.code);
+      else { const o = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/offer`, { homeId: x.property.id }); expect(o.status, x.property.id).toBe(200); break; } }
+    const bad = m.matches.find((x: any) => m.share[x.property.id]?.ok === false);
+    if (bad) { const o = await call(jar.BRK1, 'POST', `/api/shop-partners/leads/${l.id}/offer`, { homeId: bad.property.id }); expect(o.status).toBeGreaterThanOrEqual(400); }
+  });
+  it('source guards: chat portal, picker inside the viewport + current room only, deep link, no 3-line wrap', () => {
+    const f = (x: string) => readFileSync(path.join(ROOT, x), 'utf8');
+    expect(f('src/components/ChatKit.tsx')).toContain('createPortal(shell, document.body)');
+    const s = f('src/components/ShareToRoom.tsx'); expect(s).toContain('fixed inset-x-3'); expect(s).toContain('roomId');
+    expect(f('src/components/MatchCenterView.tsx')).toContain('match-share-why'); expect(f('src/components/MatchCenterView.tsx')).toContain('shrink-0 whitespace-nowrap');
+    expect(f('src/components/ShopPartners.tsx')).toContain("'genz.openroom'"); expect(f('src/components/ClientRooms.tsx')).toContain("'genz.openroom'");
+  });
+});
