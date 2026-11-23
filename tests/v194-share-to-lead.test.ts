@@ -160,3 +160,22 @@ describe('v196 · round 15 fixes', { timeout: 120000 }, () => {
     expect(f('src/components/ShopPartners.tsx')).toContain("'genz.openroom'"); expect(f('src/components/ClientRooms.tsx')).toContain("'genz.openroom'");
   });
 });
+
+describe('v197 · round 16', { timeout: 120000 }, () => {
+  it('Send-to-client sheet: every QR customer is listed by name with a share check; no phone number in the payload', async () => {
+    const l = await lead('9401'); const home = homesOf(l)[0];
+    const r = await j(await call(jar.BRK1, 'GET', `/api/shop-partners/share-targets/${home}`)); const t = (r.targets || []).find((x: any) => x.id === l.id);
+    expect(t, 'Suyash is listed').toBeTruthy(); expect(t.check).toBeTruthy(); expect(typeof t.homes).toBe('number'); expect(JSON.stringify(r)).not.toContain('9123419401');
+  });
+  it('manual room form: a QR customer typed by name only (no number) is refused with ROOM_READY / ROOM_PENDING, not asked for a mobile', async () => {
+    const r = await call(jar.BRK1, 'POST', '/api/client-rooms', { clientName: 'suyash share', phone: '', consent: true });
+    expect(r.status).toBe(409); const b = await j(r); expect(['ROOM_READY', 'ROOM_PENDING']).toContain(b.code); expect(b.errorHi).toBeTruthy();
+  });
+  it('a number typed as words is hidden in the room preview/detail (older messages)', () => {
+    const c = readFileSync(path.join(ROOT, 'server/clientroom.ts'), 'utf8'); expect(c).toContain("contactKind(last.text) === 'PHONE' ? '🔒 …'"); expect(c).toContain("a phone number was hidden");
+  });
+  it('Match: Co-broking offer is never hidden; the reason for no Share sits beside it', () => {
+    const m = readFileSync(path.join(ROOT, 'src/components/MatchCenterView.tsx'), 'utf8'); expect(m).toContain("{act.kind === 'OFFER' && (\n"); expect(m).not.toContain('(!mineBuyer || liked)'); expect(m).toContain('match-share-why');
+    expect(readFileSync(path.join(ROOT, 'src/components/SendToClient.tsx'), 'utf8')).toContain('spShareTargets');
+  });
+});

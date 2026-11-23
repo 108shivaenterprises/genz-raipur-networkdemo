@@ -646,6 +646,7 @@ export const api = {
   crLink: (id: string) => request<any>(`/api/client-rooms/${id}/link`, { method: 'POST' }),
   // v46 — shop QR partners
   spList: () => request<any>('/api/shop-partners'),
+  spShareTargets: (homeId: string) => request<any>(`/api/shop-partners/share-targets/${homeId}`),
   spAdmin: () => request<any>('/api/shop-partners/admin'),
   spCreate: (payload: any) => request<any>('/api/shop-partners', { method: 'POST', body: JSON.stringify(payload) }),
   spAction: (id: string, action: string) => request<any>(`/api/shop-partners/${id}/${action}`, { method: 'POST', body: '{}' }),

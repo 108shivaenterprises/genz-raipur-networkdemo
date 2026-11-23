@@ -15,7 +15,7 @@ export const SendToClient: React.FC<{ home: { id: string; title: string; localit
   const [sent, setSent] = useState<{ to: string; link?: string; phone?: string } | null>(null);
   // v167 — a shop-QR customer whose confirmed need fits this home gets it in HIS chat (same rules as the lead chat's share button)
   const [qr, setQr] = useState<any[]>([]);
-  useEffect(() => { api.spList().then((x: any) => setQr((x.leads || []).filter((l: any) => l.masked && l.chat?.reqConfirmedAt && (l.matches || []).some((m: any) => m.id === home.id)))).catch(() => undefined); }, [home.id]);
+  useEffect(() => { api.spShareTargets(home.id).then((x: any) => { setQr(x.targets || []); if ((x.targets || []).length) setFresh(false); }).catch(() => undefined); }, [home.id]);
   useEffect(() => { api.crList().then((x: any) => { const l = (x.rooms || []).filter((r: any) => r.status === 'ACTIVE' && r.kind !== 'OWNER' && !r.held); setRooms(l); if (!l.length) setFresh(true); }).catch(() => { setRooms([]); setFresh(true); }); }, []);
 
   const give = async (roomId: string, to: string, link?: string, ph?: string) => {
@@ -52,7 +52,15 @@ export const SendToClient: React.FC<{ home: { id: string; title: string; localit
               const has = (r.propertyIds || []).includes(home.id);
               return <button key={r.id} type="button" disabled={busy || has} onClick={() => run(() => give(r.id, r.clientName))} data-testid={`send-room-${r.id}`} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-slate-200 px-3 text-left text-sm disabled:opacity-60"><span className="truncate font-semibold text-slate-900">{r.clientName}</span><span className="shrink-0 text-xs text-slate-500">{has ? tx('Already sent', 'पहले भेजा है') : `${r.items} ${tx('homes', 'घर')}`}</span></button>;
             })}
-            {!fresh && qr.map((l: any) => <button key={l.id} type="button" disabled={busy} onClick={() => run(async () => { await api.spOffer(l.id, home.id); setSent({ to: l.name }); })} data-testid={`send-qr-${l.id}`} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 text-left text-sm"><span className="truncate font-semibold text-slate-900">{l.name}</span><span className="shrink-0 text-xs text-rose-800">{tx('Shop QR · in his chat', 'दुकान QR · उनकी चैट में')}</span></button>)}
+            {!fresh && qr.filter((l: any) => !(l.revealed && (rooms || []).some((r: any) => r.phoneLast4 === l.last4))).map((l: any) => {
+              const c = l.check || { ok: false, code: 'NO_MATCH' }; const can = c.ok && !l.already;
+              const at = c.availableAt ? new Date(c.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+              const why = c.ok ? '' : c.code === 'TOO_NEW' ? tx(`New listing — can be sent from ${at}`, `नई लिस्टिंग — ${at} से भेज सकेंगे`) : c.code === 'HELD' ? tx('Another broker showed him this home first', 'यह घर उन्हें पहले दूसरे ब्रोकर ने दिखाया है') : c.code === 'NOT_READY' ? tx('He has not confirmed his need yet', 'उन्होंने ज़रूरत अभी पक्की नहीं की') : tx('Does not match his need', 'उनकी ज़रूरत से मेल नहीं');
+              return (<div key={l.id}>
+                <button type="button" disabled={busy || !can} onClick={() => run(async () => { try { await api.spOffer(l.id, home.id); setSent({ to: l.name }); } catch (e: any) { if (e?.code === 'LISTING_TOO_NEW' && e?.body?.availableAt) throw new Error(tx(`This new listing can be sent from ${new Date(e.body.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}.`, `यह नई लिस्टिंग ${new Date(e.body.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} से भेज सकेंगे।`)); throw e; } })} data-testid={`send-qr-${l.id}`} className="flex min-h-11 w-full items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 text-left text-sm disabled:opacity-60"><span className="truncate font-semibold text-slate-900">{l.name}</span><span className="shrink-0 text-xs text-rose-800">{l.already ? tx('Already sent', 'पहले भेजा है') : `${l.homes} ${tx('homes', 'घर')} · ${tx('Shop QR', 'दुकान QR')}`}</span></button>
+                {!can && !l.already && <p className="px-1 text-[11px] text-slate-500" data-testid={`send-qr-why-${l.id}`}>{why}</p>}
+              </div>);
+            })}
             {!fresh && <button type="button" onClick={() => setFresh(true)} className="min-h-11 w-full rounded-lg border border-dashed border-slate-300 text-sm font-semibold text-slate-700" data-testid="send-new">{tx('+ New client', '+ नया क्लाइंट')}</button>}
             {fresh && (
               <div className="space-y-2" data-testid="send-fresh">

@@ -328,7 +328,7 @@ function summary(r: ClientRoom) {
   return {
     id: r.id, clientName: r.clientName, kind: r.kind, phoneLast4: r.phoneLast4, phoneSaved: !!r.phoneSealed && r.status === 'ACTIVE', createdById: r.createdById, createdByName: r.createdByName, status: r.status, createdAt: r.createdAt, updatedAt: r.updatedAt, expiresAt: r.expiresAt,
     items: r.items.length, propertyIds: r.items.map(i => i.propertyId), codeAsk: !!(r.status === 'ACTIVE' && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now()), unread: unread(r), openVisits: openVisits(r), liked: r.items.filter(i => i.reaction === 'LIKE').length,
-    lastMessage: last ? { from: last.from, text: last.text.slice(0, 80), at: last.at } : null, lastClientSeenAt: r.lastClientSeenAt,
+    lastMessage: last ? { from: last.from, text: (contactKind(last.text) === 'PHONE' ? '🔒 …' : humanIso(last.text)).slice(0, 80), at: last.at } : null, lastClientSeenAt: r.lastClientSeenAt,
     /** v75 — does his phone get our alerts? phones = how many phones have them on */
     alerts: r.status === 'ACTIVE' ? roomAlertInfo(r.id) : { phones: 0 },
   };
@@ -338,7 +338,7 @@ function detail(r: ClientRoom) {
   const awaiting = brokerReads() && r.otpPlain && r.otpExpires && Date.parse(r.otpExpires) > Date.now() ? r.otpPlain : undefined;
   return {
     ...summary(r), leadId: st().partnerLeads.find(l => l.brokerId === r.brokerId && (l.chat?.bot?.roomId === r.id || l.chat?.bot?.roomLinked === r.id))?.id,   // v195 — a QR customer's room: homes are shared through his lead (48h rule, number stays hidden)
-    note: r.note, messages: r.messages.map(m => ({ ...m, text: humanIso(m.text) })), events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
+    note: r.note, messages: r.messages.map(m => ({ ...m, text: contactKind(m.text) === 'PHONE' ? '🔒 (a phone number was hidden)' : humanIso(m.text) })), events: r.events.slice(-30), docs: (r.docs || []).map(docView), docsOn: vaultReady(), fullAadhaar: { on: fullAadhaarOn(), asked: !!r.fullAadhaarAsk },
     ...(r.kind === 'OWNER' ? { propertyId: r.propertyId, propertyTitle: st().properties.find(p => p.id === r.propertyId)?.title, ownerStats: ownerStats(r) } : {}),
     items: r.items.map(i => {
       const p = props.find(x => x.id === i.propertyId);
@@ -384,6 +384,11 @@ export function createClientRoomRouter() {
     const u = me();
     { const lid = String(req.body?.leadId || ''); const l = lid ? st().partnerLeads.find(x => x.id === lid && x.brokerId === roomOwnerOf(u)) : undefined; const b = l?.chat?.bot;
       if (b && (b.roomId || b.roomLinked)) return res.status(409).json({ error: 'Room already ready — share a home from the match card or the lead.', errorHi: 'रूम पहले से तैयार है — मैच कार्ड या लीड से घर शेयर करें।', code: 'ROOM_READY' }); }   // v194 — a QR customer's room is made by the assistant
+    { // v197 — a QR customer is never asked for a number: his room is made by the assistant (held until his number opens) — also when the form is filled by name only
+      const nm = String(req.body?.clientName || '').trim().toLowerCase(); const mineL = st().partnerLeads.filter(l => l.brokerId === roomOwnerOf(u) && !!l.chat);
+      const l = mineL.find(x => x.id === String(req.body?.leadId || '')) || (nm.length >= 2 && !PHONE_RE.test(phone10(req.body?.phone)) ? mineL.find(x => x.name.trim().toLowerCase() === nm) : undefined)   // only when NO full number was typed — a broker who holds the number may make the room (old rules, same-mobile flagging);
+      if (l) { const b = l.chat!.bot; return res.status(409).json({ error: (b?.roomId || b?.roomLinked) ? 'Room already ready — share a home from the match card or the lead.' : 'He is a QR customer: his room opens by itself when he confirms his need — no number needed.', errorHi: (b?.roomId || b?.roomLinked) ? 'रूम पहले से तैयार है — मैच कार्ड या लीड से घर शेयर करें।' : 'यह QR ग्राहक है: ज़रूरत पक्की करते ही उसका रूम अपने-आप खुल जाएगा — नंबर नहीं चाहिए।', code: (b?.roomId || b?.roomLinked) ? 'ROOM_READY' : 'ROOM_PENDING' }); }
+    }
     const name = String(req.body?.clientName || '').trim().slice(0, 80);
     const phone = phone10(req.body?.phone);
     const kind = ROOM_KINDS.find(k => k.id === req.body?.kind && k.id !== 'OWNER')?.id || 'BUYER';

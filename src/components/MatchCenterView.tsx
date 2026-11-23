@@ -308,9 +308,9 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                         </button>
                       ); })()}
                       {act.kind === 'OFFER' && mineBuyer && !liked && (
-                        <span className="max-w-[12rem] text-right text-xs leading-snug text-slate-500" data-testid="match-offer-wait">{tx(`Co-broking opens after ${nm} likes this home.`, `${nm} को घर पसंद आने के बाद को-ब्रोकिंग खुलेगी।`)}{!rq?.leadId && !(isPropMatch ? reqRoomId : r?.roomId) ? tx(' Open a client room so he can like homes.', ' क्लाइंट रूम खोलें ताकि वे घर पसंद कर सकें।') : ''}</span>
+                        <span className="max-w-[12rem] text-right text-xs leading-snug text-slate-500" data-testid="match-offer-wait">{tx(`Best once ${nm} likes this home.`, `${nm} को घर पसंद आने के बाद बेहतर।`)}{!rq?.leadId && !(isPropMatch ? reqRoomId : r?.roomId) ? tx(' Open a client room so he can like homes.', ' क्लाइंट रूम खोलें ताकि वे घर पसंद कर सकें।') : ''}</span>
                       )}
-                      {act.kind === 'OFFER' && (!mineBuyer || liked) && (
+                      {act.kind === 'OFFER' && (
                         <button
                           onClick={() => onOpenCollaborationModal({
                             propertyId: isPropMatch ? p.id : activePropId,

@@ -699,6 +699,13 @@ export function createShopPartnerRouter() {
     res.json({ success: true, items: rows });
   });
 
+  /** v197 — every QR customer of mine (buyer / renter), for the "Send to client" sheet: name only (never the number), whether this home may be sent to him, and whether he already has it */
+  r.get('/share-targets/:homeId', needs('partner:manage'), (req: Request, res: Response) => {
+    const homeId = String(req.params.homeId); const u = me();
+    const leads = st().partnerLeads.filter(l => l.brokerId === u.id && !!l.chat && (l.kind === 'BUY' || l.kind === 'RENT_IN') && !['LOST', 'WON', 'CLOSED'].includes(l.status));
+    const out = leads.map(l => ({ id: l.id, name: l.name, last4: l.phone.slice(-4), revealed: !!l.chat?.revealedAt, confirmed: !!l.chat?.reqConfirmedAt, already: l.chat!.msgs.some(m => m.kind === 'HOME' && m.homeId === homeId), homes: new Set(l.chat!.msgs.filter(m => m.kind === 'HOME').map(m => m.homeId)).size, check: shareChecks(l, [homeId])[homeId] }));
+    res.json({ success: true, targets: out });
+  });
   r.get('/', needs('partner:manage'), (_req, res) => {
     const u = me();
     try { watchShares({ brokerId: u.id }); lazySweep(); } catch (e: any) { console.error('[SHOP] watch failed:', e?.message || e); }
