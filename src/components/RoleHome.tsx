@@ -1,4 +1,5 @@
 import { NetworkStrip } from './OwnerListings.js';
+import { MudraVoucher } from './MudraVoucher.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, Building2, Briefcase, CalendarClock, Handshake, ShieldCheck, Scale, Search, Sparkles, UserCheck, Layers,
@@ -142,6 +143,7 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
 
   return (
     <div className="space-y-6" data-testid="buyer-home">
+      <MudraVoucher />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile {...tp} testId="tile-buyer-reqs" tab="requirements" label={tx('My requirements', 'मेरी ज़रूरतें')} value={String(open.length)} sub={tx(`${mine.length} in total`, `कुल ${mine.length}`)} icon={<UserCheck className="h-4 w-4 text-slate-500" />} />
         <Tile {...tp} testId="tile-buyer-matches" tab="matches" label={tx('Magic Match homes', 'मैजिक मैच के घर')} value={matchCounts ? String(totalMatches) : open.length ? '—' : '0'} sub={tx('Scored against your budget and area', 'आपके बजट और इलाके से मिलान')} tone={totalMatches ? 'ok' : undefined} icon={<Sparkles className="h-4 w-4 text-amber-500" />} />

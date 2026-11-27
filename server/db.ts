@@ -1888,6 +1888,8 @@ export interface DatabaseState {
   partyAlerts: PartyAlert[];
   profilePhotos: ProfilePhoto[];
   clientRooms: ClientRoom[];
+  /** v199 (D20) — GENZ Mudra: an append-only ledger of discount-voucher credits / debits for BUYER_TENANT accounts; never cash */
+  mudraEntries: MudraEntry[]; mudraRedemptions: MudraRedemption[]; mudraConfig?: MudraConfig;
   chatReads: ChatRead[];
   /** v56 — homes a buyer saved to come back to (only the property id; nothing is shared with anyone) */
   savedProperties: SavedProperty[];
@@ -3076,7 +3078,7 @@ function getInitialSeedData(): DatabaseState {
     resetRequests: [],
     privacyRequests: [],
     connectorReferrals: [],
-    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], reviews: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], reviews: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], mudraEntries: [], mudraRedemptions: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
   };
 }
 
@@ -3218,7 +3220,7 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'inbox', 'broadcasts', 'peerConfirms', 'reviews', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
+  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'inbox', 'broadcasts', 'peerConfirms', 'reviews', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'mudraEntries', 'mudraRedemptions', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
   (parsed as any).ownerListCfg = { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON', ...((parsed as any).ownerListCfg || {}) };
   (parsed as any).legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...((parsed as any).legalSettings || {}) };
   // v11: listings created before freshness tracking start their 30-day clock now (nothing expires on upgrade)
@@ -3808,3 +3810,17 @@ class Database {
 
 export const db = new Database();
 process.once('exit', () => db.flush());
+
+/** v199 (D20) — GENZ Mudra. A discount voucher on GENZ-affiliated service partners; no cash value, no transfer, no withdrawal. Append-only: entries are never edited or deleted (except by DPDP erase of the owner). */
+export interface MudraEntry { id: string; userId: string; kind: 'CREDIT' | 'DEBIT'; amount: number; dealId?: string; redemptionId?: string; at: string; expiresAt?: string; note: string }
+export interface MudraRedemption { id: string; userId: string; partnerId: string; partnerName: string; invoiceRef: string; invoiceAmount: number; discount: number; at: string }
+export interface MudraPartner { id: string; name: string; category: string; /** what GENZ earns from this partner, % of the invoice — the discount can never exceed it */ feePct: number; active: boolean }
+export interface MudraConfig { enabled: boolean; /** % of the buyer-side brokerage credited */ pct: number; validityDays: number; /** an upper cap on any discount, % of the invoice (also capped by the partner's feePct) */ maxDiscountPct: number; terms: { en: string; hi: string }; partners: MudraPartner[] }
+export const DEFAULT_MUDRA_CONFIG = (): MudraConfig => ({
+  enabled: (process.env.COINS_ENABLED ?? 'true').toLowerCase() !== 'false', pct: 1, validityDays: 183, maxDiscountPct: 10,
+  terms: {
+    en: 'GENZ Mudra is a discount voucher, not money. It is earned after a verified site visit and an activated commission agreement, only by buyers and tenants, and used only as a discount at GENZ-affiliated service partners booked through GENZ. It cannot be withdrawn, transferred or exchanged for cash, and it expires. If you deal with a partner directly, outside GENZ, GENZ is not responsible for that work.',
+    hi: 'GENZ मुद्रा एक डिस्काउंट वाउचर है, पैसा नहीं। यह वेरिफ़ाइड साइट विज़िट और चालू कमीशन एग्रीमेंट के बाद सिर्फ़ खरीदार / किरायेदार को मिलती है, और सिर्फ़ GENZ से जुड़े सर्विस पार्टनर पर GENZ के ज़रिए बुकिंग में डिस्काउंट के रूप में चलती है। इसे निकाला, किसी को दिया या नकद में बदला नहीं जा सकता, और यह समय पर खत्म हो जाती है। अगर आप पार्टनर से सीधे (GENZ के बाहर) काम कराते हैं तो उस काम की ज़िम्मेदारी GENZ की नहीं है।',
+  },
+  partners: [],
+});

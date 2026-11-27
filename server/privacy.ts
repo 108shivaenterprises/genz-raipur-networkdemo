@@ -10,6 +10,7 @@ import { isSuper, canViewDeal } from './access.js';
 import { sha256 } from './db.js';
 import { purgeUserDocs } from './propdocs.js';
 import { purgeUserIdDocs } from './idreview.js';
+import { eraseMudraFor } from './mudra.js';
 import { purgeUserPhotos } from './profilephoto.js';
 import { purgeOwnerFiles } from './ownermedia.js';
 import { purgeKyc, kycFlags } from './kycvault.js';
@@ -158,7 +159,7 @@ export function createPrivacyRouter() {
       target.email = `deleted-${anon}@erased.invalid`;
       target.phone = '';
       target.companyName = '';
-      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined;   // v191 (D1)
+      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined; eraseMudraFor(target.id);   // v191 (D1)
       target.panNumber = undefined;
       target.aadhaarLast4 = undefined; target.idConsentAt = undefined; target.idCheckedAt = undefined; target.idCheckedBy = undefined; target.idCheckNote = undefined;
       target.gstin = undefined;

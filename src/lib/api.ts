@@ -645,6 +645,10 @@ export const api = {
   crSetMedia: (id: string, itemId: string, media: { photos: string[]; videos: string[] }) => request<any>(`/api/client-rooms/${id}/items/${itemId}/media`, { method: 'PUT', body: JSON.stringify(media) }),
   crLink: (id: string) => request<any>(`/api/client-rooms/${id}/link`, { method: 'POST' }),
   // v46 — shop QR partners
+  mudraMe: () => request<any>('/api/mudra/me'),
+  mudraRedeem: (b: { partnerId: string; invoiceRef: string; invoiceAmount: number; amount: number; bookedViaGenz: true }) => request<any>('/api/mudra/redeem', { method: 'POST', body: JSON.stringify(b) }),
+  mudraAdmin: () => request<any>('/api/mudra/admin/overview'),
+  mudraAdminSet: (b: unknown) => request<any>('/api/mudra/admin/config', { method: 'PUT', body: JSON.stringify(b) }),
   spList: () => request<any>('/api/shop-partners'),
   spShareTargets: (homeId: string) => request<any>(`/api/shop-partners/share-targets/${homeId}`),
   spAdmin: () => request<any>('/api/shop-partners/admin'),

@@ -8,6 +8,7 @@ import { formatINR } from '../lib/utils.js';
 import type { TabType } from './NavigationTabs.js';
 import { NetworkPulse } from './NetworkPulse.js';
 import { ProtectionAdmin } from './ProtectionDays.js';
+import { MudraAdmin } from './MudraAdmin.js';
 import { TeamLimitsAdmin } from './TeamLimitsAdmin.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
 import { BrandLogoCard } from './BrandLogoCard.js';
@@ -188,6 +189,7 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
         </div>
         <ProtectionAdmin />
         <TeamLimitsAdmin />
+        <MudraAdmin />
         <div className="rounded-xl border border-slate-200 bg-white p-4"><TwoFactorCard /></div>
       </section></Fold>
 

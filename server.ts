@@ -178,6 +178,7 @@ import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as vi
 import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, finishSignupOtp, sendSignupOtp } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
+import { createMudraRouter, settleMudraQuiet, seedMudraDemo } from './server/mudra.js';
 import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
 import { createForgotRouter, createOtpAdminRouter } from './server/otpManual.js';
@@ -320,6 +321,7 @@ app.use(
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS' || req.path.startsWith('/q/')) return next();
   try { primeHomes(); } catch { /* ignore */ }
+  try { seedMudraDemo(); } catch { /* ignore */ }
   res.on('finish', () => { if (res.statusCode < 400) { try { followHomes(); } catch (e) { console.error('[BOT] follow failed:', (e as Error).message); } } });
   next();
 });
@@ -2957,6 +2959,7 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
   visit.verifiedAt = now;
   visit.verificationMethod = method;
   visit.feedbackNotes = feedback.slice(0, 500);
+  settleMudraQuiet(visit.dealRoomId);   // v199 — a verified visit may complete the Mudra conditions
 
   const deal = visitDeal(state, visit);
   if (deal && deal.stage === 'Introduction') {
@@ -4882,6 +4885,7 @@ function activateAgreement(state: ReturnType<typeof db.getState>, deal: any, agr
   if (prev && prev.status === 'ACTIVE') prev.status = 'AMENDED';
   agreement.status = 'ACTIVE';
   deal.totalCommissionExpected = agreement.totalAgreedBrokerage;
+  settleMudraQuiet(deal.id);   // v199 — an activated agreement may complete the Mudra conditions
   if (agreement.dealValue) { deal.dealValue = agreement.dealValue; deal.dealValueSource = 'AGREEMENT'; }
   const intro = agreement.allocations.find((a: any) => a.participantId === deal.introducingBrokerId);
   const close = agreement.allocations.find((a: any) => a.participantId === deal.closingBrokerId);
@@ -5956,6 +5960,7 @@ app.use(['/s', '/r', '/q', '/sp', '/a', '/c', '/oc', '/in', '/report', '/pay', '
 app.use('/s', createPublicShareRouter());
 app.use('/in', createLeadInletPublicRouter());   // v107 — the public address: a hosted enquiry form, and the POST that files an enquiry as a lead
 app.use('/api/client-rooms', createClientRoomRouter());
+app.use('/api/mudra', createMudraRouter());   // v199 (D20)
 // v60 — Rent desk: the broker's tenancies after the deal (terms, police verification, renewal, vacating)
 app.use('/api/rent', createRentRouter());
 // v61 — builder ↔ channel partner chat (text, lead / booking / unit cards, photos)
