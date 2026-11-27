@@ -112,6 +112,12 @@ function leadFeesFor(d: DealRoom, uid: string) {
 
 const billTotal = (b: { items: { amount: number }[]; gstPct: number }) => { const sub = b.items.reduce((n, i) => n + i.amount, 0); return sub + Math.round(sub * (b.gstPct || 0) / 100); };
 
+/** Sec 194-IA threshold and the month the rule was last checked — shown with every TDS figure */
+export const TDS_THRESHOLD = 5_000_000; export const TDS_AS_OF = '2026-11';
+export function tdsFor(price: number) {
+  const p = Math.max(0, Number(price) || 0); const applicable = p >= TDS_THRESHOLD; const amount = applicable ? Math.max(0, Math.round(p * 0.01)) : 0;
+  return { applicable, threshold: TDS_THRESHOLD, ratePct: applicable ? 1 : 0, amount, sellerNetPayable: Math.max(0, p - amount), asOf: TDS_AS_OF, indicative: true as const };
+}
 export function hisaabView(d: DealRoom, u: UserProfile) {
   const owner = d.ownerId === u.id; const broker = isDealBroker(u, d);
   const { price, source } = priceOf(d);
@@ -126,7 +132,9 @@ export function hisaabView(d: DealRoom, u: UserProfile) {
   const received = live.reduce((n, e) => n + (e.kind === 'REFUND' ? -e.amount : e.amount), 0);
   const tokenIn = live.filter(e => e.kind === 'TOKEN').reduce((n, e) => n + e.amount, 0);
   const direct = live.filter(e => e.kind === 'TO_BROKER').reduce((n, e) => n + e.amount, 0);
-  const sauda = { price, priceSource: source, entries, received, token: tokenIn, direct, directHidden: live.some(e => (e as any).masked), balance: Math.max(0, price - received), over: Math.max(0, received - price), done: price > 0 && received >= price };
+  // v198 — INDICATIVE only: 1% TDS (Sec 194-IA, Form 26QB) when the price is ₹50 lakh or more. Not tax advice; the buyer's CA confirms the figure.
+  const tds = tdsFor(price);
+  const sauda = { tds, price, priceSource: source, entries, received, token: tokenIn, direct, directHidden: live.some(e => (e as any).masked), balance: Math.max(0, price - received), over: Math.max(0, received - price), done: price > 0 && received >= price };
   const out: any = { dealId: d.id, me: u.id, role: broker ? 'BROKER' : owner ? 'OWNER' : 'NONE', sauda, canRecord: broker, canAck: owner || broker };
   const m = activeMandate(d); const prop = st().properties.find(x => x.id === d.propertyId);
   if (owner && m) {

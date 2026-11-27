@@ -9,6 +9,7 @@ import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { useUI } from '../lib/ui.js';
+import { BayanaReceiptModal } from './BayanaReceiptModal.js';
 import { sanitizeDecimal } from '../lib/validate.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm';
@@ -47,6 +48,7 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
   const { prompt } = useUI();
   const [h, setH] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<'' | 'pay' | 'book'>('');
+  const [bayana, setBayana] = useState(false);
   const [pf, setPf] = useState({ kind: 'PART', amount: '', mode: 'UPI', ref: '', paidOn: today(), note: '', toBrokerId: '' });
   const [bf, setBf] = useState({ dir: 'IN', party: 'OWNER', amount: '', mode: 'UPI', ref: '', paidOn: today(), note: '' });
   const [dueEdit, setDueEdit] = useState<string | null>(null);
@@ -107,6 +109,11 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} /></div>
         {s.priceSource === 'ASKING' && <p className="text-xs text-amber-700">{tx('The final price is not set yet — figures use the asking price. Write it in the “Final rate” card above.', 'अंतिम कीमत तय नहीं है — हिसाब माँगी गई कीमत से है। ऊपर “फ़ाइनल रेट” कार्ड में लिखें।')}</p>}
+        {s.tds?.applicable && (
+          <p className="rounded-lg bg-indigo-50 p-2 text-xs text-indigo-950" data-testid="hisaab-tds">{tx(`Indicative estimate (as of ${s.tds.asOf}): 1% TDS (Sec 194-IA, Form 26QB) = ${formatINR(Math.max(0, s.tds.amount))}; net to seller ${formatINR(Math.max(0, s.tds.sellerNetPayable))}. Confirm with your CA.`, `अनुमानित (${s.tds.asOf} तक): 1% TDS (धारा 194-IA, फ़ॉर्म 26QB) = ${formatINR(Math.max(0, s.tds.amount))}; विक्रेता को शुद्ध ${formatINR(Math.max(0, s.tds.sellerNetPayable))}। अपने CA से पक्का करें।`)}</p>
+        )}
+        {h.canRecord && s.token > 0 && <button type="button" onClick={() => setBayana(true)} className="min-h-11 rounded-lg border border-emerald-600 bg-emerald-50 px-3 text-xs font-bold text-emerald-800" data-testid="hisaab-bayana-btn">{tx('Token receipt (record only)', 'टोकन की पावती (सिर्फ़ रिकॉर्ड)')}</button>}
+        {bayana && (() => { const t = [...(s.entries || [])].reverse().find((e: any) => e.kind === 'TOKEN' && !e.void); return <BayanaReceiptModal onClose={() => setBayana(false)} data={{ dealId, price: s.price, token: s.token, paidOn: t?.paidOn, mode: t?.mode, ref: t?.ref, brokerName: (h.brokers || []).find((x: any) => x.me)?.name, tds: s.tds }} />; })()}
         {s.over > 0 && <p className="text-xs font-semibold text-red-700">{tx('More than the price is recorded — check the entries.', 'कीमत से ज़्यादा दर्ज है — एंट्री जाँचें।')} (+{formatINR(s.over)})</p>}
         {s.directHidden && <p className="text-xs text-amber-700" data-testid="hisaab-direct-hidden">{tx('Part of the price went straight to a broker — its amount is not shown to you, so “Left” may look higher.', 'कीमत का एक हिस्सा सीधे एक ब्रोकर को गया — उसकी रकम आपको नहीं दिखती, इसलिए “बाक़ी” ज़्यादा दिख सकता है।')}</p>}
         {s.entries.length === 0 && <p className="text-xs text-slate-500">{tx('No payment written yet.', 'अभी कोई भुगतान दर्ज नहीं।')}</p>}

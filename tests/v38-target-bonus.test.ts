@@ -71,6 +71,10 @@ beforeAll(async () => {
 }, 60000);
 afterAll(async () => { proc?.kill('SIGTERM'); await new Promise(r => setTimeout(r, 300)); if (dir && existsSync(dir)) rmSync(dir, { recursive: true, force: true }); });
 
+// the demo seed's period starts on a FIXED date (2026-10-10); with the default 90 days the early-bird half-way point passes on the real clock.
+// A deadline chosen from today keeps the half-way point ~15 days ahead, whatever day the suite runs.
+const SEED_START = Date.parse('2026-10-10T10:00:00.000Z');
+const farDeadline = () => new Date(SEED_START + 2 * (Date.now() - SEED_START) + 30 * 86400_000).toISOString().slice(0, 10);
 const PROJ = 'PROJ-RAI-02'; const MAND = 'MAND-RAI-03';
 const scheme = { enabled: true, periodDays: 90, qualifyCollectionPct: 10, hit: { kind: 'EXTRA_PCT', value: 0.5 }, overPct: 0.25, early: { kind: 'EXTRA_PCT', value: 0.3, withinPct: 50 }, note: 'Diwali target push' };
 const tb = async (who: string) => { const r = await call(jar[who], 'GET', '/api/crm/target-bonus'); expect(r.status, who).toBe(200); return r.json(); };
@@ -102,7 +106,7 @@ describe('target bonus API', () => {
     expect((await call(jar.BLD, 'PUT', `/api/crm/projects/${PROJ}/target-bonus/partners/${MAND}`, { target: 1, deadline: '2020-01-01' })).status).toBe(400);
     expect((await call(jar.BLD, 'PUT', `/api/crm/projects/${PROJ}/target-bonus/partners/${MAND}`, { target: 0 })).status).toBe(400);
     expect((await call(jar.BRK1, 'PUT', `/api/crm/projects/${PROJ}/target-bonus/partners/${MAND}`, { target: 1 })).status).toBe(403);
-    const r = await call(jar.BLD, 'PUT', `/api/crm/projects/${PROJ}/target-bonus/partners/${MAND}`, { target: 1, deadline: '' }); expect(r.status).toBe(200);
+    const r = await call(jar.BLD, 'PUT', `/api/crm/projects/${PROJ}/target-bonus/partners/${MAND}`, { target: 1, deadline: farDeadline() }); expect(r.status).toBe(200);
     const x = await row('BLD'); expect(x.target).toBe(1); expect(x.state).toBe('IN_PROGRESS'); expect(x.earned).toBe(0);
     expect((await call(jar.BLD, 'POST', `/api/crm/projects/${PROJ}/target-bonus/pay`, { mandateId: MAND, amount: 1000, reference: 'UTR12345' })).status).toBe(400);
   });
