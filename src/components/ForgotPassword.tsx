@@ -36,6 +36,7 @@ export const ForgotPassword: React.FC<{ onBack: () => void }> = ({ onBack }) => 
           <p className="rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">{tx('Admin and staff accounts cannot be reset with a code — ask a SUPERADMIN to reset it.', 'एडमिन और स्टाफ अकाउंट कोड से रीसेट नहीं होते — SUPERADMIN से रीसेट करवाएँ।')}</p>
           <input required inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder={tx('10-digit mobile number', '10 अंकों का मोबाइल नंबर')} className={input} data-testid="forgot-phone" aria-label={tx('Mobile number', 'मोबाइल नंबर')} />
           <OtpAlert err={err} />
+          {!/^[6-9]\d{9}$/.test(p10) && <p className="text-[11px] text-slate-500" data-testid="forgot-phone-hint">{tx('Enter your 10-digit mobile', 'अपना 10 अंकों का मोबाइल नंबर डालें')}</p>}
           <button disabled={busy || !/^[6-9]\d{9}$/.test(p10)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-60" data-testid="forgot-send">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{tx('Get a code', 'कोड पाएँ')}</button>
         </form>
       ) : (

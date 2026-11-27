@@ -37,6 +37,11 @@ const st = () => db.getState();
 const me = () => ctx().user as UserProfile;
 const nowIso = () => new Date().toISOString();
 const DAY = 86400_000;
+/** the Hindi of each checkOtpToken message, line for line (B1-04: the reused-code message said something else in Hindi) */
+export const OTP_HI: Record<string, string> = {
+  'Ask for a code first.': 'पहले कोड माँगें।', 'The code has expired — ask for a new one.': 'कोड की मियाद ख़त्म — नया कोड माँगें।',
+  'That code was already used — ask for a new one.': 'यह कोड पहले इस्तेमाल हो चुका — नया कोड माँगें।', 'Too many wrong tries — ask for a new code.': 'बहुत बार ग़लत कोड — नया कोड माँगें।', 'That code is not right.': 'यह कोड सही नहीं है।',
+};
 const bad = (res: Response, error: string, status = 400, code?: string, errorHi?: string) => res.status(status).json({ error, ...(errorHi ? { errorHi } : {}), ...(code ? { code } : {}) });
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const phone10 = (v: unknown) => String(v || '').replace(/\D/g, '').slice(-10);
@@ -207,17 +212,17 @@ export function createOwnerAuthRouter() {
       if (!c.ok) return res.status(c.status).json(failBody(c));
     } else if (tk) {
       // the signed token: valid on any copy of the server
-      if (tk.e < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED');
+      if (tk.e < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED', OTP_HI['The code has expired — ask for a new one.']);
       const book = otpBook(); const rec = (book[tk.n] ||= { exp: tk.e, tries: 0 });
-      if (rec.used) return bad(res, 'That code was already used — ask for a new one.', 400, 'EXPIRED');
-      if (++rec.tries > 5) { rec.used = true; db.save(); return bad(res, 'Too many wrong tries — ask for a new code.', 429); }
-      if (!safeEqual(tk.sig, tokSig(tk.body, code))) { db.save(); return bad(res, 'That code is not right.', 400, 'WRONG_CODE'); }
+      if (rec.used) return bad(res, 'That code was already used — ask for a new one.', 400, 'USED', OTP_HI['That code was already used — ask for a new one.']);
+      if (++rec.tries > 5) { rec.used = true; db.save(); return bad(res, 'Too many wrong tries — ask for a new code.', 429, undefined, OTP_HI['Too many wrong tries — ask for a new code.']); }
+      if (!safeEqual(tk.sig, tokSig(tk.body, code))) { db.save(); return bad(res, 'That code is not right.', 400, 'WRONG_CODE', OTP_HI['That code is not right.']); }
       usedNonce = tk.n;
     } else {
       const o = OTPS.get(phone);
-      if (!o || o.exp < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED');
-      if (++o.tries > 5) { OTPS.delete(phone); return bad(res, 'Too many wrong tries — ask for a new code.', 429); }
-      if (!safeEqual(o.hash, hm('owner-otp', `${phone}|${code}`))) return bad(res, 'That code is not right.', 400, 'WRONG_CODE');
+      if (!o || o.exp < Date.now()) return bad(res, 'The code has expired — ask for a new one.', 400, 'EXPIRED', OTP_HI['The code has expired — ask for a new one.']);
+      if (++o.tries > 5) { OTPS.delete(phone); return bad(res, 'Too many wrong tries — ask for a new code.', 429, undefined, OTP_HI['Too many wrong tries — ask for a new code.']); }
+      if (!safeEqual(o.hash, hm('owner-otp', `${phone}|${code}`))) return bad(res, 'That code is not right.', 400, 'WRONG_CODE', OTP_HI['That code is not right.']);
     }
     const s = st(); const now = nowIso();
     let u = s.users.find(x => phone10(x.phone) === phone && x.role === 'PROPERTY_OWNER');
@@ -240,7 +245,7 @@ export function createOwnerAuthRouter() {
     if (manual) useOtp(String(req.body.otpToken)); else OTPS.delete(phone);
     resetHits(`owner-otp:${phone}`);
     if (usedNonce) { const b = otpBook(); (b[usedNonce] ||= { exp: Date.now() + OTP_MS, tries: 0 }).used = true; }
-    u.lastLoginAt = now; db.save();
+    u.lastLoginAt = now; u.phoneVerifiedAt ||= now; db.save();
     setSessionCookie(req, res, signSession(u.id, u.sessionVersion || 1));
     res.json({ success: true, created: isNew, user: { id: u.id, name: u.name, role: u.role, phone: u.phone, city: u.city, verificationStatus: u.verificationStatus }, permissions: effectivePermissions(u) });
   });

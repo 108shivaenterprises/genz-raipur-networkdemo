@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Download, Trash2, MessageSquareWarning, KeyRound } from 'lucide-react';
 import { useUI } from '../lib/ui.js';
+import { PhoneVerifyCard } from './PhoneVerifyCard.js';
 import { useI18n, useTx, readLang } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
@@ -85,6 +86,7 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string; otpOn
           <h3 className="text-base font-bold text-slate-900">{t('priv.title', 'My data & privacy')}</h3>
           <button onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center" aria-label={tx('Close', 'बंद करें')}><X className="h-5 w-5 text-slate-500" /></button>
         </div>
+        {role !== 'TEAM_MEMBER' && <PhoneVerifyCard />}
         <a href="/api/privacy/export" className="mt-4 flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:border-slate-900">
           <Download className="h-4 w-4" /> {t('priv.export', 'Download my data (JSON)')}
         </a>

@@ -93,6 +93,7 @@ import {
   canSeeOwnerCommercials,
   canAccessPropertyWorkspace,
   customerMatchesUser,
+  phoneVerifiedElsewhere,
   publicUser,
   partnerCard,
 } from './server/access.js';
@@ -175,6 +176,7 @@ import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createLeadInletRouter, createLeadInletPublicRouter } from './server/leadInlets.js';
 import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as visitAckStatus, createVisitAckRouter, createVisitAckPageRouter, sweepVisitAcks } from './server/visitack.js';
+import { createPhoneVerifyRouter } from './server/phoneVerify.js';
 import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, finishSignupOtp, sendSignupOtp } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
@@ -492,7 +494,7 @@ app.get('/api/auth/config', (_req: Request, res: Response) => {
 
 app.post('/api/auth/login', (req: Request, res: Response) => {
   const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Email and password are required' });
+  if (!parsed.success) return res.status(400).json({ error: 'Email and password are required', errorHi: 'ई-मेल और पासवर्ड ज़रूरी हैं' });
 
   const email = parsed.data.email.trim().toLowerCase();
   const accountKey = `login:${getClientIp(req)}:${email}`;
@@ -501,7 +503,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   const wait = hit(accountKey, 6, 15 * 60_000, 15 * 60_000) || hit(`login-acct:${email}`, 20, 15 * 60_000, 15 * 60_000) || hit(`login-ip:${getClientIp(req)}`, 300, 15 * 60_000);
   if (wait) {
     res.setHeader('Retry-After', String(wait));
-    return res.status(429).json({ error: `Too many failed attempts. Try again in ${Math.ceil(wait / 60)} minute(s).` });
+    return res.status(429).json({ error: `Too many failed attempts. Try again in ${Math.ceil(wait / 60)} minute(s).`, errorHi: `बहुत ज़्यादा ग़लत कोशिशें। ${Math.ceil(wait / 60)} मिनट बाद फिर कोशिश करें।` });
   }
 
   const state = db.getState();
@@ -517,7 +519,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     if (user) {
       db.appendAuditEvent(user.id, user.role, 'SYSTEM', user.id, 'LOGIN_FAILED', `Failed login attempt from ${getClientIp(req)}`);
     }
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid email or password', errorHi: 'ई-मेल या पासवर्ड ग़लत है' });
   }
   if (user.verificationStatus === 'BLACKLISTED' || user.verificationStatus === 'REJECTED') {
     return res.status(403).json({ error: `This account is ${user.verificationStatus.toLowerCase()}. Contact GENZ Operations.` });
@@ -549,10 +551,10 @@ function finishLogin(req: Request, res: Response, user: UserProfile, state = db.
 
 app.post('/api/auth/login/2fa', rateLimit('login-2fa', 30, 15 * 60_000), (req: Request, res: Response) => {
   const t = readTicket(String(req.body?.ticket || ''));
-  if (!t) return res.status(401).json({ error: 'The sign-in took too long. Enter your password again.', code: 'TICKET_EXPIRED' });
+  if (!t) return res.status(401).json({ error: 'The sign-in took too long. Enter your password again.', errorHi: 'साइन-इन में बहुत देर हो गई। पासवर्ड फिर से डालें।', code: 'TICKET_EXPIRED' });
   const state = db.getState();
   const user = db.byId('users', t.uid) as UserProfile | undefined;
-  if (!user || (user.sessionVersion || 1) !== t.sv || ['BLACKLISTED', 'REJECTED'].includes(user.verificationStatus)) return res.status(401).json({ error: 'Sign in again.', code: 'TICKET_EXPIRED' });
+  if (!user || (user.sessionVersion || 1) !== t.sv || ['BLACKLISTED', 'REJECTED'].includes(user.verificationStatus)) return res.status(401).json({ error: 'Sign in again.', errorHi: 'फिर से साइन इन करें।', code: 'TICKET_EXPIRED' });
   const v = verifySecondFactor(user.id, String(req.body?.code || ''));
   if (v === 'LOCKED') return res.status(429).json({ error: 'Too many wrong codes. Wait 15 minutes.' });
   if (v !== 'OK') {
@@ -877,6 +879,10 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   if (!invite || invite.status !== 'PENDING' || new Date(invite.expiresAt) < new Date()) {
     return res.status(400).json({ error: 'Valid invitation code is mandatory' });
   }
+  // a buyer's or an owner's mobile is what ties him to his visits: it must be proven by a code, never just typed
+  if ((invite.targetRole === 'BUYER_TENANT' || invite.targetRole === 'PROPERTY_OWNER') && !otpOk) return res.status(400).json({ error: 'Verify your mobile number with the code we send before you sign up.', errorHi: 'साइन-अप से पहले भेजे गए कोड से अपना मोबाइल नंबर वेरिफ़ाई करें।', code: 'OTP_REQUIRED' });
+  // a number already verified on a live account cannot be signed up again
+  if (phoneVerifiedElsewhere(phone)) return res.status(409).json({ error: 'This mobile number is already verified on another GENZ account. Sign in to that account, or use another number.', errorHi: 'यह मोबाइल नंबर पहले से किसी दूसरे GENZ अकाउंट पर वेरिफ़ाई है। उसी अकाउंट में साइन इन करें, या दूसरा नंबर इस्तेमाल करें।', code: 'PHONE_TAKEN' });
   const phoneOnlyInvite = invite.invitedEmail.endsWith('@phone.genz.local');
   if (phoneOnlyInvite) {
     // Connector invited by mobile number only: the code is bound to that number.
@@ -988,6 +994,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   invite.redeemedBy = userId;
   invite.redeemedAt = now;
 
+  if (otpOk) newUser.phoneVerifiedAt = now; else newUser.selfRegistered = true;   // the phone is verified ONLY by a passed OTP
   state.users.push(newUser);
   if (otpOk) finishSignupOtp(parsed.data.otpToken);
   if (invite.targetRole === 'BROKER') openIdTask(userId, autoVerified ? 'AUTO_VERIFY' : 'SIGNUP', { autoVerified, by: userId, note: autoWhy || undefined });
@@ -6139,6 +6146,7 @@ app.use('/api/listings', createListingsRouter());
 app.use('/p', createPublicPosterRouter());
 app.use('/v', createPublicVisitRouter());
 app.use('/api/privacy', createPrivacyRouter());
+app.use('/api/phone', createPhoneVerifyRouter());
 app.get('/api/legal/config', (_req: Request, res: Response) => res.json({ success: true, ...legalConfig() }));
 
 // PIN code → state / district / post-office names (India Post public data). Optional convenience: any failure

@@ -147,7 +147,7 @@ export function createForgotRouter() {
     }
     const hits = db.getState().users.filter(u => digits(u.phone) === phone && u.verificationStatus !== 'BLACKLISTED' && !(u as any).selfSignup);
     if (hits.length === 1) {
-      const u = hits[0]; u.passwordHash = hash; u.mustChangePassword = false; u.sessionVersion = (u.sessionVersion || 1) + 1; db.save();   // every other session is signed out
+      const u = hits[0]; u.passwordHash = hash; u.mustChangePassword = false; u.sessionVersion = (u.sessionVersion || 1) + 1; u.phoneVerifiedAt ||= new Date().toISOString(); db.save();   // the reset code proved he holds this number   // every other session is signed out
       db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'PASSWORD_RESET_OTP', `Password reset with a mobile code (••${phone.slice(-4)}); all sessions revoked`);
     }
     res.json({ success: true });   // same answer whether or not the number has an account

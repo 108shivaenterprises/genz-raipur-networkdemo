@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { Router, Request, Response } from 'express';
 import { db, PrivacyRequest } from './db.js';
 import { ctx, needs, requireAuth, rateLimit, unusablePasswordHash } from './auth.js';
-import { isSuper, canViewDeal } from './access.js';
+import { isSuper, canViewDeal, customerMatchesUser } from './access.js';
 import { sha256 } from './db.js';
 import { purgeUserDocs } from './propdocs.js';
 import { purgeUserIdDocs } from './idreview.js';
@@ -40,14 +40,31 @@ export function legalConfig() {
 
 const last10 = (p?: string) => String(p || '').replace(/\D/g, '').slice(-10);
 /** DPDP erase of the person's own need and visit rows. They stay as transaction records (a deal or commission may point at them) but carry no name, number or code. Other people's rows are never touched. */
-export function erasePersonalRows(s: ReturnType<typeof db.getState>, userId: string, phoneWas?: string): void {
+export function erasePersonalRows(s: ReturnType<typeof db.getState>, userId: string, phoneWas?: string, ownsPhone = false): { requirements: number; visits: number } {
+  let nr = 0, nv = 0;
   for (const r of s.requirements) if (r.buyerId === userId) {
-    r.customerName = 'Erased'; r.customerPhone = ''; r.buyerId = 'ERASED';
+    nr++; r.customerName = 'Erased'; r.customerPhone = ''; r.buyerId = 'ERASED';
     for (const c of r.claimRequests || []) if (c.status === 'PENDING') c.status = 'SUPERSEDED';
   }
-  const ph = last10(phoneWas); if (ph.length < 10) return;
-  for (const v of s.siteVisits) if (last10(v.customerPhone) === ph) { v.customerName = 'Erased'; v.customerPhone = ''; v.otpCode = ''; v.qrToken = undefined; v.jobCode = undefined; v.otpAttempts = undefined; }
+  const ph = last10(phoneWas); if (!ownsPhone || ph.length < 10) return { requirements: nr, visits: nv };   // only a phone he verified by OTP (and nobody else holds) scrubs visits
+  for (const v of s.siteVisits) if (last10(v.customerPhone) === ph) { nv++; v.customerName = 'Erased'; v.customerPhone = ''; v.otpCode = ''; v.qrToken = undefined; v.jobCode = undefined; v.otpAttempts = undefined; }
+  return { requirements: nr, visits: nv };
 }
+
+/** what a person gets about a need: his own name and number only when it is his own need; never leads, client-card links, other brokers' entries */
+const requirementRow = (r: any, uid: string) => ({
+  id: r.id, status: r.status, budgetMin: r.budgetMin, budgetMax: r.budgetMax, city: r.city, state: r.state, preferredLocalities: r.preferredLocalities, preferredTags: r.preferredTags,
+  propertyType: r.propertyType, transactionType: r.transactionType, minAreaSqFt: r.minAreaSqFt, maxAreaSqFt: r.maxAreaSqFt, purpose: r.purpose, urgency: r.urgency, createdAt: r.createdAt,
+  ...(r.buyerId === uid ? { customerName: r.customerName, customerPhone: r.customerPhone } : {}), claimRequestCount: (r.claimRequests || []).length,
+});
+/** a visit: when, where, whether it happened. A broker gets his client's name (his own business record); a buyer gets no other party's name, phone or notes */
+const visitRow = (v: any, uid: string, s: ReturnType<typeof db.getState>) => ({
+  id: v.id, propertyId: v.propertyId, propertyTitle: s.properties.find(p => p.id === v.propertyId)?.title, scheduledTime: v.scheduledTime, isVerified: v.isVerified, verifiedAt: v.verifiedAt, createdAt: v.createdAt,
+  customerName: v.customerName, customerPhone: v.customerPhone, ...(v.brokerId === uid ? { feedbackNotes: v.feedbackNotes } : {}),
+});
+
+const EXPORT_PROFILE_FIELDS = ['id', 'name', 'email', 'phone', 'phoneVerifiedAt', 'role', 'city', 'state', 'homeLocality', 'brokerId', 'companyName', 'reraNumber', 'panNumber', 'gstin', 'aadhaarLast4', 'consent', 'consentWithdrawnAt',
+  'verificationStatus', 'referralCode', 'brand', 'connector', 'avatarUrl', 'profile', 'publicCard', 'tier', 'basicTier', 'plan', 'createdAt', 'lastLoginAt', 'idConsentAt', 'idCheckedAt', 'teamTitle', 'employerId'] as const;
 
 export function createPrivacyRouter() {
   const r = Router();
@@ -73,19 +90,20 @@ export function createPrivacyRouter() {
       res.setHeader('Content-Disposition', `attachment; filename="genz-my-data-${u.id}.json"`);
       return res.json(limited);
     }
-    const { passwordHash: _p, sessionVersion: _s, mustChangePassword: _m, ...profile } = u as any;
+    // an allow-list: his own identity and settings; never the desk's notes, trust scores, vouch strikes or other internal flags
+    const profile = Object.fromEntries(EXPORT_PROFILE_FIELDS.filter(k => (u as any)[k] !== undefined).map(k => [k, (u as any)[k]]));
     const bundle = {
       exportedAt: new Date().toISOString(),
       policyVersion: POLICY_VERSION,
       profile,
       properties: mine(s.properties, 'ownerId', 'listingBrokerId'),
       // a buyer's own needs (buyerId) are his too; a broker's own claim shows only his own entry
-      requirements: s.requirements.filter(x => x.buyerId === u.id || [(x as any).brokerId, (x as any).ownerId, (x as any).createdBy].some(k => k === u.id)).map((r: any) => ({ ...r, claimRequests: undefined, claimRequestCount: (r.claimRequests || []).length })),
+      requirements: s.requirements.filter(x => x.buyerId === u.id || [(x as any).brokerId, (x as any).ownerId, (x as any).createdBy].some(k => k === u.id)).map(r => requirementRow(r, u.id)),   // an allow-list: no leads, client-card links, other brokers or internal fields
       myClaimRequests: s.requirements.flatMap(x => (x.claimRequests || []).filter(c => c.brokerId === u.id).map(c => ({ requirementId: x.id, at: c.at, status: c.status }))),
       clientRooms: (s.clientRooms || []).filter(c => c.brokerId === u.id).map(c => ({ id: c.id, clientName: c.clientName, kind: c.kind, note: c.note, createdAt: (c as any).createdAt })),   // other brokers' names stay out of the export
       dealRooms: s.dealRooms.filter(d => d.introducingBrokerId === u.id || d.closingBrokerId === u.id || d.ownerId === u.id).map(d => ({ ...d, brokerBook: undefined, feePlans: undefined, myBrokerBook: d.brokerBook?.[u.id], myFeePlan: d.feePlans?.[u.id] })), // v71 — only MY brokerage book
       // codes and secrets never leave the server, not even in the owner's own export
-      siteVisits: s.siteVisits.filter(v => v.brokerId === u.id || (last10(u.phone).length === 10 && last10(v.customerPhone) === last10(u.phone))).map((v: any) => ({ ...v, jobCode: undefined, otpCode: undefined, qrToken: undefined, otpAttempts: undefined, verifiedBy: undefined })),
+      siteVisits: s.siteVisits.filter(v => v.brokerId === u.id || customerMatchesUser(v.customerPhone, u, s)).map(v => visitRow(v, u.id, s)),   // a phone matches only when HE verified it by OTP and nobody else holds it
       // D23 — the buyer's own service invoices: what he was billed and paid; never GENZ's share, the partner payout or the code hash
       mudraInvoices: s.mudraInvoices.filter(i => i.buyerUserId === u.id).map(i => ({ invoiceRef: i.invoiceRef, partner: i.partnerName, description: i.description, amountInr: i.amountInr, status: i.status, jobStatus: i.jobStatus || 'OPEN', coinsUsedInr: i.settlement?.coinsInr, youPaidInr: i.settlement?.customerPaysInr, createdAt: i.createdAt, paidAt: i.paidAt, signedOffAt: i.signedOffAt })),
       crmLeads: mine(s.crmLeads, 'associateId', 'builderId'),
@@ -174,9 +192,9 @@ export function createPrivacyRouter() {
       const anon = sha256(target.id).slice(0, 10);
       target.name = `Deleted user ${anon}`;
       target.email = `deleted-${anon}@erased.invalid`;
-      const phoneWas = target.phone; target.phone = '';
+      const phoneWas = target.phone; const ownsPhone = customerMatchesUser(phoneWas, target, s); target.phone = '';
       target.companyName = '';
-      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined; eraseMudraFor(target.id, phoneWas); erasePersonalRows(s, target.id, phoneWas);   // v191 (D1) + D23 round 8
+      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined; eraseMudraFor(target.id, ownsPhone ? phoneWas : undefined); const scrubbed = erasePersonalRows(s, target.id, phoneWas, ownsPhone); db.appendAuditEvent(actor.id, actor.role, 'SYSTEM', target.id, 'ERASURE_ROWS_SCRUBBED', `Erasure of ${target.id}: ${scrubbed.requirements} need(s) and ${scrubbed.visits} visit(s) scrubbed`);   // v191 (D1) + D23 round 8
       target.panNumber = undefined;
       target.aadhaarLast4 = undefined; target.idConsentAt = undefined; target.idCheckedAt = undefined; target.idCheckedBy = undefined; target.idCheckNote = undefined;
       target.gstin = undefined;

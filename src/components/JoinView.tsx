@@ -106,14 +106,19 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
+    if (!name.trim()) { setError(hi ? 'अपना पूरा नाम लिखें।' : 'Enter your full name.'); return; }
+    if (!/^[6-9]\d{9}$/.test(phone.replace(/\D/g, '').slice(-10))) { setError(hi ? 'सही 10 अंकों का मोबाइल नंबर डालें।' : 'Enter a valid 10-digit mobile number.'); return; }
+    if (!phoneOnly && !/^\S+@\S+\.\S+$/.test(email.trim())) { setError(hi ? 'सही ई-मेल पता डालें।' : 'Enter a valid e-mail address.'); return; }
+    if (!password) { setError(hi ? 'पासवर्ड चुनें।' : 'Choose a password.'); return; }
     if (brokerId) {
       if (!panMasked && !isValidPan(normPan(pan))) { const w = panProblem(pan); setError(w ? (hi ? w.hi : w.en) : (hi ? 'PAN डालें (जैसे ABCPD1234E)' : 'Enter your PAN (e.g. ABCPD1234E)')); return; }
       if (!isValidAadhaar(aadhaarDigits)) { const w = aadhaarProblem(aadhaarDigits); setError(w ? (hi ? w.hi : w.en) : (hi ? 'आधार नंबर डालें (12 अंक)' : 'Enter your Aadhaar number (12 digits)')); return; }
       if (addrIssue || pinIssue) { const w = addrIssue || pinIssue!; setError(hi ? w.hi : w.en); return; }
       if (!idConsent) { setError(hi ? 'PAN, आधार नंबर और पता रखने की सहमति दें' : 'Please agree to GENZ keeping your PAN, Aadhaar number and address'); return; }
     }
-    if (open && role === 'BROKER' && !loc.locality.trim()) { setError(hi ? 'अपना इलाका / कॉलोनी लिखें (जैसे शंकर नगर)।' : 'Enter your locality / area (for example Shankar Nagar).'); return; }
+    if (role === 'BROKER' && !loc.locality.trim()) { setError(hi ? 'अपना इलाका / कॉलोनी लिखें (जैसे शंकर नगर)।' : 'Enter your locality / area (for example Shankar Nagar).'); return; }
     if (!loc.city.trim() && !(open && role === 'GENZ_CONNECTOR')) { setError(hi ? 'अपना शहर चुनें — GENZ क्लाइंट और घर शहर के हिसाब से मिलाता है।' : 'Choose your city — GENZ matches clients and homes city by city.'); return; }
+    if (!open && (role === 'BUYER_TENANT' || role === 'PROPERTY_OWNER') && (!otpTok || otpCode.length !== 6)) { setError(hi ? 'पहले मोबाइल पर कोड भेजें और उसे यहाँ डालें।' : 'Send the code to your mobile first and enter it here.'); return; }
     if (open) {
       if (!otpTok || otpCode.length !== 6) { setError(hi ? 'पहले मोबाइल पर कोड भेजें और उसे यहाँ डालें।' : 'Send the code to your mobile first and enter it here.'); return; }
       if (role !== 'GENZ_CONNECTOR' && !panConsent) { setError(hi ? 'PAN रखने की सहमति दें (नीचे टिक करें)।' : 'Please tick that GENZ may keep your PAN to check your KYC.'); return; }
@@ -183,7 +188,7 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
             <button disabled={busy} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy && <Loader2 className="h-4 w-4 animate-spin" />} {hi ? 'कोड जाँचें' : 'Check code'}</button>
           </form>
         ) : (
-          <form onSubmit={submit} className="mt-4 space-y-3" {...bilingualInvalid(hi)}>
+          <form onSubmit={submit} noValidate className="mt-4 space-y-3" {...bilingualInvalid(hi)}>   {/* B1-02 — no browser bubble: every missing field gets the in-app bilingual line */}
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{hi ? 'आप जुड़ रहे हैं:' : 'You are joining as:'} <b className="text-slate-900">{ROLE_LABEL[role!] || role}</b></p>
             {pf && <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">{hi ? `आपके स्पॉन्सर ${sponsorName || ''} ने आपकी कुछ जानकारी पहले से भर दी है। उसे देख लें और कुछ ग़लत हो तो सुधार दें।` : `Your sponsor${sponsorName ? ` ${sponsorName}` : ''} has already filled in some of your details. Please check them and correct anything that is wrong.`}</p>}
             <div><label className="text-xs font-semibold text-slate-700">{hi ? 'पूरा नाम' : 'Full name'} *{chip(name, pf?.name)}</label><input required value={name} onChange={(e) => setName(e.target.value)} className={input} /></div>
@@ -194,7 +199,7 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
                   {otpV && <OtpSent v={otpV} sentAt={otpAt} onResend={() => void sendOtp()} busy={otpBusy} />}
                   {otpTok && <input value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder={hi ? '6 अंक का कोड' : '6-digit code'} className={input + ' font-mono'} aria-label={hi ? 'कोड' : 'Code'} data-testid="join-otp-code" />}
                   <OtpAlert err={otpErr} />
-                  <p className="text-[11px] text-slate-500">{open ? (hi ? 'कोड ज़रूरी है — सही कोड डालते ही आपका अकाउंट चालू हो जाएगा।' : 'The code is required — your account goes live as soon as it is right.') : (hi ? 'मोबाइल कोड + PAN = अकाउंट तुरंत चालू। बिना कोड के GENZ ID जाँचेगा।' : 'Mobile code + PAN = your account is live at once. Without the code GENZ checks your ID.')}</p>
+                  <p className="text-[11px] text-slate-500">{open || role === 'BUYER_TENANT' || role === 'PROPERTY_OWNER' ? (hi ? 'कोड ज़रूरी है — पहले अपना मोबाइल वेरिफ़ाई करें, फिर साइन-अप पूरा होगा।' : 'The code is required — verify your mobile first, then sign-up completes.') : (hi ? 'मोबाइल कोड + PAN = अकाउंट तुरंत चालू। बिना कोड के GENZ ID जाँचेगा।' : 'Mobile code + PAN = your account is live at once. Without the code GENZ checks your ID.')}</p>
                 </div>}</div>
               {!phoneOnly && <div><label className="text-xs font-semibold text-slate-700" htmlFor="join-email">{hi ? 'ईमेल' : 'Email'} *</label><input id="join-email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></div>}
             </div>

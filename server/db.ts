@@ -643,6 +643,10 @@ export interface PrivacyRequest {
 }
 
 export interface UserProfile {
+  /** set ONLY when a mobile OTP for this number really passed (sign-up or owner sign-in); visits, export and erase match a phone only for a verified one */
+  phoneVerifiedAt?: string;
+  /** an account made through the app without an OTP on its phone (never stamped as verified by the demo seed) */
+  selfRegistered?: boolean;
   /** v97 — the broker switched the GENZ assistant OFF for all his shop-QR chats (he answers himself) */
   sahayakOff?: boolean;
   /** v73 — an owner who signed up himself with a mobile OTP (no password): may sign in again only with a mobile OTP */
@@ -3235,6 +3239,9 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.settings.connectorProgramEnabled ??= true;
   parsed.settings.connectorRewards ||= { ...DEFAULT_REWARDS };
   parsed.builderProjects ||= [];
+
+  // demo only: the seeded accounts' phones count as verified (accounts made through the app without an OTP stay unverified)
+  if (SEED_DEMO) for (const u of parsed.users) if (u.phone && !u.phoneVerifiedAt && !u.selfRegistered) u.phoneVerifiedAt = u.createdAt || new Date().toISOString();
 
   // ── demo only: GENZ Connector partners + 50 referrals ──
   if (SEED_DEMO && !parsed.users.some(u => u.role === 'GENZ_CONNECTOR')) {

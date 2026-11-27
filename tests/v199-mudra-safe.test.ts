@@ -41,7 +41,7 @@ const DEAL = 'DEAL-2026-001'; const BUYER = 'USR-BUYER-001';
 
 describe('v199 · ledger rules (unit)', () => {
   const base = () => ({
-    users: [{ id: 'B1', role: 'BUYER_TENANT', phone: '98000 00001', verificationStatus: 'VERIFIED', idCheckedAt: 'x' }, { id: 'K1', role: 'BROKER', phone: '98000 00002' }], requirements: [{ id: 'R1', buyerId: 'B1', assignedBrokerId: 'K1' }, { id: 'R2', buyerId: 'K1', assignedBrokerId: 'K1' }],
+    users: [{ id: 'B1', role: 'BUYER_TENANT', phone: '98000 00001', verificationStatus: 'VERIFIED', idCheckedAt: 'x', phoneVerifiedAt: 'x' }, { id: 'K1', role: 'BROKER', phone: '98000 00002' }], requirements: [{ id: 'R1', buyerId: 'B1', assignedBrokerId: 'K1' }, { id: 'R2', buyerId: 'K1', assignedBrokerId: 'K1' }],
     dealRooms: [{ id: 'D1', requirementId: 'R1', stage: 'Site Visit Done', introducingBrokerId: 'K1', closingBrokerId: 'K2' }, { id: 'D2', requirementId: 'R2', stage: 'Site Visit Done', introducingBrokerId: 'K1', closingBrokerId: 'K2' }],
     siteVisits: [{ id: 'V1', dealRoomId: 'D1', isVerified: true, customerPhone: '9800000001', verifiedBy: 'T' }, { id: 'V2', dealRoomId: 'D2', isVerified: true, customerPhone: '9800000002', verifiedBy: 'T' }],
     visitAcks: [{ kind: 'VISIT', refId: 'V1', status: 'ACKED' }, { kind: 'VISIT', refId: 'V2', status: 'ACKED' }],
@@ -97,7 +97,7 @@ describe('v199 · ledger rules (unit)', () => {
     const st: any = base(); st.mudraEntries.push({ id: 'a', userId: 'B1', kind: 'CREDIT', amount: 1 }, { id: 'b', userId: 'X', kind: 'CREDIT', amount: 1 }); st.mudraRedemptions.push({ id: 'r', userId: 'B1', invoiceRef: 'x' });
     await withState(st, () => { expect(eraseMudraFor('B1')).toBe(1); });
     expect(st.mudraEntries.map((e: any) => e.id)).toEqual(['b']); expect(st.mudraRedemptions.map((r: any) => [r.id, r.userId])).toEqual([['r', 'ERASED']]);
-    expect(read('server/privacy.ts')).toContain('eraseMudraFor(target.id, phoneWas)');
+    expect(read('server/privacy.ts')).toContain('eraseMudraFor(target.id, ownsPhone ? phoneWas : undefined)');
   });
 });
 

@@ -291,7 +291,7 @@ describe('v200 · erase clears the visit code; an erased account cannot earn Mud
   });
   it('settleMudra needs the buyer\'s requirement assigned to a deal broker AND a verified visit with the buyer\'s phone', async () => {
     const { settleMudra, buyerOfDeal } = await import('../server/mudra');
-    const mk = (over: any = {}): any => ({ users: [{ id: 'B1', role: 'BUYER_TENANT', phone: '98000 00001', email: 'b@x.in', verificationStatus: 'VERIFIED', idCheckedAt: 'x', ...over.buyer }, { id: 'K1', role: 'BROKER', phone: '90000 00001' }, { id: 'K2', role: 'BROKER', phone: '90000 00002' }], requirements: [{ id: 'R1', buyerId: 'B1', assignedBrokerId: 'K1', ...over.req }], dealRooms: [{ id: 'D1', requirementId: 'R1', stage: 'Site Visit Done', introducingBrokerId: 'K1', closingBrokerId: 'K2' }],
+    const mk = (over: any = {}): any => ({ users: [{ id: 'B1', role: 'BUYER_TENANT', phone: '98000 00001', email: 'b@x.in', verificationStatus: 'VERIFIED', idCheckedAt: 'x', phoneVerifiedAt: 'x', ...over.buyer }, { id: 'K1', role: 'BROKER', phone: '90000 00001' }, { id: 'K2', role: 'BROKER', phone: '90000 00002' }], requirements: [{ id: 'R1', buyerId: 'B1', assignedBrokerId: 'K1', ...over.req }], dealRooms: [{ id: 'D1', requirementId: 'R1', stage: 'Site Visit Done', introducingBrokerId: 'K1', closingBrokerId: 'K2' }],
       siteVisits: [{ id: 'V1', dealRoomId: 'D1', isVerified: true, customerPhone: '9800000001', verifiedBy: 'T', ...over.visit }], visitAcks: over.acks ?? [{ kind: 'VISIT', refId: 'V1', status: 'ACKED' }], commissionAgreements: [{ dealId: 'D1', status: 'ACTIVE', version: 1, totalAgreedBrokerage: 200000 }], mudraEntries: [], mudraRedemptions: [], mudraInvoices: [], mudraConfig: undefined });
     expect(await withState(mk(), () => settleMudra('D1'))).toMatchObject({ ok: true });
     expect(await withState(mk({ req: { assignedBrokerId: 'K9' } }), () => [buyerOfDeal('D1'), settleMudra('D1')])).toEqual([null, { ok: false, reason: 'NOT_A_BUYER_ACCOUNT' }]);   // someone else's requirement smuggled into the deal
@@ -330,7 +330,7 @@ describe('v200 · source guards', () => {
   it('round 5: the owner\'s booking SMS carries no code (the customer\'s does, and names who to show it to); the claim copy is EN + HI', () => {
     const sv = read('server.ts'); const l = sv.split('\n').find(x => x.includes('ownerUser?.phone) void sendSms'))!; expect(l).toBeTruthy(); expect(l).not.toMatch(/otpCode|\$\{msg\}/); expect(l).toContain('scan their QR or ask for their code');
     expect(sv).toContain('Show code ${otpCode} to the property owner or listing broker'); expect(sv).toContain('एक ब्रोकर आपकी मदद करना चाहता है'); expect(sv).toContain('REQUIREMENT_CLAIM_ACCEPTED');
-    expect(read('server/mudra.ts')).toContain('visitAcked(v.id)'); expect(read('server/profiles.ts').match(/visitAcked\(/g)!.length).toBe(2); expect(read('server/privacy.ts')).toContain('verifiedBy: undefined');
+    expect(read('server/mudra.ts')).toContain('visitAcked(v.id)'); expect(read('server/profiles.ts').match(/visitAcked\(/g)!.length).toBe(2); expect(read('server/privacy.ts')).toContain('const visitRow');
   });
   it('round 5 extras: owner yes resets on reschedule, buyer told, room line follows, QR/code hidden from the buyer before the tick, errorHi on visit errors, deal brokers hear price/status, claim/invoice/receipt copy', () => {
     const sv = read('server.ts'); expect(sv).toContain('visit.ownerOk = undefined'); expect(sv).toContain('moveClientRoomVisit(visit.id, visit.scheduledTime)'); expect(sv).toContain('Your visit moved to'); expect(sv).toContain('&& !visitAckBlock(\'VISIT\', v.id)) ||');
@@ -347,7 +347,7 @@ describe('v200 · source guards', () => {
 });
 
 describe('v200 · badges count distinct, verified buyers only, found the way the Mudra rule finds them (unit)', () => {
-  const usr = (id: string, phone: string, extra: any = {}) => ({ id, role: 'BUYER_TENANT', phone, verificationStatus: 'VERIFIED', idCheckedAt: 'x', ...extra });
+  const usr = (id: string, phone: string, extra: any = {}) => ({ id, role: 'BUYER_TENANT', phone, verificationStatus: 'VERIFIED', idCheckedAt: 'x', phoneVerifiedAt: 'x', ...extra });
   const mkState = (): any => ({
     users: [{ id: 'BRK', role: 'BROKER', phone: '90000 00001' }, { id: 'STAFF', role: 'TEAM_MEMBER', employerId: 'BRK' }, usr('B1', '98000 00001'), usr('B2', '98000 00002'), usr('B3', '98000 00003', { idCheckedAt: undefined }), usr('SELF', '90000 00001'), usr('GONE', '98000 00009', { email: 'deleted-x@erased.invalid' })],
     siteVisits: [], dealRooms: [], requirements: [], visitAcks: [] as any[],
@@ -388,7 +388,7 @@ describe('v200 · DPDP: export hides secrets and internals; erase keeps invoices
     expect(b.mudraInvoices.length).toBeGreaterThanOrEqual(3); expect(b.mudraInvoices[0]).toHaveProperty('invoiceRef'); expect(b.mudraInvoices.some((i: any) => i.youPaidInr === 9999 || i.youPaidInr === 10000 || i.youPaidInr === 9990)).toBe(true);
     expect(t).not.toMatch(/genzShare|partnerPayout|settlement|jobCode|hash/);
     // round 8 — what he owns is in his file: his needs (buyerId) and the visits booked on his phone, still without codes or claim names
-    expect(b.requirements.length).toBeGreaterThan(0); expect(b.requirements.every((x: any) => x.buyerId === BUYER)).toBe(true); expect(b.siteVisits.some((v: any) => v.id === 'SV-2026-101')).toBe(true);
+    expect(b.requirements.length).toBeGreaterThan(0); expect(b.requirements.some((x: any) => x.customerPhone)).toBe(true); expect(b.siteVisits.some((v: any) => v.id === 'SV-2026-101')).toBe(true);
     expect(JSON.stringify([b.requirements, b.siteVisits])).not.toMatch(/"claimRequests"|brokerName|"otpCode":"\d|"qrToken"|"jobCode"|"verifiedBy"/); expect(JSON.stringify(b.auditEventsByYou)).not.toMatch(/"hash"|"previousHash"/);
     mineReq = b.requirements.map((x: any) => x.id);
   });
@@ -409,5 +409,29 @@ describe('v200 · DPDP: export hides secrets and internals; erase keeps invoices
     const sv = ((await j(await call(jar.SA, 'GET', '/api/site-visits'))).siteVisits as any[]).find(v => v.id === 'SV-2026-101'); expect(sv).toBeTruthy(); expect(sv.customerName).toBe('Erased'); expect(sv.customerPhone || '').toBe(''); expect(JSON.stringify(sv)).not.toMatch(/98263/);
     const nb = await call(jar.SA, 'POST', '/api/mudra/admin/invoices', { partnerId: 'PTR-T1', buyerUserId: BUYER, description: 'After erase', amountInr: 1000 }); expect(nb.status).toBe(409); expect((await j(nb)).code).toBe('BUYER_ERASED');
     const nr = await call(jar.SA, 'POST', `/api/mudra/admin/invoices/${C}/mark-paid`); expect(nr.status).toBe(409);   // cancelled: it cannot be paid or started
+  });
+});
+
+describe('v200 · round 10: a phone counts only when it was verified by an OTP', { timeout: 120000 }, () => {
+  const VICTIM_PHONE = '9826377889';   // the seeded buyer's number (verified); visit SV-2026-101 is booked on it
+  it('an invite sign-up on the victim\'s verified phone is refused (409 PHONE_TAKEN); a buyer invite without an OTP is refused (400 OTP_REQUIRED)', async () => {
+    const inv = await j(await call(jar.SA, 'POST', '/api/invitations', { invitedEmail: 'squat.broker@test.genz.example', invitedPhone: '9826155667', targetRole: 'BROKER' }));
+    const reg = await call(undefined, 'POST', '/api/auth/register-invite', { code: inv.invitation.code, name: 'Squat Broker', phone: '9826155667', email: 'squat.broker@test.genz.example', password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPS2099F' });
+    const rd = await j(reg); expect(reg.status, JSON.stringify(rd)).toBe(409); expect(rd.code).toBe('PHONE_TAKEN');
+    const inv2 = await j(await call(jar.SA, 'POST', '/api/invitations', { invitedEmail: 'squat.buyer@test.genz.example', invitedPhone: '9826202099', targetRole: 'BUYER_TENANT' }));
+    const r2 = await call(undefined, 'POST', '/api/auth/register-invite', { code: inv2.invitation.code, name: 'Squat Buyer', phone: '9826202099', email: 'squat.buyer@test.genz.example', password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true });
+    expect(r2.status).toBe(400); expect((await j(r2)).code).toBe('OTP_REQUIRED');
+  });
+  it('the OTP-verified holder still matches (the seeded buyer export above lists SV-2026-101); two verified holders of one number match nobody (unit)', async () => {
+    const { customerMatchesUser } = await import('../server/access'); const mk = (id: string, v?: string, email = `${id}@x.in`): any => ({ id, phone: '98000 00001', email, phoneVerifiedAt: v });
+    const st: any = { users: [mk('A', 'x'), mk('B'), mk('C', 'x', 'gone@erased.invalid')] };
+    expect(customerMatchesUser('9800000001', st.users[0], st)).toBe(true);    // an unverified squatter and an erased account do not block him
+    expect(customerMatchesUser('9800000001', st.users[1], st)).toBe(false);   // the squatter himself matches nothing
+    st.users.push(mk('D', 'x')); expect(customerMatchesUser('9800000001', st.users[0], st)).toBe(false);   // two verified holders: nobody
+    expect(customerMatchesUser('98000', { id: 'S', phone: '98000', phoneVerifiedAt: 'x' } as any, { users: [] } as any)).toBe(false);   // a short number never matches
+  });
+  it('source: invite sign-up stamps phoneVerifiedAt only when the OTP passed; the export rows are allow-lists; the erase audit counts scrubbed rows', () => {
+    expect(read('server.ts')).toContain('if (otpOk) newUser.phoneVerifiedAt = now; else newUser.selfRegistered = true;');
+    const p = read('server/privacy.ts'); expect(p).toContain('const requirementRow'); expect(p).toContain('const visitRow'); expect(p).toContain('ERASURE_ROWS_SCRUBBED'); expect(p).toContain('need(s) and');
   });
 });

@@ -82,11 +82,11 @@ function summaryOf(targetId: string) { return summarize(st().reviews.filter(r =>
  *  a visit's buyer is the verified account whose phone is on the visit. Never the broker himself or a buyer on his phone. A visit counts only if a third party confirmed it (`verifiedBy`: not the broker, his team, the system link, or unknown/older). Residual risk: a broker with a friend's verified buyer account could still farm visits confirmed by a third party; the distinct-buyer rule limits it to one count per account. */
 export function badgeCounts(u: UserProfile, s: DatabaseState = st()) {
   const buyers = s.users.filter(x => genuineBuyer(u, x));
-  const vis = new Set<string>(); for (const v of s.siteVisits) if (v.brokerId === u.id && v.isVerified && visitAcked(v.id, s) && confirmedByThird(u, v, s)) { const b = buyers.find(x => customerMatchesUser(v.customerPhone, x)); if (b) vis.add(b.id); }
+  const vis = new Set<string>(); for (const v of s.siteVisits) if (v.brokerId === u.id && v.isVerified && visitAcked(v.id, s) && confirmedByThird(u, v, s)) { const b = buyers.find(x => customerMatchesUser(v.customerPhone, x, s)); if (b) vis.add(b.id); }
   // a deal counts only with a requirement assigned to one of its two brokers, whose buyer is a counted account, AND a verified visit on that deal with that buyer's phone
   const deals = new Set<string>(); for (const d of s.dealRooms) if (d.stage === 'Settled' && (d.introducingBrokerId === u.id || d.closingBrokerId === u.id)) {
     const r = s.requirements.find(x => x.id === d.requirementId); if (!r || ![d.introducingBrokerId, d.closingBrokerId].includes(r.assignedBrokerId)) continue;
-    const b = buyers.find(x => x.id === r.buyerId); if (b && s.siteVisits.some(v => v.dealRoomId === d.id && v.isVerified && customerMatchesUser(v.customerPhone, b) && visitAcked(v.id, s) && confirmedByThird(u, v, s))) deals.add(b.id);
+    const b = buyers.find(x => x.id === r.buyerId); if (b && s.siteVisits.some(v => v.dealRoomId === d.id && v.isVerified && customerMatchesUser(v.customerPhone, b, s) && visitAcked(v.id, s) && confirmedByThird(u, v, s))) deals.add(b.id);
   }
   return { verifiedVisits: vis.size, closedDeals: deals.size };
 }

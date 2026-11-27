@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { db, type UserProfile } from './db.js';
 import { rateLimit, hit, ipKey, hashPassword, passwordPolicyError, setSessionCookie, signSession, digits } from './auth.js';
 import { signupMode } from './features.js';
-import { sendSignupOtp, checkOtpToken, finishSignupOtp } from './ownerlist.js';
+import { sendSignupOtp, checkOtpToken, finishSignupOtp, OTP_HI } from './ownerlist.js';
 import { phoneSchema } from './validation.js';
 import { normPan, isValidPan, maskPan, panHeldByApproved } from './kyc.js';
 import { connectorProfileSchema } from './connector.js';
@@ -93,7 +93,7 @@ export function createOpenSignupRouter() {
     }
     // everything the person can fix is checked BEFORE the code, so a typo never burns a one-time code
     const otpErr = checkOtpToken(d.otpToken, phone, d.otpCode, false, req.ip, 'open');   // looked at now, spent only when the account exists
-    if (otpErr) return err(res, 400, 'OTP', otpErr, 'मोबाइल कोड सही नहीं है या पुराना हो गया — नया कोड माँगें।');
+    if (otpErr) return err(res, 400, 'OTP', otpErr, OTP_HI[otpErr] || 'मोबाइल कोड सही नहीं है या पुराना हो गया — नया कोड माँगें।');
     // the phone was just proven by the OTP, so telling its owner "already registered" gives nothing away
     if (st.users.some(u => digits(u.phone).slice(-10) === phone)) return err(res, 409, 'DUPLICATE_PHONE', 'This mobile number already has a GENZ account. Sign in with it, or use "Forgot password".', 'इस मोबाइल नंबर का GENZ अकाउंट पहले से है। इसी से साइन इन करें, या "पासवर्ड भूल गए" चुनें।');
     // a PAN is a CLAIM until KYC: only a KYC-approved holder blocks it (two Basic claims may coexist; the first to reach approval with a document wins). The answer never says a PAN is registered; every refusal is audited.
@@ -114,7 +114,7 @@ export function createOpenSignupRouter() {
       ...(pan ? { idConsentAt: now } : {}),
       verificationStatus: 'VERIFIED', basicTier: true, signupMode: 'open', autoVerifiedAt: now, autoVerifiedBy: 'OPEN_SIGNUP',
       verificationNotes: 'Live at open sign-up (Basic): mobile OTP + PAN. Not KYC-verified — deals, money, broadcasts and invites are locked until an admin approves the PAN / RERA document.',
-      createdAt: now, passwordHash: hashPassword(d.password), sessionVersion: 1,
+      createdAt: now, passwordHash: hashPassword(d.password), sessionVersion: 1, phoneVerifiedAt: now,
     };
     st.users.push(u); finishSignupOtp(d.otpToken); made.set(ip, [...(made.get(ip) || []), Date.now()]);
     db.save();

@@ -4,6 +4,7 @@
  */
 import { inPool } from '../src/shared/ownerListRules.js';
 import { isVerifiedFull } from './permissions.js';
+import { db } from './db.js';
 import type { DatabaseState, UserProfile, DealRoom, Property } from './db.js';
 import { digits } from './auth.js';
 import { SOLD_VISIBLE_DAYS } from '../src/shared/dealRules.js';
@@ -183,9 +184,20 @@ export function dealsOfProperty(state: DatabaseState, propertyId: string) {
   return state.dealRooms.filter(d => d.propertyId === propertyId);
 }
 
-export function customerMatchesUser(visitPhone: string | undefined, u: U) {
-  return !!visitPhone && !!u.phone && digits(visitPhone) === digits(u.phone);
+/** the same last-10-digit number, nothing more (use it only to REFUSE; a match proves nothing about who holds the number) */
+export function samePhone(visitPhone: string | undefined, u: U) {
+  return !!visitPhone && !!u.phone && digits(visitPhone).slice(-10) === digits(u.phone).slice(-10) && digits(visitPhone).length >= 10;
 }
+/** a visit's customer phone belongs to this user only if HE verified it with an OTP, it is a full 10-digit number, and no other live account has VERIFIED the same number (an unverified squatter cannot block him, and cannot act as him) */
+export function customerMatchesUser(visitPhone: string | undefined, u: U, s: DatabaseState = db.getState()) {
+  if (!samePhone(visitPhone, u) || !(u as UserProfile).phoneVerifiedAt) return false;
+  const ten = digits(u.phone).slice(-10);
+  return !(s.users || []).some(x => x.id !== (u as UserProfile).id && liveVerifiedHolder(x) && digits(x.phone).slice(-10) === ten && digits(x.phone).length >= 10);
+}
+/** a verified, live account: erased, suspended, rejected and blacklisted ones do not hold a number */
+const liveVerifiedHolder = (x: UserProfile) => !!x.phoneVerifiedAt && !/@erased\.invalid$/i.test(x.email || '') && !['SUSPENDED', 'REJECTED', 'BLACKLISTED'].includes(x.verificationStatus);
+/** is this number already verified on a live account (other than `exceptId`)? */
+export const phoneVerifiedElsewhere = (phone: string | undefined, s: DatabaseState = db.getState(), exceptId = '') => { const ten = digits(phone).slice(-10); return ten.length === 10 && (s.users || []).some(x => x.id !== exceptId && liveVerifiedHolder(x) && digits(x.phone).slice(-10) === ten); };
 
 /** Public projection of a user — never include credentials / session internals. */
 export function publicUser<T extends Partial<UserProfile>>(u: T): Omit<T, 'passwordHash' | 'sessionVersion' | 'mustChangePassword'> {

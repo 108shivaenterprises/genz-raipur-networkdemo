@@ -11,7 +11,7 @@ import { db, DEFAULT_MUDRA_CONFIG, type DatabaseState, type MudraConfig, type Mu
 import { ctx, requireAuth, rateLimit, digits } from './auth.js';
 import { issueJobCode, checkJobCode, unlockJobCode, triesLeft, codeState, saveJobPhoto, readJobPhoto, eraseJobPhotos, JOB_PHOTO_MAX_PER_KIND, JOBCODE_MAX_TRIES } from './jobcode.js';
 import { isVerifiedFull } from './permissions.js';
-import { customerMatchesUser } from './access.js';
+import { customerMatchesUser, samePhone } from './access.js';
 
 const DAY = 86_400_000;
 const st = (): DatabaseState => db.getState();
@@ -63,7 +63,7 @@ export function mudraBalance(userId: string, now = Date.now()): { balance: numbe
 /** the buyer's own "no direct deal" acknowledgement (tick + mobile code) for that visit is CONFIRMED (status ACKED) */
 export const visitAcked = (visitId: string, s: DatabaseState = st()): boolean => (s.visitAcks || []).some(a => a.kind === 'VISIT' && a.refId === visitId && a.status === 'ACKED');
 /** ONE buyer test for Mudra and badges: a real, verified, ID-checked buyer account that is not the broker and not on the broker's phone */
-export const genuineBuyer = (broker: UserProfile, x?: UserProfile): boolean => !!x && x.role === 'BUYER_TENANT' && isVerifiedFull(x) && !!x.idCheckedAt && x.id !== broker.id && !/@erased\.invalid$/i.test(x.email || '') && !(x.phone && broker.phone && customerMatchesUser(broker.phone, x));
+export const genuineBuyer = (broker: UserProfile, x?: UserProfile): boolean => !!x && x.role === 'BUYER_TENANT' && isVerifiedFull(x) && !!x.idCheckedAt && x.id !== broker.id && !/@erased\.invalid$/i.test(x.email || '') && !samePhone(broker.phone, x);
 /** ...and a visit counts only if a THIRD party confirmed it: not the broker, not his team, not the system link, and (older visits) not unknown */
 export const confirmedByThird = (broker: UserProfile, v: { verifiedBy?: string }, s: DatabaseState = st()): boolean => { const id = v.verifiedBy; if (!id || id === 'SYSTEM' || id === broker.id) return false; const w = s.users.find(x => x.id === id); return !(w && w.employerId === broker.id); };
 export function settleMudra(dealId: string): { ok: true; entry?: MudraEntry; already?: boolean } | { ok: false; reason: string } {
@@ -76,7 +76,7 @@ export function settleMudra(dealId: string): { ok: true; entry?: MudraEntry; alr
   if (dealFrozen(dealId)) return { ok: false, reason: 'DEAL_FROZEN' };
   const brokers = [deal.introducingBrokerId, deal.closingBrokerId].map(id => s.users.find(u => u.id === id)).filter((u): u is UserProfile => !!u);
   if (!brokers.length || !brokers.every(b => genuineBuyer(b, buyer))) return { ok: false, reason: 'BUYER_NOT_INDEPENDENT' };   // same test as the badges
-  if (!s.siteVisits.some(v => v.dealRoomId === dealId && v.isVerified && customerMatchesUser(v.customerPhone, buyer) && visitAcked(v.id) && brokers.every(b => confirmedByThird(b, v, s)))) return { ok: false, reason: 'NO_VERIFIED_VISIT' };   // the visit must be the buyer's own (his phone on it)
+  if (!s.siteVisits.some(v => v.dealRoomId === dealId && v.isVerified && customerMatchesUser(v.customerPhone, buyer, s) && visitAcked(v.id) && brokers.every(b => confirmedByThird(b, v, s)))) return { ok: false, reason: 'NO_VERIFIED_VISIT' };   // the visit must be the buyer's own (his phone on it)
   const ag = s.commissionAgreements.filter(a => a.dealId === dealId && a.status === 'ACTIVE').sort((a, b) => b.version - a.version)[0];
   if (!ag || !(ag.totalAgreedBrokerage > 0)) return { ok: false, reason: 'NO_ACTIVE_AGREEMENT' };
   const buyerShare = (ag as any).payer === 'SPLIT_EQUAL' ? ag.totalAgreedBrokerage / 2 : ag.totalAgreedBrokerage;

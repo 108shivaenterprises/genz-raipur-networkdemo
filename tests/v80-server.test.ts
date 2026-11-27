@@ -136,7 +136,7 @@ describe('owner sign-in: the code travels as a signed token', () => {
     const body = { phone: ph, code: o.devCode, otpToken: o.otpToken, name: 'Once Only', consent: true };
     expect((await call(undefined, 'POST', '/api/owner/verify', body)).status).toBe(200);
     const again = await call(undefined, 'POST', '/api/owner/verify', body);
-    expect(again.status).toBe(400); expect((await j(again)).code).toBe('EXPIRED');
+    expect(again.status).toBe(400); expect((await j(again)).code).toBe('USED');   // round 9: a replayed code says USED (still refused)
   });
   it('a wrong code is "not right", five tries at most, then even the right code is refused', async () => {
     const ph = '9' + rnd(9); const o = await otp(ph);
