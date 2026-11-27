@@ -69,9 +69,10 @@ export const PrivacyCenter: React.FC<{ onClose: () => void; role?: string; otpOn
   const load = () => j('/api/privacy/requests').then(d => setReqs(d.requests)).catch(() => {});
   useEffect(() => { load(); }, []);
 
+  const ui = useUI();
   const file = async (type: 'ERASURE' | 'GRIEVANCE' | 'CORRECTION' | 'CONSENT_WITHDRAWAL') => {
     try {
-      if (type === 'ERASURE' && !confirm(tx('Request deletion of your account? Records required by law are retained in anonymised form. If you gave GENZ KYC (face photo, ID, Aadhaar), it is kept sealed for 3 years for fraud / legal checks and then deleted.', 'अपना अकाउंट हटाने का अनुरोध करें? क़ानून के लिए ज़रूरी रिकॉर्ड गुमनाम रूप में रखे जाते हैं। अगर आपने GENZ को KYC (फ़ोटो, ID, आधार) दिया है तो वह धोखाधड़ी / क़ानूनी जाँच के लिए 3 साल सील करके रखा जाता है, फिर मिटा दिया जाता है।'))) return;
+      if (type === 'ERASURE' && !(await ui.confirm(tx('Request deletion of your account?', 'अपना अकाउंट हटाने का अनुरोध करें?'), tx('Your request goes to the GENZ desk, who complete it (not instant). Removed: your name, phone, profile, photos and the name and phone on your needs and visits. Kept, without your name: invoices and payment records, deal and commission records. KYC (face photo, ID, Aadhaar) stays sealed for 3 years for fraud and legal checks, then is deleted.', 'आपका अनुरोध GENZ डेस्क के पास जाता है, वे इसे पूरा करते हैं (तुरंत नहीं)। हटेगा: आपका नाम, फ़ोन, प्रोफ़ाइल, फ़ोटो और आपकी ज़रूरतों व विज़िट पर नाम-फ़ोन। रहेगा, आपके नाम के बिना: इनवॉइस और भुगतान रिकॉर्ड, डील व कमीशन रिकॉर्ड। KYC (फ़ोटो, ID, आधार) धोखाधड़ी / क़ानूनी जाँच के लिए 3 साल सील रहता है, फिर मिटा दिया जाता है।'), { danger: true }))) return;
       await j('/api/privacy/requests', { method: 'POST', body: JSON.stringify({ type, details: text }) });
       setText(''); setMsg({ ok: true, text: tx('Request filed. The Grievance Officer will respond within 15 days.', 'अनुरोध दर्ज हो गया। शिकायत अधिकारी 15 दिन में जवाब देंगे।') }); load();
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }
@@ -129,6 +130,7 @@ export const PrivacyQueue: React.FC<{ askOnly?: boolean }> = ({ askOnly }) => { 
     try {
       const cur = reqs.find(r => r.id === id); const needsNote = decision === 'REJECT' || cur?.type === 'CONSENT_WITHDRAWAL' || !!cur?.dealRoomId;
       let note = '';
+      if (decision === 'COMPLETE' && cur?.type === 'ERASURE' && !(await ui.confirm(tx('Complete this erasure?', 'यह मिटाना पूरा करें?'), tx('This removes the person\'s personal data now and cannot be undone.', 'इससे व्यक्ति का निजी डेटा अभी हट जाएगा, वापस नहीं आएगा।'), { danger: true }))) return;
       if (needsNote) {
         const got = await ui.prompt(decision === 'COMPLETE' && cur?.dealRoomId ? tx('Your reply to the broker (they will see this)', 'ब्रोकर के लिए आपका जवाब (उन्हें दिखेगा)') : decision === 'REJECT' ? tx('Reason for rejection', 'अस्वीकार करने का कारण') : tx('What was stopped? (the person sees this)', 'क्या बंद किया गया? (व्यक्ति को यह दिखेगा)'), { required: true, confirmLabel: tx('Send', 'भेजें'), cancelLabel: tx('Cancel', 'रद्द करें') });
         if (got === null) return;

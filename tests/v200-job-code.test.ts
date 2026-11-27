@@ -187,6 +187,9 @@ describe('v200 · round 5: a claim on a buyer\'s need waits for his yes', { time
     expect(rv).toMatch(/state === 'PENDING'\) return/); expect(rv).toContain('<ClaimNeed req={req} />'); expect(read('src/lib/api.ts')).toContain('claimRequirement:');
     expect(read('src/components/JoinView.tsx')).toMatch(/<LocationFields[^>]*showLocality[^>]*required \/>/); expect(read('src/components/LocationFields.tsx')).toMatch(/\{required && <span className="text-red-600" aria-hidden> \*<\/span>\}/);
   });
+  it('erase copy says what is kept and that the desk completes it; the desk Complete asks to confirm; the 409 is bilingual', () => {
+    const pc = read('src/components/PrivacyCenter.tsx'); expect(pc).toContain('GENZ डेस्क'); expect(pc).toContain('invoices and payment records'); expect(pc).toContain('Complete this erasure?'); expect(read('server/privacy.ts')).toContain("code: 'OPEN_DEALS'");
+  });
   it('the invite sign-up asks a BROKER for a locality, like the open sign-up', () => { expect(read('server.ts')).toMatch(/invite\.targetRole === 'BROKER' && !String\(parsed\.data\.locality/); });
   it('the broker side is told one line (EN + HI) that the buyer must accept', async () => {
     const c = await j(await call(jar.BUY, 'POST', '/api/requirements', need)); const id = c.requirement.id;
@@ -371,7 +374,7 @@ describe('v200 · badges count distinct, verified buyers only, found the way the
 
 describe('v200 · DPDP: export hides secrets and internals; erase keeps invoices as anonymous company records', { timeout: 120000 }, () => {
   const jpeg = () => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(300, 7)]).toString('base64');
-  let C = ''; let photoId = '';
+  let C = ''; let photoId = ''; let mineReq: string[] = [];
   it('a broker\'s export has no job code, hash, OTP or QR token', async () => {
     const r = await call(jar.BRK2, 'GET', '/api/privacy/export'); expect(r.status).toBe(200); const b = await r.json(); const t = JSON.stringify(b.siteVisits);
     expect(b.siteVisits.length).toBeGreaterThan(0); expect(t).not.toMatch(/"jobCode"|"hash"|"salt"|"otpCode"|"qrToken"|"otpAttempts"/); expect(JSON.stringify(b)).not.toMatch(/"jobCode"|"otpCode"|"qrToken"/); expect(t).not.toContain('verifiedBy');
@@ -384,6 +387,10 @@ describe('v200 · DPDP: export hides secrets and internals; erase keeps invoices
     const r = await call(jar.BUY, 'GET', '/api/privacy/export'); expect(r.status).toBe(200); const b = await r.json(); const t = JSON.stringify(b.mudraInvoices);
     expect(b.mudraInvoices.length).toBeGreaterThanOrEqual(3); expect(b.mudraInvoices[0]).toHaveProperty('invoiceRef'); expect(b.mudraInvoices.some((i: any) => i.youPaidInr === 9999 || i.youPaidInr === 10000 || i.youPaidInr === 9990)).toBe(true);
     expect(t).not.toMatch(/genzShare|partnerPayout|settlement|jobCode|hash/);
+    // round 8 — what he owns is in his file: his needs (buyerId) and the visits booked on his phone, still without codes or claim names
+    expect(b.requirements.length).toBeGreaterThan(0); expect(b.requirements.every((x: any) => x.buyerId === BUYER)).toBe(true); expect(b.siteVisits.some((v: any) => v.id === 'SV-2026-101')).toBe(true);
+    expect(JSON.stringify([b.requirements, b.siteVisits])).not.toMatch(/"claimRequests"|brokerName|"otpCode":"\d|"qrToken"|"jobCode"|"verifiedBy"/); expect(JSON.stringify(b.auditEventsByYou)).not.toMatch(/"hash"|"previousHash"/);
+    mineReq = b.requirements.map((x: any) => x.id);
   });
   it('erasing the buyer keeps invoices and settlements (buyer = ERASED, photos gone, open invoice closed); nothing can be redeemed or re-attached; new invoices refused', async () => {
     const before = ((await j(await call(jar.SA, 'GET', '/api/mudra/admin/invoices'))).invoices as any[]).filter(i => i.buyerUserId === BUYER); const paid = before.filter(i => i.settlement);
@@ -396,6 +403,10 @@ describe('v200 · DPDP: export hides secrets and internals; erase keeps invoices
     for (const p of paid) { const k = kept.find(i => i.invoiceRef === p.invoiceRef); expect(k.settlement).toMatchObject({ grossInr: p.settlement.grossInr, coinsInr: p.settlement.coinsInr, customerPaysInr: p.settlement.customerPaysInr, genzShareInr: p.settlement.genzShareInr, partnerPayoutInr: p.settlement.partnerPayoutInr }); expect(k.amountInr).toBe(p.amountInr); expect(k.partnerName).toBe(p.partnerName); }
     expect(kept.find(i => i.id === C).status).toBe('CANCELLED');                                // an open invoice with no buyer is closed
     expect((await call(jar.SA, 'GET', `/api/mudra/invoices/${C}/photos/${photoId}`)).status).toBe(404);   // the picture file is gone
+    const rq = ((await j(await call(jar.SA, 'GET', '/api/requirements'))).requirements as any[]);   // round 8 — his needs and visits stay as records but carry no name, number or code
+    for (const x of rq.filter(x => mineReq.includes(x.id))) { expect(x.customerName).toBe('Erased'); expect(x.customerPhone || '').toBe(''); expect(x.buyerId).toBe('ERASED'); }
+    expect(rq.some(x => !mineReq.includes(x.id) && x.customerName && x.customerName !== 'Erased')).toBe(true);   // other people's rows are untouched
+    const sv = ((await j(await call(jar.SA, 'GET', '/api/site-visits'))).siteVisits as any[]).find(v => v.id === 'SV-2026-101'); expect(sv).toBeTruthy(); expect(sv.customerName).toBe('Erased'); expect(sv.customerPhone || '').toBe(''); expect(JSON.stringify(sv)).not.toMatch(/98263/);
     const nb = await call(jar.SA, 'POST', '/api/mudra/admin/invoices', { partnerId: 'PTR-T1', buyerUserId: BUYER, description: 'After erase', amountInr: 1000 }); expect(nb.status).toBe(409); expect((await j(nb)).code).toBe('BUYER_ERASED');
     const nr = await call(jar.SA, 'POST', `/api/mudra/admin/invoices/${C}/mark-paid`); expect(nr.status).toBe(409);   // cancelled: it cannot be paid or started
   });

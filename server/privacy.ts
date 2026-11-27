@@ -38,6 +38,17 @@ export function legalConfig() {
   };
 }
 
+const last10 = (p?: string) => String(p || '').replace(/\D/g, '').slice(-10);
+/** DPDP erase of the person's own need and visit rows. They stay as transaction records (a deal or commission may point at them) but carry no name, number or code. Other people's rows are never touched. */
+export function erasePersonalRows(s: ReturnType<typeof db.getState>, userId: string, phoneWas?: string): void {
+  for (const r of s.requirements) if (r.buyerId === userId) {
+    r.customerName = 'Erased'; r.customerPhone = ''; r.buyerId = 'ERASED';
+    for (const c of r.claimRequests || []) if (c.status === 'PENDING') c.status = 'SUPERSEDED';
+  }
+  const ph = last10(phoneWas); if (ph.length < 10) return;
+  for (const v of s.siteVisits) if (last10(v.customerPhone) === ph) { v.customerName = 'Erased'; v.customerPhone = ''; v.otpCode = ''; v.qrToken = undefined; v.jobCode = undefined; v.otpAttempts = undefined; }
+}
+
 export function createPrivacyRouter() {
   const r = Router();
   const me = () => ctx().user;
@@ -68,10 +79,13 @@ export function createPrivacyRouter() {
       policyVersion: POLICY_VERSION,
       profile,
       properties: mine(s.properties, 'ownerId', 'listingBrokerId'),
-      requirements: mine(s.requirements, 'brokerId', 'ownerId', 'createdBy').map((r: any) => ({ ...r, claimRequests: undefined, claimRequestCount: (r.claimRequests || []).length })),   // other brokers' names stay out of the export
+      // a buyer's own needs (buyerId) are his too; a broker's own claim shows only his own entry
+      requirements: s.requirements.filter(x => x.buyerId === u.id || [(x as any).brokerId, (x as any).ownerId, (x as any).createdBy].some(k => k === u.id)).map((r: any) => ({ ...r, claimRequests: undefined, claimRequestCount: (r.claimRequests || []).length })),
+      myClaimRequests: s.requirements.flatMap(x => (x.claimRequests || []).filter(c => c.brokerId === u.id).map(c => ({ requirementId: x.id, at: c.at, status: c.status }))),
+      clientRooms: (s.clientRooms || []).filter(c => c.brokerId === u.id).map(c => ({ id: c.id, clientName: c.clientName, kind: c.kind, note: c.note, createdAt: (c as any).createdAt })),   // other brokers' names stay out of the export
       dealRooms: s.dealRooms.filter(d => d.introducingBrokerId === u.id || d.closingBrokerId === u.id || d.ownerId === u.id).map(d => ({ ...d, brokerBook: undefined, feePlans: undefined, myBrokerBook: d.brokerBook?.[u.id], myFeePlan: d.feePlans?.[u.id] })), // v71 — only MY brokerage book
       // codes and secrets never leave the server, not even in the owner's own export
-      siteVisits: mine(s.siteVisits, 'brokerId').map((v: any) => ({ ...v, jobCode: undefined, otpCode: undefined, qrToken: undefined, otpAttempts: undefined, verifiedBy: undefined })),
+      siteVisits: s.siteVisits.filter(v => v.brokerId === u.id || (last10(u.phone).length === 10 && last10(v.customerPhone) === last10(u.phone))).map((v: any) => ({ ...v, jobCode: undefined, otpCode: undefined, qrToken: undefined, otpAttempts: undefined, verifiedBy: undefined })),
       // D23 — the buyer's own service invoices: what he was billed and paid; never GENZ's share, the partner payout or the code hash
       mudraInvoices: s.mudraInvoices.filter(i => i.buyerUserId === u.id).map(i => ({ invoiceRef: i.invoiceRef, partner: i.partnerName, description: i.description, amountInr: i.amountInr, status: i.status, jobStatus: i.jobStatus || 'OPEN', coinsUsedInr: i.settlement?.coinsInr, youPaidInr: i.settlement?.customerPaysInr, createdAt: i.createdAt, paidAt: i.paidAt, signedOffAt: i.signedOffAt })),
       crmLeads: mine(s.crmLeads, 'associateId', 'builderId'),
@@ -90,7 +104,7 @@ export function createPrivacyRouter() {
       notifications: (s.inbox || []).filter(x => x.userId === u.id).map(({ userId: _u, ...x }) => x),
       // v78 — his profile text, the reviews about him and the ones he wrote
       profileAndReviews: exportProfileData(s, u.id),
-      auditEventsByYou: s.auditEvents.filter(e => e.actorId === u.id),
+      auditEventsByYou: s.auditEvents.filter(e => e.actorId === u.id).map(({ hash: _h, previousHash: _p, ...e }) => e),
     };
     db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'DATA_EXPORT', 'User exported their personal data (DPDP access right)');
     res.setHeader('Content-Disposition', `attachment; filename="genz-my-data-${u.id}.json"`);
@@ -152,17 +166,17 @@ export function createPrivacyRouter() {
       }
       const open = s.dealRooms.some(d => d.stage !== 'Settled' && (d.introducingBrokerId === target.id || d.closingBrokerId === target.id || d.ownerId === target.id));
       const crmOpen = s.crmBookings.some(b => (b.associateId === target.id || b.builderId === target.id) && b.status === 'APPROVED' && b.brokeragePaidAmount < b.brokerageAmount);
-      if (open || crmOpen) return res.status(409).json({ error: 'The user has open deals or unsettled brokerage. Close them first — records needed for legal compliance are retained.' });
+      if (open || crmOpen) return res.status(409).json({ error: 'The user has open deals or unsettled brokerage. Close them first — records needed for legal compliance are retained.', errorHi: 'इस सदस्य के खुले डील या बाक़ी ब्रोकरेज हैं। पहले उन्हें बंद करें — क़ानून के लिए ज़रूरी रिकॉर्ड रखे जाते हैं।', code: 'OPEN_DEALS' });
       // v74 — KYC stays with GENZ for 3 years even after deletion: a SEALED copy is made first; if that is not possible nothing is deleted
       const held = holdKyc(s, target);
-      if (!held.ok) return res.status(409).json({ error: held.error, code: 'KYC_HOLD_FAILED' });
+      if (!held.ok) return res.status(409).json({ error: held.error, errorHi: 'KYC की सील बंद कॉपी नहीं बन पाई, इसलिए कुछ मिटाया नहीं गया।', code: 'KYC_HOLD_FAILED' });
       // Anonymise personal data; keep the ledger rows (ids) so audit and accounting stay consistent.
       const anon = sha256(target.id).slice(0, 10);
       target.name = `Deleted user ${anon}`;
       target.email = `deleted-${anon}@erased.invalid`;
       const phoneWas = target.phone; target.phone = '';
       target.companyName = '';
-      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined; eraseMudraFor(target.id, phoneWas);   // v191 (D1)
+      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined; eraseMudraFor(target.id, phoneWas); erasePersonalRows(s, target.id, phoneWas);   // v191 (D1) + D23 round 8
       target.panNumber = undefined;
       target.aadhaarLast4 = undefined; target.idConsentAt = undefined; target.idCheckedAt = undefined; target.idCheckedBy = undefined; target.idCheckNote = undefined;
       target.gstin = undefined;
