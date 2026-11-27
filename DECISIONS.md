@@ -179,3 +179,10 @@ Locks added to `BASIC_LOCKED`: report:create (flags and reports; also closes the
 **Left on the branch, on purpose:** `server/coins.ts`, GenzCoinsWallet, SuperadminCoinsPanel (Guardian: RBI / PPI risk; Security: coin credit/redeem can mint value); LegalDraftModal + docs/legal-templates (Guardian: unlicensed legal drafting, needs the same disclaimers and an advocate review); VastuComplianceBadge, BuyerClientRooms, cactusBridge, capacitor / APK / lockfile churn, the office-photo+GPS signup gate (Strategist: launch freeze, scope).
 **Never to be merged (they break our rules):** unmasking a QR lead on "like" / "पसंद" / an asked visit (`isLeadRevealed`), `useMaskedRoomPhone` / `resolvedPhone`, `autoEnsureLeadRooms` (no `held`, sets `reqConfirmedAt`), `spOffer(force:true)` with the crAddItem fallback, `/p/:code` match-by-property-id, `/r/:token/home/:propId` serving any property, the last 4 digits of a masked QR lead. Rule stays: a QR customer's number opens only on a visit confirmed by the customer.
 **Reverse it:** `git revert` the v198 commit (files: `BayanaReceiptModal.tsx`, `DealHisaab.tsx` hunks, `server/hisaab.ts` `tdsFor`, `tests/v198-bayana-tds.test.ts`). The branch `antigravity-import` at `/home/claude/wt-ag` keeps the originals.
+
+## D19 — Launch scope after Antigravity review (2026-11-27)
+- What: Launch with the strict core only. Coins/Mudra, Legal drafts, Vastu badge, APK/Capacitor, Antigravity's loosened phone-reveal rule stay OFF / not merged.
+- Why: Antigravity's own answers confirm 18 old test files (51 cases) broken, no advocate review, "Verified / Stamp Paper Compliant" footer, Vastu default 85%, mint/redeem holes, RBI PPI risk for third-party redemption, no live SMS/payment keys.
+- Port later (strict reveal rule kept): office photo+location mandatory, 15-day QR pause to GENZ pool, dispute withdraw, buyer in-app rooms (only with phone OTP verified).
+- TDS wording: do not print section number "194-IA" (Income-tax Act 2025 renumbers); say "TDS on property, 1% at Rs 50L+, indicative".
+- Reverse: re-open each item behind its flag after fixes + advocate/CA sign-off.
