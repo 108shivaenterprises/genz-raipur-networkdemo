@@ -8,17 +8,20 @@ import { formatINR } from '../lib/utils.js';
 export const MudraVoucher: React.FC = () => {
   const tx = useTx();
   const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [ok, setOk] = useState('');
-  const [f, setF] = useState({ partnerId: '', invoiceRef: '', invoiceAmount: '', amount: '', via: false });
-  const load = useCallback(() => api.mudraMe().then(x => { setD(x); setErr(''); }).catch(e => setErr(e.message)), []);
+  const [inv, setInv] = useState<any[]>([]); const [sel, setSel] = useState(''); const [coins, setCoins] = useState('');
+  const load = useCallback(() => Promise.all([api.mudraMe(), api.mudraInvoices()]).then(([x, i]) => { setD(x); setInv(i.invoices || []); setErr(''); }).catch(e => setErr(e.message)), []);
+  // one open invoice is selected by itself; the Mudra amount starts at the most that is allowed
+  useEffect(() => { const pick = inv.find(i => i.id === sel) || (inv.length === 1 ? inv[0] : null); if (pick && pick.id !== sel) setSel(pick.id); if (pick) setCoins(String(pick.maxCoins)); }, [inv, sel]);
   useEffect(() => { void load(); }, [load]);
   if (!d) return err ? <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600" role="alert">{err}</p> : <Loader2 className="h-5 w-5 animate-spin text-slate-400" aria-label="Loading" />;
   if (!d.config.enabled) return null;
   const next = d.lots.length ? [...d.lots].sort((a: any, b: any) => a.expiresAt.localeCompare(b.expiresAt))[0] : null;
-  const p = d.config.partners.find((x: any) => x.id === f.partnerId);
+  const cur = inv.find(i => i.id === sel);
+  const n = Math.max(0, Math.min(Number(coins) || 0, cur?.maxCoins || 0));
   const redeem = async () => {
-    setBusy(true); setErr(''); setOk('');
-    try { await api.mudraRedeem({ partnerId: f.partnerId, invoiceRef: f.invoiceRef.trim(), invoiceAmount: Number(f.invoiceAmount), amount: Number(f.amount), bookedViaGenz: true }); setOk(tx('Discount recorded.', 'डिस्काउंट दर्ज हो गया।')); setF({ partnerId: '', invoiceRef: '', invoiceAmount: '', amount: '', via: false }); await load(); }
-    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    if (!cur || n < 1) return; setBusy(true); setErr(''); setOk('');
+    try { await api.mudraRedeem({ invoiceId: cur.id, coins: n }); setOk(tx(`Discount applied. You pay ${formatINR(cur.amountInr - n)}, as shown on the invoice.`, `डिस्काउंट लग गया। आप ${formatINR(cur.amountInr - n)} देंगे, जैसा इनवॉइस पर दिखा है।`)); setSel(''); await load(); }
+    catch (e: any) { const m = e.message; if (e.code === 'ALREADY_PAID' || e.status === 409) await load(); setErr(m); } finally { setBusy(false); }
   };
   const inp = 'min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm';
   return (
@@ -27,14 +30,24 @@ export const MudraVoucher: React.FC = () => {
       <p className="mt-1 text-2xl font-extrabold text-slate-900" data-testid="mudra-balance">{formatINR(d.balance)}</p>
       <p className="text-xs text-slate-600">{next ? tx(`Next expiry ${new Date(next.expiresAt).toLocaleDateString('en-IN')}`, `अगली समाप्ति ${new Date(next.expiresAt).toLocaleDateString('en-IN')}`) : tx(`You earn ${d.config.pct}% of the brokerage as a voucher after a verified site visit and an activated commission agreement. Valid ${d.config.validityDays} days.`, `वेरिफ़ाइड साइट विज़िट और चालू कमीशन एग्रीमेंट के बाद ब्रोकरेज का ${d.config.pct}% वाउचर मिलता है। वैधता ${d.config.validityDays} दिन।`)}</p>
       <p className="mt-1 text-[11px] text-slate-600">{tx('Not money: it cannot be withdrawn or given to anyone. Use it only as a discount at a GENZ-affiliated service partner, booked through GENZ.', 'यह पैसा नहीं है: इसे निकाला या किसी को दिया नहीं जा सकता। सिर्फ़ GENZ से जुड़े सर्विस पार्टनर पर, GENZ के ज़रिए बुकिंग में डिस्काउंट के लिए।')}</p>
-      {d.balance > 0 && d.config.partners.length > 0 && (
-        <div className="mt-3 space-y-2" data-testid="mudra-redeem">
-          <select className={inp} value={f.partnerId} onChange={e => setF({ ...f, partnerId: e.target.value })} aria-label={tx('Service partner', 'सर्विस पार्टनर')} data-testid="mudra-partner"><option value="">{tx('Choose a GENZ service partner…', 'GENZ सर्विस पार्टनर चुनें…')}</option>{d.config.partners.map((x: any) => <option key={x.id} value={x.id}>{x.name} · {x.category}</option>)}</select>
-          <input className={inp} value={f.invoiceRef} onChange={e => setF({ ...f, invoiceRef: e.target.value })} maxLength={40} placeholder={tx('Invoice / booking number', 'इनवॉइस / बुकिंग नंबर')} aria-label={tx('Invoice number', 'इनवॉइस नंबर')} data-testid="mudra-invoice" />
-          <input className={inp} inputMode="numeric" value={f.invoiceAmount} onChange={e => setF({ ...f, invoiceAmount: e.target.value.replace(/\D/g, '') })} placeholder={tx('Invoice amount ₹', 'इनवॉइस रकम ₹')} aria-label={tx('Invoice amount', 'इनवॉइस रकम')} />
-          <input className={inp} inputMode="numeric" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value.replace(/\D/g, '') })} placeholder={p ? tx(`Discount ₹ (up to ${p.maxDiscountPct}% of the invoice)`, `डिस्काउंट ₹ (इनवॉइस का ${p.maxDiscountPct}% तक)`) : tx('Discount ₹', 'डिस्काउंट ₹')} aria-label={tx('Discount', 'डिस्काउंट')} data-testid="mudra-amount" />
-          <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" className="mt-0.5 h-4 w-4" checked={f.via} onChange={e => setF({ ...f, via: e.target.checked })} data-testid="mudra-via" />{tx('This work was booked through GENZ (not directly with the partner).', 'यह काम GENZ के ज़रिए बुक हुआ है (पार्टनर से सीधे नहीं)।')}</label>
-          <button type="button" disabled={busy || !f.via || !f.partnerId || f.invoiceRef.trim().length < 4 || !Number(f.invoiceAmount) || !Number(f.amount)} onClick={() => void redeem()} className="min-h-11 w-full rounded-lg bg-slate-900 text-sm font-bold text-white disabled:opacity-50" data-testid="mudra-redeem-btn">{tx('Use as discount', 'डिस्काउंट में इस्तेमाल करें')}</button>
+      {inv.length > 0 && (
+        <div className="mt-3 space-y-2" data-testid="mudra-invoices">
+          <p className="text-xs font-bold text-slate-800">{tx('Your invoices', 'आपके इनवॉइस')}</p>
+          {inv.map(i => (
+            <button key={i.id} type="button" onClick={() => setSel(i.id)} aria-pressed={sel === i.id} className={`block min-h-11 w-full rounded-lg border p-2 text-left text-xs ${sel === i.id ? 'border-slate-900 bg-white' : 'border-slate-200 bg-white/60'}`} data-testid={`mudra-inv-${i.id}`}>
+              <b className="block text-sm text-slate-900">{i.partnerName} · {formatINR(i.amountInr)}</b><span className="block text-slate-600">{i.description} · {i.invoiceRef}</span>
+            </button>
+          ))}
+          {cur && (
+            <div className="space-y-2 rounded-lg bg-white p-2" data-testid="mudra-redeem">
+              <label className="block text-xs font-semibold text-slate-700">{tx(`Use Mudra ₹ (up to ${formatINR(cur.maxCoins)})`, `मुद्रा ₹ इस्तेमाल करें (अधिकतम ${formatINR(cur.maxCoins)})`)}
+                <input className={inp} inputMode="numeric" value={coins} onChange={e => { const v = e.target.value.replace(/\D/g, ''); setCoins(v && Number(v) > (cur?.maxCoins || 0) ? String(cur?.maxCoins || 0) : v); }} data-testid="mudra-amount" /></label>
+              <p className="text-sm font-bold text-slate-900" data-testid="mudra-pay-line">{tx(`You pay ${formatINR(cur.amountInr - n)}`, `आप ${formatINR(cur.amountInr - n)} देंगे`)}</p>
+              <button type="button" disabled={busy || n < 1} onClick={() => void redeem()} className="min-h-11 w-full rounded-lg bg-slate-900 text-sm font-bold text-white disabled:opacity-50" data-testid="mudra-redeem-btn">{tx('Apply discount', 'डिस्काउंट लगाएँ')}</button>
+              <p className="text-[11px] text-slate-600">{/* TODO: real collection of this payment needs a licensed payment gateway with split settlement (RBI payment-aggregator rules), pending owner approval. Today this only records the amounts. */}
+              {tx('Pay the amount shown on the invoice, to the partner or GENZ as the invoice says.', 'इनवॉइस पर दिखी रकम उसी तरह दें जैसा इनवॉइस में लिखा है: पार्टनर को या GENZ को।')}</p>
+            </div>
+          )}
         </div>
       )}
       {ok && <p className="mt-2 text-xs font-semibold text-emerald-800" role="status">{ok}</p>}
