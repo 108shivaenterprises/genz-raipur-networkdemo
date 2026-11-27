@@ -37,13 +37,13 @@ const b64 = (b: Buffer) => `data:image/jpeg;base64,${b.toString('base64')}`;
 const up = (cookie: string, url: string, kind: string, buf: Buffer = jpeg(), fileName = 'card.jpg') => call(cookie, 'POST', url, { kind, fileName, data: b64(buf) });
 let ipSeq = 10;
 const nextIp = () => `10.19.${Math.floor(++ipSeq / 250)}.${ipSeq % 250}`;
-const register = (code: string, phone: string, extra: any = {}) => fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code, name: 'Local Associate', phone, password: PW, consent: true, city: 'Raipur', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true, ...extra }) });
+const register = (code: string, phone: string, extra: any = {}) => fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code, name: 'Local Associate', phone, password: PW, consent: true, locality: 'Shankar Nagar', city: 'Raipur', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true, ...extra }) });
 
 async function newTier1(name: string) {
   const phone = rnd(); const email = `${name.toLowerCase().replace(/\W+/g, '.')}.${Date.now()}@example.in`;
   const inv = await j(await call(jar.SUP, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: phone, targetRole: 'BROKER' }));
   const pan = mkPan(); const aad = mkAadhaar();
-  const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code: inv.invitation.code, name, email, phone, password: PW, consent: true, city: 'Raipur', reraNumber: `PCGRERA25${String(++panSeq).slice(-4)}-0001`, panNumber: pan, aadhaarNumber: aad, idConsent: true }) });
+  const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code: inv.invitation.code, name, email, phone, password: PW, consent: true, locality: 'Shankar Nagar', city: 'Raipur', reraNumber: `PCGRERA25${String(++panSeq).slice(-4)}-0001`, panNumber: pan, aadhaarNumber: aad, idConsent: true }) });
   expect(r.status, 'tier1 register').toBe(200);
   const id = (await r.json()).user.id;
   expect((await call(jar.ADMIN, 'POST', `/api/verifications/${id}/review`, { action: 'APPROVE', notes: 'RERA checked on the portal' })).status).toBe(200);
@@ -330,7 +330,7 @@ describe('the switch: auto-verify people registered by a RERA broker', () => {
   it('a Tier 1 broker invited by GENZ itself is not touched by the switch (still needs the admin\'s approval)', async () => {
     const phone = rnd(); const email = `t1.${Date.now()}@example.in`;
     const inv = await j(await call(jar.SUP, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: phone, targetRole: 'BROKER' }));
-    const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code: inv.invitation.code, name: 'Rera Direct', email, phone, password: PW, consent: true, city: 'Raipur', reraNumber: 'PCGRERA250999-0001', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true }) });
+    const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code: inv.invitation.code, name: 'Rera Direct', email, phone, password: PW, consent: true, locality: 'Shankar Nagar', city: 'Raipur', reraNumber: 'PCGRERA250999-0001', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true }) });
     const b = await r.json(); expect(r.status).toBe(200); expect(b.autoVerified).toBe(false); expect(b.user.verificationStatus).toBe('PENDING');
   });
 

@@ -38,7 +38,7 @@ describe('v131 · a broker joins without RERA', { timeout: 180_000 }, () => {
   const made: Record<string, { id: string; login: string }> = {};
   it('v131 — a broker may join WITHOUT a RERA number (PAN stays a must): he is Tier 2 / Non-RERA; a builder without RERA is still refused', async () => {
     const mk = async (role: string, email: string, phone: string) => (await j(await call(SA, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: phone, targetRole: role }))).invitation.code;
-    const base = (code: string, name: string, phone: string, email: string, extra: object) => ({ code, name, phone, email, password: PASS, consent: true, city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, ...extra });
+    const base = (code: string, name: string, phone: string, email: string, extra: object) => ({ code, name, phone, email, password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, ...extra });
     const c1 = await mk('BROKER', 'bina.rera@test.genz.example', '9826170131');
     expect((await call(undefined, 'POST', '/api/auth/register-invite', base(c1, 'Bina Rera', '9826170131', 'bina.rera@test.genz.example', {}))).status).toBe(400);   // no PAN
     const ok = await call(undefined, 'POST', '/api/auth/register-invite', base(c1, 'Bina Rera', '9826170131', 'bina.rera@test.genz.example', { panNumber: 'ABCPB1310F' })); expect(ok.status, await ok.clone().text()).toBe(200);

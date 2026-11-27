@@ -40,7 +40,7 @@ describe('v185 · open sign-up (default)', { timeout: 240_000 }, () => {
   const otp = async (phone: string) => { const r = await s.call(undefined, 'POST', '/api/auth/signup-otp', { phone }); const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(200); return b as { otpToken: string; devCode: string }; };
   const signup = async (phone: string, extra: object = {}, code?: { otpToken: string; devCode: string }) => {
     const o = code || await otp(phone);
-    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8500F', ...extra });
+    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', locality: 'Shankar Nagar', panNumber: 'ABCPN8500F', ...extra });
   };
 
   it('config says open; no invitation code is needed', async () => { expect(s.cfg.signupMode).toBe('open'); });
@@ -51,6 +51,7 @@ describe('v185 · open sign-up (default)', { timeout: 240_000 }, () => {
     expect(bad.status).toBe(400); expect((await j(bad)).code).toBe('OTP');
     const o2 = await otp('9826185001');
     const noPan = await signup('9826185001', { panNumber: '' }, o2); expect((await j(noPan)).code).toBe('PAN_REQUIRED');
+    const noLoc = await signup('9826185001', { locality: '' }, o2); const nl = await j(noLoc); expect(noLoc.status).toBe(400); expect(nl.code).toBe('LOCALITY_REQUIRED'); expect(nl.errorHi).toMatch(/इलाका/);   // B2-02
     const badPan = await signup('9826185001', { panNumber: 'ABC123' }, o2); expect((await j(badPan)).code).toBe('PAN_INVALID');
     const ok = await signup('9826185001', {}, o2); const b = await j(ok);
     expect(ok.status, JSON.stringify(b)).toBe(200);
@@ -67,7 +68,7 @@ describe('v185 · open sign-up (default)', { timeout: 240_000 }, () => {
     const c2 = await signup('9826185002'); expect(c2.status, await c2.clone().text()).toBe(200);
     // a PAN held by a non-Basic (KYC-route) account refuses with the generic answer
     const code = (await j(await s.call(SA, 'POST', '/api/invitations', { invitedEmail: 'pan.holder@test.genz.example', invitedPhone: '9826185020', targetRole: 'BROKER' }))).invitation.code;
-    const reg = await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Pan Holder', phone: '9826185020', email: 'pan.holder@test.genz.example', password: PASS, consent: true, city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPH9020F' });
+    const reg = await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Pan Holder', phone: '9826185020', email: 'pan.holder@test.genz.example', password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPH9020F' });
     expect(reg.status, await reg.clone().text()).toBe(200);
     const d2 = await signup('9826185003', { panNumber: 'ABCPH9020F' }); const b2 = await j(d2);
     expect(d2.status).toBe(409); expect(b2.code).toBe('CANNOT_REGISTER'); expect(JSON.stringify(b2)).not.toMatch(/already|registered|linked/i);

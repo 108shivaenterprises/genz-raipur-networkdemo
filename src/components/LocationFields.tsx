@@ -114,7 +114,7 @@ export const LocationFields: React.FC<Props> = ({ value, onChange, showLocality 
       </div>
       {showLocality && (
         <div>
-          <label className="text-xs font-semibold text-slate-700">{hi ? 'इलाका / कॉलोनी' : 'Locality / area'}</label>
+          <label className="text-xs font-semibold text-slate-700">{hi ? 'इलाका / कॉलोनी' : 'Locality / area'}{required && <span className="text-red-600" aria-hidden> *</span>}</label>
           <input
             required={required}
             list={`${dlId}-loc`}

@@ -1687,7 +1687,7 @@ export const VerifyVisitOtpModal: React.FC<{
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otpCode.trim()) {
-      setError(tx('Please enter the 6-digit OTP code.', 'कृपया 6-अंकों का OTP डालें।'));
+      setError(tx('Please enter the 4-digit visit code (or the 6-digit OTP).', 'कृपया 4 अंकों का विज़िट कोड (या 6 अंकों का OTP) डालें।'));
       return;
     }
 
@@ -1695,7 +1695,8 @@ export const VerifyVisitOtpModal: React.FC<{
     setError('');
 
     try {
-      await api.verifySiteVisitOtp(visit.id, otpCode.trim(), feedback);
+      if (/^\d{4}$/.test(otpCode.trim())) await api.visitVerifyCode(visit.id, otpCode.trim());   // D23 — the customer's own 4-digit code
+      else await api.verifySiteVisitOtp(visit.id, otpCode.trim(), feedback);
       setIsSuccess(true);
       onSuccess();
       setTimeout(() => {
@@ -1758,7 +1759,7 @@ export const VerifyVisitOtpModal: React.FC<{
               <div className="text-slate-500">{tx('Visit Record:', 'विज़िट रिकॉर्ड:')}</div>
               <div className="font-mono font-bold text-slate-900">{visit.id} ({tx('Client', 'क्लाइंट')}: {visit.customerName})</div>
               {!visit.otpCode && (
-                <p className="pt-1 text-[11px] text-slate-500">{tx('The 6-digit OTP was sent to the client’s mobile. Ask the client to read it out on site.', '6-अंकों का OTP क्लाइंट के मोबाइल पर भेजा गया है। साइट पर क्लाइंट से वह बोलकर बताने को कहें।')}</p>
+                <p className="pt-1 text-[11px] text-slate-500">{tx('The client can make a 4-digit visit code in the app (or the 6-digit OTP sent to the mobile). Ask the client to read it out on site.', 'क्लाइंट ऐप में 4 अंकों का विज़िट कोड बना सकता है (या मोबाइल पर आया 6 अंकों का OTP)। साइट पर क्लाइंट से वह बोलकर बताने को कहें।')}</p>
               )}
               {visit.otpCode && (<div className="flex items-center justify-between pt-1">
                 <span className="text-slate-400 text-[11px]">{tx('Demo challenge code:', 'डेमो OTP कोड:')}</span>
@@ -1774,12 +1775,12 @@ export const VerifyVisitOtpModal: React.FC<{
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700">{tx('Enter 6-Digit OTP:', '6-अंकों का OTP डालें:')}</label>
+              <label className="text-xs font-semibold text-slate-700">{tx('Enter the 4-digit visit code (or 6-digit OTP) from the client:', 'क्लाइंट से 4 अंकों का विज़िट कोड (या 6 अंकों का OTP) लेकर डालें:')}</label>
               <input
                 type="text"
                 required
                 maxLength={6}
-                placeholder={tx('e.g. 482910', 'जैसे: 482910')}
+                placeholder={tx('e.g. 4821 or 482910', 'जैसे: 4821 या 482910')}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-center text-xl font-mono font-bold tracking-widest text-slate-900 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
@@ -1810,7 +1811,7 @@ export const VerifyVisitOtpModal: React.FC<{
                 disabled={loading}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-xs"
               >
-                {loading ? tx('Verifying...', 'जाँच हो रही है...') : tx('Verify & Record Visit', 'सत्यापित करें और विज़िट दर्ज करें')}
+                {loading ? tx('Verifying...', 'जाँच हो रही है...') : tx('Verify code', 'कोड सत्यापित करें')}
               </button>
             </div>
           </form>

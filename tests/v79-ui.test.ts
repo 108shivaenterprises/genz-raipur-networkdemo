@@ -23,7 +23,7 @@ describe('the visit pass says why it cannot be confirmed, and what to do', () =>
     const a = read('src/lib/api.ts'); expect(a).toContain('/remind'); expect(a).toContain('/reschedule');
   });
   it('a far-away phone location is explained and the no-location way (the 6-digit code) is pointed to', () => {
-    expect(m).toMatch(/km from the property/); expect(m).toContain('Verify OTP');
+    expect(m).toMatch(/km from the property/); expect(m).toContain('Verify code');
   });
   it('the home-header scan opens the pass for a visit the scanner cannot confirm — it is no longer a dead-end line', () => {
     const q = read('src/components/QuickScan.tsx');

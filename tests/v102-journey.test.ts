@@ -131,7 +131,7 @@ describe('Part A — two brokers, one buyer', () => {
 
   it('8 · the scanner at the property: a wrong QR / wrong code counts a try and records nothing; the booker and the outsider are still refused', async () => {
     const bad = await err(await call(jar.BRK1, 'POST', `/api/site-visits/${visit.id}/checkin-qr`, { qrToken: 'WRONGTOKEN123' })); expect(bad.status).toBe(400); expect(bad.error).toMatch(/Invalid or expired QR/);
-    const badOtp = await err(await call(jar.BRK1, 'POST', `/api/site-visits/${visit.id}/verify-otp`, { otpCode: secret.otpCode === '000000' ? '111111' : '000000' })); expect(badOtp.status).toBe(400); expect(badOtp.error).toMatch(/attempt\(s\) left/);
+    const badOtp = await err(await call(jar.BRK1, 'POST', `/api/site-visits/${visit.id}/verify-otp`, { otpCode: secret.otpCode === '000000' ? '111111' : '000000' })); expect(badOtp.status).toBe(400); expect(badOtp.error).toMatch(/tries left/);
     expect((await err(await call(jar.BRK2, 'POST', `/api/site-visits/${visit.id}/checkin-qr`, { qrToken: secret.qrToken }))).code).toBe('MAKER_CHECKER');
     expect((await err(await call(jar.BRK3, 'POST', `/api/site-visits/${visit.id}/verify-otp`, { otpCode: secret.otpCode }))).code).toBe('PROPERTY_SIDE_ONLY');
     expect((await visitsOf('ADMIN')).find(x => x.id === visit.id)!.isVerified).toBe(false);

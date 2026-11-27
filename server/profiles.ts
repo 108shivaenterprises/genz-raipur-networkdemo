@@ -25,6 +25,9 @@ import { ctx, needs, hit, kycLocked, digits, secret, safeEqual } from './auth.js
 import { alert, firstName } from './alerts.js';
 import { reputationOf } from './reputation.js';
 import { tierOf } from '../src/shared/networkRules.js';
+import { customerMatchesUser } from './access.js';
+import { visitAcked, genuineBuyer, confirmedByThird } from './mudra.js';
+import { badgeFor } from '../src/shared/tierBadge.js';
 import {
   groupOfRole, GROUPS, tagsFor, EVIDENCE, summarize, reviewProblem, cleanTags, remarkProblem, mayOpenProfile, canLookupPrivate, isStaffRole,
   searchKind, norm, shortName, REPORT_REASONS, isReportReason, REVIEW_EDIT_DAYS, REPLY_MAX, SEARCH_LIMIT, profileProblem, editableUntil, type TargetGroup, type EvidenceKind,
@@ -75,6 +78,19 @@ const firmOf = (u: UserProfile): string => {
 };
 function summaryOf(targetId: string) { return summarize(st().reviews.filter(r => r.targetId === targetId)); }
 
+/** D23 — Gold / Diamond count only work with a DISTINCT, verified buyer account, found the way the Mudra rule finds it: a deal's buyer is requirement.buyerId (the deal's `customerId` is free text the broker types, so it proves nothing);
+ *  a visit's buyer is the verified account whose phone is on the visit. Never the broker himself or a buyer on his phone. A visit counts only if a third party confirmed it (`verifiedBy`: not the broker, his team, the system link, or unknown/older). Residual risk: a broker with a friend's verified buyer account could still farm visits confirmed by a third party; the distinct-buyer rule limits it to one count per account. */
+export function badgeCounts(u: UserProfile, s: DatabaseState = st()) {
+  const buyers = s.users.filter(x => genuineBuyer(u, x));
+  const vis = new Set<string>(); for (const v of s.siteVisits) if (v.brokerId === u.id && v.isVerified && visitAcked(v.id, s) && confirmedByThird(u, v, s)) { const b = buyers.find(x => customerMatchesUser(v.customerPhone, x)); if (b) vis.add(b.id); }
+  // a deal counts only with a requirement assigned to one of its two brokers, whose buyer is a counted account, AND a verified visit on that deal with that buyer's phone
+  const deals = new Set<string>(); for (const d of s.dealRooms) if (d.stage === 'Settled' && (d.introducingBrokerId === u.id || d.closingBrokerId === u.id)) {
+    const r = s.requirements.find(x => x.id === d.requirementId); if (!r || ![d.introducingBrokerId, d.closingBrokerId].includes(r.assignedBrokerId)) continue;
+    const b = buyers.find(x => x.id === r.buyerId); if (b && s.siteVisits.some(v => v.dealRoomId === d.id && v.isVerified && customerMatchesUser(v.customerPhone, b) && visitAcked(v.id, s) && confirmedByThird(u, v, s))) deals.add(b.id);
+  }
+  return { verifiedVisits: vis.size, closedDeals: deals.size };
+}
+
 function cardOf(u: UserProfile, full = false) {
   const g = groupOfRole(u.role) as TargetGroup;
   const p = u.profile || {};
@@ -96,7 +112,10 @@ function cardOf(u: UserProfile, full = false) {
     memberSince: u.createdAt?.slice(0, 7) || '',
     rating: active ? summaryOf(u.id) : { avg: 0, count: 0, early: true, stars: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, tags: [] },
     // v117 — RERA-verified broker (Tier 1) or local associate (Tier 2): what he may work on is part of who he is
-    tier: u.role === 'BROKER' ? tierOf(u) : null,
+    tier: u.role === 'BROKER' && !u.basicTier ? tierOf(u) : null,   // B2-01 — a Basic (not yet checked) account shows no tier
+    basic: u.role === 'BROKER' && !!u.basicTier,
+    // D23 — derived, not stored: tier + verified visits + closed deals
+    badge: u.role === 'BROKER' && active && !u.basicTier ? badgeFor({ tier: tierOf(u), ...badgeCounts(u) }) : null,
     ...(full && active ? { about: p.about || '', areas: p.areas || [], languages: p.languages || [], years: p.years ?? null, specialties: p.specialties || [], dealsClosed: rep.closed, confirmedBy: rep.confirmers } : {}),
   };
 }

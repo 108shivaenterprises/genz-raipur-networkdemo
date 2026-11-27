@@ -7,9 +7,11 @@
  */
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { db, DEFAULT_MUDRA_CONFIG, type DatabaseState, type MudraConfig, type MudraEntry, type MudraSettlement, type UserProfile } from './db.js';
-import { ctx, requireAuth } from './auth.js';
+import { db, DEFAULT_MUDRA_CONFIG, type DatabaseState, type MudraConfig, type MudraInvoice, type JobPhoto, type MudraEntry, type MudraSettlement, type UserProfile } from './db.js';
+import { ctx, requireAuth, rateLimit, digits } from './auth.js';
+import { issueJobCode, checkJobCode, unlockJobCode, triesLeft, codeState, saveJobPhoto, readJobPhoto, eraseJobPhotos, JOB_PHOTO_MAX_PER_KIND, JOBCODE_MAX_TRIES } from './jobcode.js';
 import { isVerifiedFull } from './permissions.js';
+import { customerMatchesUser } from './access.js';
 
 const DAY = 86_400_000;
 const st = (): DatabaseState => db.getState();
@@ -20,6 +22,8 @@ export function splitFor(gross: number, coins: number, feePct: number): MudraSet
   const customerPaysInr = gross - coins; const partnerPayoutInr = Math.floor(gross * (100 - feePct) / 100);
   return { grossInr: gross, coinsInr: coins, customerPaysInr, genzShareInr: customerPaysInr - partnerPayoutInr, partnerPayoutInr, status: 'PENDING_PAYOUT' };
 }
+/** an invoice as a client may see it: never the code hash */
+const pub = (i: MudraInvoice) => { const { jobCode, ...rest } = i; return { ...rest, jobStatus: i.jobStatus || 'OPEN', codeState: codeState(jobCode) }; };
 const bad = (res: Response, error: string, errorHi: string, code = 400, extra: Record<string, unknown> = {}) => res.status(code).json({ error, errorHi, ...extra });
 
 export const mudraConfig = (): MudraConfig => (st().mudraConfig ||= DEFAULT_MUDRA_CONFIG());
@@ -29,7 +33,9 @@ const rupees = (n: number) => Math.max(0, Math.round(Number(n) || 0));
 export function buyerOfDeal(dealId: string): string | null {
   const deal = st().dealRooms.find(d => d.id === dealId); if (!deal) return null;
   const req = st().requirements.find(r => r.id === deal.requirementId);
-  return req?.buyerId || null;
+  // the requirement must belong to one of the deal's two brokers: a broker cannot steer credit to a buyer by attaching someone else's requirement
+  if (!req || ![deal.introducingBrokerId, deal.closingBrokerId].includes(req.assignedBrokerId)) return null;
+  return req.buyerId || null;
 }
 const dealFrozen = (dealId?: string): boolean => {
   if (!dealId) return false; const d = st().dealRooms.find(x => x.id === dealId);
@@ -54,14 +60,23 @@ export function mudraBalance(userId: string, now = Date.now()): { balance: numbe
  * The ONLY place credit is made. Called by server events; idempotent (one credit per deal).
  * Needs: the deal's buyer is a BUYER_TENANT account, a VERIFIED site visit on the deal, and an ACTIVE commission agreement.
  */
+/** the buyer's own "no direct deal" acknowledgement (tick + mobile code) for that visit is CONFIRMED (status ACKED) */
+export const visitAcked = (visitId: string, s: DatabaseState = st()): boolean => (s.visitAcks || []).some(a => a.kind === 'VISIT' && a.refId === visitId && a.status === 'ACKED');
+/** ONE buyer test for Mudra and badges: a real, verified, ID-checked buyer account that is not the broker and not on the broker's phone */
+export const genuineBuyer = (broker: UserProfile, x?: UserProfile): boolean => !!x && x.role === 'BUYER_TENANT' && isVerifiedFull(x) && !!x.idCheckedAt && x.id !== broker.id && !/@erased\.invalid$/i.test(x.email || '') && !(x.phone && broker.phone && customerMatchesUser(broker.phone, x));
+/** ...and a visit counts only if a THIRD party confirmed it: not the broker, not his team, not the system link, and (older visits) not unknown */
+export const confirmedByThird = (broker: UserProfile, v: { verifiedBy?: string }, s: DatabaseState = st()): boolean => { const id = v.verifiedBy; if (!id || id === 'SYSTEM' || id === broker.id) return false; const w = s.users.find(x => x.id === id); return !(w && w.employerId === broker.id); };
 export function settleMudra(dealId: string): { ok: true; entry?: MudraEntry; already?: boolean } | { ok: false; reason: string } {
   const cfg = mudraConfig(); if (!cfg.enabled) return { ok: false, reason: 'DISABLED' };
   const s = st(); const deal = s.dealRooms.find(d => d.id === dealId); if (!deal) return { ok: false, reason: 'NO_DEAL' };
   const buyerId = buyerOfDeal(dealId); const buyer = buyerId ? s.users.find(u => u.id === buyerId) : undefined;
   if (!buyer || buyer.role !== 'BUYER_TENANT') return { ok: false, reason: 'NOT_A_BUYER_ACCOUNT' };   // never a broker
+  if (/@erased\.invalid$/i.test(buyer.email || '')) return { ok: false, reason: 'BUYER_ERASED' };   // an erased account earns nothing, even through an old requirement.buyerId
   if (s.mudraEntries.some(e => e.kind === 'CREDIT' && e.dealId === dealId)) return { ok: true, already: true };
   if (dealFrozen(dealId)) return { ok: false, reason: 'DEAL_FROZEN' };
-  if (!s.siteVisits.some(v => v.dealRoomId === dealId && v.isVerified)) return { ok: false, reason: 'NO_VERIFIED_VISIT' };
+  const brokers = [deal.introducingBrokerId, deal.closingBrokerId].map(id => s.users.find(u => u.id === id)).filter((u): u is UserProfile => !!u);
+  if (!brokers.length || !brokers.every(b => genuineBuyer(b, buyer))) return { ok: false, reason: 'BUYER_NOT_INDEPENDENT' };   // same test as the badges
+  if (!s.siteVisits.some(v => v.dealRoomId === dealId && v.isVerified && customerMatchesUser(v.customerPhone, buyer) && visitAcked(v.id) && brokers.every(b => confirmedByThird(b, v, s)))) return { ok: false, reason: 'NO_VERIFIED_VISIT' };   // the visit must be the buyer's own (his phone on it)
   const ag = s.commissionAgreements.filter(a => a.dealId === dealId && a.status === 'ACTIVE').sort((a, b) => b.version - a.version)[0];
   if (!ag || !(ag.totalAgreedBrokerage > 0)) return { ok: false, reason: 'NO_ACTIVE_AGREEMENT' };
   const buyerShare = (ag as any).payer === 'SPLIT_EQUAL' ? ag.totalAgreedBrokerage / 2 : ag.totalAgreedBrokerage;
@@ -76,12 +91,22 @@ export function settleMudra(dealId: string): { ok: true; entry?: MudraEntry; alr
 export const settleMudraQuiet = (dealId?: string) => { try { if (dealId) settleMudra(dealId); } catch (e) { console.error('[MUDRA]', (e as Error).message); } };
 
 /** DPDP erase: the user's own ledger rows and redemptions */
-export function eraseMudraFor(userId: string): number {
-  const s = st(); const n = s.mudraEntries.length + s.mudraRedemptions.length;
+export function eraseMudraFor(userId: string, phone?: string): number {
+  const s = st();
+  // the visit codes of this person's visits (matched by the phone he had, captured by the caller before it is blanked) go too
+  if (phone) for (const v of s.siteVisits) if (v.customerPhone && digits(v.customerPhone) === digits(phone)) v.jobCode = undefined; const n = s.mudraEntries.length;
   // one credit per deal must survive the erase: keep an anonymous amount-0 tombstone per deal (no user id, no money, no personal data)
   const tombs = s.mudraEntries.filter(e => e.userId === userId && e.kind === 'CREDIT' && e.dealId).map(e => ({ id: `${e.id}-T`, userId: 'ERASED', kind: 'CREDIT' as const, amount: 0, dealId: e.dealId, at: e.at, note: 'erased (DPDP)' }));
-  s.mudraEntries = [...s.mudraEntries.filter(e => e.userId !== userId), ...tombs]; s.mudraRedemptions = s.mudraRedemptions.filter(r => r.userId !== userId); s.mudraInvoices = s.mudraInvoices.filter(i => i.buyerUserId !== userId);
-  return n - s.mudraEntries.length - s.mudraRedemptions.length + tombs.length;
+  s.mudraEntries = [...s.mudraEntries.filter(e => e.userId !== userId), ...tombs];
+  // D23 (owner rule): an invoice is a company transaction record with several parties (partner, GENZ, buyer) and financial records are retained, so it is NOT deleted:
+  // amount, partner, description, job status, dates, refs and the settlement stay; the buyer becomes 'ERASED'. Photos can show a home or people, accounting does not need them: deleted.
+  // An open invoice can no longer be paid by anyone, so it is closed. Retention period: to be confirmed by the CA (see DECISIONS D23).
+  for (const r of s.mudraRedemptions) if (r.userId === userId) r.userId = 'ERASED';
+  for (const i of s.mudraInvoices) if (i.buyerUserId === userId) {
+    eraseJobPhotos([...(i.beforePhotos || []), ...(i.afterPhotos || [])].map(x => x.id)); i.beforePhotos = []; i.afterPhotos = []; i.jobCode = undefined;
+    i.buyerUserId = 'ERASED'; i.description = 'Erased'; if (i.status === 'OPEN') i.status = 'CANCELLED';
+  }
+  return n - s.mudraEntries.length + tombs.length;
 }
 
 /** demo credit — only with SEED_DEMO_DATA=true */
@@ -99,7 +124,7 @@ const RedeemBody = z.object({ invoiceId: z.string().trim().min(1).max(40), coins
 export const MAX_INVOICE_INR = 2_500_000;
 const InvoiceBody = z.object({ partnerId: z.string().trim().min(1).max(60), buyerUserId: z.string().trim().min(1).max(60), description: z.string().trim().min(3).max(200), amountInr: z.number().int().positive().max(MAX_INVOICE_INR), dealId: z.string().trim().max(40).optional() });
 const ConfigBody = z.object({
-  enabled: z.boolean().optional(), pct: z.number().min(0).max(5).optional(), validityDays: z.number().int().min(30).max(730).optional(), maxDiscountPct: z.number().min(0).max(50).optional(),
+  enabled: z.boolean().optional(), requireSignoff: z.boolean().optional(), pct: z.number().min(0).max(5).optional(), validityDays: z.number().int().min(30).max(730).optional(), maxDiscountPct: z.number().min(0).max(50).optional(),
   terms: z.object({ en: z.string().trim().min(20).max(2000), hi: z.string().trim().min(20).max(2000) }).optional(),
   partners: z.array(z.object({ id: z.string().trim().min(1).max(60), name: z.string().trim().min(2).max(80), category: z.string().trim().min(2).max(60), feePct: z.number().min(0).max(50), active: z.boolean() })).max(200).optional(),
 }).refine(c => !c.partners || new Set(c.partners.map(p => p.id)).size === c.partners.length, { message: 'partner ids must be unique' });
@@ -117,7 +142,7 @@ export function createMudraRouter(): Router {
   r.get('/invoices', (_req, res) => {
     const u = me(); if (u.role !== 'BUYER_TENANT') return bad(res, 'GENZ Mudra is for buyers and tenants only', 'GENZ मुद्रा सिर्फ़ खरीदार और किरायेदार के लिए है', 403);
     const cfg = mudraConfig(); const bal = mudraBalance(u.id).balance;
-    res.json({ success: true, balance: bal, invoices: st().mudraInvoices.filter(i => i.buyerUserId === u.id && i.status === 'OPEN').map(i => { const p = cfg.partners.find(x => x.id === i.partnerId); const capPct = p ? Math.min(cfg.maxDiscountPct, p.feePct) : 0; const cap = Math.floor(i.amountInr * capPct / 100); return { id: i.id, invoiceRef: i.invoiceRef, partnerName: i.partnerName, description: i.description, amountInr: i.amountInr, capPct, maxCoins: Math.max(0, Math.min(cap, bal)) }; }) });
+    res.json({ success: true, balance: bal, invoices: st().mudraInvoices.filter(i => i.buyerUserId === u.id && i.status === 'OPEN').map(i => { const p = cfg.partners.find(x => x.id === i.partnerId && x.active); const capPct = p ? Math.min(cfg.maxDiscountPct, p.feePct) : 0; const cap = Math.floor(i.amountInr * capPct / 100); return { id: i.id, invoiceRef: i.invoiceRef, partnerName: i.partnerName, description: i.description, amountInr: i.amountInr, capPct, maxCoins: Math.max(0, Math.min(cap, bal)), jobStatus: i.jobStatus || 'OPEN', codeState: codeState(i.jobCode), before: (i.beforePhotos || []).map(x => x.id), after: (i.afterPhotos || []).map(x => x.id), signoffRequired: !!cfg.requireSignoff, paused: !p }; }) });
   });
   r.post('/redeem', (req: Request, res: Response) => {
     const u = me(); const cfg = mudraConfig();
@@ -131,6 +156,7 @@ export function createMudraRouter(): Router {
     if (!inv || inv.buyerUserId !== u.id) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404, { code: 'NO_INVOICE' });   // someone else's invoice looks the same as none (no IDOR)
     if (inv.status === 'PAID') { const prior = s.mudraRedemptions.find(x => x.invoiceId === inv.id); return prior && prior.discount === b.coins ? res.json({ success: true, duplicate: true, redemption: prior, balance: mudraBalance(u.id).balance }) : bad(res, 'This invoice is already paid', 'यह इनवॉइस पहले ही चुकाया जा चुका है', 409, { code: 'ALREADY_PAID' }); }
     if (inv.status !== 'OPEN') return bad(res, 'This invoice was cancelled', 'यह इनवॉइस रद्द हो गया है', 409, { code: 'CANCELLED' });
+    if (cfg.requireSignoff && inv.jobStatus !== 'SIGNED_OFF') return bad(res, 'Approve the finished work first, then the discount can be applied', 'पहले पूरा हुआ काम अप्रूव करें, फिर डिस्काउंट लगेगा', 409, { code: 'SIGNOFF_REQUIRED' });
     const partner = cfg.partners.find(x => x.id === inv.partnerId && x.active); if (!partner) return bad(res, 'This partner is not a GENZ-affiliated service partner', 'यह GENZ से जुड़ा सर्विस पार्टनर नहीं है', 404, { code: 'NOT_AFFILIATED' });
     const capPct = Math.min(cfg.maxDiscountPct, partner.feePct);   // the discount can never exceed what GENZ earns from this partner
     const cap = Math.floor(inv.amountInr * capPct / 100);
@@ -160,7 +186,7 @@ export function createMudraRouter(): Router {
   });
   // ── GENZ desk (SUPERADMIN / ADMIN): books the service for the partner; the buyer never types an amount ──
   const desk = (res: Response): UserProfile | null => { const u = me(); if (u.role !== 'SUPERADMIN' && u.role !== 'ADMIN') { bad(res, 'GENZ desk only', 'सिर्फ़ GENZ डेस्क', 403); return null; } return u; };
-  r.get('/admin/invoices', (_req, res) => { if (!desk(res)) return; res.json({ success: true, invoices: st().mudraInvoices.slice(-200).reverse() }); });
+  r.get('/admin/invoices', (_req, res) => { if (!desk(res)) return; res.json({ success: true, invoices: st().mudraInvoices.slice(-200).reverse().map(pub) }); });
   r.post('/admin/invoices', (req, res) => {
     const u = desk(res); if (!u) return; if (typeof req.body?.amountInr === 'number' && req.body.amountInr > MAX_INVOICE_INR) return bad(res, `The amount is too large: the limit is ₹${MAX_INVOICE_INR.toLocaleString('en-IN')} per invoice`, `रकम बहुत ज़्यादा है: एक इनवॉइस की सीमा ₹${MAX_INVOICE_INR.toLocaleString('en-IN')} है`, 400, { code: 'AMOUNT_TOO_LARGE', max: MAX_INVOICE_INR });
     const p = InvoiceBody.safeParse(req.body); if (!p.success) return bad(res, 'Check partner, buyer, work description and amount', 'पार्टनर, खरीदार, काम का विवरण और रकम जाँचें', 400, { code: 'BAD_INPUT' });
@@ -172,29 +198,88 @@ export function createMudraRouter(): Router {
     const yr = new Date().getFullYear(); const n = s.mudraInvoices.reduce((m, i) => { const mm = new RegExp(`^GZI-${yr}-(\\d+)$`).exec(i.invoiceRef); return mm ? Math.max(m, Number(mm[1])) : m; }, 0) + 1;   // max + 1, never count + 1: a ref is not reused after an erase
     const inv = { id: `MINV-${s.mudraInvoices.length + 1}-${Math.random().toString(36).slice(2, 6)}`, invoiceRef: `GZI-${yr}-${String(n).padStart(4, '0')}`, partnerId: partner.id, partnerName: partner.name, buyerUserId: buyer.id, ...(b.dealId ? { dealId: b.dealId } : {}), description: b.description, amountInr: b.amountInr, status: 'OPEN' as const, createdBy: u.id, createdAt: new Date().toISOString() };
     s.mudraInvoices.push(inv); db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'MUDRA_INVOICE_CREATED', `${inv.invoiceRef} ₹${inv.amountInr} ${partner.id} for ${buyer.id}`);
-    res.json({ success: true, invoice: inv });
+    res.json({ success: true, invoice: pub(inv) });
   });
   r.post('/admin/invoices/:id/cancel', (req, res) => {
     const u = desk(res); if (!u) return; const inv = st().mudraInvoices.find(i => i.id === req.params.id); if (!inv) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404);
     if (inv.status !== 'OPEN') return bad(res, 'Only an open invoice can be cancelled', 'सिर्फ़ खुला इनवॉइस रद्द हो सकता है', 409);
-    inv.status = 'CANCELLED'; db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'MUDRA_INVOICE_CANCELLED', inv.invoiceRef); res.json({ success: true, invoice: inv });
+    inv.status = 'CANCELLED'; db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'MUDRA_INVOICE_CANCELLED', inv.invoiceRef); res.json({ success: true, invoice: pub(inv) });
+  });
+  // ── D23: proof of presence + before/after photos + sign-off. The partner has no login yet, so the GENZ desk runs the job side. ──
+  /** the buyer's own invoice, or nothing: anyone else gets 404 (no IDOR) */
+  const mine = (req: Request, res: Response) => { const u = me(); const inv = u.role === 'BUYER_TENANT' ? st().mudraInvoices.find(i => i.id === req.params.id && i.buyerUserId === u.id) : undefined; if (!inv) { bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404, { code: 'NO_INVOICE' }); return null; } return inv; };
+  r.post('/invoices/:id/job-code', rateLimit('jobcode-gen', 20, 3600_000), (req, res) => {
+    const u = me(); const inv = mine(req, res); if (!inv) return;
+    if (inv.status !== 'OPEN' || (inv.jobStatus && inv.jobStatus !== 'OPEN')) return bad(res, 'The work on this invoice has already started or the invoice is closed', 'इस इनवॉइस का काम शुरू हो चुका है या इनवॉइस बंद है', 409, { code: 'NOT_OPEN' });
+    const o = issueJobCode(inv.jobCode); if ('error' in o) { db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'JOB_CODE_REFUSED', o.error); return bad(res, 'You have used all code requests for this invoice. Ask the GENZ desk to unlock it.', 'इस इनवॉइस के लिए आपके सारे कोड अनुरोध पूरे हो चुके। GENZ डेस्क से अनलॉक करवाएँ।', 429, { code: 'TOO_MANY' }); }
+    inv.jobCode = o.rec; db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'JOB_CODE_ISSUED', `${inv.invoiceRef} (#${o.rec.issues}, expires ${o.rec.expiresAt})`);
+    res.json({ success: true, code: o.code, expiresAt: o.rec.expiresAt });   // the only time the plain code exists
+  });
+  r.post('/admin/invoices/:id/start', rateLimit('jobcode-try', 30, 600_000), (req, res) => {
+    const u = desk(res); if (!u) return; const inv = st().mudraInvoices.find(i => i.id === req.params.id); if (!inv) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404);
+    if (inv.status !== 'OPEN' || (inv.jobStatus && inv.jobStatus !== 'OPEN')) return bad(res, 'The work on this invoice has already started or the invoice is closed', 'इस इनवॉइस का काम शुरू हो चुका है या इनवॉइस बंद है', 409, { code: 'NOT_OPEN' });
+    if (inv.jobCode?.unlockedBy === u.id) return bad(res, 'You unlocked this code, so another desk member must enter it', 'यह कोड आपने अनलॉक किया था, इसलिए इसे कोई दूसरा डेस्क सदस्य डाले', 409, { code: 'SAME_ADMIN' });
+    const out = checkJobCode(inv.jobCode, req.body?.code); db.save();
+    db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, out === 'OK' ? 'JOB_CODE_ACCEPTED' : 'JOB_CODE_REJECTED', `${inv.invoiceRef}: ${out}`);
+    if (out === 'OK') { inv.jobStatus = 'STARTED'; inv.startedAt = new Date().toISOString(); db.save(); return res.json({ success: true, invoice: pub(inv) }); }
+    const left = Math.max(0, JOBCODE_MAX_TRIES - (inv.jobCode?.attempts || 0));
+    const M: Record<string, [string, string, number]> = { BAD: [`Wrong code. ${triesLeft(left).en}.`, `ग़लत कोड। ${triesLeft(left).hi}।`, 400], LOCKED: ['Too many wrong tries: this code is locked. The buyer can make a new code, or GENZ can unlock it.', 'बहुत ग़लत कोशिशें: यह कोड लॉक है। खरीदार नया कोड बना सकता है, या GENZ अनलॉक कर सकता है।', 423], EXPIRED: ['This code has expired. The buyer must make a new one.', 'यह कोड ख़त्म हो गया है। खरीदार नया कोड बनाए।', 410], USED: ['This code was already used.', 'यह कोड पहले इस्तेमाल हो चुका है।', 409], NONE: ['The buyer has not made a code yet.', 'खरीदार ने अभी कोड नहीं बनाया।', 409] };
+    const [en, hi, code] = M[out]; bad(res, en, hi, code, { code: out, attemptsLeft: left });
+  });
+  /** the desk lifts a lock (or a used mark) on an invoice code; audited */
+  r.post('/admin/invoices/:id/unlock-code', rateLimit('jobcode-unlock', 10, 3600_000), (req, res) => {
+    const u = desk(res); if (!u) return; const inv = st().mudraInvoices.find(i => i.id === req.params.id); if (!inv) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404);
+    const un = unlockJobCode(inv.jobCode, u.id); if (un === 'NONE') return bad(res, 'There is no code on this invoice', 'इस इनवॉइस पर कोई कोड नहीं है', 409, { code: 'NONE' });
+    if (un === 'TOO_MANY') return bad(res, 'This code was already unlocked twice. Ask the owner.', 'यह कोड दो बार अनलॉक हो चुका है। मालिक से पूछें।', 429, { code: 'TOO_MANY_UNLOCKS' });
+    db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'JOB_CODE_UNLOCKED', inv.invoiceRef); res.json({ success: true, invoice: pub(inv) });
+  });
+  r.post('/admin/invoices/:id/photos', (req, res) => {
+    const u = desk(res); if (!u) return; const inv = st().mudraInvoices.find(i => i.id === req.params.id); if (!inv) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404);
+    const kind = req.body?.kind === 'before' ? 'beforePhotos' : req.body?.kind === 'after' ? 'afterPhotos' : null; if (!kind) return bad(res, 'Choose before or after', 'पहले या बाद की फ़ोटो चुनें', 400, { code: 'BAD_INPUT' });
+    if (inv.status !== 'OPEN' || inv.jobStatus === 'SIGNED_OFF') return bad(res, 'Photos can no longer be added to this invoice', 'इस इनवॉइस में अब फ़ोटो नहीं जुड़ सकती', 409, { code: 'CLOSED' });
+    const list = inv[kind] || []; if (list.length >= JOB_PHOTO_MAX_PER_KIND) return bad(res, `At most ${JOB_PHOTO_MAX_PER_KIND} photos each for before and after`, `पहले और बाद की अधिकतम ${JOB_PHOTO_MAX_PER_KIND}-${JOB_PHOTO_MAX_PER_KIND} फ़ोटो`, 409, { code: 'TOO_MANY' });
+    if (kind === 'beforePhotos' && inv.jobStatus !== 'STARTED') return bad(res, 'Start the job with the buyer\'s code first, then add the before photo', 'पहले खरीदार के कोड से काम शुरू करें, फिर "पहले" की फ़ोटो जोड़ें', 409, { code: 'NOT_STARTED' });   // B14-04
+    const saved = saveJobPhoto(req.body?.data); if ('error' in saved) return bad(res, saved.error, saved.errorHi, saved.status);
+    const ph: JobPhoto = { id: saved.id, mime: saved.mime, size: saved.size, at: new Date().toISOString(), by: u.id }; inv[kind] = [...list, ph]; db.save();
+    db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'JOB_PHOTO_ADDED', `${inv.invoiceRef} ${req.body.kind} ${ph.id}`); res.json({ success: true, invoice: pub(inv) });
+  });
+  /** a job photo: the desk, or the buyer who owns the invoice; anyone else gets 404 */
+  r.get('/invoices/:id/photos/:pid', rateLimit('jobphoto-open', 300, 3600_000), (req, res) => {
+    const u = me(); const inv = st().mudraInvoices.find(i => i.id === req.params.id); const isDesk = u.role === 'SUPERADMIN' || u.role === 'ADMIN';
+    const ph = inv && (isDesk || inv.buyerUserId === u.id) ? [...(inv.beforePhotos || []), ...(inv.afterPhotos || [])].find(x => x.id === req.params.pid) : undefined; const buf = ph && readJobPhoto(ph.id);
+    if (!ph || !buf) return bad(res, 'Photo not found', 'फ़ोटो नहीं मिली', 404);
+    res.set({ 'Content-Type': ph.mime, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline', 'Content-Security-Policy': "sandbox; default-src 'none'" }).send(buf);
+  });
+  r.post('/admin/invoices/:id/complete', (req, res) => {
+    const u = desk(res); if (!u) return; const inv = st().mudraInvoices.find(i => i.id === req.params.id); if (!inv) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404);
+    if (inv.jobStatus === 'COMPLETED' || inv.jobStatus === 'SIGNED_OFF') return res.json({ success: true, duplicate: true, invoice: pub(inv) });
+    if (inv.status !== 'OPEN' || inv.jobStatus !== 'STARTED') return bad(res, 'Start the work with the buyer\'s code first', 'पहले खरीदार के कोड से काम शुरू करें', 409, { code: 'NOT_STARTED' });
+    if (!(inv.afterPhotos || []).length) return bad(res, 'Add at least one after-work photo', 'काम के बाद की कम से कम एक फ़ोटो जोड़ें', 409, { code: 'NO_AFTER_PHOTO' });
+    inv.jobStatus = 'COMPLETED'; inv.completedAt = new Date().toISOString(); db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'JOB_COMPLETED', inv.invoiceRef); res.json({ success: true, invoice: pub(inv) });
+  });
+  r.post('/invoices/:id/signoff', rateLimit('jobsignoff', 30, 3600_000), (req, res) => {
+    const u = me(); const inv = mine(req, res); if (!inv) return;
+    if (inv.jobStatus === 'SIGNED_OFF') return res.json({ success: true, duplicate: true, invoice: pub(inv) });
+    if (inv.status !== 'OPEN') return bad(res, 'This invoice is closed', 'यह इनवॉइस बंद है', 409, { code: 'NOT_OPEN' });
+    if (inv.jobStatus !== 'COMPLETED') return bad(res, 'The work is not marked finished yet', 'काम अभी पूरा नहीं दर्ज हुआ', 409, { code: 'NOT_COMPLETED' });
+    inv.jobStatus = 'SIGNED_OFF'; inv.signedOffAt = new Date().toISOString(); db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'JOB_SIGNED_OFF', inv.invoiceRef); res.json({ success: true, invoice: pub(inv) });
   });
   /** invoice paid with no coins used: same settlement record, coins 0 */
   r.post('/admin/invoices/:id/mark-paid', (req, res) => {
     const u = desk(res); if (!u) return; const inv = st().mudraInvoices.find(i => i.id === req.params.id); if (!inv) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404);
-    if (inv.status === 'PAID') return res.json({ success: true, duplicate: true, invoice: inv });
+    if (inv.status === 'PAID') return res.json({ success: true, duplicate: true, invoice: pub(inv) });
     if (inv.status !== 'OPEN') return bad(res, 'Only an open invoice can be marked paid', 'सिर्फ़ खुला इनवॉइस पेड मार्क हो सकता है', 409);
     const partner = mudraConfig().partners.find(x => x.id === inv.partnerId); if (!partner) return bad(res, 'Partner not found', 'पार्टनर नहीं मिला', 404);
     inv.status = 'PAID'; inv.paidAt = new Date().toISOString(); inv.settlement = splitFor(inv.amountInr, 0, partner.feePct);
-    db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'MUDRA_INVOICE_MARKED_PAID', `${inv.invoiceRef} ₹${inv.amountInr}`); res.json({ success: true, invoice: inv });
+    db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'MUDRA_INVOICE_MARKED_PAID', `${inv.invoiceRef} ₹${inv.amountInr}`); res.json({ success: true, invoice: pub(inv) });
   });
   /** record that GENZ paid the partner out. A record only: no money moves in this code. */
   r.post('/admin/invoices/:id/payout', (req, res) => {
     const u = desk(res); if (!u) return; const inv = st().mudraInvoices.find(i => i.id === req.params.id); if (!inv) return bad(res, 'Invoice not found', 'इनवॉइस नहीं मिला', 404);
     if (inv.status !== 'PAID' || !inv.settlement) return bad(res, 'Only a paid invoice has a payout to record', 'सिर्फ़ पेड इनवॉइस का पेआउट दर्ज हो सकता है', 409, { code: 'NOT_PAID' });
-    if (inv.settlement.status === 'PAID_OUT') return res.json({ success: true, duplicate: true, invoice: inv });
+    if (inv.settlement.status === 'PAID_OUT') return res.json({ success: true, duplicate: true, invoice: pub(inv) });
     inv.settlement.status = 'PAID_OUT'; inv.settlement.paidOutAt = new Date().toISOString(); inv.settlement.paidOutBy = u.id;
-    db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'MUDRA_PAYOUT_RECORDED', `${inv.invoiceRef} ₹${inv.settlement.partnerPayoutInr} to ${inv.partnerId}`); res.json({ success: true, invoice: inv });
+    db.save(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', inv.id, 'MUDRA_PAYOUT_RECORDED', `${inv.invoiceRef} ₹${inv.settlement.partnerPayoutInr} to ${inv.partnerId}`); res.json({ success: true, invoice: pub(inv) });
   });
   return r;
 }

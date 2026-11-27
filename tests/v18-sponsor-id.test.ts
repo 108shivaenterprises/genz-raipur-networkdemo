@@ -32,14 +32,14 @@ let panSeq = 2000;
 const mkPan = () => `QRSPD${++panSeq}K`;
 const mkAadhaar = () => { const body = '4' + String(Math.floor(Math.random() * 1e10)).padStart(10, '0'); return body + verhoeffCheckDigit(body); };
 const mkApp = (n: string, phone = rnd()) => ({ name: n, phone, city: 'Raipur', reference: 'Known for 6 years, runs an office near Pandri bus stand', consent: true as const });
-const regRaw = (code: string, phone: string, extra: any = {}) => fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, name: 'Local Associate', phone, password: PW, consent: true, city: 'Raipur', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true, ...extra }) });
+const regRaw = (code: string, phone: string, extra: any = {}) => fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, name: 'Local Associate', phone, password: PW, consent: true, locality: 'Shankar Nagar', city: 'Raipur', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true, ...extra }) });
 
 /** a fresh RERA-registered (Tier 1) broker: admin invitation → register with RERA + PAN + Aadhaar → admin approves → signed in */
 async function newTier1(name: string) {
   const phone = rnd(); const email = `${name.toLowerCase().replace(/\W+/g, '.')}.${Date.now()}@example.in`;
   const inv = await j(await call(jar.SUP, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: phone, targetRole: 'BROKER' }));
   const pan = mkPan(); const aad = mkAadhaar();
-  const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.invitation.code, name, email, phone, password: PW, consent: true, city: 'Raipur', reraNumber: `PCGRERA25${String(++panSeq).slice(-4)}-0001`, panNumber: pan, aadhaarNumber: aad, idConsent: true }) });
+  const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.invitation.code, name, email, phone, password: PW, consent: true, locality: 'Shankar Nagar', city: 'Raipur', reraNumber: `PCGRERA25${String(++panSeq).slice(-4)}-0001`, panNumber: pan, aadhaarNumber: aad, idConsent: true }) });
   expect(r.status, 'tier1 register').toBe(200);
   const id = (await r.json()).user.id;
   expect((await call(jar.ADMIN, 'POST', `/api/verifications/${id}/review`, { action: 'APPROVE', notes: 'RERA checked on the portal' })).status).toBe(200);
@@ -150,7 +150,7 @@ describe('a local associate enters only through a RERA-registered sponsor', () =
     // the RERA route
     const email = `dup.${Date.now()}@example.in`; const ph2 = rnd();
     const inv = await j(await call(jar.SUP, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: ph2, targetRole: 'BROKER' }));
-    const rr = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.invitation.code, name: 'Dup Pan', email, phone: ph2, password: PW, consent: true, city: 'Raipur', reraNumber: 'PCGRERA250999-0001', panNumber: S.pan, aadhaarNumber: mkAadhaar(), idConsent: true }) });
+    const rr = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: inv.invitation.code, name: 'Dup Pan', email, phone: ph2, password: PW, consent: true, locality: 'Shankar Nagar', city: 'Raipur', reraNumber: 'PCGRERA250999-0001', panNumber: S.pan, aadhaarNumber: mkAadhaar(), idConsent: true }) });
     expect(rr.status).toBe(400);
     // and a fresh PAN works — Umesh stays PENDING for the later tests
     const pan = mkPan(); const ok = await regRaw(p.invitation.code, phone, { panNumber: pan }); expect(ok.status).toBe(200);

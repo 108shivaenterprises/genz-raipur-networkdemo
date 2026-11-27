@@ -152,7 +152,7 @@ describe('more kinds of property: PG, co-working, hotel, banquet, parking, facto
 });
 
 describe('a member always belongs to a city', { timeout: 120000 }, () => {
-  const reg = (code: string, extra: any = {}) => ({ code, name: 'City Test Broker', email: 'city.test@example.in', phone: '9826100077', password: 'Strong#Pass2026', consent: true, reraNumber: 'PCGRERA250518-0077', panNumber: 'ABCPE1234F', aadhaarNumber: '234567890124', idConsent: true, ...extra });
+  const reg = (code: string, extra: any = {}) => ({ code, name: 'City Test Broker', email: 'city.test@example.in', phone: '9826100077', password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', reraNumber: 'PCGRERA250518-0077', panNumber: 'ABCPE1234F', aadhaarNumber: '234567890124', idConsent: true, ...extra });
   it('registration without a city is refused (CITY_REQUIRED); with only a city, the state is worked out from it (Ambala → Haryana)', async () => {
     const sa = cfg.demoAccounts.find((x: any) => x.role === 'SUPERADMIN'); expect(sa).toBeTruthy(); const ck = await login(sa.id);
     const inv = await (await call(ck, 'POST', '/api/invitations', { invitedEmail: 'city.test@example.in', invitedPhone: '9826100077', targetRole: 'BROKER' })).json();

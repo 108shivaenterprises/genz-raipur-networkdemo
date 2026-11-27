@@ -498,7 +498,7 @@ describe('GENZ network launch: builder says yes, waves by group, locals only a t
     const p = await j(await call(jar.B2, 'POST', '/api/network/tier2/applications', { name: 'Mohan Verma', phone, city: 'Raipur', reference: 'Known for 6 years, runs an office near Pandri bus stand', consent: true }));
     expect(p.invitation.code).toMatch(/^GZ-BRK-/);
     const aadBody = '3' + String(Math.floor(Math.random() * 1e10)).padStart(10, '0');
-    const reg = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: p.invitation.code, name: 'Local Associate', phone, password: 'Strong#Pass2026', consent: true, city: 'Raipur', panNumber: 'XYZPK4821Q', aadhaarNumber: aadBody + verhoeffCheckDigit(aadBody), idConsent: true }) });
+    const reg = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: p.invitation.code, name: 'Local Associate', phone, password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', city: 'Raipur', panNumber: 'XYZPK4821Q', aadhaarNumber: aadBody + verhoeffCheckDigit(aadBody), idConsent: true }) });
     expect(reg.status).toBe(200); const t2id = (await reg.json()).user.id;
     expect((await call(jar.SUP, 'POST', `/api/network/id-check/${t2id}`, { checked: true, note: 'seen on video call' })).status).toBe(200);
     expect((await call(jar.SUP, 'POST', `/api/verifications/${t2id}/review`, { action: 'APPROVE', notes: 'Local reference checked' })).status).toBe(200);

@@ -855,6 +855,8 @@ export interface Property {
 }
 
 export interface BuyerRequirement {
+  /** D23 — a broker's request to take a buyer-posted need; assignment and the full name / number wait for the buyer's yes */
+  claimRequests?: { brokerId: string; brokerName: string; at: string; decidedAt?: string; status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'SUPERSEDED' }[];
   id: string; // e.g. REQ-RAI-201
   /** v101 — made from a shop-QR lead the moment he confirmed his need; the number stays hidden ('') until the chat opens it */
   leadId?: string;
@@ -997,6 +999,10 @@ export interface SiteVisit {
   verifiedAt?: string;
   verificationMethod: 'OTP' | 'QR' | 'ADMIN_OVERRIDE';
   feedbackNotes?: string;
+  /** D23 — the customer's own 4-digit code (hash only) */
+  jobCode?: JobCodeRec;
+  /** D23 — who confirmed the visit (a user id, or 'SYSTEM' for the owner's room link) */
+  verifiedBy?: string;
   /** v72 — the owner's reply from his room page: may the visit go ahead? */
   ownerOk?: { answer: 'YES' | 'NO'; at: string };
   /** v79 — the booker nudged the property side to confirm / moved the visit to a new time (same pass, fresh 24 h window) */
@@ -2323,6 +2329,7 @@ function getInitialSeedData(): DatabaseState {
       propertyId: 'PROP-RAI-101',
       brokerId: 'USR-BRK-002',
       customerName: 'Dr. Alok Pandey',
+      customerPhone: '+91 98263 77889',
       scheduledTime: '2026-10-10T11:00:00.000Z',
       otpCode: '482910',
       isVerified: true,
@@ -3078,7 +3085,7 @@ function getInitialSeedData(): DatabaseState {
     resetRequests: [],
     privacyRequests: [],
     connectorReferrals: [],
-    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], reviews: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], mudraEntries: [], mudraRedemptions: [], mudraInvoices: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], reviews: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], mudraEntries: [], mudraRedemptions: [], mudraInvoices: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [{ id: 'VAK-seed101', kind: 'VISIT', refId: 'SV-2026-101', phoneKey: 'seed', phoneLast4: '7889', buyerName: 'Dr. Alok Pandey', brokerId: 'USR-BRK-002', brokerName: 'Amit Kumar Verma', subject: 'PROP-RAI-101', textVersion: 'seed', status: 'ACKED', createdAt: now, tickedAt: now, ackedAt: now }], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
   };
 }
 
@@ -3814,11 +3821,18 @@ process.once('exit', () => db.flush());
 /** v199 (D20) — GENZ Mudra. A discount voucher on GENZ-affiliated service partners; no cash value, no transfer, no withdrawal. Append-only: entries are never edited or deleted (except by DPDP erase of the owner). */
 export interface MudraEntry { id: string; userId: string; kind: 'CREDIT' | 'DEBIT'; amount: number; dealId?: string; redemptionId?: string; at: string; expiresAt?: string; note: string }
 /** v199b (D21) — an invoice the GENZ desk books for an affiliated partner; the buyer only taps "use Mudra" on it (no typing of numbers) */
-export interface MudraInvoice { id: string; invoiceRef: string; partnerId: string; partnerName: string; buyerUserId: string; dealId?: string; description: string; amountInr: number; status: 'OPEN' | 'PAID' | 'CANCELLED'; createdBy: string; createdAt: string; paidAt?: string; /** D22 record only, no money moves here */ settlement?: MudraSettlement }
+export interface MudraInvoice { id: string; invoiceRef: string; partnerId: string; partnerName: string; buyerUserId: string; dealId?: string; description: string; amountInr: number; status: 'OPEN' | 'PAID' | 'CANCELLED'; createdBy: string; createdAt: string; paidAt?: string; /** D22 record only, no money moves here */ settlement?: MudraSettlement;
+  /** D23 — the work itself (the desk runs it: the partner has no login yet) */
+  jobStatus?: 'OPEN' | 'STARTED' | 'COMPLETED' | 'SIGNED_OFF'; startedAt?: string; completedAt?: string; signedOffAt?: string;
+  beforePhotos?: JobPhoto[]; afterPhotos?: JobPhoto[];
+  /** D23 — proof-of-presence code: ONLY a hash is kept */
+  jobCode?: JobCodeRec }
+export interface JobPhoto { id: string; mime: string; size: number; at: string; by: string }
+export interface JobCodeRec { hash: string; salt: string; expiresAt: string; attempts: number; issues: number; usedAt?: string; lockedAt?: string; /** desk unlocks so far (capped) and who did the last one: that person may not enter the code */ unlocks?: number; unlockedBy?: string }
 export interface MudraSettlement { grossInr: number; coinsInr: number; customerPaysInr: number; genzShareInr: number; partnerPayoutInr: number; status: 'PENDING_PAYOUT' | 'PAID_OUT'; paidOutAt?: string; paidOutBy?: string }
 export interface MudraRedemption { invoiceId?: string; id: string; userId: string; partnerId: string; partnerName: string; invoiceRef: string; invoiceAmount: number; discount: number; at: string }
 export interface MudraPartner { id: string; name: string; category: string; /** what GENZ earns from this partner, % of the invoice — the discount can never exceed it */ feePct: number; active: boolean }
-export interface MudraConfig { enabled: boolean; /** % of the buyer-side brokerage credited */ pct: number; validityDays: number; /** an upper cap on any discount, % of the invoice (also capped by the partner's feePct) */ maxDiscountPct: number; terms: { en: string; hi: string }; partners: MudraPartner[] }
+export interface MudraConfig { enabled: boolean; /** % of the buyer-side brokerage credited */ pct: number; validityDays: number; /** an upper cap on any discount, % of the invoice (also capped by the partner's feePct) */ maxDiscountPct: number; terms: { en: string; hi: string }; partners: MudraPartner[]; /** D23 — when true, a discount on a service invoice waits for the buyer's sign-off of the work (default false) */ requireSignoff?: boolean }
 export const DEFAULT_MUDRA_CONFIG = (): MudraConfig => ({
   enabled: (process.env.COINS_ENABLED ?? 'true').toLowerCase() !== 'false', pct: 1, validityDays: 183, maxDiscountPct: 10,
   terms: {

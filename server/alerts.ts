@@ -22,6 +22,14 @@ export function alert(to: Who | Who[], kind: PushKind, title: string, body: stri
   } catch { /* an alert never breaks the action */ }
 }
 
+/** B5-06 — the brokers of every live deal on a property hear that its price / status changed (in-app + push, EN + HI); the actor never alerts himself */
+export function tellDealBrokers(propertyId: string, actorId: string, en: [string, string], hi: [string, string], tag: string) {
+  try {
+    const ids = db.getState().dealRooms.filter(d => d.propertyId === propertyId && d.stage !== 'Settled' && d.stage !== 'Lead').flatMap(d => [d.introducingBrokerId, d.closingBrokerId]);
+    alert(ids, 'deals', en[0], en[1], '/?tab=deals', { not: actorId, tag, hi });
+  } catch { /* never breaks the edit */ }
+}
+
 /** "Sunita Yadav" → "Sunita", "Dr. Alok Pandey" → "Dr. Alok" (a customer is named by first name only; a title stays with it) */
 const TITLE = /^(dr|mr|mrs|ms|miss|shri|smt|sri|er|adv|prof|capt|col|km|kumari|sushri)\.?$/i;
 export const firstName = (n?: string) => {

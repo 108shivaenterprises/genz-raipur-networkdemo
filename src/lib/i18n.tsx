@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 export type Lang = 'en' | 'hi';
 
@@ -48,6 +48,7 @@ export const LangProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try { localStorage.setItem('genz_lang', l); } catch { /* preference only */ }
     document.documentElement.lang = l;
   }, []);
+  useEffect(() => { document.documentElement.lang = lang; }, [lang]);   // B13-07 — <html lang> follows the language the screen is actually in, also on first load
   const t = useCallback((key: string, fallback: string) => (lang === 'hi' ? HI[key] ?? fallback : fallback), [lang]);
   return <I18n.Provider value={{ lang, setLang, t }}>{children}</I18n.Provider>;
 };

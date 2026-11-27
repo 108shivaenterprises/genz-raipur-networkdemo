@@ -1,5 +1,6 @@
 import { NetworkStrip } from './OwnerListings.js';
 import { MudraVoucher } from './MudraVoucher.js';
+import { MakeCode } from './JobCode.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight, Building2, Briefcase, CalendarClock, Handshake, ShieldCheck, Scale, Search, Sparkles, UserCheck, Layers,
@@ -129,6 +130,28 @@ const OwnerHome: React.FC<Props> = ({ currentUser, permissions, properties, deal
 };
 
 // ───────────────────────── Buyer / tenant ─────────────────────────
+/** D23 — a broker asked to work on a need the buyer posted: nothing is assigned and his number stays hidden until he says yes */
+const BuyerClaims: React.FC<{ requirements: BuyerRequirement[] }> = ({ requirements }) => {
+  const tx = useTx(); const [done, setDone] = useState<Record<string, string>>({}); const [err, setErr] = useState('');
+  const waiting = requirements.flatMap(r => (r.claimRequests || []).filter(c => c.status === 'PENDING' && !r.assignedBrokerId).map(c => ({ r, c })));
+  if (!waiting.length) return null;
+  const answer = async (reqId: string, brokerId: string, accept: boolean) => { setErr(''); try { await api.claimDecide(reqId, brokerId, accept); setDone(d => ({ ...d, [`${reqId}|${brokerId}`]: accept ? tx('Accepted', 'मंज़ूर') : tx('Declined', 'मना किया') })); } catch (e: any) { setErr(e.message); } };
+  return (
+    <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4" data-testid="buyer-claims">
+      <h2 className="text-sm font-bold text-slate-900">{tx('A broker wants to help you', 'एक ब्रोकर आपकी मदद करना चाहता है')}</h2>
+      <p className="text-xs text-slate-600">{tx('Your name and number stay hidden from the broker until you say yes.', 'आपके हाँ कहने तक ब्रोकर से आपका नाम और नंबर छिपा रहेगा।')}</p>
+      {waiting.map(({ r, c }) => { const k = `${r.id}|${c.brokerId}`; return (
+        <div key={k} className="flex flex-wrap items-center gap-2 rounded-lg bg-white p-2 text-xs" data-testid={`claim-${r.id}-${c.brokerId}`}>
+          <span className="min-w-0 flex-1 break-words font-semibold">{c.brokerName} · {r.id}</span>
+          {done[k] ? <b className="text-emerald-700">{done[k]}</b> : <>
+            <button type="button" className="min-h-11 rounded-lg bg-emerald-600 px-3 font-bold text-white" onClick={() => void answer(r.id, c.brokerId, true)} data-testid={`claim-yes-${r.id}-${c.brokerId}`}>{tx('Yes, let him help', 'हाँ, मदद करने दें')}</button>
+            <button type="button" className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 font-bold" onClick={() => void answer(r.id, c.brokerId, false)} data-testid={`claim-no-${r.id}-${c.brokerId}`}>{tx('No', 'नहीं')}</button></>}
+        </div>); })}
+      {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
+    </div>
+  );
+};
+
 const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onNavigate, onOpenAddRequirement }) => {
   const tx = useTx();
   // the API already returns only this buyer's own enquiries
@@ -150,6 +173,7 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
         <Tile {...tp} testId="tile-buyer-visits" tab="properties" label={tx('Site visits ahead', 'आने वाली साइट विज़िट')} value={visits ? String(nextVisits.length) : '—'} sub={nextVisits[0] ? tx(`Next: ${formatDateTime(nextVisits[0].scheduledTime)}`, `अगली: ${formatDateTime(nextVisits[0].scheduledTime)}`) : tx('None scheduled', 'कोई तय नहीं')} icon={<CalendarClock className="h-4 w-4 text-slate-500" />} />
         <Tile {...tp} testId="tile-buyer-browse" tab="properties" label={tx('Browse properties', 'प्रॉपर्टी देखें')} value={String(properties.length)} sub={tx('Live listings (owner contact stays private)', 'लाइव लिस्टिंग (मालिक का संपर्क निजी)')} icon={<Search className="h-4 w-4 text-slate-500" />} />
       </div>
+      <BuyerClaims requirements={mine} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-6 shadow-xs lg:col-span-3" data-testid="buyer-visits">
           <h2 className="text-base font-bold text-slate-900">{tx('My site visits', 'मेरी साइट विज़िट')}</h2>
@@ -159,11 +183,11 @@ const BuyerHome: React.FC<Props> = ({ permissions, properties, requirements, onN
           ) : (
             <ul className="mt-4 space-y-2">
               {nextVisits.slice(0, 5).map(v => (
-                <li key={v.id} className="flex items-center gap-3 rounded-lg border border-slate-200 p-3">
+                <li key={v.id} className="rounded-lg border border-slate-200 p-3" data-testid={`buyer-visit-${v.id}`}><div className="flex items-center gap-3">
                   <CalendarClock className="h-4 w-4 shrink-0 text-slate-400" />
                   <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-900">{titleOf(v.propertyId)}</span><span className="block text-xs text-slate-500">{formatDateTime(v.scheduledTime)}</span></span>
-                  {v.otpCode ? <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 font-mono text-sm font-bold tracking-widest text-emerald-800" aria-label={tx('visit code', 'विज़िट कोड')}>{v.otpCode}</span> : <span className="shrink-0 text-[11px] text-slate-400">{tx('code sent by SMS', 'कोड SMS से भेजा')}</span>}
-                </li>
+                  {v.otpCode ? <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 font-mono text-sm font-bold tracking-widest text-emerald-800" aria-label={tx('check-in code', 'चेक-इन कोड')}><span className="mr-1 font-sans text-[10px] font-semibold tracking-normal">{tx('Check-in code', 'चेक-इन कोड')}</span>{v.otpCode}</span> : <span className="shrink-0 text-[11px] text-slate-400">{tx('code sent by SMS', 'कोड SMS से भेजा')}</span>}
+                </div><p className="mt-2 text-[11px] text-slate-500" data-testid={`buyer-visit-codes-help-${v.id}`}>{tx('On arrival show the owner your QR or the check-in code above, or make a fresh 4-digit visit code below. Any one of them is enough. (The job code in GENZ Mudra is a different code, only for starting a service job.)', 'पहुँचने पर मालिक को अपना QR या ऊपर वाला चेक-इन कोड दिखाएँ, या नीचे से नया 4 अंकों का विज़िट कोड बनाएँ। इनमें से कोई एक काफ़ी है। (GENZ मुद्रा का जॉब कोड अलग है, सिर्फ़ सर्विस का काम शुरू करने के लिए।)')}</p><div className="mt-2"><MakeCode make={() => api.visitJobCode(v.id)} testId={`visit-jobcode-${v.id}`} label={tx('Get visit code', 'विज़िट कोड पाएँ')} /></div></li>
               ))}
             </ul>
           )}

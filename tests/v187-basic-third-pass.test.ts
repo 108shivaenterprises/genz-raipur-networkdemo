@@ -69,12 +69,12 @@ describe('v187 · HTTP', { timeout: 240_000 }, () => {
   afterAll(async () => { proc?.kill('SIGTERM'); await wait(300); if (dir && existsSync(dir)) rmSync(dir, { recursive: true, force: true }); });
   const signup = async (phone: string, extra: object = {}) => {
     const o = await j(await call(undefined, 'POST', '/api/auth/signup-otp', { phone }));
-    return call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8800F', ...extra });
+    return call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', locality: 'Shankar Nagar', panNumber: 'ABCPN8800F', ...extra });
   };
 
   it('1 /my-id gives the generic refusal (no "already linked") when an approved account holds the PAN; a Basic claim does not block', async () => {
     const code = (await j(await call(SA, 'POST', '/api/invitations', { invitedEmail: 'holder87@test.genz.example', invitedPhone: '9826188020', targetRole: 'BROKER' }))).invitation.code;
-    const reg = await call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Pan Holder', phone: '9826188020', email: 'holder87@test.genz.example', password: PASS, consent: true, city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPH8820F' });
+    const reg = await call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Pan Holder', phone: '9826188020', email: 'holder87@test.genz.example', password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPH8820F' });
     expect(reg.status, await reg.clone().text()).toBe(200); HOLDER = { panNumber: 'ABCPH8820F' };
     const r = await signup('9826188001', { panNumber: 'ABCPN8802F' }); expect(r.status, await r.clone().text()).toBe(200); AID = (await j(r)).user.id; A = r.headers.get('set-cookie')!.split(';')[0];
     const deny = await call(A, 'POST', '/api/network/my-id', { panNumber: HOLDER.panNumber, aadhaarNumber: '234567890130', consent: true }); const db = await j(deny);
@@ -202,7 +202,7 @@ describe('v189 · round 10 source guards', () => {
     const pv = read('src/components/PropertiesView.tsx'); expect(pv).toContain('<BasicNetworkLocked what="listings"'); expect(pv).toContain("Network preview");
     expect(read('src/components/RequirementsView.tsx')).toContain('<BasicNetworkLocked what="needs" />');
     expect(read('src/App.tsx')).toContain("(['properties', 'requirements', 'desk', 'deals'] as string[]).includes(activeTab)");
-    const j = read('src/components/JoinView.tsx'); expect(j).not.toContain('No Aadhaar or RERA needed'); expect(j).toContain('Tier 2 associate; add RERA later to move to Tier 1'); expect(j).not.toContain('You can browse the network'); expect(j).toContain('join-continue');
+    const j = read('src/components/JoinView.tsx'); expect(j).not.toContain('No Aadhaar or RERA needed'); expect(j).toContain('Tier 2 associate; if you add RERA later, GENZ checks and approves it before you become Tier 1');   // B2-03 wording expect(j).not.toContain('You can browse the network'); expect(j).toContain('join-continue');
     const k = read('src/components/KycDesk.tsx'); for (const t of ['Tier 2 associate', 'kyc-rera-why']) expect(k).toContain(t);
     const o = read('src/components/OnboardingView.tsx'); for (const t of ['Basic (not KYC verified)', 'max-sm:block', 'howto-toggle', "basicTier)) toast(" ]) expect(o.includes(t) || t.startsWith('basicTier')).toBe(true);
     expect(read('src/components/DisputesView.tsx')).toContain('const [showAll, setShowAll] = useState(false)');

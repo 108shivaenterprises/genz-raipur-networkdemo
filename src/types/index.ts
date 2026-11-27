@@ -279,6 +279,9 @@ export interface DealMessage {
 }
 
 export interface BuyerRequirement {
+  /** D23 — brokers waiting for the buyer's yes (only the buyer sees this list) */
+  claimRequests?: { brokerId: string; brokerName: string; at: string; status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'SUPERSEDED' }[];
+  myClaim?: string;
   id: string;
   customerId: string;
   customerName: string;

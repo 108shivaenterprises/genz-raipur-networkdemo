@@ -306,7 +306,7 @@ export function rateLimit(name: string, limit: number, windowMs: number) {
     const wait = hit(`${name}:${who}`, limit, windowMs);
     if (wait) {
       res.setHeader('Retry-After', String(wait));
-      return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+      return res.status(429).json({ error: 'Too many requests. Please slow down.', errorHi: 'बहुत ज़्यादा अनुरोध। कृपया थोड़ा रुककर फिर कोशिश करें।' });
     }
     next();
   };

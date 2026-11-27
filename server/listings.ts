@@ -19,6 +19,7 @@ import { db } from './db.js';
 import type { UserProfile, Property } from './db.js';
 import { ctx, needs, rateLimit, hit, digits } from './auth.js';
 import { isAdmin } from './access.js';
+import { tellDealBrokers } from './alerts.js';
 import { phoneSchema } from './validation.js';
 import { closedStatusFor, canUndoSold, purgeDue, priceBand, monthOf, resaleKeyOf, SOLD_PURGE_DAYS, firstName, isLiveOffer } from '../src/shared/dealRules.js';
 import { brandOf } from './share.js';
@@ -140,7 +141,8 @@ export function createListingsRouter() {
 
     if (d.status === 'active' || d.status === 'under_negotiation') {
       if (held) return bad(res, 'A token is held on this property — it stays "under negotiation" until the token is closed', 409, 'TOKEN_LOCK');
-      p.listingStatus = d.status; p.updatedAt = ts; db.save(); audit(u, p, 'LISTING_STATUS', `${u.name} set ${p.id} to ${d.status}`);
+      const was = p.listingStatus; p.listingStatus = d.status; p.updatedAt = ts; db.save(); audit(u, p, 'LISTING_STATUS', `${u.name} set ${p.id} to ${d.status}`);
+      if (was !== d.status) tellDealBrokers(p.id, u.id, [`Listing status changed · ${p.title}`, `Now: ${d.status.replace('_', ' ')}.`], [`लिस्टिंग की स्थिति बदली · ${p.title}`, `अब: ${d.status === 'active' ? 'चालू' : 'बातचीत में'}।`], `status-${p.id}`);   // B5-06
       return res.json({ success: true });
     }
     if (d.status === 'withdrawn') {

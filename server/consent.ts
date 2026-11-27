@@ -266,6 +266,9 @@ export function createConsentRouter() {
     if (open + items.length > MAX_OPEN_DRAFTS) return bad(res, `You already have ${open} drafts. Finish or delete some first (at most ${MAX_OPEN_DRAFTS}).`, 409);
     const homeCity = String(u.city || '').trim();
     const out: ListingDraft[] = [];
+    // B4-03 — the same message pasted twice: still saved (the broker may mean it) but he is told
+    const norm = (x: string) => x.replace(/\s+/g, ' ').trim().toLowerCase();
+    const duplicates = items.filter(it => s.listingDrafts.some(x => x.brokerId === u.id && norm(x.raw) === norm(it.raw))).length;
     for (const it of items) {
       const city = it.city || homeCity;
       if (it.kind === 'NEED') {
@@ -289,7 +292,7 @@ export function createConsentRouter() {
     }
     s.listingDrafts.unshift(...out); // newest paste on top, in the order the messages were pasted
     db.save();
-    res.json({ success: true, drafts: out.map(draftView), found: out.length, needs: out.filter(d => d.kind === 'NEED').length });
+    res.json({ success: true, drafts: out.map(draftView), found: out.length, needs: out.filter(d => d.kind === 'NEED').length, ...(duplicates ? { duplicates, warning: `${duplicates} of these messages were already pasted before — check you are not adding the same home twice.`, warningHi: `इनमें से ${duplicates} संदेश पहले भी पेस्ट हो चुके हैं — एक ही घर दो बार न जुड़े, यह देख लें।` } : {}) });
   });
 
   /** v28 — a pasted requirement was saved as a Buyer Need (POST /api/requirements) → the draft is done */

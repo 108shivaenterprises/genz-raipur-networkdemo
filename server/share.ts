@@ -10,6 +10,7 @@
  *
  * Alerts are shown inside the app (Share Kit tab). Push alerts on WhatsApp would need the WhatsApp Business API.
  */
+import { HI_PROPERTY_TYPE, HI_TRANSACTION } from '../src/shared/labelsHi.js';
 import { Router, type Request, type Response } from 'express';
 import { isVerifiedFull } from './permissions.js';
 import crypto from 'node:crypto';
@@ -289,9 +290,9 @@ setInterval(tick,1000);setInterval(flush,10000);document.addEventListener('visib
       const p = db.byId('properties', l.refId);
       if (!p || p.verificationStatus !== 'VERIFIED' || !['active', 'under_negotiation'].includes(p.listingStatus) || p.listingBrokerId !== owner.id) return gone();
       title = p.title; sub = `${p.locality}, ${p.city}`; image = p.images?.find(i => /^https:\/\//.test(i));
-      overview = `<p style="font-size:14px;line-height:1.5;margin:0">${esc(p.description)}</p><div class="row"><span>${t.type}</span><b>${esc(p.propertyType)} · ${esc(p.transactionType)}</b></div>`;
-      plans = `<div class="row"><span>${t.price}</span><b>${inr(p.askingPrice)}</b></div>${p.plotAreaSqFt ? `<div class="row"><span>${t.area}</span><b>${p.plotAreaSqFt} sq ft</b></div>` : ''}${p.builtUpAreaSqFt ? `<div class="row"><span>Built-up</span><b>${p.builtUpAreaSqFt} sq ft</b></div>` : ''}`;
-      location = `<div class="row"><span>${t.loc}</span><b>${esc(p.locality)}, ${esc(p.city)}</b></div><div class="tags">${(p.tags || []).map(c => `<span>${esc(c)}</span>`).join('')}</div><p class="small">Exact address is shared after a verified site-visit.</p>`;
+      overview = `<p style="font-size:14px;line-height:1.5;margin:0">${esc(p.description)}</p><div class="row"><span>${t.type}</span><b>${esc(lang === 'hi' ? `${HI_PROPERTY_TYPE[p.propertyType] || p.propertyType} · ${HI_TRANSACTION[p.transactionType] || p.transactionType}` : `${p.propertyType} · ${p.transactionType}`)}</b></div>`;
+      plans = `<div class="row"><span>${t.price}</span><b>${inr(p.askingPrice)}</b></div>${p.plotAreaSqFt ? `<div class="row"><span>${t.area}</span><b>${p.plotAreaSqFt} ${lang === 'hi' ? 'वर्ग फ़ुट' : 'sq ft'}</b></div>` : ''}${p.builtUpAreaSqFt ? `<div class="row"><span>${lang === 'hi' ? 'बिल्ट-अप' : 'Built-up'}</span><b>${p.builtUpAreaSqFt} ${lang === 'hi' ? 'वर्ग फ़ुट' : 'sq ft'}</b></div>` : ''}`;
+      location = `<div class="row"><span>${t.loc}</span><b>${esc(p.locality)}, ${esc(p.city)}</b></div><div class="tags">${(p.tags || []).map(c => `<span>${esc(c)}</span>`).join('')}</div><p class="small">${lang === 'hi' ? 'पूरा पता वेरिफ़ाइड साइट विज़िट के बाद बताया जाता है।' : 'Exact address is shared after a verified site-visit.'}</p>`;
     }
 
     countView(l, req);

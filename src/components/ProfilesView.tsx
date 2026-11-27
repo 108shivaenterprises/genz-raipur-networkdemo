@@ -3,6 +3,7 @@ import { Loader2, Search, Star, ShieldCheck, ArrowLeft, Flag, MessageSquareReply
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { TAGS, REPORT_REASONS, REMARK_MAX, REPLY_MAX, ABOUT_MAX, SPECIALTIES, EVIDENCE, tagLabel, type TargetGroup } from '../shared/reviewRules.js';
+import { BADGE_CONFIG, type BadgeKey } from '../shared/tierBadge.js';
 import { MyReraCard } from './ReraTier.js';
 import { VerifiedPhotoCard } from './VerifiedPhoto.js';
 
@@ -258,6 +259,8 @@ const Hero: React.FC<{ c: any; self?: boolean; action?: React.ReactNode }> = ({ 
           {!active && (self ? <Chip tone="amber">{tx('Others see your profile after GENZ approves you', 'GENZ की मंज़ूरी के बाद दूसरों को आपकी प्रोफ़ाइल दिखेगी')}</Chip> : <Chip tone="red">{tx('Not an active GENZ member', 'GENZ का सक्रिय सदस्य नहीं')}</Chip>)}
           {c.checks.idChecked && <Chip tone="green"><ShieldCheck className="mr-0.5 inline h-3 w-3" />{tx('ID checked by GENZ', 'GENZ ने ID जाँची')}</Chip>}
           {c.checks.photo && <Chip tone="green"><Camera className="mr-0.5 inline h-3 w-3" />{tx('Photo checked', 'फ़ोटो जाँची')}</Chip>}
+          {c.badge && <Chip tone={c.badge === 'DIAMOND' || c.badge === 'GOLD' ? 'amber' : 'green'}><span data-testid="broker-badge" data-badge={c.badge}>{hi ? BADGE_CONFIG.LABELS[c.badge as BadgeKey].hi : BADGE_CONFIG.LABELS[c.badge as BadgeKey].en}</span></Chip>}
+          {c.basic && <Chip tone="slate"><span data-testid="basic-label">{tx('Basic account · ID check pending', 'बेसिक अकाउंट · ID जाँच बाक़ी')}</span></Chip>}
           {c.tier === 'TIER1' && <Chip tone="blue">{tx('Tier 1 · RERA', 'Tier 1 · RERA वेरिफ़ाइड')}{c.rera ? ` ${c.rera}` : ''}</Chip>}
           {c.tier === 'TIER2' && <Chip tone="amber">{tx('Tier 2 · Local associate', 'Tier 2 · लोकल एसोसिएट')}</Chip>}
           {!c.tier && c.rera && <Chip tone="blue">RERA {c.rera}</Chip>}

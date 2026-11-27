@@ -1,4 +1,5 @@
 import { freePort } from './helpers/port';
+import { ackBuyer } from './helpers/ack';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
@@ -110,8 +111,11 @@ describe('role homes rely on data each role can really read', () => {
     const made = await (await call(jar.B2, 'POST', '/api/site-visits', { propertyId: 'PROP-RAI-101', customerName: mine.requirements[0].customerName, customerPhone: phone, scheduledTime: when })).json();
     expect(made.success).toBe(true);
     const visits = await (await call(buyer, 'GET', '/api/site-visits')).json();
-    const v = visits.siteVisits.find((x: any) => x.id === made.siteVisit.id);
-    expect(v?.otpCode).toMatch(/^\d{6}$/); // the customer sees the code the broker will ask for
+    const v0 = visits.siteVisits.find((x: any) => x.id === made.siteVisit.id);
+    expect(v0?.otpCode || '').toBe('');   // B9-04 — nothing until his "no direct deal" tick
+    expect(await ackBuyer(B, call, jar.B2, 'VISIT', made.siteVisit.id, phone)).toBe(303);
+    const v = (await (await call(buyer, 'GET', '/api/site-visits')).json()).siteVisits.find((x: any) => x.id === made.siteVisit.id);
+    expect(v?.otpCode).toMatch(/^\d{6}$/); // after the ack the customer sees the code the broker will ask for
     // another buyer never sees it
     const other = await login(acct('BUYER_TENANT', 1).email);
     const ov = await (await call(other, 'GET', '/api/site-visits')).json();

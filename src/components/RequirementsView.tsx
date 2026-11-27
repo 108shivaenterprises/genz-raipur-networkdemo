@@ -21,6 +21,17 @@ interface RequirementsViewProps {
   scope?: { total: number; scoped: boolean };
 }
 
+/** D23 — a broker asks to work on a need the buyer posted himself: the request waits for the buyer's yes (the claim button hides while it waits, and after a no).
+ *  shortcut: a declined request hides the button for good in this view (the server enforces the 24h cooldown), when a countdown is wanted send the decision time with the need. */
+export const ClaimNeed: React.FC<{ req: BuyerRequirement }> = ({ req }) => {
+  const tx = useTx(); const [state, setState] = useState<string | undefined>(req.myClaim); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const go = async () => { setBusy(true); setErr(''); try { const r = await api.claimRequirement(req.id); setState(r.pending ? 'PENDING' : 'DONE'); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  if (state === 'PENDING') return <p className="mt-2 text-xs text-amber-800" data-testid={`claim-waiting-${req.id}`}>{tx('Waiting for the buyer to accept — details open after that.', 'खरीदार की मंज़ूरी का इंतज़ार — मंज़ूरी के बाद पूरी जानकारी खुलेगी।')}</p>;
+  if (state === 'DECLINED') return <p className="mt-2 text-xs text-slate-600" data-testid={`claim-declined-${req.id}`}>{tx('The buyer declined. You can try again after 24 hours.', 'खरीदार ने मना किया। आप 24 घंटे बाद फिर कोशिश कर सकते हैं।')}</p>;
+  if (state === 'DONE') return <p className="mt-2 text-xs text-emerald-800">{tx('This need is now yours.', 'यह ज़रूरत अब आपकी है।')}</p>;
+  return <div className="mt-2"><button type="button" disabled={busy} onClick={go} data-testid={`claim-${req.id}`} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60">{tx('Ask to work on this need', 'इस ज़रूरत पर काम करने का अनुरोध')}</button>{err && <p className="mt-1 text-xs text-red-700" role="alert">{err}</p>}</div>;
+};
+
 /** v90 — put this client need into Today & Clients (with the client's agreement) so follow-ups, matches and reminders start. */
 const AddToClients: React.FC<{ req: BuyerRequirement }> = ({ req }) => {
   const tx = useTx();
@@ -266,6 +277,7 @@ export const RequirementsView: React.FC<RequirementsViewProps> = ({
               </a>
               )}
             </div>
+            {currentUser.role === 'BROKER' && !req.assignedBrokerId && !(req as any).buyerId && ['active', 'matching'].includes(req.status) && <ClaimNeed req={req} />}
             {currentUser.role === 'BROKER' && req.assignedBrokerId === currentUser.id && ['active', 'matching'].includes(req.status) && <AddToClients req={req} />}
             {currentUser.role === 'BROKER' && req.assignedBrokerId === currentUser.id && ['active', 'matching'].includes(req.status) && <NetworkHas requirementId={req.id} />}
             {currentUser.role === 'BROKER' && req.assignedBrokerId === currentUser.id && ['active', 'matching'].includes(req.status) && <BroadcastButton requirementId={req.id} />}

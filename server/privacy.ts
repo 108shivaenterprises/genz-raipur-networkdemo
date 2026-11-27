@@ -68,9 +68,12 @@ export function createPrivacyRouter() {
       policyVersion: POLICY_VERSION,
       profile,
       properties: mine(s.properties, 'ownerId', 'listingBrokerId'),
-      requirements: mine(s.requirements, 'brokerId', 'ownerId', 'createdBy'),
+      requirements: mine(s.requirements, 'brokerId', 'ownerId', 'createdBy').map((r: any) => ({ ...r, claimRequests: undefined, claimRequestCount: (r.claimRequests || []).length })),   // other brokers' names stay out of the export
       dealRooms: s.dealRooms.filter(d => d.introducingBrokerId === u.id || d.closingBrokerId === u.id || d.ownerId === u.id).map(d => ({ ...d, brokerBook: undefined, feePlans: undefined, myBrokerBook: d.brokerBook?.[u.id], myFeePlan: d.feePlans?.[u.id] })), // v71 — only MY brokerage book
-      siteVisits: mine(s.siteVisits, 'brokerId'),
+      // codes and secrets never leave the server, not even in the owner's own export
+      siteVisits: mine(s.siteVisits, 'brokerId').map((v: any) => ({ ...v, jobCode: undefined, otpCode: undefined, qrToken: undefined, otpAttempts: undefined, verifiedBy: undefined })),
+      // D23 — the buyer's own service invoices: what he was billed and paid; never GENZ's share, the partner payout or the code hash
+      mudraInvoices: s.mudraInvoices.filter(i => i.buyerUserId === u.id).map(i => ({ invoiceRef: i.invoiceRef, partner: i.partnerName, description: i.description, amountInr: i.amountInr, status: i.status, jobStatus: i.jobStatus || 'OPEN', coinsUsedInr: i.settlement?.coinsInr, youPaidInr: i.settlement?.customerPaysInr, createdAt: i.createdAt, paidAt: i.paidAt, signedOffAt: i.signedOffAt })),
       crmLeads: mine(s.crmLeads, 'associateId', 'builderId'),
       crmBookings: mine(s.crmBookings, 'associateId', 'builderId'),
       disputes: s.disputes.filter(d => (d as any).raisedBy === u.id || (d as any).againstUserId === u.id),
@@ -157,9 +160,9 @@ export function createPrivacyRouter() {
       const anon = sha256(target.id).slice(0, 10);
       target.name = `Deleted user ${anon}`;
       target.email = `deleted-${anon}@erased.invalid`;
-      target.phone = '';
+      const phoneWas = target.phone; target.phone = '';
       target.companyName = '';
-      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined; eraseMudraFor(target.id);   // v191 (D1)
+      target.reraNumber = ''; target.reraClaim = undefined; target.basicTier = undefined; eraseMudraFor(target.id, phoneWas);   // v191 (D1)
       target.panNumber = undefined;
       target.aadhaarLast4 = undefined; target.idConsentAt = undefined; target.idCheckedAt = undefined; target.idCheckedBy = undefined; target.idCheckNote = undefined;
       target.gstin = undefined;

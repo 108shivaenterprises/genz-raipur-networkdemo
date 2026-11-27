@@ -46,6 +46,7 @@ export const ListingDrafts: React.FC<{ onClose: () => void; onPublished: () => v
     try {
       const r = await api.waPaste(text); setText(''); await load(); if (r.drafts?.[0]) setOpen(r.drafts[0].id);
       const n = Number(r.needs || 0), l = Number(r.found || 0) - n;
+      if (r.duplicates) setErr(tx(r.warning, r.warningHi));   // B4-03 — the same text again: a visible hint, the drafts are still saved
       setNote(tx(`From this paste: ${l} new listing draft(s) and ${n} buyer need(s). The list below also holds your earlier drafts.`, `इस पेस्ट से: ${l} नए लिस्टिंग ड्राफ़्ट और ${n} खरीदार ज़रूरत। नीचे की सूची में आपके पिछले ड्राफ़्ट भी हैं।`));
     }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }

@@ -281,7 +281,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                   )}
                   {canPropose && (() => {
                     const rq: any = isPropMatch ? currentReq : r; const home: any = isPropMatch ? p : currentProp;
-                    const mineBuyer = !!meId && rq?.assignedBrokerId === meId; const nm = String(rq?.customerName || '').split(' ')[0] || tx('client', 'क्लाइंट');
+                    const mineBuyer = !!meId && rq?.assignedBrokerId === meId; const nm = String(rq?.customerName || '').trim() || tx('client', 'क्लाइंट');   // B6-04 — the full name, not the first word (the broker's own client)
                     const liked = isPropMatch ? likedIds.has(p.id) : !!r?.liked;
                     return (<>
                       {mineBuyer && home?.id && (rq?.leadId ? (() => {

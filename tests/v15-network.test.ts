@@ -43,7 +43,7 @@ const mkApp = (n: string, phone = rnd(), extra: any = {}) => ({ name: n, phone, 
 let panSeq = 1000;
 const mkPan = () => `ABCPD${++panSeq}F`;
 const mkAadhaar = () => { const body = '2' + String(Math.floor(Math.random() * 1e10)).padStart(10, '0'); return body + verhoeffCheckDigit(body); };
-const reg = (code: string, phone: string, extra: any = {}) => fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, name: 'Local Associate', phone, password: 'Strong#Pass2026', consent: true, city: 'Raipur', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true, ...extra }) });
+const reg = (code: string, phone: string, extra: any = {}) => fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, name: 'Local Associate', phone, password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', city: 'Raipur', panNumber: mkPan(), aadhaarNumber: mkAadhaar(), idConsent: true, ...extra }) });
 let T2PHONE = ''; let T2ID = ''; let T2COOKIE = '';
 
 describe('pure rules', () => {

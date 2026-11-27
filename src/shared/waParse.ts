@@ -146,7 +146,7 @@ export function stripContacts(t: string): string {
 const withoutPhones = (t: string) => t.replace(/(?<![\d])(?:\+?91[\s-]?|0)?(?:[6-9]\d{2}[\s-]?\d{2}[\s-]?\d{5}|[6-9]\d{4}[\s-]?\d{5})(?![\d])/g, ' ');
 
 const AREA_UNITS: { re: RegExp; f: number }[] = [
-  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:sq\.?\s*(?:ft|feet|fit)|sqft|sq\.?ft|sft|square\s*(?:feet|ft)|वर्ग\s*फ़?फ़ीट|वर्ग\s*फुट|वर्गफुट)/i, f: 1 },
+  { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:sq\.?\s*(?:ft|feet|fit)|sqft|sq\.?ft|sft|square\s*(?:feet|ft)|वर्ग\s*फ़?फ़ीट|वर्ग\s*फुट|वर्गफुट|स्क्वा(?:य|ये)र\s*फ़?[ीि]ट|स्क्वे(?:य|)र\s*फ़?[ीि]ट)/i, f: 1 },
   { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:sq\.?\s*(?:yd|yards?)|sqyd|gaj|गज)/i, f: 9 },
   { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:sq\.?\s*m(?:tr|eter|etre)?s?\b|sqm\b)/i, f: 10.7639 },
   { re: /(?<![\d,])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s*(?:acres?|एकड़)/i, f: 43560 },
@@ -291,7 +291,10 @@ export function findCity(t: string): { city?: string; state?: string } {
   return {};
 }
 
+/** Hindi names of well-known Raipur areas → the English name the app uses (B4-02) */
+const HI_LOCALITIES: [string, string][] = [['शंकर नगर', 'Shankar Nagar'], ['गुढ़ियारी', 'Gudhiyari'], ['पंडरी', 'Pandri'], ['देवेंद्र नगर', 'Devendra Nagar'], ['टाटीबंध', 'Tatibandh'], ['सरस्वती नगर', 'Saraswati Nagar'], ['अवंति विहार', 'Avanti Vihar'], ['तेलीबांधा', 'Telibandha'], ['मोवा', 'Mowa'], ['फाफाडीह', 'Phaphadih'], ['रायपुरा', 'Raipura'], ['सड्डू', 'Saddu'], ['कचना', 'Kachna'], ['लाभांडी', 'Labhandi'], ['वीआईपी रोड', 'VIP Road']];
 export function findLocality(t: string, city?: string): string | undefined {
+  for (const [hi, en] of HI_LOCALITIES) if (t.includes(hi)) return en;
   const low = ` ${t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
   const lists = city && CITY_LOCALITIES[city] ? [CITY_LOCALITIES[city]] : Object.values(CITY_LOCALITIES);
   for (const locs of lists) for (const l of locs) if (low.includes(` ${l.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `)) return l;

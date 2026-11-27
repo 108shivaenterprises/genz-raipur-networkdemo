@@ -32,7 +32,7 @@ afterAll(async () => { proc?.kill('SIGTERM'); await wait(300); if (dir && exists
 
 const PASS = 'Naya#Account2026';
 const invite = async (role: string, email: string, phone: string) => (await j(await call(SA, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: phone, targetRole: role }))).invitation.code;
-const body = (code: string, name: string, phone: string, email: string, extra: object) => ({ code, name, phone, email, password: PASS, consent: true, city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, ...extra });
+const body = (code: string, name: string, phone: string, email: string, extra: object) => ({ code, name, phone, email, password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, ...extra });
 
 describe('v141 · no GENZ desk', { timeout: 180_000 }, () => {
   let NEW_ID = '';

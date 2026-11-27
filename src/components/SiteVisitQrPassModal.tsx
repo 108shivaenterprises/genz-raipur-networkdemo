@@ -8,6 +8,7 @@ import { QrScanner } from './QrScanner.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { VisitAckPanel } from './VisitAckPanel.js';
 import { ScanLineNote } from './ScanPoint.js';
+import { MakeCode } from './JobCode.js';
 import { gateWords } from '../shared/visitGateRules.js';
 import {
   QrCode,
@@ -210,7 +211,9 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
     setLoadingCheckin(true);
     setError('');
     try {
-      const res = await api.verifySiteVisitOtp(visit.id, manualOtp.trim(), 'Physical inspection OTP verified.');
+      // D23 — routed by length: 4 digits = the customer's own visit code, 6 digits = the old OTP (a 4-digit code must never burn OTP attempts)
+      const code = manualOtp.trim(); if (!/^\d{4}$|^\d{6}$/.test(code)) throw new Error(tx('Enter the 4-digit visit code or the 6-digit OTP.', '4 अंकों का विज़िट कोड या 6 अंकों का OTP डालें।'));
+      const res = /^\d{4}$/.test(code) ? await api.visitVerifyCode(visit.id, code) : await api.verifySiteVisitOtp(visit.id, code, 'Physical inspection OTP verified.');
       if (res.success) {
         setCheckinSuccess(true);
         if (onSuccess) onSuccess();
@@ -269,7 +272,7 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
           {error && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
-              <span>{error}{/km from the property/.test(error) && <span className="mt-1 block font-semibold" data-testid="visit-far-hint">{tx('Your phone shows a place far from the property. Ask the buyer for his 6-digit code and use “Verify OTP” below — it needs no location.', 'आपका फ़ोन प्रॉपर्टी से दूर की जगह दिखा रहा है। खरीदार से 6-अंकों का कोड लेकर नीचे “OTP सत्यापित करें” दबाएँ — इसमें लोकेशन नहीं लगती।')}</span>}</span>
+              <span>{error}{/km from the property/.test(error) && <span className="mt-1 block font-semibold" data-testid="visit-far-hint">{tx('Your phone shows a place far from the property. Ask the buyer for his 4-digit visit code (or 6-digit OTP) and use “Verify code” below — it needs no location.', 'आपका फ़ोन प्रॉपर्टी से दूर की जगह दिखा रहा है। खरीदार से 4 अंकों का विज़िट कोड (या 6 अंकों का OTP) लेकर नीचे “कोड सत्यापित करें” दबाएँ — इसमें लोकेशन नहीं लगती।')}</span>}</span>
             </div>
           )}
 
@@ -353,6 +356,8 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
                   {tx('Scan on site or share with buyer/owner to confirm physical arrival', 'साइट पर स्कैन करें या खरीदार/मालिक से साझा करें ताकि पहुँचना पक्का हो')}
                 </p>
               </div>
+              {/* D23 — the buyer (he sees the secret and is neither booker nor property side) can make his own one-time 4-digit code */}
+              {currentUser.role === 'BUYER_TENANT' && !V.isVerified && !(V as any).secretHidden && V.gate && !V.gate.iAmBooker && !V.gate.propertySide && <MakeCode make={() => api.visitJobCode(visit.id)} testId="visit-jobcode" />}
             </div>}
 
             {/* Anti-Bypass Legal Stamp */}
@@ -416,7 +421,8 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
                   type="text"
                   value={manualOtp}
                   onChange={(e) => setManualOtp(e.target.value)}
-                  placeholder={tx('Enter 6-digit OTP from the client', 'क्लाइंट से 6-अंकों का OTP लेकर डालें')}
+                  placeholder={tx('4-digit visit code (or 6-digit OTP) from the client', 'क्लाइंट से 4 अंकों का विज़िट कोड (या 6 अंकों का OTP)')}
+                  inputMode="numeric" maxLength={6} data-testid="visit-code-input"
                   className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-mono font-bold text-slate-900"
                 />
                 <button
@@ -424,7 +430,7 @@ export const SiteVisitQrPassModal: React.FC<SiteVisitQrPassModalProps> = ({
                   disabled={loadingCheckin}
                   className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {tx('Verify OTP', 'OTP सत्यापित करें')}
+                  {tx('Verify code', 'कोड सत्यापित करें')}
                 </button>
               </form>
             </div>

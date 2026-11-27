@@ -81,7 +81,7 @@ export const GenzRadar: React.FC<{ currentUser: UserProfile; onMatch: (r: BuyerR
             <p className="font-semibold">{label('propertyType', r.propertyType)} · {r.transactionType === 'Sale' ? tx('Buy', 'खरीद') : r.transactionType === 'Rent' ? tx('Rent', 'किराया') : tx('Lease', 'लीज़')}</p>
             <p className="mt-0.5 text-slate-300">{[...(r.preferredLocalities || []).slice(0, 2), r.city].filter(Boolean).join(', ') || '—'}</p>
             <p className="mt-0.5 font-mono text-emerald-300">{formatINR(r.budgetMin)} – {formatINR(r.budgetMax)}</p>
-            <button type="button" onClick={() => onMatch(r)} className="mt-2 inline-flex min-h-9 w-full items-center justify-center gap-1 rounded-lg bg-indigo-500 font-semibold hover:bg-indigo-400"><Sparkles className="h-3.5 w-3.5 text-amber-300" />{tx('Match homes', 'घर मिलाएँ')}</button>
+            <button type="button" onClick={() => onMatch(r)} className="mt-2 inline-flex min-h-9 w-full items-center justify-center gap-1 rounded-lg bg-indigo-500 font-semibold hover:bg-indigo-400"><Sparkles className="h-3.5 w-3.5 text-amber-300" />{tx('Match homes', 'मैच होते घर देखें')}</button>
           </li>
         ))}
       </ul>

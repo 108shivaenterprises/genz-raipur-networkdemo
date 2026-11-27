@@ -79,6 +79,7 @@ export function createOpenSignupRouter() {
     const pw = passwordPolicyError(d.password); if (pw) return err(res, 400, 'WEAK_PASSWORD', pw, 'पासवर्ड कमज़ोर है — 10+ अक्षर, बड़ा, छोटा और अंक रखें।');
     const pan = normPan(d.panNumber);
     const needsPan = d.role === 'BROKER' || d.role === 'DEVELOPER_BUILDER';
+    if (d.role === 'BROKER' && !d.locality) return err(res, 400, 'LOCALITY_REQUIRED', 'Enter your locality / area (for example Shankar Nagar).', 'अपना इलाका / कॉलोनी लिखें (जैसे शंकर नगर)।');   // B2-02 — the form marks it required too
     if (needsPan && !pan) return err(res, 400, 'PAN_REQUIRED', 'Enter your PAN (e.g. ABCPD1234E).', 'अपना PAN डालें (जैसे ABCPD1234E)।');
     if (pan && !isValidPan(pan)) return err(res, 400, 'PAN_INVALID', 'PAN format is invalid (e.g. ABCPD1234E).', 'PAN का फ़ॉर्मेट सही नहीं है (जैसे ABCPD1234E)।');
     if (pan && d.panConsent !== true) return err(res, 400, 'PAN_CONSENT_REQUIRED', 'Please tick that GENZ may keep your PAN to check your KYC.', 'कृपया सहमति दें कि GENZ आपका PAN KYC जाँचने के लिए रखे।');

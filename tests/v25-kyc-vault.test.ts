@@ -211,7 +211,7 @@ async function join(name: string, extra: Record<string, unknown> = {}): Promise<
   const phone = rnd(); const email = `${name.toLowerCase().replace(/\W+/g, '.')}.${Date.now()}.${Math.floor(Math.random() * 1e4)}@example.in`;
   const inv = await j(await call(jar.SUP, 'POST', '/api/invitations', { invitedEmail: email, invitedPhone: phone, targetRole: 'BROKER' }));
   const pan = mkPan(); const aad = mkAadhaar();
-  const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code: inv.invitation.code, name, email, phone, password: PW, consent: true, city: 'Raipur', reraNumber: `PCGRERA25${String(++panSeq).slice(-4)}-0001`, panNumber: pan, aadhaarNumber: aad, idConsent: true, ...extra }) });
+  const r = await fetch(B + '/api/auth/register-invite', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': nextIp() }, body: JSON.stringify({ code: inv.invitation.code, name, email, phone, password: PW, consent: true, locality: 'Shankar Nagar', city: 'Raipur', reraNumber: `PCGRERA25${String(++panSeq).slice(-4)}-0001`, panNumber: pan, aadhaarNumber: aad, idConsent: true, ...extra }) });
   const body = await r.json();
   return { id: body.user?.id, email, pan, aad, cookie: r.headers.get('set-cookie')?.split(';')[0] || '', vaultStored: !!body.vaultStored, status: r.status, body };
 }

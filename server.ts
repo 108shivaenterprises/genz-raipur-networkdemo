@@ -1,7 +1,7 @@
 import './server/bootstrap.js';
 import { isVerifiedFull } from './server/permissions.js';
 import { hindiErrors } from './server/errorHi.js';
-import { alert, inr as rupees, once, firstName } from './server/alerts.js';
+import { alert, inr as rupees, once, firstName, tellDealBrokers } from './server/alerts.js';
 import express, { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { db, UserRole, UserProfile, sha256, type DatabaseState, type DealRoom, type BuyerRequirement as BuyerRequirementT, type AuditEvent as AuditEventT } from './server/db.js';
@@ -170,7 +170,7 @@ import { priceProblem } from './src/shared/priceSanity.js';
 const PHONE_IN_DEAL_MSG = 'Phone numbers cannot be shared in the deal room — it is seen by both sides. Use the in-app call, or the visit / deal tools.';
 const CONTACT_IN_DEAL_MSG = 'E-mail, UPI, Instagram / Telegram IDs and chat links cannot be shared in the deal room — it is seen by both sides. Use the in-app chat, call, or the visit / deal tools.';
 import { mandateShareAt } from './src/shared/mandateShare.js';
-import { visitGate, windowEnd, rescheduleError, REMIND_EVERY_MIN } from './src/shared/visitGateRules.js';
+import { visitGate, windowEnd, rescheduleError, rescheduleErrorHi, REMIND_EVERY_MIN } from './src/shared/visitGateRules.js';
 import { checkCard, isCardKind, CARD_KINDS } from './server/chatcards.js';
 import { createShareRouter, createPublicShareRouter } from './server/share.js';
 import { createLeadInletRouter, createLeadInletPublicRouter } from './server/leadInlets.js';
@@ -178,8 +178,9 @@ import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as vi
 import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, finishSignupOtp, sendSignupOtp } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
+import { issueJobCode, checkJobCode, unlockJobCode, triesLeft, codeState, JOBCODE_MAX_TRIES } from './server/jobcode.js';
 import { createMudraRouter, settleMudraQuiet, seedMudraDemo } from './server/mudra.js';
-import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
+import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitToRoom, moveClientRoomVisit, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
 import { createForgotRouter, createOtpAdminRouter } from './server/otpManual.js';
 import { createApiKeysRouter } from './server/apiKeys.js';
@@ -888,6 +889,7 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
       return res.status(400).json({ error: 'This invitation was issued to a different e-mail address' });
     }
   }
+  if (invite.targetRole === 'BROKER' && !String(parsed.data.locality || '').trim()) return res.status(400).json({ error: 'Enter your locality / area (for example Shankar Nagar).', errorHi: 'अपना इलाका / कॉलोनी लिखें (जैसे शंकर नगर)।', code: 'LOCALITY_REQUIRED' });   // B2-02 — same as open sign-up
   if (invite.targetRole === 'GENZ_CONNECTOR') {
     const cp = connectorProfileSchema.safeParse({ shopType: parsed.data.shopType, shopName: parsed.data.shopName, locality: parsed.data.locality || undefined, payoutUpi: parsed.data.payoutUpi || undefined });
     if (!cp.success) return res.status(400).json({ error: cp.error.issues[0]?.message || 'Shop details are required' });
@@ -1204,7 +1206,8 @@ const clientInitials = (n: string) => String(n || '').split(/\s+/).filter(w => /
 function sanitizeRequirement(r: any, user: UserProfile) {
   const full = isAdmin(user) || r.assignedBrokerId === user.id || (r.buyerId && r.buyerId === user.id);
   // v20: another broker's client is shown by initials only (name + phone together let anyone go around the broker)
-  return full ? r : { ...r, customerName: clientInitials(r.customerName), customerPhone: maskPhoneNumber(r.customerPhone), buyerId: undefined, customerId: undefined };
+  if (full && r.assignedBrokerId === user.id && !isAdmin(user) && r.claimRequests) return { ...r, claimRequests: r.claimRequests.filter((c: any) => c.brokerId === user.id) };   // the accepted broker never sees the other brokers who asked
+  return full ? r : { ...r, claimRequests: undefined, myClaim: (r.claimRequests || []).find((c: any) => c.brokerId === user.id)?.status, customerName: clientInitials(r.customerName), customerPhone: maskPhoneNumber(r.customerPhone), buyerId: undefined, customerId: undefined };
 }
 
 function nextSeq(ids: string[], re: RegExp, floor = 0) {
@@ -1648,6 +1651,7 @@ app.put('/api/properties/:id', needs('property:update'), (req: Request, res: Res
       'PRICE_REVISED',
       `Asking price modified from ₹${oldPrice.toLocaleString('en-IN')} to ₹${newPrice.toLocaleString('en-IN')}`
     );
+    tellDealBrokers(prop.id, currentUser.id, [`Price changed · ${prop.title}`, `Asking price is now ₹${newPrice.toLocaleString('en-IN')} (was ₹${oldPrice.toLocaleString('en-IN')}).`], [`कीमत बदली · ${prop.title}`, `माँगी गई कीमत अब ₹${newPrice.toLocaleString('en-IN')} है (पहले ₹${oldPrice.toLocaleString('en-IN')}).`], `price-${prop.id}`);   // B5-06
   }
 
   const { askingPrice: _a, images: _i, priceChangeReason: _r, ...plain } = data;
@@ -1734,6 +1738,7 @@ app.post('/api/properties/:id/moderate', needs('property:moderate'), (req: Reque
   prop.updatedAt = new Date().toISOString();
   db.save();
   db.appendAuditEvent(currentUser.id, currentUser.role, 'PROPERTY', prop.id, `LISTING_${action}`, `Listing ${prop.id} ${action} by ${currentUser.name}. ${reason || ''}`.trim());
+  if (action === 'SUSPEND' || action === 'REJECT') tellDealBrokers(prop.id, currentUser.id, [`Listing suspended · ${prop.title}`, 'GENZ suspended this listing. Your deal on it is on hold until it is restored.'], [`लिस्टिंग रोकी गई · ${prop.title}`, 'GENZ ने यह लिस्टिंग रोक दी है। इस पर आपकी डील लिस्टिंग चालू होने तक रुकी है।'], `susp-${prop.id}`);   // B5-06
   if (action === 'APPROVE' || action === 'RESTORE') setImmediate(() => { try { alertNewListing(prop); } catch (e) { console.error('alertNewListing error:', e); } });
   res.json({ success: true, property: sanitizeProperty(prop, currentUser) });
 });
@@ -1862,17 +1867,63 @@ app.post('/api/requirements', needs('requirement:create'), newAccountCap('requir
 });
 
 // A verified broker claims an unassigned buyer enquiry.
-app.post('/api/requirements/:id/claim', needs('requirement:create'), needsKyc, (req: Request, res: Response) => {
+app.post('/api/requirements/:id/claim', needs('requirement:create'), needsKyc, rateLimit('claim', 20, 3600_000), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   if (currentUser.role !== 'BROKER') return res.status(403).json({ error: 'Only brokers can claim enquiries' });
   const r = db.byId('requirements', req.params.id);
   if (!r) return res.status(404).json({ error: 'Requirement not found' });
-  if (r.assignedBrokerId) return res.status(409).json({ error: 'This enquiry is already assigned to a broker' });
+  if (r.assignedBrokerId) return res.status(409).json({ error: 'This enquiry is already assigned to a broker', errorHi: 'यह ज़रूरत पहले ही किसी ब्रोकर को दी जा चुकी है' });
+  // D23 — a need the buyer posted himself is not taken without his yes: the claim waits as a PENDING request; assignment and the full name / number come only after he accepts
+  if (r.buyerId) {
+    const list = r.claimRequests || (r.claimRequests = []);
+    if (list.some((c: any) => c.brokerId === currentUser.id && c.status === 'PENDING')) return res.json({ success: true, pending: true, duplicate: true, message: 'Waiting for the buyer to accept — details open after that.', messageHi: 'खरीदार के मंज़ूर करने का इंतज़ार — उसके बाद जानकारी खुलेगी।', requirement: sanitizeRequirement(r, currentUser) });
+    const last = list.filter((c: any) => c.brokerId === currentUser.id).map((c: any) => Date.parse(c.decidedAt || c.at)).sort((a: number, b: number) => b - a)[0];   // a declined (or any earlier) request cannot be re-sent for 24h
+    if (last && Date.now() - last < 24 * 3600_000 && list.some((c: any) => c.brokerId === currentUser.id && c.status === 'DECLINED')) return res.status(429).json({ error: 'The buyer said no to your request. You can ask again after 24 hours.', errorHi: 'खरीदार ने आपका अनुरोध नहीं माना। 24 घंटे बाद फिर कोशिश करें।', code: 'CLAIM_COOLDOWN' });
+    list.push({ brokerId: currentUser.id, brokerName: currentUser.name, at: new Date().toISOString(), status: 'PENDING' }); r.updatedAt = new Date().toISOString(); db.save();
+    db.appendAuditEvent(currentUser.id, currentUser.role, 'SYSTEM', r.id, 'REQUIREMENT_CLAIM_REQUESTED', `${currentUser.name} asked to take requirement ${r.id}; waiting for the buyer`);
+    alert(r.buyerId, 'deals', 'A broker wants to help you', `${currentUser.name} (${currentUser.brokerId || 'GENZ broker'}) asked to work on your requirement. Open it to say yes or no. Your number stays hidden until you say yes.`, '/?tab=requirements', { tag: `claim-${r.id}-${currentUser.id}`, hi: ['एक ब्रोकर आपकी मदद करना चाहता है', `${currentUser.name} (${currentUser.brokerId || 'GENZ ब्रोकर'}) आपकी ज़रूरत पर काम करना चाहते हैं। हाँ या ना कहने के लिए खोलें। आपके हाँ कहने तक आपका नंबर छिपा रहेगा।`] });
+    return res.json({ success: true, pending: true, message: 'Waiting for the buyer to accept — details open after that.', messageHi: 'खरीदार के मंज़ूर करने का इंतज़ार — उसके बाद जानकारी खुलेगी।', requirement: sanitizeRequirement(r, currentUser) });
+  }
   r.assignedBrokerId = currentUser.id;
   r.updatedAt = new Date().toISOString();
   db.save();
   db.appendAuditEvent(currentUser.id, currentUser.role, 'SYSTEM', r.id, 'REQUIREMENT_CLAIMED', `Requirement ${r.id} claimed by ${currentUser.name}`);
   res.json({ success: true, requirement: sanitizeRequirement(r, currentUser) });
+});
+
+/** D23 — the buyer edits his own need: budget, areas and localities only (never name, phone or broker). Matching reads these fields live, so it follows at once. */
+app.put('/api/requirements/:id', needs('requirement:read'), rateLimit('req-edit', 30, 3600_000), (req: Request, res: Response) => {
+  const u = getCurrentUser(); const r = db.byId('requirements', req.params.id);
+  if (!r || u.role !== 'BUYER_TENANT' || r.buyerId !== u.id) return res.status(404).json({ error: 'Requirement not found', errorHi: 'ज़रूरत नहीं मिली' });
+  const b = req.body || {}; const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 100_000_000_000 ? Math.round(x) : undefined);
+  const bMin = b.budgetMin === undefined ? r.budgetMin : n(b.budgetMin); const bMax = b.budgetMax === undefined ? r.budgetMax : n(b.budgetMax);
+  if (bMin === undefined || bMax === undefined || bMin > bMax) return res.status(400).json({ error: 'Check the budget: the minimum cannot be more than the maximum', errorHi: 'बजट जाँचें: न्यूनतम अधिकतम से ज़्यादा नहीं हो सकता', code: 'BAD_BUDGET' });
+  const locs = b.preferredLocalities === undefined ? r.preferredLocalities : (Array.isArray(b.preferredLocalities) ? b.preferredLocalities.map((x: unknown) => String(x).trim().slice(0, 60)).filter(Boolean).slice(0, 10) : null);
+  if (!locs || !locs.length) return res.status(400).json({ error: 'Name at least one locality', errorHi: 'कम से कम एक इलाक़ा लिखें', code: 'BAD_LOCALITY' });
+  const area = (x: unknown, cur?: number) => x === undefined ? cur : (x === null ? undefined : n(x));
+  const minA = area(b.minAreaSqFt, r.minAreaSqFt); const maxA = area(b.maxAreaSqFt, r.maxAreaSqFt);
+  if (minA !== undefined && maxA !== undefined && minA > maxA) return res.status(400).json({ error: 'Check the area: the minimum cannot be more than the maximum', errorHi: 'क्षेत्रफल जाँचें: न्यूनतम अधिकतम से ज़्यादा नहीं हो सकता', code: 'BAD_AREA' });
+  const before = `${r.budgetMin}-${r.budgetMax} ${r.preferredLocalities.join('/')}`;
+  r.budgetMin = bMin; r.budgetMax = bMax; r.preferredLocalities = locs; r.minAreaSqFt = minA; r.maxAreaSqFt = maxA; r.updatedAt = new Date().toISOString(); db.save();
+  db.appendAuditEvent(u.id, u.role, 'SYSTEM', r.id, 'REQUIREMENT_EDITED', `Buyer edited ${r.id}: ${before} -> ${bMin}-${bMax} ${locs.join('/')}`);
+  if (r.assignedBrokerId) alert(r.assignedBrokerId, 'matches', 'Your client changed the need', `${r.id}: the budget or places were updated. Matching now uses the new values.`, '/?tab=requirements', { tag: `req-edit-${r.id}`, hi: ['आपके क्लाइंट ने ज़रूरत बदली', `${r.id}: बजट या इलाक़े बदले गए। मैचिंग अब नए मान इस्तेमाल करती है।`] });
+  res.json({ success: true, requirement: sanitizeRequirement(r, u) });
+});
+
+/** D23 — the buyer who posted the need answers a broker's request: yes = assigned (the broker now sees the full name / number), no = declined */
+app.post('/api/requirements/:id/claim/:brokerId', needs('requirement:read'), rateLimit('claim-decide', 30, 3600_000), (req: Request, res: Response) => {
+  const u = getCurrentUser(); const r = db.byId('requirements', req.params.id);
+  if (!r || !r.buyerId || r.buyerId !== u.id) return res.status(404).json({ error: 'Requirement not found', errorHi: 'ज़रूरत नहीं मिली' });   // only the buyer who posted it
+  const c = (r.claimRequests || []).find((x: any) => x.brokerId === req.params.brokerId && x.status === 'PENDING');
+  if (!c) return res.status(404).json({ error: 'No waiting request from this broker', errorHi: 'इस ब्रोकर का कोई अनुरोध बाक़ी नहीं', code: 'NO_REQUEST' });
+  const yes = req.body?.accept === true;
+  if (yes && r.assignedBrokerId) return res.status(409).json({ error: 'This need already has a broker', errorHi: 'इस ज़रूरत पर पहले से ब्रोकर है', code: 'ASSIGNED' });
+  c.status = yes ? 'ACCEPTED' : 'DECLINED'; (c as any).decidedAt = new Date().toISOString();
+  if (yes) { r.assignedBrokerId = c.brokerId; for (const o of r.claimRequests || []) if (o !== c && o.status === 'PENDING') o.status = 'SUPERSEDED'; }
+  r.updatedAt = new Date().toISOString(); db.save();
+  db.appendAuditEvent(u.id, u.role, 'SYSTEM', r.id, yes ? 'REQUIREMENT_CLAIM_ACCEPTED' : 'REQUIREMENT_CLAIM_DECLINED', `Buyer ${yes ? 'accepted' : 'declined'} broker ${c.brokerId} on ${r.id}`);
+  alert(c.brokerId, 'deals', yes ? 'The buyer said yes' : 'The buyer said no', yes ? `You now work on requirement ${r.id}. The buyer's name and number are open to you.` : `The buyer did not accept your request on ${r.id}.`, '/?tab=requirements', { tag: `claim-ans-${r.id}-${c.brokerId}`, hi: [yes ? 'खरीदार ने हाँ कहा' : 'खरीदार ने ना कहा', yes ? `अब आप ज़रूरत ${r.id} पर काम कर रहे हैं। खरीदार का नाम और नंबर आपके लिए खुल गया।` : `खरीदार ने ${r.id} पर आपका अनुरोध नहीं माना।`] });
+  res.json({ success: true, requirement: sanitizeRequirement(r, u) });
 });
 
 // ==========================================
@@ -1884,7 +1935,7 @@ app.post('/api/requirements/:id/claim', needs('requirement:create'), needsKyc, (
 app.post('/api/requirements/:reqId/interest', needs('requirement:read'), rateLimit('buyer-interest', 30, 3600_000), (req: Request, res: Response) => {
   const me = getCurrentUser();
   // v148 — "mine" (asked from the Properties list): his newest open need
-  const r = req.params.reqId === 'mine' ? [...db.getState().requirements].reverse().find((x: any) => x.buyerId === me.id) : db.byId('requirements', req.params.reqId);
+  const r = req.params.reqId === 'mine' ? db.getState().requirements.find((x: any) => x.buyerId === me.id && !['closed', 'fulfilled'].includes(x.status)) : db.byId('requirements', req.params.reqId);   // 'mine': the list is newest-first (unshift), so the first match is the newest open need
   if (!r || me.role !== 'BUYER_TENANT' || r.buyerId !== me.id) return res.status(404).json({ error: req.params.reqId === 'mine' ? 'Add what you are looking for under "My needs" first, then ask.' : 'Requirement not found' });
   const p = db.byId('properties', String((req.body as any)?.propertyId || ''));
   if (!p || p.listingStatus !== 'active') return res.status(404).json({ error: 'This home is not live' });
@@ -2131,7 +2182,8 @@ app.post('/api/collaborations', needs('collab:propose'), newAccountCap('collab',
   }
   if (data.requirementId) {
     const rq = db.byId('requirements', data.requirementId);
-    if (!rq) return res.status(404).json({ error: 'Requirement not found' });
+    // D23 — only the broker the requirement is assigned to may attach it (same rule as an offer): its buyer later drives Mudra credit and badges
+    if (!rq || rq.assignedBrokerId !== currentUser.id) return res.status(404).json({ error: 'Requirement not found' });
   }
 
   // The counter-party is the broker who lists the property, unless one is named explicitly.
@@ -2254,13 +2306,15 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
 
     // Automatically provision a protected Deal Room for this collaboration!
     const dealId = nextDealId(state);
-    const reqRecord = offer.requirementId ? db.byId('requirements', offer.requirementId) : undefined;
+    // a requirement is taken into the deal only if it is assigned to one of the two brokers (an old offer, or a claim that moved it, cannot smuggle another broker's buyer in)
+    const reqRaw = offer.requirementId ? db.byId('requirements', offer.requirementId) : undefined;
+    const reqRecord = reqRaw && [offer.proposingBrokerId, offer.receivingBrokerId].includes(reqRaw.assignedBrokerId) ? reqRaw : undefined;
     const grossEstCommission = Math.round(prop.askingPrice * 0.02);
 
     const newDealRoom = {
       id: dealId,
       propertyId: offer.propertyId,
-      requirementId: offer.requirementId || '',
+      requirementId: reqRecord ? (offer.requirementId || '') : '',
       introducingBrokerId: offer.proposingBrokerId,
       closingBrokerId: offer.receivingBrokerId,
       ownerId: prop.ownerId || '',
@@ -2693,9 +2747,9 @@ function sanitizeVisit(v: any, user: UserProfile, state = db.getState()) {
   // audit F13 — the owner is a CHECKER (he may confirm the visit), so he must not hold the code: it comes from the customer on the spot
   const secretVisible =
     isAdmin(user) ||
-    (user.role === 'BUYER_TENANT' && customerMatchesUser(v.customerPhone, user)) ||
+    (user.role === 'BUYER_TENANT' && customerMatchesUser(v.customerPhone, user) && !visitAckBlock('VISIT', v.id)) ||   // B9-04 — QR and code only after his "no direct deal" tick
     (DEMO_MODE && v.brokerId === user.id);
-  const out: any = { ...v, otpAttempts: undefined, otpExpiresAt: v.otpExpiresAt, ackStatus: visitAckStatus('VISIT', v.id) };
+  const out: any = { ...v, jobCode: undefined, ...(isAdmin(user) ? {} : { verifiedBy: undefined }), jobCodeState: codeState(v.jobCode), otpAttempts: undefined, otpExpiresAt: v.otpExpiresAt, ackStatus: visitAckStatus('VISIT', v.id) };
   // v79 — what THIS viewer may do with the visit right now (the same decision the server makes when he taps confirm)
   {
     const g = gateFor(v, user);
@@ -2898,14 +2952,16 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   );
 
   // Deliver the secret to the customer & the owner — NOT to the broker.
-  const msg = `GENZ site visit ${visitId} at "${prop.title}" on ${new Date(scheduledTime).toLocaleString('en-IN')}. Share code ${otpCode} with the broker ONLY when you are physically at the property.`;
+  // the code goes to the CUSTOMER only: the owner / listing broker is the one who types it, so he must never hold it (otherwise he could confirm a visit with no customer there)
+  const when0 = new Date(scheduledTime).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const msg = `GENZ site visit ${visitId} at "${prop.title}" on ${when0}. Show code ${otpCode} to the property owner or listing broker (not the broker who booked) ONLY when you are at the property.`;
   if (customerPhone && !visitAck) void sendSms(customerPhone, msg);   // with an acknowledgement the buyer gets his link instead; the code shows only after he confirms
   const ownerUser = db.byId('users', prop.ownerId);
-  if (ownerUser?.phone) void sendSms(ownerUser.phone, msg);
+  if (ownerUser?.phone) void sendSms(ownerUser.phone, `Visit booked at ${prop.title} on ${when0}. When the customer arrives, scan their QR or ask for their code.`);   // no code here
   // v102 — the property side (owner + listing broker) hears that a visit is booked on their property, so somebody is there to confirm it
   { const when = visitWhen(newVisit.scheduledTime); const who = clientInitials(customerName);
-    alert([prop.ownerId, prop.listingBrokerId], 'deals', `Visit booked · ${prop.title}`, `${who} · ${when} · by ${currentUser.name}. When he arrives, scan his QR or type his code.`, `/?tab=deals&deal=${targetDealId}`, {
-      not: currentUser.id, tag: `visit-booked-${visitId}`, hi: [`विज़िट बुक · ${prop.title}`, `${who} · ${when} · ${currentUser.name} द्वारा। वे पहुँचें तो उनका QR स्कैन करें या कोड डालें।`] }); }
+    alert([prop.ownerId, prop.listingBrokerId], 'deals', `Visit booked · ${prop.title}`, `${who} · ${when} · by ${currentUser.name}. When he arrives, scan his QR or ask for his visit code (4 digits, or the 6-digit OTP).`, `/?tab=deals&deal=${targetDealId}`, {
+      not: currentUser.id, tag: `visit-booked-${visitId}`, hi: [`विज़िट बुक · ${prop.title}`, `${who} · ${when} · ${currentUser.name} द्वारा। वे पहुँचें तो उनका QR स्कैन करें या उनका विज़िट कोड (4 अंक, या 6 अंकों का OTP) पूछें।`] }); }
 
   res.json({ success: true, siteVisit: sanitizeVisit(newVisit, currentUser, state), dealRoom: deal, watch: (customerPhone && partyCaution(customerPhone)) || undefined });
 });
@@ -2958,6 +3014,7 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
   visit.isVerified = true;
   visit.verifiedAt = now;
   visit.verificationMethod = method;
+  visit.verifiedBy = user.id;   // D23 — kept so a badge can tell who confirmed it
   visit.feedbackNotes = feedback.slice(0, 500);
   settleMudraQuiet(visit.dealRoomId);   // v199 — a verified visit may complete the Mudra conditions
 
@@ -2999,7 +3056,7 @@ app.post('/api/site-visits/:id/verify-otp', needs('sitevisit:verify'), rateLimit
   if (!safeEqual(String(visit.otpCode).trim(), String(otpCode ?? '').trim())) {
     visit.otpAttempts = (visit.otpAttempts || 0) + 1;
     db.save();
-    return res.status(400).json({ error: `Invalid verification OTP code. ${Math.max(0, 5 - visit.otpAttempts)} attempt(s) left.` });
+    { const t = triesLeft(Math.max(0, 5 - visit.otpAttempts)); return res.status(400).json({ error: `Invalid verification OTP code. ${t.en}.`, errorHi: `सत्यापन OTP सही नहीं है। ${t.hi}।` }); }
   }
 
   const deal = finishVisitVerification(
@@ -3021,7 +3078,7 @@ app.post('/api/site-visits/:id/checkin-qr', needs('sitevisit:verify'), rateLimit
   if (!visit.qrToken || !safeEqual(String(visit.qrToken), String(qrToken ?? '').trim())) {
     visit.otpAttempts = (visit.otpAttempts || 0) + 1;
     db.save();
-    return res.status(400).json({ error: `Invalid or expired QR verification token. ${Math.max(0, 5 - visit.otpAttempts)} attempt(s) left.` });
+    { const t = triesLeft(Math.max(0, 5 - visit.otpAttempts)); return res.status(400).json({ error: `Invalid or expired QR verification token. ${t.en}.`, errorHi: `QR टोकन सही नहीं है या ख़त्म हो गया है। ${t.hi}।` }); }
   }
 
   let geoText = '';
@@ -3055,15 +3112,49 @@ app.post('/api/site-visits/:id/checkin-qr', needs('sitevisit:verify'), rateLimit
 });
 
 
+// D23 — the customer's own 4-digit code for a visit (only a hash is kept). He makes it in his app and tells it to the property side on the spot;
+// they type it here and the visit goes through the SAME finishVisitVerification as the OTP / QR, with the same gate (maker ≠ checker, time window, acknowledgement).
+app.post('/api/site-visits/:id/job-code', needs('sitevisit:read'), rateLimit('jobcode-gen', 20, 3600_000), (req: Request, res: Response) => {
+  const u = getCurrentUser(); const v = db.byId('siteVisits', req.params.id);
+  if (!v || u.role !== 'BUYER_TENANT' || !customerMatchesUser(v.customerPhone, u)) return res.status(404).json({ error: 'Visit not found', errorHi: 'विज़िट नहीं मिली', code: 'NOT_FOUND' });   // only the buyer of THAT visit; everyone else sees "not found"
+  if (v.isVerified) return res.status(409).json({ error: 'This site visit is already verified', errorHi: 'यह साइट विज़िट पहले ही वेरिफ़ाई हो चुकी है', code: 'DONE' });
+  const ack = visitAckBlock('VISIT', v.id); if (ack) return res.status(409).json({ error: ack, errorHi: 'पहले “सीधा सौदा नहीं” की पुष्टि करें', code: 'ACK_REQUIRED' });
+  const o = issueJobCode(v.jobCode); if ('error' in o) { db.appendAuditEvent(u.id, u.role, 'VISIT', v.id, 'JOB_CODE_REFUSED', o.error); return res.status(429).json({ error: 'You have used all code requests for this visit. Ask the GENZ desk to unlock it.', errorHi: 'इस विज़िट के लिए आपके सारे कोड अनुरोध पूरे हो चुके। GENZ डेस्क से अनलॉक करवाएँ।', code: o.error }); }
+  v.jobCode = o.rec; db.save(); db.appendAuditEvent(u.id, u.role, 'VISIT', v.id, 'JOB_CODE_ISSUED', `visit ${v.id} (#${o.rec.issues}, expires ${o.rec.expiresAt})`);
+  res.json({ success: true, code: o.code, expiresAt: o.rec.expiresAt });   // the only time the plain code exists
+});
+/** the desk lifts a lock on a visit code (a property-side user can burn the 5 tries); audited */
+app.post('/api/site-visits/:id/unlock-code', needs('sitevisit:read'), rateLimit('jobcode-unlock', 30, 3600_000), (req: Request, res: Response) => {
+  const u = getCurrentUser(); if (u.role !== 'SUPERADMIN' && u.role !== 'ADMIN') return res.status(403).json({ error: 'GENZ desk only', errorHi: 'सिर्फ़ GENZ डेस्क', code: 'DESK_ONLY' });
+  const v = db.byId('siteVisits', req.params.id); if (!v) return res.status(404).json({ error: 'Visit not found', errorHi: 'विज़िट नहीं मिली', code: 'NOT_FOUND' });
+  const un = unlockJobCode(v.jobCode, u.id); if (un === 'NONE') return res.status(409).json({ error: 'There is no code on this visit', errorHi: 'इस विज़िट पर कोई कोड नहीं है', code: 'NONE' });
+  if (un === 'TOO_MANY') return res.status(429).json({ error: 'This code was already unlocked twice. Ask the owner.', errorHi: 'यह कोड दो बार अनलॉक हो चुका है। मालिक से पूछें।', code: 'TOO_MANY_UNLOCKS' });
+  db.save(); db.appendAuditEvent(u.id, u.role, 'VISIT', v.id, 'JOB_CODE_UNLOCKED', `visit ${v.id}`); res.json({ success: true, jobCodeState: codeState(v.jobCode) });
+});
+app.post('/api/site-visits/:id/verify-code', needs('sitevisit:verify'), rateLimit('jobcode-try', 30, 600_000), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser(); const visit = loadVerifiableVisit(req, res, currentUser); if (!visit) return;
+  if (visit.jobCode?.unlockedBy === currentUser.id) return res.status(409).json({ error: 'You unlocked this code, so someone else must enter it', errorHi: 'यह कोड आपने अनलॉक किया था, इसलिए कोई दूसरा इसे डाले', code: 'SAME_ADMIN' });
+  const out = checkJobCode(visit.jobCode, req.body?.code); db.save();
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'VISIT', visit.id, out === 'OK' ? 'JOB_CODE_ACCEPTED' : 'JOB_CODE_REJECTED', `visit ${visit.id}: ${out}`);
+  if (out !== 'OK') {
+    const left = Math.max(0, JOBCODE_MAX_TRIES - (visit.jobCode?.attempts || 0));
+    const M: Record<string, [string, string, number]> = { BAD: [`Wrong code. ${triesLeft(left).en}.`, `ग़लत कोड। ${triesLeft(left).hi}।`, 400], LOCKED: ['Too many wrong tries: this code is locked. The customer can make a new code, or GENZ can unlock it.', 'बहुत ग़लत कोशिशें: यह कोड लॉक है। ग्राहक नया कोड बना सकता है, या GENZ अनलॉक कर सकता है।', 423], EXPIRED: ['This code has expired. The customer must make a new one.', 'यह कोड ख़त्म हो गया है। ग्राहक नया कोड बनाए।', 410], USED: ['This code was already used.', 'यह कोड पहले इस्तेमाल हो चुका है।', 409], NONE: ['The customer has not made a code yet.', 'ग्राहक ने अभी कोड नहीं बनाया।', 409] };
+    const [en, hi, code] = M[out]; return res.status(code).json({ error: en, errorHi: hi, code: out, attemptsLeft: left });
+  }
+  const deal = finishVisitVerification(visit, 'OTP', 'Physical site inspection verified with the customer\'s own job code.', currentUser, 'SITE_VISIT_CONFIRMED', `Site visit ${visit.id} verified with the customer's own 4-digit code. Anti-bypass evidence stamped for property ${visit.propertyId}.`);
+  res.json({ success: true, siteVisit: sanitizeVisit(visit, currentUser), dealRoom: deal });
+});
+
 // v79 — the broker who booked a visit cannot confirm it himself (maker ≠ checker), so he gets two ways forward instead of a dead end:
 //   remind     tell the property side (owner + listing broker) to confirm it on the spot (at most one reminder every 30 minutes)
 //   reschedule the pass window has closed (or the slot moved): a new time re-opens the SAME pass; the property side is told
+const state0 = () => db.getState();
 const visitWhen = (iso: string) => { try { return new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
 function ownVisit(req: Request, res: Response, user: UserProfile) {
   const visit = db.byId('siteVisits', req.params.id);
-  if (!visit) { res.status(404).json({ error: 'Site visit record not found' }); return null; }
-  if (visit.brokerId !== user.id && !isSuper(user)) { res.status(403).json({ error: 'Only the broker who booked this visit can do this', code: 'NOT_BOOKER' }); return null; }
-  if (visit.isVerified) { res.status(409).json({ error: 'This site visit is already verified', code: 'DONE' }); return null; }
+  if (!visit) { res.status(404).json({ error: 'Site visit record not found', errorHi: 'साइट विज़िट रिकॉर्ड नहीं मिला' }); return null; }
+  if (visit.brokerId !== user.id && !isSuper(user)) { res.status(403).json({ error: 'Only the broker who booked this visit can do this', errorHi: 'यह सिर्फ़ वही ब्रोकर कर सकता है जिसने विज़िट बुक की', code: 'NOT_BOOKER' }); return null; }
+  if (visit.isVerified) { res.status(409).json({ error: 'This site visit is already verified', errorHi: 'यह साइट विज़िट पहले ही वेरिफ़ाई हो चुकी है', code: 'DONE' }); return null; }
   return visit;
 }
 /** v189 — the property owner (a logged-in account) answers an upcoming visit: YES = "let them come", NO = "other time". Same field the owner-room link sets (ownerOk), so the visit card and joint state follow. */
@@ -3071,9 +3162,9 @@ app.post('/api/site-visits/:id/owner-answer', needs('sitevisit:read'), rateLimit
   const currentUser = getCurrentUser(); const state = db.getState();
   const v = state.siteVisits.find(x => x.id === req.params.id);
   const prop = v ? db.byId('properties', v.propertyId) : undefined;
-  if (!v || !prop || prop.ownerId !== currentUser.id) return res.status(404).json({ error: 'Visit not found', code: 'NOT_FOUND' });   // only the owner of THAT property
+  if (!v || !prop || prop.ownerId !== currentUser.id) return res.status(404).json({ error: 'Visit not found', errorHi: 'विज़िट नहीं मिली', code: 'NOT_FOUND' });   // only the owner of THAT property
   const vdeal = visitDeal(state, v);
-  if (v.isVerified || Date.parse(v.scheduledTime) < Date.now() || vdeal?.closure?.status === 'CLOSED' || vdeal?.stage === 'Settled') return res.status(409).json({ error: 'This visit is already over, verified or its deal is closed', code: 'VISIT_CLOSED' });   // v191 (S5)
+  if (v.isVerified || Date.parse(v.scheduledTime) < Date.now() || vdeal?.closure?.status === 'CLOSED' || vdeal?.stage === 'Settled') return res.status(409).json({ error: 'This visit is already over, verified or its deal is closed', errorHi: 'यह विज़िट ख़त्म, वेरिफ़ाई या इसकी डील बंद हो चुकी है', code: 'VISIT_CLOSED' });   // v191 (S5)
   const answer = req.body?.answer === 'NO' ? 'NO' : 'YES';
   if (v.ownerOk?.answer === answer) return res.json({ success: true, already: true, ownerOk: v.ownerOk });   // a second tap sends nothing again
   v.ownerOk = { answer, at: new Date().toISOString() }; db.save();
@@ -3087,15 +3178,15 @@ app.post('/api/site-visits/:id/remind', needs('sitevisit:create'), rateLimit('vi
   const visit = ownVisit(req, res, currentUser); if (!visit) return;
   const prop = db.byId('properties', visit.propertyId);
   const to = [...new Set([prop?.ownerId, prop?.listingBrokerId].filter((x): x is string => !!x && x !== visit.brokerId))];
-  if (!to.length) return res.status(409).json({ error: 'There is nobody on the property side to remind yet', code: 'NO_PROPERTY_SIDE' });
+  if (!to.length) return res.status(409).json({ error: 'There is nobody on the property side to remind yet', errorHi: 'याद दिलाने के लिए प्रॉपर्टी की तरफ़ अभी कोई नहीं है', code: 'NO_PROPERTY_SIDE' });
   const waitMs = REMIND_EVERY_MIN * 60_000 - (Date.now() - Date.parse(visit.lastRemindAt || '1970-01-01'));
-  if (waitMs > 0) return res.status(429).json({ error: `You reminded them a moment ago — try again in ${Math.ceil(waitMs / 60_000)} minute(s)`, code: 'REMIND_WAIT' });
+  if (waitMs > 0) return res.status(429).json({ error: `You reminded them a moment ago — try again in ${Math.ceil(waitMs / 60_000)} minute${Math.ceil(waitMs / 60_000) === 1 ? '' : 's'}`, errorHi: `आपने अभी याद दिलाया था — ${Math.ceil(waitMs / 60_000)} मिनट बाद फिर कोशिश करें`, code: 'REMIND_WAIT' });
   visit.lastRemindAt = new Date().toISOString();
   db.save();
   const who = clientInitials(visit.customerName);
   const when = visitWhen(visit.scheduledTime);
-  alert(to, 'deals', `Please confirm visit ${visit.id} on the spot`, `${who} · ${prop?.title || visit.propertyId} · ${when}. When he arrives, scan his QR or type his code.`, `/?tab=deals&deal=${visit.dealRoomId}`, {
-    tag: `visit-remind-${visit.id}`, hi: [`विज़िट ${visit.id} साइट पर कन्फ़र्म करें`, `${who} · ${prop?.title || visit.propertyId} · ${when}। वे पहुँचें तो उनका QR स्कैन करें या कोड डालें।`],
+  alert(to, 'deals', `Please confirm visit ${visit.id} on the spot`, `${who} · ${prop?.title || visit.propertyId} · ${when}. When he arrives, scan his QR or ask for his visit code (4 digits, or the 6-digit OTP).`, `/?tab=deals&deal=${visit.dealRoomId}`, {
+    tag: `visit-remind-${visit.id}`, hi: [`विज़िट ${visit.id} साइट पर कन्फ़र्म करें`, `${who} · ${prop?.title || visit.propertyId} · ${when}। वे पहुँचें तो उनका QR स्कैन करें या उनका विज़िट कोड (4 अंक, या 6 अंकों का OTP) पूछें।`],
   });
   db.appendAuditEvent(currentUser.id, currentUser.role, 'VISIT', visit.id, 'SITE_VISIT_REMINDER', `Property side reminded to confirm visit ${visit.id}`);
   res.json({ success: true, notified: to.length });
@@ -3106,14 +3197,16 @@ app.post('/api/site-visits/:id/reschedule', needs('sitevisit:create'), rateLimit
   const visit = ownVisit(req, res, currentUser); if (!visit) return;
   const scheduledTime = String(req.body?.scheduledTime || '');
   const bad = rescheduleError(scheduledTime, Date.now());
-  if (bad) return res.status(400).json({ error: bad, code: 'BAD_TIME' });
+  if (bad) return res.status(400).json({ error: bad, errorHi: rescheduleErrorHi(bad), code: 'BAD_TIME' });
   if (Date.parse(scheduledTime) < Date.now() - 15 * 60_000) return res.status(400).json({ error: 'The visit time is in the past — pick a date and time from now on.', errorHi: 'विज़िट का समय बीत चुका है — अब से आगे की तारीख़ और समय चुनें।', code: 'VISIT_PAST' });   // S7: same rule as booking
-  if ((visit.otpAttempts || 0) >= 5) return res.status(429).json({ error: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.', code: 'LOCKED' });
+  if ((visit.otpAttempts || 0) >= 5) return res.status(429).json({ error: 'Too many wrong attempts — this visit is locked. Contact GENZ Operations.', errorHi: 'बहुत ग़लत कोशिशें — यह विज़िट लॉक है। GENZ ऑपरेशंस से संपर्क करें।', code: 'LOCKED' });
   const before = visit.scheduledTime;
   visit.scheduledTime = new Date(scheduledTime).toISOString();
   visit.otpExpiresAt = windowEnd(visit.scheduledTime, Date.now());   // the same pass and code, a fresh 24 h window
   visit.rescheduledAt = new Date().toISOString();
   visit.rescheduleCount = (visit.rescheduleCount || 0) + 1;
+  visit.ownerOk = undefined;   // B9-01 — the owner's yes was for the old time; he answers the new one
+  moveClientRoomVisit(visit.id, visit.scheduledTime);   // B9-06
   // the card in the deal chat tells the new time
   const card = (db.getState().dealMessages || []).find((m: any) => m.dealRoomId === visit.dealRoomId && m.kind === 'VISIT' && m.refId === visit.id);
   if (card) card.text = `Site visit on ${visitWhen(visit.scheduledTime)}`;
@@ -3125,6 +3218,10 @@ app.post('/api/site-visits/:id/reschedule', needs('sitevisit:create'), rateLimit
   alert(to, 'deals', `Visit ${visit.id} moved to ${when}`, `${clientInitials(visit.customerName)} · ${prop?.title || visit.propertyId}`, `/?tab=deals&deal=${visit.dealRoomId}`, {
     tag: `visit-moved-${visit.id}`, hi: [`विज़िट ${visit.id} अब ${when} पर`, `${clientInitials(visit.customerName)} · ${prop?.title || visit.propertyId}`],
   });
+  // B9-02 — the buyer hears the new time too (in-app if he has an account, SMS to the number on the visit); no code in it
+  { const buyers = state0().users.filter(x => x.role === 'BUYER_TENANT' && customerMatchesUser(visit.customerPhone, x)).map(x => x.id);
+    if (buyers.length) alert(buyers, 'deals', `Your visit moved to ${when}`, `${prop?.title || visit.propertyId} — the new time is ${when}.`, '/?tab=properties', { tag: `visit-moved-buyer-${visit.id}`, hi: [`आपकी विज़िट अब ${when} पर`, `${prop?.title || visit.propertyId} — नया समय ${when} है।`] });
+    if (visit.customerPhone) void sendSms(visit.customerPhone, `GENZ: your visit to "${prop?.title || visit.propertyId}" is moved to ${when}. / आपकी विज़िट का नया समय ${when}।`); }
   res.json({ success: true, siteVisit: sanitizeVisit(visit, currentUser) });
 });
 
@@ -5722,7 +5819,11 @@ app.post('/api/properties/:id/location', needs('property:update'), (req: Request
   if (b.village !== undefined) property.village = str(b.village, 80);
   if (b.street !== undefined) property.street = str(b.street, 160);
   if (b.pincode !== undefined) property.pincode = str(b.pincode, 10);
-  if (b.locality) property.locality = str(b.locality, 120);
+  if (b.locality) {
+    const oldLoc = property.locality; property.locality = str(b.locality, 120);
+    // B5-01 — the exact-address text names the locality: when the locality moves, the old name inside it follows (an address with no old name is left alone)
+    if (oldLoc && property.locality !== oldLoc && property.addressHidden && property.addressHidden.toLowerCase().includes(oldLoc.toLowerCase())) property.addressHidden = property.addressHidden.replace(new RegExp(oldLoc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), property.locality);
+  }
   if (b.landmark !== undefined) property.landmark = str(b.landmark, 160);
   if (b.googleMapsUrl !== undefined) property.googleMapsUrl = str(b.googleMapsUrl, 500);
   if (b.googleMapsDirectionsUrl !== undefined) property.googleMapsDirectionsUrl = str(b.googleMapsDirectionsUrl, 500);

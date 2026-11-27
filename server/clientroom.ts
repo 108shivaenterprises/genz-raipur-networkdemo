@@ -14,7 +14,7 @@
  */
 import { firebaseOn, otpUrl } from './phoneOtp.js';
 import { isVerifiedFull } from './permissions.js';
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import express from 'express';
 import crypto from 'crypto';
 import { db } from './db.js';
@@ -118,6 +118,11 @@ export function linkVisitToRoom(room: ClientRoom, item: ClientRoom['items'][numb
   if (req) { req.status = 'HANDLED'; req.visitId = visit.id; }
   tell(room, 'विज़िट तय / Visit booked', 'तारीख़ और समय देखने के लिए खोलें / Open to see the date and time');
   ev(room, `Visit booked for ${new Date(visit.scheduledTime).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${visit.id})`);
+}
+
+/** B9-06 — the booker moved the visit: the room's "booked" line shows the new time and the client is told */
+export function moveClientRoomVisit(visitId: string, when: string) {
+  for (const room of st().clientRooms) for (const item of room.items) { const v = (item.visits || []).find(x => x.visitId === visitId); if (!v) continue; v.when = when; tell(room, 'विज़िट का समय बदला / Visit time changed', 'नया समय देखने के लिए खोलें / Open to see the new time'); ev(room, `Visit ${visitId} moved to ${new Date(when).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`); }
 }
 
 // ───────────────────────────── broker API ─────────────────────────────
@@ -886,7 +891,13 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   });
 
   // 2. the code
-  r.post('/:token/verify', rateLimit('cr-verify', 40, 3600_000), form, (req: Request, res: Response) => {
+  // B6-01 — a looser per-IP cap (an office or café shares one IP) and a 429 that is the room's own page in EN + HI, not raw JSON. The per-room 15/hour wrong-code cap below is unchanged.
+  r.post('/:token/verify', (req: Request, res: Response, next: NextFunction) => {
+    const wait = hit(`cr-verify:${req.ip || ''}`, 120, 3600_000); if (!wait) return next();
+    headers(res); res.setHeader('Retry-After', String(wait));
+    const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
+    return gate(res, room, req.params.token, 'बहुत ज़्यादा कोशिशें — कृपया एक घंटे बाद फिर कोशिश करें। / Too many tries, please try again in an hour.', 'code', 429);
+  }, form, (req: Request, res: Response) => {
     headers(res);
     const room = find(req.params.token, req); if (!room || room.status !== 'ACTIVE' || Date.parse(room.expiresAt) < Date.now()) return gone(res);
     if (!room.otpHash || !room.otpExpires || Date.parse(room.otpExpires) < Date.now()) return gate(res, room, req.params.token, 'कोड की मियाद ख़त्म — नया कोड मँगाएँ। / The code has expired — ask for a new one.');

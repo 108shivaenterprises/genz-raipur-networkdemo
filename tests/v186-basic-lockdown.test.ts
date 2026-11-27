@@ -54,7 +54,7 @@ describe('v186 · Basic is default-deny (HTTP)', { timeout: 300_000 }, () => {
   const otp = async (phone: string) => { const r = await s.call(undefined, 'POST', '/api/auth/signup-otp', { phone }); const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(200); return b as { otpToken: string; devCode: string }; };
   const signup = async (phone: string, extra: object = {}, code?: { otpToken: string; devCode: string }) => {
     const o = code || await otp(phone);
-    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8600F', ...extra });
+    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', locality: 'Shankar Nagar', panNumber: 'ABCPN8600F', ...extra });
   };
   const cookie = (r: Response) => r.headers.get('set-cookie')!.split(';')[0];
   const locked = async (r: Response) => { const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(403); expect(b.code).toBe('ACCOUNT_NOT_VERIFIED'); expect(b.basic).toBe(true); expect(b.errorHi).toMatch(/KYC/); };
@@ -128,7 +128,7 @@ describe('v186 · Basic is default-deny (HTTP)', { timeout: 300_000 }, () => {
   });
   it('PAN: a refusal is generic and audited; a typo / refusal does not burn the one-time code', async () => {
     const code = (await j(await s.call(SA, 'POST', '/api/invitations', { invitedEmail: 'holder@test.genz.example', invitedPhone: '9826186020', targetRole: 'BROKER' }))).invitation.code;
-    expect((await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Pan Holder', phone: '9826186020', email: 'holder@test.genz.example', password: PASS, consent: true, city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPH9120F' })).status).toBe(200);
+    expect((await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Pan Holder', phone: '9826186020', email: 'holder@test.genz.example', password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPH9120F' })).status).toBe(200);
     const o = await otp('9826186004');
     const refused = await signup('9826186004', { panNumber: 'ABCPH9120F' }, o); const rb = await j(refused);
     expect(refused.status).toBe(409); expect(rb.code).toBe('CANNOT_REGISTER'); expect(JSON.stringify(rb)).not.toMatch(/already|registered|linked/i);
@@ -138,7 +138,7 @@ describe('v186 · Basic is default-deny (HTTP)', { timeout: 300_000 }, () => {
   it('(6) an invited sign-up with OTP + PAN is Basic too (no broker id, locked actions)', async () => {
     const code = (await j(await s.call(SA, 'POST', '/api/invitations', { invitedEmail: 'inv.otp@test.genz.example', invitedPhone: '9826186030', targetRole: 'BROKER' }))).invitation.code;
     const o = await j(await s.call(undefined, 'POST', '/api/auth/register-otp', { code, phone: '9826186030' }));
-    const reg = await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Invited Otp', phone: '9826186030', email: 'inv.otp@test.genz.example', password: PASS, consent: true, city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPI9130F', otpToken: o.otpToken, otpCode: o.devCode });
+    const reg = await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Invited Otp', phone: '9826186030', email: 'inv.otp@test.genz.example', password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPI9130F', otpToken: o.otpToken, otpCode: o.devCode });
     const rb = await j(reg); expect(reg.status, JSON.stringify(rb)).toBe(200); expect(rb.basic).toBe(true); expect(rb.user.basicTier).toBe(true); expect(rb.user.brokerId).toBeUndefined();
     await locked(await s.call(cookie(reg), 'POST', '/api/broadcast', { requirementId: 'REQ-1' }));
   });
@@ -226,7 +226,7 @@ describe('v186b · second review (HTTP)', { timeout: 300_000 }, () => {
   const otp = async (phone: string) => { const r = await s.call(undefined, 'POST', '/api/auth/signup-otp', { phone }); const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(200); return b as { otpToken: string; devCode: string }; };
   const signup = async (phone: string, extra: object = {}) => {
     const o = await otp(phone);
-    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8700F', ...extra });
+    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', locality: 'Shankar Nagar', panNumber: 'ABCPN8700F', ...extra });
   };
   const cookie = (r: Response) => r.headers.get('set-cookie')!.split(';')[0];
   const locked = async (r: Response) => { const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(403); expect(b.basic).toBe(true); };
@@ -277,7 +277,7 @@ describe('v186b · second review (HTTP)', { timeout: 300_000 }, () => {
 
   it('MED-1 a Basic PAN claim does not block an invited broker with the same PAN', async () => {
     const code = (await j(await s.call(SA, 'POST', '/api/invitations', { invitedEmail: 'squat@test.genz.example', invitedPhone: '9826187010', targetRole: 'BROKER' }))).invitation.code;
-    const r = await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Real Holder', phone: '9826187010', email: 'squat@test.genz.example', password: PASS, consent: true, city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPN8700F' });
+    const r = await s.call(undefined, 'POST', '/api/auth/register-invite', { code, name: 'Real Holder', phone: '9826187010', email: 'squat@test.genz.example', password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPN8700F' });
     expect(r.status, await r.clone().text()).toBe(200);
   });
 

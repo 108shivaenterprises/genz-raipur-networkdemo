@@ -57,11 +57,11 @@ describe('v116 · a new account for every role, the real way', { timeout: 180_00
       const code = (await j(inv)).invitation.code;
       expect((await j(await call(undefined, 'GET', `/api/invitations/validate/${code}`))).valid ?? true).toBeTruthy();
       const first = p === PEOPLE[0];   // registration is rate-limited (10 an hour from one place) — the refusals are checked once
-      if (first) expect((await call(undefined, 'POST', '/api/auth/register-invite', { code, name: p.name, phone: p.phone, ...(p.email ? { email: p.email } : {}), password: 'weak', consent: true, city: 'Raipur', ...p.extra })).status).toBe(400);   // a weak password is refused
-      const reg = await call(undefined, 'POST', '/api/auth/register-invite', { code, name: p.name, phone: p.phone, ...(p.email ? { email: p.email } : {}), password: PASS, consent: true, city: 'Raipur', ...p.extra });
+      if (first) expect((await call(undefined, 'POST', '/api/auth/register-invite', { code, name: p.name, phone: p.phone, ...(p.email ? { email: p.email } : {}), password: 'weak', consent: true, locality: 'Shankar Nagar', city: 'Raipur', ...p.extra })).status).toBe(400);   // a weak password is refused
+      const reg = await call(undefined, 'POST', '/api/auth/register-invite', { code, name: p.name, phone: p.phone, ...(p.email ? { email: p.email } : {}), password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', ...p.extra });
       expect(reg.status, await reg.clone().text()).toBe(200);
       const user = (await j(reg)).user; expect(user.role).toBe(p.role);
-      if (first) expect((await call(undefined, 'POST', '/api/auth/register-invite', { code, name: p.name, phone: p.phone, ...(p.email ? { email: p.email } : {}), password: PASS, consent: true, city: 'Raipur', ...p.extra })).status).toBe(400);   // a code works once
+      if (first) expect((await call(undefined, 'POST', '/api/auth/register-invite', { code, name: p.name, phone: p.phone, ...(p.email ? { email: p.email } : {}), password: PASS, consent: true, locality: 'Shankar Nagar', city: 'Raipur', ...p.extra })).status).toBe(400);   // a code works once
       const who = p.email || p.phone;
       if (user.verificationStatus === 'PENDING') {
         const pending = await login(who, PASS);

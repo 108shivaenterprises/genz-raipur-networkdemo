@@ -41,9 +41,10 @@ const DEAL = 'DEAL-2026-001'; const BUYER = 'USR-BUYER-001';
 
 describe('v199 · ledger rules (unit)', () => {
   const base = () => ({
-    users: [{ id: 'B1', role: 'BUYER_TENANT' }, { id: 'K1', role: 'BROKER' }], requirements: [{ id: 'R1', buyerId: 'B1' }, { id: 'R2', buyerId: 'K1' }],
-    dealRooms: [{ id: 'D1', requirementId: 'R1', stage: 'Site Visit Done' }, { id: 'D2', requirementId: 'R2', stage: 'Site Visit Done' }],
-    siteVisits: [{ dealRoomId: 'D1', isVerified: true }, { dealRoomId: 'D2', isVerified: true }],
+    users: [{ id: 'B1', role: 'BUYER_TENANT', phone: '98000 00001', verificationStatus: 'VERIFIED', idCheckedAt: 'x' }, { id: 'K1', role: 'BROKER', phone: '98000 00002' }], requirements: [{ id: 'R1', buyerId: 'B1', assignedBrokerId: 'K1' }, { id: 'R2', buyerId: 'K1', assignedBrokerId: 'K1' }],
+    dealRooms: [{ id: 'D1', requirementId: 'R1', stage: 'Site Visit Done', introducingBrokerId: 'K1', closingBrokerId: 'K2' }, { id: 'D2', requirementId: 'R2', stage: 'Site Visit Done', introducingBrokerId: 'K1', closingBrokerId: 'K2' }],
+    siteVisits: [{ id: 'V1', dealRoomId: 'D1', isVerified: true, customerPhone: '9800000001', verifiedBy: 'T' }, { id: 'V2', dealRoomId: 'D2', isVerified: true, customerPhone: '9800000002', verifiedBy: 'T' }],
+    visitAcks: [{ kind: 'VISIT', refId: 'V1', status: 'ACKED' }, { kind: 'VISIT', refId: 'V2', status: 'ACKED' }],
     commissionAgreements: [{ dealId: 'D1', status: 'ACTIVE', version: 1, totalAgreedBrokerage: 200000, payer: 'SPLIT_EQUAL' }, { dealId: 'D2', status: 'ACTIVE', version: 1, totalAgreedBrokerage: 100000 }],
     mudraEntries: [] as any[], mudraRedemptions: [] as any[], mudraInvoices: [] as any[], mudraConfig: undefined as any,
   });
@@ -92,11 +93,11 @@ describe('v199 · ledger rules (unit)', () => {
       expect(settleMudra('D1')).toMatchObject({ ok: true, already: true }); expect(st.mudraEntries).toHaveLength(1); expect(mudraBalance('B1').balance).toBe(0);
     });
   });
-  it('6 DPDP erase removes the user\'s entries and redemptions only', async () => {
+  it('6 DPDP erase removes the user\'s ledger entries only; redemptions and invoices are kept as anonymous company records (D23 owner rule)', async () => {
     const st: any = base(); st.mudraEntries.push({ id: 'a', userId: 'B1', kind: 'CREDIT', amount: 1 }, { id: 'b', userId: 'X', kind: 'CREDIT', amount: 1 }); st.mudraRedemptions.push({ id: 'r', userId: 'B1', invoiceRef: 'x' });
-    await withState(st, () => { expect(eraseMudraFor('B1')).toBe(2); });
-    expect(st.mudraEntries.map((e: any) => e.id)).toEqual(['b']); expect(st.mudraRedemptions.length).toBe(0);
-    expect(read('server/privacy.ts')).toContain('eraseMudraFor(target.id)');
+    await withState(st, () => { expect(eraseMudraFor('B1')).toBe(1); });
+    expect(st.mudraEntries.map((e: any) => e.id)).toEqual(['b']); expect(st.mudraRedemptions.map((r: any) => [r.id, r.userId])).toEqual([['r', 'ERASED']]);
+    expect(read('server/privacy.ts')).toContain('eraseMudraFor(target.id, phoneWas)');
   });
 });
 

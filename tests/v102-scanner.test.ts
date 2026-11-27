@@ -104,8 +104,8 @@ describe('A — the buyer’s visit pass at the property (broker-to-broker)', ()
   it('A4 · wrong QR / wrong code: each one counts a try and says how many are left; at 5 the visit is LOCKED for everybody (even the right QR), the booker cannot move it, nothing is recorded', async () => {
     const v = await book('Mohan Verma Scan A4', 1);
     const w1 = await err(await qr('BRK1', v.id, { qrToken: 'WRONGTOKEN123' })); expect(w1).toMatchObject({ status: 400 }); expect(w1.error).toMatch(/Invalid or expired QR/);
-    const w2 = await err(await otp('OWN', v.id, v.otp === '000000' ? '111111' : '000000')); expect(w2.status).toBe(400); expect(w2.error).toMatch(/3 attempt\(s\) left/);
-    const w3 = await err(await otp('BRK1', v.id, '123456' === v.otp ? '654321' : '123456')); expect(w3.error).toMatch(/2 attempt\(s\) left/);
+    const w2 = await err(await otp('OWN', v.id, v.otp === '000000' ? '111111' : '000000')); expect(w2.status).toBe(400); expect(w2.error).toMatch(/3 tries left/);
+    const w3 = await err(await otp('BRK1', v.id, '123456' === v.otp ? '654321' : '123456')); expect(w3.error).toMatch(/2 tries left/);
     expect((await err(await qr('BRK1', v.id, { qrToken: 'WRONGTOKEN456' }))).status).toBe(400);
     expect((await err(await qr('BRK1', v.id, { qrToken: 'WRONGTOKEN789' }))).status).toBe(400);
     for (const [who, run] of [['BRK1', () => qr('BRK1', v.id, { qrToken: v.qr })], ['OWN', () => otp('OWN', v.id, v.otp)]] as const) {
@@ -277,7 +277,7 @@ describe('D — the screens use the same words (source guards: there is no DOM t
   it('the server’s words: “too early” says 6 hours (not “on the day”), a wrong QR says how many tries are left, the property side is told on booking and the others on verifying', () => {
     const s = read('server.ts');
     expect(s).toContain('can be verified from 6 hours before its scheduled time'); expect(s).not.toContain('can only be verified on the day');
-    expect(s).toContain('Invalid or expired QR verification token. ${Math.max(0, 5 - visit.otpAttempts)} attempt(s) left.');
+    expect(s).toContain('Invalid or expired QR verification token. ${t.en}.');
     expect(s).toContain("`Visit booked · ${prop.title}`"); expect(s).toContain("`Visit verified ✔ · ${vprop?.title || visit.propertyId}`");
   });
 });

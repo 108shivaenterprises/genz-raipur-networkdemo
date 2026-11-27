@@ -72,6 +72,13 @@ export function windowEnd(scheduledAt: string, now: number): string {
 }
 
 /** may the booker move the visit to this new time? '' = fine, otherwise the reason (English, the server's wording) */
+/** Hindi for the messages below (the screens and the server both show it) */
+export function rescheduleErrorHi(en: string): string {
+  if (en.startsWith('Pick a valid')) return 'विज़िट की सही तारीख़ और समय चुनें';
+  if (en.includes('in the past')) return 'नया विज़िट समय बीत चुका है';
+  if (en.includes('at most')) return `विज़िट ज़्यादा से ज़्यादा ${RESCHEDULE_MAX_DAYS} दिन आगे तक खिसकाई जा सकती है`;
+  return en;
+}
 export function rescheduleError(newTime: string, now: number): string {
   const t = Date.parse(newTime);
   if (Number.isNaN(t)) return 'Pick a valid visit date and time';
