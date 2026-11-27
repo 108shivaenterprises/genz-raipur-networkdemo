@@ -306,7 +306,10 @@ fetch('/p/'+c+'/enquiry',{method:'POST',headers:{'Content-Type':'application/jso
 .catch(function(){m.style.display='block';m.textContent='Network error — please try again';b.disabled=false})})})();`);
   });
 
-  const find = (code: string) => st().properties.find(p => p.posterCode && p.posterCode === String(code).toUpperCase());
+  const find = (code: string) => {
+    const c = String(code || '').trim();
+    return st().properties.find(p => (p.posterCode && p.posterCode.toUpperCase() === c.toUpperCase()) || p.id === c);
+  };
 
   r.get('/:code', rateLimit('poster-view', 90, 60_000), (req: Request, res: Response) => {
     res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' });

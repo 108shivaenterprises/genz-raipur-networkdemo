@@ -25,6 +25,8 @@ import fs from 'fs';
 import path from 'path';
 import { pushTo, pushToRoom, dropRoomPush, roomPushKey, vapidKeys, allowedEndpoint, roomAlertInfo, brokerWrote } from './webpush.js';
 import { sniffMime } from '../src/shared/propDocs.js';
+import { sameCity } from '../src/shared/india.js';
+import { areaWordsMatch } from '../src/shared/shopPartner.js';
 import { DOC_KINDS, DOC_LIMITS, FULL_AADHAAR_DAYS, isDocKind, isKycKind } from '../src/shared/clientRoomRules.js';
 import { ackFor, ackLinkFor, ackBlock } from './visitack.js';
 import { stripPhones } from '../src/shared/waParse.js';
@@ -36,6 +38,9 @@ import { makeViewToken, useViewToken, stampFor } from './viewToken.js';
 import { seal, unseal, vaultReady } from './vaultCrypto.js';
 import { policyOf } from '../src/shared/pcontrolRules.js';
 import { ownerDecideOffer } from './offers.js';
+import { isLeadRevealed } from './shopPartners.js';
+import { makeBuyerBond } from './buyerbond.js';
+import { alert as alertUsers, once } from './alerts.js';
 
 const st = () => db.getState();
 const nowIso = () => new Date().toISOString();
@@ -66,6 +71,7 @@ function publicProperty(p: Property) {
   return {
     id: p.id, title: p.title, locality: p.locality, city: p.city, type: p.propertyType, deal: p.transactionType,
     price: p.askingPrice, plotArea: p.plotAreaSqFt || undefined, builtUp: p.builtUpAreaSqFt || undefined,
+    facing: (p as any).facing || undefined, reraNumber: (p as any).reraNumber || (p as any).projectReraId || undefined,
     tags: (p.tags || []).slice(0, 8), description: stripPhones(p.description || '').slice(0, 500), image: img,
     available: live(p), status: live(p) ? 'available' : goneText(p),
   };
@@ -99,18 +105,22 @@ const allMedia = (u: { id: string }, p: Property) => { const m = shareableMedia(
 
 // ───────────────────────────── v40: a visit booked from the room ─────────────────────────────
 /** called by POST /api/site-visits when the broker books from a Client Room: his room, the client's mobile, a home of the room */
-export function roomForVisit(u: UserProfile, b: { clientRoomId?: string; clientRoomItemId?: string; clientRoomRequestId?: string; propertyId: string; customerPhone?: string }):
-  { error: string; status: number; code?: string } | { room: ClientRoom; item: ClientRoom['items'][number] } {
+export function roomForVisit(u: UserProfile, b: { clientRoomId?: string; clientRoomItemId?: string; clientRoomRequestId?: string; propertyId: string; customerPhone?: string; useMaskedRoomPhone?: boolean }):
+  { error: string; status: number; code?: string } | { room: ClientRoom; item: ClientRoom['items'][number]; resolvedPhone: string } {
   const room = st().clientRooms.find(r => r.id === b.clientRoomId && r.brokerId === u.id);
   if (!room) return { error: 'Client room not found', status: 404 };
   if (room.status !== 'ACTIVE') return { error: 'This client room is closed', status: 409 };
   const item = b.clientRoomItemId ? room.items.find(i => i.id === b.clientRoomItemId) : room.items.find(i => i.propertyId === b.propertyId);
   if (!item || item.propertyId !== b.propertyId) return { error: 'This home is not in the client room', status: 400 };
   if (b.clientRoomRequestId && !item.visitRequests.some(v => v.id === b.clientRoomRequestId)) return { error: 'Visit request not found', status: 404 };
-  const phone = phone10(b.customerPhone);
-  if (!PHONE_RE.test(phone)) return { error: `Enter your client's full mobile number (ends with ${room.phoneLast4})`, status: 400, code: 'ROOM_PHONE_NEEDED' };
-  if (!safeEqual(hmac('cr-phone', phone), room.phoneKey)) return { error: `This mobile does not match the client room — it must be the number that ends with ${room.phoneLast4}`, status: 400, code: 'ROOM_PHONE_MISMATCH' };
-  return { room, item };
+  const rawPhone = phone10(b.customerPhone);
+  if (!rawPhone && b.useMaskedRoomPhone) {
+    const sealed = openPhone(room);
+    if (sealed && PHONE_RE.test(sealed)) return { room, item, resolvedPhone: sealed };
+  }
+  if (!PHONE_RE.test(rawPhone)) return { error: `Enter your client's full mobile number (ends with ${room.phoneLast4})`, status: 400, code: 'ROOM_PHONE_NEEDED' };
+  if (!safeEqual(hmac('cr-phone', rawPhone), room.phoneKey)) return { error: `This mobile does not match the client room — it must be the number that ends with ${room.phoneLast4}`, status: 400, code: 'ROOM_PHONE_MISMATCH' };
+  return { room, item, resolvedPhone: rawPhone };
 }
 export function linkVisitToRoom(room: ClientRoom, item: ClientRoom['items'][number], requestId: string | undefined, visit: { id: string; scheduledTime: string }) {
   (item.visits ||= []).push({ visitId: visit.id, when: visit.scheduledTime, at: nowIso() });
@@ -138,7 +148,7 @@ const phoneAad = (r: ClientRoom) => `clientroom:${r.id}:phone`;
  * confirmed and a matching home shared), the tap is his consent, and the homes the assistant already showed him go in. He still signs in with his
  * mobile + a code, like any client. `EXISTS` = this broker already has an open room for that number (the link of that one is not ours to show).
  */
-export function openRoomAuto(brokerId: string, a: { name: string; phone: string; kind: 'BUYER' | 'RENTER'; note: string; propertyIds: string[]; held?: boolean }):
+export function openRoomAuto(brokerId: string, a: { name: string; phone: string; kind: 'BUYER' | 'RENTER' | 'OTHER' | 'OWNER'; note: string; propertyIds: string[]; held?: boolean }):
   { ok: true; room: ClientRoom; token: string } | { ok: false; code: 'PHONE' | 'FULL' | 'BLOCKED' | 'EXISTS'; roomId?: string; error: string } {
   const phone = phone10(a.phone); if (!PHONE_RE.test(phone)) return { ok: false, code: 'PHONE', error: 'The mobile number is not valid' };
   if (st().clientRooms.filter(x => x.brokerId === brokerId && x.status === 'ACTIVE').length >= L.activeRooms) return { ok: false, code: 'FULL', error: 'The broker has too many open rooms' };
@@ -224,8 +234,66 @@ function healPhone(r: ClientRoom): boolean {
 const healAll = (rooms: ClientRoom[]) => { let n = 0; for (const x of rooms) if (healPhone(x)) n++; if (n) db.save(); };
 const phoneAccess = (u: UserProfile): 'FULL' | 'REVEAL' | 'HIDDEN' => !isStaff(u) ? 'FULL' : policyOf(db.byId('users', u.id) as UserProfile).phoneMode;
 
+export function findMatchingHomesForRoom(room: ClientRoom, phone?: string): Property[] {
+  const ph = phone10(phone || openPhone(room) || '');
+  const s = st();
+  const lead = ph ? s.partnerLeads.find(l => l.brokerId === room.brokerId && phone10(l.phone) === ph) : undefined;
+  const req = ph ? s.requirements.find(q => q.assignedBrokerId === room.brokerId && phone10(q.customerPhone) === ph)
+    : s.requirements.find(q => q.assignedBrokerId === room.brokerId && q.customerName.toLowerCase() === room.clientName.toLowerCase());
+  const card = ph ? s.clientCards.find(c => c.brokerId === room.brokerId && phone10(c.phone) === ph) : undefined;
+  const broker = s.users.find(u => u.id === room.brokerId);
+
+  const city = lead?.wantCity || req?.city || card?.city || broker?.city || 'Raipur';
+  const loc = lead?.locality || req?.preferredLocalities?.[0] || card?.areas?.[0] || '';
+  const isRent = room.kind === 'RENTER' || lead?.kind === 'RENT_IN' || req?.transactionType === 'Rent' || card?.transactionType === 'Rent';
+  const txType = isRent ? 'Rent' : 'Sale';
+
+  let budget = 0;
+  if (req?.budgetMax) budget = req.budgetMax;
+  else if (card?.budgetMax) budget = card.budgetMax;
+  else if (lead?.budget) {
+    const raw = String(lead.budget);
+    const m = /(\d+(?:\.\d+)?)/.exec(raw);
+    if (m) {
+      const n = Number(m[1]);
+      if (/cr|crore|करोड़/i.test(raw)) budget = n * 1e7;
+      else if (/lakh|lac|लाख/i.test(raw)) budget = n * 1e5;
+      else if (/k|thousand|हज़ार/i.test(raw)) budget = n * 1e3;
+      else budget = n < 1000 ? n * (isRent ? 1e3 : 1e5) : n;
+    }
+  }
+
+  const candidates = s.properties.filter(p => live(p) && p.transactionType === txType);
+  if (candidates.length === 0) return [];
+
+  const scored = candidates.map(p => {
+    let score = 0;
+    if (sameCity(p.city, city)) score += 40;
+    if (p.listingBrokerId === room.brokerId) score += 25;
+
+    if (loc) {
+      const pLoc = String(p.locality || '').toLowerCase().trim();
+      const wantLoc = loc.toLowerCase().trim();
+      if (pLoc === wantLoc) score += 60;
+      else if (pLoc.includes(wantLoc) || wantLoc.includes(pLoc)) score += 40;
+      else if (areaWordsMatch(wantLoc, pLoc, (p.city || city).toLowerCase())) score += 30;
+    }
+
+    if (budget > 0 && p.askingPrice > 0) {
+      if (p.askingPrice <= budget * 1.3) score += 35;
+      const diffRatio = Math.abs(p.askingPrice - budget) / budget;
+      score -= Math.min(25, diffRatio * 20);
+    }
+
+    return { p, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 4).map(x => x.p);
+}
+
 export function seedRoomFromLeadOrRequirement(room: ClientRoom, phone?: string): boolean {
-  if (room.messages.length > 0) return false;
+  let changed = false;
   const ph = phone10(phone || openPhone(room) || '');
   const s = st();
   const lead = ph ? s.partnerLeads.find(l => l.brokerId === room.brokerId && phone10(l.phone) === ph) : undefined;
@@ -234,66 +302,91 @@ export function seedRoomFromLeadOrRequirement(room: ClientRoom, phone?: string):
   const card = ph ? s.clientCards.find(c => c.brokerId === room.brokerId && phone10(c.phone) === ph) : undefined;
   const shop = lead ? s.shopPartners.find(sp => sp.id === lead.partnerId) : undefined;
 
-  if (!lead && !req && !card) return false;
+  if (room.messages.length === 0 && (lead || req || card)) {
+    const lines: string[] = ['📋 【 ग्राहक की प्रारंभिक ज़रूरत / Client Requirement Intake 】'];
+    const loc = lead?.locality || (req?.preferredLocalities && req.preferredLocalities.length > 0 ? req.preferredLocalities.join(', ') : card?.areas?.join(', '));
+    const city = lead?.wantCity || req?.city || card?.city;
+    if (loc || city) lines.push(`📍 इलाका (Locality): ${loc || ''}${city ? ` · ${city}` : ''}`);
 
-  const lines: string[] = ['📋 【 ग्राहक की प्रारंभिक ज़रूरत / Client Requirement Intake 】'];
-  const loc = lead?.locality || (req?.preferredLocalities && req.preferredLocalities.length > 0 ? req.preferredLocalities.join(', ') : card?.areas?.join(', '));
-  const city = lead?.wantCity || req?.city || card?.city;
-  if (loc || city) lines.push(`📍 इलाका (Locality): ${loc || ''}${city ? ` · ${city}` : ''}`);
+    const bud = lead?.budget || (req && (req.budgetMax || req.budgetMin) ? `₹${(req.budgetMin / 1e5).toFixed(1)}L – ₹${(req.budgetMax / 1e5).toFixed(1)}L` : card?.budgetMax ? `₹${(card.budgetMin / 1e5).toFixed(1)}L – ₹${(card.budgetMax / 1e5).toFixed(1)}L` : '');
+    if (bud) lines.push(`💰 बजट (Budget): ${bud}`);
 
-  const bud = lead?.budget || (req && (req.budgetMax || req.budgetMin) ? `₹${(req.budgetMin / 1e5).toFixed(1)}L – ₹${(req.budgetMax / 1e5).toFixed(1)}L` : card?.budgetMax ? `₹${(card.budgetMin / 1e5).toFixed(1)}L – ₹${(card.budgetMax / 1e5).toFixed(1)}L` : '');
-  if (bud) lines.push(`💰 बजट (Budget): ${bud}`);
+    const pType = lead?.propertyType || req?.propertyType || card?.propertyType;
+    if (pType && pType !== 'Any') lines.push(`🏠 प्रकार (Property Type): ${pType}`);
 
-  const pType = lead?.propertyType || req?.propertyType || card?.propertyType;
-  if (pType && pType !== 'Any') lines.push(`🏠 प्रकार (Property Type): ${pType}`);
+    const tType = lead?.kind === 'RENT_IN' || req?.transactionType === 'Rent' || card?.transactionType === 'Rent' ? 'किराया (Rent)' : 'खरीदना (Buy/Sale)';
+    lines.push(`🔄 सौदा (Transaction): ${tType}`);
 
-  const tType = lead?.kind === 'RENT_IN' || req?.transactionType === 'Rent' || card?.transactionType === 'Rent' ? 'किराया (Rent)' : 'खरीदना (Buy/Sale)';
-  lines.push(`🔄 सौदा (Transaction): ${tType}`);
+    // only the customer's own QR note — the broker's card notes are private and this message is shown to the client
+    if (lead?.note) lines.push(`📝 ग्राहक का नोट / Notes: "${lead.note}"`);
+    if (shop) lines.push(`🏪 स्रोत (Source): ${shop.shopName} (Shop Partner QR)`);
+    if (lead?.promise) lines.push(`🔒 180-दिन गैर-बाईपास वचन: सत्यापित (Signed: ${lead.promise.signName})`);
 
-  // only the customer's own QR note — the broker's card notes are private and this message is shown to the client
-  if (lead?.note) lines.push(`📝 ग्राहक का नोट / Notes: "${lead.note}"`);
-  if (shop) lines.push(`🏪 स्रोत (Source): ${shop.shopName} (Shop Partner QR)`);
-  if (lead?.promise) lines.push(`🔒 180-दिन गैर-बाईपास वचन: सत्यापित (Signed: ${lead.promise.signName})`);
+    const initAt = lead?.createdAt || req?.createdAt || card?.createdAt || room.createdAt;
+    room.messages.push({
+      id: `RMSG-INTAKE-${room.id}`,
+      from: 'BROKER',
+      byName: 'GENZ सहायक 🤖',
+      text: lines.join('\n'),
+      at: initAt,
+    });
 
-  const initAt = lead?.createdAt || req?.createdAt || card?.createdAt || room.createdAt;
-  room.messages.push({
-    id: `RMSG-INTAKE-${room.id}`,
-    from: 'BROKER',
-    byName: 'GENZ सहायक 🤖',
-    text: lines.join('\n'),
-    at: initAt,
-  });
-
-  // Seed bot conversation history if available
-  if (lead?.chat?.msgs && lead.chat.msgs.length > 0) {
-    for (const [idx, m] of lead.chat.msgs.entries()) {
-      if (m.kind === 'INFO' && !m.text.includes('ज़रूरत')) continue;
-      if (m.by === 'CUSTOMER') {
-        room.messages.push({
-          id: `RMSG-${room.id}-CUST-${idx}`,
-          from: 'CLIENT',
-          text: m.text,
-          at: m.at,
-        });
-      } else if (m.by === 'BOT') {
-        room.messages.push({
-          id: `RMSG-${room.id}-BOT-${idx}`,
-          from: 'BROKER',
-          byName: 'GENZ सहायक 🤖',
-          text: m.text + (m.en ? `\n\n${m.en}` : ''),
-          at: m.at,
-        });
-      } else if (m.by === 'BROKER') {
-        room.messages.push({
-          id: `RMSG-${room.id}-BRK-${idx}`,
-          from: 'BROKER',
-          text: m.text,
-          at: m.at,
-        });
+    // Seed bot conversation history if available
+    if (lead?.chat?.msgs && lead.chat.msgs.length > 0) {
+      for (const [idx, m] of lead.chat.msgs.entries()) {
+        if (m.kind === 'INFO' && !m.text.includes('ज़रूरत')) continue;
+        if (m.by === 'CUSTOMER') {
+          room.messages.push({
+            id: `RMSG-${room.id}-CUST-${idx}`,
+            from: 'CLIENT',
+            text: m.text,
+            at: m.at,
+          });
+        } else if (m.by === 'BOT') {
+          room.messages.push({
+            id: `RMSG-${room.id}-BOT-${idx}`,
+            from: 'BROKER',
+            byName: 'GENZ सहायक 🤖',
+            text: m.text + (m.en ? `\n\n${m.en}` : ''),
+            at: m.at,
+          });
+        } else if (m.by === 'BROKER') {
+          room.messages.push({
+            id: `RMSG-${room.id}-BRK-${idx}`,
+            from: 'BROKER',
+            text: m.text,
+            at: m.at,
+          });
+        }
       }
     }
+    changed = true;
   }
-  return true;
+
+  // Seed matching homes if fewer than 3 homes (for non-OWNER rooms with a known lead or requirement)
+  if (room.items.length < 3 && room.kind !== 'OWNER' && (lead || req)) {
+    const matchingHomes = findMatchingHomesForRoom(room, phone);
+    for (const p of matchingHomes.slice(0, 4)) {
+      if (!room.items.some(i => i.propertyId === p.id)) {
+        const m = allMedia({ id: '-' }, p);
+        room.items.push({
+          id: rid('CRI'),
+          propertyId: p.id,
+          sharedAt: room.createdAt || nowIso(),
+          note: undefined,
+          visitRequests: [],
+          ...(m.photos.length || m.videos.length ? { media: m } : {}),
+        });
+        changed = true;
+      }
+      if (room.items.length >= 3) break;
+    }
+    if (changed && room.items.length > 0) {
+      ev(room, `Auto-matched ${room.items.map(i => i.propertyId).join(', ')} for client`);
+    }
+  }
+
+  return changed;
 }
 
 export function syncRoomMessagesFromLead(brokerId: string, roomId: string, lead: any): number {
@@ -352,9 +445,22 @@ function detail(r: ClientRoom) {
     devices: (r.devices || []).map(d => ({ id: d.id, label: d.label, firstAt: d.firstAt, lastAt: d.lastAt })), maxDevices: L.devices,
     /** v58 — the reader is the broker's office staff (no closing, no papers, no visit booking) */
     staff: (ctx().user as UserProfile | null)?.role === 'TEAM_MEMBER', createdByName: r.createdByName,
-    /** v63 — FULL: `phone` is here; REVEAL: one tap (counted per day); HIDDEN: never. `phoneSaved` false = an older room (broker can add it once) */
-    ...(() => { const u = ctx().user as UserProfile | null; const acc = u ? phoneAccess(u) : 'HIDDEN'; const has = !!r.phoneSealed && r.status === 'ACTIVE';
-      return { phoneAccess: acc, phoneSaved: has, ...(acc === 'FULL' && has ? { phone: openPhone(r) } : {}) }; })(),
+    /** v63/v196 — FULL: `phone` is here; REVEAL: one tap (counted per day); HIDDEN: never (or shop lead masked until liked or visit). `phoneSaved` false = an older room (broker can add it once) */
+    ...(() => {
+      const u = ctx().user as UserProfile | null;
+      let acc = u ? phoneAccess(u) : 'HIDDEN';
+      const has = !!r.phoneSealed && r.status === 'ACTIVE';
+      const ph = openPhone(r);
+      // Privacy Guard: If this client room is linked to a shopkeeper QR lead and has neither liked a home nor booked a visit, hide number from broker!
+      if (ph) {
+        const s = st();
+        const l = s.partnerLeads.find(x => x.brokerId === r.brokerId && (phone10(x.phone) === phone10(ph) || x.clientRoomId === r.id || x.chat?.bot?.roomId === r.id));
+        if (l && !isLeadRevealed(l)) {
+          acc = 'HIDDEN';
+        }
+      }
+      return { phoneAccess: acc, phoneSaved: has, ...(acc === 'FULL' && has ? { phone: openPhone(r) } : {}) };
+    })(),
   };
 }
 
@@ -373,9 +479,13 @@ export function createClientRoomRouter() {
   r.get('/', (_req, res) => {
     const list = st().clientRooms.filter(x => x.brokerId === roomOwnerOf(me()) && !x.held).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const u = me(); healAll(list);
+    let seededAny = false;
     for (const rm of list) {
-      if (rm.messages.length === 0) seedRoomFromLeadOrRequirement(rm);
+      if (rm.messages.length === 0 || (rm.items.length < 3 && rm.kind !== 'OWNER')) {
+        if (seedRoomFromLeadOrRequirement(rm)) seededAny = true;
+      }
     }
+    if (seededAny) db.save();
     res.json({ success: true, rooms: list.map(summary), counts: { active: list.filter(x => x.status === 'ACTIVE').length, unread: list.reduce((n, x) => n + unread(x), 0), visits: list.reduce((n, x) => n + openVisits(x), 0) },
       ...(isStaff(u) ? { staffOf: (db.byId('users', roomOwnerOf(u)) as UserProfile | undefined)?.name || '' } : {}) });
   });
@@ -415,7 +525,7 @@ export function createClientRoomRouter() {
   r.get('/:id', (req: Request, res: Response) => {
     const room = mine(req); if (!room) return bad(res, 'Room not found', 404);
     healAll([room]);   // v80 — an older room finds its saved number in the broker's own records
-    if (room.messages.length === 0) {
+    if (room.messages.length === 0 || (room.items.length < 3 && room.kind !== 'OWNER')) {
       if (seedRoomFromLeadOrRequirement(room)) db.save();
     }
     res.json({ success: true, room: detail(room) });
@@ -433,6 +543,27 @@ export function createClientRoomRouter() {
     const media = req.body?.withMedia === false ? undefined : allMedia(actingAs(), p);
     room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note, visitRequests: [], ...(media && (media.photos.length || media.videos.length) ? { media } : {}) });
     ev(room, `${isStaff(me()) ? `${me().name}: ` : ''}Shared ${p.id}${media && (media.photos.length || media.videos.length) ? ` with ${media.photos.length} photo(s)${media.videos.length ? ' + video' : ''}` : ''}`);
+
+    // P0 Blocker: Register Buyer Bond to protect the introducing broker's commission on this property
+    const ph = openPhone(room);
+    if (ph) {
+      makeBuyerBond({ brokerId: room.brokerId, propertyId: p.id, buyerPhone: ph, buyerName: room.clientName, source: 'SHOWN', sourceId: room.id });
+    }
+
+    // P1 Major: Alert listing broker about the co-broking introduction
+    if (p.listingBrokerId && p.listingBrokerId !== room.brokerId && !p.publicShareOk && once(`cobroke-${p.id}-${room.brokerId}`, 24 * 3600_000)) {
+      alertUsers(p.listingBrokerId, 'broadcast', `Co-broking: ${me().name} is showing your home`, `${me().name} shared “${p.title}” with a client. Coordinate split and availability with him.`, '/', { tag: `cobroke-${p.id}-${room.brokerId}`, hi: [`को-ब्रोकिंग: ${me().name} आपका घर दिखा रहे हैं`, `${me().name} ने “${p.title}” एक क्लाइंट को भेजा है। को-ब्रोकिंग और उपलब्धता की बात करें।`] });
+    }
+
+    room.messages.push({
+      id: rid('CRX'),
+      from: 'BROKER',
+      text: note || `🏠 ${p.title} · ${inr(p.askingPrice)}`,
+      at: nowIso(),
+      propertyId: p.id,
+      ...(isStaff(me()) ? { byId: me().id, byName: me().name } : {})
+    });
+    room.lastBrokerSeenAt = nowIso();
     db.save();
     tellMsg(room, 'HOME');
     res.json({ success: true, room: detail(room) });
@@ -631,14 +762,145 @@ export function createClientRoomRouter() {
   return r;
 }
 
-const validPropRef = (room: ClientRoom, id: unknown) => { const s = String(id || ''); return room.items.some(i => i.propertyId === s) ? s : undefined; };
+/** v200 — In-app Client Account access: a logged-in BUYER_TENANT sees all active Client Rooms matched to their mobile number, gets live notifications, chats, and reacts in-app */
+export function createBuyerClientRoomRouter() {
+  const r = Router();
+  const buyerRoomsFor = (u: UserProfile) => {
+    const ph = phone10(u.phone);
+    if (!PHONE_RE.test(ph)) return [];
+    const key = hmac('cr-phone', ph);
+    return st().clientRooms
+      .filter(rm => rm.status === 'ACTIVE' && rm.kind !== 'OWNER' && safeEqual(rm.phoneKey, key))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  };
+
+  r.get('/', (req: Request, res: Response) => {
+    const u = ctx().user as UserProfile | null;
+    if (!u) return res.status(401).json({ error: 'Login required' });
+    const rooms = buyerRoomsFor(u);
+    const props = st().properties;
+    const users = st().users;
+    const out = rooms.map(rm => {
+      const broker = users.find(x => x.id === rm.brokerId);
+      return {
+        id: rm.id,
+        kind: rm.kind || 'BUYER',
+        brokerName: broker?.name || 'Verified Broker',
+        brokerFirm: broker?.companyName || '',
+        brokerRera: broker?.reraNumber || '',
+        clientName: rm.clientName,
+        updatedAt: rm.updatedAt,
+        messages: rm.messages.map(m => ({ ...m, text: humanIso(m.text) })),
+        items: rm.items.map(i => {
+          const p = props.find(x => x.id === i.propertyId);
+          return {
+            id: i.id,
+            propertyId: i.propertyId,
+            sharedAt: i.sharedAt,
+            note: i.note,
+            reaction: i.reaction,
+            visitRequests: i.visitRequests,
+            visits: i.visits,
+            property: p ? publicProperty(p) : null,
+            media: chosenMedia(rm, i, p),
+          };
+        }),
+      };
+    });
+    res.json({ success: true, rooms: out });
+  });
+
+  r.post('/:id/message', rateLimit('cr-buyer-msg', 60, 600_000), (req: Request, res: Response) => {
+    const u = ctx().user as UserProfile | null;
+    if (!u) return res.status(401).json({ error: 'Login required' });
+    const room = buyerRoomsFor(u).find(x => x.id === req.params.id);
+    if (!room) return bad(res, 'Room not found', 404);
+    const raw = String(req.body?.text || '').trim().slice(0, 1000);
+    if (!raw) return bad(res, 'Enter a message');
+    const ck = contactKind(raw);
+    if (ck) return bad(res, contactMsg(ck).en);
+    const text = stripPhones(raw);
+    const msg = { id: rid('MSG'), from: 'CLIENT' as const, text, at: nowIso() };
+    room.messages.push(msg);
+    room.updatedAt = nowIso();
+    db.save();
+    alertUsers([room.brokerId], 'deals', `${room.clientName} · In-app message`, text.slice(0, 80), `/?tab=client-rooms&room=${room.id}`, { tag: `cr-msg-${room.id}` });
+    res.json({ success: true, message: msg });
+  });
+
+  r.post('/:id/react', rateLimit('cr-buyer-react', 60, 600_000), (req: Request, res: Response) => {
+    const u = ctx().user as UserProfile | null;
+    if (!u) return res.status(401).json({ error: 'Login required' });
+    const room = buyerRoomsFor(u).find(x => x.id === req.params.id);
+    if (!room) return bad(res, 'Room not found', 404);
+    const item = room.items.find(i => i.id === String(req.body?.itemId || ''));
+    if (!item) return bad(res, 'Property not found in room', 404);
+    const action = String(req.body?.action || '').toUpperCase();
+    const p = st().properties.find(x => x.id === item.propertyId);
+    const propTitle = p?.title || item.propertyId;
+    if (action === 'LIKE' || action === 'PASS') {
+      item.reaction = action;
+      item.reactionAt = nowIso();
+      ev(room, `${room.clientName} marked ${propTitle} as ${action} (in-app)`);
+      room.updatedAt = nowIso();
+      db.save();
+      alertUsers([room.brokerId], 'deals', `${room.clientName} · ${action === 'LIKE' ? 'Liked 👍' : 'Passed'}`, propTitle, `/?tab=client-rooms&room=${room.id}`, { tag: `cr-react-${item.id}` });
+      return res.json({ success: true, item });
+    }
+    if (action === 'VISIT') {
+      const preferred = String(req.body?.when || '').trim() || new Date(Date.now() + 86400_000).toISOString().slice(0, 16);
+      const note = String(req.body?.note || '').trim().slice(0, 300);
+      item.visitRequests.push({ id: rid('VR'), preferred, note, status: 'REQUESTED', at: nowIso() });
+      ev(room, `${room.clientName} requested a site visit for ${propTitle} (in-app)`);
+      room.updatedAt = nowIso();
+      db.save();
+      alertUsers([room.brokerId], 'deals', `${room.clientName} · Visit requested 📅`, `${propTitle} (${preferred})`, `/?tab=client-rooms&room=${room.id}`, { tag: `cr-visit-${item.id}` });
+      return res.json({ success: true, item });
+    }
+    return bad(res, 'Invalid action (use LIKE, PASS, or VISIT)');
+  });
+
+  return r;
+}
+
+const validPropRef = (room: ClientRoom, id: unknown) => {
+  const s = String(id || '');
+  if (!s) return undefined;
+  if (room.items.some(i => i.propertyId === s)) return s;
+  const p = st().properties.find(x => x.id === s && live(x));
+  if (p) {
+    if (room.items.length < L.items) {
+      const m = allMedia({ id: room.brokerId }, p);
+      room.items.push({ id: rid('CRI'), propertyId: p.id, sharedAt: nowIso(), note: undefined, visitRequests: [], ...(m.photos.length || m.videos.length ? { media: m } : {}) });
+      ev(room, `Shared ${p.id} via chat`);
+    }
+    return p.id;
+  }
+  return undefined;
+};
 /** broker pushes: only when the client has an account-free session already; the push is to the BROKER, so it never carries chat text */
 function pushIfSeen(_room: ClientRoom) { /* the client has no app: the broker sends the link on WhatsApp */ }
 
 // ───────────────────────────── v69 — the client's phones (alerts) and the papers he sends ─────────────────────────────
-const tell = (room: ClientRoom, title: string, body: string) => { void pushToRoom(room.id, title, body, `room-${room.id}`); };
+const matchingClientUserIds = (room: ClientRoom) =>
+  st().users
+    .filter(u => ['BUYER_TENANT', 'PROPERTY_OWNER'].includes(u.role) && PHONE_RE.test(phone10(u.phone)) && safeEqual(hmac('cr-phone', phone10(u.phone)), room.phoneKey))
+    .map(u => u.id);
+const tell = (room: ClientRoom, title: string, body: string) => {
+  void pushToRoom(room.id, title, body, `room-${room.id}`);
+  const uids = matchingClientUserIds(room);
+  if (uids.length) alertUsers(uids, 'deals', title, body, '/?tab=dashboard', { tag: `room-${room.id}` });
+};
 const bName = (room: ClientRoom) => st().users.find(u => u.id === room.brokerId)?.name || 'Broker';
-const tellMsg = (room: ClientRoom, what: 'MSG' | 'HOME' = 'MSG') => { void brokerWrote(room.id, bName(room), what); };
+const tellMsg = (room: ClientRoom, what: 'MSG' | 'HOME' = 'MSG') => {
+  void brokerWrote(room.id, bName(room), what);
+  const uids = matchingClientUserIds(room);
+  if (uids.length) {
+    const title = what === 'HOME' ? `${bName(room)} shared a new property` : `New message from ${bName(room)}`;
+    const body = what === 'HOME' ? 'Open your Broker Room to view details & photos.' : 'Open your Broker Room to reply.';
+    alertUsers(uids, 'deals', title, body, '/?tab=dashboard', { tag: `room-${room.id}` });
+  }
+};
 const DOCDIR = (roomId: string) => path.resolve(process.cwd(), 'data', 'clientdocs', roomId.replace(/[^A-Za-z0-9-]/g, ''));
 const docFile = (roomId: string, docId: string) => path.join(DOCDIR(roomId), docId.replace(/[^A-Za-z0-9-]/g, '') + '.bin');
 const docAad = (roomId: string, docId: string) => `clientroom:${roomId}:doc:${docId}`;
@@ -935,7 +1197,20 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
   r.post('/:token/react', rateLimit('cr-react', 200, 3600_000), form, (req: Request, res: Response) => {
     const room = authed(req, res); if (!room) return;
     const it = room.items.find(i => i.id === String(req.body?.item || ''));
-    if (it && ['LIKE', 'PASS'].includes(String(req.body?.r))) { it.reaction = req.body.r; it.reactionAt = nowIso(); ev(room, `Client marked ${it.propertyId} ${it.reaction}`); db.save(); if (it.reaction === 'LIKE') pingBroker(room, 'Your client liked a property', `${room.clientName} liked ${it.propertyId}.`); }
+    if (it && ['LIKE', 'PASS'].includes(String(req.body?.r))) {
+      it.reaction = req.body.r;
+      it.reactionAt = nowIso();
+      ev(room, `Client marked ${it.propertyId} ${it.reaction}`);
+      if (it.reaction === 'LIKE') {
+        pingBroker(room, 'Your client liked a property', `${room.clientName} liked ${it.propertyId}.`);
+        const ph = openPhone(room);
+        if (ph) {
+          const l = st().partnerLeads.find(x => x.brokerId === room.brokerId && (phone10(x.phone) === phone10(ph) || x.clientRoomId === room.id || x.chat?.bot?.roomId === room.id));
+          if (l) isLeadRevealed(l);
+        }
+      }
+      db.save();
+    }
     res.redirect(303, `/r/${req.params.token}#p-${esc(String(req.body?.item || ''))}`);
   });
   r.post('/:token/visit', rateLimit('cr-visit', 30, 3600_000), form, (req: Request, res: Response) => {
@@ -948,7 +1223,13 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     if (!when || Number.isNaN(Date.parse(when))) return render(req, res, room, 'विज़िट के लिए तारीख़ और समय चुनें। / Pick a date and time for the visit.');
     if (it.visitRequests.filter(v => v.status === 'REQUESTED').length >= 3) return render(req, res, room, 'इस प्रॉपर्टी के लिए अनुरोध पहले से भेजे जा चुके हैं। / Requests are already sent for this property.');
     it.visitRequests.push({ id: rid('CRV'), at: nowIso(), preferred: when, note, status: 'REQUESTED' });
-    ev(room, `Client asked for a visit to ${it.propertyId}`); db.save();
+    ev(room, `Client asked for a visit to ${it.propertyId}`);
+    const ph = openPhone(room);
+    if (ph) {
+      const l = st().partnerLeads.find(x => x.brokerId === room.brokerId && (phone10(x.phone) === phone10(ph) || x.clientRoomId === room.id || x.chat?.bot?.roomId === room.id));
+      if (l) isLeadRevealed(l);
+    }
+    db.save();
     pingBroker(room, 'Visit request from your client', `${room.clientName} wants to see ${it.propertyId}. Open Client Rooms.`);
     res.redirect(303, `/r/${req.params.token}?sent=1#p-${esc(it.id)}`);
   });
@@ -963,6 +1244,97 @@ ${msg ? `<div class="card warn"><p class="t">${msg}</p></div>` : ''}
     room.lastClientSeenAt = nowIso(); ev(room, 'Client wrote'); db.save();
     pingBroker(room, `New message from ${room.clientName}`, 'Open Client Rooms to read and reply.');
     res.redirect(303, `/r/${req.params.token}#chat`);
+  });
+
+  /** v197 — interactive property card with public photos & video */
+  r.get('/:token/home/:propId', rateLimit('cr-view', 120, 60_000), (req: Request, res: Response) => {
+    headers(res);
+    const room = authed(req, res); if (!room) return;
+    const tok = esc(req.params.token);
+    const pid = String(req.params.propId || '');
+    const p = st().properties.find(x => x.id === pid);
+    const b = st().users.find(u => u.id === room.brokerId);
+    const back = `<div class="card"><a class="btn l" href="/r/${tok}#chat" data-testid="prop-media-back">← चैट पर वापस / Back to the chat</a></div>`;
+    if (!p) {
+      return res.send(shell('GENZ — प्रॉपर्टी', `<div class="top"><h1>प्रॉपर्टी उपलब्ध नहीं</h1></div><div class="card warn"><p class="t">यह प्रॉपर्टी अब उपलब्ध नहीं है।<br><small>This property is no longer available.</small></p></div>${back}`));
+    }
+    const pub = publicProperty(p);
+    const itm = room.items.find(i => i.propertyId === p.id);
+    const pm = itm ? chosenMedia(room, itm, p) : shareableMedia({ id: room.brokerId }, p);
+    const wm = `${b?.name || 'GENZ'} · GENZ`;
+    const box = 'position:relative;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;margin-top:8px';
+    const fill = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
+
+    const photos = pm.photos.map((src, i) => `<article class="hm" style="margin-top:8px"><div class="ph" style="position:relative;border-radius:10px;overflow:hidden"><img src="${esc(src)}" alt="${esc(pub.title)} ${i + 1}" style="width:100%;display:block;border-radius:10px"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none"><span style="transform:rotate(-25deg);font-size:22px;font-weight:900;color:rgba(255,255,255,0.45);text-shadow:0 1px 4px rgba(0,0,0,0.6);letter-spacing:2px;user-select:none">${esc(wm)}</span></div><div style="position:absolute;bottom:6px;right:8px;font-size:11px;color:#fff;background:rgba(0,0,0,0.65);padding:2px 8px;border-radius:4px">${esc(wm)}</div></div></article>`).join('');
+
+    const videos = pm.videos.map(u => {
+      const k = videoKind(u); const yt = k === 'YOUTUBE' ? youtubeId(u) : null;
+      if (yt) return `<div style="${box}" data-testid="prop-video-yt"><iframe src="https://www.youtube-nocookie.com/embed/${esc(yt)}" title="video" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="${fill}"></iframe></div>`;
+      if (k === 'FILE') return `<div style="${box}" data-testid="prop-video-file"><video src="${esc(u)}" controls preload="metadata" playsinline style="${fill}"></video></div>`;
+      return /^https:\/\//i.test(u) ? `<p style="margin-top:8px"><a class="btn l" href="${esc(u)}" target="_blank" rel="noopener noreferrer" data-testid="prop-video-link">🎬 वीडियो खोलें / Open the video</a></p>` : '';
+    }).join('');
+
+    const area = pub.builtUp ? `${pub.builtUp} sq ft built-up` : (pub.plotArea ? `${pub.plotArea} sq ft plot` : '');
+    const origin = `${req.protocol}://${req.get('host') || '127.0.0.1:3000'}`;
+    const publicBrochureUrl = `${origin}/p/${encodeURIComponent(p.posterCode || p.id)}`;
+    const familyWaText = encodeURIComponent(`नमस्ते! यह प्रॉपर्टी देखिए:\n🏠 ${pub.title} · ${inr(pub.price)}${pub.deal === 'Rent' ? ' / माह' : ''}\n📍 ${pub.locality}, ${pub.city}\nफोटो और विवरण यहाँ देखें:\n${publicBrochureUrl}`);
+
+    const familyShareCard = `
+<div class="card" style="background:#ecfdf5;border:1px solid #10b981;margin-top:12px" data-testid="family-share-card">
+  <p class="t" style="margin:0 0 6px;font-weight:700;color:#065f46">📲 परिवार या दोस्तों को WhatsApp पर भेजें</p>
+  <p class="small" style="margin:0 0 10px;color:#047857">घर का निर्णय पूरे परिवार का होता है। यह लिंक आपके परिवार के सदस्य बिना किसी कोड या लॉगिन के सीधे खोल सकेंगे।</p>
+  <div class="row">
+    <a class="btn g" style="background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;font-weight:700" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=${familyWaText}" data-testid="share-family-whatsapp">
+      💬 WhatsApp पर शेयर करें / Share on WhatsApp
+    </a>
+  </div>
+</div>`;
+
+    const actions = itm ? `
+<div class="card" data-testid="prop-actions">
+  <form method="post" action="/r/${tok}/react">
+    <input type="hidden" name="item" value="${esc(itm.id)}">
+    <div class="row">
+      <button class="${itm.reaction === 'LIKE' ? 'g' : 'l'}" name="r" value="LIKE" type="submit">👍 पसंद / Like${itm.reaction === 'LIKE' ? ' ✔' : ''}</button>
+      <button class="l" name="r" value="PASS" type="submit">${itm.reaction === 'PASS' ? '👎 नहीं / No ✔' : '👎 नहीं / No'}</button>
+    </div>
+  </form>
+  <details style="margin-top:10px">
+    <summary style="cursor:pointer;font-weight:700">🗓 देखने जाना है / Ask for a visit</summary>
+    <form method="post" action="/r/${tok}/visit" style="margin-top:8px">
+      <input type="hidden" name="item" value="${esc(itm.id)}">
+      <label>कब? / When?</label>
+      <input type="datetime-local" name="when" required style="width:100%;padding:10px;border-radius:8px;border:1px solid #cbd5e1;margin-bottom:8px">
+      <label>कुछ बताना है? / Anything to add? (वैकल्पिक)</label>
+      <input type="text" name="note" maxlength="200" style="width:100%;padding:10px;border-radius:8px;border:1px solid #cbd5e1;margin-bottom:8px">
+      <div class="row"><button class="g" type="submit">अनुरोध भेजें / Send request</button></div>
+    </form>
+  </details>
+</div>` : '';
+
+    res.send(shell(pub.title, `
+<div class="top">
+  <h1>🏠 ${esc(pub.title)}</h1>
+  <p>${esc(inr(pub.price))}${pub.deal === 'Rent' ? ' / माह' : ''} · ${esc(pub.locality)}, ${esc(pub.city)}</p>
+</div>
+<div class="card" data-testid="prop-details-card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span class="chip ok">${esc(pub.type)}</span>
+    <span class="chip ${pub.available ? 'ok' : 'x'}">${pub.available ? 'उपलब्ध / Available' : 'उपलब्ध नहीं'}</span>
+  </div>
+  ${pub.facing ? `<p class="t" data-testid="prop-facing">🧭 <b>दिशा / Vastu Facing:</b> ${esc(pub.facing)}</p>` : ''}
+  ${pub.reraNumber ? `<p class="t" data-testid="prop-rera">🏛️ <b>RERA Registration:</b> ${esc(pub.reraNumber)}</p>` : ''}
+  ${area ? `<p class="t">📐 <b>क्षेत्रफल / Area:</b> ${esc(area)}</p>` : ''}
+  ${pub.description ? `<p class="t"><b>विवरण / Description:</b><br>${esc(pub.description)}</p>` : ''}
+  ${pub.tags.length ? `<div style="margin-top:6px">${pub.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+  <p class="small" style="margin-top:8px">🔒 <b>प्राइवेसी सुरक्षा:</b> पूरा पता और मालिक का फ़ोन नंबर वेरिफ़ाइड विज़िट के बाद मिलता है।<br><small>Exact address and owner contact are shared after a verified visit.</small></p>
+</div>
+${photos.length || videos.length ? `<h2>📷 फ़ोटो और वीडियो / Photos & Videos (${pm.photos.length + pm.videos.length})</h2>${photos}${videos}` : '<div class="card"><p class="t">इस प्रॉपर्टी की फ़ोटो / वीडियो अभी नहीं डाली गई।<br><small>No photos or videos added yet.</small></p></div>'}
+${familyShareCard}
+${actions}
+${back}
+<p class="small" style="margin:12px 4px">GENZ एक सुरक्षित रियल एस्टेट प्लेटफ़ॉर्म है। सौदे में कोई भी अग्रिम राशि देने से पहले RERA और कागज़ात ज़रूर जाँचें।</p>
+`));
   });
 
   // v55 — 4. a paper the broker showed: a view-only page with the client's own name stamped on every page; each open counts
@@ -1192,10 +1564,25 @@ ${pub.available ? `<div class="row"><form method="post" action="/r/${tok}/react"
       const left = Math.max(0, x.cs.maxViews - x.cs.views);
       return `<div class="row" style="margin-top:6px"><a class="btn g" href="/r/${tok}/paper/${esc(pp.shareId)}">📄 खोलें / Open</a></div><small>${left} बार और · ${esc(dayHi(x.cs.expiresAt))} तक / ${left} more open(s) · till ${esc(dayHi(x.cs.expiresAt))}</small>`;
     };
-    if (room.messages.length === 0) {
+    if (room.messages.length === 0 || (room.items.length < 3 && room.kind !== 'OWNER')) {
       if (seedRoomFromLeadOrRequirement(room)) db.save();
     }
-    const chat = room.messages.map(m => `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(humanIso(m.text)).replace(/\n/g, '<br>')}${m.paper ? paperLine(m.paper) : ''}${m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : ''}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? (m.byName.startsWith('GENZ') ? esc(m.byName) : `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)`) : esc(b?.name || 'Broker')} ·${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('');
+    const chat = room.messages.map(m => {
+      const propObj = m.propertyId ? (props.find(x => x.id === m.propertyId) || st().properties.find(x => x.id === m.propertyId)) : undefined;
+      const pubCard = propObj ? publicProperty(propObj) : null;
+      const propCardHtml = pubCard ? `
+<div class="prop-chat-card" data-testid="chat-prop-card-${esc(pubCard.id)}" style="margin:8px 0;border-radius:12px;border:1px solid #cbd5e1;background:#fff;padding:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#1b1b1b">
+  ${pubCard.image ? `<img src="${esc(pubCard.image)}" alt="" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin-bottom:6px">` : ''}
+  <div style="font-weight:700;color:#0f172a;font-size:14px;line-height:1.3">${esc(pubCard.title)}</div>
+  <div style="font-size:12px;color:#64748b;margin:2px 0">${esc(pubCard.locality)}, ${esc(pubCard.city)} · ${esc(pubCard.type)}</div>
+  <div style="font-size:15px;font-weight:800;color:#0f766e;margin:4px 0">${esc(inr(pubCard.price))}${pubCard.deal === 'Rent' ? ' / माह' : ''}</div>
+  <a class="btn g" href="/r/${tok}/home/${esc(pubCard.id)}" data-testid="chat-open-home-${esc(pubCard.id)}" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 12px;font-size:13px;font-weight:700;border-radius:8px;text-decoration:none;margin-top:6px">
+    🏠 कार्ड, फ़ोटो और वीडियो देखें / View Card, Photos & Video
+  </a>
+</div>` : (m.propertyId ? `<small>↳ ${esc(m.propertyId)}</small>` : '');
+
+      return `<div class="m ${m.from === 'CLIENT' ? 'mc' : 'mb'}">${esc(humanIso(m.text)).replace(/\n/g, '<br>')}${m.paper ? paperLine(m.paper) : ''}${propCardHtml}<small>${m.from === 'CLIENT' ? 'आप' : m.byName ? (m.byName.startsWith('GENZ') ? esc(m.byName) : `${esc(m.byName)} (${esc(b?.name || 'Broker')} का ऑफ़िस / office)`) : esc(b?.name || 'Broker')} ·${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`;
+    }).join('');
     db.save();
     const sibs = st().clientRooms.filter(c => c.id !== room.id && c.status === 'ACTIVE' && c.phoneKey === room.phoneKey && sessionFor(req, c));
     const sibsHtml = sibs.length ? `<div class="card"><p class="small">मेरे दूसरे रूम / My other rooms</p><div class="row">${sibs.map(c => `<a class="btn l" href="/r/go-${esc(c.id)}">${c.kind === 'OWNER' ? `🏠 मेरी प्रॉपर्टी / My property${props.find(x => x.id === c.propertyId) ? ' — ' + esc(props.find(x => x.id === c.propertyId)!.title.slice(0, 28)) : ''}` : `🔍 ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')} के साथ मेरी तलाश / My search with ${esc(st().users.find(u => u.id === c.brokerId)?.name || 'Broker')}`}</a>`).join('')}</div></div>` : '';

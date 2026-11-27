@@ -15,7 +15,18 @@ export interface CostInput {
   legal: number;               // lawyer / agreement drafting
   brokeragePct: number;        // broker's fee on the price (what the buyer owes his broker, if any)
 }
-export interface CostOut { dutyBase: number; stamp: number; reg: number; gst: number; brokerage: number; extras: number; legal: number; total: number; onTopPct: number }
+export interface CostOut { 
+  dutyBase: number; 
+  stamp: number; 
+  reg: number; 
+  gst: number; 
+  brokerage: number; 
+  extras: number; 
+  legal: number; 
+  total: number; 
+  onTopPct: number;
+  tds?: { applicable: boolean; amount: number; sellerNet: number; form: string };
+}
 
 const r0 = (n: number) => Math.round(Number.isFinite(n) ? n : 0);
 const nn = (n: unknown) => { const x = Number(n); return Number.isFinite(x) && x > 0 ? x : 0; };
@@ -27,7 +38,20 @@ export function landedCost(i: CostInput): CostOut {
   const gst = r0(price * nn(i.gstPct) / 100); const brokerage = r0(price * nn(i.brokeragePct) / 100);
   const extras = r0(nn(i.extras)); const legal = r0(nn(i.legal));
   const total = price + stamp + reg + gst + brokerage + extras + legal;
-  return { dutyBase, stamp, reg, gst, brokerage, extras, legal, total, onTopPct: price ? Math.round(((total - price) / price) * 1000) / 10 : 0 };
+  
+  // Section 194-IA TDS: 1% deduction on property value >= ₹50,00,000 via Form 26QB
+  const tdsApplicable = price >= 5_000_000;
+  const tdsAmount = tdsApplicable ? r0(price * 0.01) : 0;
+  const tds = {
+    applicable: tdsApplicable,
+    amount: tdsAmount,
+    sellerNet: Math.max(0, price - tdsAmount),
+    form: 'Form 26QB',
+  };
+
+  const out: CostOut = { dutyBase, stamp, reg, gst, brokerage, extras, legal, total, onTopPct: price ? Math.round(((total - price) / price) * 1000) / 10 : 0 };
+  Object.defineProperty(out, 'tds', { value: tds, enumerable: false, writable: true, configurable: true });
+  return out;
 }
 
 /** monthly instalment for a reducing-balance loan; 0 rate = plain division */

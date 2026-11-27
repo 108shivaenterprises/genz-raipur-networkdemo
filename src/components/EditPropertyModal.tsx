@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Property, UserProfile } from '../types/index.js';
 import { formatINR } from '../lib/utils.js';
+import { formatPriceInputHelper } from '../lib/indianLegalWords.js';
 import { PROPERTY_TYPES, findState } from '../shared/india.js';
 import { LocationFields } from './LocationFields.js';
 import { TagPicker } from './TagPicker.js';
@@ -78,6 +79,8 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
     district: property.district || '',
   });
   const [tags, setTags] = useState<string[]>(property.tags || []);
+  const [facing, setFacing] = useState(property.facing || '');
+  const [reraNumber, setReraNumber] = useState(property.reraNumber || '');
   const [landmark, setLandmark] = useState(property.landmark || '');
   const [addressHidden, setAddressHidden] = useState(property.addressHidden || '');
   const [googleMapsUrl, setGoogleMapsUrl] = useState(property.googleMapsUrl || '');
@@ -87,6 +90,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
   const [priceChangeReason, setPriceChangeReason] = useState('');
   const [builtUpAreaSqFt, setBuiltUpAreaSqFt] = useState<string | number>(property.builtUpAreaSqFt || '');
   const [plotAreaSqFt, setPlotAreaSqFt] = useState<string | number>(property.plotAreaSqFt || '');
+  const [carpetAreaSqFt, setCarpetAreaSqFt] = useState<string | number>(property.carpetAreaSqFt || '');
 
   const [ownerName, setOwnerName] = useState(property.ownerName || '');
   const [ownerPhone, setOwnerPhone] = useState(property.ownerPhone || '');
@@ -118,6 +122,8 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
         district: property.district || '',
       });
       setTags(property.tags || []);
+      setFacing(property.facing || '');
+      setReraNumber(property.reraNumber || '');
       setLandmark(property.landmark || '');
       setAddressHidden(property.addressHidden || '');
       setGoogleMapsUrl(property.googleMapsUrl || '');
@@ -125,6 +131,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
       setOwnerApprovedNetPrice(property.ownerApprovedNetPrice || '');
       setBuiltUpAreaSqFt(property.builtUpAreaSqFt || '');
       setPlotAreaSqFt(property.plotAreaSqFt || '');
+      setCarpetAreaSqFt(property.carpetAreaSqFt || '');
       setOwnerName(property.ownerName || '');
       setOwnerPhone(property.ownerPhone || '');
       setImages(property.images || []);
@@ -239,6 +246,8 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
         pincode: loc.pincode || '',
         district: loc.district || '',
         tags,
+        facing: facing ? facing.trim() : undefined,
+        reraNumber: reraNumber ? reraNumber.trim() : undefined,
         landmark: landmark.trim(),
         addressHidden: addressHidden.trim(),
         googleMapsUrl: googleMapsUrl.trim(),
@@ -247,6 +256,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
         priceChangeReason: numAsking !== property.askingPrice ? (priceChangeReason.trim() || 'Owner revision') : undefined,
         builtUpAreaSqFt: builtUpAreaSqFt ? Number(builtUpAreaSqFt) : undefined,
         plotAreaSqFt: plotAreaSqFt ? Number(plotAreaSqFt) : undefined,
+        carpetAreaSqFt: carpetAreaSqFt ? Number(carpetAreaSqFt) : undefined,
         ownerName: ownerName.trim(),
         ownerPhone: ownerPhone.trim() ? sanitizePhone(ownerPhone.trim()) : '',
         images: images.length > 0 ? images : undefined,
@@ -401,6 +411,36 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                   <option value="Lease">{label('transactionType', 'Lease')}</option>
                 </select>
               </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700">🧭 {tx('Vastu Facing', 'वास्तु दिशा')}</label>
+                <select
+                  value={facing}
+                  onChange={(e) => setFacing(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs font-medium text-slate-900 focus:border-blue-500 focus:outline-hidden"
+                >
+                  <option value="">{tx('— Select Facing —', '— दिशा चुनें —')}</option>
+                  <option value="East">{tx('East (पूर्व) — Highly Auspicious', 'पूर्व — शुभ')}</option>
+                  <option value="North">{tx('North (उत्तर) — Kuber/Prosperity', 'उत्तर — कुबेर/समृद्धि')}</option>
+                  <option value="North-East">{tx('North-East (ईशान कोण) — Purest Cosmic Energy', 'ईशान कोण — आध्यात्मिक ऊर्जा')}</option>
+                  <option value="South-East">{tx('South-East (आग्नेय कोण) — Agni Element', 'आग्नेय कोण — अग्नि तत्व')}</option>
+                  <option value="West">{tx('West (पश्चिम)', 'पश्चिम')}</option>
+                  <option value="North-West">{tx('North-West (वायव्य कोण)', 'वायव्य कोण')}</option>
+                  <option value="South">{tx('South (दक्षिण)', 'दक्षिण')}</option>
+                  <option value="South-West">{tx('South-West (नैऋत्य कोण)', 'नैऋत्य कोण')}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700">🏛️ {tx('RERA Number', 'रेरा नंबर (RERA No.)')}</label>
+                <input
+                  type="text"
+                  value={reraNumber}
+                  onChange={(e) => setReraNumber(e.target.value)}
+                  placeholder={tx('e.g. CGRERA010224A0001, PRM/KA/RERA...', 'जैसे: CGRERA010224A0001')}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-hidden font-mono"
+                />
+              </div>
             </div>
 
             <div>
@@ -449,7 +489,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs font-mono font-bold text-slate-900 focus:border-blue-500 focus:outline-hidden"
                 />
                 <p className="mt-1 text-[11px] font-semibold text-blue-700">
-                  {tx('Formatted', 'फ़ॉर्मेट')}: {askingPrice ? formatINR(Number(askingPrice)) : '₹ 0'}
+                  {tx('Formatted', 'फ़ॉर्मेट')}: {askingPrice ? formatPriceInputHelper(Number(askingPrice)) : '₹ 0'}
                 </p>
               </div>
 
@@ -498,7 +538,22 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
             <LocationFields value={loc} onChange={(v) => setLoc({ ...loc, ...v })} />
             <TagPicker value={tags} onChange={setTags} />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                  <span>{tx('RERA Carpet (Sq. Ft.)', 'RERA कारपेट (वर्ग फ़ीट)')}</span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1 rounded font-bold">RERA</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={carpetAreaSqFt}
+                  onChange={(e) => setCarpetAreaSqFt(e.target.value)}
+                  placeholder="e.g. 1150"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs font-mono text-slate-900"
+                />
+              </div>
+
               <div>
                 <label className="text-xs font-semibold text-slate-700">{tx('Built-Up Area (Sq. Ft.)', 'बिल्ट-अप एरिया (वर्ग फ़ीट)')}</label>
                 <input

@@ -89,7 +89,7 @@ export function getAppBaseUrl(): string {
 }
 
 /**
- * Generates a pre-filled WhatsApp share URL for a Property with deep link
+ * Generates a pre-filled WhatsApp share URL for a Property with public brochure link (no login required for clients)
  */
 export function getPropertyWhatsAppShareUrl(property: {
   id: string;
@@ -101,24 +101,34 @@ export function getPropertyWhatsAppShareUrl(property: {
   askingPrice: number;
   builtUpAreaSqFt?: number;
   plotAreaSqFt?: number;
+  carpetAreaSqFt?: number;
+  facing?: string;
+  posterCode?: string;
+  reraNumber?: string;
 }): string {
   const baseUrl = getAppBaseUrl();
+  const publicCode = property.posterCode || property.id;
+  const publicLink = `${baseUrl}/p/${encodeURIComponent(publicCode)}`;
   const deepLink = `${baseUrl}?tab=properties&propertyId=${encodeURIComponent(property.id)}`;
-  const area = property.builtUpAreaSqFt || property.plotAreaSqFt;
-  const areaText = area ? `${area.toLocaleString('en-IN')} sq.ft` : 'N/A';
+  const area = property.carpetAreaSqFt || property.builtUpAreaSqFt || property.plotAreaSqFt;
+  const areaLabel = property.carpetAreaSqFt ? 'Carpet Area' : 'Area';
+  const areaText = area ? `${area.toLocaleString('en-IN')} sq.ft (${areaLabel})` : 'N/A';
 
   const text = 
 `🏡 *${property.title}*
 📍 *Location:* ${property.locality}${property.city ? ', ' + property.city : ''}
 🏷️ *Type:* ${property.propertyType} (${property.transactionType})
 💰 *Asking Price:* ${formatINR(property.askingPrice)}
-📐 *Area:* ${areaText}
+📐 *${areaLabel}:* ${areaText}${property.facing ? `\n🧭 *Vastu Facing:* ${property.facing}` : ''}${property.reraNumber ? `\n🛡️ *RERA Reg:* ${property.reraNumber}` : ''}
 🆔 *Property ID:* ${property.id}
 
-🔗 *View & Collaborate on GENZ BROKER NETWORK:*
+🔗 *View Complete Details & Verified Photos (No Login Required):*
+${publicLink}
+
+🤝 *Brokers & Members Collaborate on GENZ:*
 ${deepLink}
 
-_Powered by GENZ BUILDCON • Trusted Broker Exchange_`;
+_Shared via GENZ BROKER NETWORK • Verified Real Estate Exchange_`;
 
   return `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
 }

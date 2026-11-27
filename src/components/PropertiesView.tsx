@@ -7,7 +7,7 @@ import { Property, UserProfile } from '../types/index.js';
 import { api, type PropertyFacets } from '../lib/api.js';
 import { formatINR, formatArea, getPropertyWhatsAppShareUrl } from '../lib/utils.js';
 import { SendToClient } from './SendToClient.js';
-import { PROPERTY_TYPES, INDIA_STATES, ALL_TAGS } from '../shared/india.js';
+import { PROPERTY_TYPES, INDIA_STATES, ALL_TAGS, reraPortalUrlOf } from '../shared/india.js';
 import { MandateModal } from './MandateModal.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
@@ -23,6 +23,7 @@ import { ListingDrafts } from './ListingDrafts.js';
 import { PostMaker } from './PostMaker.js';
 import { ConsentQueue } from './ConsentQueue.js';
 import { ProtectionPill } from './ProtectionDays.js';
+import { VastuBadge } from './VastuComplianceBadge.js';
 import { daysUntil } from '../shared/protectionRules.js';
 import { MessageCircle, Heart } from 'lucide-react';
 import {
@@ -534,6 +535,27 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                   <div className="flex items-end justify-between gap-2">
                     <span className="text-lg font-bold text-slate-900">{formatINR(p.askingPrice)}</span>
                     <span className="text-xs text-slate-500">{formatArea(p.builtUpAreaSqFt || p.plotAreaSqFt)}</span>
+                  </div>
+
+                  {/* Indian Market Badges: Vastu Facing, RERA Verification, Carpet Area */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <VastuBadge facing={p.facing} score={p.vastuScore} compact />
+                    {p.reraNumber && (
+                      <a
+                        href={reraPortalUrlOf(p.state)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                        title={`Verify with State RERA Portal (${p.reraNumber})`}
+                      >
+                        🛡️ RERA: {p.reraNumber}
+                      </a>
+                    )}
+                    {p.carpetAreaSqFt && (
+                      <span className="text-xs font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                        Carpet: {p.carpetAreaSqFt.toLocaleString('en-IN')} sq.ft
+                      </span>
+                    )}
                   </div>
                   {!isMyListing && listingBroker && (
                     <div className="flex items-center justify-between text-xs text-slate-500">

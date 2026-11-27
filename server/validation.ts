@@ -75,6 +75,9 @@ export const propertyCreateSchema = z.object({
   street: z.string().max(200).optional(),
   pincode: pincodeField.optional(),
   tags: tagsField,
+  facing: z.string().trim().max(30).optional(),
+  vastuScore: z.number().min(0).max(100).optional(),
+  reraNumber: z.string().trim().max(60).optional(),
   locality: z.string().trim().min(2, 'Locality is required (e.g. Koramangala, Shankar Nagar, Andheri West)').max(80).refine(noContact, NO_CONTACT_MSG),
   addressHidden: z.string().trim().min(5, 'Specific address is required for confidential verification').max(300),
   landmark: z.string().max(200).refine(noContact, NO_CONTACT_MSG).optional().default(''),
@@ -87,6 +90,7 @@ export const propertyCreateSchema = z.object({
   images: z.array(safeUrl).max(30).optional(),
   plotAreaSqFt: z.number().nonnegative().max(100_000_000).optional(),
   builtUpAreaSqFt: z.number().nonnegative().max(100_000_000).optional(),
+  carpetAreaSqFt: z.coerce.number().nonnegative().max(100_000_000).optional(),
   askingPrice: z.number().positive('Asking price must be a positive number in INR').max(MAX_MONEY),
   ownerApprovedNetPrice: z.number().positive('Owner approved net price must be a positive number in INR').max(MAX_MONEY),
   ownerName: z.string().trim().min(2, 'Owner name is required').max(120),
@@ -109,6 +113,9 @@ export const propertyUpdateSchema = z.object({
   state: stateField,
   district: z.string().max(80),
   tags: tagsField,
+  facing: z.string().trim().max(30).optional(),
+  vastuScore: z.coerce.number().min(0).max(100).optional(),
+  reraNumber: z.string().trim().max(60).optional(),
   locality: z.string().trim().min(2).max(80).refine(noContact, NO_CONTACT_MSG),
   landmark: z.string().max(200),
   village: z.string().max(80),
@@ -118,6 +125,7 @@ export const propertyUpdateSchema = z.object({
   googleMapsUrl: optionalSafeUrl,
   videoUrl: optionalSafeUrl,
   builtUpAreaSqFt: z.coerce.number().nonnegative().max(100_000_000),
+  carpetAreaSqFt: z.coerce.number().nonnegative().max(100_000_000),
   plotAreaSqFt: z.coerce.number().nonnegative().max(100_000_000),
   askingPrice: z.coerce.number().positive().max(MAX_MONEY),
   ownerApprovedNetPrice: z.coerce.number().positive().max(MAX_MONEY),
@@ -287,6 +295,7 @@ export const siteVisitCreateSchema = z.object({
   clientRoomId: z.string().max(40).optional(),
   clientRoomItemId: z.string().max(40).optional(),
   clientRoomRequestId: z.string().max(40).optional(),
+  useMaskedRoomPhone: z.boolean().optional(),
 });
 
 export const ownerMandateCreateSchema = z.object({

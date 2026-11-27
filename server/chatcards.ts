@@ -8,9 +8,9 @@
  *
  * `checkCard` is the one place that decides whether a sender may put such a card in this deal's chat. It is pure (no db, no request).
  */
-import type { DealRoom, Property, PropertyMediaAsset, SiteVisit } from '../src/types/index.js';
+import type { DealRoom, Property, PropertyMediaAsset, SiteVisit, OwnerMandate } from '../src/types/index.js';
 
-export const CARD_KINDS = ['PROPERTY', 'DOCUMENT', 'PHOTO', 'LOCATION', 'VISIT', 'STAGE', 'OFFER', 'AGREEMENT'] as const;
+export const CARD_KINDS = ['PROPERTY', 'DOCUMENT', 'PHOTO', 'LOCATION', 'VISIT', 'STAGE', 'OFFER', 'AGREEMENT', 'MANDATE'] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
 export const isCardKind = (k: unknown): k is CardKind => typeof k === 'string' && (CARD_KINDS as readonly string[]).includes(k);
 
@@ -38,6 +38,7 @@ export function checkCard(i: {
   /** v153 — the offers made on this deal's property for this deal, and the deal's commission agreements (ids only; each reader's screen fetches what he may see) */
   offers?: { id: string; dealRoomId?: string }[];
   agreements?: { id: string; dealId: string }[];
+  mandates?: { id: string; propertyId: string }[];
   /** the sender is one of the two deal brokers */
   isBroker: boolean;
   userId: string;
@@ -84,6 +85,11 @@ export function checkCard(i: {
       if (!i.isBroker) return bad(403, 'CARD_NOT_YOURS', 'Only the deal brokers can post a stage card.');
       if (ref !== deal.stage) return bad(409, 'CARD_STALE', 'The deal is no longer at that stage.');
       return { ok: true, refId: deal.stage, auto: `Deal stage: ${deal.stage}` };
+    }
+    case 'MANDATE': {
+      if (!i.isBroker && i.userId !== (deal as any).ownerId) return bad(403, 'CARD_NOT_YOURS', 'Only deal brokers or owner can post the mandate card.');
+      if (!(i.mandates || []).some(m => m.id === ref && m.propertyId === deal.propertyId)) return bad(404, 'CARD_NOT_FOUND', 'That mandate is not for this deal’s property.');
+      return { ok: true, refId: ref, auto: 'Shared owner brokerage mandate' };
     }
   }
 }

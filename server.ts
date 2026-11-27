@@ -178,7 +178,7 @@ import { createAck as createVisitAck, ackBlock as visitAckBlock, ackStatus as vi
 import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onMandateActive, sweepOwnerListings, ensureOwnerPlans, checkOtpToken, finishSignupOtp, sendSignupOtp } from './server/ownerlist.js';
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
-import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
+import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitToRoom, createClientRoomRouter, createBuyerClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
 import { createForgotRouter, createOtpAdminRouter } from './server/otpManual.js';
 import { createApiKeysRouter } from './server/apiKeys.js';
@@ -187,6 +187,7 @@ import { createDealCloseRouter, sweepDealClosures } from './server/dealclose.js'
 import { createPaymentRequestRouter, createPaymentPageRouter } from './server/payreq.js';
 import { isClosed, offlineVisitConfirmed } from './src/shared/dealClose.js';
 import { createLandRecordsRouter } from './server/landrecords.js';
+import { createCoinsRouter, unlockCoinsOnVisitVerified, unlockCoinsOnCommissionAgreement } from './server/coins.js';
 import { createConnectorRouter, connectorProfileSchema } from './server/connector.js';
 import { findState, matchState, stateOfIso, stateOfCity, sameCity, isPincode } from './src/shared/india.js';
 import { PAPER_KEYS } from './src/shared/paperRules.js';
@@ -196,6 +197,7 @@ import { createPrivacyRouter, legalConfig, POLICY_VERSION } from './server/priva
 import { maskKycFor, panHeldByApproved, normPan, maskPan, normGstin, normRera, isValidPan, isValidGstin, isPlausibleRera } from './server/kyc.js';
 import compression from 'compression';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ensureCardForNeed, advanceClient } from './server/clientlink.js';
 
@@ -1410,6 +1412,9 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
     street: data.street || '',
     pincode: data.pincode || '',
     tags: data.tags,
+    facing: data.facing,
+    vastuScore: data.vastuScore,
+    reraNumber: data.reraNumber,
     locality: data.locality,
     addressHidden: data.addressHidden,
     landmark: data.landmark || '',
@@ -1421,6 +1426,7 @@ app.post('/api/properties', needs('property:create'), newAccountCap('listing', 5
     videoUrl: data.videoUrl || '',
     plotAreaSqFt: data.plotAreaSqFt,
     builtUpAreaSqFt: data.builtUpAreaSqFt,
+    carpetAreaSqFt: data.carpetAreaSqFt,
     askingPrice: data.askingPrice,
     ownerApprovedNetPrice: data.ownerApprovedNetPrice,
     listingBrokerId,
@@ -2766,17 +2772,18 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
     return res.status(400).json({ error: parseResult.error.issues[0]?.message || 'Validation error' });
   }
 
-  const { dealRoomId, propertyId, customerName, customerPhone, scheduledTime, notes, scanAt, clientRoomId, clientRoomItemId, clientRoomRequestId } = parseResult.data;
+  const { dealRoomId, propertyId, customerName, customerPhone, scheduledTime, notes, scanAt, clientRoomId, clientRoomItemId, clientRoomRequestId, useMaskedRoomPhone } = parseResult.data;
   // v178: a visit cannot be booked in the past (15 min of slack for a slow phone clock)
   if (Date.parse(scheduledTime) < Date.now() - 15 * 60_000) return res.status(400).json({ error: 'The visit time is in the past — pick a date and time from now on.', errorHi: 'विज़िट का समय बीत चुका है — अब से आगे की तारीख़ और समय चुनें।', code: 'VISIT_PAST' });
   const state = db.getState();
   // v40 — booked from a Client Room: it must be the broker's own room, a home in it, and the client's own mobile
-  let roomLink: { room: any; item: any } | null = null;
+  let roomLink: { room: any; item: any; resolvedPhone: string } | null = null;
   if (clientRoomId) {
-    const r = roomForVisit(currentUser, { clientRoomId, clientRoomItemId, clientRoomRequestId, propertyId, customerPhone });
+    const r = roomForVisit(currentUser, { clientRoomId, clientRoomItemId, clientRoomRequestId, propertyId, customerPhone, useMaskedRoomPhone });
     if ('error' in r) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
     roomLink = r;
   }
+  const effectivePhone = roomLink?.resolvedPhone || customerPhone;
 
   const prop = db.byId('properties', propertyId);
   if (!prop || prop.verificationStatus !== 'VERIFIED' || !PUBLIC_PROPERTY_STATUSES.includes(prop.listingStatus)) {
@@ -2806,10 +2813,10 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   }
 
   // v35 — Network Watch: a buyer GENZ has blocked for commission bypass cannot be booked
-  if (customerPhone) { const pb = partyBlock(customerPhone, 'buyer'); if (pb) return res.status(403).json(pb); }
+  if (effectivePhone) { const pb = partyBlock(effectivePhone, 'buyer'); if (pb) return res.status(403).json(pb); }
   // v29 — buyer bond: another broker brought this buyer to this property first (verified visit / offer) → stop, ask to co-broke
-  if (customerPhone) {
-    const blocked = buyerBondBlock(currentUser, propertyId, customerPhone, targetDealId || undefined);
+  if (effectivePhone) {
+    const blocked = buyerBondBlock(currentUser, propertyId, effectivePhone, targetDealId || undefined);
     if (blocked) return res.status(409).json(blocked);
   }
 
@@ -2856,7 +2863,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
     propertyId,
     brokerId: currentUser.id,
     customerName,
-    customerPhone: customerPhone || undefined,
+    customerPhone: effectivePhone || undefined,
     scheduledTime,
     otpCode,
     qrToken,
@@ -2871,10 +2878,10 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
 
   state.siteVisits.unshift(newVisit);
   // v127 — the broker who books first holds this buyer on this home (it used to need the verified visit; a second broker could book in between)
-  if (customerPhone) makeBuyerBond({ brokerId: currentUser.id, propertyId, buyerPhone: customerPhone, buyerName: customerName, source: 'BOOKED', sourceId: visitId, dealRoomId: deal?.id });
+  if (effectivePhone) makeBuyerBond({ brokerId: currentUser.id, propertyId, buyerPhone: effectivePhone, buyerName: customerName, source: 'BOOKED', sourceId: visitId, dealRoomId: deal?.id });
   if (roomLink) linkVisitToRoom(roomLink.room, roomLink.item, clientRoomRequestId, newVisit);
   // v33 — “no direct deal” acknowledgement from the buyer (tick + mobile code) before his QR / code is shown
-  const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: customerPhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title, alsoBrokerId: prop.listingBrokerId, req });
+  const visitAck = createVisitAck({ kind: 'VISIT', refId: visitId, phone: effectivePhone, buyerName: customerName, brokerId: currentUser.id, subject: prop.title, alsoBrokerId: prop.listingBrokerId, req });
 
   if (deal) {
     deal.siteVisitsCount = (deal.siteVisitsCount || 0) + 1;
@@ -2882,7 +2889,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
   }
 
   if (deal) ensureVisitCards(state, deal.id);
-  advanceClient(currentUser.id, customerName, String(customerPhone || ''), 'SITE_VISIT', `visit booked on ${prop.title}`);   // v114 — his client card follows the visit
+  advanceClient(currentUser.id, customerName, String(effectivePhone || ''), 'SITE_VISIT', `visit booked on ${prop.title}`);   // v114 — his client card follows the visit
   db.save();
   leadVisitEvent(newVisit, 'BOOKED'); // v91: the shop lead and the shop are told by themselves
 
@@ -2897,7 +2904,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
 
   // Deliver the secret to the customer & the owner — NOT to the broker.
   const msg = `GENZ site visit ${visitId} at "${prop.title}" on ${new Date(scheduledTime).toLocaleString('en-IN')}. Share code ${otpCode} with the broker ONLY when you are physically at the property.`;
-  if (customerPhone && !visitAck) void sendSms(customerPhone, msg);   // with an acknowledgement the buyer gets his link instead; the code shows only after he confirms
+  if (effectivePhone && !visitAck) void sendSms(effectivePhone, msg);   // with an acknowledgement the buyer gets his link instead; the code shows only after he confirms
   const ownerUser = db.byId('users', prop.ownerId);
   if (ownerUser?.phone) void sendSms(ownerUser.phone, msg);
   // v102 — the property side (owner + listing broker) hears that a visit is booked on their property, so somebody is there to confirm it
@@ -2905,7 +2912,7 @@ app.post('/api/site-visits', needs('sitevisit:create'), (req: Request, res: Resp
     alert([prop.ownerId, prop.listingBrokerId], 'deals', `Visit booked · ${prop.title}`, `${who} · ${when} · by ${currentUser.name}. When he arrives, scan his QR or type his code.`, `/?tab=deals&deal=${targetDealId}`, {
       not: currentUser.id, tag: `visit-booked-${visitId}`, hi: [`विज़िट बुक · ${prop.title}`, `${who} · ${when} · ${currentUser.name} द्वारा। वे पहुँचें तो उनका QR स्कैन करें या कोड डालें।`] }); }
 
-  res.json({ success: true, siteVisit: sanitizeVisit(newVisit, currentUser, state), dealRoom: deal, watch: (customerPhone && partyCaution(customerPhone)) || undefined });
+  res.json({ success: true, siteVisit: sanitizeVisit(newVisit, currentUser, state), dealRoom: deal, watch: (effectivePhone && partyCaution(effectivePhone)) || undefined });
 });
 
 /** v79 — the same decision the screens show: can THIS user confirm this visit now (src/shared/visitGateRules.ts) */
@@ -2966,6 +2973,7 @@ function finishVisitVerification(visit: any, method: 'OTP' | 'QR', feedback: str
   // v29 — the buyer saw the property with this broker (OTP / QR on site): the buyer bond starts
   if (visit.customerPhone) makeBuyerBond({ brokerId: visit.brokerId, propertyId: visit.propertyId, buyerPhone: visit.customerPhone, buyerName: visit.customerName, source: 'VISIT', sourceId: visit.id, dealRoomId: visit.dealRoomId });
   db.save();
+  if (deal?.customerId) unlockCoinsOnVisitVerified(deal.customerId, deal.id);
   leadVisitEvent(visit, 'DONE'); // v91: lead → “Visit done”, client card follows, the shop is told
   db.appendAuditEvent(user.id, user.role, 'VISIT', visit.id, auditAction, auditText);
   // v102 — whoever was NOT the one who confirmed hears it (the broker who brought the buyer, the owner, the listing broker); it also lands in their bell
@@ -3796,6 +3804,39 @@ app.post('/api/disputes/:id/resolve', needs('dispute:resolve'), (req: Request, r
     `Dispute ${dispute.id} marked ${dispute.status}. Notes: ${resolutionNotes}. Hold lifted: ${Boolean(liftHold && closing)}`
   );
 
+  res.json({ success: true, dispute });
+});
+
+/** v201c — Mutual Dispute Withdrawal: whoever filed the dispute (broker or client) OR GENZ admin can withdraw/resolve it if settled mutually */
+app.post('/api/disputes/:id/withdraw', needs('dispute:read'), (req: Request, res: Response) => {
+  const currentUser = getCurrentUser();
+  const state = db.getState();
+  const dispute = db.byId('disputes', req.params.id);
+  if (!dispute) return res.status(404).json({ error: 'Dispute not found' });
+  if (dispute.complainantId !== currentUser.id && !isAdmin(currentUser)) {
+    return res.status(403).json({ error: 'Only the person who filed this dispute or GENZ Admin can withdraw it' });
+  }
+  if (dispute.status === 'RESOLVED' || dispute.status === 'DISMISSED') {
+    return res.status(409).json({ error: 'Dispute is already closed' });
+  }
+  const now = new Date().toISOString();
+  const note = String(req.body?.note || '').trim().slice(0, 500) || `Mutually resolved and withdrawn by ${currentUser.name}`;
+  dispute.status = 'RESOLVED';
+  dispute.settlementHold = false;
+  dispute.resolutionNotes = note;
+  dispute.updatedAt = now;
+  if (dispute.dealRoomId) {
+    for (const ag of state.commissionAgreements) if (ag.dealId === dispute.dealRoomId) for (const al of ag.allocations) {
+      if (al.entitlementStatus !== 'DISPUTED') continue;
+      al.entitlementStatus = (al.paidAmount || 0) >= al.allocationAmount ? 'PAID' : (al.paidAmount || 0) > 0 ? 'EARNED' : 'AGREED';
+      al.disputedAmount = 0;
+    }
+  }
+  db.save();
+  db.appendAuditEvent(currentUser.id, currentUser.role, 'DISPUTE', dispute.id, 'DISPUTE_WITHDRAWN', `Dispute ${dispute.id} mutually resolved and withdrawn by ${currentUser.name}`);
+  if (dispute.counterpartyId && dispute.counterpartyId !== currentUser.id) {
+    alert([dispute.counterpartyId], 'deals', `Dispute resolved · ${dispute.id}`, `${currentUser.name} marked the dispute mutually resolved and lifted the hold.`, '/?tab=disputes', { tag: `dispute-withdraw-${dispute.id}` });
+  }
   res.json({ success: true, dispute });
 });
 
@@ -4887,6 +4928,7 @@ function activateAgreement(state: ReturnType<typeof db.getState>, deal: any, agr
   const close = agreement.allocations.find((a: any) => a.participantId === deal.closingBrokerId);
   if (intro) deal.introducingBrokerSharePct = intro.allocationPct;
   if (close) deal.closingBrokerSharePct = close.allocationPct;
+  if (deal?.customerId) unlockCoinsOnCommissionAgreement(deal.customerId, deal.id);
 }
 
 app.post('/api/deals/:id/commission-agreements/:agreementId/approve', needs('agreement:sign'), (req: Request, res: Response) => {
@@ -5884,6 +5926,7 @@ app.post('/api/deals/:id/messages', needs('deal:chat'), rateLimit('chat', 60, 60
       visibleAssets: property ? visibleVaultAssets(state, currentUser, property).assets : [],
       visits: state.siteVisits.filter(v => v.dealRoomId === deal.id),
       offers: state.propertyOffers.filter(o => o.dealRoomId === deal.id), agreements: state.commissionAgreements.filter(a => a.dealId === deal.id),
+      mandates: (state.ownerMandates || []).filter(m => m.propertyId === deal.propertyId),
       isBroker: isDealBroker(currentUser, deal), userId: currentUser.id,
     });
     if (!r.ok) return res.status(r.status).json({ error: r.error, code: r.code });
@@ -5956,6 +5999,7 @@ app.use(['/s', '/r', '/q', '/sp', '/a', '/c', '/oc', '/in', '/report', '/pay', '
 app.use('/s', createPublicShareRouter());
 app.use('/in', createLeadInletPublicRouter());   // v107 — the public address: a hosted enquiry form, and the POST that files an enquiry as a lead
 app.use('/api/client-rooms', createClientRoomRouter());
+app.use('/api/my-client-rooms', createBuyerClientRoomRouter());
 // v60 — Rent desk: the broker's tenancies after the deal (terms, police verification, renewal, vacating)
 app.use('/api/rent', createRentRouter());
 // v61 — builder ↔ channel partner chat (text, lead / booking / unit cards, photos)
@@ -5987,6 +6031,7 @@ app.use('/api/network', createNetworkRouter());
 app.use('/api/id-review', createIdReviewRouter());
 app.use('/api/kyc-vault', createKycVaultRouter());
 app.use('/api/protection', createProtectionRouter());
+app.use('/api/coins', createCoinsRouter());
 app.use('/api/admin/api-keys', createApiKeysRouter());   // v135 — superadmin types API keys; every flow reads them
 app.use('/api/auth/2fa', createTwoFactorRouter());
 app.use('/api/auth', createOpenSignupRouter());   // v185 (D15) — open sign-up (SIGNUP_MODE)
@@ -6143,6 +6188,16 @@ async function startServer() {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
+    app.use('*', async (req: Request, res: Response, next: NextFunction) => {
+      if (req.originalUrl.startsWith('/api')) return next();
+      try {
+        let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        next(e);
+      }
+    });
   } else {
     const distPath = process.env.DIST_DIR || path.resolve(__dirname, 'dist');
     app.use(

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShowMore } from './ShowMore.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
-import { reraAuthorityOf } from '../shared/india.js';
+import { reraAuthorityOf, reraPortalUrlOf } from '../shared/india.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { UserProfile, Invitation } from '../types/index.js';
@@ -513,7 +513,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({
                     </td>
                     <td className="max-sm:block max-sm:px-3 max-sm:py-1 px-4 py-3 font-mono text-slate-600">
                       {u.reraNumber ? (
-                        <a href="https://rera.gov.in" target="_blank" rel="noopener noreferrer" className="underline decoration-dotted" title={`Verify with ${reraAuthorityOf(u.state)}`}>{u.reraNumber}</a>
+                        <a href={reraPortalUrlOf(u.state)} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted text-blue-600 hover:text-blue-800" title={`Verify with ${reraAuthorityOf(u.state)}`}>{u.reraNumber}</a>
                       ) : '—'}
                       {isAdmin && (u.panNumber || u.gstin) && (
                         <div className="text-[10px] text-slate-500">{u.panNumber && `PAN ${u.panNumber}`}{u.gstin && ` · GST ${u.gstin}`}</div>

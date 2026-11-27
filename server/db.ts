@@ -666,6 +666,8 @@ export interface UserProfile {
   erasedAt?: string;
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | 'BLACKLISTED';
   verificationNotes?: string;
+  /** v201 — mandatory shop/office photo & GPS location captured at signup for flag/fraud verification */
+  officeProof?: { photo: boolean; lat: number; lng: number; acc?: number; address?: string; at: string };
   /** TEAM_MEMBER only: the broker / builder who employs this account, and the member's job title */
   employerId?: string;
   /** TEAM_MEMBER only: role of the employer (decides what the employee may do); kept in sync at sign-in */
@@ -860,6 +862,13 @@ export interface BuyerRequirement {
   leadId?: string;
   /** v113 — the broker's client card this need belongs to (clientlink.ts keeps budget / area / stage in step) */
   clientCardId?: string;
+  clientRoomId?: string;
+  disputeBypass?: { at: string; reason?: string };
+  /** v201 — lead rerouted to GENZ when original broker's QR was paused for >15 days unpaid payout */
+  routedToGenz?: boolean;
+  originalBrokerId?: string;
+  assignedByGenzAt?: string;
+  assignedByGenzId?: string;
   customerId: string; // Persistent customer entity ID
   customerName: string;
   customerPhone: string; // Masked for unauthorized brokers
@@ -1557,6 +1566,8 @@ export interface ShopPartner {
   createdAt: string; updatedAt: string; acceptedAt?: string; endedAt?: string;
   /** v82 — who paused it: the broker, or GENZ because a share stayed unpaid for 15 days (only paying it lets the broker resume) */
   pausedBy?: 'BROKER' | 'SYSTEM'; pauseReason?: string;
+  /** v201 — when paused for >15 days overdue payout + shopkeeper flag, new QR scans reroute to GENZ Admin */
+  rerouteToGenz?: boolean;
   /** v93 — proof the QR is really at this shop: a live-camera photo (file data/shopphotos/<id>.jpg) + the phone's GPS at that moment */
   proof?: { lat: number; lng: number; acc: number; at: string; photo: boolean };
 }
@@ -1621,6 +1632,13 @@ export interface PartnerLead {
   outcomeOk?: boolean;
   ask?: { hash: string; at: string; n: number; answer?: 'YES' | 'NO'; answeredAt?: string };
   clientCardId?: string;
+  clientRoomId?: string;
+  disputeBypass?: { at: string; reason?: string };
+  /** v201 — lead rerouted to GENZ when original broker's QR was paused for >15 days unpaid payout */
+  routedToGenz?: boolean;
+  originalBrokerId?: string;
+  assignedByGenzAt?: string;
+  assignedByGenzId?: string;
   /** v85 — the number is NOT shown to the broker (only ••last4) until, in this in-app chat, the customer has confirmed his need AND the broker has shared a home that matches it
    *  (owner-side leads: until the owner confirms the property details). No `chat` = a lead from before v85 (number already visible). `keyHash` = sha256 of the customer's private link token. */
   chat?: { keyHash: string; /** v101 — the customer's private link, sealed, so the SAME link can be given back after an SMS code (a lost / second phone) */ keySealed?: string; /** v101 — an SMS code asked on the QR page to reopen this chat (hash, expiry, wrong tries) */ resume?: { hash: string; expires: string; tries: number }; msgs: LeadMsg[]; reqAskedAt?: string; reqConfirmedAt?: string; reqText?: string; revealedAt?: string; revealedBy?: { homeId?: string; title?: string }; brokerSeenAt?: string; customerSeenAt?: string; bot?: LeadBot };
@@ -1793,6 +1811,85 @@ export interface BillingEntry {
   createdAt: string; updatedAt: string; history: { at: string; by: string; what: string }[];
 }
 
+export interface GenzCoinSlab {
+  minInvoiceInr: number;
+  maxDiscountPct: number;
+  label: string;
+}
+
+export interface GenzCoinConfig {
+  enabled: boolean;
+  defaultRewardPct: number;
+  validityDays: number;
+  minDealValueInr: number;
+  maxCoinCapPerDeal: number;
+  partnerFeePct: number;
+  slabs: GenzCoinSlab[];
+  termsAndConditions: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export type GenzCoinStatus = 'LOCKED_VISIT' | 'LOCKED_REGISTRY' | 'ACTIVE' | 'PARTIALLY_REDEEMED' | 'REDEEMED' | 'EXPIRED';
+export type GenzMudraStatus = GenzCoinStatus;
+export type GenzMudraSlab = GenzCoinSlab;
+export type GenzMudraConfig = GenzCoinConfig;
+export type GenzMudraEntry = GenzCoinEntry;
+export type GenzMudraRedemption = GenzCoinRedemption;
+
+export interface GenzCoinEntry {
+  id: string;
+  userId: string;
+  dealId: string;
+  dealValueInr: number;
+  rewardPct: number;
+  coinsIssued: number;
+  coinsRemaining: number;
+  status: GenzCoinStatus;
+  registryRef?: string;
+  unlockedAt?: string;
+  unlockedBy?: string;
+  issuedBy: string;
+  issuedAt: string;
+  expiresAt: string;
+  note?: string;
+}
+
+export interface GenzCoinRedemption {
+  id: string;
+  userId: string;
+  partnerId?: string;
+  partnerName: string;
+  partnerCategory: string;
+  invoiceAmountInr: number;
+  invoiceRef: string;
+  slabLabel: string;
+  maxDiscountPct: number;
+  maxDiscountInr: number;
+  coinsBurned: number;
+  cashPaidInr: number;
+  partnerFeeInr: number;
+  genzMarginInr: number;
+  entriesUsed: { entryId: string; coins: number }[];
+  redeemedAt: string;
+}
+
+export const DEFAULT_GENZ_COIN_CONFIG: GenzCoinConfig = {
+  enabled: true,
+  defaultRewardPct: 1,
+  validityDays: 180,
+  minDealValueInr: 1500000,
+  maxCoinCapPerDeal: 100000,
+  partnerFeePct: 18,
+  slabs: [
+    { minInvoiceInr: 25000, maxDiscountPct: 10, label: 'Starter (₹25k–₹99k)' },
+    { minInvoiceInr: 100000, maxDiscountPct: 15, label: 'Standard (₹1L–₹4.99L)' },
+    { minInvoiceInr: 500000, maxDiscountPct: 20, label: 'Full Home / Interior (₹5L+)' },
+  ],
+  termsAndConditions: '1. GENZ Mudra is exclusively for verified Buyers & Tenants (never brokers) on property purchase & rental commissions, and is redeemable ONLY as a discount credit with GENZ-affiliated Contractors, Architects & Service Partners — zero hard-cash payout.\n2. Mudra preview activates after a verified Site Visit and unlocks when the deal closes via an in-app Commission Agreement.\n3. Simple Booking Rule: Contact GENZ to book your service. If you deal directly with any affiliated partner without booking via GENZ, GENZ is NOT liable for Mudra redemption or discounts.\n4. Valid for 6 months (180 days) from unlock date.\n5. Maximum discount depends on invoice value slab (10% / 15% / 20%).\n6. GENZ reserves the right to audit partner invoices.',
+};
+export const DEFAULT_GENZ_MUDRA_CONFIG = DEFAULT_GENZ_COIN_CONFIG;
+
 export interface DatabaseState {
   users: UserProfile[];
   invitations: Invitation[];
@@ -1926,6 +2023,10 @@ export interface DatabaseState {
   academyProgress: AcademyProgress[];
   /** v17 — who opened the app / did something, per Indian calendar day: user ids only, no page, IP or phone; kept 180 days */
   activityDays: import('../src/shared/pulseRules.js').ActivityDay[];
+  /** GENZ Coins & Affiliated Partner Discount Wallet */
+  coinConfig?: GenzCoinConfig;
+  coinEntries: GenzCoinEntry[];
+  coinRedemptions: GenzCoinRedemption[];
 }
 
 const DB_FILE = path.resolve(process.cwd(), 'data', 'database.json');
@@ -3077,6 +3178,24 @@ function getInitialSeedData(): DatabaseState {
     privacyRequests: [],
     connectorReferrals: [],
     clientCards: [], projectUpdates: [], projectShortlists: [], leadReveals: [], visitPasses: [], propertyOffers: [], tier2Applications: [], tieups: [], deskRequests: [], dealMilestones: [], brokerNotes: [], posterEnquiries: [], marketRecords: [], digestPrefs: [], listingReports: [], pointEvents: [], chapters: [], chapterMeets: [], loanReferrals: [], protectedDocs: [], docAccessLogs: [], propertyDocs: [], propertyDocLogs: [], idDocs: [], idReviewTasks: [], kycVault: [], listingDrafts: [], ownerConsents: [], pushSubs: [], pushPrefs: [], inbox: [], broadcasts: [], peerConfirms: [], reviews: [], buyerBonds: [], partyAlerts: [], profilePhotos: [], clientRooms: [], chatReads: [], savedProperties: [], pageEnquiries: [], tenancies: [], partnerThreads: [], workPhotos: [], shopPartners: [], partnerLeads: [], ownerMedia: [], ownerDocs: [], kycHolds: [], ownerListPlans: [], ownerListCfg: { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON' }, paymentRequests: [], visitAcks: [], twoFactor: [], academyProgress: [], activityDays: [], masterCpAgreements: [], masterCpEntries: [], strengthLinks: [], legalRequests: [], legalProfiles: [], legalLedger: [], legalSettings: { ...DEFAULT_LEGAL_SETTINGS }, billingRules: [], billingPlans: [], billingLedger: [], billingGates: [],
+    coinConfig: { ...DEFAULT_GENZ_COIN_CONFIG, slabs: DEFAULT_GENZ_COIN_CONFIG.slabs.map(s => ({ ...s })) },
+    coinEntries: [
+      {
+        id: 'GZC-DEMO-0001',
+        userId: 'USR-BUYER-001',
+        dealId: 'DEAL-RAI-2026-001',
+        dealValueInr: 4500000,
+        rewardPct: 1,
+        coinsIssued: 45000,
+        coinsRemaining: 45000,
+        status: 'LOCKED_VISIT',
+        issuedBy: 'USR-ADMIN-1',
+        issuedAt: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+        expiresAt: new Date(Date.now() + 170 * 86_400_000).toISOString(),
+        note: 'Pending site-visit verification — Shankar Nagar 3BHK',
+      },
+    ],
+    coinRedemptions: [],
   };
 }
 
@@ -3218,7 +3337,30 @@ function migrateState(parsed: DatabaseState, seed: DatabaseState) {
   parsed.resetRequests ||= [];
   parsed.privacyRequests ||= [];
   parsed.connectorReferrals ||= [];
-  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'inbox', 'broadcasts', 'peerConfirms', 'reviews', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates'] as const) (parsed as any)[k] ||= [];
+  for (const k of ['clientCards', 'projectUpdates', 'projectShortlists', 'leadReveals', 'visitPasses', 'propertyOffers', 'tier2Applications', 'tieups', 'deskRequests', 'dealMilestones', 'brokerNotes', 'posterEnquiries', 'marketRecords', 'digestPrefs', 'listingReports', 'pointEvents', 'chapters', 'chapterMeets', 'loanReferrals', 'protectedDocs', 'docAccessLogs', 'propertyDocs', 'propertyDocLogs', 'idDocs', 'idReviewTasks', 'kycVault', 'listingDrafts', 'ownerConsents', 'pushSubs', 'pushPrefs', 'inbox', 'broadcasts', 'peerConfirms', 'reviews', 'buyerBonds', 'partyAlerts', 'profilePhotos', 'clientRooms', 'chatReads', 'savedProperties', 'pageEnquiries', 'tenancies', 'partnerThreads', 'workPhotos', 'shopPartners', 'partnerLeads', 'ownerListPlans', 'ownerMedia', 'ownerDocs', 'kycHolds', 'paymentRequests', 'visitAcks', 'twoFactor', 'academyProgress', 'activityDays', 'masterCpAgreements', 'masterCpEntries', 'strengthLinks', 'legalRequests', 'legalProfiles', 'legalLedger', 'billingRules', 'billingPlans', 'billingLedger', 'billingGates', 'coinEntries', 'coinRedemptions'] as const) (parsed as any)[k] ||= [];
+  parsed.coinConfig = {
+    ...DEFAULT_GENZ_COIN_CONFIG,
+    ...(parsed.coinConfig || {}),
+    slabs: Array.isArray(parsed.coinConfig?.slabs) && parsed.coinConfig.slabs.length > 0
+      ? parsed.coinConfig.slabs
+      : DEFAULT_GENZ_COIN_CONFIG.slabs.map(s => ({ ...s })),
+  };
+  if (SEED_DEMO && parsed.coinEntries.length === 0 && parsed.users.some(u => u.id === 'USR-BUYER-001')) {
+    parsed.coinEntries.push({
+      id: 'GZC-DEMO-0001',
+      userId: 'USR-BUYER-001',
+      dealId: 'DEAL-RAI-2026-001',
+      dealValueInr: 4500000,
+      rewardPct: 1,
+      coinsIssued: 45000,
+      coinsRemaining: 45000,
+      status: 'LOCKED_VISIT',
+      issuedBy: 'USR-ADMIN-1',
+      issuedAt: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+      expiresAt: new Date(Date.now() + 170 * 86_400_000).toISOString(),
+      note: 'Pending site-visit verification — Shankar Nagar 3BHK',
+    });
+  }
   (parsed as any).ownerListCfg = { enabled: true, upiId: '', payeeName: 'GENZ BUILDCON', ...((parsed as any).ownerListCfg || {}) };
   (parsed as any).legalSettings = { ...DEFAULT_LEGAL_SETTINGS, ...((parsed as any).legalSettings || {}) };
   // v11: listings created before freshness tracking start their 30-day clock now (nothing expires on upgrade)

@@ -3,13 +3,16 @@
  * his PRIVATE brokerage book (due / received / paid out / in hand). GENZ holds none of this money — it is only a record.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Check, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Check, ChevronDown, FileText, Scale, ShieldCheck, Calculator } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import { formatINR } from '../lib/utils.js';
 import { useUI } from '../lib/ui.js';
 import { sanitizeDecimal } from '../lib/validate.js';
+import { BayanaReceiptModal } from './BayanaReceiptModal.js';
+import { LegalDraftModal } from './LegalDraftModal.js';
+import { calculateTds194IA, calculateBrokerageGst, calculateStampDuty } from '../lib/indianRealEstateTax.js';
 
 const inp = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm';
 const btn = 'inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-50';
@@ -50,6 +53,11 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
   const [pf, setPf] = useState({ kind: 'PART', amount: '', mode: 'UPI', ref: '', paidOn: today(), note: '', toBrokerId: '' });
   const [bf, setBf] = useState({ dir: 'IN', party: 'OWNER', amount: '', mode: 'UPI', ref: '', paidOn: today(), note: '' });
   const [dueEdit, setDueEdit] = useState<string | null>(null);
+  const [showBayanaModal, setShowBayanaModal] = useState(false);
+  const [showLegalDraftModal, setShowLegalDraftModal] = useState(false);
+  const [showStampCalc, setShowStampCalc] = useState(false);
+  const [selectedState, setSelectedState] = useState('Chhattisgarh');
+  const [buyerGender, setBuyerGender] = useState<'MALE' | 'FEMALE' | 'JOINT'>('MALE');
   const load = useCallback(() => api.hisaab(dealId).then(x => { setH(x.hisaab); setErr(''); }).catch(e => setErr(e.message)), [dealId, refreshKey]);   // v83 — refreshKey: the numbers in the folded header follow the final rate / deal changes made elsewhere on the screen
   useEffect(() => { void load(); }, [load]);
   const run = async (fn: () => Promise<any>, after?: () => void) => { setBusy(true); setErr(''); try { const x = await fn(); if (x?.hisaab) setH(x.hisaab); window.dispatchEvent(new Event('genz:hisaab-changed')); after?.(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
@@ -141,6 +149,130 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
             <div className="flex gap-2"><button type="button" className={btn} disabled={busy || !pf.amount} data-testid="hisaab-pay-save" onClick={() => run(() => api.hisaabPay(dealId, { ...pf, toBrokerId: pf.kind === 'TO_BROKER' ? (pf.toBrokerId || h.me) : undefined, amount: Number(pf.amount) }), () => { setOpen(''); setPf({ ...pf, amount: '', ref: '', note: '' }); })}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Save', 'सेव करें')}</button><button type="button" className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm" onClick={() => setOpen('')}>{tx('Close', 'बंद')}</button></div>
           </div>
         ) : <button type="button" className={btn} onClick={() => setOpen('pay')} data-testid="hisaab-pay-open"><Plus className="h-4 w-4" />{tx('Write a payment', 'भुगतान लिखें')}</button>)}
+
+        {/* Section 194-IA Indian Tax Compliance Banner */}
+        {s.price >= 5000000 && (
+          <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 text-xs" data-testid="hisaab-tds-banner">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                <Scale className="h-4 w-4 text-indigo-700" />
+                {tx('Section 194-IA TDS (1% Statutory Deduction)', 'धारा 194-IA TDS (1% अनिवार्य कटौती)')}
+              </span>
+              <span className="font-extrabold text-indigo-900 bg-indigo-100 px-2 py-0.5 rounded">
+                Form 26QB
+              </span>
+            </div>
+            <p className="mt-1 text-slate-600">
+              {tx(
+                'Under Section 194-IA of Income Tax Act, deals of ₹50 Lakhs & above mandate 1% TDS deduction by the buyer before paying the seller.',
+                'आयकर अधिनियम की धारा 194-IA के तहत ₹50 लाख या उससे अधिक के सौदों पर खरीदार द्वारा विक्रेता को भुगतान से पहले 1% TDS काटना अनिवार्य है।'
+              )}
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2 bg-white/80 p-2 rounded-lg border border-indigo-100">
+              <div>
+                <span className="text-slate-500 block">{tx('1% TDS to Govt:', '1% TDS सरकारी चालान:')}</span>
+                <span className="font-bold text-indigo-900">{formatINR(Math.round(s.price * 0.01))}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">{tx('Net to Seller:', 'विक्रेता को शुद्ध देय:')}</span>
+                <span className="font-bold text-emerald-700">{formatINR(s.price - Math.round(s.price * 0.01))}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons: Legal Drafts, Bayana Receipt & Stamp Duty Calculator */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-900 hover:bg-indigo-100 transition-colors"
+            onClick={() => setShowLegalDraftModal(true)}
+            data-testid="hisaab-legal-draft-btn"
+          >
+            <Scale className="h-4 w-4 text-indigo-700" />
+            {tx('कानूनी ड्राफ़्ट (Legal Agreement)', 'कानूनी ड्राफ़्ट तैयार करें')}
+          </button>
+
+          <button
+            type="button"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-emerald-600 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition-colors"
+            onClick={() => setShowBayanaModal(true)}
+            data-testid="hisaab-bayana-btn"
+          >
+            <FileText className="h-4 w-4 text-emerald-700" />
+            {tx('बयाना रसीद (Bayana Receipt)', 'बयाना रसीद तैयार करें')}
+          </button>
+
+          <button
+            type="button"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            onClick={() => setShowStampCalc(!showStampCalc)}
+            data-testid="hisaab-stamp-calc-btn"
+          >
+            <Calculator className="h-4 w-4 text-slate-600" />
+            {showStampCalc ? tx('Hide Stamp Duty', 'स्टाम्प ड्यूटी छिपाएँ') : tx('Est. Stamp Duty & Reg.', 'स्टाम्प ड्यूटी और पंजीयन अनुमान')}
+          </button>
+        </div>
+
+        {/* State Stamp Duty & Registration Estimator */}
+        {showStampCalc && (
+          <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-2">
+            <div className="font-bold text-slate-800 flex items-center justify-between">
+              <span>{tx('State-Wise Stamp Duty & Reg. Estimator', 'राज्य अनुसार स्टाम्प ड्यूटी एवं पंजीयन अनुमान')}</span>
+              <span className="text-xs text-slate-500">{tx('Indicative', 'अनुमानित')}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-slate-500 mb-0.5">{tx('State', 'राज्य')}</label>
+                <select
+                  className="w-full rounded border border-slate-300 bg-white p-1.5 text-xs"
+                  value={selectedState}
+                  onChange={e => setSelectedState(e.target.value)}
+                >
+                  <option value="Chhattisgarh">Chhattisgarh (5% / 1%)</option>
+                  <option value="Maharashtra">Maharashtra (6% / ₹30k Cap)</option>
+                  <option value="Karnataka">Karnataka (5% / 2%)</option>
+                  <option value="Delhi">Delhi (6% M / 4% F)</option>
+                  <option value="Uttar Pradesh">Uttar Pradesh (7% / 1%)</option>
+                  <option value="Haryana">Haryana (7% / ₹50k)</option>
+                  <option value="Telangana">Telangana (6% / 0.5%)</option>
+                  <option value="Tamil Nadu">Tamil Nadu (7% / 4%)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-0.5">{tx('Buyer Category', 'क्रेता वर्ग')}</label>
+                <select
+                  className="w-full rounded border border-slate-300 bg-white p-1.5 text-xs"
+                  value={buyerGender}
+                  onChange={e => setBuyerGender(e.target.value as any)}
+                >
+                  <option value="MALE">{tx('Male / General', 'पुरुष / सामान्य')}</option>
+                  <option value="FEMALE">{tx('Female (Concession)', 'महिला (छूट)')}</option>
+                  <option value="JOINT">{tx('Joint (Male + Female)', 'संयुक्त')}</option>
+                </select>
+              </div>
+            </div>
+            {(() => {
+              const duty = calculateStampDuty(selectedState, s.price, buyerGender);
+              return (
+                <div className="grid grid-cols-3 gap-2 bg-white p-2 rounded-lg border border-slate-200 mt-2 text-center">
+                  <div>
+                    <span className="text-xs text-slate-500 block">{tx('Stamp Duty', 'स्टाम्प ड्यूटी')} ({duty.stampDutyPct}%)</span>
+                    <span className="font-bold text-slate-900">{formatINR(duty.stampDutyAmount)}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 block">{tx('Registration', 'पंजीयन शुल्क')}</span>
+                    <span className="font-bold text-slate-900">{formatINR(duty.registrationAmount)}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 block">{tx('Total Govt Fees', 'कुल सरकारी खर्च')}</span>
+                    <span className="font-bold text-indigo-700">{formatINR(duty.totalGovernmentCharges)}</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       {h.ownerBrokerage && (
@@ -210,6 +342,51 @@ export const DealHisaab: React.FC<{ dealId: string; compact?: boolean; fold?: bo
             </div>
           ) : <button type="button" className={btn} onClick={() => setOpen('book')} data-testid="hisaab-book-open"><Plus className="h-4 w-4" />{tx('Write brokerage received / paid', 'ब्रोकरेज मिला / दिया लिखें')}</button>}
         </div>
+      )}
+
+      {showBayanaModal && (
+        <BayanaReceiptModal
+          isOpen={showBayanaModal}
+          onClose={() => setShowBayanaModal(false)}
+          data={{
+            receiptNumber: `BAYANA-${dealId}-${Date.now().toString().slice(-4)}`,
+            date: new Date().toLocaleDateString('en-IN'),
+            sellerName: (h.brokers?.find((b: any) => !b.me)?.name) || 'Property Owner',
+            buyerName: 'Buyer',
+            propertyTitle: `Property Deal ${dealId}`,
+            propertyAddress: `${selectedState}, India`,
+            propertyCity: selectedState,
+            totalAgreedPrice: s.price,
+            bayanaAmount: s.token || s.received || Math.round(s.price * 0.1),
+            paymentMode: 'RTGS_NEFT',
+            paymentReference: 'VERIFIED-RTGS-UTR',
+            balanceDueDate: new Date(Date.now() + 45 * 86400000).toLocaleDateString('en-IN'),
+            brokerName: 'Vikramaditya Sharma',
+            brokerFirm: 'Genz Realty Exchange',
+            brokerRera: 'A51800001234',
+          }}
+        />
+      )}
+
+      {showLegalDraftModal && (
+        <LegalDraftModal
+          isOpen={showLegalDraftModal}
+          onClose={() => setShowLegalDraftModal(false)}
+          initialData={{
+            dealId,
+            propertyTitle: `Property Deal ${dealId}`,
+            propertyAddress: `${selectedState}, India`,
+            city: selectedState === 'Chhattisgarh' ? 'Raipur' : selectedState === 'Maharashtra' ? 'Pune' : 'Delhi',
+            state: selectedState,
+            totalPrice: s.price,
+            bayanaAmount: s.token || s.received || Math.round(s.price * 0.1),
+            sellerName: (h.brokers?.find((b: any) => !b.me)?.name) || 'Harish Agrawal',
+            buyerName: 'Rameshwar Sharma',
+            brokerName: 'Vikramaditya Sharma',
+            brokerFirm: 'Genz Realty Exchange',
+            brokerRera: 'A51800001234',
+          }}
+        />
       )}
     </section>
   );

@@ -11,6 +11,7 @@ import { ProtectionAdmin } from './ProtectionDays.js';
 import { TeamLimitsAdmin } from './TeamLimitsAdmin.js';
 import { TwoFactorCard } from './TwoFactorCard.js';
 import { BrandLogoCard } from './BrandLogoCard.js';
+import { SuperadminCoinsPanel } from './SuperadminCoinsPanel.js';
 
 interface Props { onNavigate: (t: TabType) => void }
 
@@ -116,6 +117,8 @@ export const ControlCenter: React.FC<Props> = ({ onNavigate }) => {
       <Fold id="pulse" title={tx('Network pulse', 'नेटवर्क पल्स')}><NetworkPulse onNavigate={onNavigate} /></Fold>
 
       <Fold id="brand" title={tx('Brand logo', 'ब्रांड लोगो')}><BrandLogoCard /></Fold>
+
+      <Fold id="coins" title={tx('GENZ Mudra & Partner Discounts', 'GENZ मुद्रा और पार्टनर छूट')}><SuperadminCoinsPanel /></Fold>
 
       <Fold id="numbers" open title={tx('Numbers that need you', 'जिन आँकड़ों पर ध्यान चाहिए')}><section className="grid grid-cols-2 gap-3 p-3 md:grid-cols-4 md:p-0">
         <Card title={tx('Users', 'यूज़र')} value={d.users.total} hint={`${d.users.byStatus.VERIFIED || 0} ${tx('verified', 'वेरिफ़ाइड')}`} onClick={() => onNavigate('onboarding')} />

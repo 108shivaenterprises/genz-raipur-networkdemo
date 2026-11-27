@@ -1,0 +1,12 @@
+android/
+tests/
+*.apk
+node_modules/
+.git/
+.code-review-graph/
+data/
+uploads/
+dist/
+coverage/
+*.log
+.vercel/

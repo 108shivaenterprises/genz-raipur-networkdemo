@@ -45,7 +45,8 @@ import { partyBlock } from './partywatch.js';
 import { alertNeedNetwork, networkRange, networkHomesFor } from './broadcast.js';
 import { alert as alertUsers, once } from './alerts.js';
 import { shownHomes, pagePhotos, canShow, pageLive } from './publicPage.js';
-import { shareableMedia } from './clientroom.js';
+import { shareableMedia, openRoomAuto, seedRoomFromLeadOrRequirement, addRoomHomes } from './clientroom.js';
+import { ensureCardForNeed } from './clientlink.js';
 import { videoKind, youtubeId } from '../src/shared/roomMedia.js';
 import { contactKind, contactMsg, recentOwn, humanIso } from '../src/shared/clientRoomRules.js';
 import { brandOf } from './share.js';
@@ -121,9 +122,56 @@ const cityOfLead = (l: PartnerLead): string => l.wantCity || shopCityOf(l);
 const audit = (refId: string, action: string, text: string) => { const u = me(); db.appendAuditEvent(u.id, u.role, 'LEAD', refId, action, text); };
 
 
-// ───────────────────────────── v85 — the number stays hidden until the need is confirmed in chat and a matching home is shared ─────────────────────────────
-/** a lead from before v85 has no chat (its number is already visible); a new one is visible only after `revealedAt` */
-const revealed = (l: PartnerLead) => !l.chat || !!l.chat.revealedAt;
+// ───────────────────────────── v85/v196 — phone number privacy guard: masked until client likes a home or readies a visit ─────────────────────────────
+export function isLeadRevealed(l: PartnerLead): boolean {
+  if (l.chat?.revealedAt) return true;
+  const ph = phone10(l.phone);
+  if (!ph) return false;
+  const s = st();
+
+  // 1. Check if linked client room has any liked items or visit requests
+  const roomKey = hmac('cr-phone', ph);
+  const rooms = s.clientRooms.filter(r => r.brokerId === l.brokerId && (r.phoneKey === roomKey || r.id === l.clientRoomId || r.id === l.chat?.bot?.roomId));
+  for (const r of rooms) {
+    if (r.items.some(i => i.reaction === 'LIKE')) {
+      if (l.chat && !l.chat.revealedAt) { l.chat.revealedAt = nowIso(); l.chat.revealedBy = { title: 'Liked home in client room' }; }
+      return true;
+    }
+    if (r.items.some(i => (i.visitRequests && i.visitRequests.length > 0) || (i.visits && i.visits.length > 0))) {
+      if (l.chat && !l.chat.revealedAt) { l.chat.revealedAt = nowIso(); l.chat.revealedBy = { title: 'Visit requested in client room' }; }
+      return true;
+    }
+  }
+
+  // 2. Check site visits
+  if (s.siteVisits.some(v => v.brokerId === l.brokerId && phone10(v.customerPhone) === ph)) {
+    if (l.chat && !l.chat.revealedAt) { l.chat.revealedAt = nowIso(); l.chat.revealedBy = { title: 'Site visit booked' }; }
+    return true;
+  }
+
+  // 3. Check bot visits in chat
+  if (l.chat?.bot?.visits?.some(v => ['ASKED', 'OK'].includes(v.status))) {
+    if (l.chat && !l.chat.revealedAt) { l.chat.revealedAt = nowIso(); l.chat.revealedBy = { title: 'Site visit confirmed' }; }
+    return true;
+  }
+
+  // 4. Check chat messages for thumbs up / like
+  for (const m of l.chat?.msgs || []) {
+    if (m.by === 'CUSTOMER' && (m.kind === 'ANSWER' && m.text.startsWith('👍') || m.text.includes('पसंद') || m.text.toLowerCase().includes('like'))) {
+      if (l.chat && !l.chat.revealedAt) { l.chat.revealedAt = nowIso(); l.chat.revealedBy = { title: 'Liked property in chat' }; }
+      return true;
+    }
+  }
+
+  // 5. Owner leads (SELL, RENT_OUT)
+  if (ownerSide(l) && (l.homeId || (l.note && l.note.includes('confirmed')))) {
+    return true;
+  }
+
+  return false;
+}
+
+const revealed = (l: PartnerLead) => isLeadRevealed(l);
 const MSG_MAX = 600; const MSGS_KEEP = 300;
 const ownerSide = (l: PartnerLead) => l.kind === 'SELL' || l.kind === 'RENT_OUT';
 const addMsg = (l: PartnerLead, m: Omit<LeadMsg, 'at'>) => { if (!l.chat) return; l.chat.msgs.push({ at: nowIso(), ...m, text: humanIso(m.text) }); if (l.chat.msgs.length > MSGS_KEEP) l.chat.msgs.splice(0, l.chat.msgs.length - MSGS_KEEP); l.updatedAt = nowIso(); };
@@ -416,9 +464,22 @@ export function linksFor(l: PartnerLead): LeadLink[] {
   const out: LeadLink[] = [];
   for (const v of s.siteVisits) if (v.brokerId === b && phone10(v.customerPhone) === ph && inWin(v.createdAt)) out.push({ kind: 'VISIT', id: v.id, at: v.createdAt, done: v.isVerified, en: v.isVerified ? 'Site visit verified' : 'Site visit booked', hi: v.isVerified ? 'साइट विज़िट हुई' : 'साइट विज़िट तय हुई' });
   const roomKey = hmac('cr-phone', ph);
-  for (const r of s.clientRooms) if (r.brokerId === b && r.phoneKey === roomKey && !r.held && inWin(r.createdAt)) out.push({ kind: 'ROOM', id: r.id, at: r.createdAt, en: 'Client room opened', hi: 'क्लाइंट रूम खुला' });
+  const seenRoomIds = new Set<string>();
+  for (const r of s.clientRooms) {
+    if (r.brokerId === b && !r.held && (r.phoneKey === roomKey || r.id === l.clientRoomId || r.id === l.chat?.bot?.roomId)) {
+      if (!seenRoomIds.has(r.id)) {
+        seenRoomIds.add(r.id);
+        out.push({ kind: 'ROOM', id: r.id, at: r.createdAt, en: 'Client room opened', hi: 'क्लाइंट रूम खुला' });
+      }
+    }
+  }
   const reqIds = new Set<string>();
-  for (const q of s.requirements) if (q.assignedBrokerId === b && phone10(q.customerPhone) === ph && inWin(q.createdAt)) { reqIds.add(q.id); out.push({ kind: 'NEED', id: q.id, at: q.createdAt, en: 'Buyer need added', hi: 'खरीदार की ज़रूरत दर्ज' }); }
+  for (const q of s.requirements) {
+    if (q.assignedBrokerId === b && (phone10(q.customerPhone) === ph || q.id === l.chat?.bot?.network?.reqId || (q as any).leadId === l.id || inWin(q.createdAt))) {
+      reqIds.add(q.id);
+      out.push({ kind: 'NEED', id: q.id, at: q.createdAt, en: 'Buyer need added', hi: 'खरीदार की ज़रूरत दर्ज' });
+    }
+  }
   const propIds = new Set<string>();
   for (const p of s.properties) if (p.listingBrokerId === b && phone10(p.ownerPhone) === ph && inWin((p as any).createdAt || (p as any).listedAt)) { propIds.add(p.id); out.push({ kind: 'LISTING', id: p.id, at: (p as any).createdAt || (p as any).listedAt, en: 'Property listed', hi: 'प्रॉपर्टी लिस्ट हुई' }); }
   for (const d of s.dealRooms) {
@@ -448,6 +509,7 @@ export function flagsFor(l: PartnerLead, links = linksFor(l)) {
   if ((l.shareChanges || []).some(c => c.status === 'DISPUTED')) f.push({ code: 'SHARE_DISPUTED', en: 'The shop says the changed share is not right', hi: 'दुकान कहती है बदला हुआ हिस्सा सही नहीं' });
   if (l.status !== 'WON' && l.ask?.answer === 'YES') f.push({ code: 'CUSTOMER_YES', en: 'The customer says it went ahead through this broker, but no deal is written', hi: 'ग्राहक कहता है इस ब्रोकर के ज़रिए बात आगे बढ़ी, पर डील दर्ज नहीं' });
   if (l.status === 'WON' && l.ask?.answer === 'NO') f.push({ code: 'CUSTOMER_NO', en: 'The customer says it did not go ahead through this broker', hi: 'ग्राहक कहता है इस ब्रोकर के ज़रिए बात आगे नहीं बढ़ी' });
+  if (l.disputeBypass) f.push({ code: 'SHARE_DISPUTED', en: 'Shopkeeper reported suspected broker bypass', hi: 'दुकानदार द्वारा ब्रोकर बाईपास की शिकायत दर्ज' });
   return f;
 }
 /** v72 — hook (wired in server.ts) giving the partner's estimated share on a deal; the deal price never reaches the shop page */
@@ -545,6 +607,24 @@ export function watchShares(f: { dealId?: string; brokerId?: string; partnerId?:
 }
 
 // ───────────────────────────── v82 — late payment has a cost (reminders → auto-pause → GENZ desk) ─────────────────────────────
+/** Shared helper: GENZ or the shopkeeper (dispute creator) clears a dispute; auto-resumes QR if no other overdue leads remain */
+function resolveLeadDispute(p: ShopPartner, l: PartnerLead, by: 'PARTNER' | 'GENZ', note: string, actorName: string): boolean {
+  l.disputeBypass = undefined;
+  if (l.payout && l.payout.status === 'NOT_RECEIVED') {
+    l.payout = { ...l.payout, status: 'RECEIVED', partnerAt: nowIso(), partnerNote: note };
+  }
+  hist(l, by === 'GENZ' ? 'SYSTEM' : 'PARTNER', `Dispute resolved / withdrawn by ${actorName}: ${note}`);
+  db.appendAuditEvent(by === 'GENZ' ? 'genz' : p.id, (by === 'GENZ' ? 'ADMIN' : 'SHOP_PARTNER') as any, 'LEAD', l.id, 'SHOP_DISPUTE_RESOLVED', `Dispute resolved on lead ${l.id} by ${actorName}: ${note}`);
+  let resumed = false;
+  if (p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' && !overdueOf(p).length) {
+    p.status = 'ACTIVE'; p.pausedBy = undefined; p.pauseReason = undefined; p.rerouteToGenz = undefined;
+    hist(p, 'SYSTEM', `QR resumed automatically after dispute resolved by ${actorName}`);
+    resumed = true;
+  }
+  tellBroker(p, p.brokerId, `✅ ${p.shopName}: शिकायत वापस / Dispute resolved`, `${actorName} ने विवाद हटा दिया है${resumed ? ' — QR फिर से चालू हो गया है।' : '।'}`);
+  tellShop(p, 'शिकायत सुलझ गई', 'Dispute resolved', `${actorName} द्वारा विवाद समाप्त कर दिया गया है। / Dispute cleared by ${actorName}.`, `res-${l.id}`);
+  return resumed;
+}
 /** the leads of this shop whose share has been unpaid for `OVERDUE.pauseDays` or more */
 export const overdueOf = (p: ShopPartner) => st().partnerLeads.filter(l => l.partnerId === p.id && unpaidDays(l) >= OVERDUE.pauseDays);
 
@@ -570,11 +650,11 @@ export function sweepShopPartners(nowMs = Date.now()): number {
         if (tier >= OVERDUE.remindDays[1]) tellShop(p, 'ब्रोकर को याद दिलाया गया', 'We reminded the broker', `आपका ${inr(l.won.amount)} का हिस्सा ${days} दिन से बाकी है — GENZ ने ब्रोकर को याद दिलाया। / Your share of ${inr(l.won.amount)} is ${days} days old; GENZ reminded the broker.`, `late-${l.id}`);
       }
       if (days >= OVERDUE.pauseDays && p.status === 'ACTIVE') {
-        p.status = 'PAUSED'; p.pausedBy = 'SYSTEM'; p.pauseReason = `Share unpaid for ${days} days`; n++;
-        hist(p, 'SYSTEM', `QR paused by GENZ — the share on one lead has been unpaid for ${days} days (it starts again once that is paid)`);
-        sysAudit(p.id, 'SHOP_PARTNER_AUTOPAUSED', `Shop QR ${p.id} paused automatically: share unpaid for ${days} days`);
-        tellBroker(p, l.brokerId, `${p.shopName}: QR रुक गया / QR paused`, `हिस्सा ${days} दिन से बाकी है। चुकाकर “चुका दिया” दबाएँ — QR फिर चालू हो जाएगा। / Pay the share and mark it paid — the QR starts again.`);
-        tellShop(p, 'QR रोका गया', 'QR paused', 'आपका हिस्सा देर से मिल रहा है, इसलिए GENZ ने नया QR फ़िलहाल रोका है। / Because your share is late, GENZ has paused new requests on your QR.', `pause-${p.id}`);
+        p.status = 'PAUSED'; p.pausedBy = 'SYSTEM'; p.rerouteToGenz = true; p.pauseReason = `Share unpaid for ${days} days — leads routed to GENZ`; n++;
+        hist(p, 'SYSTEM', `QR paused by GENZ — the share on one lead has been unpaid for ${days} days; new leads route to GENZ until paid`);
+        sysAudit(p.id, 'SHOP_PARTNER_AUTOPAUSED', `Shop QR ${p.id} paused automatically: share unpaid for ${days} days (rerouted to GENZ)`);
+        tellBroker(p, l.brokerId, `${p.shopName}: QR रुक गया / QR paused`, `हिस्सा ${days} दिन से बाकी है। नई लीड अब GENZ के पास जाएँगी। चुकाकर “चुका दिया” दबाएँ। / ${days} days unpaid; new leads route to GENZ until paid.`);
+        tellShop(p, 'QR रोका गया', 'QR paused', 'आपका हिस्सा 15+ दिन से बाकी है, इसलिए ब्रोकर का QR रोककर नई लीड GENZ को भेजी जा रही हैं। / Your share is >15 days overdue; new leads now route to GENZ.', `pause-${p.id}`);
       }
       if (days >= OVERDUE.deskDays && !l.payout.deskAt) {
         l.payout.deskAt = nowIso(); n++;
@@ -682,6 +762,86 @@ function leadView(l: PartnerLead) {
 }
 
 // ───────────────────────────── broker API ─────────────────────────────
+export function autoEnsureLeadRooms(): number {
+  const s = st();
+  let count = 0;
+  for (const l of s.partnerLeads) {
+    try {
+      const city = cityOfLead(l) || userOf(l.brokerId)?.city || 'Raipur';
+      const isRenter = l.kind === 'RENT_IN';
+      const isBuyer = l.kind === 'BUY';
+      const isBuyerSide = isBuyer || isRenter;
+
+      if (isBuyerSide) {
+        ensureNeed(l, isRenter, city);
+        if (l.chat) {
+          l.chat.reqConfirmedAt ||= l.createdAt;
+          l.chat.reqText ||= needLine(l);
+        }
+      }
+
+      const phone = phone10(l.phone);
+      const phoneKey = hmac('cr-phone', phone);
+      let room = s.clientRooms.find(r => r.brokerId === l.brokerId && r.status === 'ACTIVE' && (r.phoneKey === phoneKey || r.id === l.clientRoomId || r.id === l.chat?.bot?.roomId));
+
+      if (!room) {
+        const matchedProps = matchesFor(l, true);
+        let propIds = matchedProps.map(h => h.id).slice(0, 6);
+        if (propIds.length === 0 && isBuyerSide) {
+          const cityProps = s.properties.filter(p => pageLive(p) && sameCity(p.city, city) && p.transactionType === (isRenter ? 'Rent' : 'Sale'));
+          propIds = cityProps.map(p => p.id).slice(0, 4);
+        }
+
+        const roomKind = isBuyer ? 'BUYER' : isRenter ? 'RENTER' : 'OTHER';
+        const p = partnerOf(l.partnerId);
+        const crRes = openRoomAuto(l.brokerId, {
+          name: l.name,
+          phone: l.phone,
+          kind: roomKind as any,
+          note: `Shop QR lead ${l.id} at ${p?.shopName || 'Shop Partner QR'}${l.locality ? ` · ${l.locality}` : ''}`,
+          propertyIds: propIds,
+        });
+
+        if (crRes.ok) {
+          room = crRes.room;
+          l.clientRoomId = room.id;
+          if (l.chat) {
+            const b = (l.chat.bot ||= {});
+            b.roomId = room.id;
+            b.roomSealed = sealLink(crRes.token, `lr|${l.id}`);
+            b.roomAt = nowIso();
+            b.roomHomes = room.items.map(i => i.propertyId);
+          }
+          count++;
+        } else if (crRes.code === 'EXISTS' && crRes.roomId) {
+          room = s.clientRooms.find(r => r.id === crRes.roomId);
+          if (room) {
+            l.clientRoomId = room.id;
+            if (l.chat) {
+              const b = (l.chat.bot ||= {});
+              b.roomId = room.id;
+            }
+          }
+        }
+      } else {
+        if (!l.clientRoomId) l.clientRoomId = room.id;
+        if (l.chat) {
+          const b = (l.chat.bot ||= {});
+          if (!b.roomId) b.roomId = room.id;
+        }
+      }
+
+      if (room && isBuyerSide && room.items.length < 3) {
+        if (seedRoomFromLeadOrRequirement(room, l.phone)) count++;
+      }
+    } catch (e) {
+      console.error('[AUTO-ROOM] Error ensuring room for lead ' + l.id, (e as Error).message);
+    }
+  }
+  if (count > 0) db.save();
+  return count;
+}
+
 export function createShopPartnerRouter() {
   const r = Router();
   const mine = (id: string) => { const p = partnerOf(id); return p && p.brokerId === me().id ? p : undefined; };
@@ -699,9 +859,64 @@ export function createShopPartnerRouter() {
     res.json({ success: true, items: rows });
   });
 
+  /** v201b — GENZ Admin can resolve/withdraw any shopkeeper dispute (bypass or unpaid) */
+  r.post('/genz-dispute/:leadId/resolve', needs('partner:oversee'), (req: Request, res: Response) => {
+    const u = me();
+    const l = st().partnerLeads.find(x => x.id === req.params.leadId);
+    if (!l) return bad(res, 'Lead not found', 404);
+    const p = partnerOf(l.partnerId);
+    if (!p) return bad(res, 'Partner not found', 404);
+    const note = str(req.body?.note, 200) || 'Resolved by GENZ Desk';
+    const resumed = resolveLeadDispute(p, l, 'GENZ', note, u.name);
+    db.save();
+    res.json({ success: true, leadId: l.id, qrResumed: resumed });
+  });
+
+  /** v201 — GENZ Admin Pool: leads rerouted to GENZ when a broker's QR is paused for >15 days unpaid payout */
+  r.get('/genz-leads', needs('partner:oversee'), (_req: Request, res: Response) => {
+    const leads = st().partnerLeads
+      .filter(l => l.routedToGenz || l.brokerId === 'GENZ_POOL')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(l => ({
+        id: l.id, partnerId: l.partnerId, shopName: partnerOf(l.partnerId)?.shopName || '', city: cityOfLead(l),
+        locality: l.locality, kind: l.kind, name: l.name, phoneLast4: l.phoneLast4, budget: l.budget,
+        originalBrokerId: l.originalBrokerId, brokerId: l.brokerId, routedToGenz: !!l.routedToGenz, createdAt: l.createdAt,
+      }));
+    const brokers = st().users.filter(u => u.role === 'BROKER' && isVerifiedFull(u)).map(u => ({ id: u.id, name: u.name, city: u.city, reraNumber: u.reraNumber }));
+    res.json({ success: true, leads, brokers });
+  });
+
+  r.post('/genz-leads/:leadId/assign', needs('partner:oversee'), (req: Request, res: Response) => {
+    const u = me();
+    const l = st().partnerLeads.find(x => x.id === req.params.leadId);
+    if (!l || (!l.routedToGenz && l.brokerId !== 'GENZ_POOL')) return bad(res, 'Rerouted GENZ lead not found', 404);
+    const mode = String(req.body?.mode || '').toUpperCase();
+    const p = partnerOf(l.partnerId);
+    if (mode === 'GENZ') {
+      l.brokerId = u.id; l.routedToGenz = false; l.assignedByGenzAt = nowIso(); l.assignedByGenzId = u.id;
+      hist(l, 'SYSTEM', `Lead claimed by GENZ (${u.name}) to handle directly under GENZ`);
+      if (p) tellShop(p, 'GENZ ने लीड ली', 'GENZ claimed the lead', `${l.name} की लीड अब GENZ खुद संभालेगा। / GENZ will handle ${l.name} directly.`, `genz-claim-${l.id}`);
+      db.save();
+      return res.json({ success: true, assignedTo: u.id, mode: 'GENZ', leadId: l.id });
+    }
+    if (mode === 'BROKER') {
+      const targetId = String(req.body?.targetBrokerId || '');
+      const target = st().users.find(x => x.id === targetId && x.role === 'BROKER' && isVerifiedFull(x));
+      if (!target) return bad(res, 'Select a verified broker to assign', 400);
+      l.brokerId = target.id; l.routedToGenz = false; l.assignedByGenzAt = nowIso(); l.assignedByGenzId = u.id;
+      hist(l, 'SYSTEM', `Lead assigned by GENZ (${u.name}) to verified broker ${target.name}`);
+      if (l.kind === 'BUY' || l.kind === 'RENT_IN') ensureNeed(l, l.kind === 'RENT_IN', cityOfLead(l));
+      if (p) tellShop(p, 'नया ब्रोकर असाइन हुआ', 'New broker assigned by GENZ', `GENZ ने ${l.name} की लीड ब्रोकर ${target.name} को दी है। / GENZ assigned ${l.name} to ${target.name}.`, `genz-assign-${l.id}`);
+      alertUsers([target.id], 'deals', `New GENZ Assigned Lead · ${p?.shopName || ''}`, `${l.name} (••${l.phoneLast4}) · ${l.locality}`, '/?tab=partners', { tag: `genz-assign-${l.id}` });
+      db.save();
+      return res.json({ success: true, assignedTo: target.id, mode: 'BROKER', leadId: l.id });
+    }
+    return bad(res, 'Invalid mode (use GENZ or BROKER)', 400);
+  });
+
   r.get('/', needs('partner:manage'), (_req, res) => {
     const u = me();
-    try { watchShares({ brokerId: u.id }); lazySweep(); } catch (e: any) { console.error('[SHOP] watch failed:', e?.message || e); }
+    try { autoEnsureLeadRooms(); watchShares({ brokerId: u.id }); lazySweep(); } catch (e: any) { console.error('[SHOP] watch failed:', e?.message || e); }
     const partners = st().shopPartners.filter(p => p.brokerId === u.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const mineLeads = st().partnerLeads.filter(l => l.brokerId === u.id);
     const leads = mineLeads.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(leadView);
@@ -895,19 +1110,28 @@ export function createShopPartnerRouter() {
     const l = chatLead(req, res); if (!l?.chat) return;
     if (ownerSide(l)) return bad(res, 'An owner lead needs no matching home — his number shows once he confirms the property details');
     if (!l.chat.reqConfirmedAt) return bad(res, 'Ask him to confirm his need first — the number stays hidden until he does', 409);
-    const h = matchesFor(l, true).find(x => x.id === str(req.body?.homeId, 40));
+    let h = matchesFor(l, true).find(x => x.id === str(req.body?.homeId, 40));
     if (!h) {
       const asked = st().properties.find(x => x.id === str(req.body?.homeId, 40));
       { const blocked = asked ? buyerBondBlock({ id: l.brokerId }, asked.id, l.phone) : null; if (blocked) return res.status(409).json(blocked); }   // v127 — another broker showed him this home first
       if (asked && homeFits(l, asked) && tooFreshFor(l, asked)) return bad(res, `A listing added after this customer scanned counts as his matching home only after ${Math.round(REVEAL_FRESH_LISTING_MS / 3600_000)} hours. Share it in the chat later, or pick an older home.`, 409, { code: 'LISTING_TOO_NEW', availableAt: new Date(Date.parse(String((asked as any).createdAt || (asked as any).listedAt)) + REVEAL_FRESH_LISTING_MS).toISOString() });
-      return bad(res, 'That home does not match what he asked for (or is not on your page). Pick one from the list.', 400);
+      if (req.body?.force || req.body?.allowAny) {
+        if (!asked || !pageLive(asked)) return bad(res, 'That property is not available to share', 404);
+        h = asked;
+      } else {
+        return bad(res, 'That home does not match what he asked for (or is not on your page). Pick one from the list.', 400);
+      }
     }
     const b = homeBrief(h);
     addMsg(l, { by: 'BROKER', kind: 'HOME', text: h.title, homeId: h.id, title: h.title, price: b.price, place: b.place });
     makeBuyerBond({ brokerId: l.brokerId, propertyId: h.id, buyerPhone: l.phone, buyerName: l.name, source: 'SHOWN', sourceId: l.id });   // v127
     l.chat.brokerSeenAt = nowIso(); sahayak.brokerSaid(l);
-    autoStage(l, 'CONTACTED', 'Broker shared a matching home');
+    autoStage(l, 'CONTACTED', 'Broker shared a home');
     try { sahayak.syncRoom(l); } catch (e) { console.error('[BOT] room sync failed:', (e as Error).message); }   // v105 — the home he sent is in his client room too
+    const roomId = l.clientRoomId || l.chat?.bot?.roomId || l.chat?.bot?.roomLinked;
+    if (roomId) {
+      try { addRoomHomes(l.brokerId, roomId, [h.id]); } catch (e) { console.error('[ROOM] add home failed:', (e as Error).message); }
+    }
     hist(l, 'BROKER', `Shared “${h.title}” in the chat`);
     audit(l.id, 'SHOP_LEAD_HOME_SHARED', `Home (${h.id}) shared in the chat — the number stays hidden until a visit is created`);
     // v168 — another broker's home that is not opened to pages: its listing broker is told at once (co-broking: the split is settled in the deal room)
@@ -982,7 +1206,7 @@ export function createShopPartnerRouter() {
     l.payout = { ...l.payout, status: 'PAID', paidAt: nowIso(), mode, ref: ref || undefined, askedAt: undefined };
     hist(l, 'BROKER', `Marked paid to the partner (${mode}${ref ? `, ref ${ref}` : ''}) — waiting for the partner to confirm`);
     const p = partnerOf(l.partnerId);
-    if (p && p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' && !overdueOf(p).length) { p.status = 'ACTIVE'; p.pausedBy = undefined; p.pauseReason = undefined; hist(p, 'SYSTEM', 'Resumed — the overdue share is paid'); }
+    if (p && p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' && !overdueOf(p).length) { p.status = 'ACTIVE'; p.pausedBy = undefined; p.pauseReason = undefined; p.rerouteToGenz = undefined; hist(p, 'SYSTEM', 'Resumed — the overdue share is paid'); }
     db.saveNow();
     audit(l.id, 'SHOP_PARTNER_PAID', `Broker marked the partner share as paid (${mode})`);
     if (p) tellShop(p, 'हिस्सा भेजा गया', 'Share sent', `${inr(l.won?.amount || 0)} भेजा गया (${mode}) — मिल गया हो तो पेज पर “पैसा मिल गया” दबाएँ। / Confirm on your page once you have it.`, `paid-${l.id}`);
@@ -1036,6 +1260,7 @@ export function createPartnerQrRouter() {
   const r = Router();
   const form = express.urlencoded({ extended: false, limit: '20kb' });
   const byCode = (code: string) => /^[A-Z2-9]{8}$/.test(String(code).toUpperCase()) ? st().shopPartners.find(p => p.qrCode === String(code).toUpperCase()) : undefined;
+  const isGenzRerouted = (p?: ShopPartner) => !!p && p.status === 'PAUSED' && p.pausedBy === 'SYSTEM' && !!p.rerouteToGenz;
   const notLive = (res: Response, p?: ShopPartner) => res.status(p ? 200 : 404).send(shell('GENZ', `<div class="card"><p class="t"><b>${p?.status === 'PENDING' ? 'यह QR अभी चालू नहीं हुआ है।' : 'यह QR अभी अनुरोध नहीं ले रहा।'}</b></p><p class="t">${p?.status === 'PENDING' ? 'This QR is not active yet.' : 'This QR is not taking requests right now.'}</p></div>`));
 
   /** the homes on this broker's public page (his own + other brokers' that opened theirs to pages) — only when his page is ON */
@@ -1367,7 +1592,7 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
 
   r.get('/:code', rateLimit('sp-view', 90, 60_000), (req: Request, res: Response) => {
     noStore(res);
-    const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
+    const p = byCode(req.params.code); if (!p || (p.status !== 'ACTIVE' && !isGenzRerouted(p))) return notLive(res, p);
     p.scans += 1; p.lastScanAt = nowIso(); db.save();
     // v101 — this phone already has a chat with this broker (his own cookie): open it, don't start again. "New request" (?new=1) and an owner's ?want=sell still show the form.
     if (req.query.new !== '1' && req.query.want !== 'sell') {
@@ -1432,7 +1657,7 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
 
   r.post('/:code', rateLimit('sp-lead-ip', 20, 3600_000), form, (req: Request, res: Response) => {
     noStore(res);
-    const p = byCode(req.params.code); if (!p || p.status !== 'ACTIVE') return notLive(res, p);
+    const p = byCode(req.params.code); if (!p || (p.status !== 'ACTIVE' && !isGenzRerouted(p))) return notLive(res, p);
     const body = req.body || {};
     const shopCity = p.city || userOf(p.brokerId)?.city || '';
     // v100 — the customer says which city he wants: the City box, else a city written in the area box; it is his city, not the shop's, that decides the homes
@@ -1474,23 +1699,68 @@ ${cards || `<div class="card" data-testid="ex-empty"><p class="t">अभी आ�
       if (hit(`sp-rescan:${prior.id}`, 1, 3600_000) === 0) void pushTo(p.brokerId, { kind: 'matches', title: `${prior.name} scanned again`, body: `New details came in${same ? '' : ` under the name “${keep.name}”`} — see the lead history.`, url: '/?tab=partners' });
       return res.redirect(303, `/q/${p.qrCode}/thanks?again=1`);
     }
+    const rerouted = isGenzRerouted(p);
     const lockUntil = new Date(Date.now() + p.terms.lockDays * 86400_000).toISOString();
     const chatToken = newToken(); const leadId = rid('PLD');
     const lead: PartnerLead = {
-      id: leadId, partnerId: p.id, brokerId: p.brokerId, kind, name: keep.name, phone, phoneLast4: phone.slice(-4),
+      id: leadId, partnerId: p.id, brokerId: rerouted ? 'GENZ_POOL' : p.brokerId, kind, name: keep.name, phone, phoneLast4: phone.slice(-4),
+      ...(rerouted ? { routedToGenz: true, originalBrokerId: p.brokerId } : {}),
       locality: keep.locality, ...(wantCity ? { wantCity } : {}), budget: keep.budget || undefined, propertyType: keep.ptype || undefined, note: keep.note || undefined, consentAt: now,
       termsVersion: p.termsVersion, terms: cleanTerms(p.terms), lockUntil, status: 'NEW', history: [], createdAt: now, updatedAt: now,
       ...(keep.outcome === '1' ? { outcomeOk: true } : {}),
       chat: { keyHash: sha(chatToken), keySealed: sealLink(chatToken, `lc|${leadId}`), msgs: [] },
-      ...(home ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {}),
-      ...(buyerSide ? (() => { const a = ackText(broker?.name || 'broker', home ? home.title : 'the properties shown by the broker'); return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } }; })() : {}),
+      ...(home && !rerouted ? { homeId: home.id, homeTitle: home.title.slice(0, 120), homeOwn: home.listingBrokerId === p.brokerId } : {}),
+      ...(buyerSide ? (() => { const a = ackText(rerouted ? 'GENZ Desk' : (broker?.name || 'broker'), home ? home.title : 'the properties shown by the broker'); return { promise: { at: now, signName: keep.sign, version: ACK_VERSION, text: a.en } }; })() : {}),
     };
+    if (rerouted) {
+      hist(lead, 'SYSTEM', `Lead routed directly to GENZ Desk because broker ${p.brokerId}'s QR at ${p.shopName} is paused (>15d unpaid payout)`);
+      const admins = s.users.filter(a => (a.role === 'ADMIN' || a.role === 'SUPERADMIN') && isVerifiedFull(a)).map(a => a.id);
+      if (admins.length) alertUsers(admins, 'deals', `GENZ Rerouted Lead · ${p.shopName}`, `${keep.name} (••${lead.phoneLast4}) · ${keep.locality} — claim or assign to a verified broker`, '/?tab=partners', { tag: `genz-lead-${leadId}` });
+    }
     if (wantCity) hist(lead, 'CUSTOMER', `Wants a home in ${wantCity} (the shop is in ${shopCity || 'another city'}) — homes, the need and alerts follow ${wantCity}`);
     hist(lead, 'CUSTOMER', `Came in by scanning the QR at ${p.shopName} (consent recorded${lead.outcomeOk ? '; agreed to one SMS asking whether it went ahead' : ''})${home ? ` · interested in “${home.title}”${lead.homeOwn ? '' : ' (another GENZ broker’s listing)'}` : ''}`);
     if (lead.promise) hist(lead, 'CUSTOMER', `Agreed “no direct deal” (wording ${ACK_VERSION}) and signed as “${lead.promise.signName}”`);
     // v85 — the number is hidden: the buyer / renter lands in the broker's client list only when it is shown (after the need is confirmed and a matching home is shared)
     addMsg(lead, { by: 'SYSTEM', kind: 'INFO', text: `आपकी ज़रूरत: ${needLine(lead)}${lead.homeTitle ? ` · पसंद आया: ${lead.homeTitle}` : ''}` });
     s.partnerLeads.unshift(lead);
+    autoEnsureLeadRooms();
+
+    // Auto-create buyer requirement, run auto-matching, create client card and open client room on QR scan (unless routed to GENZ pool)
+    if (buyerSide && !rerouted) {
+      try {
+        const city = cityOfLead(lead);
+        const reqId = ensureNeed(lead, lead.kind === 'RENT_IN', city);
+        if (reqId) {
+          const q = s.requirements.find(x => x.id === reqId);
+          if (q) {
+            // Auto-matching against active properties
+            const matchedProps = matchesFor(lead, true);
+            const matchedIds = matchedProps.map(h => h.id).slice(0, 6);
+            if (matchedIds.length) {
+              hist(lead, 'SYSTEM', `Auto-matched ${matchedIds.length} properties on QR scan: ${matchedIds.join(', ')}`);
+            }
+            // Auto-open client room for direct collaboration
+            const crRes = openRoomAuto(lead.brokerId, {
+              name: lead.name,
+              phone: lead.phone,
+              kind: lead.kind === 'RENT_IN' ? 'RENTER' : 'BUYER',
+              note: `Shop QR lead ${lead.id} at ${p.shopName}`,
+              propertyIds: matchedIds,
+            });
+            if (crRes.ok && lead.chat) {
+              const b = (lead.chat.bot ||= {});
+              b.roomId = crRes.room.id;
+              b.roomSealed = sealLink(crRes.token, `lr|${lead.id}`);
+              b.roomAt = nowIso();
+              b.roomHomes = crRes.room.items.map(i => i.propertyId);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[QR] Auto-pipeline error:', (e as Error).message);
+      }
+    }
+
     sahayak.welcome(lead);   // v97 — the assistant opens the chat and asks him to confirm his need (a broker who switched it off asks by hand, as before)
     hist(p, 'CUSTOMER', `New ${LEAD_KINDS.find(k => k.id === kind)!.en.toLowerCase()} lead (••${lead.phoneLast4})`);
     db.save();
@@ -1645,7 +1915,27 @@ ${askBox(l, tok)}</div>`;
       const links = linksFor(l); const flags = flagsFor(l, links).filter(f => f.code !== 'CUSTOMER_NO' && f.code !== 'CUSTOMER_YES' && f.code !== 'SHARE_DISPUTED');
       const pay = l.payout ? PAYOUT_LABEL[l.payout.status] : null;
       const pg = progressFor(l, links); const cut = sideOfKind(l.kind) === 'SALE' ? l.terms.sale : l.terms.rent;
-      const prog = l.status === 'LOST' ? '' : `<details class="more"><summary>कहाँ तक पहुँचा / Progress</summary><div class="prog" data-testid="lead-progress">${pg.steps.map((t, i) => `<span class="st ${i < pg.step ? 'on' : i === pg.step ? 'now' : ''}">${t}</span>`).join('')}</div></details>${pg.share > 0 && !l.won ? `<small>आपका हिस्सा (अनुमान): <b>${inr(pg.share)}</b> — डील पूरी होने पर तय · ${esc(cutText(cut, true))}</small>` : ''}`;
+      const bud = budgetRupees(l.budget, l.kind === 'RENT_IN') || 0;
+      const lastDl = links.find(x => x.kind === 'DEAL');
+      const dealRoom = lastDl ? st().dealRooms.find(x => x.id === lastDl.id) : undefined;
+      const dealPrice = dealRoom?.dealValue || (dealRoom?.propertyId ? Number(st().properties.find(p => p.id === dealRoom.propertyId)?.askingPrice) : 0) || bud;
+      let dealBracket = '';
+      if (dealPrice > 0) {
+        if (dealPrice < 30_00_000) dealBracket = 'बजट (₹30L तक)';
+        else if (dealPrice <= 75_00_000) dealBracket = 'मिड सेगमेंट (₹30L - ₹75L)';
+        else if (dealPrice <= 1_50_00_000) dealBracket = 'प्रीमियम (₹75L - ₹1.5 Cr)';
+        else dealBracket = 'लक्ज़री (> ₹1.5 Cr)';
+      }
+      const minFloor = sideOfKind(l.kind) === 'SALE' ? 10000 : 1500;
+      const estShare = cut.mode === 'FIXED' ? cut.value : (dealPrice > 0 ? Math.max(Math.round(dealPrice * 0.02 * (cut.value / 100)), minFloor) : (pg.share > 0 ? Math.max(pg.share, minFloor) : minFloor));
+      const hasDispute = !!l.disputeBypass || l.payout?.status === 'NOT_RECEIVED';
+      const disputeBtn = hasDispute
+        ? `<form method="post" action="/sp/${tok}/lead/${esc(l.id)}/resolve-dispute" style="margin-top:6px" onsubmit="return confirm('क्या आप यह शिकायत वापस लेना चाहते हैं? / Withdraw this dispute as resolved?')"><button class="g" type="submit" data-testid="resolve-dispute" style="font-size:12px;padding:4px 10px">✅ आपस में सुलझ गया — शिकायत हटाएँ / Resolved — Withdraw Dispute</button></form>`
+        : (!l.won && l.status !== 'LOST'
+          ? `<form method="post" action="/sp/${tok}/lead/${esc(l.id)}/dispute-bypass" style="margin-top:6px" onsubmit="return confirm('क्या आप इस डील पर ब्रोकर बाईपास की शिकायत दर्ज करना चाहते हैं? GENZ डेस्क इसकी तुरंत जाँच करेगा। / Report broker bypass?')"><button class="r" type="submit" data-testid="dispute-bypass" style="font-size:12px;padding:3px 8px">🚨 ब्रोकर बाईपास रिपोर्ट / Report Bypass</button></form>`
+          : '');
+      const prog = l.status === 'LOST' ? `<div style="margin:6px 0;padding:6px;background:#fef2f2;border-radius:6px;font-size:12px;color:#991b1b">❌ <b>आगे नहीं बढ़ी / Deal Closed (LOST)</b>${l.lostReason ? ` · ${esc(l.lostReason)}` : ''}</div>`
+        : `<div class="lead-stage-box" style="margin:6px 0;padding:6px 8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0"><div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;margin-bottom:4px"><span style="color:#0f172a">📌 ताज़ा स्टेज: <b>${esc(pg.steps[pg.step] || 'लीड')}</b></span>${dealBracket ? `<span style="color:#475569">🏷 ${esc(dealBracket)}</span>` : ''}</div><div class="prog" data-testid="lead-progress">${pg.steps.map((t, i) => `<span class="st ${i < pg.step ? 'on' : i === pg.step ? 'now' : ''}">${t}</span>`).join('')}</div><div style="margin-top:4px;font-size:11px;color:#334155">💰 आपका सुरक्षित हिस्सा: <b>${inr(estShare)}</b> <small>(${esc(cutText(cut, true))})</small></div></div>`;
       const act = l.payout && ['DUE', 'PAID'].includes(l.payout.status)
         ? `<div class="row">${l.payout.status === 'PAID' ? `<form method="post" action="/sp/${tok}/lead/${esc(l.id)}/received"><button class="g" type="submit" data-testid="got-it">✔ पैसा मिल गया / Received</button></form>` : ''}
 <form method="post" action="/sp/${tok}/lead/${esc(l.id)}/not-received" style="flex:1"><input type="text" name="note" maxlength="200" required placeholder="क्या हुआ? / What happened?"><div class="row"><button class="r" type="submit">✖ नहीं मिला / Not received</button></div></form></div>` : '';
@@ -1660,7 +1950,7 @@ ${askBox(l, tok)}</div>`;
 ${prog}
 ${l.status === 'LOST' && l.lostReason ? `<br><small>कारण: ${esc(l.lostReason)}</small>` : ''}
 ${wonLine}${lastLine}
-<br><small>${locked(l) ? `यह लीड ${when(l.lockUntil)} तक आपकी है` : 'सुरक्षा का समय पूरा'}</small>${act}${need.some(x => x.l.id === l.id) ? '' : askBox(l, tok)}</div>`;
+<br><small>${locked(l) ? `यह लीड ${when(l.lockUntil)} तक आपकी है` : 'सुरक्षा का समय पूरा'}</small>${disputeBtn}${act}${need.some(x => x.l.id === l.id) ? '' : askBox(l, tok)}</div>`;
     }).join('');
     const cert = p.acceptedAt && p.status !== 'PENDING' && p.status !== 'ENDED' ? `<a class="btn l" href="/sp/${tok}/certificate" target="_blank" rel="noopener" data-testid="cert-link">🏅 प्रमाणपत्र / Certificate</a>` : '';
     const html = shell('QR पार्टनर', `<div class="top"><h1>नमस्ते ${esc(p.personName.split(' ')[0])} 🙏</h1><p>${esc(p.shopName)} · ${esc(b?.name || '')} के साथ QR पार्टनर</p></div>
@@ -1701,7 +1991,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     const p = find(req.params.token); if (!p) return gone(res);
     if (!spSession(req, p)) return gate(res, p, req.params.token);
     const q = authed(req, res); if (!q) return;
-    fresh(q); db.save(); render(req, res, q, req.query.done === '1' ? 'हो गया ✔ / Done' : '');
+    fresh(q); db.save(); render(req, res, q, req.query.done === '1' ? 'हो गया ✔ / Done' : req.query.done === 'bypass' ? 'शिकायत दर्ज! GENZ डेस्क इस डील की जाँच कर रहा है। / Bypass report lodged! GENZ desk is auditing this deal.' : '');
   });
   r.post('/:token/otp', rateLimit('sp-otp', 30, 3600_000), form, async (req: Request, res: Response) => {
     noStore(res);
@@ -1736,7 +2026,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     res.redirect(303, `/sp/${req.params.token}`);
   });
 
-  const back = (res: Response, tok: string) => res.redirect(303, `/sp/${tok}?done=1`);
+  const back = (res: Response, tok: string, extra = 'done=1') => res.redirect(303, `/sp/${tok}?${extra}`);
   r.post('/:token/accept', rateLimit('sp-act', 60, 3600_000), form, (req: Request, res: Response) => {
     const p = authed(req, res); if (!p) return;
     if (p.status !== 'PENDING') return back(res, req.params.token);
@@ -1777,6 +2067,37 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
     } else return back(res, req.params.token);
     db.saveNow(); back(res, req.params.token);
   });
+  const pauseOnShopFlag = (p: ShopPartner, l: PartnerLead, why: string) => {
+    const days = unpaidDays(l);
+    if (days >= OVERDUE.pauseDays && p.status !== 'ENDED') {
+      p.status = 'PAUSED'; p.pausedBy = 'SYSTEM'; p.rerouteToGenz = true;
+      p.pauseReason = `Overdue >${OVERDUE.pauseDays} days (${days}d) & flagged by shopkeeper — leads routed to GENZ`;
+      hist(p, 'SYSTEM', `QR auto-paused & rerouted to GENZ after shopkeeper flagged ${days}d unpaid payout`);
+      sysAudit(p.id, 'SHOP_PARTNER_FLAG_AUTOPAUSE', `Shop QR ${p.id} auto-paused & rerouted to GENZ (${days}d unpaid, flagged by ${p.shopName})`);
+      tellBroker(p, p.brokerId, `${p.shopName}: QR रुक गया / QR paused`, `दुकानदार ने ${days} दिन से बकाया पेमेंट की शिकायत दर्ज की है — अब इस QR की नई लीड GENZ के पास जाएँगी। / Shopkeeper flagged ${days}d overdue payout — QR paused and new leads route to GENZ.`);
+    }
+  };
+  r.post('/:token/lead/:id/resolve-dispute', rateLimit('sp-act', 20, 3600_000), form, (req: Request, res: Response) => {
+    const p = authed(req, res); if (!p) return;
+    const l = st().partnerLeads.find(x => x.id === req.params.id && x.partnerId === p.id);
+    if (!l) return back(res, req.params.token);
+    const note = str(req.body?.note, 200) || 'Mutually resolved by shopkeeper and broker';
+    resolveLeadDispute(p, l, 'PARTNER', note, p.shopName);
+    db.saveNow();
+    back(res, req.params.token, 'done=resolved');
+  });
+  r.post('/:token/lead/:id/dispute-bypass', rateLimit('sp-act', 20, 3600_000), form, (req: Request, res: Response) => {
+    const p = authed(req, res); if (!p) return;
+    const l = st().partnerLeads.find(x => x.id === req.params.id && x.partnerId === p.id);
+    if (!l) return back(res, req.params.token);
+    l.disputeBypass = { at: nowIso() };
+    hist(l, 'PARTNER', `Shopkeeper ${p.shopName} lodged a broker bypass dispute report`);
+    db.appendAuditEvent(p.id, 'SHOP_PARTNER' as any, 'LEAD', l.id, 'SHOP_DISPUTE_BYPASS', `Shop partner ${p.shopName} reported suspected broker bypass on lead ${l.id} (${l.locality})`);
+    tellBroker(p, p.brokerId, '⚠ Shopkeeper reported bypass dispute', `Shopkeeper ${p.shopName} raised a bypass dispute on lead ${l.id}. GENZ Desk is auditing this lead.`);
+    pauseOnShopFlag(p, l, 'bypass');
+    db.saveNow();
+    back(res, req.params.token, 'done=bypass');
+  });
   r.post('/:token/lead/:id/:what', rateLimit('sp-act', 60, 3600_000), form, async (req: Request, res: Response) => {
     const p = authed(req, res); if (!p) return;
     const l = st().partnerLeads.find(x => x.id === req.params.id && x.partnerId === p.id);
@@ -1790,6 +2111,7 @@ ${recText ? `<p class="small" style="margin-top:8px" data-testid="broker-record"
       l.payout = { ...l.payout, status: 'NOT_RECEIVED', partnerAt: nowIso(), partnerNote: note }; hist(l, 'PARTNER', `Partner says NOT received: ${note}`);
       db.appendAuditEvent('public', 'PUBLIC' as any, 'LEAD', l.id, 'SHOP_PARTNER_NOT_RECEIVED', 'Shop partner says the share was not received (GENZ desk sees it)');
       ping(p, `${p.shopName}: share not received`, note);
+      pauseOnShopFlag(p, l, 'not-received');
     } else if (what === 'ask-broker') {
       const note = str(req.body?.note, 300); if (note.length < 2) return back(res, req.params.token);
       hist(l, 'PARTNER', `Partner asks the broker: ${note}`);
@@ -1932,6 +2254,7 @@ export function seedDemoPartners() {
   if ((process.env.SEED_DEMO_DATA || '').toLowerCase() !== 'true' || (process.env.SEED_DEMO_BULK || '').toLowerCase() !== 'true') return;
   seedPartnersFor(s, RAIPUR_PARTNERS);
   for (const d of DEMO_CITY_PARTNERS) seedPartnersFor(s, d);
+  autoEnsureLeadRooms();
 }
 const RAIPUR_PARTNERS: PartnerDemo = {
   brokerId: 'USR-BRK-001', city: 'Raipur',

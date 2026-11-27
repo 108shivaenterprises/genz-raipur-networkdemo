@@ -11,12 +11,14 @@ import { areasOf, canonPlace } from '../shared/places.js';
 import { LocationFields, LocationValue } from './LocationFields.js';
 import { shrinkImage, readAsDataUrl } from '../lib/imgShrink.js';
 import { formatINR } from '../lib/utils.js';
+import { formatPriceInputHelper } from '../lib/indianLegalWords.js';
 import { TagPicker } from './TagPicker.js';
 import { BoardPicker, Face } from './LeadBoard.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { useLabel } from '../lib/labels.js';
 import {
   X,
+  Compass,
   ShieldCheck,
   Lock,
   Building,
@@ -96,6 +98,9 @@ export const AddPropertyModal: React.FC<{
   const [askingPrice, setAskingPrice] = useState<number | ''>('');
   const [ownerApprovedNetPrice, setOwnerApprovedNetPrice] = useState<number | ''>('');
   const [builtUpAreaSqFt, setBuiltUpAreaSqFt] = useState<number | ''>('');
+  const [carpetAreaSqFt, setCarpetAreaSqFt] = useState<number | ''>('');
+  const [facing, setFacing] = useState('East');
+  const [reraNumber, setReraNumber] = useState('');
   const [ownerName, setOwnerName] = useState(isOwnerUser ? currentUser?.name || '' : '');
   const [ownerPhone, setOwnerPhone] = useState(isOwnerUser ? currentUser?.phone || '' : '');
   const [loading, setLoading] = useState(false);
@@ -183,6 +188,9 @@ export const AddPropertyModal: React.FC<{
         askingPrice: Number(askingPrice),
         ownerApprovedNetPrice: Number(ownerApprovedNetPrice),
         builtUpAreaSqFt: builtUpAreaSqFt === '' ? undefined : Number(builtUpAreaSqFt),
+        carpetAreaSqFt: carpetAreaSqFt === '' ? undefined : Number(carpetAreaSqFt),
+        facing,
+        reraNumber: reraNumber.trim() || undefined,
         ownerName,
         ownerPhone,
       });
@@ -666,6 +674,7 @@ export const AddPropertyModal: React.FC<{
                 onChange={(e) => setAskingPrice(e.target.value === '' ? '' : Number(e.target.value))}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-bold text-slate-900"
               />
+              {askingPrice !== '' && <p className="mt-1 text-[11px] font-semibold text-emerald-700">{formatPriceInputHelper(Number(askingPrice))}</p>}
             </div>
 
             <div className="rounded-lg bg-purple-50 p-2 border border-purple-200">
@@ -679,17 +688,66 @@ export const AddPropertyModal: React.FC<{
                 onChange={(e) => setOwnerApprovedNetPrice(e.target.value === '' ? '' : Number(e.target.value))}
                 className="mt-1 w-full rounded-lg border border-purple-300 p-1.5 text-xs font-bold text-purple-950 bg-white"
               />
+              {ownerApprovedNetPrice !== '' && <p className="mt-1 text-[11px] font-semibold text-purple-800">{formatPriceInputHelper(Number(ownerApprovedNetPrice))}</p>}
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-slate-700">{hi ? 'बिल्ट-अप क्षेत्रफल (वर्ग फ़ुट)' : 'Built-Up Space (sq.ft)'}:</label>
-            <input
-              type="number"
-              value={builtUpAreaSqFt}
-              onChange={(e) => setBuiltUpAreaSqFt(e.target.value === '' ? '' : Number(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900"
-            />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-700">{hi ? 'सुपर / बिल्ट-अप (वर्ग फ़ुट)' : 'Super Built-Up (sq.ft)'}:</label>
+              <input
+                type="number"
+                value={builtUpAreaSqFt}
+                onChange={(e) => setBuiltUpAreaSqFt(e.target.value === '' ? '' : Number(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                <span>{hi ? 'RERA कारपेट एरिया (वर्ग फ़ुट)' : 'RERA Carpet Area (sq.ft)'}:</span>
+                <span className="text-[10px] text-amber-600 font-normal">{hi ? 'अनिवार्य' : 'Statutory'}</span>
+              </label>
+              <input
+                type="number"
+                value={carpetAreaSqFt}
+                onChange={(e) => setCarpetAreaSqFt(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder={hi ? 'दीवारों के भीतर का उपयोग योग्य क्षेत्रफल' : 'Net usable floor area'}
+                className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <Compass className="h-3 w-3 text-indigo-600" />
+                {hi ? 'वास्तु दिशा (Facing)' : 'Vastu Facing Direction'}:
+              </label>
+              <select
+                value={facing}
+                onChange={(e) => setFacing(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900"
+              >
+                <option value="North-East">North-East (ईशान कोण - Best)</option>
+                <option value="East">East (पूर्व - Highly Auspicious)</option>
+                <option value="North">North (उत्तर - Kuber Sthan)</option>
+                <option value="North-West">North-West (वायव्य कोण)</option>
+                <option value="South-East">South-East (आग्नेय कोण)</option>
+                <option value="West">West (पश्चिम)</option>
+                <option value="South">South (दक्षिण)</option>
+                <option value="South-West">South-West (नैऋत्य कोण)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700">{hi ? 'RERA पंजीयन क्रमांक' : 'Statutory RERA Number'}:</label>
+              <input
+                type="text"
+                value={reraNumber}
+                onChange={(e) => setReraNumber(e.target.value)}
+                placeholder={hi ? 'जैसे P51800000001 (वैकल्पिक/छूट)' : 'e.g. PRM/KA/RERA/...'}
+                className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-900"
+              />
+            </div>
           </div>
 
           <div>
@@ -1274,8 +1332,11 @@ export const ScheduleVisitModal: React.FC<{
     const d = new Date(iso); const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
+  const isMaskedRoomPhone = !!(clientRoom && !defaults?.phone);
   const [customerName, setCustomerName] = useState(clientRoom?.clientName || defaults?.name || '');
-  const [customerPhone, setCustomerPhone] = useState(defaults?.phone || '');
+  const [customerPhone, setCustomerPhone] = useState(
+    defaults?.phone || (clientRoom ? `+91 ••••• ••${clientRoom.phoneLast4}` : '')
+  );
   const [scheduledTime, setScheduledTime] = useState((defaults?.when && Date.parse(defaults.when) > Date.now() ? toLocal(defaults.when) : '') || getInitialVisitTime());
   const [notes, setNotes] = useState(defaults?.note || '');
   const [scanAt, setScanAt] = useState('PROPERTY');
@@ -1299,11 +1360,11 @@ export const ScheduleVisitModal: React.FC<{
       setError(tx('Please select a visit date and time.', 'कृपया विज़िट की तारीख़ और समय चुनें।'));
       return;
     }
-    if (customerPhone.trim() && !isValidIndianPhone(customerPhone.trim())) {
+    if (!isMaskedRoomPhone && customerPhone.trim() && !isValidIndianPhone(customerPhone.trim())) {
       setError(tx('Please enter a valid 10-digit Indian phone number (starting 6-9).', 'कृपया 10 अंकों का मान्य भारतीय मोबाइल नंबर दर्ज करें (6-9 से शुरू)।'));
       return;
     }
-    if (clientRoom && !customerPhone.replace(/\D/g, '').endsWith(clientRoom.phoneLast4)) {
+    if (!isMaskedRoomPhone && clientRoom && !customerPhone.replace(/\D/g, '').endsWith(clientRoom.phoneLast4)) {
       setError(tx(`Enter your client's full mobile — it ends with ${clientRoom.phoneLast4}.`, `क्लाइंट का पूरा मोबाइल नंबर लिखें — आख़िरी अंक ${clientRoom.phoneLast4} हैं।`));
       return;
     }
@@ -1323,11 +1384,11 @@ export const ScheduleVisitModal: React.FC<{
         dealRoomId: dealId || undefined,
         propertyId,
         customerName: customerName.trim(),
-        customerPhone: customerPhone.trim() || undefined,
+        customerPhone: isMaskedRoomPhone ? undefined : (customerPhone.trim() || undefined),
         scheduledTime: isoDate,
         notes: notes.trim() || undefined,
         scanAt,
-        ...(clientRoom ? { clientRoomId: clientRoom.id, clientRoomItemId: clientRoom.itemId, clientRoomRequestId: clientRoom.requestId } : {}),
+        ...(clientRoom ? { clientRoomId: clientRoom.id, clientRoomItemId: clientRoom.itemId, clientRoomRequestId: clientRoom.requestId, ...(isMaskedRoomPhone ? { useMaskedRoomPhone: true } : {}) } : {}),
       });
 
       if (res.success && res.siteVisit) {
@@ -1591,17 +1652,25 @@ export const ScheduleVisitModal: React.FC<{
                 <div className="relative mt-1">
                   <input
                     type="text"
-                    inputMode="tel"
+                    inputMode={isMaskedRoomPhone ? undefined : 'tel'}
                     required={!!clientRoom}
+                    readOnly={isMaskedRoomPhone}
                     data-testid="visit-phone"
                     placeholder={clientRoom ? `98XXXX${clientRoom.phoneLast4}` : tx('e.g. +91 98271 23456', 'जैसे: +91 98271 23456')}
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 p-2 pl-8 text-xs text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                    onChange={(e) => { if (!isMaskedRoomPhone) setCustomerPhone(e.target.value); }}
+                    className={`w-full rounded-lg border border-slate-300 p-2 pl-8 text-xs text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 ${isMaskedRoomPhone ? 'bg-slate-50 text-slate-600 font-mono tracking-wide cursor-not-allowed' : ''}`}
                   />
                   <Phone className="h-4 w-4 text-slate-400 absolute left-2.5 top-2.5" />
                 </div>
-                <p className="mt-1 text-[10px] text-slate-500">{tx('The OTP SMS goes to this number — enter it only with the client’s permission.', 'OTP का SMS इसी नंबर पर जाएगा — केवल क्लाइंट की अनुमति से नंबर डालें।')}</p>
+                {isMaskedRoomPhone ? (
+                  <p className="mt-1 flex items-start gap-1 text-[10px] font-medium text-emerald-700" data-testid="visit-phone-masked-hint">
+                    <ShieldCheck className="mt-px h-3 w-3 shrink-0" />
+                    {tx('Auto-filled & Masked (hidden from broker) — OTP SMS goes directly to the client.', 'ऑटो-फ़िल और सुरक्षित (ब्रोकर से छिपा) — OTP SMS सीधे क्लाइंट को जाएगा।')}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[10px] text-slate-500">{tx('The OTP SMS goes to this number — enter it only with the client’s permission.', 'OTP का SMS इसी नंबर पर जाएगा — केवल क्लाइंट की अनुमति से नंबर डालें।')}</p>
+                )}
                 <p className="mt-1 flex items-start gap-1 text-[10px] font-medium text-emerald-700" data-testid="visit-bond-hint"><ShieldCheck className="mt-px h-3 w-3 shrink-0" />{tx('Add the buyer’s mobile: once the visit is verified, this buyer is protected to you on this property — no other GENZ broker can bring the same buyer here.', 'खरीदार का मोबाइल डालें: विज़िट पक्की होते ही इस प्रॉपर्टी पर यह खरीदार आपसे सुरक्षित — कोई दूसरा GENZ ब्रोकर उसी खरीदार को यहाँ नहीं ला सकेगा।')}</p>
               </div>
             </div>

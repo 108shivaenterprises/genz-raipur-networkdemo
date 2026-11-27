@@ -4,16 +4,20 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "tsx --env-file=.env server.ts",
     "start": "NODE_ENV=production tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "cap:sync": "npm run build && npx cap sync android",
+    "apk:debug": "npm run build && npx cap sync android && cd android && JAVA_HOME=\"/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home\" GRADLE_OPTS=\"-Djava.net.preferIPv4Stack=true\" ./gradlew assembleDebug --no-daemon",
     "build:vercel": "vite build && esbuild api/_entry.ts --bundle --platform=node --format=esm --target=node20 --outfile=api/index.mjs --alias:vite=./server/emptyVite.ts --external:pg-native --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\""
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "compression": "^1.8.2",
@@ -33,6 +37,7 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@types/compression": "^1.8.1",
     "@types/express": "^4.17.21",
     "@types/leaflet": "^1.9.22",

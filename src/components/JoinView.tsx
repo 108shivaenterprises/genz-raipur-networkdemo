@@ -69,6 +69,28 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
   const [autoVerified, setAutoVerified] = useState(false);
   const [basicDone, setBasicDone] = useState(false); const [panConsent, setPanConsent] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
+  const [officePhoto, setOfficePhoto] = useState('');
+  const [officeLoc, setOfficeLoc] = useState<{ lat: number; lng: number; acc?: number } | null>(null);
+  const [officeAddr, setOfficeAddr] = useState('');
+  const [geoBusy, setGeoBusy] = useState(false);
+
+  const captureOfficeGps = () => {
+    if (!navigator.geolocation) { setError(hi ? 'इस डिवाइस में GPS उपलब्ध नहीं है।' : 'GPS is not available on this device.'); return; }
+    setGeoBusy(true); setError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setOfficeLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }); setGeoBusy(false); },
+      () => { setError(hi ? 'लोकेशन की अनुमति दें और दोबारा कोशिश करें।' : 'Allow location permission and try again.'); setGeoBusy(false); },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+  const onOfficePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 800 * 1024) { setError(hi ? 'फ़ोटो 800 KB से छोटी होनी चाहिए।' : 'Photo must be under 800 KB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => { if (typeof reader.result === 'string') setOfficePhoto(reader.result); };
+    reader.readAsDataURL(file);
+  };
 
   const role = inv?.targetRole;
   const phoneOnly = !!inv?.invitedEmail?.endsWith('@phone.genz.local');
@@ -117,9 +139,12 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
       if (!otpTok || otpCode.length !== 6) { setError(hi ? 'पहले मोबाइल पर कोड भेजें और उसे यहाँ डालें।' : 'Send the code to your mobile first and enter it here.'); return; }
       if (role !== 'GENZ_CONNECTOR' && !panConsent) { setError(hi ? 'PAN रखने की सहमति दें (नीचे टिक करें)।' : 'Please tick that GENZ may keep your PAN to check your KYC.'); return; }
       if (role !== 'GENZ_CONNECTOR' && !isValidPan(normPan(pan))) { const w = panProblem(pan); setError(w ? (hi ? w.hi : w.en) : (hi ? 'PAN डालें (जैसे ABCPD1234E)' : 'Enter your PAN (e.g. ABCPD1234E)')); return; }
+      if (!officePhoto) { setError(hi ? 'दुकान / ऑफ़िस की फ़ोटो अनिवार्य है।' : 'Shop / office photo is mandatory.'); return; }
+      if (!officeLoc) { setError(hi ? 'दुकान / ऑफ़िस की GPS लोकेशन अनिवार्य है।' : 'Shop / office GPS location is mandatory.'); return; }
       setBusy(true);
       try {
         await api.openSignup({ role, name, phone: phone.replace(/\D/g, '').slice(-10), otpToken: otpTok, otpCode, password, consent: true, panConsent: role !== 'GENZ_CONNECTOR' ? panConsent : undefined, panNumber: pan ? normPan(pan) : undefined, state: loc.state || undefined, city: loc.city || undefined, locality: loc.locality || undefined, companyName: company || undefined,
+          officePhoto, officeLocation: { ...officeLoc, address: officeAddr.trim() || undefined },
           ...(role === 'GENZ_CONNECTOR' ? { shopType, shopName, payoutUpi: upi || undefined } : {}) });
         setAutoVerified(true); setBasicDone(true); setDone(`${hi ? 'मोबाइल नंबर से साइन इन करें' : 'Sign in with your mobile number'} ${phone}.`);
       } catch (err: any) { setError(err.message || (hi ? 'साइन-अप नहीं हो पाया' : 'Sign-up failed')); }
@@ -220,6 +245,26 @@ export const JoinView: React.FC<{ onBack: () => void; onOwner?: () => void; onJo
                 </div>
                 <div><label className="text-xs font-semibold text-slate-700">{hi ? 'UPI ID (इनाम पाने के लिए, बाद में भी जोड़ सकते हैं)' : 'UPI ID for rewards (can be added later)'}</label><input value={upi} onChange={(e) => setUpi(e.target.value)} placeholder="name@okaxis" className={input} /></div>
               </>
+            )}
+            {open && (
+              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3" data-testid="join-office-proof">
+                <p className="text-xs font-bold text-amber-950">{hi ? 'दुकान / ऑफ़िस की फ़ोटो और लोकेशन (अनिवार्य) *' : 'Mandatory Shop / Office Photo & GPS Location *'}</p>
+                <p className="text-[11px] text-amber-900">{hi ? 'यह सर्वर पर सुरक्षित रहेगा ताकि किसी शिकायत (flag) की स्थिति में GENZ सत्यापन कर सके।' : 'Stored securely on the server so GENZ can verify your office/shop if any flag is raised.'}</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">{hi ? 'दुकान / ऑफ़िस फ़ोटो *' : 'Shop / Office Photo *'}</label>
+                    <input type="file" accept="image/*" capture="environment" onChange={onOfficePhotoChange} data-testid="join-office-photo" className="block w-full text-xs text-slate-700 file:mr-2 file:rounded file:border-0 file:bg-slate-900 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-white" />
+                    {officePhoto && <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-700">✔ {hi ? 'फ़ोटो तैयार है' : 'Photo attached'}</span>}
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">{hi ? 'ऑफ़िस GPS लोकेशन *' : 'Office GPS Location *'}</label>
+                    <button type="button" onClick={captureOfficeGps} disabled={geoBusy} data-testid="join-office-gps" className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50">
+                      {geoBusy ? (hi ? 'लोकेशन ली जा रही है…' : 'Capturing…') : officeLoc ? `✔ ${officeLoc.lat.toFixed(4)}, ${officeLoc.lng.toFixed(4)}` : (hi ? '📍 वर्तमान लोकेशन कैप्चर करें' : '📍 Capture Current Location')}
+                    </button>
+                  </div>
+                </div>
+                <input type="text" value={officeAddr} onChange={(e) => setOfficeAddr(e.target.value)} placeholder={hi ? 'दुकान / ऑफ़िस का पूरा पता (वैकल्पिक)' : 'Shop / office street address (optional)'} className={input} />
+              </div>
             )}
             {tier2 && (
               <>

@@ -5,10 +5,12 @@
  * approves its KYC. SIGNUP_MODE=invite turns these routes off and the invitation-code sign-up is the only way in (the reversal).
  */
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { db, type UserProfile } from './db.js';
-import { rateLimit, hit, ipKey, hashPassword, passwordPolicyError, setSessionCookie, signSession, digits } from './auth.js';
+import { ctx, rateLimit, hit, ipKey, hashPassword, passwordPolicyError, setSessionCookie, signSession, digits } from './auth.js';
 import { signupMode } from './features.js';
 import { sendSignupOtp, checkOtpToken, finishSignupOtp } from './ownerlist.js';
 import { phoneSchema } from './validation.js';
@@ -53,7 +55,28 @@ const schema = z.object({
   consent: z.literal(true, { message: 'You must accept the Privacy Policy and Terms to join' }),
   /** a separate tick for keeping the PAN (DPDP: its own purpose) */
   panConsent: z.boolean().optional(),
+  /** v201 — mandatory shop/office photo (data URI) and GPS location for BROKER, DEVELOPER_BUILDER, GENZ_CONNECTOR */
+  officePhoto: z.string().max(1_200_000).optional(),
+  officeLocation: z.object({
+    lat: z.number(),
+    lng: z.number(),
+    acc: z.number().optional(),
+    address: z.string().trim().max(240).optional(),
+  }).optional(),
 });
+
+const OFFICE_PROOF_DIR = () => path.resolve(process.cwd(), 'data', 'office-proofs');
+const officeProofFile = (userId: string) => path.join(OFFICE_PROOF_DIR(), `${userId.replace(/[^A-Za-z0-9_-]/g, '')}.jpg`);
+function parseOfficePhoto(raw?: string): Buffer | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const cleaned = raw.replace(/^data:image\/(?:jpeg|jpg|png|webp);base64,/i, '');
+  if (!cleaned || cleaned.length > 1_100_000) return null;
+  const buf = Buffer.from(cleaned, 'base64');
+  if (!buf.length || buf.length > 800 * 1024) return null;
+  const isJpg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  return isJpg || isPng ? buf : null;
+}
 
 const err = (res: Response, status: number, code: string, error: string, errorHi: string, extra: object = {}) => res.status(status).json({ error, errorHi, code, ...extra });
 const closed = (res: Response) => err(res, 403, 'SIGNUP_INVITE_ONLY', 'Sign-up is by invitation right now. Ask a GENZ member for an invitation code.', 'अभी साइन-अप केवल आमंत्रण से है। किसी GENZ सदस्य से आमंत्रण कोड माँगें।');
@@ -84,6 +107,13 @@ export function createOpenSignupRouter() {
     if (pan && d.panConsent !== true) return err(res, 400, 'PAN_CONSENT_REQUIRED', 'Please tick that GENZ may keep your PAN to check your KYC.', 'कृपया सहमति दें कि GENZ आपका PAN KYC जाँचने के लिए रखे।');
     const city = normCity(d.city);
     if (d.role !== 'GENZ_CONNECTOR' && !city) return err(res, 400, 'CITY_REQUIRED', 'Your city is required — GENZ matches clients and homes city by city.', 'अपना शहर चुनें — GENZ क्लाइंट और घर शहर के हिसाब से मिलाता है।');
+    // v201 — mandatory shop/office photo and GPS location for Broker, Builder/Developer, and Shopkeeper
+    const photoBuf = parseOfficePhoto(d.officePhoto);
+    if (!photoBuf) return err(res, 400, 'OFFICE_PHOTO_REQUIRED', 'Shop / office photo is mandatory to create an ID so GENZ can verify flags.', 'आईडी बनाने के लिए दुकान / ऑफ़िस की फ़ोटो अनिवार्य है ताकि शिकायत आने पर GENZ जाँच कर सके।');
+    const loc = d.officeLocation;
+    if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng) || loc.lat < 6 || loc.lat > 38 || loc.lng < 68 || loc.lng > 98) {
+      return err(res, 400, 'OFFICE_LOCATION_REQUIRED', 'Valid shop / office GPS location is mandatory to create an ID.', 'आईडी बनाने के लिए दुकान / ऑफ़िस की सही लोकेशन (GPS) अनिवार्य है।');
+    }
     let connector: UserProfile['connector'];
     if (d.role === 'GENZ_CONNECTOR') {
       const cp = connectorProfileSchema.safeParse({ shopType: d.shopType, shopName: d.shopName, locality: d.locality || undefined, payoutUpi: d.payoutUpi || undefined });
@@ -113,8 +143,10 @@ export function createOpenSignupRouter() {
       ...(pan ? { idConsentAt: now } : {}),
       verificationStatus: 'VERIFIED', basicTier: true, signupMode: 'open', autoVerifiedAt: now, autoVerifiedBy: 'OPEN_SIGNUP',
       verificationNotes: 'Live at open sign-up (Basic): mobile OTP + PAN. Not KYC-verified — deals, money, broadcasts and invites are locked until an admin approves the PAN / RERA document.',
+      officeProof: { photo: true, lat: loc.lat, lng: loc.lng, ...(Number.isFinite(loc.acc) ? { acc: loc.acc } : {}), ...(loc.address ? { address: loc.address } : {}), at: now },
       createdAt: now, passwordHash: hashPassword(d.password), sessionVersion: 1,
     };
+    try { fs.mkdirSync(OFFICE_PROOF_DIR(), { recursive: true }); fs.writeFileSync(officeProofFile(id), photoBuf); } catch (e: any) { console.error('[SIGNUP] office photo save failed:', e?.message || e); }
     st.users.push(u); finishSignupOtp(d.otpToken); made.set(ip, [...(made.get(ip) || []), Date.now()]);
     db.save();
     db.appendAuditEvent(id, u.role, 'VERIFICATION', id, 'OPEN_SIGNUP', `${d.name} signed up (${u.role}) with mobile OTP${pan ? ` + PAN ${maskPan(pan)}` : ''}`);
@@ -127,6 +159,23 @@ export function createOpenSignupRouter() {
     }
     setSessionCookie(req, res, signSession(id, 1));
     res.json({ success: true, basic: true, user: publicUser(u), permissions: effectivePermissions(u) });
+  });
+
+  /** v201 — GENZ admins (or the account owner) can inspect the stored shop/office photo when reviewing flags */
+  r.get('/office-proof/:userId', (req: Request, res: Response) => {
+    const caller = ctx().user as UserProfile | null;
+    if (!caller) return res.status(401).json({ error: 'Login required' });
+    const targetId = String(req.params.userId || '');
+    if (caller.id !== targetId && !['ADMIN', 'SUPERADMIN'].includes(caller.role)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    try {
+      const buf = fs.readFileSync(officeProofFile(targetId));
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.type('image/jpeg').send(buf);
+    } catch {
+      res.status(404).json({ error: 'Office proof photo not found' });
+    }
   });
   return r;
 }

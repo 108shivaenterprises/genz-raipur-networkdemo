@@ -10,11 +10,11 @@ import { PageTitle } from './PageTitle.js';
 import { PropertyThumb } from './PropertyThumb.js';
 import { Property, BuyerRequirement } from '../types/index.js';
 import { api } from '../lib/api.js';
-import { formatINR } from '../lib/utils.js';
-import { useTx } from '../lib/i18n.js';
+import { formatINR, getPropertyWhatsAppShareUrl } from '../lib/utils.js';
+import { useTx, useI18n } from '../lib/i18n.js';
 import { useLabel, useReason } from '../lib/labels.js';
 import { matchAction, mineFirst } from '../shared/matchOfferRules.js';
-import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart, MessagesSquare, AlertCircle, RefreshCw } from 'lucide-react';
+import { Sparkles, Check, X, Building, UserCheck, Send, Loader2, ChevronDown, Heart, MessagesSquare, AlertCircle, RefreshCw, MessageCircle } from 'lucide-react';
 import { useUI } from '../lib/ui.js';
 
 interface MatchCenterViewProps {
@@ -92,13 +92,31 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   };
 
   /** QR lead → his chat + held room (the number stays hidden); a normal client → ShareToRoom */
-  const shareToLead = async (leadId: string, homeId: string, name: string) => {
+  const shareToLead = async (leadId: string | undefined, homeId: string, name: string, roomId?: string) => {
     setSharing(homeId);
-    try { await api.spOffer(leadId, homeId); setShared(x => new Set(x).add(homeId)); toast(tx(`Shared with ${name} — he sees it in his chat and room.`, `${name} को भेज दिया — उन्हें चैट और रूम में दिखेगा।`), 'success'); }
-    catch (e: any) {
+    try {
+      if (leadId) {
+        try {
+          await api.spOffer(leadId, homeId, true);
+        } catch (err: any) {
+          if (roomId) {
+            await api.crAddItem(roomId, homeId);
+          } else {
+            throw err;
+          }
+        }
+      } else if (roomId) {
+        await api.crAddItem(roomId, homeId);
+      }
+      setShared(x => new Set(x).add(homeId));
+      toast(tx(`Shared with ${name} — he sees it in his chat and room.`, `${name} को भेज दिया — उन्हें चैट और रूम में दिखेगा।`), 'success');
+      window.dispatchEvent(new Event('genz:rooms-changed'));
+    } catch (e: any) {
       const at = e?.code === 'LISTING_TOO_NEW' && e?.body?.availableAt ? new Date(e.body.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
       toast(at ? tx(`This new listing can be shared from ${at}.`, `यह नई लिस्टिंग ${at} से शेयर हो सकेगी।`) : e?.message || tx('Could not share. Try again.', 'शेयर नहीं हो सका। फिर कोशिश करें।'), 'error');
-    } finally { setSharing(''); }
+    } finally {
+      setSharing('');
+    }
   };
 
   const fetchMatches = () => {
@@ -284,17 +302,51 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                     const mineBuyer = !!meId && rq?.assignedBrokerId === meId; const nm = String(rq?.customerName || '').split(' ')[0] || tx('client', 'क्लाइंट');
                     const liked = isPropMatch ? likedIds.has(p.id) : !!r?.liked;
                     return (<>
-                      {mineBuyer && home?.id && (rq?.leadId ? (() => {
+                      {mineBuyer && home?.id && (() => {
                         const sc = isPropMatch ? shareMap[p.id] : r?.share;
-                        if (sc && !sc.ok) {
-                          const at = sc.availableAt ? new Date(sc.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
-                          const why = sc.code === 'TOO_NEW' ? tx(`This new listing can be shared from ${at}.`, `यह नई लिस्टिंग ${at} से शेयर हो सकेगी।`) : sc.code === 'HELD' ? tx('Another broker showed him this home first.', 'यह घर उन्हें पहले दूसरे ब्रोकर ने दिखाया है।') : sc.code === 'NOT_READY' ? tx('Ask him to confirm his need first.', 'पहले उनसे ज़रूरत पक्की करवाएँ।') : tx('Does not match his need, or is not on your page.', 'उनकी ज़रूरत से मेल नहीं, या आपके पेज पर नहीं।');
-                          return <span className="ml-auto max-w-[13rem] text-right text-xs leading-snug text-slate-500" data-testid="match-share-why">{why}</span>;
-                        }
-                        return (<button type="button" disabled={sharing === home.id || shared.has(home.id)} onClick={() => void shareToLead(rq.leadId, home.id, nm)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60" data-testid="match-share">
-                          <Send className="h-4 w-4" />{shared.has(home.id) ? tx('Shared', 'भेज दिया') : tx(`Share with ${nm}`, `${nm} को भेजें`)}
-                        </button>);
-                      })() : own && (isPropMatch ? reqRoomId : r?.roomId) ? <ShareToRoom propertyId={home.id} roomId={isPropMatch ? reqRoomId : r?.roomId} label={tx(`Share with ${nm}`, `${nm} को भेजें`)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800" /> : null)}
+                        const roomId = isPropMatch ? reqRoomId : r?.roomId;
+                        const isHeld = sc?.code === 'HELD';
+                        const isTooNew = sc?.code === 'TOO_NEW';
+                        const notReady = sc?.code === 'NOT_READY';
+                        const at = sc?.availableAt ? new Date(sc.availableAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+                        const why = isTooNew ? tx(`This new listing can be shared from ${at}.`, `यह नई लिस्टिंग ${at} से शेयर हो सकेगी।`)
+                          : isHeld ? tx('Another broker showed him this home first.', 'यह घर उन्हें पहले दूसरे ब्रोकर ने दिखाया है।')
+                          : notReady ? tx('Ask him to confirm his need first.', 'पहले उनसे ज़रूरत पक्की करवाएँ।')
+                          : (sc && !sc.ok) ? tx('Does not match his need, or is not on your page.', 'उनकी ज़रूरत से मेल नहीं, या आपके पेज पर नहीं।')
+                          : '';
+                        const canShareToLead = !isHeld && !isTooNew && !notReady;
+
+                        return (
+                          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                            {why && <span className="max-w-[13rem] text-right text-xs leading-snug text-slate-500" data-testid="match-share-why">{why}</span>}
+                            {canShareToLead && (rq?.leadId || roomId) && (
+                              <button
+                                type="button"
+                                disabled={sharing === home.id || shared.has(home.id)}
+                                onClick={() => void shareToLead(rq?.leadId, home.id, nm, roomId)}
+                                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                                data-testid="match-share"
+                              >
+                                <Send className="h-4 w-4" />{shared.has(home.id) ? tx('Shared', 'भेज दिया') : tx(`Share with ${nm}`, `${nm} को भेजें`)}
+                              </button>
+                            )}
+                            <ShareToRoom propertyId={home.id} label={tx('Share', 'शेयर')} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-900" />
+                            <a
+                              href={getPropertyWhatsAppShareUrl(home)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-emerald-600 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                              title={tx('Share on WhatsApp', 'WhatsApp पर भेजें')}
+                            >
+                              <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
+                              <span>WhatsApp</span>
+                            </a>
+                          </div>
+                        );
+                      })()}
+                      {!mineBuyer && own && (isPropMatch ? reqRoomId : r?.roomId) && (
+                        <ShareToRoom propertyId={home.id} roomId={isPropMatch ? reqRoomId : r?.roomId} label={tx(`Share with ${nm}`, `${nm} को भेजें`)} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-sm font-semibold text-white hover:bg-emerald-800" />
+                      )}
                       {own && !rq?.leadId && (() => { const roomId = isPropMatch ? reqRoomId : r?.roomId; return (
                         <button
                           onClick={() => {

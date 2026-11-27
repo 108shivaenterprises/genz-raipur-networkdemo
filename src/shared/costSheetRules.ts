@@ -108,6 +108,8 @@ export interface CostSheetOut {
   payable: number;
   /** payable + stamp duty + registration (what the customer really spends) */
   allIn: number;
+  /** Section 194-IA TDS: 1% deduction on property deals >= ₹50,00,000 */
+  tds?: { applicable: boolean; amount: number; sellerNet: number; form: string };
   schedule: { name: string; pct: number; dueInDays: number; amount: number }[];
 }
 
@@ -148,15 +150,27 @@ export function computeCostSheet(unit: CostUnit, charges: ProjectCharges, qty: R
   }
   const agreementValue = taxable;
   const gst = r0(taxable * nn(charges.gstPct) / 100);
-  const stamp = r0(agreementValue * nn(charges.stampPct) / 100); const reg = r0(agreementValue * nn(charges.regPct) / 100);
+  const stamp = r0(agreementValue * nn(charges.stampPct) / 100); 
+  const reg = r0(agreementValue * nn(charges.regPct) / 100);
   const payable = basic + extras + gst; const allIn = payable + stamp + reg;
+  
+  // Section 194-IA TDS
+  const tdsApplicable = agreementValue >= 5_000_000;
+  const tdsAmount = tdsApplicable ? r0(agreementValue * 0.01) : 0;
+  const tds = {
+    applicable: tdsApplicable,
+    amount: tdsAmount,
+    sellerNet: Math.max(0, agreementValue - tdsAmount),
+    form: 'Form 26QB',
+  };
+
   // the schedule runs on the sale price + GST (the deposits and the government fees are paid separately); the last step takes the rounding
   const base = taxable + gst; const sched: CostSheetOut['schedule'] = []; let used = 0;
   charges.schedule.forEach((s, i) => {
     const last = i === charges.schedule.length - 1; const amount = last ? base - used : r0(base * nn(s.pct) / 100); used += amount;
     sched.push({ name: s.name, pct: nn(s.pct), dueInDays: s.dueInDays, amount });
   });
-  return { basic, areaSqft: area, ratePerSqft: area ? r0(basic / area) : null, lines, extras, gstPct: nn(charges.gstPct), gst, agreementValue, stampPct: nn(charges.stampPct), stamp, regPct: nn(charges.regPct), reg, payable, allIn, schedule: sched };
+  return { basic, areaSqft: area, ratePerSqft: area ? r0(basic / area) : null, lines, extras, gstPct: nn(charges.gstPct), gst, agreementValue, stampPct: nn(charges.stampPct), stamp, regPct: nn(charges.regPct), reg, payable, allIn, tds, schedule: sched };
 }
 
 /** what is kept with a sent link: the figures as they were that day (a later rate change never alters a quote already sent) */

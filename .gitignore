@@ -10,3 +10,4 @@ coverage/
 data/.auth-secret
 data/
 uploads/
+.vercel

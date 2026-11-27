@@ -69,7 +69,7 @@ describe('v187 · HTTP', { timeout: 240_000 }, () => {
   afterAll(async () => { proc?.kill('SIGTERM'); await wait(300); if (dir && existsSync(dir)) rmSync(dir, { recursive: true, force: true }); });
   const signup = async (phone: string, extra: object = {}) => {
     const o = await j(await call(undefined, 'POST', '/api/auth/signup-otp', { phone }));
-    return call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8800F', ...extra });
+    return call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8800F', officePhoto: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==', officeLocation: { lat: 21.2514, lng: 81.6296, acc: 20 }, ...extra });
   };
 
   it('1 /my-id gives the generic refusal (no "already linked") when an approved account holds the PAN; a Basic claim does not block', async () => {

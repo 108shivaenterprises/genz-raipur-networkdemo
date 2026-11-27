@@ -173,6 +173,9 @@ export interface Property {
   street?: string;
   pincode?: string;
   tags?: string[];
+  facing?: string; // Vastu direction: East, North, North-East, South-East, South, South-West, West, North-West
+  vastuScore?: number; // 0-100 Vastu Shastra compliance score
+  reraNumber?: string; // Statutory RERA registration number
   googleMapsUrl?: string;
   googleMapsDirectionsUrl?: string;
   latitude?: number;
@@ -183,6 +186,7 @@ export interface Property {
   videoUrl?: string; // YouTube, MP4, Vimeo walkthrough link
   plotAreaSqFt?: number;
   builtUpAreaSqFt?: number;
+  carpetAreaSqFt?: number; // Statutory RERA requirement (exclusive usable floor area)
   askingPrice: number;
   ownerApprovedNetPrice?: number;
   listingBrokerId: string;
@@ -268,7 +272,7 @@ export interface DealMessage {
   mediaUrl?: string;
   mediaType?: 'IMAGE' | 'DOCUMENT' | 'AUDIO_VOICE_NOTE';
   /** v53 — a card shared from the chat's "+" menu. It carries ids only: each reader's screen fills the card in from what THAT reader may see. */
-  kind?: 'PROPERTY' | 'DOCUMENT' | 'PHOTO' | 'LOCATION' | 'VISIT' | 'STAGE' | 'PAPER' | 'OFFER' | 'AGREEMENT';
+  kind?: 'PROPERTY' | 'DOCUMENT' | 'PHOTO' | 'LOCATION' | 'VISIT' | 'STAGE' | 'PAPER' | 'OFFER' | 'AGREEMENT' | 'MANDATE';
   /** v53 — what the card points at: a property / vault asset / site-visit id, or the stage name */
   refId?: string;
   /** v53 — `text` was written by the server (a one-line English fallback), not typed by the sender */

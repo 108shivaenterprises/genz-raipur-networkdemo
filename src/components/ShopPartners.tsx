@@ -7,7 +7,7 @@
 import { PageTitle } from './PageTitle.js';
 import { ShopProofCamera, type ShopProof } from './ShopProofCamera.js';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck, MessagesSquare, Sparkles } from 'lucide-react';
+import { Loader2, Plus, Store, Printer, Send, Phone, MessageCircle, AlertTriangle, CheckCircle2, Link2, Pause, Play, XCircle, ShieldCheck, MessagesSquare, Sparkles, Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { formatINR } from '../lib/utils.js';
@@ -363,8 +363,17 @@ export const LeadCard: React.FC<{ l: any; onChange: () => void; noChat?: boolean
         }}><MessagesSquare className="h-4 w-4" />{l.links.some((x: any) => x.kind === 'ROOM') ? tx('Go to his client room', 'उनका क्लाइंट रूम देखें') : tx('Open a client room', 'क्लाइंट रूम खोलें')}</button>
         {(l.kind === 'BUY' || l.kind === 'RENT_IN') && !l.links.some((x: any) => x.kind === 'NEED') && <button type="button" className={light + ' !min-h-10 !text-xs'} data-testid="sp-lead-need" onClick={() => setMode(mode === 'need' ? '' : 'need')}><Sparkles className="h-3.5 w-3.5" />{tx('No home yet? Find in network', 'घर नहीं है? नेटवर्क में ढूँढें')}</button>}
         <LeadVisit l={l} onChange={onChange} />
-        <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`}><Phone className="h-3.5 w-3.5" />{l.phone}</a>
-        <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
+        {!l.masked && l.phone ? (
+          <>
+            <a className={light + ' !min-h-10 !text-xs'} href={`tel:+91${l.phone}`} data-testid="sp-lead-call"><Phone className="h-3.5 w-3.5" />{l.phone}</a>
+            <a className={light + ' !min-h-10 !text-xs'} href={`https://wa.me/91${l.phone}`} target="_blank" rel="noopener noreferrer" data-testid="sp-lead-wa"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</a>
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900" title={tx('Mobile number unlocks when client likes a home or requests a site visit', 'ग्राहक द्वारा घर पसंद करने या विज़िट तय करने पर ही नंबर खुलेगा')} data-testid="sp-phone-masked">
+            <Lock className="h-3.5 w-3.5 text-amber-700" />
+            +91 ••••• ••{l.partnerPhoneLast4 || l.phoneLast4 || String(l.phone || '').slice(-4)} · {tx('Unlocks on Like / Visit', 'पसंद/विज़िट पर खुलेगा')}
+          </span>
+        )}
         <a
           className={light + ' !min-h-10 !text-xs !bg-emerald-50 !border-emerald-200 !text-emerald-900'}
           href={`https://wa.me/?text=${encodeURIComponent(

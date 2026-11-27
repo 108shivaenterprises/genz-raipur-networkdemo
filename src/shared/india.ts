@@ -177,6 +177,27 @@ export const stateNames = () => INDIA_STATES.map(s => s.name);
 export function citiesOf(state?: string): string[] { return findState(state)?.cities ?? []; }
 export function localitiesOf(city?: string): string[] { return CITY_LOCALITIES[city ?? ''] ?? []; }
 export function reraAuthorityOf(state?: string): string { return findState(state)?.rera ?? 'the state RERA authority'; }
+
+export const RERA_PORTAL_URLS: Record<string, string> = {
+  'Maharashtra': 'https://maharera.maharashtra.gov.in',
+  'Karnataka': 'https://rera.karnataka.gov.in',
+  'Delhi': 'https://rera.delhi.gov.in',
+  'Uttar Pradesh': 'https://www.up-rera.in',
+  'Haryana': 'https://haryanarera.gov.in',
+  'Chhattisgarh': 'https://rera.cgstate.gov.in',
+  'Gujarat': 'https://gujrera.gujarat.gov.in',
+  'Tamil Nadu': 'https://www.rera.tn.gov.in',
+  'Telangana': 'https://rera.telangana.gov.in',
+  'Rajasthan': 'https://rera.rajasthan.gov.in',
+  'Madhya Pradesh': 'https://rera.mp.gov.in',
+  'Punjab': 'https://rera.punjab.gov.in',
+  'West Bengal': 'https://wbhira.wb.gov.in',
+};
+
+export function reraPortalUrlOf(state?: string): string {
+  const s = findState(state)?.name || state;
+  return (s && RERA_PORTAL_URLS[s]) || 'https://rera.gov.in';
+}
 export function stateOfCity(city?: string): string | undefined {
   const c = norm(city);
   if (!c) return undefined;

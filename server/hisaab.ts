@@ -126,8 +126,21 @@ export function hisaabView(d: DealRoom, u: UserProfile) {
   const received = live.reduce((n, e) => n + (e.kind === 'REFUND' ? -e.amount : e.amount), 0);
   const tokenIn = live.filter(e => e.kind === 'TOKEN').reduce((n, e) => n + e.amount, 0);
   const direct = live.filter(e => e.kind === 'TO_BROKER').reduce((n, e) => n + e.amount, 0);
-  const sauda = { price, priceSource: source, entries, received, token: tokenIn, direct, directHidden: live.some(e => (e as any).masked), balance: Math.max(0, price - received), over: Math.max(0, received - price), done: price > 0 && received >= price };
-  const out: any = { dealId: d.id, me: u.id, role: broker ? 'BROKER' : owner ? 'OWNER' : 'NONE', sauda, canRecord: broker, canAck: owner || broker };
+  // v195 — Indian Tax Compliance: 1% TDS under Section 194-IA on property deals >= ₹50,00,000
+  const tdsApplicable = price >= 5000000;
+  const tdsAmount = tdsApplicable ? Math.round(price * 0.01) : 0;
+  const tds = {
+    applicable: tdsApplicable,
+    threshold: 5000000,
+    ratePct: tdsApplicable ? 1 : 0,
+    amount: tdsAmount,
+    sellerNetPayable: price - tdsAmount,
+    section: '194-IA',
+    form: 'Form 26QB',
+    note: tdsApplicable ? '1% TDS under Sec 194-IA mandatory for properties ₹50L and above. Deducted by buyer before payment to seller.' : 'Property value below ₹50 Lakhs threshold. No Sec 194-IA TDS.',
+  };
+  const sauda = { price, priceSource: source, entries, received, token: tokenIn, direct, directHidden: live.some(e => (e as any).masked), balance: Math.max(0, price - received), over: Math.max(0, received - price), done: price > 0 && received >= price, tds };
+  const out: any = { dealId: d.id, me: u.id, role: broker ? 'BROKER' : owner ? 'OWNER' : 'NONE', sauda, tds, canRecord: broker, canAck: owner || broker };
   const m = activeMandate(d); const prop = st().properties.find(x => x.id === d.propertyId);
   if (owner && m) {
     const fee = mandateShareAt(m, price).broker;

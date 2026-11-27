@@ -5,7 +5,7 @@
  * phone, and inside a room: Chat (auto-scroll, quick replies) · Homes · Visits · Info.
  */
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Phone, Eye, Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check, MoreVertical, FileLock2 } from 'lucide-react';
+import { Phone, Eye, Loader2, Plus, Link2, Copy, MessageCircle, Trash2, Lock, Home, ThumbsUp, ThumbsDown, CalendarClock, X, Search, Info, KeyRound, Heart, Inbox, CalendarPlus, Image as ImageIcon, PlayCircle, Check, MoreVertical, FileLock2, Share2, Send } from 'lucide-react';
 import { ChatShell, ChatThread, type ThreadMsg } from './ChatKit.js';
 import { ClientPaperPicker } from './PaperShare.js';
 import { api } from '../lib/api.js';
@@ -271,7 +271,8 @@ const ClientPhone: React.FC<{ r: any; id: string; onRoom: (r: any) => void }> = 
   const [shown, setShown] = useState<string>(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [typed, setTyped] = useState('');
   const phone: string = r.phone || shown;
   const fmt = (p: string) => `${p.slice(0, 5)} ${p.slice(5)}`;
-  if (r.status !== 'ACTIVE' || r.phoneAccess === 'HIDDEN') return null;
+  if (r.status !== 'ACTIVE') return null;
+  const isMaskedShopLead = r.phoneAccess === 'HIDDEN';
   const wa = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(hi ? `नमस्ते ${r.clientName}, ` : `Hello ${r.clientName}, `)}` : '';
   const act = async (fn: () => Promise<any>) => { setBusy(true); setErr(''); try { await fn(); } catch (e: any) { setErr(e.message || 'Error'); } finally { setBusy(false); } };
   return (
@@ -284,6 +285,19 @@ const ClientPhone: React.FC<{ r: any; id: string; onRoom: (r: any) => void }> = 
           </span>
           <a className={light} href={`tel:+91${phone}`} data-testid="room-call"><Phone className="h-4 w-4" />{tx('Call', 'कॉल')}</a>
           <a className={light} target="_blank" rel="noreferrer" href={wa}><MessageCircle className="h-4 w-4" />WhatsApp</a>
+        </div>
+      ) : isMaskedShopLead ? (
+        <div className="flex flex-wrap items-center gap-2 py-0.5" data-testid="room-phone-masked">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+            <Lock className="h-3.5 w-3.5 text-amber-700" />
+            +91 ••••• ••{r.phoneLast4}
+          </span>
+          <span className="text-xs text-amber-800">
+            {tx(
+              'Customer phone unlocks when they like a property or book a site visit.',
+              'ग्राहक द्वारा घर पसंद (👍) करने या विज़िट तय करने पर नंबर खुलेगा।'
+            )}
+          </span>
         </div>
       ) : r.phoneSaved && r.phoneAccess === 'REVEAL' ? (
         <button type="button" disabled={busy} className={light} data-testid="room-reveal" onClick={() => act(async () => { const x = await api.crPhoneReveal(id); setShown(x.phone); })}><Eye className="h-4 w-4" />{tx(`Show number (••${r.phoneLast4})`, `नंबर देखें (••${r.phoneLast4})`)}</button>
@@ -299,11 +313,284 @@ const ClientPhone: React.FC<{ r: any; id: string; onRoom: (r: any) => void }> = 
   );
 };
 
+const PropertyMediaViewerModal: React.FC<{
+  property: any;
+  onClose: () => void;
+  onBookVisit?: () => void;
+}> = ({ property, onClose, onBookVisit }) => {
+  const tx = useTx();
+  const [photoIdx, setPhotoIdx] = useState(0);
+  const photos: string[] = (property.images && property.images.length > 0) ? property.images : (property.image ? [property.image] : []);
+  const videoUrl: string = property.videoUrl || (property.videos && property.videos[0]) || '';
+  const ytId = videoUrl ? (typeof videoUrl === 'string' && (/youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/.exec(videoUrl)?.[1] || /youtu\.be\/([a-zA-Z0-9_-]+)/.exec(videoUrl)?.[1])) : null;
+  const isVideoFile = videoUrl && (videoUrl.endsWith('.mp4') || videoUrl.endsWith('.webm') || videoUrl.startsWith('/api/owner-media/video'));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4" role="dialog" aria-modal="true" data-testid="property-media-modal">
+      <div className="relative flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div className="min-w-0 pr-2">
+            <h3 className="truncate text-base font-bold text-slate-900">{property.title}</h3>
+            <p className="text-xs text-slate-500">{property.locality}{property.city ? `, ${property.city}` : ''} · {formatINR(property.askingPrice || property.price || 0)}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label={tx('Close', 'बंद करें')} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" data-testid="close-media-modal">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto p-4 text-sm">
+          {/* Photos Showcase */}
+          {photos.length > 0 ? (
+            <div>
+              <h4 className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+                <ImageIcon className="h-4 w-4 text-emerald-600" />
+                {tx('Public Photos', 'पब्लिक फ़ोटो')} ({photos.length})
+              </h4>
+              <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-slate-950">
+                <img src={photos[photoIdx]} alt="" className="h-full w-full object-contain" onError={e => { (e.target as HTMLElement).style.display = 'none'; }} />
+                {photos.length > 1 && (
+                  <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1 rounded-full bg-black/60 px-2 py-1">
+                    {photos.map((_: any, i: number) => (
+                      <button key={i} type="button" onClick={() => setPhotoIdx(i)} className={`h-2 w-2 rounded-full ${photoIdx === i ? 'bg-white' : 'bg-white/40'}`} aria-label={`Photo ${i + 1}`} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {photos.length > 1 && (
+                <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                  {photos.map((p: string, i: number) => (
+                    <button key={i} type="button" onClick={() => setPhotoIdx(i)} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 ${photoIdx === i ? 'border-emerald-600' : 'border-transparent opacity-70'}`}>
+                      <img src={p} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl bg-slate-50 p-4 text-center text-xs text-slate-500">
+              {tx('No photos uploaded for this property yet.', 'इस प्रॉपर्टी की फ़ोटो अभी अपलोड नहीं हैं।')}
+            </div>
+          )}
+
+          {/* Video Tour */}
+          {videoUrl && (
+            <div>
+              <h4 className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+                <PlayCircle className="h-4 w-4 text-sky-600" />
+                {tx('Walkthrough Video', 'वॉकथ्रू वीडियो')}
+              </h4>
+              <div className="aspect-video w-full overflow-hidden rounded-xl bg-slate-950">
+                {ytId ? (
+                  <iframe src={`https://www.youtube-nocookie.com/embed/${ytId}`} title="Walkthrough video" className="h-full w-full border-0" allowFullScreen />
+                ) : isVideoFile ? (
+                  <video src={videoUrl} controls playsInline preload="metadata" className="h-full w-full object-contain" />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center p-4 text-center text-white">
+                    <PlayCircle className="mb-2 h-10 w-10 text-white/80" />
+                    <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-900">
+                      {tx('Open Video Link', 'वीडियो लिंक खोलें')}
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Details & Specifications */}
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              {property.propertyType && <span className="rounded bg-slate-200 px-2 py-0.5 font-medium text-slate-800">{property.propertyType}</span>}
+              {property.transactionType && <span className="rounded bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">{property.transactionType}</span>}
+              {property.builtUpAreaSqFt && <span className="rounded bg-slate-200 px-2 py-0.5 font-medium text-slate-800">{property.builtUpAreaSqFt} sq ft</span>}
+              {property.bhk && <span className="rounded bg-slate-200 px-2 py-0.5 font-medium text-slate-800">{property.bhk} BHK</span>}
+            </div>
+            {property.description && (
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{property.description}</p>
+            )}
+            <div className="flex items-start gap-1.5 rounded-lg bg-emerald-50 p-2 text-[11px] text-emerald-900">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-700" />
+              <span>{tx('Anti-Bypass Safe: Private owner phone and exact unit address are kept protected on GENZ network until site visit pass is issued.', 'एंटी-बाईपास सुरक्षित: मालिक का फोन नंबर और सटीक पता विज़िट पास जारी होने तक सुरक्षित रहता है।')}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2.5">
+          {onBookVisit && (
+            <button
+              type="button"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-xs font-bold text-white hover:bg-emerald-800"
+              onClick={() => { onClose(); onBookVisit(); }}
+            >
+              <CalendarPlus className="h-4 w-4" />
+              {tx('Book Visit for Client', 'क्लाइंट के लिए विज़िट तय करें')}
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+            {tx('Close', 'बंद करें')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const NetworkPropertyPickerModal: React.FC<{
+  roomId: string;
+  leadId?: string;
+  clientName: string;
+  allProps: any[];
+  sharedIds: Set<any>;
+  onClose: () => void;
+  onShared: () => void;
+}> = ({ roomId, leadId, clientName, allProps, sharedIds, onClose, onShared }) => {
+  const tx = useTx();
+  const [q, setQ] = useState('');
+  const [picked, setPicked] = useState<any>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>(allProps);
+
+  useEffect(() => {
+    if (q.trim().length >= 2) {
+      api.getProperties({ q: q.trim(), limit: 30 }).then(x => {
+        setSearchResults((x.properties || []).filter((p: any) => ['active', 'under_negotiation'].includes(p.listingStatus)));
+      }).catch(() => {});
+    } else {
+      setSearchResults(allProps);
+    }
+  }, [q, allProps]);
+
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    return searchResults.filter(p => {
+      if (sharedIds.has(p.id)) return false;
+      if (!query || query.length >= 2) return true;
+      return (
+        p.id.toLowerCase().includes(query) ||
+        (p.title && p.title.toLowerCase().includes(query)) ||
+        (p.locality && p.locality.toLowerCase().includes(query)) ||
+        (p.city && p.city.toLowerCase().includes(query))
+      );
+    });
+  }, [searchResults, sharedIds, q]);
+
+  const handleShare = async () => {
+    if (!picked) return;
+    setBusy(true);
+    setErr('');
+    try {
+      if (leadId) {
+        await api.spOffer(leadId, picked.id);
+      } else {
+        await api.crAddItem(roomId, picked.id, note.trim() || undefined);
+      }
+      onShared();
+      onClose();
+    } catch (e: any) {
+      setErr(e?.message || tx('Could not share property', 'प्रॉपर्टी शेयर नहीं कर सके'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4" role="dialog" aria-modal="true" data-testid="network-property-picker-modal">
+      <div className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">{tx('Share Network Property in Chat', 'नेटवर्क प्रॉपर्टी चैट में शेयर करें')}</h3>
+            <p className="text-xs text-slate-500">{tx(`Pick any property to send to ${clientName} with photo & video card`, `${clientName} को फ़ोटो और वीडियो कार्ड के साथ भेजने के लिए प्रॉपर्टी चुनें`)}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label={tx('Close', 'बंद करें')} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="border-b border-slate-200 bg-slate-50 p-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder={tx('Search title, locality, city, price…', 'नाम, इलाका, शहर, कीमत खोजें…')}
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-xs"
+              autoFocus
+              data-testid="network-search-input"
+            />
+          </div>
+        </div>
+
+        <div className="max-h-72 flex-1 space-y-2 overflow-y-auto p-3">
+          {filtered.length === 0 ? (
+            <p className="p-4 text-center text-xs text-slate-500">{tx('No unshared properties found.', 'कोई नई प्रॉपर्टी नहीं मिली।')}</p>
+          ) : (
+            filtered.map(p => {
+              const isSelected = picked?.id === p.id;
+              const img = p.image || (p.images && p.images[0]);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => setPicked(p)}
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border p-2.5 transition ${isSelected ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                  data-testid={`pick-prop-${p.id}`}
+                >
+                  <div className="h-14 w-18 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                    {img ? (
+                      <img src={img} alt="" className="h-full w-full object-cover" onError={e => { (e.target as HTMLElement).style.display = 'none'; }} />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-slate-400"><Home className="h-5 w-5" /></div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-bold text-slate-900">{p.title}</div>
+                    <div className="truncate text-[11px] text-slate-500">{p.locality}, {p.city} · {p.propertyType || p.type || ''}</div>
+                    <div className="text-xs font-black text-emerald-700">{formatINR(p.askingPrice || p.price || 0)}</div>
+                  </div>
+                  {isSelected && <span className="rounded-full bg-emerald-600 p-1 text-white"><Check className="h-3.5 w-3.5" /></span>}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {picked && (
+          <div className="space-y-2 border-t border-slate-200 bg-slate-50 p-3">
+            <input
+              type="text"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              maxLength={200}
+              placeholder={tx('Add a note for your client (optional) — no phone numbers', 'क्लाइंट के लिए नोट जोड़ें (वैकल्पिक) — फ़ोन नंबर नहीं')}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs"
+              data-testid="prop-share-note"
+            />
+            {err && <p className="text-xs text-red-600" role="alert">{err}</p>}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleShare}
+              className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+              data-testid="confirm-network-share"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {tx(`Send "${picked.title}" to Chat`, `"${picked.title}" चैट में भेजें`)}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l: string) => void; onBack?: () => void; fresh?: { link: string; phone: string; name: string } | null; onFreshDone?: () => void }> = ({ id, onChange, onLink, onBack, fresh, onFreshDone }) => {
   const tx = useTx(); const hi = useI18n().lang === 'hi';
   const [tab, setTab] = useState<'chat' | 'homes' | 'visits' | 'papers' | 'info'>('chat');
   const [r, setR] = useState<any>(null); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [about, setAbout] = useState('');
   const [pq, setPq] = useState(''); const [props, setProps] = useState<any[]>([]); const [pick, setPick] = useState(''); const [pnote, setPnote] = useState('');
+  const [selectedMediaProperty, setSelectedMediaProperty] = useState<any>(null);
+  const [networkPickerOpen, setNetworkPickerOpen] = useState(false);
   const [book, setBook] = useState<null | { item: any; req?: any }>(null);   // v40 — visit booked from the room
   const [mediaFor, setMediaFor] = useState('');                              // v40 — item whose photos / video are being chosen
   const [menu, setMenu] = useState(false);                                   // v50 — the ⋮ menu (new link, close room)
@@ -332,6 +619,8 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
     </ChatShell>
   );
   const shared = new Set(r.items.map((i: any) => i.propertyId));
+  // v58 — the broker's office staff work in his rooms: no closing, no papers, no visit booking (those stay with the broker)
+  const staff = !!r.staff;
 
   const reqs = r.items.flatMap((i: any) => i.visitRequests.map((v: any) => ({ ...v, item: i })));
   const openReqs = reqs.filter((v: any) => v.status === 'REQUESTED').length;
@@ -356,9 +645,63 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
       </div>
     );
   };
-  const msgs: ThreadMsg[] = r.messages.map((m: any) => ({ id: m.id, mine: m.from === 'BROKER', who: r.clientName, text: m.text, at: m.at, ref: m.propertyId, ...(m.byName ? { by: m.byName } : {}), ...(m.paper ? { card: paperCard(m), hideText: true } : {}) }));
-  // v58 — the broker's office staff work in his rooms: no closing, no papers, no visit booking (those stay with the broker)
-  const staff = !!r.staff;
+  const propertyCard = (m: any) => {
+    const itm = (r.items || []).find((x: any) => x.propertyId === m.propertyId);
+    const p = itm?.property || (props || []).find((x: any) => x.id === m.propertyId);
+    if (!p && !m.propertyId) return null;
+    const title = p?.title || m.propertyId;
+    const price = p?.askingPrice || p?.price;
+    const loc = p ? `${p.locality || ''}${p.city ? `, ${p.city}` : ''}` : '';
+    const img = p?.image || (p?.images && p.images[0]);
+    const isNetwork = p?.listingBrokerId && p.listingBrokerId !== r.brokerId;
+    return (
+      <div className="my-1.5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs" data-testid={`chat-card-${m.propertyId}`}>
+        {img && (
+          <div className="relative h-28 w-full bg-slate-100">
+            <img src={img} alt="" className="h-full w-full object-cover" onError={e => { (e.target as HTMLElement).style.display = 'none'; }} />
+            {isNetwork && <span className="absolute top-2 left-2 rounded bg-indigo-900/80 px-2 py-0.5 text-[10px] font-bold text-white">🌐 {tx('Network Listing', 'नेटवर्क लिस्टिंग')}</span>}
+          </div>
+        )}
+        <div className="p-2.5">
+          <div className="text-sm font-bold leading-tight text-slate-900">{title}</div>
+          {loc && <div className="mt-0.5 text-xs text-slate-500">{loc} {p?.propertyType ? `· ${p.propertyType}` : ''}</div>}
+          {price && <div className="mt-1 text-sm font-black text-emerald-700">{formatINR(price)}</div>}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-900 px-2.5 text-xs font-semibold text-white hover:bg-slate-800"
+              onClick={() => setSelectedMediaProperty(p || { id: m.propertyId, title, askingPrice: price, locality: loc })}
+              data-testid={`chat-open-media-${m.propertyId}`}
+            >
+              <ImageIcon className="h-3.5 w-3.5" /><PlayCircle className="h-3.5 w-3.5" />
+              {tx('View card, photos & video', 'कार्ड, फ़ोटो व वीडियो देखें')}
+            </button>
+            {p?.available && !staff && (
+              <button
+                type="button"
+                className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => setBook({ item: itm || { id: m.propertyId, propertyId: m.propertyId, property: p } })}
+                data-testid={`chat-book-visit-${m.propertyId}`}
+              >
+                <CalendarPlus className="h-3.5 w-3.5" />
+                {tx('Book visit', 'विज़िट तय करें')}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+  const msgs: ThreadMsg[] = r.messages.map((m: any) => ({
+    id: m.id,
+    mine: m.from === 'BROKER',
+    who: r.clientName,
+    text: m.text,
+    at: m.at,
+    ref: m.propertyId,
+    ...(m.byName ? { by: m.byName } : {}),
+    ...(m.paper ? { card: paperCard(m), hideText: true } : m.propertyId ? { card: propertyCard(m) } : {}),
+  }));
   const sendMsg = async (text: string) => {
     setErr('');
     try { const x = await api.crSend(id, text, about || undefined); if (x?.room) setR(x.room); onChange(); return true; } catch (e: any) { setErr(e.message); return false; }
@@ -434,8 +777,9 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
             return (
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4" data-testid="room-plus">
                 {!staff && <button type="button" className={tile} data-testid="room-plus-paper" onClick={() => setPaperPick(true)}>{dot('bg-amber-100 text-amber-800', FileLock2)}{tx('Show a paper', 'कागज़ दिखाएँ')}</button>}
+                <button type="button" className={tile} data-testid="room-plus-share-network" onClick={() => { setNetworkPickerOpen(true); close(); }}>{dot('bg-indigo-100 text-indigo-700', Share2)}{tx('Share property', 'प्रॉपर्टी शेयर करें')}</button>
                 {r.items.length > 0 && <button type="button" className={tile} data-testid="room-about" aria-pressed={!!about} onClick={() => { setAboutOpen(true); close(); }}>{dot('bg-emerald-100 text-emerald-700', Home)}{tx('About a home', 'प्रॉपर्टी चुनें')}</button>}
-                <button type="button" className={tile} data-testid="room-plus-share" onClick={() => { setTab('homes'); close(); setTimeout(() => document.querySelector('[data-testid="room-pick"]')?.scrollIntoView({ block: 'center' }), 80); }}>{dot('bg-indigo-100 text-indigo-700', Plus)}{tx('Share a home', 'प्रॉपर्टी जोड़ें')}</button>
+                <button type="button" className={tile} data-testid="room-plus-share" onClick={() => { setTab('homes'); close(); setTimeout(() => document.querySelector('[data-testid="room-pick"]')?.scrollIntoView({ block: 'center' }), 80); }}>{dot('bg-slate-100 text-slate-700', Plus)}{tx('Add to homes', 'लिस्ट में जोड़ें')}</button>
                 {r.items.length > 0 && !staff && <button type="button" className={tile} data-testid="room-plus-visit" onClick={() => { if (live.length === 1) setBook({ item: live[0] }); else setTab('homes'); close(); }}>{dot('bg-sky-100 text-sky-700', CalendarPlus)}{tx('Book a visit', 'विज़िट तय करें')}</button>}
                 {withMedia.length > 0 && <button type="button" className={tile} data-testid="room-plus-photos" onClick={() => { if (withMedia.length === 1) setMediaFor(withMedia[0].id); setTab('homes'); close(); }}>{dot('bg-violet-100 text-violet-700', ImageIcon)}{tx('Photos to show', 'फ़ोटो दिखाएँ')}</button>}
               </div>
@@ -615,6 +959,24 @@ export const RoomDetail: React.FC<{ id: string; onChange: () => void; onLink: (l
             onSuccess={() => { load(); onChange(); }}
           />
         </Suspense>
+      )}
+      {selectedMediaProperty && (
+        <PropertyMediaViewerModal
+          property={selectedMediaProperty}
+          onClose={() => setSelectedMediaProperty(null)}
+          onBookVisit={!staff ? () => setBook({ item: r.items.find((i: any) => i.propertyId === selectedMediaProperty.id) || { id: selectedMediaProperty.id, propertyId: selectedMediaProperty.id, property: selectedMediaProperty } }) : undefined}
+        />
+      )}
+      {networkPickerOpen && (
+        <NetworkPropertyPickerModal
+          roomId={id}
+          leadId={r.leadId}
+          clientName={r.clientName}
+          allProps={props}
+          sharedIds={shared}
+          onClose={() => setNetworkPickerOpen(false)}
+          onShared={() => { void load(); onChange(); }}
+        />
       )}
     </ChatShell>
   );

@@ -54,7 +54,7 @@ describe('v186 · Basic is default-deny (HTTP)', { timeout: 300_000 }, () => {
   const otp = async (phone: string) => { const r = await s.call(undefined, 'POST', '/api/auth/signup-otp', { phone }); const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(200); return b as { otpToken: string; devCode: string }; };
   const signup = async (phone: string, extra: object = {}, code?: { otpToken: string; devCode: string }) => {
     const o = code || await otp(phone);
-    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8600F', ...extra });
+    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8600F', officePhoto: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==', officeLocation: { lat: 21.2514, lng: 81.6296, acc: 20 }, ...extra });
   };
   const cookie = (r: Response) => r.headers.get('set-cookie')!.split(';')[0];
   const locked = async (r: Response) => { const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(403); expect(b.code).toBe('ACCOUNT_NOT_VERIFIED'); expect(b.basic).toBe(true); expect(b.errorHi).toMatch(/KYC/); };
@@ -226,7 +226,7 @@ describe('v186b · second review (HTTP)', { timeout: 300_000 }, () => {
   const otp = async (phone: string) => { const r = await s.call(undefined, 'POST', '/api/auth/signup-otp', { phone }); const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(200); return b as { otpToken: string; devCode: string }; };
   const signup = async (phone: string, extra: object = {}) => {
     const o = await otp(phone);
-    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8700F', ...extra });
+    return s.call(undefined, 'POST', '/api/auth/signup', { role: 'BROKER', name: 'Naya Broker', phone, otpToken: o.otpToken, otpCode: o.devCode, password: PASS, consent: true, panConsent: true, city: 'Raipur', panNumber: 'ABCPN8700F', officePhoto: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==', officeLocation: { lat: 21.2514, lng: 81.6296, acc: 20 }, ...extra });
   };
   const cookie = (r: Response) => r.headers.get('set-cookie')!.split(';')[0];
   const locked = async (r: Response) => { const b = await j(r); expect(r.status, JSON.stringify(b)).toBe(403); expect(b.basic).toBe(true); };

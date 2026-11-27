@@ -48,15 +48,18 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
 let lastTap = 0;
 if (typeof window !== 'undefined') for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => { lastTap = Date.now(); }, true);
 
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const tapped = Date.now() - lastTap < 2500;   // at SEND time: was this call caused by a tap?
+  const targetUrl = API_BASE && url.startsWith('/') ? `${API_BASE}${url}` : url;
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
 
   let res: Response;
-  try { res = await fetch(url, { ...options, headers, credentials: 'same-origin' }); }
+  try { res = await fetch(targetUrl, { ...options, headers, credentials: API_BASE ? 'include' : 'same-origin' }); }
   catch {
     // v178: a dead network is not "Failed to fetch"
     const en = 'No network — check your connection and try again.', hi = 'नेटवर्क नहीं है — कनेक्शन देखकर फिर कोशिश करें।';
@@ -307,6 +310,7 @@ export const api = {
     clientRoomId?: string;
     clientRoomItemId?: string;
     clientRoomRequestId?: string;
+    useMaskedRoomPhone?: boolean;
   }) =>
     request<{ success: boolean; siteVisit: SiteVisit; dealRoom?: DealRoom }>('/api/site-visits', {
       method: 'POST',
@@ -390,6 +394,11 @@ export const api = {
     request<{ success: boolean; dispute: Dispute }>(`/api/disputes/${id}/resolve`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  withdrawDispute: (id: string, note?: string) =>
+    request<{ success: boolean; dispute: Dispute }>(`/api/disputes/${id}/withdraw`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
     }),
 
   // Audit Logs & Activity Feed
@@ -628,6 +637,10 @@ export const api = {
   connectorApproveReward: (id: string, amount?: number) => request<any>(`/api/connector/referrals/${id}/reward`, { method: 'POST', body: JSON.stringify(amount === undefined ? {} : { amount }) }),
   homeInsights: () => request<{ success: boolean; insights: any }>('/api/home/insights'),
   crList: () => request<any>('/api/client-rooms'),
+  myClientRooms: () => request<{ success: boolean; rooms: any[] }>('/api/my-client-rooms'),
+  replyMyClientRoom: (id: string, text: string) => request<any>(`/api/my-client-rooms/${encodeURIComponent(id)}/message`, { method: 'POST', body: JSON.stringify({ text }) }),
+  reactMyClientRoom: (id: string, itemId: string, action: 'LIKE' | 'PASS' | 'VISIT', when?: string, note?: string) =>
+    request<any>(`/api/my-client-rooms/${encodeURIComponent(id)}/react`, { method: 'POST', body: JSON.stringify({ itemId, action, when, note }) }),
   crCreate: (payload: any) => request<any>('/api/client-rooms', { method: 'POST', body: JSON.stringify(payload) }),
   crGet: (id: string) => request<any>(`/api/client-rooms/${id}`),
   crAddItem: (id: string, propertyId: string, note?: string) => request<any>(`/api/client-rooms/${id}/items`, { method: 'POST', body: JSON.stringify({ propertyId, note }) }),
@@ -660,7 +673,7 @@ export const api = {
   spVisitReply: (id: string, vid: string, action: 'OK' | 'COUNTER' | 'NO', text?: string) => request<any>(`/api/shop-partners/leads/${id}/visit/${vid}`, { method: 'POST', body: JSON.stringify({ action, text }) }),
   spAskNeed: (id: string) => request<any>(`/api/shop-partners/leads/${id}/ask-need`, { method: 'POST', body: '{}' }),
   spVisitCreate: (id: string, homeId: string, when: string) => request<any>(`/api/shop-partners/leads/${id}/visit`, { method: 'POST', body: JSON.stringify({ homeId, when }) }),
-  spOffer: (id: string, homeId: string) => request<any>(`/api/shop-partners/leads/${id}/offer`, { method: 'POST', body: JSON.stringify({ homeId }) }),
+  spOffer: (id: string, homeId: string, force?: boolean) => request<any>(`/api/shop-partners/leads/${id}/offer`, { method: 'POST', body: JSON.stringify({ homeId, ...(force ? { force: true } : {}) }) }),
   spLeadStatus: (id: string, status: string, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) }),
   // v82 — "Deal done" takes the share from the deal itself; a typed brokerage is only a correction (with a reason) or for a deal that is not in the app
   spLeadWon: (id: string, brokerage?: number, reason?: string) => request<any>(`/api/shop-partners/leads/${id}/won`, { method: 'POST', body: JSON.stringify({ brokerage, reason }) }),
@@ -1341,4 +1354,11 @@ export const api = {
   staffReveal: (leadId: string) => request<{ phone: string }>(`/api/pcontrol/leads/${leadId}/reveal`, { method: 'POST', body: '{}' }),
   staffPool: () => request<any>('/api/pcontrol/staff/pool'),
   staffClaim: (leadId: string) => request<any>('/api/pcontrol/staff/claim', { method: 'POST', body: JSON.stringify({ leadId }) }),
+  // GENZ Coins & Affiliated Partner Discount Wallet
+  coinsConfig: () => request<any>('/api/coins/config'),
+  updateCoinsConfig: (payload: any) => request<any>('/api/coins/config', { method: 'PUT', body: JSON.stringify(payload) }),
+  coinsWallet: () => request<any>('/api/coins/wallet'),
+  redeemCoins: (payload: { partnerName: string; partnerCategory: string; invoiceAmountInr: number; invoiceRef?: string; partnerId?: string; bookedViaGenz?: boolean }) =>
+    request<any>('/api/coins/redeem', { method: 'POST', body: JSON.stringify(payload) }),
+  coinsAdminLedger: () => request<any>('/api/coins/admin/ledger'),
 };

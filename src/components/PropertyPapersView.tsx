@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, FileText, Image as ImageIcon, Upload, Search, Share2, Trash2, X, Download, Eye, ShieldCheck, History, Pencil, Lock, Users, Globe2, CheckCircle2, AlertTriangle, FolderOpen, FileLock2, Unlock } from 'lucide-react';
+import { Loader2, FileText, Image as ImageIcon, Upload, Search, Share2, Trash2, X, Download, Eye, ShieldCheck, History, Pencil, Lock, Users, Globe2, CheckCircle2, AlertTriangle, FolderOpen, FileLock2, Unlock, Scale } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n, useTx } from '../lib/i18n.js';
 import { PROP_DOC_TYPES, propDocTypeLabel } from '../shared/propDocs.js';
@@ -9,6 +9,7 @@ import { PROP_DOC_MAX_BYTES } from '../shared/propDocs.js';
 import { WatermarkViewer, type ViewSession } from './WatermarkViewer.js';
 import { ProtectedDocsView } from './ProtectedDocsView.js';
 import { useUI } from '../lib/ui.js';
+import { LegalDraftModal } from './LegalDraftModal.js';
 
 const paperPage = (t: string) => `/api/property-docs/view/${t}`;
 /** the server's Hindi line when it sent one */
@@ -51,6 +52,7 @@ export const PropertyPapersView: React.FC<{ withProtected?: boolean }> = ({ with
   const [logFor, setLogFor] = useState<any>(null);
   const [edit, setEdit] = useState<any>(null);
   const [toast, setToast] = useState('');
+  const [showDraftModal, setShowDraftModal] = useState(false);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -126,7 +128,18 @@ export const PropertyPapersView: React.FC<{ withProtected?: boolean }> = ({ with
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><FolderOpen className="h-5 w-5 text-amber-600" aria-hidden />{tx('Property Papers', 'प्रॉपर्टी पेपर्स')}</h2>
           <p className="text-xs text-slate-500">{tx('Keep every paper of your property in one place — upload once, find it by searching, share it here instead of on WhatsApp.', 'प्रॉपर्टी के सारे कागज़ एक जगह — एक बार अपलोड करें, सर्च से ढूँढें, WhatsApp की जगह यहीं शेयर करें।')}</p>
         </div>
-        {canUpload && <button onClick={() => setUpload(true)} className={`${btn} bg-slate-900 px-4 text-sm text-white`}><Upload className="h-4 w-4" aria-hidden />{tx('Add papers', 'कागज़ जोड़ें')}</button>}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowDraftModal(true)}
+            className={`${btn} border border-indigo-300 bg-indigo-50 px-3 text-xs font-bold text-indigo-900 hover:bg-indigo-100 transition-colors`}
+            data-testid="papers-legal-draft-btn"
+          >
+            <Scale className="h-4 w-4 text-indigo-700" aria-hidden />
+            {tx('State Legal Drafts', 'कानूनी एग्रीमेंट ड्राफ़्ट')}
+          </button>
+          {canUpload && <button onClick={() => setUpload(true)} className={`${btn} bg-slate-900 px-4 text-sm text-white`}><Upload className="h-4 w-4" aria-hidden />{tx('Add papers', 'कागज़ जोड़ें')}</button>}
+        </div>
       </div>
 
       {err && <p role="alert" className="rounded-lg bg-red-50 p-2.5 text-xs text-red-700">{err}</p>}
@@ -225,6 +238,7 @@ export const PropertyPapersView: React.FC<{ withProtected?: boolean }> = ({ with
       {edit && <EditSheet doc={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
       {viewing && <WatermarkViewer session={viewing} pageUrl={paperPage} onClose={closeViewer}
         downloads={viewing.canDownload ? [{ label: tx('Original', 'मूल फ़ाइल'), href: `/api/property-docs/${viewing.id}/file?dl=1` }] : undefined} />}
+      {showDraftModal && <LegalDraftModal isOpen={showDraftModal} onClose={() => setShowDraftModal(false)} />}
     </div>
   );
 };

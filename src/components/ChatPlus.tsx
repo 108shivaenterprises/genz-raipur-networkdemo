@@ -13,7 +13,7 @@ import { dateLocale } from '../lib/utils.js';
  * needed); nothing here holds money, takes contact numbers or records voice.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, QrCode, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, ExternalLink, FileText, Flag, IndianRupee, Loader2, Lock, MapPin } from 'lucide-react';
+import { Building2, QrCode, CalendarClock, Camera, Check, ChevronLeft, ChevronRight, ExternalLink, FileText, FileCheck, Flag, IndianRupee, Loader2, Lock, MapPin } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useTx, useI18n } from '../lib/i18n.js';
 import { agreementStatusWord } from '../lib/agreementWords.js';
@@ -87,6 +87,20 @@ const AgreementChatCard: React.FC<{ id: string; dealId?: string; onOpen: (tab: s
     <button type="button" onClick={() => onOpen('commission_agreement')} className={`${box} !border-emerald-300 !bg-emerald-50`} data-testid="chat-card-AGREEMENT">
       <span className="block text-[10px] font-bold text-slate-500">{tx('COMMISSION AGREEMENT', 'कमीशन एग्रीमेंट')}{a ? ` · v${a.version} · ${agreementStatusWord(a.status, lang === 'hi')}` : ''}</span>
       <span className="block text-base font-bold text-emerald-800">{a ? formatINR(a.totalAgreedBrokerage) : tx('Open the agreement', 'एग्रीमेंट खोलें')}</span>
+    </button>
+  );
+};
+
+/** owner brokerage mandate in the chat */
+const MandateChatCard: React.FC<{ id: string; propertyId?: string; onOpen: (tab: string) => void }> = ({ id, propertyId, onOpen }) => {
+  const tx = useTx(); const [m, setM] = useState<any>(null);
+  useEffect(() => {
+    api.getOwnerMandates(propertyId).then((r) => setM((r.mandates || []).find((x: any) => x.id === id) || null)).catch(() => setM(null));
+  }, [id, propertyId]);
+  return (
+    <button type="button" onClick={() => onOpen('mandates')} className={`${box} !border-indigo-300 !bg-indigo-50`} data-testid="chat-card-MANDATE">
+      <span className="block text-[10px] font-bold text-indigo-700">{tx('OWNER MANDATE', 'मालिक का मैंडेट')}{m ? ` · ${m.status}` : ''}</span>
+      <span className="block text-base font-bold text-slate-900">{m ? (m.remunerationBasis === 'SURPLUS_ABOVE_NET' ? tx(`Surplus above ${formatINR(m.approvedNetPrice)}`, `नेट ${formatINR(m.approvedNetPrice)} से ऊपर सरप्लस`) : m.remunerationBasis === 'PERCENTAGE' ? `${m.agreedCommissionPct}% कमीशन` : formatINR(m.fixedFeeAmount)) : tx('Open mandate details', 'मैंडेट विवरण खोलें')}</span>
     </button>
   );
 };
@@ -211,6 +225,8 @@ export const ChatCard: React.FC<{ m: any; data: Data | null; onOpen: (tab: strin
       return <OfferChatCard id={m.refId} />;
     case 'AGREEMENT':
       return <AgreementChatCard id={m.refId} dealId={data?.deal.id} onOpen={onOpen} />;
+    case 'MANDATE':
+      return <MandateChatCard id={m.refId} propertyId={data?.property?.id} onOpen={onOpen} />;
     case 'STAGE':
       return (
         <button type="button" onClick={open('overview')} className={`${box} flex items-center gap-2.5`} data-testid="chat-card-STAGE">
@@ -266,9 +282,15 @@ const PlusPanel: React.FC<{ kit: Kit; close: () => void }> = ({ kit, close }) =>
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const d = kit.data;
-  // v153 — the newest offer / agreement of this deal goes into the chat as a card
-  const newest = async (kind: 'OFFER' | 'AGREEMENT') => {
+  // v153 — the newest offer / agreement / mandate of this deal goes into the chat as a card
+  const newest = async (kind: 'OFFER' | 'AGREEMENT' | 'MANDATE') => {
     if (!d) return false;
+    if (kind === 'MANDATE') {
+      const mandList: any[] = await api.getOwnerMandates(d.property?.id).then((r) => r.mandates || []).catch(() => []);
+      const pickMand = mandList.sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))[0];
+      if (!pickMand) throw new Error(tx('No owner mandate for this property yet.', 'इस प्रॉपर्टी पर अभी कोई ओनर मैंडेट नहीं।'));
+      return kit.post({ kind: 'MANDATE', refId: pickMand.id });
+    }
     const list: any[] = kind === 'OFFER' ? [...(await api.ofList().then((r) => [...(r.made || []), ...(r.incoming || [])]).catch(() => []))].filter((x: any) => x.dealRoomId === d.deal.id) : (await api.getDealCommissionAgreements(d.deal.id).then((r) => r.agreements || []).catch(() => []));
     const pick = list.sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))[0];
     if (!pick) throw new Error(kind === 'OFFER' ? tx('No offer on this deal yet.', 'इस डील पर अभी कोई ऑफ़र नहीं।') : tx('No commission agreement on this deal yet.', 'इस डील पर अभी कोई कमीशन एग्रीमेंट नहीं।'));
@@ -399,6 +421,7 @@ const PlusPanel: React.FC<{ kit: Kit; close: () => void }> = ({ kit, close }) =>
         {kit.can.visit && <Tile icon={CalendarClock} label={tx('Visit', 'विज़िट')} tone="bg-sky-100 text-sky-700" testId="plus-visit" onClick={() => { kit.startVisit(); close(); }} />}
         {kit.can.deal && <Tile icon={IndianRupee} label={tx('Offer', 'ऑफ़र')} tone="bg-amber-100 text-amber-800" testId="plus-offer" busy={busy === 'offer'} onClick={() => void run('offer', () => newest('OFFER'))} />}
         {kit.can.deal && <Tile icon={FileText} label={tx('Agreement', 'एग्रीमेंट')} tone="bg-emerald-100 text-emerald-700" testId="plus-agreement" busy={busy === 'agreement'} onClick={() => void run('agreement', () => newest('AGREEMENT'))} />}
+        {kit.can.deal && <Tile icon={FileCheck} label={tx('Mandate', 'मैंडेट')} tone="bg-indigo-100 text-indigo-700" testId="plus-mandate" busy={busy === 'mandate'} onClick={() => void run('mandate', () => newest('MANDATE'))} />}
         {kit.can.stage && <Tile icon={Flag} label={tx('Stage', 'स्टेज')} tone="bg-amber-100 text-amber-800" testId="plus-stage" onClick={() => setView('stage')} />}
       </div>
       {kit.can.private && (

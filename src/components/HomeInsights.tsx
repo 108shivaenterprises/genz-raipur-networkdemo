@@ -10,6 +10,8 @@ import { formatINR, formatDateTime } from '../lib/utils.js';
 import type { TabType } from './NavigationTabs.js';
 import { CostSheet } from './CostSheet.js';
 import { goto } from '../lib/goto.js';
+import { BuyerClientRooms } from './BuyerClientRooms.js';
+import { GenzCoinsWallet } from './GenzCoinsWallet.js';
 
 const card = 'rounded-xl border border-slate-200 bg-white p-4';
 const stat = 'rounded-lg bg-slate-50 px-3 py-2 text-center';
@@ -72,6 +74,8 @@ export const HomeInsights: React.FC<{ role: string; onNavigate: (t: TabType) => 
   if (d.role === 'BUYER_TENANT') {
     return (
       <div className="mt-6 space-y-6" data-testid="insight-buyer">
+        <BuyerClientRooms />
+        <GenzCoinsWallet />
         {/* v87 — upcoming visits (with their codes) are already on the buyer's Home card above; this one keeps only the visits already done, so the same visit is never listed twice */}
         {d.visits.some((v: any) => v.verified) && (
           <section className={card} data-testid="buyer-past-visits">

@@ -216,6 +216,35 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
                 </div>
               )}
 
+              {/* Complainant Self-Resolve / Mutual Withdrawal */}
+              {selectedDispute.complainantId === currentUser.id && !['RESOLVED', 'DISMISSED'].includes(selectedDispute.status) && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3" data-testid="dispute-self-resolve-box">
+                  <div className="text-xs text-emerald-950">
+                    <p className="font-bold">{tx('Settled mutually with the other party?', 'क्या दूसरी पार्टी से बात करके मामला सुलझ गया?')}</p>
+                    <p className="text-emerald-800 mt-0.5">{tx('You filed this dispute — you can withdraw it yourself and lift the hold without waiting for GENZ.', 'यह शिकायत आपने दर्ज की है — आप खुद इसे वापस लेकर रोक हटा सकते हैं।')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    data-testid="dispute-withdraw-btn"
+                    onClick={async () => {
+                      setIsSubmitting(true);
+                      try {
+                        await api.withdrawDispute(selectedDispute.id, 'Mutually resolved by parties');
+                        onRefreshDisputes();
+                      } catch (err: any) {
+                        window.alert(err.message || tx('Could not withdraw dispute', 'विवाद वापस नहीं लिया जा सका'));
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    className="shrink-0 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {tx('✅ Resolved — Withdraw Dispute', '✅ आपस में सुलझ गया — शिकायत हटाएँ')}
+                  </button>
+                </div>
+              )}
+
               {/* Admin Arbitration Form */}
               {isAdmin && selectedDispute.status !== 'RESOLVED' && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
