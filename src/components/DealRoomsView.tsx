@@ -124,7 +124,7 @@ const STAGE_RANK = ['Lead', 'Introduction', 'Site Visit Done', 'Negotiation', 'A
 const PAYER_HI: Record<string, string> = { SELLER: 'विक्रेता', BUYER: 'खरीदार', SPLIT_EQUAL: 'खरीदार-विक्रेता आधा-आधा', BUILDER_DEVELOPER: 'बिल्डर / डेवलपर' };
 const AUTH_METHOD_HI: Record<string, string> = { COMPLIANT_E_SIGN_PKEY: 'डिजिटल मंज़ूरी', AADHAAR_ESIGN_GATEWAY: 'आधार e-Sign', DIGITAL_SEAL: 'डिजिटल सील' };
 
-const OFFER_STATUS_HI: Record<string, string> = { PENDING: 'जवाब बाकी', ACCEPTED: 'मंज़ूर', REJECTED: 'ठुकराया', COUNTERED: 'काउंटर भेजा' };
+const OFFER_STATUS_HI: Record<string, string> = { PENDING: 'जवाब बाकी', ACCEPTED: 'मंज़ूर', REJECTED: 'ठुकराया', COUNTERED: 'काउंटर भेजा', EXPIRED: 'समय समाप्त', WITHDRAWN: 'वापस लिया' };
 const LEGAL_OPINION_HI: Record<string, string> = { TITLE_CLEAR_MARKETABLE: 'क़ानूनी समीक्षा पूरी', SUBJECT_TO_CONDITIONS: 'शर्तों के साथ', DEFECT_FOUND: 'कमी मिली', PENDING_OPINION: 'राय बाकी' };
 const LEGAL_OPINION_EN: Record<string, string> = { TITLE_CLEAR_MARKETABLE: 'Legal review done', SUBJECT_TO_CONDITIONS: 'Subject to conditions', DEFECT_FOUND: 'Defect found', PENDING_OPINION: 'Opinion pending' };
 
@@ -454,6 +454,19 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
       }
     } catch (err: any) {
       toast(err.message || tx('Could not accept the proposal', 'प्रस्ताव मंज़ूर नहीं हो पाया'), 'error');
+    } finally {
+      setRespondingOfferId(null);
+    }
+  };
+
+  const handleWithdrawOffer = async (offerId: string) => {
+    if (!await confirm(tx('Withdraw request', 'अनुरोध वापस लें'), tx('Take back this co-broke request? You can propose again afterwards.', 'यह को-ब्रोक अनुरोध वापस लें? बाद में आप फिर प्रस्ताव दे सकते हैं।'))) return;
+    try {
+      setRespondingOfferId(offerId);
+      const res = await api.respondOffer(offerId, { decision: 'WITHDRAW' });
+      if (res.success) { toast(tx('Request withdrawn.', 'अनुरोध वापस ले लिया गया।'), 'info'); onRefreshOffers?.(); }
+    } catch (err: any) {
+      toast(err.message, 'error');
     } finally {
       setRespondingOfferId(null);
     }
@@ -1044,7 +1057,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                 <DealSimple key={activeDeal.id} meId={currentUser.id} canCostSheet={perm('inventory:share')} pending={[
                   ...(isOwnerViewer && !activeDeal.ownerRemunerationConfirmed && perm('mandate:read') ? [{ id: 'mandate', en: 'Confirm your brokerage terms (mandate)', hi: 'अपनी ब्रोकरेज शर्तें (मैंडेट) कन्फ़र्म करें', go: () => setMainMode('MANDATES') }] : []),
                   ...(isOwnerViewer ? activeVisits.filter((v: SiteVisit) => !v.isVerified).slice(0, 3) : []).map((v: SiteVisit) => ({ id: `visit-${v.id}`, en: `Visit ${v.id} (${v.customerName}): code not entered yet`, hi: `विज़िट ${v.id} (${v.customerName}): OTP अभी नहीं डाला`, go: () => pickView(false) })),
-                ]} item={hubItemOf(activeDeal.id)} onBookVisit={perm('sitevisit:create') && !activeDeal.closed && activeDeal.stage !== 'Settled' ? () => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId) : undefined} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
+                ]} item={hubItemOf(activeDeal.id)} onFileDispute={perm('dispute:create') && !activeDeal.closed ? () => onOpenFileDispute(activeDeal.id) : undefined} onBookVisit={perm('sitevisit:create') && !activeDeal.closed && activeDeal.stage !== 'Settled' ? () => onOpenScheduleVisit(activeDeal.id, activeDeal.propertyId) : undefined} phone={(() => { const o: any = currentUser.id === activeDeal.introducingBrokerId ? participants?.closingBroker : currentUser.id === activeDeal.closingBrokerId ? participants?.introducingBroker : undefined; return typeof o?.phone === 'string' ? o.phone : undefined; })()}
                   doors={[
                     ...(perm('deal:chat') ? ['chat_call' as const] : []), ...(canTasks ? ['responsibilities' as const] : []),
                     ...(hideCommercials || !perm('agreement:read') ? [] : ['commission_agreement' as const]),
@@ -2541,7 +2554,7 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5"
                       >
                         <Scale className="h-3.5 w-3.5" />
-                        <span>{tx('File Formal Dispute', 'विवाद दर्ज करें')}</span>
+                        <span>{tx('File Formal Dispute', 'औपचारिक विवाद दर्ज करें')}</span>
                       </button>
                       )}
                     </div>
@@ -2818,6 +2831,17 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                           </>
                         )}
 
+                        {(isPending || isCountered) && offer.lastActorId === currentUser.id && (
+                          <button
+                            data-testid={`withdraw-${offer.id}`}
+                            onClick={() => handleWithdrawOffer(offer.id)}
+                            disabled={respondingOfferId === offer.id}
+                            className="py-2 px-3 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 font-semibold text-xs transition-colors"
+                          >
+                            {tx('Withdraw my request', 'मेरा अनुरोध वापस लें')}
+                          </button>
+                        )}
+
                         {isAccepted && (
                           <button
                             onClick={() => {
@@ -2914,6 +2938,16 @@ export const DealRoomsView: React.FC<DealRoomsViewProps> = ({
                         >
                           <Briefcase className="h-3.5 w-3.5 text-amber-400" />
                           <span>{tx('Open Deal Room', 'डील रूम खोलें')} →</span>
+                        </button>
+                      )}
+                      {(offer.status === 'PENDING' || offer.status === 'COUNTERED') && (offer.lastActorId || offer.proposingBrokerId) === currentUser.id && (
+                        <button
+                          data-testid={`withdraw-sent-${offer.id}`}
+                          onClick={() => handleWithdrawOffer(offer.id)}
+                          disabled={respondingOfferId === offer.id}
+                          className="w-full py-2 px-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition-colors"
+                        >
+                          {tx('Withdraw my request', 'मेरा अनुरोध वापस लें')}
                         </button>
                       )}
                     </div>

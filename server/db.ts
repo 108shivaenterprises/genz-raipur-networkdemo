@@ -728,6 +728,8 @@ export interface UserProfile {
   /** v15 broker tier: TIER1 = RERA badge, TIER2 = local associate (vouched). Absent = derived from reraNumber. */
   tier?: 'TIER1' | 'TIER2';
   /** v117 — a local associate who got his RERA registration later asks to move up; GENZ checks it on the RERA portal and approves (→ TIER1) or says why not */
+  /** the current RERA number was taken on trust at once (AUTO); kept even while a newer claim waits, so the member-report demotion still knows */
+  reraAuto?: boolean;
   reraClaim?: { number: string; at: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string; decidedAt?: string; decidedBy?: string };
   /** v16.8 — the GENZ desk can mark a RERA firm as BIG_FIRM / INDEPENDENT for network launches (absent = by team size) */
   firmSegment?: 'BIG_FIRM' | 'INDEPENDENT';
@@ -916,7 +918,9 @@ export interface CollaborationOffer {
   /** v41 — the side the PROPOSING broker acts for (OWN_SIDE only); the receiver is the other side */
   proposerSide?: 'SELLER' | 'BUYER';
   terms: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED';
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXPIRED' | 'WITHDRAWN';
+  /** D23 r12 — an open co-broke request lapses after this (7 days from the last move) */
+  validUntil?: string;
   /** who made the latest move; the *other* party must answer next */
   lastActorId?: string;
   dealRoomId?: string;

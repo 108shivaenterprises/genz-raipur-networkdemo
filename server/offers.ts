@@ -16,6 +16,7 @@ import { PROBATION_LIVE_OFFERS } from '../src/shared/networkRules.js';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { daysFor } from './protection.js';
+import { alert } from './alerts.js';
 import { pushTo } from './webpush.js';
 import { buyerBondBlock, makeBuyerBond } from './buyerbond.js';
 import { partyBlock, partyCaution } from './partywatch.js';
@@ -170,6 +171,12 @@ export function sweepOffers(now = Date.now()): number {
     }
   }
   for (const id of touched) { const p = s.properties.find(x => x.id === id); if (p) { unlockIfFree(p); promoteNext(p); } }
+  // D23 r12 — a co-broke request nobody answered lapses; the broker who made the last move is told, and may propose again
+  for (const o of s.offers || []) if ((o.status === 'PENDING' || o.status === 'COUNTERED') && o.validUntil && Date.parse(o.validUntil) < now) {
+    o.status = 'EXPIRED'; o.respondedAt = nowIso(); n++;
+    db.appendAuditEvent('system', 'SUPERADMIN', 'DEAL', o.id, 'OFFER_EXPIRED', 'Co-broke request lapsed without an answer');
+    alert(o.lastActorId || o.proposingBrokerId, 'deals', 'Your co-broke request expired', `Request ${o.id} got no answer in 7 days. You can propose again.`, '/?tab=collaborations', { tag: `cob-${o.id}`, hi: ['आपका को-ब्रोक अनुरोध समाप्त', `अनुरोध ${o.id} का 7 दिन में जवाब नहीं आया। आप फिर प्रस्ताव दे सकते हैं।`] });
+  }
   if (n) db.save();
   return n;
 }

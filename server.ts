@@ -35,6 +35,8 @@ import {
   projectCreateSchema,
   generateMandateHash,
   maskPhoneNumber,
+  noContact,
+  NO_CONTACT_MSG,
 } from './server/validation.js';
 import { sendSms } from './server/notify.js';
 import {
@@ -181,7 +183,7 @@ import { createOwnerAuthRouter, createOwnerListingRouter, applyOwnerListing, onM
 import { inPool } from './src/shared/ownerListRules.js';
 import { createHisaabRouter, createHisaabListRouter, leadShareEstimate, leadShareInfo } from './server/hisaab.js';
 import { issueJobCode, checkJobCode, unlockJobCode, triesLeft, codeState, JOBCODE_MAX_TRIES } from './server/jobcode.js';
-import { createMudraRouter, settleMudraQuiet, seedMudraDemo } from './server/mudra.js';
+import { createMudraRouter, settleMudraQuiet, seedMudraDemo, buyerOfDeal, disputeFrozen } from './server/mudra.js';
 import { likedHomeIds, roomIdByPhone, setVisitVerifier, roomForVisit, linkVisitToRoom, moveClientRoomVisit, createClientRoomRouter, createClientRoomPageRouter, sweepClientRooms } from './server/clientroom.js';
 import { createPhoneOtpRouter } from './server/phoneOtp.js';
 import { createForgotRouter, createOtpAdminRouter } from './server/otpManual.js';
@@ -881,8 +883,8 @@ app.post('/api/auth/register-invite', rateLimit('register', 10, 60 * 60_000), (r
   }
   // a buyer's or an owner's mobile is what ties him to his visits: it must be proven by a code, never just typed
   if ((invite.targetRole === 'BUYER_TENANT' || invite.targetRole === 'PROPERTY_OWNER') && !otpOk) return res.status(400).json({ error: 'Verify your mobile number with the code we send before you sign up.', errorHi: 'साइन-अप से पहले भेजे गए कोड से अपना मोबाइल नंबर वेरिफ़ाई करें।', code: 'OTP_REQUIRED' });
-  // a number already verified on a live account cannot be signed up again
-  if (phoneVerifiedElsewhere(phone)) return res.status(409).json({ error: 'This mobile number is already verified on another GENZ account. Sign in to that account, or use another number.', errorHi: 'यह मोबाइल नंबर पहले से किसी दूसरे GENZ अकाउंट पर वेरिफ़ाई है। उसी अकाउंट में साइन इन करें, या दूसरा नंबर इस्तेमाल करें।', code: 'PHONE_TAKEN' });
+  // a number already verified on a live account cannot be signed up again with a code (without a code the account is made unverified and ties to nothing)
+  if (otpOk && phoneVerifiedElsewhere(phone)) return res.status(409).json({ error: 'This mobile number is already verified on another GENZ account. Sign in to that account, or use another number.', errorHi: 'यह मोबाइल नंबर पहले से किसी दूसरे GENZ अकाउंट पर वेरिफ़ाई है। उसी अकाउंट में साइन इन करें, या दूसरा नंबर इस्तेमाल करें।', code: 'PHONE_TAKEN' });
   const phoneOnlyInvite = invite.invitedEmail.endsWith('@phone.genz.local');
   if (phoneOnlyInvite) {
     // Connector invited by mobile number only: the code is bound to that number.
@@ -1170,6 +1172,7 @@ function sanitizeProperty(p: any, user: UserProfile, state = db.getState()) {
   const out: any = { ...p };
   delete out.duplicateHash;
   delete out.ownerKeyHash;
+  if (p.listingBrokerId) out.listingBrokerActive = isActiveBroker(p.listingBrokerId);   // so the co-broke button can say up front when the listing broker is not active (the viewer's own user list omits pending brokers)
   if (isAdmin(user) || p.ownerId === user.id || p.listingBrokerId === user.id) out.quickReportCount = (p.quickReports || []).length;
   delete out.quickReports; delete out.quickReportsClearedAt;   // v182 — reporter ids stay on the server
   // v73 — fee / payment / requests of a self-listed property are for its owner, the assigned broker and GENZ staff only
@@ -2170,6 +2173,11 @@ app.get('/api/collaborations', needs('collab:read'), (_req: Request, res: Respon
   res.json({ success: true, offers: enrichedOffers, total: myOffers.length });
 });
 
+const COBROKE_DAYS = 7;
+const cobrokeUntil = () => new Date(Date.now() + COBROKE_DAYS * 86400_000).toISOString();
+const samePair = (a1: string, b1: string, a2: string, b2: string) => (a1 === a2 && b1 === b2) || (a1 === b2 && b1 === a2);
+const noContactBody = (res: Response) => res.status(400).json({ error: NO_CONTACT_MSG, errorHi: 'यहाँ फ़ोन नंबर, ई-मेल, UPI, Instagram / Telegram ID या चैट लिंक न लिखें — GENZ ख़ुद लोगों को जोड़ता है (चैट, विज़िट, कॉल)।', code: 'NO_CONTACT' });
+const otherParty = (o: { proposingBrokerId: string; receivingBrokerId: string }, me: string) => o.proposingBrokerId === me ? o.receivingBrokerId : o.proposingBrokerId;
 app.post('/api/collaborations', needs('collab:propose'), newAccountCap('collab', 5), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   if (currentUser.role !== 'BROKER') {
@@ -2209,8 +2217,10 @@ app.post('/api/collaborations', needs('collab:propose'), newAccountCap('collab',
     o.propertyId === data.propertyId && o.proposingBrokerId === currentUser.id && o.receivingBrokerId === targetBrokerId &&
     (o.status === 'PENDING' || o.status === 'COUNTERED'));
   if (dup) {
-    return res.status(409).json({ error: `An open offer (${dup.id}) already exists for this property and partner` });
+    return res.status(409).json({ error: `An open offer (${dup.id}) already exists for this property and partner`, errorHi: `इस प्रॉपर्टी और पार्टनर के लिए एक खुला ऑफ़र (${dup.id}) पहले से है`, code: 'DUPLICATE_OFFER' });
   }
+  const rev = state.offers.find(o => o.propertyId === data.propertyId && o.proposingBrokerId === targetBrokerId && o.receivingBrokerId === currentUser.id && (o.status === 'PENDING' || o.status === 'COUNTERED'));
+  if (rev) return res.status(409).json({ error: `That broker already sent you an open offer (${rev.id}) for this property — answer it instead`, errorHi: `उस ब्रोकर ने इसी प्रॉपर्टी के लिए आपको खुला ऑफ़र (${rev.id}) भेजा है — नया बनाने के बजाय उसका जवाब दें`, code: 'REVERSE_OFFER_OPEN' });
 
   const ownSide = data.feeMode === 'OWN_SIDE';
   if (ownSide) {
@@ -2238,10 +2248,12 @@ app.post('/api/collaborations', needs('collab:propose'), newAccountCap('collab',
     status: 'PENDING' as const,
     lastActorId: currentUser.id,
     createdAt: now,
+    validUntil: cobrokeUntil(),
   };
 
   state.offers.unshift(newOffer);
   db.save();
+  alert(targetBrokerId, 'deals', 'A co-broke request came in', `${currentUser.name || 'A broker'} asked to co-broke ${prop.title}. Open Collaborations to answer (valid ${COBROKE_DAYS} days).`, '/?tab=collaborations', { tag: `cob-${offerId}`, hi: ['को-ब्रोक का अनुरोध आया', `${currentUser.name || 'एक ब्रोकर'} ने ${prop.title} पर साथ काम करने को कहा है। जवाब के लिए Collaborations खोलें (${COBROKE_DAYS} दिन मान्य)।`] });
 
   db.appendAuditEvent(
     currentUser.id,
@@ -2272,41 +2284,54 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
   const { decision, counterIntroducingShare, counterClosingShare, notes } = req.body || {};
   // decision: 'ACCEPT' | 'REJECT' | 'COUNTER'
 
-  if (!['ACCEPT', 'REJECT', 'COUNTER'].includes(decision)) {
-    return res.status(400).json({ error: 'decision must be ACCEPT, REJECT or COUNTER' });
+  if (!['ACCEPT', 'REJECT', 'COUNTER', 'WITHDRAW'].includes(decision)) {
+    return res.status(400).json({ error: 'decision must be ACCEPT, REJECT, COUNTER or WITHDRAW', errorHi: 'फ़ैसला ACCEPT, REJECT, COUNTER या WITHDRAW होना चाहिए' });
   }
+  if (notes && !noContact(String(notes))) return noContactBody(res);   // the notes land in the terms / the deal notes that the other side reads
 
   const state = db.getState();
   const offer = db.byId('offers', id);
   if (!offer) {
-    return res.status(404).json({ error: 'Offer not found' });
+    return res.status(404).json({ error: 'Offer not found', errorHi: 'ऑफ़र नहीं मिला' });
   }
   if (offer.status !== 'PENDING' && offer.status !== 'COUNTERED') {
-    return res.status(409).json({ error: `Offer is already ${offer.status.toLowerCase()}` });
+    return res.status(409).json({ error: `Offer is already ${offer.status.toLowerCase()}`, errorHi: `यह ऑफ़र पहले ही ${({ ACCEPTED: 'मंज़ूर', REJECTED: 'अस्वीकार', EXPIRED: 'समाप्त', WITHDRAWN: 'वापस' } as Record<string, string>)[offer.status] || 'बंद'} हो चुका है`, code: 'OFFER_CLOSED' });
   }
 
   // Only the party whose turn it is may answer (a proposer can never accept their own offer).
   const parties = [offer.proposingBrokerId, offer.receivingBrokerId];
   const lastActor = offer.lastActorId || offer.proposingBrokerId;
+  // WITHDRAW: the one who made the last move takes it back, so a stale request never blocks a fresh one
+  if (decision === 'WITHDRAW') {
+    if (!parties.includes(currentUser.id) || currentUser.id !== lastActor) return res.status(403).json({ error: 'Only the broker who made the last move can withdraw it', errorHi: 'आख़िरी क़दम उठाने वाला ब्रोकर ही इसे वापस ले सकता है' });
+    offer.status = 'WITHDRAWN'; offer.respondedAt = new Date().toISOString(); db.save();
+    db.appendAuditEvent(currentUser.id, currentUser.role, 'DEAL', offer.id, 'OFFER_WITHDRAWN', 'Co-broke request withdrawn by the broker who made the last move');
+    alert(otherParty(offer, currentUser.id), 'deals', 'A co-broke request was withdrawn', `${currentUser.name || 'The broker'} withdrew the co-broke request ${offer.id}.`, '/?tab=collaborations', { tag: `cob-${offer.id}`, hi: ['को-ब्रोक अनुरोध वापस लिया गया', `${currentUser.name || 'ब्रोकर'} ने को-ब्रोक अनुरोध ${offer.id} वापस ले लिया।`] });
+    return res.json({ success: true, offer });
+  }
   if (!parties.includes(currentUser.id) || currentUser.id === lastActor) {
-    return res.status(403).json({ error: 'It is not your turn to respond to this offer' });
+    return res.status(403).json({ error: 'It is not your turn to respond to this offer', errorHi: 'इस ऑफ़र का जवाब देने की आपकी बारी नहीं है' });
   }
   if (!isActiveBroker(offer.proposingBrokerId) || !isActiveBroker(offer.receivingBrokerId)) {
-    return res.status(409).json({ error: 'Both parties must be verified brokers to proceed' });
+    return res.status(409).json({ error: 'Both parties must be verified brokers to proceed', errorHi: 'आगे बढ़ने के लिए दोनों पक्ष वेरिफ़ाइड ब्रोकर होने चाहिए' });
   }
 
+  if ((decision === 'ACCEPT' || decision === 'COUNTER') && offer.validUntil && Date.parse(offer.validUntil) < Date.now()) return res.status(409).json({ error: 'This co-broke request has expired. Ask the broker to send a new one.', errorHi: 'यह को-ब्रोक अनुरोध समाप्त हो चुका है। ब्रोकर से नया अनुरोध भेजने को कहें।', code: 'OFFER_EXPIRED' });
   const now = new Date().toISOString();
 
   if (decision === 'ACCEPT') {
     const prop = db.byId('properties', offer.propertyId);
     if (!prop || !PUBLIC_PROPERTY_STATUSES.includes(prop.listingStatus)) {
-      return res.status(409).json({ error: 'The property is no longer open for collaboration' });
+      return res.status(409).json({ error: 'The property is no longer open for collaboration', errorHi: 'यह प्रॉपर्टी अब को-ब्रोक के लिए खुली नहीं है' });
+    }
+    if (state.offers.some(o => o.id !== offer.id && o.status === 'ACCEPTED' && o.propertyId === offer.propertyId && samePair(o.proposingBrokerId, o.receivingBrokerId, offer.proposingBrokerId, offer.receivingBrokerId)) || state.dealRooms.some(d => d.propertyId === offer.propertyId && d.stage !== 'Settled' && samePair(d.introducingBrokerId, d.closingBrokerId, offer.proposingBrokerId, offer.receivingBrokerId))) {
+      return res.status(409).json({ error: 'These two brokers already have an accepted offer or a deal room on this property', errorHi: 'इन दोनों ब्रोकर का इस प्रॉपर्टी पर पहले से स्वीकार ऑफ़र या डील रूम है', code: 'DEAL_ROOM_EXISTS' });
     }
     const ownSide = offer.feeMode === 'OWN_SIDE';
     if (!ownSide && Math.abs(offer.proposedIntroducingShare + offer.proposedClosingShare - 100) > 0.001) {
-      return res.status(409).json({ error: 'Offer shares do not add up to 100%' });
+      return res.status(409).json({ error: 'Offer shares do not add up to 100%', errorHi: 'ऑफ़र के हिस्से मिलकर 100% नहीं बनते' });
     }
-    if (ownSide && !offer.proposerSide) return res.status(409).json({ error: 'This offer does not say which side the proposer acts for' });
+    if (ownSide && !offer.proposerSide) return res.status(409).json({ error: 'This offer does not say which side the proposer acts for', errorHi: 'इस ऑफ़र में नहीं लिखा कि प्रस्तावक किस तरफ़ है' });
     offer.status = 'ACCEPTED';
     offer.respondedAt = now;
     offer.lastActorId = currentUser.id;
@@ -2362,6 +2387,7 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
       `Collaboration offer accepted. Deal Room ${dealId} initialized with cryptographic terms hash ${newDealRoom.agreementHash.substring(0, 12)}...`
     );
 
+    alert(offer.proposingBrokerId, 'deals', 'Your co-broke request was accepted', `${currentUser.name || 'The broker'} accepted. Deal room ${dealId} is open.`, '/?tab=deals', { tag: `cob-${offer.id}`, hi: ['आपका को-ब्रोक अनुरोध मंज़ूर', `${currentUser.name || 'ब्रोकर'} ने मंज़ूर किया। डील रूम ${dealId} खुल गया है।`] });
     return res.json({ success: true, offer, dealRoom: newDealRoom });
   } else if (decision === 'COUNTER') {
     // v41: a counter may switch the offer to "each keeps his own client's fee" (counterFeeMode OWN_SIDE; the sides stay as proposed) or back to a % split
@@ -2371,13 +2397,13 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
     if (toOwn && !offer.proposerSide) {
       // the offer was a % split: the one who counters says which side HE acts for
       const mine = req.body?.mySide;
-      if (mine !== 'SELLER' && mine !== 'BUYER') return res.status(400).json({ error: 'Say which side you act for: seller or buyer' });
+      if (mine !== 'SELLER' && mine !== 'BUYER') return res.status(400).json({ error: 'Say which side you act for: seller or buyer', errorHi: 'बताएँ आप किस तरफ़ हैं: विक्रेता या खरीदार' });
       const bad = checkProposerSide(otherSide(mine), offer.proposingBrokerId, offer.receivingBrokerId, db.byId('properties', offer.propertyId)?.listingBrokerId);
       if (bad) return res.status(400).json({ error: bad, code: 'SIDE_MISMATCH' });
       offer.proposerSide = otherSide(mine);
     }
     if (!toOwn && ([a, b].some(n => !Number.isFinite(n) || n < 0 || n > 100) || Math.abs(a + b - 100) > 0.001)) {
-      return res.status(400).json({ error: 'Counter shares must be numbers between 0 and 100 that add up to exactly 100%' });
+      return res.status(400).json({ error: 'Counter shares must be numbers between 0 and 100 that add up to exactly 100%', errorHi: 'काउंटर हिस्से 0 से 100 के बीच हों और मिलकर ठीक 100% बनें' });
     }
     offer.status = 'COUNTERED';
     offer.proposedIntroducingShare = a;
@@ -2386,7 +2412,9 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
     offer.terms = notes ? `${offer.terms} | Counter: ${String(notes).slice(0, 500)}` : offer.terms;
     offer.respondedAt = now;
     offer.lastActorId = currentUser.id;
+    offer.validUntil = cobrokeUntil();
     db.save();
+    alert(otherParty(offer, currentUser.id), 'deals', 'Your co-broke request got a counter', `${currentUser.name || 'The broker'} sent a counter on ${offer.id}. Open Collaborations to answer.`, '/?tab=collaborations', { tag: `cob-${offer.id}`, hi: ['आपके को-ब्रोक अनुरोध पर काउंटर आया', `${currentUser.name || 'ब्रोकर'} ने ${offer.id} पर काउंटर भेजा है। जवाब के लिए Collaborations खोलें।`] });
 
     db.appendAuditEvent(
       currentUser.id,
@@ -2403,6 +2431,7 @@ app.post('/api/collaborations/:id/respond', needs('collab:respond'), (req: Reque
     offer.respondedAt = now;
     offer.lastActorId = currentUser.id;
     db.save();
+    alert(otherParty(offer, currentUser.id), 'deals', 'Your co-broke request was declined', `${currentUser.name || 'The broker'} declined ${offer.id}. You can propose again.`, '/?tab=collaborations', { tag: `cob-${offer.id}`, hi: ['आपका को-ब्रोक अनुरोध अस्वीकार', `${currentUser.name || 'ब्रोकर'} ने ${offer.id} अस्वीकार किया। आप फिर प्रस्ताव दे सकते हैं।`] });
 
     db.appendAuditEvent(
       currentUser.id,
@@ -2548,7 +2577,7 @@ app.get('/api/deals/:id', needs('deal:read'), (req: Request, res: Response) => {
   const property = db.byId('properties', deal.propertyId);
   const requirement = summaryOnly ? undefined : db.byId('requirements', deal.requirementId);
   const siteVisits = summaryOnly ? [] : state.siteVisits.filter(sv => sv.dealRoomId === deal.id).map(sv => sanitizeVisit(sv, currentUser, state));
-  const dispute = summaryOnly ? undefined : state.disputes.find(disp => disp.dealRoomId === deal.id);
+  const dispute = summaryOnly ? undefined : (state.disputes.find(disp => disp.dealRoomId === deal.id && ['OPEN', 'UNDER_REVIEW', 'MEDIATION'].includes(disp.status)) || state.disputes.find(disp => disp.dealRoomId === deal.id));
 
   const introducingBroker = db.byId('users', deal.introducingBrokerId);
   const closingBroker = db.byId('users', deal.closingBrokerId);
@@ -3722,13 +3751,27 @@ function canSeeDispute(user: UserProfile, d: any, state = db.getState()) {
     const lead = db.byId('constructionLeads', d.leadId);
     if (lead && (lead.referringBrokerId === user.id || lead.assignedContractorId === user.id)) return true;
   }
+  if (user.role === 'BUYER_TENANT' && d.dealRoomId && buyerOfDeal(d.dealRoomId) === user.id) return true;   // read-only: a dispute that froze his own voucher
   return false;
 }
 
+const disputeIssueHi = (m?: string) => m && /detailed factual description/.test(m) ? 'कृपया विवाद का विस्तृत और तथ्यात्मक विवरण लिखें (कम से कम 15 अक्षर)' : m && /safeUrl|valid link|URL/i.test(m) ? 'सबूत का लिंक सही नहीं है' : 'दी गई जानकारी जाँचें';
+/** a dispute still open after 7 days is pushed to the admins once (escalatedAt) */
+function sweepDisputes(now = Date.now()): number {
+  const s = db.getState(); let n = 0;
+  for (const d of s.disputes) if (['OPEN', 'UNDER_REVIEW', 'MEDIATION'].includes(d.status) && !(d as any).escalatedAt && Date.parse(d.createdAt) + 7 * 86400_000 < now) {
+    (d as any).escalatedAt = new Date(now).toISOString(); n++;
+    alert(s.users.filter(u => (u.role === 'ADMIN' || u.role === 'SUPERADMIN') && isVerifiedFull(u)).slice(0, 20).map(u => u.id), 'deals', 'A dispute is overdue', `${d.id} has been open for over 7 days. Please decide it.`, '/?tab=disputes', { tag: `dsp-late-${d.id}`, hi: ['विवाद की देरी', `${d.id} 7 दिन से ज़्यादा खुला है। कृपया फ़ैसला करें।`] });
+  }
+  if (n) db.save();
+  return n;
+}
 app.get('/api/disputes', needs('dispute:read'), (_req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const state = db.getState();
-  res.json({ success: true, disputes: state.disputes.filter(d => canSeeDispute(currentUser, d, state)) });
+  const rows = state.disputes.filter(d => canSeeDispute(currentUser, d, state));
+  // a buyer sees only that his voucher is on hold and the state of the dispute; never who filed it, what was said or the desk's notes
+  res.json({ success: true, disputes: currentUser.role === 'BUYER_TENANT' ? rows.map(d => ({ id: d.id, status: d.status, createdAt: d.createdAt, updatedAt: d.updatedAt, voucherOnHold: disputeFrozen(d.dealRoomId) })) : rows });
 });
 
 app.post('/api/disputes', needs('dispute:create'), (req: Request, res: Response) => {
@@ -3736,15 +3779,19 @@ app.post('/api/disputes', needs('dispute:create'), (req: Request, res: Response)
   const parseResult = disputeCreateSchema.safeParse(req.body);
 
   if (!parseResult.success) {
-    return res.status(400).json({ error: parseResult.error.issues[0]?.message || 'Validation error' });
+    return res.status(400).json({ error: parseResult.error.issues[0]?.message || 'Validation error', errorHi: disputeIssueHi(parseResult.error.issues[0]?.message) });
   }
 
   const data = parseResult.data;
   const state = db.getState();
+  // a dispute is always about a deal room or a lead the complainant is in; there is no free-form dispute against any user
+  if (!data.dealRoomId && !data.leadId) return res.status(400).json({ error: 'Pick the deal room or the lead this dispute is about', errorHi: 'जिस डील रूम या लीड के बारे में विवाद है, उसे चुनें', code: 'TARGET_REQUIRED' });
 
+  const OPEN_DISP = ['OPEN', 'UNDER_REVIEW', 'MEDIATION'];
+  if (state.disputes.filter(d => d.complainantId === currentUser.id && OPEN_DISP.includes(d.status)).length >= 3) return res.status(429).json({ error: 'You already have 3 open disputes. Wait for GENZ to close one before filing another.', errorHi: 'आपके 3 विवाद पहले से खुले हैं। नया दर्ज करने से पहले GENZ को कोई एक बंद करने दें।', code: 'TOO_MANY_OPEN' });
   const counterparty = db.byId('users', data.counterpartyId);
   if (!counterparty || counterparty.id === currentUser.id) {
-    return res.status(400).json({ error: 'Choose a valid counterparty (not yourself)' });
+    return res.status(400).json({ error: 'Choose a valid counterparty (not yourself)', errorHi: 'सही दूसरा पक्ष चुनें (आप ख़ुद नहीं)' });
   }
 
   // A dispute may only freeze a deal that the complainant actually participates in.
@@ -3752,25 +3799,32 @@ app.post('/api/disputes', needs('dispute:create'), (req: Request, res: Response)
   if (data.dealRoomId) {
     deal = db.byId('dealRooms', data.dealRoomId);
     if (!deal || !isDealParticipant(currentUser, deal)) {
-      return res.status(403).json({ error: 'You can only raise a dispute on a deal room you participate in' });
+      return res.status(403).json({ error: 'You can only raise a dispute on a deal room you participate in', errorHi: 'आप सिर्फ़ उसी डील रूम पर विवाद उठा सकते हैं जिसमें आप शामिल हैं' });
     }
     if (!isDealParticipant(counterparty, deal)) {
-      return res.status(400).json({ error: 'The counterparty is not a participant of this deal room' });
+      return res.status(400).json({ error: 'The counterparty is not a participant of this deal room', errorHi: 'दूसरा पक्ष इस डील रूम का भागीदार नहीं है' });
     }
     if (state.disputes.some(d => d.dealRoomId === deal.id && (d.status === 'OPEN' || d.status === 'UNDER_REVIEW' || d.status === 'MEDIATION'))) {
-      return res.status(409).json({ error: 'An open dispute already exists for this deal room' });
+      return res.status(409).json({ error: 'An open dispute already exists for this deal room', errorHi: 'इस डील रूम पर पहले से एक खुला विवाद है' });
     }
   }
   if (data.leadId) {
     const lead = db.byId('constructionLeads', data.leadId);
     if (!lead || (lead.referringBrokerId !== currentUser.id && lead.assignedContractorId !== currentUser.id)) {
-      return res.status(403).json({ error: 'You can only raise a dispute on a construction lead you are part of' });
+      return res.status(403).json({ error: 'You can only raise a dispute on a construction lead you are part of', errorHi: 'आप सिर्फ़ उसी कंस्ट्रक्शन लीड पर विवाद उठा सकते हैं जिसमें आप शामिल हैं' });
+    }
+    if (![lead.referringBrokerId, lead.assignedContractorId].includes(counterparty.id) || counterparty.id === currentUser.id) {
+      return res.status(400).json({ error: 'The counterparty must be the other person on this lead', errorHi: 'दूसरा पक्ष इसी लीड का दूसरा व्यक्ति होना चाहिए', code: 'COUNTERPARTY_NOT_ON_LEAD' });
+    }
+    if (state.disputes.some(d => d.leadId === lead.id && ['OPEN', 'UNDER_REVIEW', 'MEDIATION'].includes(d.status))) {
+      return res.status(409).json({ error: 'An open dispute already exists for this lead', errorHi: 'इस लीड पर पहले से एक खुला विवाद है' });
     }
   }
 
   const newDispute = fileDispute(state, currentUser, { dealRoomId: data.dealRoomId, leadId: data.leadId, counterparty, reason: data.reason, description: data.description, evidenceLinks: data.evidenceLinks }, deal);
   alert(counterparty?.id, 'deals', 'A dispute was raised with you', `${currentUser.name}${data.dealRoomId ? ` · ${data.dealRoomId}` : ''} — GENZ will look into it; you can reply in Disputes`, '/?tab=disputes', { not: currentUser.id, tag: `dsp-${newDispute.id}`, hi: ['आपके साथ एक विवाद दर्ज हुआ', `${currentUser.name}${data.dealRoomId ? ` · ${data.dealRoomId}` : ''} — GENZ देखेगा; आप Disputes में जवाब दे सकते हैं`] });
 
+  alert(state.users.filter(u => (u.role === 'ADMIN' || u.role === 'SUPERADMIN') && isVerifiedFull(u)).slice(0, 20).map(u => u.id), 'deals', 'A dispute was filed', `${currentUser.name} filed ${newDispute.id}${data.dealRoomId ? ` on ${data.dealRoomId}` : ''}. Open Disputes to review.`, '/?tab=disputes', { not: currentUser.id, tag: `dsp-new-${newDispute.id}`, hi: ['नया विवाद दर्ज हुआ', `${currentUser.name} ने ${newDispute.id}${data.dealRoomId ? ` (${data.dealRoomId})` : ''} दर्ज किया। समीक्षा के लिए Disputes खोलें।`] });
   res.json({ success: true, dispute: newDispute });
 });
 
@@ -3830,40 +3884,39 @@ function fileDispute(
 app.post('/api/disputes/:id/resolve', needs('dispute:resolve'), (req: Request, res: Response) => {
   const currentUser = getCurrentUser();
   const { id } = req.params;
-  const { status, resolutionNotes, liftHold, blacklistParty } = req.body || {};
+  const { status, resolutionNotes, blacklistParty } = req.body || {};
 
   const state = db.getState();
   const dispute = db.byId('disputes', id);
   if (!dispute) {
-    return res.status(404).json({ error: 'Dispute not found' });
+    return res.status(404).json({ error: 'Dispute not found', errorHi: 'विवाद नहीं मिला' });
   }
   const newStatus = status || 'RESOLVED';
   if (!['UNDER_REVIEW', 'MEDIATION', 'RESOLVED', 'DISMISSED'].includes(newStatus)) {
-    return res.status(400).json({ error: 'status must be UNDER_REVIEW, MEDIATION, RESOLVED or DISMISSED' });
+    return res.status(400).json({ error: 'status must be UNDER_REVIEW, MEDIATION, RESOLVED or DISMISSED', errorHi: 'स्थिति UNDER_REVIEW, MEDIATION, RESOLVED या DISMISSED होनी चाहिए' });
   }
   const closing = newStatus === 'RESOLVED' || newStatus === 'DISMISSED';
+  const liftHold = closing;   // closing ALWAYS lifts the hold (a request to keep it is ignored): a closed dispute can never leave a deal or coins frozen
   if (closing && (!resolutionNotes || String(resolutionNotes).trim().length < 10)) {
-    return res.status(400).json({ error: 'Resolution notes (min 10 characters) are required to close a dispute' });
+    return res.status(400).json({ error: 'Resolution notes (min 10 characters) are required to close a dispute', errorHi: 'विवाद बंद करने के लिए समाधान के नोट्स (कम से कम 10 अक्षर) लिखना ज़रूरी है' });
   }
   if (dispute.status === 'RESOLVED' || dispute.status === 'DISMISSED') {
-    return res.status(409).json({ error: 'Dispute is already closed' });
+    return res.status(409).json({ error: 'Dispute is already closed', errorHi: 'यह विवाद पहले ही बंद हो चुका है' });
   }
+  if (blacklistParty && (!resolutionNotes || String(resolutionNotes).trim().length < 10)) return res.status(400).json({ error: 'Write the reason (min 10 characters) before blacklisting a party', errorHi: 'किसी पक्ष को ब्लैकलिस्ट करने से पहले कारण (कम से कम 10 अक्षर) लिखें', code: 'NOTES_REQUIRED' });
   if (blacklistParty) {
     if (!can(currentUser, 'users:blacklist')) {
-      return res.status(403).json({ error: 'Only a SUPERADMIN can blacklist a party' });
+      return res.status(403).json({ error: 'Only a SUPERADMIN can blacklist a party', errorHi: 'किसी पक्ष को ब्लैकलिस्ट सिर्फ़ SUPERADMIN कर सकता है' });
     }
     const offender = db.byId('users', dispute.counterpartyId);
     if (offender && (offender.role === 'SUPERADMIN' || offender.role === 'ADMIN')) {
-      return res.status(403).json({ error: 'Administrators cannot be blacklisted through a dispute' });
+      return res.status(403).json({ error: 'Administrators cannot be blacklisted through a dispute', errorHi: 'विवाद के ज़रिए एडमिन को ब्लैकलिस्ट नहीं किया जा सकता' });
     }
   }
 
   const now = new Date().toISOString();
   dispute.status = newStatus;
-  dispute.resolutionNotes = String(resolutionNotes || 'Reviewed and closed by a GENZ admin.').slice(0, 2000);
-  if (liftHold && closing) {
-    dispute.settlementHold = false;
-  }
+  if (closing) { dispute.resolutionNotes = String(resolutionNotes).trim().slice(0, 2000); dispute.settlementHold = false; }   // mediation / review never overwrite the closing notes
   dispute.updatedAt = now;
 
   // a closed dispute releases the commission shares it had marked DISPUTED (v21: they used to stay frozen until an admin typed a payment)
@@ -3893,6 +3946,8 @@ app.post('/api/disputes/:id/resolve', needs('dispute:resolve'), (req: Request, r
   }
 
   db.save();
+  const doneEn: Record<string, string> = { UNDER_REVIEW: 'is under review', MEDIATION: 'is in mediation', RESOLVED: 'was resolved', DISMISSED: 'was dismissed' }; const doneHi: Record<string, string> = { UNDER_REVIEW: 'की समीक्षा चल रही है', MEDIATION: 'में मध्यस्थता चल रही है', RESOLVED: 'का समाधान हो गया', DISMISSED: 'ख़ारिज कर दिया गया' };
+  alert([dispute.complainantId, dispute.counterpartyId], 'deals', 'Your dispute update', `Dispute ${dispute.id} ${doneEn[newStatus]}.`, '/?tab=disputes', { not: currentUser.id, tag: `dsp-${dispute.id}-${newStatus}`, hi: ['विवाद की ताज़ा स्थिति', `विवाद ${dispute.id} ${doneHi[newStatus]}।`] });
 
   db.appendAuditEvent(
     currentUser.id,
@@ -6280,7 +6335,7 @@ async function startServer() {
   app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     if (res.headersSent) return;
     if (err instanceof HttpError) return res.status(err.status).json(err.code ? { error: err.message, code: err.code } : { error: err.message });
-    if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large' });
+    if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large', errorHi: 'भेजी गई फ़ाइल या डेटा बहुत बड़ा है — छोटी फ़ाइल चुनें या फ़ोटो छोटी करें।', code: 'TOO_LARGE' });
     if (err instanceof SyntaxError && 'body' in err) return res.status(400).json({ error: 'Malformed JSON' });
     console.error('[ERROR]', err);
     noteServerError(req.method + ' ' + req.path, err);
@@ -6305,7 +6360,7 @@ async function startServer() {
 
   // v11: listings nobody confirmed for 30 days leave the network until the broker taps "still available".
   for (const [name, fn] of [
-    ['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers],
+    ['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['disputes', sweepDisputes],
     ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs],
     ['photoChecks', healPhotoChecks], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms],
     ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch],
@@ -6317,7 +6372,7 @@ async function startServer() {
   }
   setInterval(() => {
     // v20: one failing sweep must not stop the others (or crash the process)
-    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['paymentDue', sweepPaymentDue], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['sahayak', sweepSahayak], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)], ['signupPrune', pruneSignupCounters]] as [string, () => unknown][]) {
+    for (const [name, fn] of [['listings', sweepListings], ['control', sweepControl], ['visitPasses', sweepVisitPasses], ['offers', sweepOffers], ['disputes', sweepDisputes], ['soldPurge', sweepSoldPurge], ['network', sweepNetwork], ['crm', sweepCrm], ['idDocs', sweepIdDocs], ['kycVault', sweepKycVault], ['kycHolds', sweepKycHolds], ['consents', sweepConsents], ['clientRooms', sweepClientRooms], ['pageEnquiries', sweepPageEnquiries], ['rent', sweepRent], ['visitAcks', sweepVisitAcks], ['partyWatch', sweepPartyWatch], ['targetBonus', sweepTargetBonus], ['dealClosures', sweepDealClosures], ['paymentDue', sweepPaymentDue], ['hr', sweepHr], ['calls', sweepCalls], ['shopPartners', () => { watchShares(); sweepShopPartners(); }], ['sahayak', sweepSahayak], ['inbox', sweepInbox], ['ownerListings', sweepOwnerListings], ['digestPush', sweepDigestPush], ['revenue', sweepRevenue], ['legal', sweepLegal], ['auditChain', () => db.verifyAuditIntegrity(true)], ['signupPrune', pruneSignupCounters]] as [string, () => unknown][]) {
       try { fn(); } catch (e: any) { console.error(`[SWEEP] ${name} failed:`, e?.message || e); }
     }
   }, 60 * 60_000).unref();

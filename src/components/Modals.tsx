@@ -1168,11 +1168,7 @@ export const CollaborationModal: React.FC<{
                 min={0}
                 max={100}
                 value={introducingShare}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setIntroducingShare(val);
-                  setClosingShare(100 - val);
-                }}
+                onChange={(e) => setIntroducingShare(Number(e.target.value))}   // each box keeps what was typed; the sum is checked below
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-bold text-slate-900"
               />
             </div>
@@ -1184,15 +1180,12 @@ export const CollaborationModal: React.FC<{
                 min={0}
                 max={100}
                 value={closingShare}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setClosingShare(val);
-                  setIntroducingShare(100 - val);
-                }}
+                onChange={(e) => setClosingShare(Number(e.target.value))}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs font-bold text-slate-900"
               />
             </div>
           </div>
+          {introducingShare + closingShare !== 100 && <p className="text-xs font-semibold text-red-700" role="alert" data-testid="split-sum-error">{tx(`The two shares add up to ${introducingShare + closingShare}%, they must add up to exactly 100%.`, `दोनों हिस्से मिलकर ${introducingShare + closingShare}% हैं, ठीक 100% होने चाहिए।`)}</p>}
           </>)}
 
           <div>
@@ -1856,7 +1849,7 @@ export const FileDisputeModal: React.FC<{
   useEffect(() => {
     if (!isOpen) return;
     setCounterpartyId(''); setError('');
-    if (!dealId) { setParties(directory.filter(u => u.id !== currentUserId)); return; }
+    if (!dealId) { setParties([]); return; }   // a dispute is always about one deal room: no directory of everybody
     let live = true;
     setLoadingParties(true);
     api.getDeal(dealId).then((r) => {
@@ -1876,6 +1869,7 @@ export const FileDisputeModal: React.FC<{
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!dealId) { setError(tx('Open the deal room first, then raise the dispute there.', 'पहले डील रूम खोलें, फिर वहीं विवाद उठाएँ।')); return; }
     if (!counterpartyId) { setError(tx('Choose who the dispute is against.', 'चुनें कि विवाद किसके ख़िलाफ़ है।')); return; }
     if (description.trim().length < 15) { setError(tx('Please describe what happened in at least 15 characters.', 'कृपया क्या हुआ, कम से कम 15 अक्षरों में लिखें।')); return; }
     setLoading(true);
@@ -1915,7 +1909,8 @@ export const FileDisputeModal: React.FC<{
 
         {error && <div className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">{error}</div>}
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+        {!dealId && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 border border-amber-200" data-testid="dispute-needs-deal">{tx('A dispute is raised on a deal room you are in. Open that deal room and use “File Formal Dispute” there.', 'विवाद उसी डील रूम पर उठता है जिसमें आप हैं। वह डील रूम खोलें और वहीं “औपचारिक विवाद दर्ज करें” चुनें।')}</p>}
+        <form onSubmit={handleSubmit} noValidate className={`mt-4 space-y-3 ${dealId ? '' : 'pointer-events-none opacity-50'}`}>
           <div>
             <label className="text-xs font-semibold text-slate-700">{tx('Dispute type:', 'विवाद का प्रकार:')}</label>
             <select value={reason} onChange={(e) => setReason(e.target.value)} className={field}>
@@ -1927,7 +1922,7 @@ export const FileDisputeModal: React.FC<{
 
           <div>
             <label className="text-xs font-semibold text-slate-700">{tx('Against:', 'किसके ख़िलाफ़:')}</label>
-            <select required value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)} className={field} disabled={loadingParties}>
+            <select value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)} className={field} disabled={loadingParties}>
               <option value="">{loadingParties ? tx('Loading…', 'लोड हो रहा है…') : dealId ? tx('Choose a person in this deal room', 'इस डील रूम का कोई व्यक्ति चुनें') : tx('Choose a network member', 'नेटवर्क का कोई सदस्य चुनें')}</option>
               {parties.map(u => <option key={u.id} value={u.id}>{u.name} — {label('role', u.role)}</option>)}
             </select>
@@ -1940,8 +1935,6 @@ export const FileDisputeModal: React.FC<{
             <label className="text-xs font-semibold text-slate-700">{tx('What happened (facts only):', 'क्या हुआ (सिर्फ़ तथ्य):')}</label>
             <textarea
               rows={4}
-              required
-              minLength={15}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={tx('e.g. On 12 Oct the owner called the buyer I introduced and discussed the price directly, after the site visit I had registered.', 'जैसे: 12 अक्टूबर को मेरे दर्ज किए साइट विज़िट के बाद मालिक ने मेरे बताए खरीदार को फ़ोन करके सीधे कीमत पर बात की।')}

@@ -303,6 +303,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'property:read',
     'requirement:read', 'requirement:create', 'matching:run',
     'sitevisit:read', 'sitevisit:secret_view',
+    'dispute:read',   // read-only, and only rows that froze his own voucher
   ],
 
   // Contractor — construction referral desk only.

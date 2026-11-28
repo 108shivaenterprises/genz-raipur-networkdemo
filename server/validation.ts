@@ -56,7 +56,7 @@ export const indianPhoneRegex = /^(?:(?:\+91[\s-]?)?[6789]\d{9})$/;
 
 /** v100 — text that ANOTHER person reads (listing text, offer terms, visit notes) never carries a phone number, e-mail, UPI / social id or chat link: GENZ connects people itself */
 export const NO_CONTACT_MSG = 'Do not write phone numbers, e-mail, UPI, Instagram / Telegram IDs or chat links here — GENZ connects people itself (chat, visit, call).';
-const noContact = (v: string) => !containsContact(v);
+export const noContact = (v: string) => !containsContact(v);
 
 export const phoneSchema = z.string().refine(val => indianPhoneRegex.test(val.replace(/\s+/g, '')), {
   message: 'Please provide a valid Indian 10-digit mobile number (+91 9XXXX XXXXX)',

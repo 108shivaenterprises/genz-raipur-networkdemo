@@ -61,7 +61,8 @@ describe('apna-apna side offer → deal room', () => {
   it('finds a property listed by BRK1; BRK2 (buyer side) proposes OWN_SIDE; wrong side is refused', async () => {
     const list = await (await call(jar.BRK2, 'GET', '/api/properties')).json();
     const arr = Array.isArray(list) ? list : list.properties;
-    prop = arr.find((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.verificationStatus === 'VERIFIED');
+    const taken = new Set((((await (await call(jar.BRK2, 'GET', '/api/deals')).json()).deals) || []).map((d: any) => d.propertyId));   // a listing the two brokers already share a deal room on cannot be accepted again (round 12)
+    prop = arr.find((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.verificationStatus === 'VERIFIED' && !taken.has(p.id));
     expect(prop).toBeTruthy();
     const bad = await call(jar.BRK2, 'POST', '/api/collaborations', { propertyId: prop.id, feeMode: 'OWN_SIDE', proposerSide: 'SELLER', terms: 'try wrong side', receivingBrokerId: 'USR-BRK-001' });
     expect(bad.status).toBe(400);
@@ -113,7 +114,8 @@ describe('apna-apna side offer → deal room', () => {
   it('a % split offer can be countered into apna-apna side', async () => {
     const p2 = (await (await call(jar.BRK2, 'GET', '/api/properties')).json());
     const arr = Array.isArray(p2) ? p2 : p2.properties;
-    const other = arr.find((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.verificationStatus === 'VERIFIED' && p.id !== prop.id);
+    const taken = new Set((((await (await call(jar.BRK2, 'GET', '/api/deals')).json()).deals) || []).map((d: any) => d.propertyId));   // a listing the two brokers already share a deal room on cannot be accepted again (round 12)
+    const other = arr.find((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.verificationStatus === 'VERIFIED' && p.id !== prop.id);   // only countered here, never accepted
     expect(other).toBeTruthy();
     const o = await call(jar.BRK2, 'POST', '/api/collaborations', { propertyId: other.id, proposedIntroducingShare: 60, proposedClosingShare: 40, terms: 'split', receivingBrokerId: 'USR-BRK-001' });
     expect(o.status).toBe(200);

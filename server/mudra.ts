@@ -37,9 +37,11 @@ export function buyerOfDeal(dealId: string): string | null {
   if (!req || ![deal.introducingBrokerId, deal.closingBrokerId].includes(req.assignedBrokerId)) return null;
   return req.buyerId || null;
 }
+/** a deal under a live dispute (an open / under-review / mediation dispute on it): its credit waits and unfreezes by itself when the dispute closes */
+export const disputeFrozen = (dealId?: string): boolean => { if (!dealId) return false; const s = st(); const d = s.dealRooms.find(x => x.id === dealId); return !!d && (s.disputes || []).some(x => x.dealRoomId === dealId && ['OPEN', 'UNDER_REVIEW', 'MEDIATION'].includes(x.status)); };   // ONLY a live dispute freezes: a closed one can never leave coins stuck
 const dealFrozen = (dealId?: string): boolean => {
   if (!dealId) return false; const d = st().dealRooms.find(x => x.id === dealId);
-  return !d || d.stage === 'Disputed' || d.closure?.status === 'CLOSED';   // disputed or called off = the credit does not count (clawback by derivation; the ledger is untouched)
+  return !d || d.stage === 'Disputed' || d.closure?.status === 'CLOSED' || disputeFrozen(dealId);   // disputed or called off = the credit does not count (clawback by derivation; the ledger is untouched)
 };
 
 /** balance and the usable lots, derived from the ledger only */
@@ -136,7 +138,8 @@ export function createMudraRouter(): Router {
   r.get('/me', (_req, res) => {
     const u = me(); if (u.role !== 'BUYER_TENANT') return bad(res, 'GENZ Mudra is for buyers and tenants only', 'GENZ मुद्रा सिर्फ़ खरीदार और किरायेदार के लिए है', 403);
     const b = mudraBalance(u.id);
-    res.json({ success: true, config: publicCfg(), balance: b.balance, lots: b.lots, entries: st().mudraEntries.filter(e => e.userId === u.id).slice(-50).reverse(), redemptions: st().mudraRedemptions.filter(x => x.userId === u.id).slice(-50).reverse() });
+    const frozenByDispute = st().mudraEntries.some(e => e.userId === u.id && e.kind === 'CREDIT' && disputeFrozen(e.dealId));
+    res.json({ success: true, config: publicCfg(), balance: b.balance, frozenByDispute, lots: b.lots, entries: st().mudraEntries.filter(e => e.userId === u.id).slice(-50).reverse(), redemptions: st().mudraRedemptions.filter(x => x.userId === u.id).slice(-50).reverse() });
   });
   /** the buyer's OWN open invoices only */
   r.get('/invoices', (_req, res) => {
@@ -161,7 +164,9 @@ export function createMudraRouter(): Router {
     const capPct = Math.min(cfg.maxDiscountPct, partner.feePct);   // the discount can never exceed what GENZ earns from this partner
     const cap = Math.floor(inv.amountInr * capPct / 100);
     if (b.coins > cap) return bad(res, `At most ₹${cap} (${capPct}% of the invoice) can be taken as discount on this invoice`, `इस इनवॉइस पर अधिकतम ₹${cap} (${capPct}%) डिस्काउंट मिल सकता है`, 400, { code: 'OVER_CAP', cap });
-    const bal = mudraBalance(u.id).balance; if (b.coins > bal) return bad(res, `You have ₹${bal} of voucher left`, `आपके पास ₹${bal} का वाउचर बचा है`, 400, { code: 'NOT_ENOUGH', balance: bal });
+    const bal = mudraBalance(u.id).balance;
+    if (b.coins > bal && s.mudraEntries.some(e => e.userId === u.id && e.kind === 'CREDIT' && disputeFrozen(e.dealId))) return bad(res, 'Part of your voucher is on hold because a deal is under dispute. It opens again when GENZ closes the dispute.', 'आपके वाउचर का एक हिस्सा रुका है क्योंकि एक डील पर विवाद चल रहा है। GENZ के विवाद बंद करते ही वह फिर खुल जाएगा।', 409, { code: 'DISPUTE_FROZEN', balance: bal });
+    if (b.coins > bal) return bad(res, `You have ₹${bal} of voucher left`, `आपके पास ₹${bal} का वाउचर बचा है`, 400, { code: 'NOT_ENOUGH', balance: bal });
     const at = new Date().toISOString(); const rid = `MRD-${s.mudraRedemptions.length + 1}-${Math.random().toString(36).slice(2, 6)}`;
     const red = { id: rid, invoiceId: inv.id, userId: u.id, partnerId: partner.id, partnerName: partner.name, invoiceRef: inv.invoiceRef, invoiceAmount: inv.amountInr, discount: b.coins, at };
     inv.status = 'PAID'; inv.paidAt = at; inv.settlement = splitFor(inv.amountInr, b.coins, partner.feePct); s.mudraRedemptions.push(red); s.mudraEntries.push({ id: `MUD-D-${rid}`, userId: u.id, kind: 'DEBIT', amount: b.coins, redemptionId: rid, at, note: `Discount at ${partner.name}` });

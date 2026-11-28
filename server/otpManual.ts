@@ -9,6 +9,7 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { db } from './db.js';
+import { stampPhone } from './access.js';
 import { ctx, needs, rateLimit, hit, ipKey, secret, safeEqual, secureOtp, hashPassword, passwordPolicyError, digits, DEMO_MODE } from './auth.js';
 import { sendSms, smsGateway } from './notify.js';
 import { otpMode } from './features.js';
@@ -145,9 +146,9 @@ export function createForgotRouter() {
       db.appendAuditEvent('system', 'SUPERADMIN', 'SYSTEM', phone.slice(-4), 'STAFF_RESET_BLOCKED', `A mobile-code password reset for a staff number (••${phone.slice(-4)}) was refused; a SUPERADMIN must do it`);
       return res.json({ success: true });
     }
-    const hits = db.getState().users.filter(u => digits(u.phone) === phone && u.verificationStatus !== 'BLACKLISTED' && !(u as any).selfSignup);
+    const hits = db.getState().users.filter(u => digits(u.phone).slice(-10) === phone && u.verificationStatus !== 'BLACKLISTED' && !(u as any).selfSignup);
     if (hits.length === 1) {
-      const u = hits[0]; u.passwordHash = hash; u.mustChangePassword = false; u.sessionVersion = (u.sessionVersion || 1) + 1; u.phoneVerifiedAt ||= new Date().toISOString(); db.save();   // the reset code proved he holds this number   // every other session is signed out
+      const u = hits[0]; u.passwordHash = hash; u.mustChangePassword = false; u.sessionVersion = (u.sessionVersion || 1) + 1; stampPhone(u, db.getState(), 'password-reset code'); db.save();   // the reset code proved he holds this number (not stamped if another live account verified it first)   // every other session is signed out
       db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'PASSWORD_RESET_OTP', `Password reset with a mobile code (••${phone.slice(-4)}); all sessions revoked`);
     }
     res.json({ success: true });   // same answer whether or not the number has an account

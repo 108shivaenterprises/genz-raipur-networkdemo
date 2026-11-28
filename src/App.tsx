@@ -626,7 +626,8 @@ export default function App() {
         {activeTab === 'matches' && (
           <MatchCenterView
             meId={currentUser.id}
-            canPropose={hasPerm(permissions, 'collab:propose') && currentUser.role === 'BROKER' /* v28: the server takes split proposals only from brokers */}
+            canPropose={(hasPerm(permissions, 'collab:propose') || !!currentUser.basicTier) && currentUser.role === 'BROKER' /* v28: the server takes split proposals only from brokers; a Basic broker sees the button disabled */}
+            basicAccount={!!currentUser.basicTier}
             canMatchByProperty={currentUser.role !== 'BUYER_TENANT' && hasPerm(permissions, 'matching:run')}
             properties={properties}
             requirements={requirements}

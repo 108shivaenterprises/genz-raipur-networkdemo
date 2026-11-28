@@ -20,11 +20,12 @@ export const DealSimple: React.FC<{
   doors: SimpleDoor[];              // the sections THIS person may open (the parent decides, from the same permissions as the tab bar)
   onOpen: (door: SimpleDoor | 'full') => void;
   onBookVisit?: () => void;         // only passed when this person may create a site visit
+  onFileDispute?: () => void;       // D23 r13 — only passed when this person may file a dispute: reachable on a phone, where the full room's tab is not
   meId?: string;                    // v183 — whose ticket to show (an admin must not see other people's)
   canCostSheet?: boolean;           // v183 — only roles that may open Share / cost sheets call that endpoint (others used to get a 403)
   phone?: string;                   // the other broker's number — the two brokers of a deal already see it in the chat header
   pending?: { id: string; en: string; hi: string; go: () => void }[];   // v178: what the Full room shows as "Pending" for this person (owner's mandate, visit OTP) — never "nothing" while Full says otherwise
-}> = ({ item, doors, onOpen, phone, onBookVisit, pending = [], canCostSheet = false, meId = '' }) => {
+}> = ({ item, doors, onOpen, phone, onBookVisit, pending = [], canCostSheet = false, meId = '', onFileDispute }) => {
   const tx = useTx(); const th = useTemplateHi(); const label = useLabel();
   // the live cost sheet this broker already made for this deal's project (matched by project name; hidden when none / no access)
   const [sheet, setSheet] = useState<string>('');
@@ -167,6 +168,7 @@ export const DealSimple: React.FC<{
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-mute">{tx('More', 'और')}<ChevronRight className="h-4 w-4 rotate-90 opacity-60" aria-hidden /></summary>
         <div className="grid gap-2 p-2 pt-0">
           {extra.map(id => door(id, true))}
+          {onFileDispute && <button type="button" onClick={onFileDispute} data-testid="deal-file-dispute" className="flex min-h-12 items-center gap-3 rounded-[14px] border border-rose-200 bg-rose-50 px-3 text-left text-sm font-semibold text-rose-800"><span className="flex-1">{tx('File Formal Dispute', 'औपचारिक विवाद दर्ज करें')}</span><ChevronRight className="h-4 w-4" aria-hidden /></button>}
           <button type="button" onClick={() => onOpen('full')} data-testid="deal-simple-full" className="flex min-h-12 items-center gap-3 rounded-[14px] border border-edge bg-white px-3 text-left text-sm font-bold text-ink">
             <LayoutList className="h-5 w-5 shrink-0 text-slate-700" aria-hidden /><span className="flex-1">{tx('Full deal room', 'पूरा डील रूम')}</span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />
           </button>

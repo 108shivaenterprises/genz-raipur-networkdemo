@@ -219,3 +219,11 @@ export function partnerCard(u: Partial<UserProfile>) {
   delete x.erasedAt;
   return x;
 }
+
+/** a passed code proves he holds this number: stamp it, unless another live account has already verified the same number (then he still gets in, but the number is not tied to him) */
+export function stampPhone(u: UserProfile, s: DatabaseState, source: string): void {
+  if (u.phoneVerifiedAt) return;
+  const last4 = digits(u.phone).slice(-4);
+  if (phoneVerifiedElsewhere(u.phone, s, u.id)) { db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'PHONE_TAKEN_REFUSED', `Mobile ••${last4} is already verified on another account; not stamped (${source})`); return; }
+  u.phoneVerifiedAt = new Date().toISOString(); db.appendAuditEvent(u.id, u.role, 'SYSTEM', u.id, 'PHONE_VERIFIED', `Mobile ••${last4} verified (${source})`);
+}

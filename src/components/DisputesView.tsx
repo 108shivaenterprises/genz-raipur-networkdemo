@@ -52,9 +52,9 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
     try {
       await api.resolveDispute(selectedDispute.id, {
         status: resolutionStatus,
-        resolutionNotes: notes.trim() || 'Reviewed and closed by a GENZ admin.',
+        resolutionNotes: notes.trim(),
         liftHold,
-        blacklistParty: blacklistCounterparty,
+        blacklistParty: currentUser.role === 'SUPERADMIN' && blacklistCounterparty,
       });
       toast(tx('Your decision was saved to the audit trail.', 'आपका फ़ैसला ऑडिट ट्रेल में दर्ज हो गया।'), 'success');
       onRefreshDisputes();
@@ -259,6 +259,7 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
                         <span>{tx('Lift financial settlement hold on deal room commissions', 'डील रूम कमीशन के निपटान की रोक हटाएँ')}</span>
                       </label>
 
+                      {currentUser.role === 'SUPERADMIN' && (
                       <label className="flex items-center gap-2 text-xs text-red-700 font-semibold">
                         <input
                           type="checkbox"
@@ -267,6 +268,7 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
                         />
                         <span>{tx(`Enforce Blacklist Sanction against ${selectedDispute.counterpartyName} (Revokes network privileges)`, `${selectedDispute.counterpartyName} पर ब्लैकलिस्ट कार्रवाई करें (नेटवर्क के अधिकार खत्म)`)}</span>
                       </label>
+                      )}
                     </div>
 
                     <div className="flex justify-end pt-2">
@@ -284,7 +286,7 @@ export const DisputesView: React.FC<DisputesViewProps> = ({
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-slate-200 p-12 text-center text-slate-500 text-xs">
-              {disputes.length === 0 ? tx('No disputes filed. If someone bypasses the platform or does not pay an agreed fee, file one here.', 'कोई विवाद दर्ज नहीं। कोई प्लेटफ़ॉर्म को बायपास करे या तय फ़ीस न दे तो यहाँ दर्ज करें।') : tx('Select a dispute record on the left to inspect evidence and rulings.', 'सबूत और फ़ैसले देखने के लिए बाईं ओर से कोई विवाद चुनें।')}
+              {disputes.length === 0 ? tx('No disputes filed. If someone bypasses the platform or does not pay an agreed fee, open that deal room and tap “File Formal Dispute”.', 'कोई विवाद दर्ज नहीं। कोई प्लेटफ़ॉर्म को बायपास करे या तय फ़ीस न दे तो वह डील रूम खोलकर “औपचारिक विवाद दर्ज करें” दबाएँ।') : tx('Select a dispute record on the left to inspect evidence and rulings.', 'सबूत और फ़ैसले देखने के लिए बाईं ओर से कोई विवाद चुनें।')}
             </div>
           )}
         </div>

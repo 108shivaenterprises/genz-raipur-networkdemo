@@ -50,7 +50,7 @@ export const MyReraCard: React.FC = () => {
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-bold text-slate-900" data-testid="rera-tier">
-            {t1 ? tx('Tier 1 · RERA verified', 'Tier 1 · RERA वेरिफ़ाइड') : tx('Tier 2 · Local associate', 'Tier 2 · लोकल एसोसिएट')}
+            {t1 ? tx('Tier 1 · RERA verified', 'Tier 1 · RERA वेरिफ़ाइड') : d.basic ? tx('Basic account · ID check pending', 'बेसिक अकाउंट · ID जाँच बाक़ी') : tx('Tier 2 · Local associate', 'Tier 2 · लोकल एसोसिएट')}
           </h3>
           <p className="mt-0.5 text-xs text-slate-600">
             {t1
@@ -62,7 +62,7 @@ export const MyReraCard: React.FC = () => {
       </div>
       {pending && (
         <p className="mt-3 rounded-lg bg-white/80 p-2 text-xs text-sky-900" data-testid="rera-pending">
-          {tx('GENZ is checking', 'GENZ जाँच रही है:')} <b className="font-mono">{claim!.number}</b> · {tx('sent', 'भेजा')} {day(claim!.at, hi)}. {tx('You will get an alert when it is done.', 'जाँच पूरी होने पर आपको सूचना मिलेगी।')}
+          <b className="font-mono">{claim!.number}</b> · {tx('Sent to GENZ staff for checking', 'GENZ स्टाफ़ को जाँच के लिए भेजा गया')} · {day(claim!.at, hi)}. {tx('You will get an alert when it is done.', 'जाँच पूरी होने पर आपको सूचना मिलेगी।')}
         </p>
       )}
       {claim?.status === 'REJECTED' && !edit && (

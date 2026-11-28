@@ -27,6 +27,8 @@ interface MatchCenterViewProps {
   canPropose?: boolean;
   /** v68 — my own id: a match between my own home and my own buyer is not a co-broking case */
   meId?: string;
+  /** a Basic (ID check pending) broker sees the co-broke button disabled, with the reason */
+  basicAccount?: boolean;
   /** matching a property against other customers' needs is not open to buyers */
   canMatchByProperty?: boolean;
 }
@@ -42,6 +44,7 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
   onOpenCollaborationModal,
   canPropose = true,
   meId,
+  basicAccount = false,
   canMatchByProperty = true,
 }) => {
   const tx = useTx();
@@ -237,6 +240,8 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
             const key = `${isPropMatch ? p.id : r.id}-${index}`;
             const open = why === key;
             // v68/v80 — what this card may offer ME: my own home & my own buyer → a client room; one side mine → an offer to the OTHER broker; neither mine → nothing
+            const offerTarget = properties.find(x => x.id === (isPropMatch ? p?.id : activePropId));
+            const offerWhy = basicAccount ? tx('Complete ID check to co-broke', 'को-ब्रोक के लिए ID जाँच पूरी करें') : offerTarget?.listingBrokerActive === false ? tx('The listing broker is not active on the network yet', 'लिस्टिंग वाला ब्रोकर अभी नेटवर्क पर सक्रिय नहीं है') : '';
             const act = matchAction(meId, isPropMatch ? p?.listingBrokerId : currentProp?.listingBrokerId, isPropMatch ? currentReq?.assignedBrokerId : r?.assignedBrokerId);
             const own = act.kind === 'OWN';
             const tone = score >= 80 ? 'bg-emerald-100 text-emerald-800' : score >= 50 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700';
@@ -311,17 +316,21 @@ export const MatchCenterView: React.FC<MatchCenterViewProps> = ({
                         <span className="max-w-[12rem] text-right text-xs leading-snug text-slate-500" data-testid="match-offer-wait">{tx(`Best once ${nm} likes this home.`, `${nm} को घर पसंद आने के बाद बेहतर।`)}{!rq?.leadId && !(isPropMatch ? reqRoomId : r?.roomId) ? tx(' Open a client room so he can like homes.', ' क्लाइंट रूम खोलें ताकि वे घर पसंद कर सकें।') : ''}</span>
                       )}
                       {act.kind === 'OFFER' && (
-                        <button
-                          onClick={() => onOpenCollaborationModal({
-                            propertyId: isPropMatch ? p.id : activePropId,
-                            requirementId: isPropMatch ? activeReqId : r.id,
-                            receivingBrokerId: act.to,
-                          })}
-                          className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-sm font-semibold text-white hover:bg-slate-800"
-                          data-testid="match-offer"
-                        >
-                          <Send className="h-4 w-4 text-amber-400" />{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}
-                        </button>
+                        <span className="ml-auto inline-flex flex-col items-end">
+                          <button
+                            disabled={!!offerWhy}
+                            onClick={() => onOpenCollaborationModal({
+                              propertyId: isPropMatch ? p.id : activePropId,
+                              requirementId: isPropMatch ? activeReqId : r.id,
+                              receivingBrokerId: act.to,
+                            })}
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            data-testid="match-offer"
+                          >
+                            <Send className="h-4 w-4 text-amber-400" />{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}
+                          </button>
+                          {offerWhy && <span className="mt-1 text-xs text-slate-500" data-testid="match-offer-why">{offerWhy}</span>}
+                        </span>
                       )}
                     </>);
                   })()}

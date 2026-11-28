@@ -186,6 +186,8 @@ export interface Property {
   askingPrice: number;
   ownerApprovedNetPrice?: number;
   listingBrokerId: string;
+  /** server-computed: the listing broker is a verified, active broker */
+  listingBrokerActive?: boolean;
   ownerId: string;
   ownerName: string;
   ownerPhone: string;
@@ -330,7 +332,9 @@ export interface CollaborationOffer {
   feeMode?: 'SPLIT' | 'OWN_SIDE';
   proposerSide?: 'SELLER' | 'BUYER';
   terms: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED';
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXPIRED' | 'WITHDRAWN';
+  lastActorId?: string;
+  validUntil?: string;
   createdAt: string;
   respondedAt?: string;
   property?: Property;

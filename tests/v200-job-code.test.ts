@@ -417,7 +417,11 @@ describe('v200 · round 10: a phone counts only when it was verified by an OTP',
   it('an invite sign-up on the victim\'s verified phone is refused (409 PHONE_TAKEN); a buyer invite without an OTP is refused (400 OTP_REQUIRED)', async () => {
     const inv = await j(await call(jar.SA, 'POST', '/api/invitations', { invitedEmail: 'squat.broker@test.genz.example', invitedPhone: '9826155667', targetRole: 'BROKER' }));
     const reg = await call(undefined, 'POST', '/api/auth/register-invite', { code: inv.invitation.code, name: 'Squat Broker', phone: '9826155667', email: 'squat.broker@test.genz.example', password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPS2099F' });
-    const rd = await j(reg); expect(reg.status, JSON.stringify(rd)).toBe(409); expect(rd.code).toBe('PHONE_TAKEN');
+    const rd = await j(reg); expect(reg.status, JSON.stringify(rd)).toBe(200); expect(rd.user.phoneVerifiedAt).toBeUndefined();   // round 12: without a code the account is made, UNVERIFIED — it ties to nothing
+    const inv3 = await j(await call(jar.SA, 'POST', '/api/invitations', { invitedEmail: 'squat.broker2@test.genz.example', invitedPhone: '9826155667', targetRole: 'BROKER' }));
+    const otp = await j(await call(undefined, 'POST', '/api/auth/register-otp', { code: inv3.invitation.code, phone: '9826155667' }));
+    const r3 = await call(undefined, 'POST', '/api/auth/register-invite', { code: inv3.invitation.code, name: 'Squat Broker', phone: '9826155667', email: 'squat.broker2@test.genz.example', password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true, panNumber: 'ABCPS2098F', otpToken: otp.otpToken, otpCode: otp.devCode });
+    const d3 = await j(r3); expect(r3.status, JSON.stringify(d3)).toBe(409); expect(d3.code).toBe('PHONE_TAKEN');   // with a code the already-verified number is refused
     const inv2 = await j(await call(jar.SA, 'POST', '/api/invitations', { invitedEmail: 'squat.buyer@test.genz.example', invitedPhone: '9826202099', targetRole: 'BUYER_TENANT' }));
     const r2 = await call(undefined, 'POST', '/api/auth/register-invite', { code: inv2.invitation.code, name: 'Squat Buyer', phone: '9826202099', email: 'squat.buyer@test.genz.example', password: 'Strong#Pass2026', consent: true, locality: 'Shankar Nagar', city: 'Raipur', aadhaarNumber: '234567890130', idConsent: true });
     expect(r2.status).toBe(400); expect((await j(r2)).code).toBe('OTP_REQUIRED');

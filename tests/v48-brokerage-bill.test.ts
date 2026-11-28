@@ -38,7 +38,8 @@ let deal: any; let bill: any; let token = '';
 describe('brokerage bill', () => {
   it('only from the Agreement stage', async () => {
     const list = await (await call(jar.BRK2, 'GET', '/api/properties')).json();
-    const prop = (Array.isArray(list) ? list : list.properties).find((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.verificationStatus === 'VERIFIED');
+    const taken = new Set((((await (await call(jar.BRK2, 'GET', '/api/deals')).json()).deals) || []).map((d: any) => d.propertyId));   // a listing the two brokers already share a deal room on cannot be accepted again (round 12)
+    const prop = (Array.isArray(list) ? list : list.properties).find((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.verificationStatus === 'VERIFIED' && !taken.has(p.id));
     const o = await call(jar.BRK2, 'POST', '/api/collaborations', { propertyId: prop.id, feeMode: 'OWN_SIDE', proposerSide: 'BUYER', terms: 'buyer side mine, seller side yours', receivingBrokerId: 'USR-BRK-001' });
     const a = await call(jar.BRK1, 'POST', `/api/collaborations/${(await o.json()).offer.id}/respond`, { decision: 'ACCEPT' });
     deal = (await a.json()).dealRoom;

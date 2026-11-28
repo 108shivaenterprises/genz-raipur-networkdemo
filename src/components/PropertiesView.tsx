@@ -434,10 +434,18 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
               <button onClick={() => setEditingProperty(p)} className={`${btn} bg-blue-600 text-white hover:bg-blue-700`} title={tx('Edit listing details, price, photos gallery, video tour, or status', 'लिस्टिंग का विवरण, कीमत, फ़ोटो, वीडियो या स्टेटस बदलें')}>
                 <Pencil className="h-3.5 w-3.5" /><span>{tx('Edit', 'एडिट करें')}</span>
               </button>) });
-            if (!isMyListing && !isOwner && !isClosed && isBroker && may('collab:propose')) actions.push({ key: 'collab', node: (
-              <button onClick={() => onProposeCollaboration(p)} className={`${btn} bg-slate-900 text-white hover:bg-slate-800`} data-testid={`collab-${p.id}`}>
-                <span>{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}</span>
-              </button>) });
+            if (!isMyListing && !isOwner && !isClosed && isBroker && (may('collab:propose') || (currentUser as any).basicTier)) actions.push({ key: 'collab', node: (
+              (() => {
+                // D23 r12 — never a silent refusal: say why the button is off
+                const why = (currentUser as any).basicTier ? tx('Complete ID check to co-broke', 'को-ब्रोक के लिए ID जाँच पूरी करें')
+                  : p.listingBrokerActive === false || (listingBroker && (listingBroker.verificationStatus !== 'VERIFIED' || (listingBroker as any).basicTier)) ? tx('The listing broker is not active on the network yet', 'लिस्टिंग वाला ब्रोकर अभी नेटवर्क पर सक्रिय नहीं है') : '';
+                return (<span className="inline-flex flex-col items-start">
+                  <button onClick={() => onProposeCollaboration(p)} disabled={!!why} title={why || undefined} aria-describedby={why ? `collab-why-${p.id}` : undefined} className={`${btn} bg-slate-900 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50`} data-testid={`collab-${p.id}`}>
+                    <span>{tx('Co-broking offer', 'को-ब्रोकिंग ऑफ़र')}</span>
+                  </button>
+                  {why && <span id={`collab-why-${p.id}`} className="mt-1 text-xs text-slate-500" data-testid={`collab-why-${p.id}`}>{why}</span>}
+                </span>);
+              })()) });
             if (may('matching:run') && !isBuyer && !isClosed) actions.push({ key: 'match', node: (
               <button onClick={() => onSelectPropertyForMatching(p)} className={`${btn} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>
                 <Sparkles className="h-3.5 w-3.5 text-amber-500" /><span>{tx('Find buyers', 'खरीदार खोजें')}</span>

@@ -19,6 +19,7 @@ import { isVerifiedFull } from './permissions.js';
 import crypto from 'crypto';
 import { db } from './db.js';
 import type { UserProfile, Property } from './db.js';
+import { stampPhone } from './access.js';
 import { ctx, needs, rateLimit, hit, ipKey, resetHits, secureOtp, safeEqual, secret, signSession, setSessionCookie, DEMO_MODE } from './auth.js';
 import { sendSms, smsGateway } from './notify.js';
 import { otpMode } from './features.js';
@@ -138,7 +139,8 @@ type OtpRec = { exp: number; tries: number; used?: boolean };
 const otpBook = (): Record<string, OtpRec> => { const s = st() as any; const b: Record<string, OtpRec> = (s.ownerOtp ||= {}); const t = Date.now() - 60_000; for (const k of Object.keys(b)) if (b[k].exp < t) delete b[k]; return b; };
 const tokSig = (body: string, code: string) => hm('owner-otp-tok', `${body}|${code}`);
 export function makeOtpToken(phone: string, code: string, exp: number): string {
-  const body = Buffer.from(JSON.stringify({ p: phone, e: exp, n: crypto.randomBytes(6).toString('hex') })).toString('base64url');
+  const n = crypto.randomBytes(6).toString('hex');   // `a` is a MAC of the public parts alone, so a made-up token is refused before it can create a record in the shared book
+  const body = Buffer.from(JSON.stringify({ p: phone, e: exp, n, a: hm('owner-otp-auth', `${phone}|${exp}|${n}`) })).toString('base64url');
   return `${body}.${tokSig(body, code)}`;
 }
 export function readOtpToken(tok: unknown, phone: string): { body: string; sig: string; n: string; e: number } | null {
@@ -146,7 +148,9 @@ export function readOtpToken(tok: unknown, phone: string): { body: string; sig: 
   const [body, sig, ...rest] = tok.split('.'); if (!body || !sig || rest.length) return null;
   try {
     const j = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-    if (j?.p !== phone || !Number.isFinite(j?.e) || typeof j?.n !== 'string' || !/^[0-9a-f]{12}$/.test(j.n)) return null;
+    if (j?.p !== phone || !Number.isFinite(j?.e) || typeof j?.n !== 'string' || !/^[0-9a-f]{12}$/.test(j.n) || typeof j?.a !== 'string') return null;
+    if (j.e > Date.now() + OTP_MS + 60_000) return null;   // never issued by us: an expiry far in the future would keep a record alive
+    if (!safeEqual(j.a, hm('owner-otp-auth', `${j.p}|${j.e}|${j.n}`))) return null;
     return { body, sig, n: j.n, e: Number(j.e) };
   } catch { return null; }
 }
@@ -168,19 +172,24 @@ export function finishSignupOtp(tok: unknown) {
   if (otpMode() === 'manual') { useOtp(tok); return; }
   try { const j = JSON.parse(Buffer.from(tok.split('.')[0], 'base64url').toString('utf8')); if (typeof j?.n === 'string') { const rec = otpBook()[j.n]; if (rec) { rec.used = true; db.save(); } } } catch { /* not a token */ }
 }
+const phoneSends = new Map<string, number[]>(); const liveCode = new Map<string, number>();   // shortcut: per-process memory, fine for one server; move to the shared book when there are several
 /** v141 — send a sign-up code to a phone; returns the signed token (and the code itself only in a demo without SMS) */
 export async function sendSignupOtp(phone: string, ip?: string, purpose: 'signup' | 'open' = 'signup'): Promise<({ otpToken: string; devCode?: string } & Partial<ReturnType<typeof requestView>>) | { error: string; errorHi?: string; wait?: number; status: number; code: string }> {
   if (!PHONE_RE.test(phone)) return { error: 'Enter your 10-digit mobile number', status: 400, code: 'BAD_PHONE' };
   const g = ipPhoneGate(ip, phone); if (g) return { error: g.error, errorHi: g.errorHi, wait: g.wait, status: g.status, code: g.code };
+  const sentTimes = (phoneSends.get(phone) || []).filter(t => t > Date.now() - 3600_000); phoneSends.set(phone, sentTimes);
+  if (sentTimes.length >= 8) return { error: 'Too many codes for this number — try again in an hour.', errorHi: 'इस नंबर पर बहुत ज़्यादा कोड माँगे गए — एक घंटे बाद कोशिश करें।', status: 429, code: 'TOO_MANY' };   // per number, whatever the IP; only successful sends count, and a re-send while a code is still live is free
+  const countSend = () => { if ((liveCode.get(phone) || 0) <= Date.now()) sentTimes.push(Date.now()); liveCode.set(phone, Date.now() + OTP_MS); };
   if (otpMode() === 'manual') {   // D5: the code waits for an admin / the person's own WhatsApp message; the browser gets only a reference
     const o = issueOtp(phone, purpose, Date.now(), ip); if (!o.ok) return { error: o.error, errorHi: o.errorHi, wait: o.wait, status: o.status, code: o.code };
-    const v = requestView(o, phone, 'signup'); return { ...v, otpToken: o.ref };
+    countSend(); const v = requestView(o, phone, 'signup'); return { ...v, otpToken: o.ref };
   }
   if (hit(`signup-otp:${ipKey(ip)}|${phone}`, 5, 3600_000, 3600_000) > 0) return { error: 'Too many codes for this number — try again in an hour.', status: 429, code: 'TOO_MANY' };
   const on = smsGateway();
   if (!on && !DEMO_MODE) return { error: 'SMS is not set up yet, so GENZ will check your ID instead.', status: 503, code: 'NO_SMS' };
   const code = secureOtp(); const exp = Date.now() + OTP_MS;
   await sendSms(phone, `GENZ: your sign-up code is ${code} (valid 10 minutes). Do not share it.`);
+  countSend();
   return { otpToken: makeOtpToken(phone, code, exp), ...(!on && DEMO_MODE ? { devCode: code } : {}) };
 }
 export function createOwnerAuthRouter() {
@@ -245,7 +254,7 @@ export function createOwnerAuthRouter() {
     if (manual) useOtp(String(req.body.otpToken)); else OTPS.delete(phone);
     resetHits(`owner-otp:${phone}`);
     if (usedNonce) { const b = otpBook(); (b[usedNonce] ||= { exp: Date.now() + OTP_MS, tries: 0 }).used = true; }
-    u.lastLoginAt = now; u.phoneVerifiedAt ||= now; db.save();
+    u.lastLoginAt = now; stampPhone(u, s, 'owner sign-in code'); db.save();
     setSessionCookie(req, res, signSession(u.id, u.sessionVersion || 1));
     res.json({ success: true, created: isNew, user: { id: u.id, name: u.name, role: u.role, phone: u.phone, city: u.city, verificationStatus: u.verificationStatus }, permissions: effectivePermissions(u) });
   });

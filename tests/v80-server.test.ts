@@ -120,7 +120,7 @@ describe('owner sign-in: the code travels as a signed token', () => {
     const ph = '9' + rnd(9); const o = await otp(ph);
     expect(o.otpToken).toMatch(/^[\w-]+\.[\w-]+$/); expect(o.devCode).toMatch(/^\d{6}$/);
     const body = JSON.parse(Buffer.from(o.otpToken.split('.')[0], 'base64url').toString('utf8'));
-    expect(Object.keys(body).sort()).toEqual(['e', 'n', 'p']); expect(body.p).toBe(ph); expect(body.e).toBeGreaterThan(Date.now());
+    expect(Object.keys(body).sort()).toEqual(['a', 'e', 'n', 'p']); expect(body.p).toBe(ph); expect(body.e).toBeGreaterThan(Date.now());
     expect(o.otpToken).not.toContain(o.devCode);
   });
   it('the FIRST code still signs in after a second code was sent — the check needs no memory of the server that sent it', async () => {

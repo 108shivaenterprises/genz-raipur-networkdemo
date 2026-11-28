@@ -368,7 +368,7 @@ export function createNetworkRouter() {
   // ── v117 — "my RERA came": a local associate adds his RERA registration himself; GENZ checks it on the RERA portal and moves him to Tier 1 ──
   r.get('/my-rera', needs('self:read'), (_req: Request, res: Response) => {
     const u = me(); if (u.role !== 'BROKER') return bad(res, 'Only brokers have a RERA tier', 403);
-    res.json({ success: true, tier: tierOf(u), rera: u.reraNumber || '', claim: u.reraClaim || null });
+    res.json({ success: true, tier: tierOf(u), basic: !!u.basicTier, rera: u.reraNumber || '', claim: u.reraClaim || null });
   });
   r.post('/my-rera', needs('self:update'), rateLimit('my-rera', 10, 3600_000), (req: Request, res: Response) => {
     const u = me(); const s = st();
@@ -381,12 +381,15 @@ export function createNetworkRouter() {
     if (taken) return bad(res, 'This RERA number is already linked to another GENZ account', 409);
     // v141 — no GENZ desk at India scale: a well-formed, unused RERA number gives Tier 1 at once; members' reports take it back (daily.ts)
     const at = nowIso();
-    if (u.basicTier || tierOf(u) === 'TIER2') {   // v186 (D16) + v191 (S1): a Basic account — or a Tier 2 associate — only files a CLAIM for the admin queue — no tier, no number on the profile, and it is not proof for the KYC approval
+    // the same number already waiting: keep the first timestamp (re-sending must not push him to the back of the queue)
+    if (u.reraClaim?.status === 'PENDING' && u.reraClaim.number === rera) return res.json({ success: true, tier: tierOf(u), claim: u.reraClaim, pending: true, already: true });
+    if (u.reraClaim?.decidedBy === 'AUTO') u.reraAuto = true;   // the old number was taken on trust; a pending claim must not hide that
+    if (u.basicTier || tierOf(u) === 'TIER2' || tierOf(u) === 'TIER1') {   // D23 r12: a Tier 1 broker changing his number also files a claim — the old number and Tier 1 stay until staff decide   // v186 (D16) + v191 (S1): a Basic account — or a Tier 2 associate — only files a CLAIM for the admin queue — no tier, no number on the profile, and it is not proof for the KYC approval
       u.reraClaim = { number: rera, at, status: 'PENDING' };
-      db.save(); audit('VERIFICATION', u.id, u.basicTier ? 'RERA_CLAIM_BASIC' : 'RERA_CLAIM_TIER2', `${u.name} (${u.basicTier ? 'Basic' : 'Tier 2'}) claimed RERA ${rera} — waiting in the admin RERA queue`);
+      db.save(); audit('VERIFICATION', u.id, u.basicTier ? 'RERA_CLAIM_BASIC' : tierOf(u) === 'TIER1' ? 'RERA_CLAIM_TIER1_CHANGE' : 'RERA_CLAIM_TIER2', `${u.name} (${u.basicTier ? 'Basic' : tierOf(u) === 'TIER1' ? 'Tier 1, new number' : 'Tier 2'}) claimed RERA ${rera} — waiting in the admin RERA queue`);
       return res.json({ success: true, tier: tierOf(u), claim: u.reraClaim, pending: true });
     }
-    u.reraClaim = { number: rera, at, status: 'APPROVED', decidedAt: at, decidedBy: 'AUTO' };
+    u.reraClaim = { number: rera, at, status: 'APPROVED', decidedAt: at, decidedBy: 'AUTO' }; u.reraAuto = true;
     u.reraNumber = rera; u.tier = 'TIER1'; u.probationUntil = undefined;
     db.save();
     audit('VERIFICATION', u.id, 'RERA_SELF_ADDED', `${u.name} added RERA ${rera} — Tier 1 at once (no staff check; 3 member reports remove it)`);
@@ -406,7 +409,7 @@ export function createNetworkRouter() {
     const at = nowIso();
     if (req.body?.approve === true) {
       if (reraHeldByOther(st(), t, normRera(t.reraClaim!.number))) return bad(res, 'Another KYC-approved account already holds this RERA number — resolve the conflict first.', 409, 'RERA_CONFLICT');
-      t.reraNumber = t.reraClaim.number; t.tier = 'TIER1'; t.probationUntil = undefined;
+      t.reraNumber = t.reraClaim.number; t.tier = 'TIER1'; t.probationUntil = undefined; t.reraAuto = false;
       t.reraClaim = { ...t.reraClaim, status: 'APPROVED', decidedAt: at, decidedBy: a.id };
       db.save(); audit('VERIFICATION', t.id, 'RERA_APPROVED', `${a.name} checked RERA ${t.reraNumber} of ${t.name} — now Tier 1`);
       alert(t.id, 'system', 'Your RERA is verified — you are Tier 1 now', 'Builder (RERA) projects are open for you: partner on a project, block units and book.', '/?tab=pcontrol',

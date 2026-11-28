@@ -56,9 +56,9 @@ describe('v202 · round 11: a phone is proven by a code', { timeout: 120000 }, (
     const r = await call(undefined, 'POST', '/api/auth/register-invite', body(c, email, phone, { otpToken: o.otpToken, otpCode: o.devCode })); expect(r.status, JSON.stringify(await r.clone().json())).toBe(200);
     const st = await j(await call(await cookieOf(email), 'GET', '/api/phone/status')); expect(st.verified).toBe(true);
   });
-  it('a number already verified on a live account is refused at invite sign-up (409 PHONE_TAKEN, EN + HI), with or without a code', async () => {
-    const email = 'nb3@test.genz.example'; const c = await invite(email, '9826377889', 'BROKER');
-    const r = await call(undefined, 'POST', '/api/auth/register-invite', body(c, email, '9826377889')); const d = await j(r);
+  it('a number already verified on a live account is refused at invite sign-up WITH a code (409 PHONE_TAKEN, EN + HI); without a code the account is made unverified (round 12)', async () => {
+    const email = 'nb3@test.genz.example'; const c = await invite(email, '9826377889', 'BROKER'); const o = await otpFor(c, '9826377889');
+    const r = await call(undefined, 'POST', '/api/auth/register-invite', body(c, email, '9826377889', { otpToken: o.otpToken, otpCode: o.devCode, panNumber: 'ABCPN3033F' })); const d = await j(r);
     expect(r.status).toBe(409); expect(d.code).toBe('PHONE_TAKEN'); expect(d.errorHi).toBeTruthy();
   });
   it('verify-my-phone: an account made without a code is unverified; send + confirm stamps it; a wrong code does not; the number cannot be verified on two accounts', async () => {
@@ -84,7 +84,7 @@ describe('v202 · round 11: a phone is proven by a code', { timeout: 120000 }, (
     for (const k of ['passwordHash', 'verificationNotes', 'idCheckNote', 'idCheckedBy', 'autoVerifiedBy', 'trustScore', 'trustDetails', 'vouchStrikes', 'sessionVersion', 'selfRegistered', 'signupMode']) expect(p, k).not.toHaveProperty(k);
   });
   it('source: password-reset codes stamp the phone; the Vercel build regenerates api/index.mjs; the profile page offers the verify card (EN + HI)', () => {
-    expect(read('server/otpManual.ts')).toContain('u.phoneVerifiedAt ||=');
+    expect(read('server/otpManual.ts')).toContain("stampPhone(u, db.getState(), 'password-reset code')");
     expect(JSON.parse(read('vercel.json')).buildCommand).toBe('npm run build:vercel'); expect(JSON.parse(read('package.json')).scripts['build:vercel']).toContain('--outfile=api/index.mjs');
     const c = read('src/components/PhoneVerifyCard.tsx'); expect(c).toContain('Verify your mobile number'); expect(c).toContain('अपना मोबाइल नंबर वेरिफ़ाई करें'); expect(read('src/components/PrivacyCenter.tsx')).toContain('<PhoneVerifyCard />');
     const jv = read('src/components/JoinView.tsx'); expect(jv).toContain("role === 'BUYER_TENANT' || role === 'PROPERTY_OWNER'"); expect(jv).toContain('पहले अपना मोबाइल वेरिफ़ाई करें');

@@ -36,12 +36,14 @@ afterAll(async () => { proc?.kill('SIGTERM'); await new Promise(r => setTimeout(
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function newDeal(skip = 0) {
+  // round 12: one listing = one deal room per broker pair, so the first room uses a BRK1 listing and the next one a BRK2 listing (BRK1 proposes, BRK2 accepts)
+  const [lister, proposer, accepter] = skip === 0 ? ['USR-BRK-001', jar.BRK2, jar.BRK1] as const : ['USR-BRK-002', jar.BRK1, jar.BRK2] as const;
   const list = await (await call(jar.BRK2, 'GET', '/api/properties')).json();
-  const arr = (Array.isArray(list) ? list : list.properties).filter((p: any) => p.listingBrokerId === 'USR-BRK-001' && p.verificationStatus === 'VERIFIED');
-  const prop = arr[skip];
-  const o = await call(jar.BRK2, 'POST', '/api/collaborations', { propertyId: prop.id, proposedIntroducingShare: 50, proposedClosingShare: 50, terms: 'v47 test', receivingBrokerId: 'USR-BRK-001' });
+  const taken = new Set((((await (await call(jar.BRK2, 'GET', '/api/deals')).json()).deals) || []).map((d: any) => d.propertyId));
+  const prop = (Array.isArray(list) ? list : list.properties).find((p: any) => p.listingBrokerId === lister && p.verificationStatus === 'VERIFIED' && !taken.has(p.id));
+  const o = await call(proposer, 'POST', '/api/collaborations', { propertyId: prop.id, proposedIntroducingShare: 50, proposedClosingShare: 50, terms: 'v47 test', receivingBrokerId: lister === 'USR-BRK-001' ? 'USR-BRK-001' : 'USR-BRK-002' });
   expect(o.status).toBe(200);
-  const a = await call(jar.BRK1, 'POST', `/api/collaborations/${(await o.json()).offer.id}/respond`, { decision: 'ACCEPT' });
+  const a = await call(accepter, 'POST', `/api/collaborations/${(await o.json()).offer.id}/respond`, { decision: 'ACCEPT' });
   expect(a.status).toBe(200);
   return (await a.json()).dealRoom;
 }

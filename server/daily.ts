@@ -414,7 +414,7 @@ export function createDailyRouter() {
       if (who.size >= 3 && t.verificationStatus === 'VERIFIED') {
         t.verificationStatus = 'SUSPENDED'; t.verificationNotes = `Suspended automatically after reports from ${who.size} members (${nowIso().slice(0, 10)}).`;
         t.avatarUrl = undefined;
-        if (t.reraClaim?.decidedBy === 'AUTO') { t.reraClaim = { ...t.reraClaim, status: 'REJECTED', note: 'Reported by members' }; t.reraNumber = ''; t.tier = 'TIER2'; }
+        if (t.reraClaim?.decidedBy === 'AUTO' || t.reraAuto) { t.reraClaim = { number: t.reraClaim?.number || t.reraNumber || '', at: t.reraClaim?.at || nowIso(), ...t.reraClaim, status: 'REJECTED', note: 'Reported by members' }; t.reraNumber = ''; t.tier = 'TIER2'; t.reraAuto = false; }
         held = true;
       }
     }
